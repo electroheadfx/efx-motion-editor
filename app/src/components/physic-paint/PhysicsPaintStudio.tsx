@@ -1427,7 +1427,10 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
-  const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
+  // 261027 UAT round 6: the pin is per (track, frame). Two tracks share frame
+  // numbers, so a frame-only pin let track B's sheet merge over track A's base
+  // after a switch.
+  const aquarelleMergeBaseRef = useRef<{ appFrame: number; trackId: string; base: RenderedFramePayload | null } | null>(null);
   // 261026 ordinary-key durable base (watercolor-loop-render-split run 3):
   // `aquarelleMergeBaseRef` is per SHEET session and is deliberately cleared on
   // every frame change, but a script edit later in the SAME launch (Move/Apply,
@@ -4386,7 +4389,10 @@ export function PhysicsPaintStudio() {
   // synchronous flush-capture here; navigateToSyncedPhysicalFrame calls it BEFORE
   // flushLivePixels so the frame-leave capture is queued in time (the rAF poll's
   // capture runs one rAF after the flush has already drained).
-  const aquarelleFlushCaptureRef = useRef<(() => void) | null>(null);
+  // 261027 UAT round 6: an optional trackId pins the capture to the sheet's
+  // OWNING track. A track switch flushes the outgoing sheet after the
+  // document's active track has already moved to the incoming track.
+  const aquarelleFlushCaptureRef = useRef<((captureTrackId?: string) => void) | null>(null);
   // Quick 261019-mj2 Task 3: the aquarelle layer registers a same-frame sheet
   // reset (frame-change branch minus the lastPlayFrame update). Generated-cell
   // self-promotion calls it synchronously before dispatch.
@@ -4762,7 +4768,13 @@ export function PhysicsPaintStudio() {
     // recovery lease then disables every paint tool. A visibility flip of the
     // SAME track keeps the buffers (same content authority, same track).
     if (lastEditStateTrackIdRef.current !== trackId) {
-      const hadPreviousTrack = lastEditStateTrackIdRef.current !== null;
+      // 261027 UAT round 6: the flush below must target the OUTGOING track.
+      // `setActiveTrackId` already moved the document, and the capture chain
+      // resolves its target from the live active track — so without this the
+      // outgoing sheet was committed onto the INCOMING track's key (track B's
+      // cache overwrote track A's key).
+      const outgoingTrackId = lastEditStateTrackIdRef.current;
+      const hadPreviousTrack = outgoingTrackId !== null;
       lastEditStateTrackIdRef.current = trackId;
       if (hadPreviousTrack) {
         // quick-261023-l35 Task 3 (T-261023-l35-03/-07): the outgoing
@@ -4770,7 +4782,7 @@ export function PhysicsPaintStudio() {
         // this, the module stores would hold the outgoing track's strokes
         // and the next save would write them under the incoming key, the
         // exact cross-track mix the brief forbids.
-        aquarelleFlushCaptureRef.current?.();
+        aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);
         const outgoingEngine = engineRef.current;
         flushBrushScriptFrame(
           currentFrame,
@@ -5321,6 +5333,7 @@ export function PhysicsPaintStudio() {
             // own commits.
             aquarelleMergeBaseRef.current = {
               appFrame: acceptedSelectedAppFrame,
+              trackId: studioActiveTrackId(),
               base: pendingSelfPromotion.baseKind === 'clone' ? pendingSelfPromotion.blankFrame : null,
             };
           }
@@ -7073,7 +7086,7 @@ export function PhysicsPaintStudio() {
       keyId: target.keyId,
     }, { base: bytes }, undefined, { dumpPng: true });
   };
-  const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
+  const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => {
     const launch = launchContextRef.current;
     if (!launch) {
       recordAquarelleRenderSplitEvent('studio-capture-entry', { playFrame, stage: 'no-launch' });
@@ -7121,6 +7134,13 @@ export function PhysicsPaintStudio() {
       return pending;
     })();
     const runCapture = async () => {
+      // 261027 UAT round 6: an explicit capture track (the OUTGOING track on a
+      // switch flush) wins. The live active track has already moved to the
+      // incoming track by then, so resolving it here was the cross-track
+      // overwrite: the outgoing sheet landed on the incoming key.
+      const targetTrackId = typeof captureTrackId === 'string' && captureTrackId.length > 0
+        ? captureTrackId
+        : studioActiveTrackId();
       let cachedBase: RenderedFramePayload | null;
       let mergeBaseWasFresh = false;
       if (pendingFirstPaintTarget !== null) {
@@ -7138,12 +7158,18 @@ export function PhysicsPaintStudio() {
         // A cloned key starts from its blank frame (the sheet alone); a blank
         // base needs no special blend — source-over encodes the sheet alone.
         cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;
-        aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase };
+        aquarelleMergeBaseRef.current = { appFrame: playFrame, trackId: targetTrackId, base: cachedBase };
       } else {
-        if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
+        // The pin is per (track, frame): two tracks share frame numbers, so a
+        // frame-only pin merged the incoming sheet over the outgoing base.
+        if (
+          aquarelleMergeBaseRef.current?.appFrame !== playFrame
+          || aquarelleMergeBaseRef.current?.trackId !== targetTrackId
+        ) {
           mergeBaseWasFresh = true;
           aquarelleMergeBaseRef.current = {
             appFrame: playFrame,
+            trackId: targetTrackId,
             base: findCachedRotoDisplayFrameRef.current(playFrame),
           };
         }
@@ -7156,7 +7182,6 @@ export function PhysicsPaintStudio() {
       }
       const currentLaunch = launchContextRef.current;
       if (!currentLaunch || currentLaunch.operationId !== operationId) return;
-      const targetTrackId = studioActiveTrackId();
       const targetDocument = physicPaintStore.getRotoPhysicalDocument(currentLaunch.layerId, targetTrackId);
       const targetClassification = targetDocument
         ? classifyPhysicPaintRotoGroupFrameTarget({ document: targetDocument, appFrame: playFrame })
@@ -7177,6 +7202,7 @@ export function PhysicsPaintStudio() {
       const enqueue = (attempt = 1) => {
         const work = rotoPersistenceRef.current.captureLivePixels({
           layerId: launch.layerId,
+          trackId: targetTrackId,
           appFrame: playFrame,
           liveAlphaCanvas,
           cachedBase,

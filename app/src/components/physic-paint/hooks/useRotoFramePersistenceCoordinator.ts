@@ -467,12 +467,18 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     resolveContentToken: (contentRevision) => inputRef.current.store.resolveContentToken(contentRevision),
   });
 
-  const upsertCachedFrame = useCallback(async (renderedFrame: RenderedFramePayload, backgroundOnly: boolean, _onionFrame?: RenderedFramePayload | null, _interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata, expectedKeyId?: string, expectedContentRevision?: string) => {
+  const upsertCachedFrame = useCallback(async (renderedFrame: RenderedFramePayload, backgroundOnly: boolean, _onionFrame?: RenderedFramePayload | null, _interpolationSettings?: PhysicPaintRotoInterpolationSettings, expectedLayerId?: string, mutationId?: number, expectedOperationId?: string, background?: PhysicPaintRotoBackgroundMetadata, expectedKeyId?: string, expectedContentRevision?: string, expectedTrackId?: string) => {
     const launch = inputRef.current.launchContext;
     const layerId = expectedLayerId ?? launch?.layerId;
     const launchId = expectedOperationId ?? launch?.operationId;
     const projectContextId = launch?.project?.contextId;
-    const trackId = inputRef.current.getActiveTrackId(layerId ?? '');
+    // 261027 UAT round 6: a switch flush commits the OUTGOING track's sheet
+    // after the document moved to the incoming track. Re-resolving the live
+    // active track here either refused the commit (revision mismatch) or wrote
+    // the pixels to the incoming key.
+    const trackId = typeof expectedTrackId === 'string' && expectedTrackId.length > 0
+      ? expectedTrackId
+      : inputRef.current.getActiveTrackId(layerId ?? '');
     if (!layerId || !launchId || !projectContextId) {
       recordAquarelleRenderSplitEvent('route-preflight-failed', {
         stage: 'identity-missing',
@@ -551,8 +557,15 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // so a paper change is a cache miss (stale WebP frames are not served).
       cacheRevision: `${route.contentRevision}:real:${route.keyId}${paperCacheTerm(inputRef.current.getBackgroundMetadata())}`,
     };
-    confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
-    editBuffer.acceptPixelCache(renderedFrame.appFrame);
+    // The local frame buffers belong to the LIVE active track. A switch flush
+    // persists the outgoing key through the parent but must never seed the
+    // incoming track's reference buffer with the outgoing composite (that made
+    // track A display track B's cache after the switch).
+    const ownsLiveBuffers = trackId === inputRef.current.getActiveTrackId(layerId);
+    if (ownsLiveBuffers) {
+      confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
+      editBuffer.acceptPixelCache(renderedFrame.appFrame);
+    }
     publishCurrentDocument(layerId, launchId);
     const identity: RotoLivePixelIdentity = { launchId, layerId, keyId: route.keyId, contentRevision: route.contentRevision, appFrame: renderedFrame.appFrame };
     queueParentPayload(identity, {
@@ -570,6 +583,14 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
 
   const captureLivePixels = useCallback((capture: {
     layerId: string;
+    /**
+     * 261027 UAT round 6: the track the sheet belongs to. A track switch
+     * flushes the OUTGOING sheet AFTER the document's active track has moved,
+     * so resolving the live active track here committed the outgoing paint
+     * onto the incoming key. Absent = the live active track (in-track
+     * captures keep their existing behaviour).
+     */
+    trackId?: string;
     keyId?: string;
     appFrame: number;
     // 52.1 (2nd-stroke freeze): a factory instead of an eager canvas. Calling
@@ -606,7 +627,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       });
       return Promise.resolve(false);
     }
-    const trackId = inputRef.current.getActiveTrackId(capture.layerId);
+    const trackId = typeof capture.trackId === 'string' && capture.trackId.length > 0
+      ? capture.trackId
+      : inputRef.current.getActiveTrackId(capture.layerId);
     const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
     const revisionMatches = document !== null && contentRevision !== null && document.revision === contentRevision;
@@ -711,6 +734,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         capture.background,
         capture.keyId,
         contentRevision,
+        trackId,
         );
         recordAquarelleRenderSplitEvent('coordinator-commit', {
           appFrame: current.appFrame,

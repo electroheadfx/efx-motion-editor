@@ -110,7 +110,7 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // Resolved eagerly in the Studio handler — a deferred factory would read
     // the cleared sheet and commit empty (the navigation cache-loss bug).
     expect(studio).toContain('const liveAlphaCanvas = snapshot()');
-    expect(layer.indexOf('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot)'))
+    expect(layer.indexOf('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId)'))
       .toBeLessThan(layer.indexOf('engine.clear()'));
   });
 
@@ -162,6 +162,35 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // The seam unregisters on unmount: the save/close flush must never call a
     // closure holding a destroyed engine.
     expect(layer).toContain('onFlushCaptureReadyRef.current?.(null)');
+  });
+
+  it('TRACK SWITCH: the outgoing sheet captures against the OUTGOING track, never the incoming one', () => {
+    // 261027 UAT round 6: painting on track 2 then selecting track 1 overwrote
+    // track 1's key with track 2's cache. The switch effect flushes the
+    // outgoing sheet AFTER setActiveTrackId moved the document, and the
+    // capture chain resolved its target from the LIVE active track — so the
+    // outgoing sheet committed onto the incoming key. The flush now carries
+    // the outgoing track id end-to-end, and the merge-base pin is per
+    // (track, frame): two tracks share frame numbers.
+    expect(layer).toContain('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId)');
+    const studioSwitch = studio.slice(
+      studio.indexOf('if (lastEditStateTrackIdRef.current !== trackId) {'),
+      studio.indexOf('void studioScriptSnapshot.saveNow();'),
+    );
+    expect(studioSwitch).toContain('const outgoingTrackId = lastEditStateTrackIdRef.current');
+    expect(studioSwitch).toContain('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined)');
+    expect(studio).toContain('const targetTrackId = typeof captureTrackId');
+    expect(studio).toContain('trackId: targetTrackId');
+    expect(studio).toContain('aquarelleMergeBaseRef.current?.trackId !== targetTrackId');
+    const coordinator = readFileSync(
+      resolve(__dirname, '../hooks/useRotoFramePersistenceCoordinator.ts'),
+      'utf8',
+    );
+    expect(coordinator).toContain('capture.trackId');
+    // The commit re-resolves the track too — a live lookup either refused the
+    // outgoing commit (revision mismatch) or landed on the incoming key.
+    expect(coordinator).toContain('expectedTrackId');
+    expect(coordinator).toContain('const ownsLiveBuffers = trackId === inputRef.current.getActiveTrackId(layerId)');
   });
 
   it('SAVE: the live sheet snapshot is registered after engine setup and unregistered on cleanup', () => {

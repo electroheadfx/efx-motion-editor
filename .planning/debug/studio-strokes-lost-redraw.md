@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T13:05:00.000Z
+updated: 2026-10-27T09:50:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -738,6 +738,56 @@ uat_pending: |
   2. Then resume the Round 4 flow: previous strokes visible while painting,
      Move after reopen without the wash error, and ink under the pen after a
      window resize/display move.
+
+## UAT Round 6 (2026-10-27) — track 2 overwrote track 1 (cross-track capture)
+
+user_verdict: |
+  "I paint on track 1: tested paint, edit, raster, added new paint etc, all work
+  perfect. After I added a track 2 under track 1 in background I painted with
+  water color, seem water color from track 1 has not the right transparence,
+  but le plus grave c'est que il a perdu tout le script et le cache du track 1,
+  le key du track 2 a littéralement écrasé la key du track 1 : cache + script,
+  and now I have the same of track 2 to the track 1 (only the cache), on track 2
+  I have the original paint cache + script que je peux editer. c'est incroyable.
+  Tu a fixé pas mal de bug mais celui là interdit l'utilisation d'autre track !"
+
+root_cause: |
+  In-place Studio track switch (add track / row click) captures the OUTGOING
+  live aquarelle sheet AFTER `setActiveTrackId` has already moved the document.
+  The capture chain resolved its target from the LIVE active track:
+  `handleAquarelleCaptureFrame` -> `captureLivePixels` (`getActiveTrackId`) ->
+  `upsertCachedFrame` (re-resolved again at commit). So the outgoing track's
+  sheet + its pinned merge base were committed onto the INCOMING track's key —
+  track 2's composite replaced track 1's key payload. The same commit then
+  wrote `confirmedFramesRef` / edit-buffer entries after the switch had reset
+  them, seeding the incoming track's reference buffer with the outgoing
+  composite (track 1 displayed track 2's cache). The merge-base pin was per
+  frame only, and two tracks share frame numbers.
+
+fix: |
+  1. `flushCapture(trackId?)` is threaded end-to-end: AquarelleCanvasLayer ->
+     PhysicsPaintCanvasMount -> Studio -> `captureLivePixels` (new optional
+     `trackId`) -> `upsertCachedFrame` (new optional `expectedTrackId`).
+  2. The switch effect passes the OUTGOING track id (captured before
+     `lastEditStateTrackIdRef` is overwritten).
+  3. `upsertCachedFrame` writes `confirmedFramesRef` / `editBuffer` only when
+     the capture's track is still the live active track; the parent key write
+     always targets the capture's track.
+  4. The aquarelle merge-base pin is keyed by (appFrame, trackId).
+
+verification: |
+  RED-first contract pins in `aquarelleLayerContract.test.ts` (outgoing track
+  carried through the flush, explicit capture/commit track, live-buffer guard)
+  and updated Studio/contract anchors. Suites: PhysicsPaintStudio 288/288,
+  aquarelleLayerContract 19/19, coordinator 30/30, aquarelleStrokeBridge 13/13
+  (350 total). `pnpm typecheck` clean.
+
+uat_pending: |
+  1. Restart the app. On track 1, paint/edit/raster as before.
+  2. Add track 2 under track 1; paint watercolor on track 2.
+  3. Select track 1. PASS: track 1 keeps ITS OWN cache and ITS OWN editable
+     script; track 2 is unchanged. Then switch 1 -> 2 -> 1 twice; no cache or
+     script crosses.
 
 DATA_END
 

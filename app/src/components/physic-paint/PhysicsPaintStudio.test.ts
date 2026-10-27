@@ -139,9 +139,13 @@ describe('Physics Paint Play Script integration contract', () => {
     const finalizeEnd = physicalEditCoordinator.indexOf('const finalizeFailed = useCallback(', finalizeStart);
     const finalizeAccepted = physicalEditCoordinator.slice(finalizeStart, finalizeEnd);
     expect(finalizeStart).toBeGreaterThanOrEqual(0);
-    expect(finalizeAccepted).toContain("pending.operationKind === 'play-script'");
-    expect(finalizeAccepted).toContain("pending.operationKind === 'regenerate-group'");
+    // 261027 UAT round 5: the reconcile is UNCONDITIONAL — the old
+    // operationKind allowlist omitted ordinary delete-key, leaving the stale
+    // cache on screen. Generated Group publications refresh through the same
+    // seam.
     expect(finalizeAccepted).toContain('portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);');
+    expect(finalizeAccepted).not.toContain("pending.operationKind === 'play-script'");
+    expect(finalizeAccepted).not.toContain("pending.operationKind === 'regenerate-group'");
   });
 
   it('routes rail, keyboard, and sidebar Loop Clip edits through one Studio-local controller callback', () => {
@@ -2772,7 +2776,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     // base — a cloned base multiplies over the previous key's paint; a blank
     // base encodes the sheet alone.
     expect(captureBlock).toContain("cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;");
-    expect(captureBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase }');
+    expect(captureBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: playFrame, trackId: targetTrackId, base: cachedBase }');
   });
 
   it('keeps the watercolor cached base visible while painting on an already painted key', () => {
@@ -2794,7 +2798,10 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
     expect(captureBlock).not.toContain('base: committed');
     // The base is read once per sheet session ...
-    expect(captureBlock).toContain('if (aquarelleMergeBaseRef.current?.appFrame !== playFrame)');
+    // 261027 UAT round 6: the pin is per (track, frame) — a frame-only pin
+    // merged the incoming sheet over the outgoing track's base.
+    expect(captureBlock).toContain('aquarelleMergeBaseRef.current?.appFrame !== playFrame');
+    expect(captureBlock).toContain('aquarelleMergeBaseRef.current?.trackId !== targetTrackId');
     expect(captureBlock).toContain('The sheet ACCUMULATES strokes until the session ends');
     // ... and cleared only where the sheet itself is reset or ends.
     expect(studio).toContain('const handleAquarelleSheetSessionEnd = useCallback(() => {');
@@ -3966,7 +3973,9 @@ describe('261023-l35 save discipline in the Studio', () => {
   it('saves the outgoing key, resets both stores, then binds and restores', () => {
     const switchStart = studio.indexOf('if (lastEditStateTrackIdRef.current !== trackId) {');
     const switchBody = studio.slice(switchStart, studio.indexOf('const engine = engineRef.current as PreviewBackgroundEngine | null;', switchStart));
-    const flushCapture = switchBody.indexOf('aquarelleFlushCaptureRef.current?.();');
+    // 261027 UAT round 6: the flush is pinned to the OUTGOING track — the
+    // document's active track has already moved to the incoming one.
+    const flushCapture = switchBody.indexOf('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);');
     const brushCapture = switchBody.indexOf('flushBrushScriptFrame(');
     const saveOutgoing = switchBody.indexOf('void studioScriptSnapshot.saveNow();');
     const resetBrush = switchBody.indexOf('resetBrushScriptStore();');

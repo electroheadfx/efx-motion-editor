@@ -235,7 +235,7 @@ export function AquarelleCanvasLayer(props: {
    * the WebP cache — at stroke end and once Dry has settled. The snapshot
    * factory is resolved later by captureLivePixels (52.1 deferred-copy law).
    */
-  onCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void;
+  onCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
   /**
    * NAV FLUSH (paint-cache-empty-frame-on-key): registers a synchronous
    * flush-capture the Studio navigation calls BEFORE flushLivePixels. The rAF
@@ -244,7 +244,7 @@ export function AquarelleCanvasLayer(props: {
    * in CAPTURE_PRODUCE_QUIET_MS and the return-to-key read shows the pre-capture
    * cache (the intermittent empty frame). Mirrors onNativePenInputReady.
    */
-  onFlushCaptureReady?: (flushCapture: (() => void) | null) => void;
+  onFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void;
   /**
    * SAVE-PATH seam (261026-nvq): registers the current edit frame's composited
    * sheet factory — the SAME `snapshot` closure the cache capture resolves,
@@ -474,7 +474,9 @@ export function AquarelleCanvasLayer(props: {
     // after scheduleRotoStartFramePropagation — i.e. AFTER the navigation flush
     // has already drained — so without this the capture is queued too late and
     // sits in CAPTURE_PRODUCE_QUIET_MS (the empty-frame-on-return race).
-    const flushCapture = () => {
+    // A track switch flushes AFTER the document's active track moved: the
+    // caller passes the OUTGOING track so its sheet commits to its own key.
+    const flushCapture = (captureTrackId?: string) => {
       const hasPaint = engine.hasPaint;
       recordAquarelleRenderSplitEvent('layer-capture', {
         trigger: 'flush',
@@ -483,7 +485,7 @@ export function AquarelleCanvasLayer(props: {
         invoked: hasPaint,
       });
       if (!hasPaint) return;
-      onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
+      onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId);
     };
     onFlushCaptureReadyRef.current?.(flushCapture);
 
