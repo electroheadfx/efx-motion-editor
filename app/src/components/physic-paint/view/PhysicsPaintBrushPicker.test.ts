@@ -128,10 +128,15 @@ describe('261027-gh9g top-bar brush dropdown', () => {
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu {')),
     );
     expect(rule).toContain('position: fixed');
-    // 261027-gh9h: the menu's max height runs from the trigger to the viewport
-    // edge, so the enlarged rows scroll only when they truly overflow.
+    // 261027-gh9h: the menu height runs from the trigger to the viewport edge.
+    // A definite height (not maxHeight) is the law: SidebarScrollArea's inner
+    // scroller is absolutely positioned, so a content-sized flex parent would
+    // collapse it to zero and the brush list would vanish.
     expect(MENU_SOURCE).toContain('const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);');
-    expect(MENU_SOURCE).toContain('maxHeight: `${availableHeight}px`');
+    expect(MENU_SOURCE).toContain('height: `${availableHeight}px`');
+    expect(MENU_SOURCE).not.toContain('maxHeight: `${availableHeight}px`');
+    const source = readFileSync(resolve(__dirname, 'PhysicsPaintBrushMenu.tsx'), 'utf8');
+    expect(source).toContain('DEFINITE height is required');
   });
 
   it('uses the app scrollbar and gives the thumb the row width', () => {

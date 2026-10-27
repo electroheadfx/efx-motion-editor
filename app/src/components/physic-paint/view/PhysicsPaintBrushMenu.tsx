@@ -61,8 +61,9 @@ export function PhysicsPaintBrushMenu() {
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
   const left = Math.max(8, Math.min(anchor.left, viewportWidth - 308));
   // 261027-gh9h: the menu uses every pixel from the trigger down to the
-  // viewport edge. With the enlarged rows the catalog overflows on most
-  // windows; the custom EFX scrollbar (never the OS one) takes the rest.
+  // viewport edge. A DEFINITE height is required: the SidebarScrollArea's
+  // scroller is absolutely positioned, so with only a max-height the flex
+  // child collapses to zero and the brush list disappears.
   const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);
 
   return (
@@ -72,7 +73,7 @@ export function PhysicsPaintBrushMenu() {
       role="menu"
       aria-label="Brushes"
       data-testid="watercolor-brush-menu"
-      style={{ left: `${left}px`, top: `${anchor.top}px`, maxHeight: `${availableHeight}px` }}
+      style={{ left: `${left}px`, top: `${anchor.top}px`, height: `${availableHeight}px` }}
     >
       <button
         type="button"
