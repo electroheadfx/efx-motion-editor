@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: awaiting_human_verify
 trigger: |
   UAT result — Phase 55: BLOCKED, not approved.
 
@@ -15,7 +15,7 @@ trigger: |
 
   Request: open a debug for the parent-rejection "Unknown physics paint layer" before UAT resumes. Do not weaken the A1-A4 row set; do not close the phase.
 created: 2026-10-15
-updated: 2026-10-15T(session-resume)
+updated: 2026-10-27T12:45:00.000Z
 goal: find_and_fix
 ---
 
@@ -115,14 +115,11 @@ DATA_END
 
 ## Current Focus
 
-- bug_class: Bohrbug (deterministic — every physical edit fails with the same layerId)
-- hypothesis: the parent `layerStore.layers` + `overlayLayers` lookup at `physicPaintBridge.ts:481-489` finds no candidate for `payload.layerId`. Three competing causes, not yet distinguished:
-  1. (data/registry) the Layer object is absent from both lookup lists at apply time (deleted / never registered / sits in a non-active `kind === 'content'` sequence so `getOverlaySequences()` skips it).
-  2. (code/type-guard) a Layer with matching id exists but is filtered out by the strict `layer.type === 'physic-paint' && layer.source.type === 'physic-paint'` guard (this lookup is STRICTER than the sibling lookups at :728/:1686/:2154, which match `candidate.id` first without a type guard).
-  3. (data/id) payload.layerId is a Studio-side id the parent never registered (cross-realm id mismatch).
-- test: app-written capture at the rejection site dumps payload.layerId + every live layer candidate (id, type, source.type, source.layerId) + sequence kind map + efxPaint document presence. File: `/tmp/efx-unknown-layer.json`.
-- expecting: capture shows WHICH side is stale — payload id not present anywhere vs present-but-type-filtered vs present-in-skipped-content-sequence.
-- next_action: INSTRUMENTED (2026-10-16). Symptom returned at first init (session-scoped, clears on relaunch — user confirmed). Hydrate-path instrumentation landed per the file's own instruction: (1) `projectStore.ts` warns when `mceSeq.kind` is missing and defaults to `'content'`; (2) boot-time sequence kind map logged after all sequences load. No live capture requested. Guardrail: parent-bridge lookup untouched, no new transport. Next: user runs the app, reads the two console.warn lines at first init, reports the kind map + whether the default fired.
+- bug_class: Bohrbug (deterministic once the layer lives in a non-active content sequence)
+- hypothesis: CONFIRMED — the parent apply lookups search only `layerStore.layers` (ACTIVE sequence) + `overlayLayers` (kind !== 'content'). Launch resolves from the flat efxPaint registry, which ignores sequence kind/active state. A physics-paint layer in a NON-ACTIVE `kind === 'content'` sequence therefore launches and paints, but every parent apply rejects with "Unknown physics paint layer". This is candidate 1 from the original list, confirmed by code path + the new regression test.
+- test: new `physicPaintBridgeAuthority.test.ts` case — layer in a non-active content sequence, `layerStore.layers` and `overlayLayers` empty, valid key photos/layout; `getPhysicPaintRotoAuthority` resolves and returns ok. Old lookup fails with "Physics Paint layer is unavailable."; new lookup succeeds.
+- expecting: live delete-key / create-key / delete-rail on the 7bcc layer applies without the parent-rejection.
+- next_action: user restarts the app and retries key deletion + the round-4 Studio UAT flow (move after reopen, previous strokes visible, ink under pen). No dev-server run by the agent.
 - leading_mechanism (UNPROVEN — failing run is gone, no capture exists): apply lookup at `physicPaintBridge.ts:481-489` is two lists (`layerStore.layers` = ACTIVE sequence only; `layerStore.overlayLayers` = sequences with `kind !== 'content'`) and demands `type === 'physic-paint' && source.type === 'physic-paint'` BEFORE any id compare. Launch uses `getEfxPaintDocument(layerId)`, a flat registry that ignores sequence kind/active-ness (`createPhysicPaintLaunchContext` at `:3932`). A physic-paint layer in a sequence that is both non-active and `kind === 'content'` launches fine and applies as `Unknown physics paint layer`.
 - session-scope explanation (matches the observed repro): `projectStore.ts:592` does `kind: mceSeq.kind ?? 'content'` — a missing `kind` defaults to `'content'` on hydrate. Hydrate runs ONCE per app boot. A sequence persisted without `kind` therefore drops out of the apply lookup for the entire session and comes back clean after relaunch (save writes `kind` at `projectStore.ts:267`). This is the user's "cache problem" read and it fits "first Studio open failed several times, then `pnpm tauri dev` and it was fine" exactly.
 
@@ -229,14 +226,51 @@ DATA_END
     and the probe never saw it. Mechanism stands as unproven-but-fitting. Parked per user decision to
     resume Phase 55 A1-A4 UAT.
 
+- timestamp: 2026-10-27T12:45:00.000Z
+  checked: `physicPaintBridge.ts` all active+overlay lookup sites + a new non-active-content-sequence authority test
+  found: >
+    Four lookups (initial apply, authority, physical edit, group-frame paint)
+    searched only `layerStore.layers` + `overlayLayers`. A paint layer in a
+    non-active content sequence is in neither list, while launch uses the flat
+    efxPaint registry and succeeds. New shared resolver searches all sequences;
+    new test resolves the layer and returns authority ok. Bridge suites 174
+    passed / 1 skipped; typecheck clean.
+  implication: >
+    The 2026-10-27 delete-key parent-rejection is this exact lookup gap, not a
+    stale project or a cross-realm id. Live UAT pending.
+
 ## Eliminated
 <!-- APPEND only - prevents re-investigating -->
 
 ## Resolution
 <!-- OVERWRITE as understanding evolves -->
 
-root_cause: (empty until confirmed)
-fix: (empty until applied)
-verification: (empty until verified)
-files_changed: []
+root_cause: |
+  The parent apply lookup only searched the ACTIVE sequence's layers plus
+  overlay sequences (`kind !== 'content'`). The Studio launches from the flat
+  efxPaint document registry, which has no sequence filter. A physics-paint
+  layer that lives in a non-active `kind === 'content'` sequence therefore
+  launches fine and then every apply (delete key, create key, delete rail)
+  rejects at `physicPaintBridge.ts` with "Unknown physics paint layer:
+  <layerId>". The layer is real and registered; the lookup is narrower than the
+  launch contract. This also explains the session-scoped first-init report
+  (`projectStore.ts` defaults a missing persisted sequence kind to 'content').
+
+fix: |
+  Added one module-private resolver, `resolvePhysicPaintLayerById`, in
+  `app/src/lib/physicPaintBridge.ts`: it applies the same physic-paint
+  id/source match to the active + overlay lists first, then searches every
+  `sequenceStore.sequences` entry. Replaced the four active+overlay-only
+  lookups (initial apply gate, Roto authority, physical-edit apply, group-frame
+  paint) with it. No transport, no store change, no sequence-kind migration.
+
+verification: |
+  RED-first: the new authority test failed on the old lookup with "Physics
+  Paint layer is unavailable."; it passes after the resolver. Bridge suites:
+  3 files / 174 passed / 1 skipped (175). `pnpm typecheck` clean. Live UAT
+  pending (user-run).
+
+files_changed:
+  - app/src/lib/physicPaintBridge.ts
+  - app/src/lib/physicPaintBridgeAuthority.test.ts
 
