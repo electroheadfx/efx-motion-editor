@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T00:31:00.000Z
+updated: 2026-10-27T10:05:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -142,51 +142,50 @@ and lost-stroke-identity behaviors. Exact first-bad build unknown.
 ## Current Focus
 
 hypothesis: |
-  CONFIRMED — TWO ROOT CAUSES FIXED, ONE DOCUMENTED SUBSET LEFT, AWAITING LIVE UAT.
+  CONFIRMED (byte + pixel evidence) — UAT round 1's wrong watercolor alpha is
+  the legacy white-matte strip running at the two compositor READ seams:
+  `_decodeWebpToBitmap` (physicPaintStore.ts) and
+  `registerRotoAlphaCanvasFrameFromBytes` (rotoCanvasFrames.ts).
 
-  (A) Selection composite loss (symptom 3). In Water color at rest the single
-  z-0 program monitor EXCLUDED the active track and passed liveOverlay null,
-  while the active track's aquarelle DOM stack (`.aquarelle-cached-base` z3 +
-  `.aquarelle-live-canvas` z4) painted ABOVE that monitor INSIDE the same
-  tracks group. Every track stacked above the selected track was therefore
-  masked by the active sheet — selecting the top track coincidentally showed
-  the true stack. Violates D-04/D-05. Fixed with a below/above slice sandwich.
+  Paint 2's real frame-0 key is an OPAQUE TRANSMITTANCE sheet: RGB WebP, all
+  alpha 255, pure-white corners, 75.2% of pixels near-white (>=240) — exactly
+  the round-2 merge output (white fill + pigment-alpha script over it). The
+  strip turns every near-white pixel transparent at decode/registration,
+  which destroys the `isFullyOpaqueRaster` signature that
+  `transmittanceSourceToPigmentAlpha` uses to convert a sheet into pigment
+  alpha. Every store-composited surface then draws the raw sheet opaque:
+  white covers the tracks beneath, and the pigment reads dense/dark. That is
+  the middle selection (Brush module -> getFlattenedFrameExcluding, exclude
+  Paint 4, Paint 2 + Paint 1 from the store) and the main editor (full
+  flatten).
 
-  (B) Brush stroke loss + auto module switch on raster keys (symptom 2, and
-  the Brush half of symptom 1). `resolveFrameScriptOwner` required
-  `isBrushScriptFrameHydratable`, so a rasterized key's arrival-base Brush
-  capture (`complete:false`) never owned the frame. A leftover aquarelle
-  registry script became the SOLE owner → `applyFrameModuleState` switched the
-  module to Water color (the engine surface goes opacity 0 and the new Brush
-  stroke vanishes), and `brushMoveAvailable = owner === 'brush'` kept Move
-  dead on the resulting 'both'. Fixed: completeness gates hydration only, and
-  Move opens for 'brush' | 'both' (the composite moveAvailable keeps the dead
-  case closed).
+  The top selection is correct because the active Paint 2 is a DOM reference
+  Image (`AquarelleCachedBaseLayer`, `new Image()` decode — no strip), and
+  the below slice contains only the two real-alpha tracks (Paint 4 alpha,
+  Paint 1 max alpha 126), which are not fully opaque and stay untouched.
 
-  (C) Watercolor "thinner after Move" (remaining subset of symptom 1). The
-  Apply/Move re-bake replays the recorded event timeline and cooks to sleep;
-  the live display cache was captured at the visible settle cap. Measured on
-  frame 14 (32 events): live captured sheet ink 93.2 vs baked sheet ink 65.68
-  = composed ink over an empty durable base. Compositing is correct; the two
-  settle laws disagree. NOT changed this round — it needs a live UAT
-  judgment between "capture what the user saw" and "Apply equals Play's
-  fully-settled end frame"; both are one-line decisions at different seams.
+  The 2026-10-22 strip is superseded by the 2026-10-26 round-2 pigment-alpha
+  law: the conversion predicate sees contentTrackCount = 3 here, so matte
+  repair is the conversion's job; the one-track fast path relies on the
+  single fond multiply. The strip stays only in the merge base load
+  (`physicsPaintRotoAlphaMerge.loadCachedRotoBaseImage`, visually neutral
+  over its white fill) and the engine preview-base repair (active paint
+  base, not implicated).
+
 test: |
-  RED first: three new-law tests failed before implementation (partial
-  ownership row resolved null; partial row + aquarelle script resolved
-  'watercolor' instead of 'both'; `getFlattenedFrameSlice` did not exist).
-  GREEN after: full app suite 6181 passed / 2 files skipped (6278 tests),
-  `pnpm typecheck` clean. Static pins updated only where they intentionally
-  encoded the old law (paperPass P4(f) seam count 2→4 for the slice getter;
-  aquarelleLayerContract "no double composite" now pins the sandwich wiring
-  and the z-order).
-expecting (live UAT): |
-  1. No Solo, no hidden track: selecting ANY track in Water color shows the
-     full stack of visible tracks (previously only the top selection did).
-  2. A Brush stroke painted on a rasterized key stays visible, the module
-     stays Brush, and the stroke is movable/editable.
-  3. Watercolor width after Move: still expected thinner until (C) is decided.
-next_action: await user-run live Studio UAT of rows 1-2; open the (C) decision as the next round if the rebake still reads thinner.
+  RED first: (1) store decode — an opaque white-cornered transmittance sheet
+  returned by decodeWebpFrame must reach createImageBitmap with all alphas
+  255 and white corners intact; (2) registration — the registered canvas must
+  still answer `isFullyOpaqueRaster` true for the same sheet. Both fail while
+  the strip runs. GREEN after removing the two calls.
+
+expecting: |
+  With both strips removed, the store composite converts Paint 2 to pigment
+  alpha in every selection path, so the middle selection and the editor match
+  the top selection's soft wash over the blue; Paint 4/Paint 1 (real alpha)
+  stay byte-identical.
+
+next_action: write the two RED tests, run them to confirm they fail, remove the strip calls, re-run focused tests + pnpm typecheck, commit atomically, return UAT rows.
 reasoning_checkpoint: null
 tdd_checkpoint: null
 
@@ -219,6 +218,26 @@ tdd_checkpoint: null
   found: RED before implementation (partial row → null; partial + aquarelle → 'watercolor'; 'both' Move closed); GREEN after — full app suite 6181 passed / 2 files skipped (6278), typecheck clean.
   implication: Both landed fixes are contract-pinned. Remaining UAT is native/visual only (live Studio rows 1-2, and row 3 documents the deferred settle-law decision).
 
+- timestamp: 2026-10-27T09:35:00.000Z
+  checked: The three real frame-0 keys in the UAT project (/Users/lmarques/Desktop/efx-motion-editor-project-test/test.mce/frames/7bcc71b6-816d-4b26-8b86-20c37f39787a/), decoded to raw RGBA; SHA-256 matched against project.mce; key mtimes (00:34:14 / 00:35:13 / 00:35:41) precede the UAT screenshots (00:41-00:46).
+  found: Paint 2 key 3024e2eb (1080x1080) is RGB (no alpha channel): after decode, alpha 255 on 100% of pixels, corners pure white 255,255,255, 75.2% of pixels >=240 near-white (mean RGB over pigment pixels ~192,127,102, e.g. red blob). This is the round-2 stored transmittance sheet (white fill merged under the pigment-alpha script). Paint 4 key b04ad486 is RGBA with transparent corners (real alpha; blue stroke ~81,118,133). Paint 1 key 71e25ebd is RGBA with max alpha 126 (real soft alpha; tan wash).
+  implication: Paint 2's stored raster carries the EXACT white-matte corruption signature, but it is not corruption — it is the legitimate option-B storage format. Any repair that treats it as a legacy matte is destructive.
+
+- timestamp: 2026-10-27T09:38:00.000Z
+  checked: Screen model on the Paint-2-alone screenshot (uat-P2_alone-canvas.png, 778x778 Studio canvas): compare each pixel against the raw key multiplied once by the paper fond RGB [213,194,157] / 255.
+  found: Median per-channel |difference| 4.0, mean 4.87, 88.6% of pixels within 10. The alone view shows the raw opaque transmittance over the paper. Alignment and the one-fond-multiply model are validated.
+  implication: We can convert any UAT canvas patch back to the underlying key value it displayed, and distinguish raw transmittance from converted pigment per surface.
+
+- timestamp: 2026-10-27T09:45:00.000Z
+  checked: Pixel comparison of the three UAT surfaces (top 15.png, middle 16.png, editor 17.png, 778x778 / 724x724 canvases) against the track-alone captures, restricted to the blue-zigzag mask and the red-watercolor mask.
+  found: Lost-blue pixels (blue present in Paint 4 alone, gone in the surface) = 1806 (8.5% of the 21334-pixel blue set); at those pixels Paint 4 alone is 99.5% blue and Paint 2 alone is tan. Red-intersect-blue region (11410 px): top [108.8, 80.1, 87.3] (dark converted pigment blend) vs middle [190.5, 120.1, 95.4] ~= editor [189.9, 120.4, 96.5] ~= Paint 2 alone [192.3, 127.5, 101.9]. Strong red region (8829 px): middle/editor are 100% red, top is [112.7, 74.1, 80.6]. Red pixel counts: top 48128, middle 49911, editor 51571.
+  implication: Middle and editor draw Paint 2's RAW opaque transmittance over the blue (white matte + dense pigment, blue erased); the top draws the CONVERTED pigment over the blue (soft wash, blue visible through it). The failing surfaces map exactly to the store composite; the passing surface maps to the DOM reference path.
+
+- timestamp: 2026-10-27T09:50:00.000Z
+  checked: Seam inventory for the strip and the conversion — grep of `stripOpaqueWhiteMatte*`, read of physicPaintStore.ts:1529-1575 and rotoCanvasFrames.ts:16-46, efxPaintPigmentAlpha.ts, rasterAlpha.ts, physicsPaintRotoAlphaMerge.ts, EfxPaintEngine.ts:3502-3569.
+  found: The store's `_decodeWebpToBitmap` runs `stripOpaqueWhiteMatte(imageData.data, width, height)` before createImageBitmap (line 1551), and `registerRotoAlphaCanvasFrameFromBytes` runs `stripOpaqueWhiteMatteFromCanvas(canvas)` before registering the launch-hydration canvas (line 41). `_preResolveTrackContent` consumes the registry canvas when present, else `_compositorDecode`. So every store-composited track is stripped. `transmittanceSourceToPigmentAlpha` then probes `isFullyOpaqueRaster` and returns null for the stripped raster. The predicate converts when contentTrackCount > 1 (3 here). The DOM reference Image never passes through either strip. Merge base load and engine preview-base repair are separate, visually neutral seams.
+  implication: Root cause pinned to two destructive calls. Removing them restores the discriminator; no compositing law changes (D-04, draw order, fond multiply, conversion predicate all untouched).
+
 ## Eliminated
 
 <!-- APPEND only -->
@@ -239,68 +258,132 @@ tdd_checkpoint: null
   ruled out: pigment-alpha double conversion at display as the "thinner" cause.
   why: The merge writes t' = a·C + (1−a)·t_base over a white fill (opaque storage); the display conversion reconstructs the same pigment composite. Measured display ink (93.2) matches the cached capture, and composed ink equals bake ink exactly — the divergence is only between the bake and the captured sheet.
 
+- timestamp: 2026-10-27T09:55:00.000Z
+  ruled out: the UAT-round-1 lead "Paint 2 is a mixed-engine track, so its raster is not fully opaque and the pigment-alpha discriminator skips it".
+  why: The byte probe shows Paint 2's real key is a single merged RGBA raster whose decoded alpha is 255 on 100% of pixels (white corners, 75.2% near-white). It IS fully opaque before the strip. The strip runs first at decode/registration and removes 75.2% of the alpha mass, which is what makes the discriminator return false. The mixed-engine framing is irrelevant: the stored key is already a pigment composite over white.
+
+- timestamp: 2026-10-27T09:56:00.000Z
+  ruled out: the store-vs-DOM raster-source divergence itself ("Real Roto key" vs "Cache loaded" consumes different bytes).
+  why: "Cache loaded at frame N. Add paint to update this key." is the reference loader's apply message after loading cached bytes; "Real Roto key · Frame N" is the idle capsule for a real cell. Both selections resolve the same real key; the store always reads it through the same decode/registry seam. The difference is the strip, not the bytes.
+
 ## Resolution
 
-status: awaiting_human_verify (2026-10-27)
+status: awaiting_human_verify (round-1 fix landed 2026-10-27)
 
 root_cause: |
-  Two independent defects were fixed. (A) The Water color program monitor
-  excluded the active track from a single z-0 composite while the active
-  track's aquarelle DOM stack (cached base z3 + live sheet z4) rendered above
-  that monitor inside the same tracks group, so selecting any track below the
-  top masked every track above it (D-04/D-05 violation). (B) Frame script
-  ownership required hydratability, so a raster key's partial arrival-base
-  Brush capture never owned the frame; a leftover aquarelle script became the
-  sole owner, the module auto-switched to Water color after a Brush stroke,
-  and Move stayed closed on the resulting 'both' state. A third defect is
-  quantified but not changed: the watercolor Apply/Move re-bake cooks to
-  sleep while the live cache was captured at the visible settle cap, so the
-  re-baked stroke reads thinner (frame 14: ink 65.68 vs 93.2).
+  UAT round 1's wrong watercolor alpha (middle selection + main editor) was
+  the legacy white-matte strip running at the two compositor READ seams:
+  `stripOpaqueWhiteMatte` in `_decodeWebpToBitmap` (physicPaintStore.ts) and
+  `stripOpaqueWhiteMatteFromCanvas` in
+  `registerRotoAlphaCanvasFrameFromBytes` (rotoCanvasFrames.ts).
+
+  Paint 2's real frame-0 key is an OPAQUE TRANSMITTANCE sheet BY DESIGN:
+  RGB, alpha 255 on 100% of pixels, pure-white corners, 75.2% near-white —
+  the round-2 white-fill merge output. The strip zeroed every >=240 pixel
+  before the bitmap/canvas entered the compositor, so `isFullyOpaqueRaster`
+  no longer matched and `transmittanceSourceToPigmentAlpha` skipped the
+  conversion. The raw sheet then entered every store-composited surface
+  opaque: white covered the tracks beneath it and the pigment read
+  dense/dark. That is the middle selection (Brush module -> excludeActive,
+  Paint 2 + Paint 1 from the store) and the main editor (full flatten).
+
+  The top selection was correct because the active Paint 2 renders as a DOM
+  reference Image (`AquarelleCachedBaseLayer`, `new Image()` — no strip) and
+  the below slice contains only the two real-alpha tracks (Paint 4 alpha,
+  Paint 1 max alpha 126), which the probe leaves untouched.
+
+  The 2026-10-22 strip is superseded by the 2026-10-26 round-2 law: with more
+  than one content track (three here) matte repair belongs to the pigment
+  conversion; the one-track fast path relies on the single fond multiply.
 
 fix: |
-  (A) Added `includeBackground`/`contentBeneath` options to
-  `_resolveFlattenedFrame` and a public `getFlattenedFrameSlice(layerId,
-  frame, activeTrackId, 'below'|'above')`: the participating stack is
-  partitioned around the active track, the active track is excluded from both
-  slices, the Background is drawn only in the below slice (with a `bg:0` key
-  term), and the above slice converts single watercolor tracks to pigment
-  alpha (content exists beneath). `PhysicsPaintProgramMonitor` gained a
-  `slice` prop; `PhysicsPaintStudioView` renders a second monitor
-  (`.physics-paint-program-monitor-above`, z5) inside the tracks group;
-  `PhysicsPaintStudio` wires the below/above monitors only in Water color at
-  rest (not during playback, cached playback, or a hidden active track, where
-  the previous paths remain). `efxPaintCompositor` gained the
-  `includeBackground` port gate.
-  (B) `resolveFrameScriptOwner` no longer requires hydratability for the
-  stored Brush leg (key identity + non-empty groups only; completeness stays
-  hydration-gated), and `brushMoveAvailable` opens for 'brush' | 'both' —
-  the composite `moveAvailable` still requires a hydratable store row or
-  engine-held strokes, so a 'both' frame without movable strokes exposes no
-  Move.
+  Removed `stripOpaqueWhiteMatte(imageData.data, width, height)` from
+  `_decodeWebpToBitmap` and `stripOpaqueWhiteMatteFromCanvas(canvas)` from
+  `registerRotoAlphaCanvasFrameFromBytes`, plus their imports. Kept the strip
+  function and its unit tests, the merge base load
+  (`physicsPaintRotoAlphaMerge.ts:101`, visually neutral over the white fill)
+  and the engine preview-base repair
+  (`EfxPaintEngine.repairPreviewBaseMatte`, active paint base only).
+
+  No compositing law changed: D-04 participation, document-order
+  bottom-to-top drawing, the one-fond multiply, the below/above slice
+  sandwich and `shouldConvertTransmittanceTracks` are untouched.
 
 tests: |
-  RED-first new-law tests: partial key-matched ownership → 'brush';
-  partial + aquarelle → 'both'; 'both' opens Move; `getFlattenedFrameSlice`
-  partition/background/cache-key/fail-open contract. Full app suite 6181
-  passed / 2 files skipped (6278 tests), `pnpm typecheck` clean. Static pins
-  updated where they described the replaced law (paperPass P4(f) 2→4 seam
-  delegations; aquarelleLayerContract no-double-composite now pins the
-  sandwich wiring + z-order).
+  RED-first — both failed on the strip before the edit:
+  - `physicPaintStore.test.ts` "261027 UAT: the compositor decode preserves
+    an opaque transmittance sheet — the pigment-alpha discriminator must
+    still see it" (ImageData reaches createImageBitmap with all alpha 255,
+    white corners and the pigment pixel intact).
+  - `rotoCanvasFrames.test.ts` "registers the decoded sheet untouched so
+    isFullyOpaqueRaster still recognises it" (pixel-backed probe canvas).
+
+  GREEN: focused 5 files / 160 tests; full app suite 340 files passed
+  (+2 skipped), 6183 passed / 1 skipped / 96 todo (6280);
+  `pnpm typecheck` clean.
 
 open: |
-  (C) Watercolor re-bake fidelity ("thinner after Move"). Decision needed at
-  UAT: either capture/commit the fully settled sheet (cache = Apply = Play
-  end frame, paint visibly settles lighter right after painting) or make the
-  Apply/Move re-bake reproduce the visible settle cap (cache unchanged, Play
-  matches the Studio look). Both are single-seam laws; changing either
-  without the user's visual verdict risks re-opening the previous
-  "denser than the paint" regression.
+  (C) Watercolor re-bake fidelity ("thinner after Move") is unchanged and
+  still needs the settle-law decision.
+  Round-1 flicker: this fix does not change decode or reference-load timing.
+  The leading explanation remains the async store decode (null tick + version
+  bump) and reference-URL load/unload while the selection path switches.
+  UAT should report whether it persists.
 
 uat_pending: |
-  1. Water color, 3 tracks, no Solo, no hidden track — select each track in
-     turn; the canvas must show the same full composite for every selection.
-  2. Rasterized key, Brush module — paint a Brush stroke over existing paint;
-     the stroke stays visible, the module stays Brush, Move selects it.
-  3. Watercolor Move width — expected to remain thinner until (C) is decided.
+  1. Water color, 3 tracks, no Solo/hide: select Paint 2, Paint 4 and Paint 1
+     in turn, then open the main editor. The tan watercolor wash must read
+     soft (pigment alpha) on every surface, with the blue zigzag visible
+     through/under it exactly as in the previous top-selection view.
+  2. The middle selection must no longer read dense/dark; it must match the
+     top-selection composite.
+  3. The main editor must match the Studio composite.
+  4. No white-cover regression on a lone watercolor track over paper/video.
+  5. No regression on a watercolor interpolation frame between two real keys.
+  6. Flicker: report whether caches still appear/disappear before settling.
+
+## UAT Round 1 (2026-10-27) — FAILED
+
+uat_setup: |
+  Three tracks, frame 0, no Solo, no hidden track:
+  - Paint 2 (TOP): tan brush strokes + two red/pink watercolor blobs.
+  - Paint 4 (MIDDLE): blue brush zigzag.
+  - Paint 1 (BOTTOM): broad tan watercolor wash/leg.
+
+uat_results: |
+  - Select TOP (Paint 2): composite CORRECT. Status reads "Real Roto key · Frame 0".
+  - Select MIDDLE (Paint 4): composite WRONG. Watercolor reads too opaque; the
+    blue brush is obscured where the wash crosses it. Status reads "Cache loaded
+    at frame 0. Add paint to update this key."
+  - Main editor: WRONG in the same way as the middle selection.
+  - Before settling, ALL selections (top/middle/editor) flickered with caches
+    appearing/disappearing depending on the selected track. After closing the
+    Studio the composite stabilized to top = good, middle = wrong, editor = wrong.
+
+user_verdict: |
+  "5. and 6. show not the right watercolor transparence in compositing (its a
+  bug which was solved in a debug but which is back with tracks compositing)."
+  "When I close studio, its stabilized to the composite with 4. good, 5. wrong
+  and 6. wrong."
+  Frustration: the compositing/stack behavior is not following basic sense.
+
+screenshots:
+  - /Users/lmarques/Desktop/canvas-from-top.png    (correct composite)
+  - /Users/lmarques/Desktop/canvas-from-middle.png (wrong watercolor alpha)
+  - /Users/lmarques/Desktop/from editor.png        (wrong watercolor alpha)
+  - Track-alone captures: Paint 2 (tan brush + red watercolor), Paint 4 (blue
+    brush), Paint 1 (tan watercolor wash), frame 0.
+
+debugger_lead: |
+  The good top-selection path renders the active track PER LAYER in the DOM
+  (brush overlay + aquarelle layers). The wrong paths (middle selection + editor)
+  go through the store's flattened raster. Prime suspect: the pigment-alpha
+  conversion discriminator probes a TRACK RASTER for full opacity; a mixed-engine
+  track (Paint 2 = brush + watercolor) is not fully opaque, so its watercolor
+  sheet is NOT converted and stays opaque transmittance. The above slice also
+  only converts "single watercolor tracks", so a mixed track above the active
+  one is not converted there either. Verify live (track raster probe + pixel
+  readback) before changing any law; also explain the selection-dependent cache
+  flicker before stabilization.
 
 DATA_END
