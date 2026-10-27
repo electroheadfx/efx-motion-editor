@@ -210,6 +210,16 @@ None — no external service configuration required.
 
 Automated-ready only — native visual UAT remains for the user (see the plan's five native rows): both windows always open in Water color (including with an old `'brush'` in localStorage), Brush/Krita greyed, a Brush-scripted key not switching or locking the module while its cached pixels render, and Chalk's dry tooth surviving navigation/transform/save-reopen/composite with existing watercolor flows unchanged.
 
+## UAT — approved 2026-10-27
+
+The user ran the native pass and approved the full batch after a follow-up round:
+
+- **Trash** — the frame editor cleared engine-1 while the visible Water color sheet is a SEPARATE aquarelle engine; its next settle/frame-leave capture re-committed the paint over the key the Trash had just blanked. `8093d3fc` resets the sheet and merge base on both clear paths.
+- **Chalk** — the stamp shader now re-thresholds the tip per dab and jitters each dab's tip slice (net, crumbly edges); waterless brushes never wake the fluid sim; the footprint shrank and pressure drives size and density harder (`938f3a13`).
+- **Brush UI** — the Studio top-bar module switcher is gone. A larger painted thumbnail + brush name opens a 15-brush dropdown with "Open modal" first; the floating catalog is draggable, height-resizable and more transparent. The right sidebar's Brush tab is retired (`0ac42c8e`, `d332063c`, `2873fd9e`, `2a890865`).
+
+All five native rows above were exercised by the user and approved.
+
 ---
 *Quick: 261027-gh9*
 *Completed: 2026-10-27*

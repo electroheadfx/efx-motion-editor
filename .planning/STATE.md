@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-27 - Quick task 261027-gh9 automated-complete: Water color is the only selectable module (WATERCOLOR_ONLY seam, inert Brush/Krita) and the Brush tab gains a dry Chalk preset; native UAT pending
+Last activity: 2026-10-27 - Quick task 261027-gh9 UAT PASSED: watercolor-only gate, dry-media Chalk + pen pressure, Trash resets the live aquarelle sheet, and the brush catalog moved to the top-bar dropdown + floating modal (right-sidebar Brush tab retired)
 
 Progress: [██████████] 100%
 
