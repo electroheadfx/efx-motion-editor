@@ -17,15 +17,8 @@ const compositorSource = readFileSync(
 );
 const exportRendererSource = readFileSync(new URL('./exportRenderer.ts', import.meta.url), 'utf8');
 const previewRendererSource = readFileSync(new URL('./previewRenderer.ts', import.meta.url), 'utf8');
-const packageIndexSource = readFileSync(
-  new URL('../../../packages/efx-physic-paint/src/index.ts', import.meta.url),
-  'utf8',
-);
+const paperConditioningSource = readFileSync(new URL('./paperConditioning.ts', import.meta.url), 'utf8');
 const paperRasterSource = readFileSync(new URL('./projectPaperRaster.ts', import.meta.url), 'utf8');
-const engineSource = readFileSync(
-  new URL('../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url),
-  'utf8',
-);
 const rotoFrameDrawSource = readFileSync(new URL('./rotoFrameDraw.ts', import.meta.url), 'utf8');
 const studioSource = readFileSync(
   new URL('../components/physic-paint/PhysicsPaintStudio.tsx', import.meta.url),
@@ -77,8 +70,10 @@ describe('260925-iy6 frame/export guard', () => {
     expect(exportRendererSource).toContain('renderGlobalFrame(');
   });
 
-  it('P4(e) the package exports conditionHeightMap for the shared conditioner', () => {
-    expect(packageIndexSource).toMatch(/export\s*\{[^}]*\bconditionHeightMap\b[^}]*\}/);
+  it('P4(e) the app-owned conditioner exports conditionHeightMap for the shared condenser', () => {
+    // quick 261027-klx: the conditioner is app-owned now (engine-1 is being
+    // removed). The pinned law is the export itself, not the package.
+    expect(paperConditioningSource).toMatch(/export function conditionHeightMap/);
   });
 
   it('P4(e) projectPaperRaster exports the raw texture getter and the grain-scale normalizer', () => {
@@ -178,15 +173,6 @@ describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', (
     expect(handler).toBeGreaterThanOrEqual(0);
     const body = studioSource.slice(handler, handler + 600);
     expect(body).toContain('physicPaintVersion.value++');
-  });
-
-  it('U5 the engine exposes a NON-flushing dry-canvas getter', () => {
-    // getCanvas() flushes pending finalizations (capture path); the monitor's
-    // live-overlay read must not force-flush every draw.
-    expect(engineSource).toMatch(/getDryCanvas\(\)[^}]*return this\.dualCanvas\.dryCanvas/);
-    const getter = engineSource.indexOf('getDryCanvas()');
-    const body = engineSource.slice(getter, getter + 200);
-    expect(body).not.toContain('flushPendingStrokeFinalizations');
   });
 
   it('U6 paperGrain is gone from types, settings, fallback, and rotoFrameDraw', () => {

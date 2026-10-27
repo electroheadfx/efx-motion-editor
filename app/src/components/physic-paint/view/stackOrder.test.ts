@@ -6,9 +6,10 @@
 //  1 = TOPMOST / total = bottom, so the target index is
 //  `total - clamped(position)`.
 //
-//  The implementation lives in the package (the engine consumes it
-//  too); this suite drives the app-facing re-export so both
-//  adapters provably share one law.
+//  quick 261027-klx: the implementation is APP-OWNED now (copied
+//  verbatim from the removed package). This suite is the permanent
+//  law pin; `stackOrder.parity.test.ts` proved the copy against the
+//  package before it was deleted (and is deleted itself in Wave 1).
 // ============================================================
 
 import { describe, expect, it } from 'vitest';

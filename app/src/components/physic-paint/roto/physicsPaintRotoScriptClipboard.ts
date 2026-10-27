@@ -123,7 +123,12 @@ export interface RotoScriptOperationError {
 export interface RotoScriptEnginePort {
   getStrokes: () => PaintStroke[];
   getStrokeCount?: () => number;
-  copyLiveAlphaCanvas?: () => HTMLCanvasElement;
+  /**
+   * quick 261027-klx: the watercolor sheet seam may legitimately have no
+   * pixels yet (null). A nullable result must never be replaced by a blank
+   * canvas — the capture bails out instead (see captureScriptForPersistence).
+   */
+  copyLiveAlphaCanvas?: () => HTMLCanvasElement | null;
   enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => number;
   flushPendingStrokeFinalizations?: () => void;
   setInputLocked: (locked: boolean) => void;
@@ -556,6 +561,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
       const brushes = normalizeLogicalBrushes(engine.getStrokes());
       if (brushes.length === 0 || !engine.copyLiveAlphaCanvas) return null;
+      // quick 261027-klx: call the seam ONCE. A null sheet is a real "no
+      // pixels yet" answer — bail out rather than substituting a blank canvas.
+      const scriptAlphaCanvas = engine.copyLiveAlphaCanvas();
+      if (scriptAlphaCanvas === null) return null;
       // 261018-odm: when EVERY captured primary has a recorded AquarelleStroke,
       // attach the aquarelle payload timeline so the save path serializes the
       // efx-watercolor variant. A mixed engine-1 + watercolor key keeps the
@@ -568,7 +577,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       });
       return {
         script,
-        scriptAlphaCanvas: engine.copyLiveAlphaCanvas(),
+        scriptAlphaCanvas,
         // 261026-nvq: attach the sheet only for an aquarelle script — a mixed
         // key keeps today's engine-1 thumbnail source, and a blank sheet (ink
         // gate returned null) falls back to the engine canvas.

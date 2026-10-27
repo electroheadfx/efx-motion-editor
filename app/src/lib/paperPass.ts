@@ -1,4 +1,4 @@
-import { conditionHeightMap } from '@efxlab/efx-physic-paint';
+import { conditionHeightMap } from './paperConditioning';
 // 56-05 (PAPER-01 / R2.4): the 13-paper library's procedural height fields.
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
 // 261017-nnu: the bake tooth reads the engine height channel.
