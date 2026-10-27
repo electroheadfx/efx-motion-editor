@@ -4,8 +4,9 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-paint-host/animation';
 import {
   isAquarelleDryEvent,
-  toStudioStroke as aquarelleToStudioStroke,
   type AquarellePayloadEvent,
+  type AquarelleStroke,
+  type AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import type {
@@ -14,7 +15,12 @@ import type {
   PenPoint,
   PhysicStrokePayload,
 } from '../types/paintCore';
-import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
+import {
+  aquarelleStrokesRevision,
+  getAquarelleEventsForFrame,
+  getRecordedAquarelleStroke,
+  hasAquarelleScriptForFrame,
+} from '../view/aquarelleRecordState';
 import { freezeRecordedStrokeGroups, normalizeLogicalBrushes, type RecordedStrokeGroup } from '../view/recordedStrokeGroups';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
@@ -136,7 +142,16 @@ export interface RotoScriptEnginePort {
    * canvas — the capture bails out instead (see captureScriptForPersistence).
    */
   copyLiveAlphaCanvas?: () => HTMLCanvasElement | null;
-  enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => number;
+  /**
+   * CR-01: `onAccepted` runs after the stroke is accepted and BEFORE the
+   * completion is emitted. A synchronous completion (the app-owned ledger)
+   * arrives inside this call, so the caller must register the id it is about
+   * to receive through this seam — the return value arrives too late.
+   */
+  enqueueRecordedStroke: (
+    group: Readonly<RecordedStrokeGroup>,
+    onAccepted?: (mutationId: number) => void,
+  ) => number;
   flushPendingStrokeFinalizations?: () => void;
   setInputLocked: (locked: boolean) => void;
 }
@@ -323,7 +338,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   const error = signal<RotoScriptOperationError | null>(null);
   const busy = signal(false);
   const mutationLocked = signal(false);
-  const sourceHasBrushes = signal(false);
+  /** Explicit invalidation tick for `notifySourceRevision` (plain data can't be a dependency). */
+  const sourceRevisionTick = signal(0);
   const completedMutationIds = new WeakMap<RotoScriptEnginePort, Set<number>>();
   const completionWaiters = new WeakMap<RotoScriptEnginePort, Map<number, Set<CompletionWaiter>>>();
   const sourceState = signal<RotoScriptSourceSnapshot>(ports.getSource());
@@ -348,7 +364,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   let resolveDisposal: (() => void) | null = null;
   let disposalPromise: Promise<void> | null = null;
 
-  refreshSourceHasBrushes(engineState.peek());
+  // CR-02: the CURRENT FRAME's recorded script is the one truth. The ledger is
+  // session-global — it keeps every stroke of every frame and track — so
+  // reading it made Copy/Save carry the wrong frame's strokes, kept Copy
+  // enabled after navigation and left a restored key looking empty (a restore
+  // seeds the record timeline, never the ledger). Both inputs below are the
+  // record state's own invalidation seams: the revision signal (every record
+  // mutation bumps it) and the explicit revision tick.
+  const sourceHasBrushes = computed(() => {
+    void aquarelleStrokesRevision.value;
+    void sourceRevisionTick.value;
+    return hasAquarelleScriptForFrame(sourceState.value.appFrame);
+  });
 
   const availability = computed<RotoScriptActionAvailability>(() => {
     const source = sourceState.value;
@@ -385,10 +412,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       busy: busy.value,
     };
   });
-
-  function refreshSourceHasBrushes(engine = engineState.peek()): void {
-    sourceHasBrushes.value = Boolean(engine && (engine.getStrokeCount ? engine.getStrokeCount() > 0 : engine.getStrokes().some((stroke) => stroke.points.length > 0)));
-  }
 
   function sourceLayerId(source: RotoScriptSourceSnapshot): string {
     return source.layerId ?? 'unmounted-layer';
@@ -503,11 +526,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function snapshotBoundSource(engine: Pick<RotoScriptEnginePort, 'getStrokes'>, source: RotoScriptSourceSnapshot, publishCopiedStatus = true): boolean {
     const provenance = provenanceFor(source);
-    const brushes = normalizeLogicalBrushes(engine.getStrokes());
-    if (brushes.length === 0) return false;
+    const capture = captureFrameScript(engine, source.appFrame);
+    if (!capture) return false;
     sourceRevision += 1;
-    clipboard.value = deepFreezeScript({ provenance, sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame, sourceRevision, brushes });
-    if (publishCopiedStatus) status.value = `Copied ${brushes.length}`;
+    clipboard.value = deepFreezeScript({
+      provenance,
+      sourceFrame: source.appFrame,
+      sourceDisplayFrame: source.appFrame,
+      sourceRevision,
+      brushes: capture.brushes,
+      aquarelleEvents: capture.aquarelleEvents,
+    });
+    if (publishCopiedStatus) status.value = `Copied ${capture.brushes.length}`;
     return true;
   }
 
@@ -548,11 +578,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (disposed || disposalRequested) return null;
     const engine = engineState.peek();
     if (!engine) return null;
-    // Refresh BEFORE the canCopy gate: hasBrushes is only written on mutation
-    // completion, so a stroke that is still queued reads as "no brushes" and
-    // Save bails before the drain below can finish it (invisible failure — the
-    // library status is the only reporter and it has no reader).
-    refreshSourceHasBrushes(engine);
+    // CR-02: `availability.canCopy` now reads the CURRENT FRAME's recorded
+    // script directly (a computed, not a completion-time latch), so a stroke
+    // that is still queued is already part of the frame's truth and the drain
+    // below cannot make Save bail silently.
     if (!availability.value.canCopy) return null;
     // SAVE PATH (261026-nvq): read the live aquarelle sheet EAGERLY, before the
     // first await below. The sheet is frame-scoped — a frame change during the
@@ -566,29 +595,23 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       await drainAcceptedMutations(engine);
       await ports.flushSourcePublication?.(source.appFrame);
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
-      const brushes = normalizeLogicalBrushes(engine.getStrokes());
-      if (brushes.length === 0 || !engine.copyLiveAlphaCanvas) return null;
+      const capture = captureFrameScript(engine, source.appFrame);
+      if (!capture || !engine.copyLiveAlphaCanvas) return null;
       // quick 261027-klx: call the seam ONCE. A null sheet is a real "no
       // pixels yet" answer — bail out rather than substituting a blank canvas.
       const scriptAlphaCanvas = engine.copyLiveAlphaCanvas();
       if (scriptAlphaCanvas === null) return null;
-      // 261018-odm: when EVERY captured primary has a recorded AquarelleStroke,
-      // attach the aquarelle payload timeline so the save path serializes the
-      // efx-watercolor envelope. There is no second engine any more, so a
-      // missing record means the projection is broken — aquarelleEvents stays
-      // absent and the save refuses rather than persisting a bodyless script.
-      const aquarelleEvents = buildAquarelleEventsFromCapture(brushes);
       const script = deepFreezeScript({
         provenance: provenanceFor(source), sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame,
-        sourceRevision: sourceRevision + 1, brushes,
-        ...(aquarelleEvents ? { aquarelleEvents } : {}),
+        sourceRevision: sourceRevision + 1, brushes: capture.brushes,
+        aquarelleEvents: capture.aquarelleEvents,
       });
       return {
         script,
         scriptAlphaCanvas,
-        // 261026-nvq: attach the sheet only for an aquarelle script; a blank
-        // sheet (ink gate returned null) falls back to the engine canvas.
-        ...(aquarelleEvents !== undefined && aquarelleAlphaCanvas !== null ? { aquarelleAlphaCanvas } : {}),
+        // 261026-nvq: attach the sheet for the aquarelle script; a blank sheet
+        // (ink gate returned null) falls back to the engine canvas.
+        ...(aquarelleAlphaCanvas !== null ? { aquarelleAlphaCanvas } : {}),
       };
     } catch (cause) {
       error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
@@ -743,12 +766,39 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     void complete();
   }
 
+  /**
+   * CR-01: the ONE settle point for a brush burst.
+   *
+   * A synchronous ledger emits each completion INSIDE `enqueueRecordedStroke`,
+   * i.e. while the burst loop has not yet enqueued the remaining brushes. The
+   * old "all expected mutations consumed" test would then close a multi-brush
+   * Apply after its very first brush. Finishing therefore also requires the
+   * burst itself to be drained — or cancelled — before the operation settles.
+   */
+  function settleApplyIfDrained(operation: ActiveApplyOperation): void {
+    if (activeApply !== operation || operation.finishing) return;
+    if (operation.consumedMutationIds.size !== operation.expectedMutationIds.size) return;
+    if (
+      operation.nextBrushIndex < operation.script.brushes.length
+      && !operation.cancelled
+      && operation.enqueueFailureCause === null
+    ) {
+      return;
+    }
+    finishApply(
+      operation,
+      !operation.cancelled
+        && operation.enqueueFailureCause === null
+        && operation.completed === operation.script.brushes.length,
+    );
+  }
+
   function enqueueNextBrush(operation: ActiveApplyOperation): void {
     if (activeApply !== operation) return;
     if (operation.cancelled || disposalRequested || launchGeneration !== operation.launchGeneration || engineState.peek() !== operation.engine || engineGeneration !== operation.id) {
       operation.cancelled = true;
       operation.cancellationReason ??= 'invalidated';
-      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      settleApplyIfDrained(operation);
       return;
     }
     if (operation.nextBrushIndex >= operation.script.brushes.length) {
@@ -770,13 +820,15 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (activeApply !== operation || operation.cancelled || launchGeneration !== operation.launchGeneration) {
       operation.cancelled = true;
       operation.cancellationReason ??= 'invalidated';
-      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      settleApplyIfDrained(operation);
       return;
     }
-    try {
-      const mutationId = operation.engine.enqueueRecordedStroke(transformed);
-      if (operation.nextBrushIndex === 0) ports.onFirstAcceptedBrush?.();
-      operation.nextBrushIndex += 1;
+    // CR-01: register the expected id and the accepted target BEFORE the
+    // completion listeners can run. The ledger calls this seam after acceptance
+    // and before its synchronous completion; the post-call call keeps engines
+    // that ignore the seam working, so registration must be idempotent.
+    const registerAccepted = (mutationId: number): void => {
+      if (operation.expectedMutationIds.has(mutationId)) return;
       operation.expectedMutationIds.add(mutationId);
       let targets = acceptedTargets.get(operation.engine);
       if (!targets) {
@@ -786,16 +838,23 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       targets.set(mutationId, {
         keyId: operation.destinationKeyId,
         appFrame: operation.destinationAppFrame,
-        publishPixels: operation.nextBrushIndex === operation.script.brushes.length,
+        publishPixels: brushIndex + 1 === operation.script.brushes.length,
         publicationIdentity: operation.publicationIdentity ?? undefined,
       });
+      if (brushIndex === 0) ports.onFirstAcceptedBrush?.();
+    };
+    try {
+      const mutationId = operation.engine.enqueueRecordedStroke(transformed, registerAccepted);
+      registerAccepted(mutationId);
+      operation.nextBrushIndex = brushIndex + 1;
+      settleApplyIfDrained(operation);
     } catch (cause) {
       // Stop the burst at the first throw; the error itself is materialized in
       // finishApply so its counts include the in-flight brushes. A burst can
       // leave those brushes running — their completions close the operation
       // instead of finishing past them. Nothing in flight → close now.
       operation.enqueueFailureCause = cause;
-      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      settleApplyIfDrained(operation);
     }
   }
 
@@ -830,7 +889,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (!engine) return false;
     const source = sourceState.peek();
     if (source.selectionKind === 'generated-interpolation') return false;
-    refreshSourceHasBrushes(engine);
     if (!sourceHasBrushes.value || busy.peek()) return false;
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
@@ -849,10 +907,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       ) {
         return false;
       }
-      const brushes = normalizeLogicalBrushes(engine.getStrokes());
-      if (brushes.length === 0) return false;
-      const aquarelleEvents = buildAquarelleEventsFromCapture(brushes);
-      if (!aquarelleEvents || !ports.applyAquarelleEvents) {
+      // CR-02: the frame's recorded timeline, never the session-global ledger.
+      const capture = captureFrameScript(engine, source.appFrame);
+      if (!capture) return false;
+      if (!ports.applyAquarelleEvents) {
         status.value = 'Failed';
         error.value = operationError(
           'apply',
@@ -866,8 +924,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         sourceFrame: source.appFrame,
         sourceDisplayFrame: source.appFrame,
         sourceRevision: sourceRevision + 1,
-        brushes,
-        aquarelleEvents,
+        brushes: capture.brushes,
+        aquarelleEvents: capture.aquarelleEvents,
       });
       // Dispatch owns its own endOperation — skip the failure-path release.
       dispatched = true;
@@ -1149,7 +1207,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   function observeCompletedMutation(engine: RotoScriptEnginePort, mutation: CompletedPaintMutation): void {
     resolveCompletion(engine, mutation.mutationId);
-    if (engineState.peek() === engine) refreshSourceHasBrushes();
     const operation = activeApply;
     if (operation
       && operation.engine === engine
@@ -1162,12 +1219,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         status.value = `Applying ${operation.completed}/${operation.script.brushes.length}`;
       }
       // Every brush was enqueued up front — finish once all expected mutations
-      // are consumed. This also closes mid-burst invalidation/enqueue
-      // failures: their in-flight completions still land here and end the
-      // operation.
-      if (operation.consumedMutationIds.size === operation.expectedMutationIds.size) {
-        finishApply(operation, !operation.cancelled && !operation.failure && operation.completed === operation.script.brushes.length);
-      }
+      // are consumed AND the burst is drained (CR-01: a synchronous completion
+      // arrives before the loop has enqueued the remaining brushes). This also
+      // closes mid-burst invalidation/enqueue failures: their in-flight
+      // completions still land here and end the operation.
+      settleApplyIfDrained(operation);
       return;
     }
   }
@@ -1178,7 +1234,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     invalidatePreparedScriptLoadAndApply();
     engineGeneration += 1;
     engineState.value = engine;
-    refreshSourceHasBrushes();
     if (engine && busy.peek()) {
       lockedEngines.add(engine);
       engine.setInputLocked(true);
@@ -1186,7 +1241,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (activeApply?.engine === previousEngine) {
       activeApply.cancelled = true;
       activeApply.cancellationReason = 'invalidated';
-      if (activeApply.expectedMutationIds.size === activeApply.consumedMutationIds.size) finishApply(activeApply, false);
+      settleApplyIfDrained(activeApply);
     }
   }
 
@@ -1197,8 +1252,14 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     sourceState.value = source;
   }
 
+  /**
+   * CR-02: the frame's recorded script is a plain array, so its mutations are
+   * published through `aquarelleStrokesRevision`. This stays as an explicit
+   * invalidation seam for callers that mutate the record state without a bump
+   * (replay/restore/reconcile paths); it never re-reads the ledger.
+   */
   function notifySourceRevision(): void {
-    refreshSourceHasBrushes();
+    sourceRevisionTick.value += 1;
   }
 
   async function prepareNavigation(targetFrame: number): Promise<boolean> {
@@ -1228,7 +1289,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     if (!operation || operation.cancelled) return;
     operation.cancelled = true;
     operation.cancellationReason = 'user';
-    if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+    settleApplyIfDrained(operation);
   }
 
   function getAcceptedTarget(engine: RotoScriptEnginePort, mutationId: number): RotoScriptAcceptedTarget | null {
@@ -1258,7 +1319,6 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyProgressState.value = null;
     status.value = null;
     error.value = null;
-    refreshSourceHasBrushes();
   }
 
   async function prepareEngineDisposal(engine: RotoScriptEnginePort): Promise<void> {
@@ -1283,7 +1343,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       operation.cancelled = true;
       operation.cancellationReason = 'invalidated';
       operation.publishUi = false;
-      if (operation.expectedMutationIds.size === operation.consumedMutationIds.size) finishApply(operation, false);
+      settleApplyIfDrained(operation);
     }
     disposalPromise = new Promise<void>((resolve) => { resolveDisposal = resolve; });
     finalizeDisposalIfReady();
@@ -1339,6 +1399,133 @@ function countAquarelleStrokeEvents(events: readonly AquarellePayloadEvent[]): n
 
 function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
   return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
+}
+
+/** A copy the script may freeze without touching the live payload timeline. */
+function cloneAquarelleEventForScript(
+  event: AquarellePayloadEvent,
+): AquarellePayloadEvent {
+  if (isAquarelleDryEvent(event)) return { ...event };
+  return {
+    pts: event.pts.map((point) => ({ ...point })),
+    ticks: event.ticks,
+    cuisson: event.cuisson,
+    motion: event.motion,
+    brushId: event.brushId,
+    toolOverrides: { ...event.toolOverrides },
+    traceSeed: event.traceSeed,
+    recordedOrder: event.recordedOrder,
+    playFrame: event.playFrame,
+    color: event.color,
+    engine: { ...event.engine },
+  };
+}
+
+/**
+ * The frame's recorded events, cloned for a script. A re-record of the same
+ * mutation id leaves its older timeline entry behind; the newest projection is
+ * the live one, so every duplicate id collapses to its last occurrence (Dry
+ * events keep their exact timeline position).
+ */
+function frameCaptureEvents(playFrame: number): AquarellePayloadEvent[] {
+  const timeline = getAquarelleEventsForFrame(playFrame);
+  const latestById = new Map<number, number>();
+  timeline.forEach((event, index) => {
+    if (isAquarelleDryEvent(event)) return;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId !== undefined) latestById.set(mutationId, index);
+  });
+  const events: AquarellePayloadEvent[] = [];
+  timeline.forEach((event, index) => {
+    if (!isAquarelleDryEvent(event)) {
+      const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+      if (mutationId === undefined || latestById.get(mutationId) !== index) return;
+    }
+    events.push(cloneAquarelleEventForScript(event));
+  });
+  return events;
+}
+
+/**
+ * Project a RECORDED stroke as the capture primary. A restored session never
+ * seeds the ledger, so the record timeline is the only source for those
+ * strokes. Points keep the recorded (UV) space and the aquarelle params land on
+ * the BrushOpts slots exactly like `aquarelleStrokeToPaintStroke`: the script's
+ * `aquarelleEvents` is what re-bakes, so these numbers are bookkeeping, never
+ * render input. `diffusionFrames` is deliberately NOT carried — a defined value
+ * marks a continuation to the ledger, which rejects a primary shaped that way.
+ */
+function recordedStrokeToGroup(recorded: Readonly<AquarelleStroke>): RecordedStrokeGroup {
+  return {
+    primary: {
+      tool: 'paint',
+      points: recorded.points.map((point) => ({
+        x: point.x,
+        y: point.y,
+        p: point.p,
+        tx: point.tx,
+        ty: point.ty,
+        tw: point.tw,
+        spd: 0,
+      })),
+      color: recorded.color,
+      params: {
+        size: Number(recorded.params['size']) || 12,
+        opacity: Number(recorded.params['load']) || 50,
+        pressure: 50,
+        waterAmount: Number(recorded.params['water']) || 50,
+        dryAmount: Number(recorded.params['dry']) || 50,
+        edgeDetail: Number(recorded.params['edge']) || 50,
+        pickup: 50,
+        eraseStrength: 50,
+        antiAlias: 1,
+      },
+      timestamp: recorded.timestamp,
+      mutationId: recorded.mutationId,
+      playFrame: recorded.playFrame,
+    },
+  };
+}
+
+/**
+ * CR-02: the CURRENT FRAME's recorded script — the one capture truth for Copy,
+ * Save and the delete re-bake.
+ *
+ * The ledger is session-global (every frame, every track), so reading it
+ * directly captured the wrong frame's strokes and missed a restored frame's
+ * strokes (a restore seeds the record timeline, never the ledger). Membership
+ * therefore comes from `getAquarelleEventsForFrame`; a live ledger group is
+ * preferred for its id only to keep its diffusion continuations, and a
+ * record-only id is projected via `recordedStrokeToGroup`.
+ *
+ * Returns null when the frame holds no recorded stroke — nothing to capture.
+ */
+function captureFrameScript(
+  engine: Pick<RotoScriptEnginePort, 'getStrokes'>,
+  playFrame: number,
+): { brushes: Readonly<RecordedStrokeGroup>[]; aquarelleEvents: AquarellePayloadEvent[] } | null {
+  const aquarelleEvents = frameCaptureEvents(playFrame);
+  const liveGroups = new Map<number, Readonly<RecordedStrokeGroup>>();
+  for (const group of normalizeLogicalBrushes(engine.getStrokes())) {
+    const mutationId = group.primary.mutationId;
+    if (mutationId !== undefined && Number.isInteger(mutationId)) liveGroups.set(mutationId, group);
+  }
+  const brushes: RecordedStrokeGroup[] = [];
+  for (const event of aquarelleEvents) {
+    if (isAquarelleDryEvent(event)) continue;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId === undefined || !Number.isInteger(mutationId)) continue;
+    const live = liveGroups.get(mutationId);
+    if (live) {
+      brushes.push({ primary: live.primary, continuations: live.continuations?.map(cloneStroke) });
+      continue;
+    }
+    const recorded = getRecordedAquarelleStroke(mutationId);
+    if (!recorded) continue;
+    brushes.push(recordedStrokeToGroup(recorded));
+  }
+  if (brushes.length === 0) return null;
+  return { brushes, aquarelleEvents };
 }
 
 /**
@@ -1439,47 +1626,3 @@ function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
   return Object.freeze(script);
 }
 
-/**
- * 261018-odm: build the aquarelle payload timeline from the captured
- * primaries. Returns undefined when any primary lacks a recorded
- * AquarelleStroke — after engine-1 removal every accepted stroke IS an
- * aquarelle record, so this is a projection guard, not a mixed-key path.
- */
-function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStrokeGroup>[]): AquarellePayloadEvent[] | undefined {
-  const captured = new Set<number>();
-  for (const brush of brushes) {
-    const chain = [brush.primary, ...(brush.continuations ?? [])];
-    for (const stroke of chain) {
-      const mutationId = stroke.mutationId;
-      const recorded = mutationId !== undefined ? getRecordedAquarelleStroke(mutationId) : undefined;
-      // Presence gate law: a missing record means the projection has no
-      // watercolor payload to serialize, so the caller gets undefined and the
-      // save refuses. A deleted stroke is different: its record is present
-      // (presence stays true) but it is removed from the script by the marker,
-      // so it is skipped in the projection below WITHOUT tripping the guard.
-      if (!recorded) return undefined;
-      if (mutationId !== undefined) captured.add(mutationId);
-    }
-  }
-
-  // 261022-ujp: project in LIVE PAYLOAD-TIMELINE order, not engine capture
-  // order. A stroke stack step reorders the timeline; inheriting the engine's
-  // acceptance order here would silently undo the user's stacking on Apply
-  // Script and Save. Dry events ride at their exact timeline position (they
-  // are sheet actions, not captured strokes). The captured brush set only
-  // decides WHICH strokes are projected.
-  const projected: AquarellePayloadEvent[] = [];
-  for (const event of getRecordedAquarellePayloadTimeline()) {
-    if (isAquarelleDryEvent(event)) {
-      projected.push(event);
-      continue;
-    }
-    const mutationId = (event.engine as { mutationId?: number }).mutationId;
-    if (mutationId === undefined || !captured.has(mutationId)) continue;
-    if (isAquarelleStrokeDeleted(mutationId)) continue;
-    const recorded = getRecordedAquarelleStroke(mutationId);
-    if (!recorded) continue;
-    projected.push(aquarelleToStudioStroke(recorded));
-  }
-  return projected;
-}

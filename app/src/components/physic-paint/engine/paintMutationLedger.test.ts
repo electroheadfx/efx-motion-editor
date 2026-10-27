@@ -134,17 +134,53 @@ describe('quick 261027-klx paint mutation ledger', () => {
 
     const first = ledger.allocateStrokeMutation({ primary: stroke(1) });
     // Synchronous: the event is already observable with no await/microtask.
-    expect(observed).toEqual([{ kind: 'paint', isEmpty: false, mutationId: first }]);
+    // WR-02: `isEmpty` reports the state BEFORE this mutation joined the count.
+    expect(observed).toEqual([{ kind: 'paint', isEmpty: true, mutationId: first }]);
 
     const second = ledger.allocateStrokeMutation({ primary: stroke(2, { tool: 'erase' }) });
     expect(observed).toEqual([
-      { kind: 'paint', isEmpty: false, mutationId: first },
+      { kind: 'paint', isEmpty: true, mutationId: first },
       { kind: 'erase', isEmpty: false, mutationId: second },
     ]);
 
     unsubscribe();
     ledger.allocateStrokeMutation({ primary: stroke(3) });
     expect(observed).toHaveLength(2);
+  });
+
+  // WR-02: the completion's `isEmpty` was read AFTER the increment, so it was
+  // false for every mutation — including the very first stroke of a session.
+  it('WR-02: isEmpty is measured before the mutation joins the acceptance count', () => {
+    const ledger = createPaintMutationLedger();
+    const observed: CompletedPaintMutation[] = [];
+    ledger.subscribe((mutation) => observed.push(mutation));
+
+    ledger.allocateStrokeMutation({ primary: stroke(1), continuations: [continuation(2)] });
+    ledger.allocateStrokeMutation({ primary: stroke(2) });
+
+    expect(observed.map((mutation) => mutation.isEmpty)).toEqual([true, false]);
+    // A fresh ledger reports the empty count it actually observed.
+    const pristine = createPaintMutationLedger();
+    expect(pristine.getAcceptedStrokeCount()).toBe(0);
+  });
+
+  // CR-01: the seam runs AFTER the acceptance record exists and BEFORE any
+  // completion listener — the caller registers the id it is about to receive
+  // because the return value arrives too late for a synchronous completion.
+  it('CR-01: onAccepted runs after acceptance and before the completion listener', () => {
+    const ledger = createPaintMutationLedger();
+    const order: string[] = [];
+    let acceptedVisibleDuringCallback = false;
+    ledger.subscribe((mutation) => order.push(`completion:${mutation.mutationId}`));
+
+    const id = ledger.allocateStrokeMutation({ primary: stroke(1) }, (mutationId) => {
+      acceptedVisibleDuringCallback = ledger.lookupAcceptedTarget(mutationId) !== null;
+      order.push(`accepted:${mutationId}`);
+    });
+
+    expect(id).toBe(1);
+    expect(acceptedVisibleDuringCallback).toBe(true);
+    expect(order).toEqual(['accepted:1', 'completion:1']);
   });
 
   it('fails closed on malformed groups without consuming an id', () => {

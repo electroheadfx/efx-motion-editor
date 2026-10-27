@@ -78,7 +78,23 @@ describe('quick 261027-klx paint mutation Roto port', () => {
 
     const id = port.enqueueRecordedStroke({ primary: stroke(3) });
     expect(id).toBe(1);
-    expect(observed).toEqual([{ kind: 'paint', isEmpty: false, mutationId: 1 }]);
+    // WR-02: the first acceptance of a session reports the pre-add count.
+    expect(observed).toEqual([{ kind: 'paint', isEmpty: true, mutationId: 1 }]);
+  });
+
+  // CR-01: the clipboard registers the expected id through this seam, so it
+  // must reach the ledger and run BEFORE the synchronous completion listener.
+  it('forwards the onAccepted seam ahead of the completion listener', () => {
+    const ledger = createPaintMutationLedger();
+    const port = getRotoPort(ledger);
+    const order: string[] = [];
+    ledger.subscribe((mutation) => order.push(`completion:${mutation.mutationId}`));
+
+    const id = port.enqueueRecordedStroke({ primary: stroke(4) }, (mutationId) => {
+      order.push(`accepted:${mutationId}`);
+    });
+
+    expect(order).toEqual([`accepted:${id}`, `completion:${id}`]);
   });
 
   it('passes a null copyLiveAlphaCanvas result through instead of a blank canvas', () => {
@@ -91,6 +107,26 @@ describe('quick 261027-klx paint mutation Roto port', () => {
     const samePort = getRotoPort(ledger, { copyLiveAlphaCanvas: () => fakeCanvas });
     expect(samePort).toBe(port);
     expect(samePort.copyLiveAlphaCanvas?.()).toBe(fakeCanvas);
+  });
+
+  // WR-06: a later call that supplies one seam used to REPLACE the whole seam
+  // record, blanking every seam registered by an earlier call.
+  it('WR-06: re-registering seams merges them instead of replacing them', () => {
+    const ledger = createPaintMutationLedger();
+    const fakeCanvas = { width: 4, height: 4 } as unknown as HTMLCanvasElement;
+    let flushes = 0;
+    const port = getRotoPort(ledger, {
+      copyLiveAlphaCanvas: () => fakeCanvas,
+      flushPendingStrokeFinalizations: () => { flushes += 1; },
+    });
+
+    const samePort = getRotoPort(ledger, { flushPendingStrokeFinalizations: () => { flushes += 10; } });
+    expect(samePort).toBe(port);
+    // The capture seam registered earlier survives the later flush-only call...
+    expect(samePort.copyLiveAlphaCanvas?.()).toBe(fakeCanvas);
+    // ...and the newest seam wins for the key it actually provides.
+    samePort.flushPendingStrokeFinalizations?.();
+    expect(flushes).toBe(10);
   });
 
   it('routes setInputLocked and flush seams to their owners', () => {

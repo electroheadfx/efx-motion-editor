@@ -39,7 +39,9 @@ export function getRotoPort(
   const existing = memoizedPorts.get(ledger);
   if (existing) {
     // Same identity, latest seams: a capture seam read must never be stale.
-    existing.seams = seams;
+    // WR-06: MERGE, never replace — a later call that supplies only one seam
+    // (e.g. the flush seam) must not blank the ones registered earlier.
+    existing.seams = { ...existing.seams, ...seams };
     return existing.port;
   }
 
@@ -48,7 +50,10 @@ export function getRotoPort(
     getStrokes: () => ledger.getAcceptedStrokes(),
     getStrokeCount: () => ledger.getAcceptedStrokeCount(),
     copyLiveAlphaCanvas: () => entry.seams.copyLiveAlphaCanvas?.() ?? null,
-    enqueueRecordedStroke: (group: Readonly<RecordedStrokeGroup>) => ledger.allocateStrokeMutation(group),
+    enqueueRecordedStroke: (
+      group: Readonly<RecordedStrokeGroup>,
+      onAccepted?: (mutationId: number) => void,
+    ) => ledger.allocateStrokeMutation(group, onAccepted),
     flushPendingStrokeFinalizations: () => {
       entry.seams.flushPendingStrokeFinalizations?.();
     },

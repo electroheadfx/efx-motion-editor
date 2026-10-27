@@ -44,10 +44,20 @@ export interface PaintMutationLedger {
   allocateMutationId(): number;
   /**
    * Accept one immutable recorded logical brush: validate, allocate,
-   * append the accepted record, then emit completion synchronously.
-   * Allocation + acceptance are complete before the call returns.
+   * append the accepted record, hand the id to `onAccepted`, then emit
+   * completion synchronously. Allocation + acceptance are complete
+   * before the call returns.
+   *
+   * CR-01: `onAccepted` runs AFTER the acceptance record exists and
+   * BEFORE any completion listener. It is the one seam a caller can use
+   * to register the id it is about to receive (the Roto clipboard's
+   * expected-id / accepted-target registration), because the return
+   * value arrives too late — the completion has already been emitted.
    */
-  allocateStrokeMutation(group: Readonly<RecordedStrokeGroup>): number;
+  allocateStrokeMutation(
+    group: Readonly<RecordedStrokeGroup>,
+    onAccepted?: (mutationId: number) => void,
+  ): number;
   /** Max-raise; non-integers and values <= 0 are ignored (idempotent/order-free). */
   reserveNextMutationId(minNextMutationId: number): void;
   /** Seed from a restored timeline: equivalent to reserveNextMutationId(max + 1). */
@@ -94,7 +104,10 @@ export function createPaintMutationLedger(): PaintMutationLedger {
     reserveNextMutationId(maxRestoredMutationId + 1);
   }
 
-  function allocateStrokeMutation(group: Readonly<RecordedStrokeGroup>): number {
+  function allocateStrokeMutation(
+    group: Readonly<RecordedStrokeGroup>,
+    onAccepted?: (mutationId: number) => void,
+  ): number {
     // Fail closed BEFORE the clock moves (same guards as
     // EfxPaintEngine.enqueueRecordedStroke). The clipboard's apply burst
     // relies on a throw to stop at the first malformed brush.
@@ -135,12 +148,22 @@ export function createPaintMutationLedger(): PaintMutationLedger {
       accepted: Object.freeze(actions),
       acceptedAt: Date.now(),
     }));
+    // WR-02: `isEmpty` describes the mutation this completion reports, so it
+    // must be measured BEFORE this mutation's actions join the count — the
+    // in-place read after the increment was always false.
+    const wasEmpty = acceptedStrokeCount === 0;
     acceptedStrokeCount += actions.length;
+
+    // CR-01: the caller registers the id it is about to receive BEFORE the
+    // completion is emitted. The return value arrives too late for a caller
+    // that waits on completion (the Roto clipboard's expected-id set), so a
+    // synchronous emission would otherwise deadlock the apply burst here.
+    onAccepted?.(mutationId);
 
     // Completion is emitted by the ledger, synchronously, AFTER acceptance.
     const completion: CompletedPaintMutation = {
       kind: primary.tool,
-      isEmpty: acceptedStrokeCount === 0,
+      isEmpty: wasEmpty,
       mutationId,
     };
     for (const listener of Array.from(listeners)) listener(completion);

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { deleteAquarelleStrokeFromScript, emitAquarelleDry, purgeAllAquarelleKeyScripts, recordAquarelleStroke, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
+import { deleteAquarelleStrokeFromScript, emitAquarelleDry, purgeAquarelleFrameScript, purgeAllAquarelleKeyScripts, recordAquarelleStroke, resetAquarelleRecordState, restoreAquarelleRecordTimeline, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { serializeAquarelleRotoScript } from './physicsPaintRotoScriptSchema';
@@ -36,9 +36,39 @@ async function flushMicrotasks(turns = 3): Promise<void> {
   for (let index = 0; index < turns; index += 1) await Promise.resolve();
 }
 
+// CR-02: the record timeline is the frame-capture truth, and the registry is
+// module-global — every test starts from a clean frame truth.
+afterEach(() => { resetAquarelleRecordState(); });
+
+/**
+ * CR-02 harness mirror: pair an accepted engine stroke with its record entry on
+ * the CURRENT frame, exactly like the Studio's stroke-end path. Continuations
+ * (zero-point strokes) ride their group and never own a timeline entry.
+ */
+function recordFrameStrokes(frame: number, strokes: readonly PaintStroke[]): void {
+  for (const recorded of strokes) {
+    const mutationId = recorded.mutationId;
+    if (mutationId === undefined || !Number.isInteger(mutationId) || recorded.points.length === 0) continue;
+    recordAquarelleStroke(mutationId, {
+      tool: 'brush',
+      color: recorded.color,
+      params: { size: 8, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+      brushId: 'wc/round-medium',
+      points: [
+        { x: 0.1, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        { x: 0.14, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      ],
+      mutationId,
+      timestamp: recorded.timestamp,
+      playFrame: frame,
+    });
+  }
+}
+
 function harness(initial: PaintStroke[] = [stroke(1)], overrides: Partial<RotoScriptClipboardControllerPorts> = {}) {
   let strokes = initial;
   let source: RotoScriptSourceSnapshot = { selectionKind: 'real-key', layerId: null, keyId: 'key-4', appFrame: 4 };
+  recordFrameStrokes(source.appFrame, initial);
   let nextMutationId = 100;
   const submitted: RecordedStrokeGroup[] = [];
   const locks: boolean[] = [];
@@ -86,7 +116,7 @@ async function copyCompletedSource(test: ReturnType<typeof harness>, mutationIds
   expect(await promise).toBe(true);
 }
 
-function aquarelleStrokeEvent(mutationId: number, timestamp: number): AquarellePayloadEvent {
+function aquarelleStrokeEvent(mutationId: number, timestamp: number, playFrame?: number): AquarellePayloadEvent {
   return aquarelleToStudioStroke({
     tool: 'brush',
     color: '#123456',
@@ -98,7 +128,17 @@ function aquarelleStrokeEvent(mutationId: number, timestamp: number): AquarelleP
     ],
     mutationId,
     timestamp,
+    ...(playFrame !== undefined ? { playFrame } : {}),
   });
+}
+
+/** The stroke ids of a script's aquarelle events, Dry events skipped. */
+function strokeMutationIds(
+  events: readonly AquarellePayloadEvent[] | undefined,
+): (number | undefined)[] {
+  return (events ?? [])
+    .filter((event) => !isAquarelleDryEvent(event))
+    .map((event) => (event as { engine: { mutationId?: number } }).engine.mutationId);
 }
 
 /** Persisted watercolor script: two strokes with one Dry between them. */
@@ -243,25 +283,23 @@ describe('Roto script clipboard controller', () => {
   });
 
   // 260925-iy6 UAT round 5 ("button are there but when I click, nothing happen"):
-  // canCopy reads sourceHasBrushes, which is only written on mutation completion.
-  // A stroke added to the engine after the last refresh read as "no brushes" and
-  // capture bailed BEFORE drainAcceptedMutations could finish it. The gate must
-  // refresh first.
-  it('captures a stroke that landed after the last hasBrushes refresh', async () => {
+  // canCopy reads sourceHasBrushes. A stroke recorded after the last presentation
+  // refresh used to read as "no brushes" and capture bailed BEFORE
+  // drainAcceptedMutations could finish it. CR-02: the gate now reads the record
+  // revision directly, so a freshly recorded stroke is already visible.
+  it('captures a stroke recorded after the last presentation refresh', async () => {
     const test = harness([]);
     Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => ({ id: 'alpha' } as unknown as HTMLCanvasElement)) });
-    // Stroke lands on the engine with no observeCompletedMutation / notify —
-    // sourceHasBrushes is stale false at the gate.
-    test.setStrokes([stroke(1)]);
-    expect(test.controller.availability.value.canCopy).toBe(false);
+    // The stroke is recorded on the current frame with no observeCompletedMutation
+    // and no explicit notify — sourceHasBrushes sees the record revision.
+    recordFrameStrokes(4, [stroke(1)]);
+    expect(test.controller.availability.value.canCopy).toBe(true);
 
-    const promise = test.controller.captureScriptForPersistence();
-    // The drain resolves the pending mutation the way the engine's flush does.
-    test.controller.observeCompletedMutation(test.engine, completion(1));
-    const capture = await promise;
+    const capture = await test.controller.captureScriptForPersistence();
 
     expect(capture).not.toBeNull();
     expect(capture?.script.brushes).toHaveLength(1);
+    expect(capture?.script.brushes[0].primary.mutationId).toBe(1);
   });
 
   it('loads a persisted deep clone without replay and keeps it independent and reusable', async () => {
@@ -290,28 +328,41 @@ describe('Roto script clipboard controller', () => {
     const test = harness([]);
     expect(test.controller.availability.value.canCopy).toBe(false);
 
+    // First paint: the CURRENT FRAME's record opens Copy (CR-02), not the
+    // session ledger and not the engine's stroke list.
+    recordFrameStrokes(4, [stroke(1)]);
     test.setStrokes([stroke(1)]);
     test.controller.observeCompletedMutation(test.engine, completion(1));
     expect(test.controller.availability.value.canCopy).toBe(true);
 
+    // Undo: the frame's script leaves with the stroke.
+    purgeAquarelleFrameScript(4);
     test.setStrokes([]);
     test.controller.notifySourceRevision();
     expect(test.controller.availability.value.canCopy).toBe(false);
 
+    // Redo / a later stroke re-records the frame.
+    recordFrameStrokes(4, [stroke(2)]);
     test.setStrokes([stroke(2)]);
     test.controller.notifySourceRevision();
     expect(test.controller.availability.value.canCopy).toBe(true);
 
+    // Clear: the purge plus a clear completion leaves nothing to copy.
+    purgeAquarelleFrameScript(4);
     test.setStrokes([]);
     test.controller.observeCompletedMutation(test.engine, { kind: 'clear', isEmpty: true, mutationId: 3 });
     expect(test.controller.availability.value.canCopy).toBe(false);
 
+    // An engine replacement alone never invents a script...
     const replacement = { ...test.engine, getStrokes: () => [stroke(4)] };
     test.controller.updateEngine(replacement);
+    expect(test.controller.availability.value.canCopy).toBe(false);
+    // ...while a record on the replacement engine reopens Copy.
+    recordFrameStrokes(4, [stroke(4)]);
     expect(test.controller.availability.value.canCopy).toBe(true);
 
     test.controller.updateEngine(test.engine);
-    test.setStrokes([]);
+    purgeAquarelleFrameScript(4);
     test.controller.completeLaunchReplacement();
     expect(test.controller.availability.value.canCopy).toBe(false);
     test.controller.updateEngine(null);
@@ -1304,8 +1355,10 @@ describe('quick-260922-al1 the layer filter is presentation-only (drift-proof pi
     // The scope hides the origin-layer Action; the clipboard still resolves its
     // destination from the LIVE source at apply time. An incompatible current
     // target is REFUSED — it is never silently redirected to the origin layer.
-    const incompatible = harness([stroke(1)]);
+    const incompatible = harness([]);
     incompatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_CURRENT_LAYER_ID, keyId: 'current-key', appFrame: 9 });
+    // CR-02: Copy reads the CURRENT frame's record, so paint frame 9 itself.
+    recordFrameStrokes(9, [stroke(1)]);
     await copyCompletedSource(incompatible);
     incompatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_CURRENT_LAYER_ID, keyId: 'current-key', appFrame: 10 });
     incompatible.setPrepareTarget(async () => null);
@@ -1835,18 +1888,26 @@ describe('261026-nvq persistence aquarelle sheet seam', () => {
     expect(capture?.scriptAlphaCanvas).toBe(engineAlpha);
   });
 
-  it('a mixed key never carries the sheet even when the host supplied one', async () => {
+  // CR-02 retarget: a "mixed key" can no longer exist — membership comes from
+  // the frame's record, so a ledger stroke that was never recorded on this frame
+  // is simply not part of the script. Every captured brush is record-backed by
+  // construction, so the sheet rides whenever the host supplied one.
+  it('excludes a ledger stroke that has no record on the current frame', async () => {
     purgeAllAquarelleKeyScripts();
-    const test = harness([stroke(903), stroke(904)], { captureAquarelleCanvas: () => fakeCanvas('sheet') });
+    const sheet = fakeCanvas('sheet');
+    const test = harness([stroke(903)], { captureAquarelleCanvas: () => sheet });
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => fakeCanvas('engine-alpha')) });
+    // 904 reached the session ledger but was never recorded on this frame.
+    test.setStrokes([stroke(903), stroke(904)]);
     recordSaveStroke(903);
-    // 904 is an engine-1 stroke with no recorded AquarelleStroke — mixed key.
     test.controller.observeCompletedMutation(test.engine, completion(903));
     test.controller.observeCompletedMutation(test.engine, completion(904));
 
     const capture = await test.controller.captureScriptForPersistence();
 
-    expect(capture?.script.aquarelleEvents).toBeUndefined();
-    expect(capture?.aquarelleAlphaCanvas).toBeUndefined();
+    expect(strokeMutationIds(capture?.script.aquarelleEvents)).toEqual([903]);
+    expect(capture?.script.brushes.map((group) => group.primary.mutationId)).toEqual([903]);
+    expect(capture?.aquarelleAlphaCanvas).toBe(sheet);
   });
 
   it('reads the sheet eagerly, before the drain suspends', async () => {
@@ -1867,5 +1928,90 @@ describe('261026-nvq persistence aquarelle sheet seam', () => {
     const capture = await promise;
     expect(captureAquarelleCanvas).toHaveBeenCalledTimes(1);
     expect(capture?.aquarelleAlphaCanvas).toBe(sheet);
+  });
+});
+
+/**
+ * quick 261027-klx CR-02 — the session ledger is NOT a script source.
+ *
+ * Copy/Save read the CURRENT FRAME's watercolor record:
+ *   - navigating away must not leave Copy enabled on an unpainted frame,
+ *   - the capture must carry only that frame's strokes,
+ *   - a restored key (restore seeds the record, never the ledger) is copyable,
+ *   - a track switch replaces the record truth (no cross-track capture),
+ *   - Trash purges the record and disables Copy.
+ */
+describe('261027-klx CR-02 frame-scoped capture', () => {
+  it('CR-02a: navigating to an unpainted frame disables Copy and captures nothing', async () => {
+    const test = harness([stroke(1)]);
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-9', appFrame: 9 });
+
+    expect(test.controller.availability.value.canCopy).toBe(false);
+    expect(test.controller.availability.value.copyDisabledReason).toMatch(/Paint at least one brush/);
+    await expect(test.controller.copyScript()).resolves.toBe(false);
+    await expect(test.controller.captureScriptForPersistence()).resolves.toBeNull();
+    expect(test.controller.clipboard.value).toBeNull();
+  });
+
+  it('CR-02a2: Copy carries only the current frame, never the session ledger', async () => {
+    const test = harness([stroke(1)]);
+    recordFrameStrokes(9, [stroke(2)]);
+    test.setStrokes([stroke(1), stroke(2)]);
+
+    await copyCompletedSource(test, [1, 2]);
+
+    const copied = test.controller.clipboard.value;
+    expect(copied?.sourceFrame).toBe(4);
+    expect(copied?.brushes.map((group) => group.primary.mutationId)).toEqual([1]);
+    expect(strokeMutationIds(copied?.aquarelleEvents)).toEqual([1]);
+  });
+
+  it('CR-02b: a restored key is copyable and Save captures its restored script', async () => {
+    const test = harness([]);
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => ({ id: 'engine-alpha' } as unknown as HTMLCanvasElement)) });
+    // A reopen seeds the RECORD timeline only — the ledger is never replayed,
+    // so a ledger read left every restored key looking empty.
+    restoreAquarelleRecordTimeline([
+      aquarelleStrokeEvent(501, 1000, 4),
+      createDryEvent(3, 1001),
+      aquarelleStrokeEvent(502, 1200, 4),
+    ]);
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    const capture = await test.controller.captureScriptForPersistence();
+
+    expect(capture?.script.sourceFrame).toBe(4);
+    expect(strokeMutationIds(capture?.script.aquarelleEvents)).toEqual([501, 502]);
+    expect(capture?.script.brushes.map((group) => group.primary.mutationId)).toEqual([501, 502]);
+  });
+
+  it('CR-02c: a track switch replaces the frame truth — no cross-track capture', async () => {
+    const test = harness([stroke(1)]);
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    // Switching tracks hydrates that track's snapshot, which replaces the record
+    // timeline; the session ledger still holds the previous track's stroke.
+    restoreAquarelleRecordTimeline([aquarelleStrokeEvent(701, 2000, 4)]);
+    await copyCompletedSource(test, [1]);
+    expect(test.controller.clipboard.value?.brushes.map((group) => group.primary.mutationId)).toEqual([701]);
+
+    // A switch to an unpainted track leaves nothing to copy.
+    restoreAquarelleRecordTimeline([]);
+    expect(test.controller.availability.value.canCopy).toBe(false);
+    await expect(test.controller.captureScriptForPersistence()).resolves.toBeNull();
+  });
+
+  it('CR-02d: Trash clears the rail script and disables Copy', async () => {
+    const test = harness([stroke(1)]);
+    expect(test.controller.availability.value.canCopy).toBe(true);
+
+    // The real Trash path: the clear-all purge behind the confirmed clear.
+    expect(purgeAllAquarelleKeyScripts()).toBeGreaterThan(0);
+
+    expect(test.controller.availability.value.canCopy).toBe(false);
+    await expect(test.controller.copyScript()).resolves.toBe(false);
+    await expect(test.controller.captureScriptForPersistence()).resolves.toBeNull();
   });
 });

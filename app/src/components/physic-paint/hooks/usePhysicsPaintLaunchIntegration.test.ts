@@ -1,12 +1,33 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { createRotoScriptClipboardController, type RecordedStrokeGroup } from '../roto/physicsPaintRotoScriptClipboard';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
 import { prepareRotoPhysicalLaunch } from '../roto/rotoLaunchHydration';
+import { recordAquarelleStroke, resetAquarelleRecordState } from '../view/aquarelleRecordState';
 import { createPhysicsPaintLaunchReplacementCoordinator, resolveLaunchHydrationContext } from './usePhysicsPaintLaunchIntegration';
+
+// CR-02: Copy reads the CURRENT FRAME's watercolor record, not the session
+// ledger, so a copyable frame must be recorded. The registry is module-global.
+afterEach(() => { resetAquarelleRecordState(); });
+
+function recordFrameStroke(mutationId: number, playFrame: number): void {
+  recordAquarelleStroke(mutationId, {
+    tool: 'brush',
+    color: '#123456',
+    params: { size: 8, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+    brushId: 'wc/round-medium',
+    points: [
+      { x: 0.1, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 0.14, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+    ],
+    mutationId,
+    timestamp: mutationId,
+    playFrame,
+  });
+}
 
 function launch(operationId: string, startFrame: number): PhysicPaintLaunchContext {
   return {
@@ -63,6 +84,7 @@ describe('Physics Paint launch replacement coordinator', () => {
       prepareTarget: async (current) => current.keyId ? { keyId: current.keyId, appFrame: current.appFrame } : null,
     });
     controller.updateEngine(engine);
+    recordFrameStroke(1, 4);
     const copying = controller.copyScript();
     controller.observeCompletedMutation(engine, completion(1));
     await expect(copying).resolves.toBe(true);
@@ -117,6 +139,7 @@ describe('Physics Paint launch replacement coordinator', () => {
       prepareTarget: async () => null,
     });
     controller.updateEngine(engine);
+    recordFrameStroke(1, 4);
     const copying = controller.copyScript();
     controller.observeCompletedMutation(engine, completion(1));
     await expect(copying).resolves.toBe(true);
