@@ -433,24 +433,32 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // tab: a manual 'Track' click sticks through re-renders with
     // different active tracks/tools, and a paint revision bump does not
     // revert it.
-    const first = renderPanel(baseProps());
-    clickToolTab(first, 'physics-paint-tab-track-option');
-    const onTrack = renderPanel(baseProps());
-    expect(findStepper(onTrack, 'physics-track-opacity')).toBeDefined();
+    // 261027-gh9: the app defaults to Water color now, so pin the raw module
+    // to Brush to render the Brush-module Paint tab this test asserts on.
+    const previousModule = activeModule.value;
+    activeModule.value = 'brush';
+    try {
+      const first = renderPanel(baseProps());
+      clickToolTab(first, 'physics-paint-tab-track-option');
+      const onTrack = renderPanel(baseProps());
+      expect(findStepper(onTrack, 'physics-track-opacity')).toBeDefined();
 
-    // Active track changes + a paint revision bump: the tab stays put.
-    renderPanel(baseProps({ trackName: 'Paint 2' }));
-    physicPaintVersion.value++;
-    const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
+      // Active track changes + a paint revision bump: the tab stays put.
+      renderPanel(baseProps({ trackName: 'Paint 2' }));
+      physicPaintVersion.value++;
+      const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
 
-    expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(findStepper(afterPaintBump, 'physics-track-opacity')).toBeDefined();
+      expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
+      expect(findStepper(afterPaintBump, 'physics-track-opacity')).toBeDefined();
 
-    // Manual 'Paint' click also sticks.
-    clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
-    const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
-    expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-    expect(findStepper(onPaint, 'physics-edge-detail')).toBeDefined();
+      // Manual 'Paint' click also sticks.
+      clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
+      const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
+      expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
+      expect(findStepper(onPaint, 'physics-edge-detail')).toBeDefined();
+    } finally {
+      activeModule.value = previousModule;
+    }
   });
 
   it('49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option', () => {
