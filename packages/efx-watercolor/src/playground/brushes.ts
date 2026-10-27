@@ -170,17 +170,22 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     spacing: 0.12, scatter: 0.12, dabs: 1, sizeJitter: 0.22,
     water: 0, load: 1.35, flow: 0.6, capacity: 0.9, grain: 0.35, wetRound: 0,
     tip: (n, N) => tip((u, v, r, ang) => {
-      // Chipped edge: the outline radius wanders with the angle and a finer
-      // mask bites the rim, so the stick crumbles instead of ending in a disc.
+      // Chipped edge: the outline radius wanders with the angle, so the stick
+      // crumbles instead of ending in a disc.
       const wander = N.fbm(ang * 2.4 + 1.6, r * 4.2, 3) * 2 - 1;
       const rr = r * (1 + 0.16 * wander);
       const body = 1 - smoothstep(0.6, 0.98, rr);
-      const rim = smoothstep(0.55, 0.9, r);
-      const bite = smoothstep(0.28, 0.55, N.fbm(u * 9 + 11, v * 9 + 3, 4));
-      // Dense core with a fine chalk tooth — small speckle, never large blobs.
+      // 261027-gh9d: porosity lives at the RIM — the core stays solid and the
+      // edge crumbles. Pores and chips scale with the radius instead of
+      // applying uniformly across the tip.
+      const rim = smoothstep(0.4, 0.92, r);
       const pores = smoothstep(0.2, 0.4, N.fbm(u * 26 + 5, v * 26 + 11, 3));
+      const bite = smoothstep(0.28, 0.55, N.fbm(u * 9 + 11, v * 9 + 3, 4));
+      const poreDepth = 0.05 + 0.6 * rim;
+      const crumble = 1 - poreDepth * (1 - pores);
+      const chip = 1 - rim * 0.55 * (1 - bite);
       const grit = 0.8 + 0.2 * N.fbm(u * 55 + 3, v * 55 + 7, 2);
-      return body * (1 - rim * (1 - bite)) * (0.7 + 0.3 * pores) * grit;
+      return body * crumble * chip * grit;
     })(n),
   }),
   define({
