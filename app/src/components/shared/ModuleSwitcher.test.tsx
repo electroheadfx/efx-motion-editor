@@ -1,6 +1,11 @@
 /**
  * 56-02 (D-01, D-03): the top-bar module switcher — one shared component, one
- * active-module signal. Krita is display-only and inert.
+ * active-module signal.
+ *
+ * 261027-gh9: under the WATERCOLOR_ONLY gate Brush AND Krita are native
+ * disabled inert slots; Water color is the only selectable and active module
+ * and no owner lock can disable it. The `lockedModule` prop and every
+ * Brush/Krita surface stay in the tree for reversibility.
  *
  * Render tests materialize the vnode tree (no DOM environment — same pattern
  * as NumericStepper.test.tsx / PhysicsPaintRightPanel.test.ts).
@@ -8,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { activeModule, type ActiveModule } from './activeModule';
+import { activeModule, setActiveModule, WATERCOLOR_ONLY, type ActiveModule } from './activeModule';
 import { ModuleSwitcher } from './ModuleSwitcher';
 
 vi.mock('preact/hooks', async (importOriginal) => {
@@ -87,11 +92,11 @@ function clickButton(node: TestVNode): void {
 }
 
 beforeEach(() => {
-  activeModule.value = 'brush';
+  activeModule.value = 'watercolor';
 });
 
 afterEach(() => {
-  activeModule.value = 'brush';
+  activeModule.value = 'watercolor';
 });
 
 describe('ModuleSwitcher', () => {
@@ -101,45 +106,66 @@ describe('ModuleSwitcher', () => {
     expect(labels).toEqual(['Brush', 'Water color', 'Krita']);
   });
 
-  it('clicking Brush writes activeModule to brush', () => {
-    activeModule.value = 'watercolor';
+  it('makes Brush and Krita inert native-disabled slots and Water color the only active slot', () => {
     const tree = renderSwitcher();
-    const buttons = findButtons(tree);
-    clickButton(buttons[0]);
-    expect(activeModule.value).toBe('brush');
+    const [brush, watercolor, krita] = findButtons(tree);
+
+    for (const inert of [brush!, krita!]) {
+      expect(inert.props?.disabled).toBe(true);
+      expect(inert.props?.['aria-disabled']).toBeUndefined();
+      const cls = String(inert.props?.class ?? '');
+      expect(cls).toContain('module-switcher-slot-inert');
+      expect(cls).not.toMatch(/\bactive\b/);
+      expect(inert.props?.['aria-pressed']).toBeUndefined();
+    }
+    expect(brush!.props?.title).toBe('Unavailable — Water color only');
+
+    expect(watercolor!.props?.disabled).toBe(false);
+    expect(watercolor!.props?.['aria-disabled']).toBeUndefined();
+    expect(String(watercolor!.props?.class ?? '')).toMatch(/\bactive\b/);
+    expect(watercolor!.props?.['aria-pressed']).toBe(true);
   });
 
-  it('clicking Water color writes activeModule to watercolor', () => {
-    const tree = renderSwitcher();
-    const buttons = findButtons(tree);
-    clickButton(buttons[1]);
+  it('clicking the inert Brush and Krita slots leaves the module at watercolor', () => {
+    const buttons = findButtons(renderSwitcher());
+    clickButton(buttons[0]!);
+    expect(activeModule.value).toBe('watercolor');
+    clickButton(buttons[2]!);
     expect(activeModule.value).toBe('watercolor');
   });
 
-  it('clicking Krita leaves activeModule unchanged', () => {
-    activeModule.value = 'brush';
-    const tree = renderSwitcher();
-    const buttons = findButtons(tree);
-    clickButton(buttons[2]);
-    expect(activeModule.value).toBe('brush');
-
-    activeModule.value = 'watercolor';
-    const tree2 = renderSwitcher();
-    clickButton(findButtons(tree2)[2]);
+  it('clicking Water color keeps the module at watercolor', () => {
+    const buttons = findButtons(renderSwitcher());
+    clickButton(buttons[1]!);
     expect(activeModule.value).toBe('watercolor');
   });
 
   it('Krita segment carries the Coming in v2.1.0 tooltip and is never active', () => {
     const tree = renderSwitcher();
-    const krita = findButtons(tree)[2];
+    const krita = findButtons(tree)[2]!;
     expect(krita.props?.title).toBe('Coming in v2.1.0');
     // Krita is display-only: its class must never carry the active state.
     const cls = String(krita.props?.class ?? '');
     expect(cls).not.toMatch(/\bactive\b/);
   });
 
+  it('ignores a raw brush signal value: Water color stays the only active slot', () => {
+    // Hostile input: a stale/hand-edited write lands the raw signal on 'brush'.
+    activeModule.value = 'brush';
+    const tree = renderSwitcher();
+    const [brush, watercolor, krita] = findButtons(tree);
+    expect(String(watercolor!.props?.class ?? '')).toMatch(/\bactive\b/);
+    for (const slot of [brush!, krita!]) {
+      expect(slot.props?.disabled).toBe(true);
+      expect(String(slot.props?.class ?? '')).not.toMatch(/\bactive\b/);
+    }
+    // The setter clamps the hostile value back home.
+    setActiveModule('brush');
+    expect(activeModule.value).toBe('watercolor');
+  });
+
   it('switching module never calls a document or timeline store setter', () => {
-    // The switch handler body assigns only activeModule — spy on the signal
+    // The switch handler routes through setActiveModule — spy on the signal
     // write path and assert no other store receives a mutation. The component
     // is a pure leaf; any store import would be a contract violation.
     const moduleSource = readFileSync(
@@ -149,85 +175,83 @@ describe('ModuleSwitcher', () => {
     // No store imports — the only state the switcher touches is activeModule.
     expect(moduleSource).not.toMatch(/from\s+['"].*stores\//);
     expect(moduleSource).not.toMatch(/projectStore|timelineStore|layerStore|paintStore|physicPaintStore/);
+    expect(moduleSource).toContain('setActiveModule(slot.id)');
+    expect(moduleSource).not.toContain('activeModule.value = id');
 
-    // Behavioral: clicking each slot mutates only activeModule.
+    // Behavioral: clicking each slot mutates nothing away from watercolor.
     const before: ActiveModule = activeModule.value;
     const tree = renderSwitcher();
     const buttons = findButtons(tree);
-    clickButton(buttons[0]);
-    expect(activeModule.value).toBe('brush');
-    clickButton(buttons[1]);
+    clickButton(buttons[0]!);
     expect(activeModule.value).toBe('watercolor');
-    clickButton(buttons[2]);
+    clickButton(buttons[1]!);
+    expect(activeModule.value).toBe('watercolor');
+    clickButton(buttons[2]!);
     expect(activeModule.value).toBe('watercolor');
     // Restore
     activeModule.value = before;
   });
 });
 
-describe('Studio ownership lock (quick-261025-awl)', () => {
-  it('locks the non-owning slot as a native disabled button with the lock tooltip', () => {
+describe('Studio ownership lock under the watercolor-only gate (261027-gh9)', () => {
+  it('never disables or locks Water color for a passed watercolor lock', () => {
     const tree = renderSwitcher({ lockedModule: 'watercolor' });
-    const watercolor = findButtons(tree)[1];
-    // A genuinely inactive HTML button, exactly like Krita.
-    expect(watercolor.props?.disabled).toBe(true);
-    expect(watercolor.props?.['aria-disabled']).toBeUndefined();
-    expect(String(watercolor.props?.class ?? '')).toContain('module-switcher-slot-locked');
-    const title = String(watercolor.props?.title ?? '');
-    expect(title).toContain('Brush script');
-    expect(title).toContain('Water color is unavailable');
-    expect(title).toContain('Raster');
+    const watercolor = findButtons(tree)[1]!;
+    expect(watercolor.props?.disabled).toBe(false);
+    const cls = String(watercolor.props?.class ?? '');
+    expect(cls).not.toContain('module-switcher-slot-locked');
+    expect(cls).toMatch(/\bactive\b/);
   });
 
-  it('locks the Brush slot for a Water color frame and keeps its title distinct', () => {
+  it('renders Brush inert (not locked) for a passed brush lock — the seam outranks the lock', () => {
     const tree = renderSwitcher({ lockedModule: 'brush' });
-    const brush = findButtons(tree)[0];
+    const brush = findButtons(tree)[0]!;
     expect(brush.props?.disabled).toBe(true);
-    expect(String(brush.props?.title ?? '')).toContain('Water color script');
+    const cls = String(brush.props?.class ?? '');
+    expect(cls).toContain('module-switcher-slot-inert');
+    expect(cls).not.toContain('module-switcher-slot-locked');
+    expect(brush.props?.title).toBe('Unavailable — Water color only');
   });
 
-  it('clicking the locked slot leaves activeModule unchanged while the owner still switches', () => {
-    activeModule.value = 'brush';
+  it('clicking a locked or inert slot leaves activeModule unchanged', () => {
     const tree = renderSwitcher({ lockedModule: 'watercolor' });
     const buttons = findButtons(tree);
-    clickButton(buttons[1]);
-    expect(activeModule.value).toBe('brush');
+    clickButton(buttons[1]!);
+    expect(activeModule.value).toBe('watercolor');
 
-    activeModule.value = 'watercolor';
-    clickButton(buttons[0]);
-    expect(activeModule.value).toBe('brush');
+    clickButton(buttons[0]!);
+    expect(activeModule.value).toBe('watercolor');
   });
 
-  it('removes the locked slot from the tab order via the native disabled attribute', () => {
+  it('removes the inert Brush slot from the tab order via the native disabled attribute', () => {
     const tree = renderSwitcher({ lockedModule: 'brush' });
-    const brush = findButtons(tree)[0];
+    const brush = findButtons(tree)[0]!;
     // Native disabled: no keyboard activation, no focus, no custom key handler.
     expect(brush.props?.disabled).toBe(true);
     expect(brush.props?.onKeyDown).toBeUndefined();
   });
 
-  it('leaves both slots enabled when no owner is locked', () => {
+  it('keeps Water color enabled when no owner is locked', () => {
     const tree = renderSwitcher({ lockedModule: null });
-    for (const button of findButtons(tree).slice(0, 2)) {
-      expect(button.props?.disabled).toBe(false);
-      expect(button.props?.['aria-disabled']).toBeUndefined();
-      expect(String(button.props?.class ?? '')).not.toContain('module-switcher-slot-locked');
-    }
+    const watercolor = findButtons(tree)[1]!;
+    expect(watercolor.props?.disabled).toBe(false);
+    expect(watercolor.props?.['aria-disabled']).toBeUndefined();
+    expect(String(watercolor.props?.class ?? '')).not.toContain('module-switcher-slot-locked');
   });
 
-  it('keeps today’s behavior without the prop', () => {
+  it('keeps the gated behavior without the prop', () => {
     const tree = renderSwitcher();
-    for (const button of findButtons(tree).slice(0, 2)) {
-      expect(button.props?.disabled).toBe(false);
-      expect(button.props?.['aria-disabled']).toBeUndefined();
-    }
-    clickButton(findButtons(tree)[1]);
+    const [brush, watercolor] = findButtons(tree);
+    expect(brush!.props?.disabled).toBe(true);
+    expect(watercolor!.props?.disabled).toBe(false);
+    expect(watercolor!.props?.['aria-disabled']).toBeUndefined();
+    clickButton(watercolor!);
     expect(activeModule.value).toBe('watercolor');
   });
 
   it('keeps Krita inert and never locked', () => {
     const tree = renderSwitcher({ lockedModule: 'watercolor' });
-    const krita = findButtons(tree)[2];
+    const krita = findButtons(tree)[2]!;
     expect(krita.props?.disabled).toBe(true);
     const cls = String(krita.props?.class ?? '');
     expect(cls).toContain('module-switcher-slot-inert');
@@ -237,9 +261,11 @@ describe('Studio ownership lock (quick-261025-awl)', () => {
 });
 
 describe('activeModule signal', () => {
-  it('exports activeModule as a signal defaulting to brush', () => {
-    activeModule.value = 'brush';
-    expect(activeModule.value).toBe('brush');
+  it('exports the seam on and clamps a brush write through setActiveModule', () => {
+    expect(WATERCOLOR_ONLY).toBe(true);
+    expect(activeModule.value).toBe('watercolor');
+    setActiveModule('brush');
+    expect(activeModule.value).toBe('watercolor');
     expect(typeof activeModule).toBe('object');
     expect('value' in activeModule).toBe(true);
   });

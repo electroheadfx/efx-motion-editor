@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
+import { activeModule } from '../../shared/activeModule';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -178,20 +179,28 @@ describe('261018-k1o top bar left ModuleSwitcher + centered sliders', () => {
 // top bar keeps Brush size + Opacity only among the former top-bar controls.
 describe('261017-vcn top bar slim (I-04 remainder)', () => {
   it('renders Brush size + Opacity and no Background / Grain rows', () => {
-    const props = baseTopBarProps();
-    const tree = renderTopBar(props);
-    // Host-only walk: TopBarSlider wraps SliderStepper and must not be
-    // expanded (hook state). The wrapper carries the label prop.
-    const controls = childrenOf(tree).filter(
-      (node) => typeof (node as AnyVNode).props?.label === 'string',
-    ) as AnyVNode[];
-    const labels = controls.map((s) => s.props.label);
-    expect(labels).toContain('Brush size');
-    expect(labels).toContain('Opacity');
-    expect(labels).not.toContain('Grain scale');
-    // The retired rows leave the render tree.
-    expect(() => findByAria(tree, 'Grain strength')).toThrow();
-    expect(() => findByAria(tree, 'Background')).toThrow();
+    // 261027-gh9: the app defaults to Water color, so pin the raw module to
+    // Brush to exercise the slim Brush branch this test owns.
+    const previousModule = activeModule.value;
+    activeModule.value = 'brush';
+    try {
+      const props = baseTopBarProps();
+      const tree = renderTopBar(props);
+      // Host-only walk: TopBarSlider wraps SliderStepper and must not be
+      // expanded (hook state). The wrapper carries the label prop.
+      const controls = childrenOf(tree).filter(
+        (node) => typeof (node as AnyVNode).props?.label === 'string',
+      ) as AnyVNode[];
+      const labels = controls.map((s) => s.props.label);
+      expect(labels).toContain('Brush size');
+      expect(labels).toContain('Opacity');
+      expect(labels).not.toContain('Grain scale');
+      // The retired rows leave the render tree.
+      expect(() => findByAria(tree, 'Grain strength')).toThrow();
+      expect(() => findByAria(tree, 'Background')).toThrow();
+    } finally {
+      activeModule.value = previousModule;
+    }
   });
 });
 
@@ -203,6 +212,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     vi.resetModules();
     vi.doMock('../../shared/activeModule', () => ({
       activeModule: { value: 'watercolor' },
+      WATERCOLOR_ONLY: true,
+      setActiveModule: () => {},
     }));
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
@@ -227,6 +238,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     vi.resetModules();
     vi.doMock('../../shared/activeModule', () => ({
       activeModule: { value: 'brush' },
+      WATERCOLOR_ONLY: true,
+      setActiveModule: () => {},
     }));
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },

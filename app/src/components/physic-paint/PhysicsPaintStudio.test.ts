@@ -4332,7 +4332,10 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);');
     expect(funnel).toContain('const scriptCell = resolveStudioScriptCell(frame);');
     expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
-    expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
+    // 261027-gh9: the funnel routes through the ONE clamping setter — no
+    // direct signal assignment survives in the slice.
+    expect(funnel).toContain('setActiveModule(owner);');
+    expect(funnel).not.toContain('activeModule.value =');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
     expect(funnel).toContain('[resolveStudioScriptCell],');
   });

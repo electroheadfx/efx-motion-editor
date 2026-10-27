@@ -198,7 +198,7 @@ import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilen
 import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
-import { activeModule } from '../shared/activeModule';
+import { activeModule, setActiveModule } from '../shared/activeModule';
 import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type FrameScriptCell, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
@@ -2247,7 +2247,9 @@ export function PhysicsPaintStudio() {
       if (!liveBrush) purgeAquarelleGuideGroups(frame);
       const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);
       if (owner === 'brush' || owner === 'watercolor') {
-        if (activeModule.peek() !== owner) activeModule.value = owner;
+        // 261027-gh9 — every module write goes through the one clamping setter;
+        // the owner is still published so the DEV report keeps naming 'brush'.
+        setActiveModule(owner);
       }
       setFrameScriptOwner(owner);
       // DEV-only provenance: an owner republish is the exact reported path
