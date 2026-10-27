@@ -171,3 +171,12 @@ None.
 - Commit `136b9e54` — FOUND (ancestor of HEAD)
 - Commit `b53e1703` — FOUND (ancestor of HEAD)
 - Commit `e1d437fd` — FOUND (HEAD)
+
+## UAT — approved 2026-10-27
+
+The user ran the native pass and approved the quick.
+
+Follow-up polish landed after the approval: the Studio's global `button:hover`
+rule painted a blue surface behind the switch. The switch now keeps a
+transparent background on hover (`physicsPaintStudio.css`), with its On/Off
+track and knob styling unchanged.

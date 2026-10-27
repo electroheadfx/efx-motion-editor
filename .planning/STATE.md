@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-27 - Completed quick task 261027-k6j: Script switch in the Studio top bar (On records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script)
+Last activity: 2026-10-27 - Quick task 261027-k6j UAT PASSED: Script switch in the Studio top bar (On records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script); hover surface removed after review
 
 Progress: [██████████] 100%
 
