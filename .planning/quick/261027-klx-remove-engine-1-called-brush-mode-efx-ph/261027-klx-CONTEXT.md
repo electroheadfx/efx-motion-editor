@@ -38,7 +38,7 @@ Milestone: this quick targets v2.1.0. Current v2.0.0 milestone is complete pendi
 - `stackOrder.ts` -> do not delete: copy all three functions (`clampStackPosition`, `reorderForStackPosition`, `targetIndexForStackPosition`) app-side with a parity test before the package is deleted.
 - `recordedStrokeGroups.ts`, `aquarelleStrokeBridge.ts`, `physicsPaintRotoScriptClipboard.ts` -> retype/port, not delete. The clipboard must move from engine-1's `toStudioStroke`/`fromStudioStroke` to the watercolor version (already imported as `aquarelleToStudioStroke`). Verified: `efx-watercolor` exports only `toStudioStroke` (`packages/efx-watercolor/src/payload/toStudioStroke.ts:96`), no `fromStudioStroke` — port the inverse locally or refactor the held-pose transform.
 - `app/src/lib/paperPass.frameGuard.test.ts` P4(e) -> retarget before the package is deleted, otherwise the whole suite file breaks (it reads the package source at module load).
-- Baselines kept: Studio chunk **943,411 bytes** (not 924 KB); census G1=91, G2=1,146, G3=12, G4=5, G5=132.
+- Baselines kept: Studio chunk **951,043 bytes**, re-pinned at HEAD `fadbbb3d` after k6j added 202 Studio lines (original 943,411 measured at 12:04; not 924 KB); census G1=91, G2=1,146, G3=12, G4=5, G5=132. The 2,000 kB build budget is unchanged.
 
 ### SNAP v4 clean break
 - SNAP bumps 4 -> 5 with no brush body.
@@ -71,7 +71,7 @@ Milestone: this quick targets v2.1.0. Current v2.0.0 milestone is complete pendi
 
 - Wave 0 order: ledger + tests, `conditionHeightMap` port with byte-parity test, local `BgMode` / `ToolType` / `StackReorderResult` types, negative test proving watercolor stroke recording no longer calls engine-1.
 - `conditionHeightMap` is 21 lines today; it drives the paper pass and must be byte-identical before the package is deleted.
-- Studio chunk baseline: 943,411 bytes; expected 650-700 KB after removal; 2,000 kB build budget unchanged. Stop if the chunk grows above 943,411 bytes.
+- Studio chunk baseline: 951,043 bytes (re-pinned at HEAD `fadbbb3d`); expected 650-700 KB after removal; 2,000 kB build budget unchanged. Stop if the chunk grows above 951,043 bytes.
 - `getAcceptedTarget` risk: verify the ledger can supply accepted targets for Roto move/delete/duplicate; the live port is engine-1 today.
 - Module switcher: Brush slot removed; Water color active; Krita stays inert. `activeModule` collapses to `'watercolor'`; `WATERCOLOR_ONLY` seam deleted.
 - Krita script engine placeholder is NOT kept: script `engineId` is `efx-watercolor` only.
