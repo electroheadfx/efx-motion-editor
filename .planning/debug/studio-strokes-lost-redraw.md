@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T10:05:00.000Z
+updated: 2026-10-27T10:22:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -877,3 +877,70 @@ report: |
   "confirmed fixed" only if all five rows pass. Otherwise report WHICH step
   failed, with a screenshot and the app-written evidence file, and the
   session reopens on that evidence.
+
+## UAT Round 8 — document/session track desync (2026-10-27)
+
+symptom: |
+  After the round-6/7 build: the second track's key blended with the first
+  track's key, the first track's key lost its watercolor look (thin lines),
+  and every key appeared to lose its script.
+
+on_disk_evidence: |
+  Project test.mce, 10:07 run. Paint 2's snapshot (track 3298f2eb, written
+  10:07:56) decoded to 26 watercolor events: Paint 2's 19 blue strokes
+  (#1e7fdc, size 12, anchored to Paint 2's live key 14b76751) PLUS Paint 4's
+  7 green strokes (#3eb76a, size 53/80, anchored to Paint 4's live key
+  99167e22). Paint 4's snapshot was never written this session (still 09:46;
+  83 events anchored to the deleted key 0ad41207, so the key-identity restore
+  law drops them). Key webps: Paint 4's key 99167e22 (10:07:53) = green wash
+  plus thin blue/green lines (a blend of both tracks); Paint 2's key 14b76751
+  (10:08:04) = thin blue guide-looking lines. Stroke timestamps: blue
+  09:06:04-09:06:30Z, green 09:06:53-09:07:13Z.
+
+root_cause: |
+  The live document activeTrackId and the paint SESSION (sheet + timeline +
+  snapshot binding) desynced: the document, anchors and captures followed
+  track B while the session stayed on track A. Consequences:
+  - Record-time anchors (round 7) resolved from the live document -> B's key.
+  - The first capture's auto-promotion created B's key while the sheet was
+    still A's -> the blended key webp.
+  - The save-time backfill (round 7) could bind foreign strokes to the bound
+    track; A's snapshot then wrote both tracks' strokes (the 26-event file).
+  - B's own snapshot was never written (the session never committed to B), so
+    B's latest script existed only inside A's file.
+  The switch effect's only trigger was the display-state string; a split where
+  the display state was already recorded could leave the session behind.
+
+fix: |
+  1. `aquarelleSessionTrackIdRef` — the track whose sheet/timeline/binding is
+     mounted. Set at the launch bind and at the switch commit. Stroke-end
+     anchors, capture defaults and the promotion guard resolve against it,
+     never the live document id.
+  2. The switch effect now commits when ANY of the local session ref, the
+     session pin or the snapshot binding differs from the document track —
+     not only when the display-state string changed. The outgoing flush/save
+     target the session pin; resets and bind/restore run on every commit.
+  3. Auto-key promotion refuses to run when the document track differs from
+     the session track (no key on the wrong track, no cross-track backfill).
+  4. Snapshot save law: a stroke anchored to ANOTHER track's LIVE key is
+     dropped from this track's snapshot — session AND retained file content
+     (self-heals an already-mixed file; this track's deleted-key anchors still
+     survive for undo). Foreign durable bases are dropped too.
+  5. `session-track-mismatch` probe events at stroke-end / capture / promotion.
+
+verification: |
+  Controller pins (3): a session stroke anchored to another track's live key
+  is never written; foreign retained rows are cleaned on the next save while
+  deleted-key rows survive; a foreign durable base is dropped. Studio source
+  contract (UAT round 8) pins every seam to the session ref and the widened
+  commit trigger. Suites: 372 targeted; full physic-paint folder rerun;
+  `pnpm typecheck` clean.
+
+declared_consequence: |
+  The thin/guide-looking Paint 2 key and the blended Paint 4 key are captured
+  PIXELS and cannot be un-blended. The SCRIPTS are recoverable: the 7 green
+  strokes sit in Paint 2's file with Paint 4's key anchors. Repaired candidate
+  snapshots were built and verified to seed 19 blue strokes into Paint 2 and
+  7 green strokes into Paint 4 (copies at /tmp/261027-round8-*.snap);
+  installation requires the app closed and user approval. Any key whose pixels
+  are wrong must be re-baked (Apply) or recreated by the user.

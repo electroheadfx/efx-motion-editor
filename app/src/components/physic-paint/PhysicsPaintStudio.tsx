@@ -1180,6 +1180,23 @@ export function PhysicsPaintStudio() {
         const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
         return new Map(records.map((record) => [record.appFrame, record.keyId]));
       },
+      // 261027 UAT round 8: a track's snapshot may only carry strokes its OWN
+      // live keys own. Keys of the other tracks are the evidence that a
+      // stroke crossed tracks — never write it into this file.
+      getForeignKeyIds: () => {
+        const identity = studioScriptSnapshotIdentityRef.current;
+        if (!identity) return null;
+        const document = getEfxPaintDocument(identity.layerId);
+        if (!document) return null;
+        const foreign = new Set<string>();
+        for (const track of document.tracks) {
+          if (track.id === identity.trackId) continue;
+          for (const record of physicPaintStore.getRotoRealKeyRecords(identity.layerId, track.id)) {
+            foreign.add(record.keyId);
+          }
+        }
+        return foreign;
+      },
       // 261027: the SESSION side of the same identity law — every recorded
       // stroke stamps the key it was captured on, so a saved timeline can
       // prove ownership on restore instead of trusting a frame number.
@@ -3155,6 +3172,20 @@ export function PhysicsPaintStudio() {
     if (source.selectionKind === 'real-key') {
       return fail('real-key-source');
     }
+    // 261027 UAT round 8: a promotion creates the key on the DOCUMENT's active
+    // track. If the paint session belongs to a different track, promoting here
+    // would create a key on the wrong track and bind the session's strokes to
+    // it (the on-disk cross-track anchors). Refuse instead of crossing tracks.
+    const promotionSessionTrackId = aquarelleSessionTrackIdRef.current;
+    if (promotionSessionTrackId !== null && studioActiveTrackId() !== promotionSessionTrackId) {
+      recordAquarelleRenderSplitEvent('session-track-mismatch', {
+        stage: 'promotion',
+        documentTrackId: studioActiveTrackId(),
+        sessionTrackId: promotionSessionTrackId,
+        appFrame: source.appFrame,
+      });
+      return fail('session-track-mismatch');
+    }
 
     // Quick 261022-cfn Task 1: the ONE previous-real-key resolver shared with
     // + Key. A generated/interpolated cell clones the nearest previous real
@@ -4763,6 +4794,14 @@ export function PhysicsPaintStudio() {
   const lastReferenceDisplayStateRef = useRef<string | null>(null);
   // 48-06 (UAT-A): the last track the frame-indexed edit state was built for.
   const lastEditStateTrackIdRef = useRef<string | null>(null);
+  // 261027 UAT round 8: the track the LIVE paint session belongs to — the
+  // track whose sheet, timeline and snapshot binding are mounted. Anchors and
+  // captures MUST resolve against this, never the live document id. On-disk
+  // evidence: the document moved to track B while the session stayed bound to
+  // track A, so B's strokes were anchored/captured with A's content — one
+  // track's script and key overwrote the other's. Set at the launch bind and
+  // at the switch commit (when the sheet becomes the incoming track's).
+  const aquarelleSessionTrackIdRef = useRef<string | null>(null);
   useEffect(() => {
     const lc = launchContextRef.current;
     if (!lc?.layerId) return;
@@ -4770,7 +4809,18 @@ export function PhysicsPaintStudio() {
     if (!trackId) return;
     const visible = resolvePhysicPaintTrackVisibility(lc.layerId, trackId);
     const displayState = `${trackId}:${visible ? 'visible' : 'hidden'}`;
-    if (displayState === lastReferenceDisplayStateRef.current) return;
+    // 261027 UAT round 8: the session must follow the document even when the
+    // display state was already recorded — the display-state guard used to be
+    // the ONLY trigger, so a document/session split could persist silently and
+    // one track's script and pixels were written under the other's key.
+    const sessionTrackId = aquarelleSessionTrackIdRef.current;
+    const boundSnapshotTrackId = studioScriptSnapshotIdentityRef.current?.trackId ?? null;
+    const sessionNeedsCommit =
+      lastEditStateTrackIdRef.current !== trackId
+      || (sessionTrackId !== null && sessionTrackId !== trackId)
+      || (boundSnapshotTrackId !== null && boundSnapshotTrackId !== trackId);
+    const displayStateChanged = displayState !== lastReferenceDisplayStateRef.current;
+    if (!displayStateChanged && !sessionNeedsCommit) return;
     lastReferenceDisplayStateRef.current = displayState;
     // 48-06 (UAT-A): the frame-indexed edit state (frameStates, preview/captured/
     // confirmed frames, dirty/editable sets, live-overlay counts, cached repaint
@@ -4782,15 +4832,15 @@ export function PhysicsPaintStudio() {
     // owned by the pre-state real-key identities"), and the failed edit's
     // recovery lease then disables every paint tool. A visibility flip of the
     // SAME track keeps the buffers (same content authority, same track).
-    if (lastEditStateTrackIdRef.current !== trackId) {
+    if (sessionNeedsCommit) {
       // 261027 UAT round 6: the flush below must target the OUTGOING track.
       // `setActiveTrackId` already moved the document, and the capture chain
       // resolves its target from the live active track — so without this the
       // outgoing sheet was committed onto the INCOMING track's key (track B's
-      // cache overwrote track A's key).
-      const outgoingTrackId = lastEditStateTrackIdRef.current;
-      const hadPreviousTrack = outgoingTrackId !== null;
-      lastEditStateTrackIdRef.current = trackId;
+      // cache overwrote track A's key). Round 8: the OUTGOING track is the
+      // SESSION pin — the track whose sheet is actually mounted.
+      const outgoingTrackId = sessionTrackId ?? lastEditStateTrackIdRef.current;
+      const hadPreviousTrack = outgoingTrackId !== null && outgoingTrackId !== trackId;
       if (hadPreviousTrack) {
         // quick-261023-l35 Task 3 (T-261023-l35-03/-07): the outgoing
         // track's script is captured and SAVED BEFORE any reset — without
@@ -4805,18 +4855,19 @@ export function PhysicsPaintStudio() {
           outgoingEngine?.getFramePaintSettings() ?? outgoingEngine?.getPaintRenderSettings() ?? null,
         );
         void studioScriptSnapshot.saveNow();
-        rotoEditBuffer.resetForLaunch();
-        rotoPersistence.confirmedFramesRef.current = new Map();
-        rotoEditableFramesRef.current = [];
-        cachedRotoReferenceUrlRef.current = null;
-        cachedRotoRepaintBaseFrameRef.current = null;
-        setCachedRotoRepaintBaseFrame(null);
-        // 261023-h9v: the brush script is track-scoped session content — a
-        // cross-track switch must drop it fail-closed so no previous-track
-        // entry can hydrate or draw outlines on the new track.
-        resetBrushScriptStore();
-        // quick-261023-l35: the watercolor timeline is track-scoped too.
-        resetAquarelleRecordState();
+      }
+      rotoEditBuffer.resetForLaunch();
+      rotoPersistence.confirmedFramesRef.current = new Map();
+      rotoEditableFramesRef.current = [];
+      cachedRotoReferenceUrlRef.current = null;
+      cachedRotoRepaintBaseFrameRef.current = null;
+      setCachedRotoRepaintBaseFrame(null);
+      // 261023-h9v: the brush script is track-scoped session content — a
+      // cross-track switch must drop it fail-closed so no previous-track
+      // entry can hydrate or draw outlines on the new track.
+      resetBrushScriptStore();
+      // quick-261023-l35: the watercolor timeline is track-scoped too.
+      resetAquarelleRecordState();
         // Bind the incoming key and restore it. Never awaited: this effect is
         // synchronous, and the controller's generation guard — bumped by every
         // bind — discards an earlier in-flight decode on a rapid double
@@ -4848,7 +4899,10 @@ export function PhysicsPaintStudio() {
           studioScriptSnapshotIdentityRef.current = null;
           studioScriptSnapshot.bind(null);
         }
-      }
+      // The session is committed to the incoming track: from here every
+      // anchor, capture and save resolves to it.
+      lastEditStateTrackIdRef.current = trackId;
+      aquarelleSessionTrackIdRef.current = trackId;
     }
     const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
@@ -5161,6 +5215,7 @@ export function PhysicsPaintStudio() {
         // guess a key — a wrong key would mix projects or layers.
         studioScriptSnapshotIdentityRef.current = null;
         studioScriptSnapshot.bind(null);
+        aquarelleSessionTrackIdRef.current = null;
         // quick-261025-awl (D-02): launch settle with no durable identity —
         // still publish the start frame's owner.
         applyFrameModuleState(context.startFrame);
@@ -5169,6 +5224,8 @@ export function PhysicsPaintStudio() {
       const identity: StudioScriptSnapshotIdentity = { projectId, layerId, trackId };
       studioScriptSnapshotIdentityRef.current = identity;
       studioScriptSnapshot.bind(identity);
+      // 261027 UAT round 8: the launch session belongs to the carried track.
+      aquarelleSessionTrackIdRef.current = trackId;
       const restored = await studioScriptSnapshot.restore();
       if (restored.maxRestoredMutationId > 0) {
         const nextMutationId = Math.max(
@@ -6572,10 +6629,23 @@ export function PhysicsPaintStudio() {
       // snapshot binding — a null anchor is unrecoverable on restore.
       const anchorLaunch = launchContextRef.current;
       const anchorFrame = anchorLaunch?.startFrame ?? 0;
-      const capturedKeyId = anchorLaunch
+      // 261027 UAT round 8: the stroke belongs to the track whose SESSION it
+      // was painted into. The live document id can already point elsewhere (a
+      // desynced track switch) — anchoring to it stamped one track's strokes
+      // with the other track's key, which the restore then had to drop.
+      const sessionTrackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
+      if (anchorLaunch && sessionTrackId !== studioActiveTrackId()) {
+        recordAquarelleRenderSplitEvent('session-track-mismatch', {
+          stage: 'stroke-end',
+          documentTrackId: studioActiveTrackId(),
+          sessionTrackId,
+          appFrame: anchorFrame,
+        });
+      }
+      const capturedKeyId = anchorLaunch && sessionTrackId.length > 0
         ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
             anchorLaunch.layerId,
-            studioActiveTrackId(),
+            sessionTrackId,
             anchorFrame,
           )?.keyId ?? null
         : null;
@@ -7160,9 +7230,24 @@ export function PhysicsPaintStudio() {
       // switch flush) wins. The live active track has already moved to the
       // incoming track by then, so resolving it here was the cross-track
       // overwrite: the outgoing sheet landed on the incoming key.
-      const targetTrackId = typeof captureTrackId === 'string' && captureTrackId.length > 0
+      // 261027 UAT round 8: the default is the SESSION track — the sheet the
+      // snapshot came from. The document id can diverge (a switch the session
+      // never followed); using it is how a track's sheet landed on the other
+      // track's key.
+      const sessionTrackId = aquarelleSessionTrackIdRef.current;
+      const documentTrackId = studioActiveTrackId();
+      const explicitTrackId = typeof captureTrackId === 'string' && captureTrackId.length > 0
         ? captureTrackId
-        : studioActiveTrackId();
+        : null;
+      const targetTrackId = explicitTrackId ?? sessionTrackId ?? documentTrackId;
+      if (explicitTrackId === null && sessionTrackId !== null && sessionTrackId !== documentTrackId) {
+        recordAquarelleRenderSplitEvent('session-track-mismatch', {
+          stage: 'capture',
+          documentTrackId,
+          sessionTrackId,
+          playFrame,
+        });
+      }
       let cachedBase: RenderedFramePayload | null;
       let mergeBaseWasFresh = false;
       if (pendingFirstPaintTarget !== null) {

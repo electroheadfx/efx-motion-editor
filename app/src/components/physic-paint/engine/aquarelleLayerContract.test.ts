@@ -174,12 +174,15 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // (track, frame): two tracks share frame numbers.
     expect(layer).toContain('onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot, captureTrackId)');
     const studioSwitch = studio.slice(
-      studio.indexOf('if (lastEditStateTrackIdRef.current !== trackId) {'),
+      studio.indexOf('if (sessionNeedsCommit) {'),
       studio.indexOf('void studioScriptSnapshot.saveNow();'),
     );
-    expect(studioSwitch).toContain('const outgoingTrackId = lastEditStateTrackIdRef.current');
+    expect(studioSwitch).toContain('const outgoingTrackId = sessionTrackId ?? lastEditStateTrackIdRef.current');
     expect(studioSwitch).toContain('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined)');
-    expect(studio).toContain('const targetTrackId = typeof captureTrackId');
+    // 261027 UAT round 8: the default capture target is the SESSION track (the
+    // sheet the snapshot came from). The live document id can diverge from the
+    // session, and that divergence cross-wrote the two tracks on disk.
+    expect(studio).toContain('explicitTrackId ?? sessionTrackId ?? documentTrackId');
     expect(studio).toContain('trackId: targetTrackId');
     expect(studio).toContain('aquarelleMergeBaseRef.current?.trackId !== targetTrackId');
     const coordinator = readFileSync(

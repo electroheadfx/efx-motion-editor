@@ -157,6 +157,7 @@ function harness(
     | 'getBrushFrames'
     | 'getAuthority'
     | 'getLiveKeyIds'
+    | 'getForeignKeyIds'
     | 'getPixelOnlyFrames'
     | 'getWatercolorKeyAnchors'
     | 'getDurableBases'
@@ -211,6 +212,7 @@ function harness(
     getContentSignature: overrides.getContentSignature ?? (() => signature),
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
     getLiveKeyIds: overrides.getLiveKeyIds ?? (() => null),
+    getForeignKeyIds: overrides.getForeignKeyIds ?? (() => null),
     getPixelOnlyFrames: overrides.getPixelOnlyFrames ?? (() => null),
     getWatercolorKeyAnchors:
       overrides.getWatercolorKeyAnchors ?? (() => getAquarelleStrokeKeyAnchors()),
@@ -1487,5 +1489,89 @@ describe('studioScriptSnapshotController — durable bases (261027 UAT round 4)'
 
     expect(seedDurableBases).not.toHaveBeenCalled();
     expect(report).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ------------------------------------------------------------
+//  261027 UAT round 8 — a track's file only holds its own track.
+//
+//  On-disk evidence from the user's project: track A's snapshot
+//  held seven strokes anchored to track B's live key (the two
+//  sessions desynced during a switch). Restoring either track
+//  then dropped or blended the other's script. A stroke owned by
+//  another track's LIVE key is never written to this file.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — foreign-track isolation (261027 UAT round 8)', () => {
+  it('never writes a session stroke anchored to another track’s live key', async () => {
+    const { controller, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'own-key']]),
+      getForeignKeyIds: () => new Set(['foreign-key']),
+    });
+    controller.bind(IDENTITY);
+    await controller.restore(); // missing file: empty baseline
+
+    recordAquarelleStroke(601, recordableAquarelleStroke(601, 0), 'own-key');
+    recordAquarelleStroke(602, recordableAquarelleStroke(602, 0), 'foreign-key');
+    setSignature('sig-foreign-session');
+    await controller.saveNow();
+
+    const decoded = writtenSnapshot(write);
+    expect(decoded.watercolorEvents).toHaveLength(1);
+    expect(decoded.watercolorKeyAnchors).toEqual([{ mutationId: 601, keyId: 'own-key' }]);
+  });
+
+  it('cleans foreign rows already in the file on the next save, while keeping deleted-key rows for undo', async () => {
+    const bytes = anchoredFixture(
+      [fixtureStroke(0, 611), fixtureStroke(0, 612), fixtureStroke(0, 613)],
+      [
+        { mutationId: 611, keyId: 'own-key' },
+        { mutationId: 612, keyId: 'foreign-key' },
+        { mutationId: 613, keyId: 'deleted-key' },
+      ],
+    );
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'own-key']]),
+      getForeignKeyIds: () => new Set(['foreign-key']),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(614, recordableAquarelleStroke(614, 0), 'own-key');
+    setSignature('sig-foreign-retained');
+    await controller.saveNow();
+
+    const decoded = writtenSnapshot(write);
+    expect(decoded.watercolorEvents).toHaveLength(3);
+    expect(decoded.watercolorKeyAnchors).toEqual([
+      { mutationId: 611, keyId: 'own-key' },
+      { mutationId: 613, keyId: 'deleted-key' },
+      { mutationId: 614, keyId: 'own-key' },
+    ]);
+  });
+
+  it('drops a retained durable base owned by another track’s live key', async () => {
+    const bytes = durableSnapshotFixture([
+      { keyId: 'foreign-key', bytes: null },
+      { keyId: 'deleted-key', bytes: null },
+    ]);
+    const { controller, read, write, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'own-key']]),
+      getForeignKeyIds: () => new Set(['foreign-key']),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(701, recordableAquarelleStroke(701, 0), 'own-key');
+    setSignature('sig-foreign-base');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([
+      { keyId: 'deleted-key', bytes: null },
+    ]);
   });
 });

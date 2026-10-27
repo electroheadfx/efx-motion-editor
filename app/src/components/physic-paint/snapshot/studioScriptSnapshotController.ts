@@ -137,6 +137,13 @@ export interface StudioScriptSnapshotControllerDeps {
    */
   getLiveKeyIds?: () => ReadonlyMap<number, string> | null;
   /**
+   * 261027 UAT round 8: the live key ids of every OTHER track of this layer.
+   * A snapshot is one track's file; a stroke owned by another track's live key
+   * is corruption (the two tracks' sessions desynced) and must never be
+   * written — or re-written — into this track's snapshot.
+   */
+  getForeignKeyIds?: () => ReadonlySet<string> | null;
+  /**
    * 261027: the session's mutationId → keyId anchors (record-state port).
    * Every saved watercolor stroke keeps the key it was captured on. Absent /
    * null keeps the retained file anchors only.
@@ -460,6 +467,7 @@ export function mergeStudioScriptSnapshotContent(
   sessionKeyAnchors?: ReadonlyMap<number, string> | null,
   sessionDurableBases?: ReadonlyMap<string, Uint8Array | null> | null,
   liveKeyIds?: ReadonlyMap<number, string> | null,
+  foreignKeyIds?: ReadonlySet<string> | null,
 ): StudioScriptSnapshotContent {
   const watercolorEvents: AquarellePayloadEvent[] = [];
   if (!retained) {
@@ -540,6 +548,33 @@ export function mergeStudioScriptSnapshotContent(
     brushFrames.push(frame);
   }
 
+  // 261027 UAT round 8: a stroke owned by ANOTHER track's live key is not
+  // this file's content. It is the signature of a desynced session (the
+  // document moved tracks while the paint session did not), and writing it
+  // under this track is exactly how one track's script overwrote another's.
+  // Unknown/deleted-key anchors (no live key anywhere) stay — those are this
+  // track's own deleted keys, kept for undo.
+  const foreignIds = foreignKeyIds !== null && foreignKeyIds !== undefined && foreignKeyIds.size > 0
+    ? foreignKeyIds
+    : null;
+  let finalWatercolorEvents = watercolorEvents;
+  let finalWatercolorKeyAnchors = watercolorKeyAnchors;
+  if (foreignIds) {
+    const foreignStrokeIds = new Set<number>();
+    for (const anchor of watercolorKeyAnchors) {
+      if (foreignIds.has(anchor.keyId)) foreignStrokeIds.add(anchor.mutationId);
+    }
+    if (foreignStrokeIds.size > 0) {
+      finalWatercolorEvents = watercolorEvents.filter((event) => {
+        const id = eventMutationId(event);
+        return id === undefined || !foreignStrokeIds.has(id);
+      });
+      finalWatercolorKeyAnchors = watercolorKeyAnchors.filter(
+        (anchor) => !foreignStrokeIds.has(anchor.mutationId),
+      );
+    }
+  }
+
   // 261027 UAT round 4: the durable base follows the KEY, like the anchors
   // above. A retained base for a deleted key survives for undo. A retained
   // base for a LIVE key the session no longer holds is DROPPED — the raster
@@ -551,11 +586,15 @@ export function mergeStudioScriptSnapshotContent(
   }
   const retainedBaseIds = new Set<string>();
   if (retained) {
-    for (const base of retained.durableBases) retainedBaseIds.add(base.keyId);
+    for (const base of retained.durableBases) {
+      if (foreignIds?.has(base.keyId)) continue;
+      retainedBaseIds.add(base.keyId);
+    }
   }
   const mergedBases = new Map<string, Uint8Array | null>();
   if (retained) {
     for (const base of retained.durableBases) {
+      if (foreignIds?.has(base.keyId)) continue;
       if (
         sessionDurableBases !== null
         && sessionDurableBases !== undefined
@@ -592,7 +631,12 @@ export function mergeStudioScriptSnapshotContent(
       if (left.keyId > right.keyId) return 1;
       return 0;
     });
-  return { watercolorEvents, watercolorKeyAnchors, brushFrames, durableBases };
+  return {
+    watercolorEvents: finalWatercolorEvents,
+    watercolorKeyAnchors: finalWatercolorKeyAnchors,
+    brushFrames,
+    durableBases,
+  };
 }
 
 /**
@@ -871,6 +915,7 @@ export function createStudioScriptSnapshotController(
         sessionAnchors,
         deps.getDurableBases?.() ?? null,
         liveKeyIds,
+        deps.getForeignKeyIds?.() ?? null,
       );
       // A guide proxy is engine-1 render input, never Brush script content.
       // The codec never carries the guideProxy flag, so a persisted guide row

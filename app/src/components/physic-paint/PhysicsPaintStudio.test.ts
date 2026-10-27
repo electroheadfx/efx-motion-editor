@@ -220,7 +220,9 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(effectEnd).toBeGreaterThan(effectStart);
     const effect = studio.slice(effectStart, effectEnd);
     expect(effect).toContain('const lastEditStateTrackIdRef = useRef<string | null>(null);');
-    expect(effect).toContain('if (lastEditStateTrackIdRef.current !== trackId) {');
+    // 261027 UAT round 8: the commit also fires when only the session/binding
+    // diverged from the document (the display-state guard is not the sole key).
+    expect(effect).toContain('if (sessionNeedsCommit) {');
     expect(effect).toContain('rotoEditBuffer.resetForLaunch();');
     expect(effect).toContain('rotoPersistence.confirmedFramesRef.current = new Map();');
     expect(effect).toContain('rotoEditableFramesRef.current = [];');
@@ -2814,9 +2816,35 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     // anchor — and the restore drops unanchored strokes. The promotion binds
     // them the moment the key lands.
     expect(studio).toContain('anchorUnownedAquarelleStrokesForFrame(created.appFrame, created.keyId)');
-    // The record-time anchor resolves against the LIVE active track (the
-    // paint target), not the possibly-lagging snapshot binding.
-    expect(studio).toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(\n            anchorLaunch.layerId,\n            studioActiveTrackId(),');
+    // 261027 UAT round 8: the record-time anchor resolves against the track
+    // the SESSION belongs to. The live document id can already point at
+    // another track, and that divergence is what cross-wrote two tracks.
+    const strokeEndBlock = section(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
+    expect(strokeEndBlock).toContain('aquarelleSessionTrackIdRef.current ?? studioActiveTrackId()');
+    expect(strokeEndBlock).toContain('sessionTrackId,\n            anchorFrame,');
+  });
+
+  it('pins every anchor, capture and promotion seam to the session track (UAT round 8)', () => {
+    // On-disk evidence: the document active track moved to track B while the
+    // paint session stayed bound to track A. B's green strokes were anchored
+    // to B, then saved into A's snapshot, and A's sheet was captured onto B's
+    // key — one track's script and pixels overwrote the other's.
+    expect(studio).toContain('const aquarelleSessionTrackIdRef = useRef<string | null>(null);');
+    const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
+    expect(captureBlock).toContain('explicitTrackId ?? sessionTrackId ?? documentTrackId');
+    expect(captureBlock).toContain("stage: 'capture'");
+    const promotionBlock = section(studio, 'promoteRotoPaintTargetRef.current = async (source) => {', 'const resolution = resolvePreviousRealKeyBase');
+    expect(promotionBlock).toContain("return fail('session-track-mismatch')");
+    // A snapshot never accepts another track's live key, session or retained.
+    expect(studio).toContain('getForeignKeyIds: () => {');
+    // The session follows the document on ANY session/binding divergence, not
+    // only on a display-state change; the ref is committed at the block end.
+    expect(studio).toContain('const sessionNeedsCommit =');
+    expect(studio).toContain('|| (boundSnapshotTrackId !== null && boundSnapshotTrackId !== trackId);');
+    const switchBlock = section(studio, 'if (sessionNeedsCommit) {', 'const engine = engineRef.current as PreviewBackgroundEngine | null;');
+    expect(switchBlock).toContain('const outgoingTrackId = sessionTrackId ?? lastEditStateTrackIdRef.current;');
+    expect(switchBlock).toContain('aquarelleSessionTrackIdRef.current = trackId;');
+    expect(studio).toContain('aquarelleSessionTrackIdRef.current = trackId;\n      const restored');
   });
 
   it('forces a promotion-deferred capture through the flush gate the navigation flush already passed', () => {
@@ -3982,7 +4010,7 @@ describe('261023-l35 save discipline in the Studio', () => {
   });
 
   it('saves the outgoing key, resets both stores, then binds and restores', () => {
-    const switchStart = studio.indexOf('if (lastEditStateTrackIdRef.current !== trackId) {');
+    const switchStart = studio.indexOf('if (sessionNeedsCommit) {');
     const switchBody = studio.slice(switchStart, studio.indexOf('const engine = engineRef.current as PreviewBackgroundEngine | null;', switchStart));
     // 261027 UAT round 6: the flush is pinned to the OUTGOING track — the
     // document's active track has already moved to the incoming one.
