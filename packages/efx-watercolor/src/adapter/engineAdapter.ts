@@ -62,6 +62,27 @@ export interface AquarelleAdapterOptions {
 }
 
 /**
+ * Resolve the engine paper for a bake.
+ *
+ * Studio paper ids (e.g. `paper/toned-sand`) are host ids, not vendor preset
+ * ids: the host resolves them through its ONE mapping and passes the result
+ * as `options.paperPreset`. 261027 UAT round 9: resolving them to a hardcoded
+ * `cold` sheet made every re-bake deposit on cold paper while the live sheet
+ * painted on the Studio's (e.g. toned) sheet — the Move/Apply bake lost the
+ * wash density the artist saw. A vendor id always wins; a host id uses the
+ * host-resolved preset; only an unidentifiable id falls back to DEFAULT_PAPER.
+ */
+export function resolveBakePaperPreset(
+  paper: AquarelleBakePaper | undefined,
+  hostPreset?: PaperPreset,
+): PaperPreset | undefined {
+  if (!paper) return hostPreset
+  const vendor = PAPERS.find((preset) => preset.id === paper.paperId)
+  if (vendor) return vendor
+  return hostPreset ?? DEFAULT_PAPER
+}
+
+/**
  * Accept an in-memory stroke/Dry (play path) by round-tripping it
  * through the script codec — same fail-closed validation the host
  * sees, plus the D-19 diffusion clamp.
@@ -139,8 +160,7 @@ export function createAquarelleEngineAdapter(
   // replayed deposit carries the Studio paper's tooth / granulation.
   const applyPaper = (paper: AquarelleBakePaper | undefined, preset?: PaperPreset): void => {
     if (!engine) return
-    const resolved = preset
-      ?? (paper ? PAPERS.find((p) => p.id === (paper.paperId.includes('/') ? 'cold' : paper.paperId)) ?? DEFAULT_PAPER : undefined)
+    const resolved = preset ?? resolveBakePaperPreset(paper, options.paperPreset)
     if (resolved) engine.setPaper(resolved)
     const strength = paper?.grainStrength
     if (typeof strength === 'number' && Number.isFinite(strength)) {

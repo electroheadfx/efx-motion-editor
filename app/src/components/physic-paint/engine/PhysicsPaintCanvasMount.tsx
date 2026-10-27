@@ -31,7 +31,7 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> =
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; aquarelleCachedBaseUrl?: string | null; color?: string; cursorOverlayCanvasRef?: { current: HTMLCanvasElement | null }; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void; onAquarelleFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void; onAquarelleSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void; onAquarelleSheetSessionEnd?: () => void; onAquarelleResetSheetReady?: (resetSheet: () => void) => void; onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void; onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void; onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void; brushScriptEditionActive?: boolean; getBrushScriptPlayFrame?: () => number; }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; aquarelleCachedBaseUrl?: string | null; color?: string; cursorOverlayCanvasRef?: { current: HTMLCanvasElement | null }; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; getAquarellePaperGrainStrength?: () => number; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void; onAquarelleFlushCaptureReady?: (flushCapture: ((captureTrackId?: string) => void) | null) => void; onAquarelleSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void; onAquarelleSheetSessionEnd?: () => void; onAquarelleResetSheetReady?: (resetSheet: () => void) => void; onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void; onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void; onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void; brushScriptEditionActive?: boolean; getBrushScriptPlayFrame?: () => number; }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -57,6 +57,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const onAquarelleTransformStrokesRef = useRef(props.onAquarelleTransformStrokes);
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
+  const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
   const getBrushScriptPlayFrameRef = useRef(props.getBrushScriptPlayFrame);
   const colorRef = useRef(props.color ?? '#103c65');
   onEngineReadyRef.current = props.onEngineReady;
@@ -79,6 +80,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   onAquarelleTransformStrokesRef.current = props.onAquarelleTransformStrokes;
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
+  getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
   getBrushScriptPlayFrameRef.current = props.getBrushScriptPlayFrame;
   colorRef.current = props.color ?? '#103c65';
 
@@ -236,6 +238,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
           color={colorRef.current}
           getPlayFrame={() => getAquarellePlayFrameRef.current?.() ?? 0}
           getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
+          getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
           disabled={false}
           onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
           onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}

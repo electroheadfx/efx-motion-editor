@@ -283,6 +283,13 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('engine.setPaper(');
     expect(layer).toContain('paperPresetForStudioId');
     expect(studio).toContain('getAquarellePaperId');
+    // 261027 UAT round 9: the STRENGTH is the other half of the law. The bake
+    // applies it; the live sheet did not, so a Move/Apply re-bake ran on a
+    // different tooth and lost most of the wash density the artist saw.
+    expect(layer).toContain('getPaperGrainStrength');
+    expect(layer).toContain('engine.paperTexture = nextStrength');
+    expect(mount).toContain('getAquarellePaperGrainStrength');
+    expect(studio).toContain('getAquarellePaperGrainStrength');
   });
 
   it('CURSOR: brush-size preview ring — HTML pointer hidden, ring follows aquarelleParams.size', () => {

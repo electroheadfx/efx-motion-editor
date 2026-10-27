@@ -7527,8 +7527,15 @@ export function PhysicsPaintStudio() {
     () => settingsRef.current.background,
     [],
   );
+  // 261027 UAT round 9: the Studio paper's grain strength is the engine's
+  // deposit-grain strength (the bake already applies it). The live sheet and
+  // its re-bake must run on the same tooth or Move/Apply loses wash density.
+  const getAquarellePaperGrainStrength = useCallback(
+    () => settingsRef.current.grainStrength,
+    [],
+  );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -7562,6 +7569,7 @@ export function PhysicsPaintStudio() {
       // edit frame without invalidating the mount memo on navigation.
       getAquarellePlayFrame,
       getAquarellePaperId,
+      getAquarellePaperGrainStrength,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,

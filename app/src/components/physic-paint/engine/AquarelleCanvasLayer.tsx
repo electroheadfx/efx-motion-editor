@@ -221,6 +221,13 @@ export function AquarelleCanvasLayer(props: {
   getPlayFrame: () => number;
   /** F3: Studio paper id → the engine's deposit-grain preset (R2.3). */
   getPaperId: () => string;
+  /**
+   * F3 parity (261027 UAT round 9): the Studio paper's grain strength is the
+   * engine's deposit-grain strength. The bake already applies it; leaving the
+   * live sheet on the engine default made the live wash and its re-bake run on
+   * different tooth and lose density after Move/Apply.
+   */
+  getPaperGrainStrength?: () => number;
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
@@ -295,6 +302,7 @@ export function AquarelleCanvasLayer(props: {
   const heightRef = useRef(props.height);
   const getPlayFrameRef = useRef(props.getPlayFrame);
   const getPaperIdRef = useRef(props.getPaperId);
+  const getPaperGrainStrengthRef = useRef(props.getPaperGrainStrength);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
@@ -311,6 +319,7 @@ export function AquarelleCanvasLayer(props: {
   heightRef.current = props.height;
   getPlayFrameRef.current = props.getPlayFrame;
   getPaperIdRef.current = props.getPaperId;
+  getPaperGrainStrengthRef.current = props.getPaperGrainStrength;
   onStrokeEndRef.current = props.onStrokeEnd;
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
@@ -419,13 +428,23 @@ export function AquarelleCanvasLayer(props: {
 
     applyLiveConfig(engine);
     engine.setPigment(pigmentFromHex(colorRef.current));
-    // F3: deposit grain follows the Studio paper (R2.3) — never the vendor default.
+    // F3: deposit grain follows the Studio paper (R2.3) — never the vendor
+    // default. 261027 UAT round 9: the STRENGTH is half of that law; the bake
+    // applies it, so the live sheet must too or a re-bake changes the wash.
     let lastPaperId = '';
+    let lastPaperStrength = -1;
     const applyPaper = () => {
       const paperId = getPaperIdRef.current();
-      if (paperId === lastPaperId) return;
+      const strength = getPaperGrainStrengthRef.current?.();
+      const nextStrength =
+        typeof strength === 'number' && Number.isFinite(strength)
+          ? Math.max(0, Math.min(1, strength))
+          : -1;
+      if (paperId === lastPaperId && nextStrength === lastPaperStrength) return;
       lastPaperId = paperId;
+      lastPaperStrength = nextStrength;
       engine.setPaper(paperPresetForStudioId(paperId));
+      if (nextStrength >= 0) engine.paperTexture = nextStrength;
     };
     applyPaper();
 

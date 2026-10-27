@@ -19,7 +19,8 @@ import { describe, expect, it } from 'vitest'
 import { hashMutationId } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { mixSpectral } from '@efxlab/efx-spectral'
-import { createAquarelleEngineAdapter } from './engineAdapter'
+import { createAquarelleEngineAdapter, resolveBakePaperPreset } from './engineAdapter'
+import { PAPERS } from '../playground/papers'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP } from '../payload/toStudioStroke'
 import type { AquarelleStroke } from '../payload/toStudioStroke'
@@ -143,6 +144,29 @@ function makeStrokePayload(overrides: Partial<AquarelleStroke> = {}): AquarelleS
 // ---------------------------------------------------------------------------
 // 1. Spectral mix — subtractive, not RGB average
 // ---------------------------------------------------------------------------
+
+describe('resolveBakePaperPreset (261027 UAT round 9)', () => {
+  // On-disk evidence: the live sheet painted on 'paper/toned-sand' (preset
+  // 'toned') while every Move/Apply bake resolved the same Studio id to
+  // 'cold'. The two sheets' tooth differed, and the re-bake lost most of the
+  // wash density the artist saw.
+  const host = PAPERS.find((preset) => preset.id === 'toned')!
+  const paper = { paperId: 'paper/toned-sand', grainStrength: 0.35, grainScale: 1 }
+
+  it('uses the host-resolved preset for a Studio paper id instead of cold', () => {
+    expect(resolveBakePaperPreset(paper, host)).toBe(host)
+  })
+
+  it('prefers a matching vendor preset id over the host preset', () => {
+    const cold = PAPERS.find((preset) => preset.id === 'cold')!
+    expect(resolveBakePaperPreset({ ...paper, paperId: 'cold' }, host)).toBe(cold)
+  })
+
+  it('falls back to the host preset when no paper rides the bake, and to the default for an unknown id', () => {
+    expect(resolveBakePaperPreset(undefined, host)).toBe(host)
+    expect(resolveBakePaperPreset(paper)).toBe(PAPERS[0])
+  })
+})
 
 describe('spectral mix', () => {
   it('yellow + blue returns a green-dominant colour (g > r and g > b)', () => {

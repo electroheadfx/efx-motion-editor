@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T10:22:00.000Z
+updated: 2026-10-27T10:44:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -944,3 +944,53 @@ declared_consequence: |
   7 green strokes into Paint 4 (copies at /tmp/261027-round8-*.snap);
   installation requires the app closed and user approval. Any key whose pixels
   are wrong must be re-baked (Apply) or recreated by the user.
+
+user_decision (2026-10-27T10:26Z): start a FRESH project; no snapshot repair
+installed. The project files were not modified. Backups and repaired
+candidates remain in /tmp (261027-round8-paint2-corrupt.snap,
+261027-round8-paint4-old.snap, 261027-round8-paint2-repaired.snap,
+261027-round8-paint4-repaired.snap).
+
+## UAT Round 9 — live-vs-rebake paper divergence (2026-10-27)
+
+symptom: |
+  Fresh project, two watercolor tracks. The under track's paint appeared to
+  merge with the top track's paint; after moving a stroke on each key the top
+  text lost its watercolor bloom and the under wash went pale.
+
+on_disk_evidence: |
+  The probe (/tmp/efx-aquarelle-render-split.json, 09:24-09:31Z) proves the
+  tracks did NOT cross: the top key's snapshot holds only its own 9 strokes
+  (2 blue #103c65 + 7 red #c71448, brushId 'rigger', size 15), the under key's
+  only its own 1 stroke (brushId 'round', size 66), each anchored to its own
+  track's key. The two `session-track-mismatch` entries are the navigation
+  flush of the OUTGOING sheet before the switch effect commits (target = the
+  session track — the round-8 fix working, not a cross-write).
+  The real defect is the re-bake density: top capture ink 31.54 -> bake 10.4;
+  under capture ink 65.46 -> bake 19.94 (bakeFrame 174744 B vs capture
+  345118 B). Live and re-bake use DIFFERENT PAPER: the live sheet resolves
+  'paper/toned-sand' through paperPresetForStudioId -> 'toned' with the engine
+  default grain strength (1); the bake adapter coerced any Studio id
+  containing '/' to 'cold' and applied grainStrength 0.35.
+
+fix: |
+  1. `resolveBakePaperPreset(paper, hostPreset)` (efx-watercolor adapter): a
+     vendor preset id wins; a Studio id uses the host-resolved preset passed
+     as options.paperPreset; only an unidentified id falls back to the
+     default. The old `paper.paperId.includes('/') ? 'cold'` coercion is gone.
+  2. The live sheet now applies the Studio grain STRENGTH
+     (`getPaperGrainStrength` -> engine.paperTexture), the same value the bake
+     applies — F3's law was only half-wired on the live side.
+
+verification: |
+  Package pins (3): Studio id -> host preset (not cold); vendor id wins; host
+  fallback / default fallback. App contract (F3) pins the live strength wiring
+  through mount + Studio. Suites: package 137 (4 GPU-skip), app targeted 309,
+  full physic-paint folder rerun; `pnpm typecheck` clean.
+
+status: |
+  awaiting live UAT — restart required (the app resolves @efxlab/efx-watercolor
+  from source). Test: on paper/toned-sand, paint a wash, Move a stroke, compare
+  the bloom before/after; the re-bake must keep the live density. If it still
+  thins, the next seam is the bake's deposit simulation (live coalesced pointer
+  samples vs the recorded 60 Hz grid), not the paper.
