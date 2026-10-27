@@ -1,106 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
-import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
-import { applyBackgroundFallbackToEngine } from '../engine/physicsPaintStudioSettings';
+import { useEffect, useState } from 'preact/hooks';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { efxPaintVersion, getDocument as getEfxPaintDocument } from '../../../stores/efxPaintStore';
 
-
+/**
+ * 261027-klx: the engine-1 lifecycle is gone with the Brush module. What
+ * remains is the canvas lifecycle the Studio still needs:
+ *
+ *  - `canvasMounted` gates frame-editing paths until the live surface has a
+ *    canvas in the DOM;
+ *  - a canvas-key change resets that flag;
+ *  - unmount clears the Studio's external pending-state slots.
+ *
+ * The watercolor engine itself is not owned here: `AquarelleCanvasLayer`
+ * publishes the ONE `AquarelleEnginePort` through `onEnginePortReady`, and the
+ * Studio mirrors it in `aquarelleEnginePortRef` for synchronous seams.
+ */
 export function usePhysicsPaintEngineLifecycle(input: {
   canvasKey: string;
-  canvasWidth: number;
-  canvasHeight: number;
-  launchContext: PhysicPaintLaunchContext | null;
-  setLastError: (message: string | null) => void;
   clearExternalState: () => void;
 }) {
-  const [engine, setEngine] = useState<EfxPaintEngine | null>(null);
   const [canvasMounted, setCanvasMounted] = useState(false);
-  const engineRef = useRef<EfxPaintEngine | null>(null);
-  const nativePenInputHandlerRef = useRef<NativePenInputHandler | null>(null);
 
   useEffect(() => {
-    engineRef.current = engine;
-  }, [engine]);
-
-  useEffect(() => {
-    setEngine(null);
     setCanvasMounted(false);
   }, [input.canvasKey]);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    const cleanupTabletPressureListener = () => {
-      if (!unlisten) return;
-      const listener = unlisten;
-      unlisten = undefined;
-      recordPhysicsPaintPerformanceCounter('lifecycle.engine.tabletListener.cleanup');
-      listener();
-    };
-
-    const installTabletPressureListener = async () => {
-      try {
-        const eventApi = await import('@tauri-apps/api/event');
-        if (typeof eventApi.listen !== 'function') return;
-        unlisten = await eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>('tablet:pressure', (event) => {
-          nativePenInputHandlerRef.current?.({
-            pressure: event.payload.pressure,
-            tiltX: event.payload.tilt_x,
-            tiltY: event.payload.tilt_y,
-          });
-        });
-        recordPhysicsPaintPerformanceCounter('lifecycle.engine.tabletListener.install');
-        if (disposed) cleanupTabletPressureListener();
-      } catch (error) {
-        console.warn('[PhysicsPaintStudio] native tablet pressure listener unavailable', error);
-      }
-    };
-
-    void installTabletPressureListener();
-    return () => {
-      disposed = true;
-      cleanupTabletPressureListener();
-    };
-  }, []);
-
-  // 49-04 (UAT fix): the engine bgMode hydrates from the DOCUMENT FALLBACK (the
-  // single authority), not the carried per-track roto background — the selector
-  // and engine must agree with the monitor fond before the first click.
-  // 52.1 (background live-reapply): the previous reading came from the launch
-  // context SNAPSHOT, so a mid-session background change (handleBackgroundChange
-  // → setBackgroundFallback) wrote the live document + bumped efxPaintVersion but
-  // never re-applied the engine bgMode — the Studio kept the launch background
-  // ("when I set to paper, the studio not update"). Read the LIVE document and
-  // re-apply on every efxPaintVersion bump.
-  useEffect(() => {
-    const layerId = input.launchContext?.layerId;
-    const fallback = layerId ? getEfxPaintDocument(layerId)?.background?.fallback : undefined;
-    if (engine && fallback) applyBackgroundFallbackToEngine(engine, fallback);
-  }, [engine, input.launchContext?.layerId, efxPaintVersion.value]);
-
 
   useEffect(() => () => {
     recordPhysicsPaintPerformanceCounter('lifecycle.engine.externalState.cleanup');
     return input.clearExternalState();
   }, []);
 
-  const handleEngineReady = useCallback((readyEngine: EfxPaintEngine) => {
-    engineRef.current = readyEngine;
-    setEngine(readyEngine);
-  }, []);
-
-  const handleNativePenInputReady = useCallback((handler: NativePenInputHandler) => {
-    nativePenInputHandlerRef.current = handler;
-  }, []);
-
   return {
-    engine,
-    engineRef,
     canvasMounted,
     setCanvasMounted,
-    handleEngineReady,
-    handleNativePenInputReady,
   };
 }

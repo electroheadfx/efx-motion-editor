@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
@@ -139,26 +138,11 @@ vi.mock('@preact/signals', async (importOriginal) => {
 
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
-    activeTool: 'paint',
     color: '#103c65',
-    opacity: 100,
-    brushSize: 11,
     onBrushSizeChange: vi.fn(),
-    onOpacityChange: vi.fn(),
-    edgeDetail: 50,
-    pickup: 50,
-    spread: 50,
-    smoothing: 1,
-    eraseStrength: 50,
-    physicsMode: 'local',
     onion: { enabled: true, previous: true, next: true, count: 1, opacity: 50 },
     playWiggle: { strokeDeformation: 0, strokePosition: 0 },
     onColorChange: vi.fn(),
-    onEdgeDetailChange: vi.fn(),
-    onPickupChange: vi.fn(),
-    onSpreadChange: vi.fn(),
-    onSmoothingChange: vi.fn(),
-    onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
     onUndo: vi.fn(),
@@ -433,10 +417,10 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // tab: a manual 'Track' click sticks through re-renders with
     // different active tracks/tools, and a paint revision bump does not
     // revert it.
-    // 261027-gh9: the app defaults to Water color now, so pin the raw module
-    // to Brush to render the Brush-module Paint tab this test asserts on.
+    // 261027-klx: Water color is the only module — the Paint tab renders the
+    // watercolor module section.
     const previousModule = activeModule.value;
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     try {
       const first = renderPanel(baseProps());
       clickToolTab(first, 'physics-paint-tab-track-option');
@@ -453,9 +437,9 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
 
       // Manual 'Paint' click also sticks.
       clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
-      const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
+      const onPaint = renderPanel(baseProps());
       expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-      expect(findStepper(onPaint, 'physics-edge-detail')).toBeDefined();
+      expect(findByClass(onPaint, 'physics-paint-module-section')).toBeDefined();
     } finally {
       activeModule.value = previousModule;
     }
@@ -652,18 +636,6 @@ describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
   });
 });
 
-describe('Physics Paint right panel pickup label (260930-ni6)', () => {
-  it('labels the pickup slider Blending and keeps the physics-pickup control wiring', () => {
-    // 56-02 panel-split moved the Brush-module sliders into BrushModuleSection.
-    // The rename pin follows the control home (D-05 shared/module split).
-    const panelSrc = readFileSync(new URL('./BrushModuleSection.tsx', import.meta.url), 'utf8');
-    // Presence of the new label proves the rename (the label prop holds exactly one value).
-    expect(panelSrc).toContain('label="Blending"');
-    // The id pin guards the control wiring — value/onChange stay on the same element.
-    expect(panelSrc).toContain('id="physics-pickup"');
-  });
-});
-
 /** Hand-rolled controller + ports for the Audio tab (261008-ryq). */
 function audioTabHarness(missingIds: ReadonlySet<string> = new Set()) {
   const selectedSoundId = signal<string | null>('clip-1');
@@ -800,21 +772,17 @@ const SAMPLE_MEMORY_SNAPSHOT: ScriptMemorySnapshot = {
   capturedAt: '2026-10-23T00:00:00.000Z',
   approxMethod: 'json-utf8-byte-length',
   watercolor: {
-    frames: [{ frame: 5, strokes: 2, points: 20, approxBytes: 2048 }],
+    // 261027-klx: one script store — frame 9 carries a script too so the
+    // frame-scoped purge rows keep a "scripted frame" fixture.
+    frames: [
+      { frame: 5, strokes: 2, points: 20, approxBytes: 2048 },
+      { frame: 9, strokes: 3, points: 30, approxBytes: 4096 },
+    ],
     deleted: { strokes: 0, points: 0, approxBytes: 0 },
     orphanedStrokes: 0,
     skippedStrokes: 0,
     dryEvents: { count: 0, approxBytes: 0 },
-    totals: { frames: 1, strokes: 2, points: 20, approxBytes: 2048 },
-  },
-  brush: {
-    scope: 'per-frame-session-store',
-    frames: [
-      { frame: 9, strokes: 3, points: 30, approxBytes: 4096, complete: true, diffusionFrames: 0, hydratable: true },
-    ],
-    totals: { strokes: 3, points: 30, approxBytes: 4096, completeFrames: 1, partialFrames: 0 },
-    currentEngineFrame: { available: true, strokes: 3, points: 30, approxBytes: 4096 },
-    note: 'sample note',
+    totals: { frames: 2, strokes: 5, points: 50, approxBytes: 6144 },
   },
   frameCache: {
     scope: 'this-webview',
@@ -867,12 +835,6 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     activeModule.value = previousModule;
   });
 
-  it('is the LAST top-pane tab in Brush mode (after Color/Paper)', () => {
-    activeModule.value = 'brush';
-    const tree = renderPanel(baseProps());
-    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Paper', 'Memory']);
-  });
-
   it('is the LAST top-pane tab in watercolor mode (after Color/Settings/Paper)', () => {
     activeModule.value = 'watercolor';
     const tree = renderPanel(baseProps());
@@ -882,7 +844,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('renders the gauge only on the Memory tab: contextual scripts, the selected frame, then frame caches', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const props = baseProps({ memorySection: memorySectionFixture(9) });
     const before = renderPanel(props);
     expect(textContent(before)).not.toContain('Frame caches');
@@ -895,11 +857,11 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     textContent(tree);
     const text = textContent(tree);
 
-    // Brush mode shows only the brush figure — the watercolor store is the
-    // other module's script and is never mixed into the same readout.
+    // One script store: the watercolor ledger is the whole readout.
     expect(text).toContain('Scripts total');
-    expect(text).toMatch(/Scripts total\s*·\s*Brush\s*:/);
-    expect(text).not.toContain('Watercolor');
+    expect(text).toMatch(/Scripts total\s*·\s*Watercolor\s*:/);
+    // One script store: no Brush-module figure can appear in the gauge body.
+    expect(textContent(findByClass(tree, 'physics-paint-memory-details'))).not.toContain('Brush');
     // Only the SELECTED frame is listed (no long per-frame inventory).
     expect(text).toContain('Frame 9');
     expect(text).not.toContain('Frame 5');
@@ -911,18 +873,19 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(text).toContain('Purging keeps the painted pixels');
   });
 
-  it('shows the watercolor figure in watercolor mode for the selected frame', () => {
+  it('shows the watercolor figure for the selected frame', () => {
     activeModule.value = 'watercolor';
     const tree = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
     const text = textContent(tree);
     expect(text).toMatch(/Scripts total\s*·\s*Watercolor\s*:/);
-    expect(text).not.toContain('Brush:');
+    // One script store: no Brush-module figure can appear in the gauge body.
+    expect(textContent(findByClass(tree, 'physics-paint-memory-details'))).not.toContain('Brush');
     expect(text).toContain('Frame 5');
     expect(text).toContain('Watercolor 2 strokes');
   });
 
   it('renders an empty Memory body (no throw, no figures) when the section is absent', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const first = renderPanel(baseProps());
     clickToolTab(first, 'physics-paint-tab-top-memory');
     let tree!: AnyVNode;
@@ -932,7 +895,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('re-renders an unavailable line (no figures) when the read returns null', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture();
     const props = baseProps({
       memorySection: { ...section, ports: { ...section.ports, read: () => null } },
@@ -957,9 +920,9 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     return tree;
   }
 
-  it('shows the per-key purge only for a selected frame that has a script in the active module', () => {
-    activeModule.value = 'brush';
-    // The fixture's brush script is on frame 9; watercolor is on frame 5.
+  it('shows the per-key purge only for a selected frame that has a script', () => {
+    activeModule.value = 'watercolor';
+    // The fixture scripts both frame 5 and frame 9.
     const onScripted = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(9) }));
     expect(findByClass(onScripted, 'physics-paint-memory-purge-frame')).toBeDefined();
 
@@ -970,14 +933,12 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     // Clear-all still has script strokes on the rail, so it is offered.
     expect(findByClass(onBlank, 'physics-paint-memory-clear-rail')).toBeDefined();
 
-    // In watercolor mode the same frame 5 is the scripted one.
-    activeModule.value = 'watercolor';
     const onWatercolor = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
     expect(findByClass(onWatercolor, 'physics-paint-memory-purge-frame')).toBeDefined();
   });
 
   it('shows each action only when it has something to purge', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture(9);
     const withScript = renderMemoryTab(baseProps({ memorySection: section }));
     expect(findByClass(withScript, 'physics-paint-memory-purge-frame')).toBeDefined();
@@ -1007,7 +968,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('offers the rail-range purge only for a selected key rail with scripts', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const withScripts = memorySectionFixture(9);
     withScripts.railContext.value = {
       trackName: 'Paint 1',
@@ -1048,7 +1009,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('shows the frame purge again once the rail is deselected', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture(9);
     section.railContext.value = {
       trackName: 'Paint 1',
@@ -1066,7 +1027,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('confirms the rail-range purge with the frame span', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture(9);
     section.railContext.value = {
       trackName: 'Paint 1',
@@ -1091,18 +1052,13 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('hides clear-all when the rail holds no scripts at all', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const empty: ScriptMemorySnapshot = {
       ...SAMPLE_MEMORY_SNAPSHOT,
       watercolor: {
         ...SAMPLE_MEMORY_SNAPSHOT.watercolor,
         frames: [],
         totals: { frames: 0, strokes: 0, points: 0, approxBytes: 0 },
-      },
-      brush: {
-        ...SAMPLE_MEMORY_SNAPSHOT.brush,
-        frames: [],
-        totals: { strokes: 0, points: 0, approxBytes: 0, completeFrames: 0, partialFrames: 0 },
       },
     };
     const section = memorySectionFixture(5);
@@ -1120,7 +1076,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('confirms the per-key purge, and Cancel changes nothing', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture(9);
     const props = baseProps({ memorySection: section });
     let tree = renderMemoryTab(props);
@@ -1149,7 +1105,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
   });
 
   it('confirms clear-all with the active-rail wording, and Cancel changes nothing', () => {
-    activeModule.value = 'brush';
+    activeModule.value = 'watercolor';
     const section = memorySectionFixture(5);
     const props = baseProps({ memorySection: section });
     let tree = renderMemoryTab(props);

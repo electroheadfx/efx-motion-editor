@@ -209,31 +209,25 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
 });
 
 // 261017-vcn Q6: the grain widgets left the top bar for the Paper tab. The
-// top bar keeps Brush size + Opacity only among the former top-bar controls.
+// top bar keeps Brush size + Pigment only among the former top-bar controls.
 describe('261017-vcn top bar slim (I-04 remainder)', () => {
-  it('renders Brush size + Opacity and no Background / Grain rows', () => {
-    // 261027-gh9: the app defaults to Water color, so pin the raw module to
-    // Brush to exercise the slim Brush branch this test owns.
-    const previousModule = activeModule.value;
-    activeModule.value = 'brush';
-    try {
-      const props = baseTopBarProps();
-      const tree = renderTopBar(props);
-      // Host-only walk: TopBarSlider wraps SliderStepper and must not be
-      // expanded (hook state). The wrapper carries the label prop.
-      const controls = childrenOf(tree).filter(
-        (node) => typeof (node as AnyVNode).props?.label === 'string',
-      ) as AnyVNode[];
-      const labels = controls.map((s) => s.props.label);
-      expect(labels).toContain('Brush size');
-      expect(labels).toContain('Opacity');
-      expect(labels).not.toContain('Grain scale');
-      // The retired rows leave the render tree.
-      expect(() => findByAria(tree, 'Grain strength')).toThrow();
-      expect(() => findByAria(tree, 'Background')).toThrow();
-    } finally {
-      activeModule.value = previousModule;
-    }
+  it('renders Brush size + Pigment and no Background / Grain rows', () => {
+    // 261027-klx: Water color is the only module — the bar has one branch.
+    const props = baseTopBarProps();
+    const tree = renderTopBar(props);
+    // Host-only walk: TopBarSlider wraps SliderStepper and must not be
+    // expanded (hook state). The wrapper carries the label prop.
+    const controls = childrenOf(tree).filter(
+      (node) => typeof (node as AnyVNode).props?.label === 'string',
+    ) as AnyVNode[];
+    const labels = controls.map((s) => s.props.label);
+    expect(labels).toContain('Brush size');
+    expect(labels).toContain('Pigment');
+    expect(labels).not.toContain('Opacity');
+    expect(labels).not.toContain('Grain scale');
+    // The retired rows leave the render tree.
+    expect(() => findByAria(tree, 'Grain strength')).toThrow();
+    expect(() => findByAria(tree, 'Background')).toThrow();
   });
 });
 
@@ -272,37 +266,6 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     }
   });
 
-  it('brush-mode branch shows Brush size + Opacity only (no aquarelle knobs)', async () => {
-    vi.resetModules();
-    vi.doMock('../../shared/activeModule', () => ({
-      activeModule: { value: 'brush' },
-      WATERCOLOR_ONLY: true,
-      setActiveModule: () => {},
-    }));
-    vi.doMock('./aquarelleRecordState', () => ({
-      aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
-      aquarelleSelectedTipId: { value: 'chalk' },
-      aquarelleBrushMenuOpen: { value: false },
-      aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
-      setAquarelleBrushMenuOpen: vi.fn(),
-      setAquarelleParam: vi.fn(),
-      setAquarelleScriptRecordingEnabled: vi.fn(),
-    }));
-    try {
-      const { PhysicsPaintTopBar: BrushTopBar } = await import('./PhysicsPaintTopBar');
-      const tree = BrushTopBar(baseTopBarProps()) as AnyVNode;
-      const controls = childrenOf(tree).filter(
-        (node) => typeof (node as AnyVNode).props?.label === 'string',
-      ) as AnyVNode[];
-      const labels = controls.map((s) => s.props.label);
-      expect(labels).toEqual(['Brush size', 'Opacity']);
-    } finally {
-      vi.doUnmock('../../shared/activeModule');
-      vi.doUnmock('./aquarelleRecordState');
-      vi.resetModules();
-    }
-  });
-
   it('Water / Edges / Grain route to setAquarelleParam; Pigment is the primary control (source pin)', () => {
     const body = stripComments(topBarSource());
     expect(body).toContain('setAquarelleParam');
@@ -312,12 +275,13 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     // Pigment (`load`) rides the primary slot through the Studio router — it
     // is not a second optional knob and never wears the Opacity label.
     expect(body).not.toContain('physics-paint-topbar-optional-pigment');
-    expect(body).toContain("label={isWatercolor ? 'Pigment' : 'Opacity'}");
+    expect(body).toContain('label="Pigment"');
+    // 261027-klx: one module — no branch gate and no Opacity label left.
+    expect(body).not.toContain('isWatercolor');
+    expect(body).not.toContain("'Opacity'");
     // Optional knobs carry the query-hidden classes.
     expect(body).toContain('physics-paint-topbar-optional-grain');
     expect(body).toContain('physics-paint-topbar-optional-edges');
-    // Mode gate: the watercolor knobs mount only behind the watercolor read.
-    expect(body).toContain('isWatercolor');
   });
 });
 
@@ -417,11 +381,14 @@ describe('260923-bcm Studio live wiring source pins', () => {
 
   it('engine actions destructure and export setGrainScale for the grain handlers', () => {
     const studio = studioSource();
-    // 261023-g4p: the engine-actions destructure now opens with
-    // `selectTool: selectToolEngine,` (the ONE tool-selection funnel).
-    const destructure = studio.slice(studio.indexOf('const {\n    selectTool: selectToolEngine,'), studio.indexOf('} = usePhysicsPaintEngineActions'));
+    // 261027-klx: the engine-actions surface collapsed to paper display only —
+    // the destructure is the three paper/grain setters, no tool funnel.
+    const destructureStart = studio.indexOf('const { setBackground, setGrainStrength, setGrainScale } = usePhysicsPaintEngineActions({');
+    expect(destructureStart, 'paper-display destructure must exist').toBeGreaterThan(-1);
+    const destructure = studio.slice(destructureStart, studio.indexOf('} = usePhysicsPaintEngineActions'));
     expect(destructure).toContain('setGrainScale');
     expect(destructure).toContain('setGrainStrength');
+    expect(studio).not.toContain('selectTool: selectToolEngine');
   });
 });
 

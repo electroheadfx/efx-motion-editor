@@ -4,11 +4,9 @@
 //  One ownership signal shared by the Studio seams and the top-bar
 //  switcher: compare-then-write only.
 //
-//  261027-gh9: under the WATERCOLOR_ONLY seam NO owner locks any slot —
-//  a Brush-owned key must never lock Water color. The ungated mapping
-//  (brush owns -> Water color locks, watercolor owns -> Brush locks,
-//  both/none leaves both enabled) stays for reversibility and is
-//  exercised through lockedModuleForOwner's explicit second argument.
+//  261027-klx: @efxlab/efx-watercolor is the only paint engine, so the
+//  owner union collapses to Water color or none and NO owner locks any
+//  slot. brushMoveAvailable is retyped onto the single-engine owner.
 // ============================================================
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,26 +29,11 @@ afterEach(() => {
   clearFrameScriptOwner();
 });
 
-describe('lockedModuleForOwner under the watercolor-only gate (261027-gh9)', () => {
-  it('locks nothing for any owner by default', () => {
-    for (const owner of ['brush', 'watercolor', 'both', null] as FrameScriptOwner[]) {
+describe('lockedModuleForOwner in the single-engine world', () => {
+  it('locks nothing for any owner', () => {
+    for (const owner of ['watercolor', null] as FrameScriptOwner[]) {
       expect(lockedModuleForOwner(owner), `owner ${String(owner)}`).toBeNull();
     }
-  });
-});
-
-describe('lockedModuleForOwner ungated mapping (kept for reversibility)', () => {
-  it('locks Water color when Brush owns the frame', () => {
-    expect(lockedModuleForOwner('brush', false)).toBe('watercolor');
-  });
-
-  it('locks Brush when Water color owns the frame', () => {
-    expect(lockedModuleForOwner('watercolor', false)).toBe('brush');
-  });
-
-  it('locks nothing for a both-owned or empty frame', () => {
-    expect(lockedModuleForOwner('both', false)).toBeNull();
-    expect(lockedModuleForOwner(null, false)).toBeNull();
   });
 });
 
@@ -65,17 +48,15 @@ describe('frameScriptOwner signal', () => {
       seen.push(frameScriptOwner.value);
     });
     try {
-      setFrameScriptOwner('brush');
-      setFrameScriptOwner('brush');
-      setFrameScriptOwner('both');
-      setFrameScriptOwner('both');
+      setFrameScriptOwner('watercolor');
+      setFrameScriptOwner('watercolor');
       setFrameScriptOwner(null);
       setFrameScriptOwner(null);
     } finally {
       dispose();
     }
     // One initial effect run + one run per actual value change.
-    expect(seen).toEqual([null, 'brush', 'both', null]);
+    expect(seen).toEqual([null, 'watercolor', null]);
   });
 
   it('clearFrameScriptOwner restores null', () => {
@@ -86,19 +67,9 @@ describe('frameScriptOwner signal', () => {
 });
 
 describe('brushMoveAvailable', () => {
-  // 261027 (studio-strokes-lost-redraw): a raster key that carries BOTH the
-  // live Brush capture and a leftover aquarelle registry script resolves
-  // 'both'. Move must stay available there — the tracked live Brush ledger
-  // holds the strokes even though the partial stored row is not hydratable.
-  // The moveAvailable composite still gates the dead case (no hydratable
-  // store row AND no engine-held strokes → no Move).
-  it("opens for a Brush key and for the mixed 'both' state", () => {
+  it('opens only while the frame is owned by Water color', () => {
     expect(brushMoveAvailable.value).toBe(false);
     setFrameScriptOwner('watercolor');
-    expect(brushMoveAvailable.value).toBe(false);
-    setFrameScriptOwner('both');
-    expect(brushMoveAvailable.value).toBe(true);
-    setFrameScriptOwner('brush');
     expect(brushMoveAvailable.value).toBe(true);
     clearFrameScriptOwner();
     expect(brushMoveAvailable.value).toBe(false);
@@ -110,33 +81,22 @@ describe('brushMoveAvailable', () => {
       seen.push(brushMoveAvailable.value);
     });
     try {
-      setFrameScriptOwner('brush');
-      setFrameScriptOwner('both');
       setFrameScriptOwner('watercolor');
       setFrameScriptOwner(null);
     } finally {
       dispose();
     }
-    // One initial run + one per actual BOOLEAN change: brush/both stay open,
-    // watercolor and none close.
+    // One initial run + one per actual BOOLEAN change.
     expect(seen).toEqual([false, true, false]);
   });
 });
 
 describe('lockedModuleTooltip', () => {
-  it('names the Brush owner, the locked Water color slot and the Raster remedy', () => {
+  it('names the lock and the Raster remedy', () => {
     const copy = lockedModuleTooltip('watercolor');
-    expect(copy).toContain('Brush script');
+    expect(copy).toContain('script from another module');
     expect(copy).toContain('Water color is unavailable');
     expect(copy).toContain('Raster');
-    expect(copy).toContain('either module can paint');
-  });
-
-  it('mirrors the copy for a locked Brush slot', () => {
-    const copy = lockedModuleTooltip('brush');
-    expect(copy).toContain('Water color script');
-    expect(copy).toContain('Brush is unavailable');
-    expect(copy).toContain('Raster');
-    expect(copy).toContain('either module can paint');
+    expect(copy).toContain('key can paint');
   });
 });

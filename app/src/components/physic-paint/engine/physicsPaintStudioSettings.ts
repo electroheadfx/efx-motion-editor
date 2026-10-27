@@ -1,6 +1,6 @@
-import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
+import type { BgMode, ToolType } from '../types/paintCore';
 import type { BackgroundFallback, PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoBackgroundMode } from '../../../types/physicPaint';
+import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 
 /**
  * 56-05 (PAPER-01): the Studio's background field spans the selector's BgMode
@@ -111,41 +111,6 @@ export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoB
   };
 }
 
-/** Engine BgMode segments only — library papers never reach setBgMode. */
-function engineBgMode(mode: StudioBackgroundMode): BgMode {
-  return (mode === 'transparent' || mode === 'white' || mode === 'canvas1' || mode === 'canvas2' || mode === 'canvas3' || mode === 'photo')
-    ? mode
-    : 'transparent';
-}
-
-/**
- * I-07 locked key policy for engine.setPaperGrain:
- * - transparent / white / photo → '' (grain off)
- * - canvas1/2/3 → as-is (the loaded shipped jpgs)
- * - paper/real-1..3 → canvas1/2/3 (56-05 PAPER-04 / D-12 — same shipped jpgs
- *   under their library ids; the engine already holds those height maps)
- * - any other paper/* (procedural) → the id itself (a real value, never '')
- *
- * Q5a: aquarelle deposit grain is `engine.setPaper` (AquarelleCanvasLayer),
- * not this key — real scans keep the `cold` preset there, untouched here.
- * 260925-dso: no procedural height map is ever registered into the physics
- * engine's paperTextures; the procedural id is a routing value only.
- */
-function enginePaperGrainKey(background: StudioBackgroundMode | PhysicPaintRotoBackgroundMode): string {
-  if (background === 'canvas1' || background === 'canvas2' || background === 'canvas3') return background;
-  if (background === 'paper/real-1') return 'canvas1';
-  if (background === 'paper/real-2') return 'canvas2';
-  if (background === 'paper/real-3') return 'canvas3';
-  if (background.startsWith('paper/')) return background;
-  return '';
-}
-
-export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
-  engine.setBgMode(engineBgMode(metadata.background));
-  engine.setPaperGrain(enginePaperGrainKey(metadata.background));
-  engine.setEmbossStrength(metadata.grainStrength);
-}
-
 /**
  * 49-04 (UAT fix): hydrate the Studio settings from the DOCUMENT FALLBACK as
  * the single authority on open — the selector mode reflects the fallback arm
@@ -170,22 +135,3 @@ export function applyBackgroundFallbackToSettings(fallback: BackgroundFallback):
   return { ...initial, background };
 }
 
-/**
- * 49-04 (UAT fix): apply the document fallback to the engine on open — the
- * engine bgMode must match the selector mode (both reflect the fallback
- * authority). Transparent → transparent, solid → the selector's only solid arm
- * (White), paper → its texture with the grain controls.
- */
-export function applyBackgroundFallbackToEngine(engine: EfxPaintEngine, fallback: BackgroundFallback): void {
-  if (fallback.mode === 'transparent') {
-    engine.setBgMode('transparent');
-    return;
-  }
-  if (fallback.mode === 'solid') {
-    engine.setBgMode('white');
-    return;
-  }
-  engine.setBgMode(engineBgMode(fallback.texture));
-  engine.setPaperGrain(enginePaperGrainKey(fallback.texture));
-  engine.setEmbossStrength(fallback.grainStrength);
-}

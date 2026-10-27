@@ -11,9 +11,7 @@ import {
   setBackgroundFallback,
 } from '../../../stores/efxPaintStore';
 import {
-  applyBackgroundFallbackToEngine,
   applyBackgroundFallbackToSettings,
-  applyRotoBackgroundMetadataToEngine,
   applyRotoBackgroundMetadataToSettings,
   backgroundModeToFallback,
   buildRotoBackgroundMetadata,
@@ -35,22 +33,6 @@ describe('Physics Paint Studio settings', () => {
       edgeDetail: 20, pickup: 0, eraseStrength: 100, smoothing: 1, spread: 65,
       physicsMode: 'local', activePhysicsAction: null,
     });
-  });
-
-  // 260930-ni6: there is NO launch-time push from the app settings to the
-  // engine (setSmoothing→setAntiAlias / setSpread / setEdgeDetail fire only on
-  // user change) — the engine initial state IS the fresh-open behavior. This
-  // source pin is the permanent drift detector for the app↔engine mirror.
-  it('260930-ni6: engine initial state mirrors the fresh-open defaults (edgeDetail 20, antiAlias 1, localSpreadStrength 65)', () => {
-    const enginePath = new URL('../../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url);
-    const engineSrc = readFileSync(enginePath, 'utf8');
-    const initState = engineSrc.slice(
-      engineSrc.indexOf('// Initialize engine state'),
-      engineSrc.indexOf('// Bind event handlers'),
-    );
-    expect(initState).toContain('edgeDetail: 20');
-    expect(initState).toContain('antiAlias: 1');
-    expect(initState).toContain('localSpreadStrength: 65');
   });
 
   // 260923-bcm Task 1 (RED): the paper grain SCALE is a REQUIRED settings
@@ -106,17 +88,6 @@ describe('Physics Paint Studio settings', () => {
     expect(buildRotoBackgroundMetadata({ ...settings, background: 'photo' })).toMatchObject({ background: 'transparent', grainStrength: 0.35 });
     expect(buildRotoBackgroundMetadata({ ...settings, background: 'white' })).toMatchObject({ background: 'white', color: '#ffffff' });
     expect(applyRotoBackgroundMetadataToSettings({ background: 'white', grainStrength: 0.7, color: '#ffffff' })).toMatchObject({ background: 'white', grainStrength: 0.7 });
-  });
-
-  it('applies Roto background metadata through the engine interface', () => {
-    const engine = { setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() };
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'transparent', grainStrength: 0.9 });
-    expect(engine.setBgMode).toHaveBeenCalledWith('transparent');
-    expect(engine.setPaperGrain).toHaveBeenCalledWith('');
-    expect(engine.setEmbossStrength).toHaveBeenCalledWith(0.9);
-    // Paper background → the height field follows the visible paper texture.
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'canvas2', grainStrength: 0.65 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
   });
 
   // 49-03 Task 2 (S6): the Background swatch selector is the document fallback
@@ -181,18 +152,6 @@ describe('Physics Paint Studio settings', () => {
     expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas3', grainStrength: 0.35 })).toMatchObject({ background: 'canvas3', grainStrength: 0.35 });
   });
 
-  it('49-04: applies the document fallback to the engine bgMode (transparent/solid/paper)', () => {
-    const engine = { setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() };
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'transparent' });
-    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'solid', color: '#ffffff' });
-    expect(engine.setBgMode).toHaveBeenLastCalledWith('white');
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'canvas1', grainStrength: 0.45 });
-    expect(engine.setBgMode).toHaveBeenLastCalledWith('canvas1');
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas1');
-    expect(engine.setEmbossStrength).toHaveBeenLastCalledWith(0.45);
-  });
-
   it('49-04: the fallback round-trip is stable — settings → fallback → settings', () => {
     const settings = makeInitialPhysicsPaintStudioSettings();
     for (const mode of ['transparent', 'white', 'canvas1', 'canvas2', 'canvas3'] as const) {
@@ -217,50 +176,9 @@ describe('Physics Paint Studio settings', () => {
   });
 });
 
-// I-07: setPaperGrain must receive a real key for every paper/* id (procedural
-// → the id; real scans → the canvas jpg keys) and still '' for transparent/white.
-// Q5a stays locked: aquarelle deposit grain rides engine.setPaper, not this key.
-describe('I-07 paper/* engine grain key + reopen reflection', () => {
-  const makeEngine = () => ({ setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() });
-
-  it('applyRotoBackgroundMetadataToEngine sends the procedural id itself to setPaperGrain (never "")', () => {
-    const engine = makeEngine();
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/cold-press', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenCalledWith('paper/cold-press');
-    expect(engine.setPaperGrain).not.toHaveBeenCalledWith('');
-    // engineBgMode collapse stays correct (BgMode enum has no paper/* arm).
-    expect(engine.setBgMode).toHaveBeenCalledWith('transparent');
-  });
-
-  it('applyRotoBackgroundMetadataToEngine maps paper/real-1..3 onto the canvas jpg grain keys', () => {
-    const engine = makeEngine();
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-1', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas1');
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-2', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-3', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas3');
-  });
-
-  it('applyRotoBackgroundMetadataToEngine still passes "" for transparent and white', () => {
-    const engine = makeEngine();
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'transparent', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('');
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'white', grainStrength: 0.45 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('');
-  });
-
-  it('applyBackgroundFallbackToEngine routes paper/* grain keys and keeps the setBgMode collapse', () => {
-    const engine = makeEngine();
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'paper/cold-press', grainStrength: 0.45, grainScale: 2 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('paper/cold-press');
-    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
-
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'paper/real-2', grainStrength: 0.45, grainScale: 1 });
-    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
-    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
-  });
-
+// 261027-klx: paper/* ids ride the document fallback + settings mirror only —
+// there is no engine-1 grain key to route them to any more.
+describe('paper/* reopen reflection', () => {
   it('save → reopen keeps the paper/* id in the settings mirror (fallback + metadata round-trip)', () => {
     const settings = { ...makeInitialPhysicsPaintStudioSettings(), grainStrength: 0.45, grainScale: 2 };
     const fallback = backgroundModeToFallback('paper/cold-press', settings);

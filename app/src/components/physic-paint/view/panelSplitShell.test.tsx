@@ -9,7 +9,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
-import { BrushModuleSection } from './BrushModuleSection';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -107,24 +106,6 @@ function textContent(node: unknown): string {
   return parts.join(' ');
 }
 
-function brushModuleProps() {
-  return {
-    activeTool: 'paint' as const,
-    edgeDetail: 50,
-    pickup: 50,
-    spread: 50,
-    smoothing: 1,
-    eraseStrength: 50,
-    physicsMode: 'local' as const,
-    engineControlsDisabled: false,
-    onEdgeDetailChange: () => {},
-    onPickupChange: () => {},
-    onSpreadChange: () => {},
-    onSmoothingChange: () => {},
-    onEraseStrengthChange: () => {},
-  };
-}
-
 describe('panel split shell — module-only block', () => {
   it('watercolor branch does not render the Brush param bag', () => {
     const tree = materialize(WatercolorModuleSection()) as TestVNode;
@@ -145,35 +126,10 @@ describe('panel split shell — module-only block', () => {
     expect(source).not.toMatch(/PaintModeSelector/);
   });
 
-  it('Brush branch keeps its physics param bag', () => {
-    const tree = materialize(BrushModuleSection(brushModuleProps())) as TestVNode;
-    const text = textContent(tree);
-    expect(text).toContain('Shape detail');
-    expect(text).toContain('Brush smoothing');
-  });
-
-  it('Brush smoothing sits at the top of the Brush-mode Paint tab (261018-f15)', () => {
-    const tree = materialize(BrushModuleSection(brushModuleProps())) as TestVNode;
-    const text = textContent(tree);
-    const smoothingAt = text.indexOf('Brush smoothing');
-    const shapeAt = text.indexOf('Shape detail');
-    expect(smoothingAt, 'Brush smoothing label must render').toBeGreaterThan(-1);
-    expect(shapeAt, 'Shape detail label must render').toBeGreaterThan(-1);
-    expect(smoothingAt, 'smoothing precedes Shape detail').toBeLessThan(shapeAt);
-  });
-
-  it('Brush branch has no retired mode-selector control (261018-cy1)', () => {
-    const source = readFileSync(
-      resolve(__dirname, 'BrushModuleSection.tsx'),
-      'utf8',
-    );
-    // Source-scan discipline: the retired control is gone from the Paint tool
-    // tab (the top-bar ModuleSwitcher stays). Negative scan strips comments.
-    const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(body).not.toMatch(/PaintModeSelector/);
-    const tree = materialize(BrushModuleSection(brushModuleProps())) as TestVNode;
-    const labels = [...walk(tree)].map((n) => textContent(n)).join(' ');
-    expect(labels).not.toContain('PaintModeSelector');
+  it('Brush module section is gone with engine 1 (261027-klx)', () => {
+    expect(() => readFileSync(resolve(__dirname, 'BrushModuleSection.tsx'), 'utf8')).toThrow();
+    const panelSource = readFileSync(resolve(__dirname, 'PhysicsPaintRightPanel.tsx'), 'utf8');
+    expect(panelSource).not.toMatch(/BrushModuleSection/);
   });
 
   it('empty watercolor shell renders without crashing', () => {
@@ -253,13 +209,13 @@ describe('panel split shell — right-panel chrome (261018-f15)', () => {
 });
 
 describe('panel split shell — shared block', () => {
-  it('paint-tab branch hosts the size/opacity pair above the module switch (261018-f15)', () => {
+  it('paint-tab branch hosts the size pair above the module switch (261018-f15)', () => {
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
     // 261017-w4x I-05 (Q3) kept the shared wrapper gone; 261018-f15 C2 puts a
-    // Brush size + Opacity write-through pair at the TOP of the paint tab.
+    // Brush size write-through control at the TOP of the paint tab.
     // The I-05 shared-block wrapper class stays retired.
     const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
     expect(paintTabStart, 'paint-tab branch must exist').toBeGreaterThan(-1);
@@ -269,16 +225,19 @@ describe('panel split shell — shared block', () => {
     expect(paintTab.indexOf('shared-opacity'), 'paint-tab must not host shared-opacity').toBe(-1);
     expect(paintTab.indexOf('physics-paint-shared-block'), 'shared wrapper must leave').toBe(-1);
     expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
-    // The size/opacity pair sits ABOVE the module switch.
+    // The size pair sits ABOVE the module switch.
     const pairAt = paintTab.indexOf('paint-tab-size-opacity');
     const moduleAt = paintTab.indexOf('WatercolorModuleSection');
     expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);
     expect(moduleAt, 'module switch must remain').toBeGreaterThan(-1);
     expect(pairAt, 'pair precedes the module switch').toBeLessThan(moduleAt);
-    expect(paintTab.indexOf('BrushModuleSection'), 'brush module must remain').toBeGreaterThan(-1);
-    // The pair writes through the top-bar handlers (no second setter).
+    // The pair writes through the top-bar handler (no second setter). Water
+    // color has no global opacity control — its Pigment (`load`) lives on the
+    // top bar and in the module globals, so the Brush opacity seam left with
+    // engine 1 (261027-klx).
     expect(paintTab).toContain('onBrushSizeChange');
-    expect(paintTab).toContain('onOpacityChange');
+    expect(paintTab).toContain('aquarelleParams.value.size');
+    expect(paintTab).not.toContain('onOpacityChange');
     // Opacity text remains for the Track tab and onion controls (I-10 homes).
     const trackTabSource = readFileSync(resolve(__dirname, 'RightPanelTrackTab.tsx'), 'utf8');
     const onionTabSource = readFileSync(resolve(__dirname, 'RightPanelOnionMotionTabs.tsx'), 'utf8');
@@ -295,24 +254,23 @@ describe('panel split shell — shared block', () => {
     expect(onionRowMatches.length, 'exactly one onion-value-row container').toBe(1);
   });
 
-  it('module-only block switches on activeModule', () => {
+  it('module-only block is the watercolor section only (261027-klx)', () => {
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
     expect(panelSource).toMatch(/WatercolorModuleSection/);
-    expect(panelSource).toMatch(/BrushModuleSection/);
-    expect(panelSource).toMatch(/activeModule/);
+    expect(panelSource).not.toMatch(/BrushModuleSection/);
+    // 261027-klx: one module — the panel no longer branches on the signal.
+    expect(panelSource).not.toMatch(/activeModule/);
   });
 
-  it('switching module does not mutate document or timeline state', () => {
-    // The module sections are pure presentational leaves — grep for store imports.
-    for (const file of ['WatercolorModuleSection.tsx', 'BrushModuleSection.tsx']) {
-      const source = readFileSync(resolve(__dirname, file), 'utf8');
-      expect(source, `${file} must not import document/timeline stores`).not.toMatch(
-        /projectStore|timelineStore|physicPaintStore/,
-      );
-    }
+  it('the module section does not mutate document or timeline state', () => {
+    // The module section is a pure presentational leaf — grep for store imports.
+    const source = readFileSync(resolve(__dirname, 'WatercolorModuleSection.tsx'), 'utf8');
+    expect(source, 'WatercolorModuleSection.tsx must not import document/timeline stores').not.toMatch(
+      /projectStore|timelineStore|physicPaintStore/,
+    );
   });
 });
 
@@ -352,9 +310,9 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
       'utf8',
     );
     expect(panelSource, 'no Brush tab mount').not.toMatch(/<RightPanelBrushTab\b/);
-    const settingsTabStart = panelSource.indexOf(
-      "effectiveTopPaneTab === 'settings' && isWatercolorModule",
-    );
+    // 261027-klx: the top pane is fixed — Water color is the only module, so
+    // the settings arm no longer carries a mode gate.
+    const settingsTabStart = panelSource.indexOf("effectiveTopPaneTab === 'settings'");
     expect(settingsTabStart, 'settings-tab branch must exist').toBeGreaterThan(-1);
     const paperTabStart = panelSource.indexOf(
       "effectiveTopPaneTab === 'paper'",

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, type Dispatch, type StateUpdater } from 'preact/hooks';
 import type { RefObject } from 'preact';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
@@ -14,8 +13,8 @@ import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
 import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import type { RotoPreviewBasePort } from '../roto/rotoCoordinatorPorts';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
-import { resetBrushScriptStore } from '../view/brushScriptRecordState';
 import { registerDocument } from '../../../stores/efxPaintStore';
 import { imageStore } from '../../../stores/imageStore';
 import { requestImageLibrary } from '../../../lib/physicPaintBridge';
@@ -24,7 +23,6 @@ import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsP
 import { createPhysicsPaintProjectContextSettlement, type PhysicsPaintProjectContextSettlement } from './physicsPaintProjectContextSettlement';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
 
 export interface PhysicsPaintLaunchReplacementCoordinator {
   request: (context: PhysicPaintLaunchContext) => void;
@@ -134,7 +132,8 @@ interface LaunchStatePorts {
 }
 
 export function usePhysicsPaintLaunchIntegration(input: {
-  engineRef: RefObject<EfxPaintEngine | null>;
+  /** 261027-klx: the app-owned preview base (the watercolor surface). */
+  previewBase: RotoPreviewBasePort | null;
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
   peekLaunchContext: () => PhysicPaintLaunchContext | null;
@@ -142,7 +141,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
   resetNavigationForLaunchRef: RefObject<(settings: PhysicPaintRotoPlaybackSettings) => void>;
   hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
   resetCachedReference: () => void;
-  loadCachedReferenceFrame: (frame: number, engine?: PreviewBackgroundEngine) => void;
+  loadCachedReferenceFrame: (frame: number, previewBase?: RotoPreviewBasePort) => void;
   onSettledLaunchContext?: (context: PhysicPaintLaunchContext) => void;
   /**
    * quick-261023-l35: seed the Studio script (watercolor timeline + brush
@@ -152,8 +151,6 @@ export function usePhysicsPaintLaunchIntegration(input: {
    */
   restoreStudioScriptSnapshot?: (context: PhysicPaintLaunchContext, document: unknown) => Promise<void>;
 }) {
-  const getStrokeMetadata = useCallback(() => null, []);
-
   const resetRotoSessionForLaunch = useCallback((context: PhysicPaintLaunchContext) => {
     const playbackSettings = context.rotoPlayback ?? {
       loop: false,
@@ -164,9 +161,6 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.resetNavigationForLaunchRef.current(playbackSettings);
     input.hydratePlaybackSettingsForLaunch(context, playbackSettings);
     input.resetCachedReference();
-    // 261023-g4p: the brush script store is session-scoped — a launch
-    // replacement starts from an empty store (no cross-launch leak).
-    resetBrushScriptStore();
   }, [input]);
 
   const applySettledLaunchContext = useCallback(async (context: PhysicPaintLaunchContext) => {
@@ -271,8 +265,8 @@ export function usePhysicsPaintLaunchIntegration(input: {
     if (hydration.context.documentAudio) {
       void handleEfxPaintAudioContextEvent(hydration.context.documentAudio);
     }
-    const readyEngine = input.engineRef.current;
-    if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);
+    const previewBase = input.previewBase;
+    if (previewBase) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, previewBase);
     input.state.setApplyStatus('idle');
     input.state.setApplyMessage(null);
     input.state.setLastError(null);
@@ -337,5 +331,4 @@ export function usePhysicsPaintLaunchIntegration(input: {
   // The bridge's callback type carries `undefined` (it is typed off the optional
   // launch field) while its validation gate only ever hands over a real payload.
   usePhysicsPaintProjectContextBridge((project) => { if (project) settlementRef.current?.accept(project); });
-  return { getStrokeMetadata };
 }

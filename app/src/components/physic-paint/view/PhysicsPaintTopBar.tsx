@@ -2,7 +2,6 @@ import type { TargetedMouseEvent } from 'preact';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { ChevronDown } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { activeModule } from '../../shared/activeModule';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import {
@@ -42,6 +41,12 @@ import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
  * stroke recording only.
  */
 export interface PhysicsPaintTopBarProps {
+  /**
+   * 261027-klx: kept on the props contract (the Studio's top-bar memo writes
+   * them and the paper single-home pin names them) but never read — Water
+   * color is the only module, so the live size/load always come from the
+   * aquarelle signal below.
+   */
   brushSize: number;
   opacity: number;
   ready: boolean;
@@ -152,8 +157,6 @@ function TopBarSlider(props: {
 }
 
 export function PhysicsPaintTopBar({
-  brushSize,
-  opacity,
   ready,
   disabled = false,
   onBrushSizeChange,
@@ -162,7 +165,6 @@ export function PhysicsPaintTopBar({
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
-  const isWatercolor = activeModule.value === 'watercolor';
   // Narrow signal reads: picking a brush or opening the dropdown re-renders
   // only this bar.
   const selectedTipId = aquarelleSelectedTipId.value;
@@ -176,11 +178,11 @@ export function PhysicsPaintTopBar({
     setAquarelleBrushMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
   };
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
-  // the live aquarelle size in Water color mode (signal read bypasses the memo).
-  const liveBrushSize = isWatercolor ? aquarelleParams.value.size : brushSize;
+  // the live aquarelle size (signal read bypasses the memo).
+  const liveBrushSize = aquarelleParams.value.size;
   // Water color has no opacity — its canonical Pigment `load` rides this same
   // primary control, so the bar never shows Opacity and Pigment twice.
-  const liveOpacity = isWatercolor ? aquarelleParams.value.load : opacity;
+  const liveOpacity = aquarelleParams.value.load;
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -192,16 +194,12 @@ export function PhysicsPaintTopBar({
         {/* 261027-gh9g: the module switcher is gone from the Studio top bar —
             a single Water color mode. The active brush's larger painted thumb
             and name open the brush dropdown. */}
-        {isWatercolor ? (
-          <>
-            <TopBarBrushTrigger
-              presetId={selectedTipId}
-              open={brushMenuOpen}
-              onToggle={toggleBrushMenu}
-            />
-            <ScriptRecordingSwitch />
-          </>
-        ) : null}
+        <TopBarBrushTrigger
+          presetId={selectedTipId}
+          open={brushMenuOpen}
+          onToggle={toggleBrushMenu}
+        />
+        <ScriptRecordingSwitch />
       </div>
 
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).
@@ -210,48 +208,44 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider
-          id={isWatercolor ? 'physics-aquarelle-pigment' : 'physics-brush-opacity'}
-          label={isWatercolor ? 'Pigment' : 'Opacity'}
-          min={isWatercolor ? 0 : 10}
+          id="physics-aquarelle-pigment"
+          label="Pigment"
+          min={0}
           max={100}
           value={liveOpacity}
           onChange={onOpacityChange}
           disabled={disabled}
         />
-        {isWatercolor ? (
-          <>
-            <TopBarSlider
-              id="physics-aquarelle-water"
-              label="Water"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.water}
-              onChange={(value) => setAquarelleParam('water', value)}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-water"
-            />
-            <TopBarSlider
-              id="physics-aquarelle-edges"
-              label="Edges"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.edge}
-              onChange={(value) => setAquarelleParam('edge', value)}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-edges"
-            />
-            <TopBarSlider
-              id="physics-aquarelle-grain"
-              label="Grain"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.granulation}
-              onChange={(value) => setAquarelleParam('granulation', value)}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-grain"
-            />
-          </>
-        ) : null}
+        <TopBarSlider
+          id="physics-aquarelle-water"
+          label="Water"
+          min={0}
+          max={100}
+          value={aquarelleParams.value.water}
+          onChange={(value) => setAquarelleParam('water', value)}
+          disabled={disabled}
+          class="physics-paint-topbar-optional-water"
+        />
+        <TopBarSlider
+          id="physics-aquarelle-edges"
+          label="Edges"
+          min={0}
+          max={100}
+          value={aquarelleParams.value.edge}
+          onChange={(value) => setAquarelleParam('edge', value)}
+          disabled={disabled}
+          class="physics-paint-topbar-optional-edges"
+        />
+        <TopBarSlider
+          id="physics-aquarelle-grain"
+          label="Grain"
+          min={0}
+          max={100}
+          value={aquarelleParams.value.granulation}
+          onChange={(value) => setAquarelleParam('granulation', value)}
+          disabled={disabled}
+          class="physics-paint-topbar-optional-grain"
+        />
       </div>
 
     </header>

@@ -1,13 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
-import type {
-  CompletedPaintMutation,
-  EfxPaintEngine,
-  PaintPerformanceSample,
-} from '@efxlab/efx-physic-paint';
 import { PreactHookRuntime } from '../../../test/preactHookRuntime';
-import type { NativePenInputHandler } from './PhysicsPaintCanvasMount';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -26,8 +20,14 @@ vi.mock('preact/hooks', () => ({
   useEffect: (effect: () => void | (() => void), deps?: unknown[]) => runtime.useEffect(effect, deps),
 }));
 
-vi.mock('@efxlab/efx-physic-paint/preact', () => ({
-  EfxPaintCanvas: 'efx-paint-canvas',
+// The layer modules pull the watercolor runtime; the mount's contract is which
+// layers it renders and how it forwards to the latest parent callbacks, so both
+// layers are opaque string elements here.
+vi.mock('./AquarelleCanvasLayer', () => ({
+  AquarelleCanvasLayer: 'aquarelle-canvas-layer',
+}));
+vi.mock('./AquarelleCachedBaseLayer', () => ({
+  AquarelleCachedBaseLayer: 'aquarelle-cached-base-layer',
 }));
 
 vi.mock('../performance/physicsPaintPerformanceTrace', () => ({
@@ -59,13 +59,13 @@ class ShellStub {
 }
 
 interface ParentCallbacks {
-  onEngineReady: ReturnType<typeof vi.fn>;
   onCanvasMounted: ReturnType<typeof vi.fn>;
-  onNativePenInputReady: ReturnType<typeof vi.fn>;
-  onCompletedMutation: ReturnType<typeof vi.fn>;
-  onPerformanceSample: ReturnType<typeof vi.fn>;
-  beforeEngineDestroy: ReturnType<typeof vi.fn>;
-  getStrokeMetadata: ReturnType<typeof vi.fn>;
+  onAquarelleStrokeEnd: ReturnType<typeof vi.fn>;
+  onAquarelleStrokeSettled: ReturnType<typeof vi.fn>;
+  onAquarelleTransformStrokes: ReturnType<typeof vi.fn>;
+  onEnginePortReady: ReturnType<typeof vi.fn>;
+  getAquarellePlayFrame: ReturnType<typeof vi.fn>;
+  getAquarellePaperGrainStrength: ReturnType<typeof vi.fn>;
 }
 
 interface MountedCanvas {
@@ -81,13 +81,13 @@ let cancelAnimationFrameMock: ReturnType<typeof vi.fn>;
 
 function parentCallbacks(label: string): ParentCallbacks {
   return {
-    onEngineReady: vi.fn(() => label),
     onCanvasMounted: vi.fn(),
-    onNativePenInputReady: vi.fn(),
-    onCompletedMutation: vi.fn(() => label),
-    onPerformanceSample: vi.fn(() => label),
-    beforeEngineDestroy: vi.fn(() => label),
-    getStrokeMetadata: vi.fn(() => ({ playFrame: label === 'latest' ? 22 : 11 })),
+    onAquarelleStrokeEnd: vi.fn(() => label),
+    onAquarelleStrokeSettled: vi.fn(() => label),
+    onAquarelleTransformStrokes: vi.fn(() => label),
+    onEnginePortReady: vi.fn(() => label),
+    getAquarellePlayFrame: vi.fn(() => (label === 'latest' ? 22 : 11)),
+    getAquarellePaperGrainStrength: vi.fn(() => (label === 'latest' ? 3 : 1)),
   };
 }
 
@@ -96,6 +96,7 @@ function canvasProps(callbacks: ParentCallbacks, width = 200, height = 100) {
     width,
     height,
     paperTextureScale: 1,
+    getAquarellePaperId: () => 'paper/cold-press',
     ...callbacks,
   };
 }
@@ -111,10 +112,16 @@ function renderCanvas(callbacks: ParentCallbacks, width = 200, height = 100, she
   runtime.beginRender();
   const tree = PhysicsPaintCanvasMount(canvasProps(callbacks, width, height)) as AnyVNode;
   (tree.ref as { current: ShellStub | null }).current = shell;
-  const child = childrenOf(tree).find((node) => node.type === 'efx-paint-canvas');
+  const child = childrenOf(tree).find((node) => node.type === 'aquarelle-canvas-layer');
   expect(child).toBeDefined();
   runtime.flushEffects();
   return { tree, child: child!, shell };
+}
+
+function flushAnimationFrames() {
+  const frames = [...pendingAnimationFrames.entries()];
+  pendingAnimationFrames.clear();
+  for (const [, callback] of frames) callback(0);
 }
 
 beforeEach(() => {
@@ -139,46 +146,51 @@ beforeEach(() => {
 });
 
 describe('PhysicsPaintCanvasMount directly executed hook behavior', () => {
-  it('keeps captured Efx callback identities stable while invoking only the latest parent callbacks', () => {
+  it('renders the watercolor layer only and forwards to the latest parent callbacks', () => {
     const initial = parentCallbacks('initial');
     const latest = parentCallbacks('latest');
     const mounted = renderCanvas(initial);
+    // 261027-klx: engine-1's Efx child surface is gone — the mount renders the
+    // live aquarelle sheet (and, with a cached key, its base layer) and nothing
+    // else.
+    expect(childrenOf(mounted.tree).some((node) => node.type === 'efx-paint-canvas')).toBe(false);
+
     const rerendered = renderCanvas(latest, 200, 100, mounted.shell);
-    const callbackNames = [
-      'onEngineReady',
-      'onNativePenInputReady',
-      'onCompletedMutation',
-      'onPerformanceSample',
-      'beforeEngineDestroy',
-      'getStrokeMetadata',
-    ] as const;
+    // The mount effect only re-registers on a dimension change; the pending
+    // frame must forward to the LATEST parent callback captured by the rerender.
+    flushAnimationFrames();
 
-    for (const name of callbackNames) {
-      expect(rerendered.child.props[name], name).toBe(mounted.child.props[name]);
-    }
+    const stroke = { id: 1 };
+    const port = { snapshot: vi.fn() };
+    const transform = { translateX: 4 };
+    mounted.child.props.onStrokeEnd(stroke);
+    mounted.child.props.onStrokeSettled(stroke, 3);
+    mounted.child.props.onTransformStrokes([1], transform);
+    mounted.child.props.onEnginePortReady(port);
 
-    const engine = { setTool: vi.fn(), setVisibleBackgroundSuppressed: vi.fn(), setInputLocked: vi.fn(), setCursorOverlayCanvas: vi.fn() } as unknown as EfxPaintEngine;
-    const penHandler = vi.fn() as unknown as NativePenInputHandler;
-    const mutation = {} as CompletedPaintMutation;
-    const sample = {} as PaintPerformanceSample;
-    mounted.child.props.onEngineReady(engine);
-    mounted.child.props.onNativePenInputReady(penHandler);
-    mounted.child.props.onCompletedMutation(mutation, engine);
-    mounted.child.props.onPerformanceSample(sample);
-    mounted.child.props.beforeEngineDestroy(engine);
-
-    expect(mounted.child.props.getStrokeMetadata()).toEqual({ playFrame: 22 });
-    expect(engine.setTool).toHaveBeenCalledWith('paint');
-    // 48-06: the program monitor owns the visible background — the engine's
-    // canvases stay transparent so the flattened composite shows through.
-    expect(engine.setVisibleBackgroundSuppressed).toHaveBeenCalledWith(true);
-    expect(latest.onEngineReady).toHaveBeenCalledWith(engine);
+    expect(latest.onAquarelleStrokeEnd).toHaveBeenCalledWith(stroke);
+    expect(latest.onAquarelleStrokeSettled).toHaveBeenCalledWith(stroke, 3);
+    expect(latest.onAquarelleTransformStrokes).toHaveBeenCalledWith([1], transform);
+    expect(latest.onEnginePortReady).toHaveBeenCalledWith(port);
     expect(latest.onCanvasMounted).toHaveBeenCalledWith(true);
-    expect(latest.onNativePenInputReady).toHaveBeenCalledWith(penHandler);
-    expect(latest.onCompletedMutation).toHaveBeenCalledWith(mutation, engine);
-    expect(latest.onPerformanceSample).toHaveBeenCalledWith(sample);
-    expect(latest.beforeEngineDestroy).toHaveBeenCalledWith(engine);
     for (const callback of Object.values(initial)) expect(callback).not.toHaveBeenCalled();
+
+    // The frame/paper getters are read through refs, so the SAME child vnode
+    // serves the latest values without re-invoking the parent closure captured
+    // at the first render.
+    expect(mounted.child.props.getPlayFrame()).toBe(22);
+    expect(mounted.child.props.getPaperGrainStrength()).toBe(3);
+    expect(rerendered.child.props.getPlayFrame()).toBe(22);
+  });
+
+  it('renders the cached base layer under the live sheet when a cached key URL is present', () => {
+    runtime.beginRender();
+    const tree = PhysicsPaintCanvasMount({
+      ...canvasProps(parentCallbacks('cached')),
+      aquarelleCachedBaseUrl: 'blob:cached-key',
+    }) as AnyVNode;
+    const cached = childrenOf(tree).find((node) => node.type === 'aquarelle-cached-base-layer');
+    expect(cached?.props.url).toBe('blob:cached-key');
   });
 
   it('keeps the dimension effect mounted for equal dimensions and reconfigures it once when width or height changes', () => {

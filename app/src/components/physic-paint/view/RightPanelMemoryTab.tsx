@@ -2,14 +2,14 @@
 //  RightPanelMemoryTab — the LAST top-pane tab (quick 261023-ors).
 //
 //  READ-ONLY script-memory gauge plus the purge entry points:
-//    - Scripts: watercolor timeline + brush session store
+//    - Scripts: the watercolor timeline store
 //      ({strokes, points, approxBytes} per frame and total)
 //    - Frame caches / LRU: the raster/bitmap footprint, in its
 //      OWN section, never folded into a script total
 //
 //  Motion/Static Rails are derived Loop Clips with no key scripts;
-//  the gauge reads only the watercolor and brush stores, so a rail
-//  can never appear in a row.
+//  after engine-1 removal the watercolor registry is the whole script
+//  memory, so a rail can never appear in a row.
 //
 //  REACTIVITY (38-11 signal-bypasses-memo): the snapshot lives in a
 //  signal created ONCE inside a useRef — never useState, never a
@@ -26,7 +26,6 @@
 
 import { useEffect, useRef } from 'preact/hooks';
 import { effect, signal, type Signal } from '@preact/signals';
-import { activeModule } from '../../shared/activeModule';
 import {
   buildStudioScriptMemoryFrameRows,
   formatScriptMemoryBytes,
@@ -35,7 +34,6 @@ import {
 } from '../performance/studioScriptMemoryGauge';
 import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
 import { aquarelleStrokesRevision } from './aquarelleRecordState';
-import { brushScriptRevision } from './brushScriptRecordState';
 
 /** Debounce after a script revision before the estimator walks the stores. */
 export const MEMORY_GAUGE_DEBOUNCE_MS = 250;
@@ -73,11 +71,11 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
     snapshotSignal.value = ports.read();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let seedRun = true;
-    // ONE subscription for both stores. The first run is this effect's own
-    // seed read; every later revision schedules one debounced re-read.
+    // ONE subscription for the watercolor store. The first run is this
+    // effect's own seed read; every later revision schedules one debounced
+    // re-read.
     const disposeSubscription = effect(() => {
       aquarelleStrokesRevision.value;
-      brushScriptRevision.value;
       if (seedRun) {
         seedRun = false;
         return;
@@ -122,31 +120,25 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
     );
   }
 
-  // Contextual gauge: the Studio runs one module at a time, so only that
-  // module's script store is meaningful. Showing both rows always left one
-  // side at zero on a real session.
-  const isWatercolor = activeModule.value === 'watercolor';
-  const scriptLabel = isWatercolor ? 'Watercolor' : 'Brush';
-  const totals = isWatercolor ? snapshot.watercolor.totals : snapshot.brush.totals;
+  // After engine-1 removal the watercolor registry is the whole script
+  // memory — there is no second store to label or fold in.
+  const scriptLabel = 'Watercolor';
+  const totals = snapshot.watercolor.totals;
   const currentRow = buildStudioScriptMemoryFrameRows(snapshot).find(
     (row) => row.frame === currentFrame,
   );
-  const frameStats = (isWatercolor ? currentRow?.watercolor : currentRow?.brush) ?? {
+  const frameStats = currentRow?.watercolor ?? {
     strokes: 0,
     points: 0,
     approxBytes: 0,
   };
-  // Per-key purge reads the displayed module's frame. Clear-all and the
-  // rail-range purge consider BOTH stores: the rail may hold scripts from the
-  // other module, and the actions clear them.
   const hasFrameScript = frameStats.strokes > 0;
-  const hasAnyScript = snapshot.watercolor.totals.strokes + snapshot.brush.totals.strokes > 0;
+  const hasAnyScript = snapshot.watercolor.totals.strokes > 0;
   const railSelected = rail?.railSelected === true;
   const keyRail = rail?.keyRail ?? null;
   const keyRailFrames = keyRail ? new Set(keyRail.frames) : null;
   const railHasScript = keyRailFrames
     ? snapshot.watercolor.frames.some((row) => keyRailFrames.has(row.frame) && row.strokes > 0)
-      || snapshot.brush.frames.some((row) => keyRailFrames.has(row.frame) && row.strokes > 0)
     : false;
 
   // A successful purge refreshes the gauge IMMEDIATELY (the debounced revision

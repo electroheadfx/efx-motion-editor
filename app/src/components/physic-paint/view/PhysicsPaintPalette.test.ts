@@ -117,29 +117,14 @@ const DEFAULTS = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff666
 
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
-    activeTool: 'paint',
     color: '#103c65',
-    opacity: 100,
-    // 261018-f15 C2: the panel's size router is brushSize/onBrushSizeChange
-    // (the retired `size`/`onSizeChange` props no longer exist). The palette
-    // suite does not exercise size or opacity.
-    brushSize: 11,
+    // 261018-f15 C2: the panel's size router is onBrushSizeChange (the retired
+    // `size`/`onSizeChange` props no longer exist). The palette suite does not
+    // exercise size.
     onBrushSizeChange: vi.fn(),
-    onOpacityChange: vi.fn(),
-    edgeDetail: 50,
-    pickup: 50,
-    spread: 50,
-    smoothing: 1,
-    eraseStrength: 50,
-    physicsMode: 'local',
     onion: { enabled: true, previous: true, next: true, count: 1, opacity: 50 },
     playWiggle: { strokeDeformation: 0, strokePosition: 0 },
     onColorChange: vi.fn(),
-    onEdgeDetailChange: vi.fn(),
-    onPickupChange: vi.fn(),
-    onSpreadChange: vi.fn(),
-    onSmoothingChange: vi.fn(),
-    onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
     onUndo: vi.fn(),

@@ -7,12 +7,10 @@ const mountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.
 const wrapperPath = fileURLToPath(new URL('./MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const studioPath = fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url));
 const viewPath = fileURLToPath(new URL('../view/PhysicsPaintStudioView.tsx', import.meta.url));
-const enginePath = fileURLToPath(new URL('../../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url));
 const mount = readFileSync(mountPath, 'utf8');
 const wrapper = existsSync(wrapperPath) ? readFileSync(wrapperPath, 'utf8') : '';
 const studio = readFileSync(studioPath, 'utf8');
 const view = readFileSync(viewPath, 'utf8');
-const engine = readFileSync(enginePath, 'utf8');
 
 function resolveBlock(source: string, declaration: string, nextDeclaration: string): string {
   const start = source.indexOf(declaration);
@@ -53,6 +51,23 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(view).toContain('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
   });
 
+  it('renders only the watercolor surfaces — engine-1 is gone', () => {
+    // 261027-klx: `@efxlab/efx-watercolor` is the only paint engine. The mount
+    // renders the live aquarelle sheet over its cached base and nothing else;
+    // the Efx child, the Brush script overlay and the hard-coded engine-1 paper
+    // URLs (which fed the deleted package) must never come back. Comments are
+    // stripped for the negative scan so the removal note above cannot trip it.
+    const mountCode = mount.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(mountCode).toContain('<AquarelleCanvasLayer');
+    expect(mountCode).toContain('<AquarelleCachedBaseLayer');
+    expect(mountCode).not.toContain('EfxPaintCanvas');
+    expect(mountCode).not.toContain('efx-physic-paint');
+    expect(mountCode).not.toContain('BrushScriptOverlay');
+    expect(mountCode).not.toContain('paper_1.jpg');
+    expect(mountCode).not.toContain('paper_2.jpg');
+    expect(mountCode).not.toContain('paper_3.jpg');
+  });
+
   it('keeps mount identity structural and excludes frame-navigation values', () => {
     const mountBlock = resolveBlock(
       studio,
@@ -64,14 +79,17 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
       'canvasWidth',
       'canvasHeight',
       'paperTextureScale',
+      'setCanvasMounted',
+      'handleAquarelleEnginePortReady',
+    ]) expect(deps).toContain(dependency);
+    for (const engineOneDependency of [
       'handleCanvasEngineReady',
       'handleCanvasCompletedMutation',
-      'setCanvasMounted',
       'handleNativePenInputReady',
       'recordEnginePerformance',
       'rotoScript.prepareEngineDisposal',
       'getStrokeMetadata',
-    ]) expect(deps).toContain(dependency);
+    ]) expect(deps).not.toContain(engineOneDependency);
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
   });
 
@@ -95,7 +113,7 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
       'canvasMount',
       // 48-05 (D-05): the program monitor config's real inputs — the stack
       // re-resolves on navigation / playback / document changes so the leaf
-      // draws the current composite, while the engine canvas stays memoized
+      // draws the current composite, while the watercolor stack stays memoized
       // behind the stable canvasMount identity + canvasKey.
       'launchContext?.layerId',
       'currentFrame',
@@ -107,29 +125,26 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     for (const invalidator of ['startFrame', 'rotoNavigationGeneration']) expect(deps).not.toContain(invalidator);
   });
 
-  it('updates parent callback refs during render and exposes stable Efx forwarders', () => {
+  it('updates parent callback refs during render and forwards to the latest callback', () => {
     for (const callback of [
-      'onEngineReady',
       'onCanvasMounted',
-      'onNativePenInputReady',
-      'onCompletedMutation',
-      'onPerformanceSample',
-      'beforeEngineDestroy',
-      'getStrokeMetadata',
+      'onAquarelleStrokeEnd',
+      'onAquarelleStrokeSettled',
+      'onAquarelleCaptureFrame',
+      'onAquarelleFlushCaptureReady',
+      'onAquarelleSnapshotReady',
+      'onAquarelleSheetSessionEnd',
+      'onAquarelleResetSheetReady',
+      'onAquarelleDeleteStrokes',
+      'onAquarelleMoveStrokes',
+      'onAquarelleTransformStrokes',
+      'onEnginePortReady',
     ]) {
       expect(mount).toContain(`const ${callback}Ref = useRef(props.${callback});`);
       expect(mount).toContain(`${callback}Ref.current = props.${callback};`);
     }
-    for (const forwarder of [
-      'handleEngineReady',
-      'handleNativePenInputReady',
-      'handleCompletedMutation',
-      'handlePerformanceSample',
-      'handleBeforeEngineDestroy',
-      'handleGetStrokeMetadata',
-    ]) {
-      expect(mount).toMatch(new RegExp(`const ${forwarder} = useCallback\\([\\s\\S]*?\\}, \\[\\]\\);`));
-    }
+    // Wave 3 D8: the ONE narrow engine port is forwarded from the layer.
+    expect(mount).toContain('onEnginePortReady={(port) => onEnginePortReadyRef.current?.(port)}');
   });
 
   it('carries the active track opacity/blend to the engine shell as CSS group opacity + mix-blend (48-06 N2/N3)', () => {
@@ -213,65 +228,37 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(css).toContain('.physics-paint-fond-layer {\n  position: absolute;\n  z-index: 0;\n  pointer-events: none;\n  overflow: hidden;');
   });
 
-  it('preserves engine-ready ordering and latest callback invocation', () => {
-    const readyStart = mount.indexOf('const handleEngineReady = useCallback(');
-    const readyEnd = mount.indexOf('const handleNativePenInputReady', readyStart);
-    const ready = mount.slice(readyStart, readyEnd);
-    const order = [
-      "engine.setTool('paint');",
-      'setMountError(null);',
-      'onCanvasMountedRef.current(true);',
-      "recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');",
-      'return onEngineReadyRef.current(engine);',
-    ].map((literal) => ready.indexOf(literal));
-    expect(order.every((index) => index >= 0)).toBe(true);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-  });
-
   it('keeps dimension observer and keyed lifecycle ownership unchanged', () => {
     expect(mount).toContain('}, [props.height, props.width]);');
     expect(view).toContain('<MemoizedPhysicsPaintCanvasMount');
     expect(view).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
     for (const counter of [
+      'render.canvasMount',
       'render.efxChildRequest',
       'observer.canvasMount.resize.install',
       'observer.canvasMount.resize.cleanup',
-      'lifecycle.canvasMount.engineReady',
-      'lifecycle.canvasMount.beforeDestroy',
     ]) expect(mount.split(`recordPhysicsPaintPerformanceCounter('${counter}')`).length - 1).toBe(1);
+    // The engine-1 lifecycle counters rode the deleted Efx child.
+    expect(mount).not.toContain('lifecycle.canvasMount.engineReady');
+    expect(mount).not.toContain('lifecycle.canvasMount.beforeDestroy');
   });
 
-  it('applies the paper pass once to the whole tracks group and keeps the ring outside it', () => {
+  it('applies the paper pass once to the whole tracks group', () => {
     const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
     // Product law 2026-10-26 (opaque sheets): the tracks group is the single
-    // paper pass in BOTH modules — monitor composite + engine wet/dry stack +
-    // the aquarelle sheet are flattened together, exactly once. The old
-    // aquarelle carve-outs (per-layer multiply, isolation lift) are gone.
+    // paper pass — monitor composite + the aquarelle sheet stack are flattened
+    // together, exactly once. The old aquarelle carve-outs (per-layer multiply,
+    // isolation lift) are gone.
     const groupRule = css.slice(css.indexOf('.physics-paint-tracks-group {'));
     expect(groupRule.slice(0, groupRule.indexOf('}'))).toContain('mix-blend-mode: multiply');
     // Inside that pass the monitor must not multiply a second time.
     const monitorRule = css.slice(css.indexOf('\n.physics-paint-program-monitor {'));
     expect(monitorRule.slice(0, monitorRule.indexOf('}'))).toContain('mix-blend-mode: normal');
-    // No module-specific guard: one law for Brush and Water color.
+    // No module-specific guard: one law for every track sheet.
     expect(css).not.toContain('.physics-paint-tracks-group:not(.aquarelle-compositing)');
     expect(css).not.toContain('.physics-paint-tracks-group.aquarelle-compositing,');
-    // The ring renders on its own canvas above the group, never inside it.
-    expect(css).toContain('.physics-paint-brush-cursor-overlay {\n  position: absolute;\n  z-index: 3;\n  pointer-events: none;');
-    expect(view).toContain('class="physics-paint-brush-cursor-overlay"');
-    expect(view).toContain('cursorOverlayCanvasRef={brushCursorOverlayRef}');
-    const monitorIndex = view.indexOf('<PhysicsPaintProgramMonitor');
-    const groupClose = view.indexOf(') : null}\n      </div>', monitorIndex);
-    const overlayIndex = view.indexOf('class="physics-paint-brush-cursor-overlay"');
-    expect(monitorIndex).toBeGreaterThanOrEqual(0);
-    expect(groupClose).toBeGreaterThan(monitorIndex);
-    expect(overlayIndex).toBeGreaterThan(groupClose);
-    // The engine paints the ring into the host canvas and keeps it out of the
-    // display composite; Water color hands the cursor back to the display.
-    expect(engine).toContain('setCursorOverlayCanvas(canvas: HTMLCanvasElement | null): void {');
-    expect(engine).toContain('if (this.cursorOverlay) this.renderCursorOverlay()');
-    expect(engine).toContain('if (!this.cursorOverlay) this.lastCursorRect = null');
-    expect(mount).toContain('engine.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);');
-    const swap = "engineRef.current?.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);";
-    expect(mount.split(swap).length - 1).toBe(1);
+    // 261027-klx: the engine-1 brush cursor ring canvas is gone — Water color
+    // owns its DOM ring on the sheet itself.
+    expect(view).not.toContain('physics-paint-brush-cursor-overlay');
   });
 });

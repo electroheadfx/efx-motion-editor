@@ -90,10 +90,12 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(paintTab.indexOf('shared-opacity'), 'shared-opacity must leave').toBe(-1);
     expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
 
-    // The size/opacity pair precedes the MODULE-ONLY switch.
+    // The size pair precedes the MODULE-ONLY switch.
     expect(paintTab.indexOf('MODULE-ONLY block')).toBeGreaterThan(-1);
     expect(paintTab.indexOf('WatercolorModuleSection')).toBeGreaterThan(-1);
-    expect(paintTab.indexOf('BrushModuleSection')).toBeGreaterThan(-1);
+    // 261027-klx: the Brush-module section left with engine 1 — Water color is
+    // the only module surface in the Paint tab.
+    expect(paintTab.indexOf('BrushModuleSection'), 'Brush module section must leave').toBe(-1);
     const pairAt = paintTab.indexOf('paint-tab-size-opacity');
     const moduleSwitchIndex = paintTab.indexOf('WatercolorModuleSection');
     expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);

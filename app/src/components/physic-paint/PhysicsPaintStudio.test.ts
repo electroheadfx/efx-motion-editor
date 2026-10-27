@@ -317,15 +317,18 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     ]) expect(studio).not.toContain(secondAuthority);
   });
 
-  it('routes Group Paint activation and completion by Group identity and restores accepted content when capture rejects', () => {
+  it('routes Group Paint activation and completion by Group identity', () => {
+    // 261027-klx: the engine-1 captured-content restore path left with the Efx
+    // child — the aquarelle sheet owns its own capture. Activation still
+    // resolves the target ONCE and lets a Group frame bypass self-promotion.
     expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)');
     expect(studio).toContain("paintTarget?.kind === 'group-frame'");
+    expect(studio).toContain("if (paintTarget?.kind !== 'empty') return;");
     expect(studio).not.toContain("groupTarget?.kind === 'group-gap'");
-    expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, appFrame, currentCellKeyId)');
-    expect(studio).toContain("completedTarget.kind === 'group-frame'");
-    expect(studio).toContain('keyId: keyId ?? undefined');
-    expect(studio).toContain('if (!await capture && shouldReloadRotoFrameAfterFailedCapture()) {');
-    expect(studio).toContain('engineRef.current as PreviewBackgroundEngine | null,\n          undefined,\n          true,');
+    expect(studio).not.toContain('shouldReloadRotoFrameAfterFailedCapture');
+    // Completion arrives from the app-owned ledger and pairs the paint barrier
+    // with the Move history — no engine callback stands between them.
+    expect(studio).toContain('rotoMoveHistory.observePaintMutation(mutationId, kind);');
   });
 
   it('stamps records-only ownership rebuilds with the complete canonical revision', () => {
@@ -1024,7 +1027,9 @@ describe('Physics Paint navigation render localization', () => {
     for (const invalidator of ['currentFrame', 'startFrame', 'rotoNavigationGeneration']) expect(topBarDeps).not.toContain(invalidator);
 
     const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
-    const dialogEnd = studio.indexOf('const canvasEngineReadyImplRef =', dialogStart);
+    // 261027-klx: the engine-1 canvas-ready seam is gone — the ledger
+    // completion ref is the first Studio-owned declaration after the dialog.
+    const dialogEnd = studio.indexOf('const canvasCompletedMutationImplRef =', dialogStart);
     const dialogBlock = studio.slice(dialogStart, dialogEnd);
     expect(dialogStart).toBeGreaterThanOrEqual(0);
     // D-08R: settings.color is a deliberate dep — the live brush-color prop must re-resolve on
@@ -1036,7 +1041,7 @@ describe('Physics Paint navigation render localization', () => {
 
   it('propagates the primitive open transition through the exact memoized dialog props contract', () => {
     const dialogStart = studio.indexOf('const playScriptDialog = playScriptDialogPropsMemo.resolve(');
-    const dialogEnd = studio.indexOf('const canvasEngineReadyImplRef =', dialogStart);
+    const dialogEnd = studio.indexOf('const canvasCompletedMutationImplRef =', dialogStart);
     const dialogBlock = studio.slice(dialogStart, dialogEnd);
     const dialogDeps = dialogBlock.slice(0, dialogBlock.indexOf('], () =>'));
     const dialogPropsStart = playScriptDialog.indexOf('export interface PhysicsPaintPlayScriptDialogProps');
@@ -1173,21 +1178,28 @@ describe('Canvas navigation render localization', () => {
   it('assembles stable CanvasStack and CanvasMount props with named callback boundaries', () => {
     expect(studio).toContain('const canvasStackPropsMemo = useRef(createIdentityMemo()).current;');
     expect(studio).toContain('const canvasMountPropsMemo = useRef(createIdentityMemo()).current;');
-    expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
-    expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
+    // 261027-klx: the engine-1 onEngineReady / onCompletedMutation seam left
+    // with the Efx child. The ONE aquarelle port callback is named.
+    expect(studio).toContain('const handleAquarelleEnginePortReady = useCallback(');
+    expect(studio).toContain('const handleAquarelleStrokeEnd = useCallback(');
     expect(studio).toContain('const canvasMount = canvasMountPropsMemo.resolve(');
     expect(studio).toContain('const canvasStack = canvasStackPropsMemo.resolve(');
     expect(studio).not.toContain('onEngineReady: (readyEngine) => {');
     expect(studio).not.toContain('onCompletedMutation: (mutation, mutationEngine) => {');
+    expect(studio).not.toContain('onEngineReady: handleCanvasEngineReady');
+    expect(studio).not.toContain('onCompletedMutation: handleCanvasCompletedMutation');
   });
 
   it('routes navigation-fresh engine and mutation behavior through stable implementation refs', () => {
-    expect(studio).toContain('canvasEngineReadyImplRef.current = (readyEngine) => {');
-    expect(studio).toContain('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
-    expect(studio).toContain('canvasEngineReadyImplRef.current(readyEngine);');
-    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation, mutationEngine);');
-    expect(studio).toContain('const handleCanvasEngineReady = useCallback(');
-    expect(studio).toContain('const handleCanvasCompletedMutation = useCallback(');
+    // The frame-editing begin seam re-resolves per render behind a stable ref;
+    // ledger completions route through the SAME ref pattern so the latest
+    // closure runs while the subscription stays single.
+    expect(studio).toContain('beginRotoFrameEditImplRef.current = (event?: PointerEvent) => {');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current = (mutation) => {');
+    expect(studio).toContain('useEffect(() => paintMutationLedger.subscribe((mutation) => {');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation);');
+    expect(studio).toContain('const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {');
+    expect(studio).toContain('onEnginePortReady: handleAquarelleEnginePortReady,');
   });
 
   it('keeps CanvasMount plain and mounts its dedicated wrapper from memoized CanvasStack', () => {
@@ -1195,11 +1207,11 @@ describe('Canvas navigation render localization', () => {
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
     // Water color's cached base is rendered under the live canvas — engine-1's
-    // preview base is invisible while the aquarelle layer is up. Round 2: the
-    // dedicated layer converts the stored transmittance sheet to pigment alpha
-    // at display (its own module, so the mount stays plain).
-    expect(canvasMount).toContain('aquarelleActive && props.aquarelleCachedBaseUrl');
-    expect(canvasMount).toContain('AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl}');
+    // preview base is gone with the Efx child. Round 2: the dedicated layer
+    // converts the stored transmittance sheet to pigment alpha at display (its
+    // own module, so the mount stays plain).
+    expect(canvasMount).toContain('props.aquarelleCachedBaseUrl ? (');
+    expect(canvasMount).toContain('<AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
     expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
@@ -1265,7 +1277,11 @@ describe('Workflow navigation render localization', () => {
     const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
     const navigation = studio.slice(navigationStart, navigationEnd);
     expect(navigationStart).toBeGreaterThanOrEqual(0);
-    expect(navigation).toContain('engine.clear();');
+    // 261027-klx: the app-owned preview base replaces engine-1's surface —
+    // wipe the cached base, then load the destination's cached pixels.
+    expect(navigation).toContain('previewBasePort.clearPreviewBaseImage(true);');
+    expect(navigation).toContain('previewBasePort.resetBackground(true);');
+    expect(navigation).toContain('loadCachedRotoReferenceFrame(frame, previewBasePort);');
     expect(navigation).toContain('physicPaintStore.setRotoPhysicalSelection(');
     expect(navigation).toContain('scheduleRotoStartFramePropagation(frame);');
     expect(navigation).toContain('sendPhysicPaintFrameSyncMessage(frame, bridgeMode)');
@@ -1382,32 +1398,35 @@ describe('localized render instrumentation', () => {
     expect(stack).toContain('}, []);');
   });
 
-  it('locks CanvasMount request, observer, and transparent lifecycle proxy counters', () => {
+  it('locks CanvasMount request, observer, and the ONE engine port seam', () => {
     for (const counter of [
       'render.efxChildRequest',
       'observer.canvasMount.resize.install',
       'observer.canvasMount.resize.cleanup',
-      'lifecycle.canvasMount.engineReady',
-      'lifecycle.canvasMount.beforeDestroy',
     ]) {
       expect(countOccurrences(canvasMount, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
     }
     expect(canvasMount).toContain('}, [props.height, props.width]);');
-    expect(canvasMount).toContain('return onEngineReadyRef.current(engine);');
-    expect(canvasMount).toContain('beforeEngineDestroyRef.current = props.beforeEngineDestroy;');
-    expect(canvasMount).toContain('return beforeEngineDestroyRef.current?.(engine);');
+    // 261027-klx: the engine-1 lifecycle proxies left with the Efx child; the
+    // aquarelle layer's ONE narrow port is the only engine seam.
+    expect(canvasMount).toContain('onEnginePortReady={(port) => onEnginePortReadyRef.current?.(port)}');
+    expect(canvasMount).not.toContain('lifecycle.canvasMount.engineReady');
+    expect(canvasMount).not.toContain('beforeEngineDestroyRef');
+    expect(canvasMount).not.toContain('onEngineReadyRef');
   });
 
-  it('locks engine lifecycle counters to the current tablet and external cleanup effects', () => {
-    for (const counter of [
+  it('keeps the canvas lifecycle hook to the mount flag and the unmount cleanup counter', () => {
+    // 261027-klx: the engine-1 tablet + engine lifecycle counters left with
+    // engine-1. The hook now owns only the mount flag and the Studio's
+    // external pending-state cleanup on unmount.
+    for (const retired of [
       'lifecycle.engine.tabletListener.install',
       'lifecycle.engine.tabletListener.cleanup',
-      'lifecycle.engine.externalState.cleanup',
-    ]) {
-      expect(countOccurrences(engineLifecycle, `recordPhysicsPaintPerformanceCounter('${counter}')`), counter).toBe(1);
-    }
+    ]) expect(engineLifecycle).not.toContain(retired);
+    expect(countOccurrences(engineLifecycle, "recordPhysicsPaintPerformanceCounter('lifecycle.engine.externalState.cleanup')")).toBe(1);
+    expect(engineLifecycle).toContain('}, [input.canvasKey]);');
     expect(engineLifecycle).toContain('}, []);');
-    expect(engineLifecycle).toContain('}, [engine, input.launchContext?.layerId, efxPaintVersion.value]);');
+    expect(engineLifecycle).not.toContain('efxPaintVersion');
   });
 
   it('retains Plan 09 wrappers while adding the Plan 11 CanvasStack memo and three Studio identity resolves', () => {
@@ -2193,9 +2212,9 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
     expect(studio).toContain('await flushPipeline.flush({ steps });');
   });
 
-  it('keeps the close sequence: engine settle, aquarelle capture + live-pixel flush, playback settings, documentSync push', () => {
+  it('keeps the close sequence: ledger drain, aquarelle capture + live-pixel flush, playback settings, documentSync push', () => {
     const order = [
-      'engineRef.current?.flushPendingStrokeFinalizations()',
+      'rotoMutationPort.flushPendingStrokeFinalizations?.()',
       'flushAquarellePixels(currentFrame)',
       'rotoPlaybackSettingsController.flush()',
       'flushDocumentSyncRef.current()',
@@ -2203,27 +2222,28 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
     const positions = order.map((step) => closeFlush.indexOf(step));
     expect(positions).not.toContain(-1);
     expect([...positions].sort((left, right) => left - right)).toEqual(positions);
-    // The aquarelle sheet is invisible to the engine-1 stroke counter/queue
-    // until captured; the close gate therefore always flushes in Roto.
+    // The aquarelle sheet is invisible to the live-pixel queue until captured;
+    // the close gate therefore always flushes in Roto.
     expect(closeFlush).toContain("() => workflowMode === 'roto'");
-    // Brush: copyLiveAlphaCanvas composites the cosmetic wet display on top of
-    // the dry canvas. Closing right after a stroke captured that fluorescent
-    // wet look; settle the wet layer before the capture.
-    expect(closeFlush).toContain("if (activeModule.value === 'watercolor') engineRef.current?.flushPendingStrokeFinalizations();");
-    expect(closeFlush).toContain('else engineRef.current?.forceDry();');
+    // 261027-klx: Water color finalizes a stroke synchronously at stroke end —
+    // the ledger port's drain is the ordering seam before the capture. The
+    // engine-1 wet-layer forceDry left with the Efx child.
+    expect(closeFlush).not.toContain('forceDry');
+    expect(closeFlush).not.toContain('flushPendingStrokeFinalizations()');
   });
 
-  it('keeps the requested-flush sequence: idle-gated engine settle, aquarelle capture + live-pixel flush, documentSync push', () => {
+  it('keeps the requested-flush sequence: idle-gated ledger drain, aquarelle capture + live-pixel flush, documentSync push', () => {
     const order = [
       'readInteractionIdle()',
+      'rotoMutationPort.flushPendingStrokeFinalizations?.()',
       'flushAquarellePixels()',
       'pushLiveProjection(layerId, mode)',
     ];
     const positions = order.map((step) => listenerFlush.indexOf(step));
     expect(positions).not.toContain(-1);
     expect([...positions].sort((left, right) => left - right)).toEqual(positions);
-    // Same settle-before-capture law on the save path.
-    expect(listenerFlush).toContain('else engineRef.current?.forceDry();');
+    // Same drain-before-capture law on the save path.
+    expect(listenerFlush).not.toContain('forceDry');
   });
 
   it('forces the aquarelle capture before the save/close drain and waits for promotion-deferred captures', () => {
@@ -2407,10 +2427,12 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
 
   it('keeps both callbacks identity-stable with the setter set they use declared', () => {
     expect(loadAndApplyBody).not.toBe('');
-    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);');
-    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);');
-    // The shared post-apply capture seam is itself identity-stable.
-    expect(studio).toContain('}, [rotoScript]);\n  const handleScriptRowActivate = useCallback(');
+    // 261027-klx: the engine-1 post-apply brush-script flush left with the
+    // Brush module, so the setter set is the only remaining dependency.
+    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
+    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
+    // Row activation (loads, never applies) is itself identity-stable.
+    expect(studio).toContain('}, [rotoLoopClips, rotoScriptLibrary]);\n  const handleSelectedScriptLoadAndApply = useCallback(');
   });
 
   it('does NOT change handleScriptRowActivate — it loads, it never applies', () => {
@@ -2558,50 +2580,39 @@ describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and re
 // settings.opacity. Without the watercolor arm, deleting the Paint-tab Opacity
 // orphans Pigment until I-01 lands. Scalar predicates keep TAP diagnostics
 // one-line (project idiom).
-describe('261017-w4x I-05 top-bar opacity call-time router', () => {
-  it('handleOpacityChange routes watercolor to setAquarelleParam(\'load\') and else to setBrushOpacity', () => {
-    // 261018-f15 C2: the routers extract to identity-stable useCallbacks so the
-    // Paint-tab pair can share ONE write-through. The call-time module read and
-    // both arms stay locked.
+describe('261027-klx single-engine top-bar writers', () => {
+  it("handleOpacityChange writes setAquarelleParam('load') unconditionally", () => {
+    // 261018-f15 C2 extracted the routers to identity-stable useCallbacks so
+    // the Paint-tab pair can share ONE write-through. 261027-klx: Water color
+    // is the only module, so the engine-1 else arm (setBrushOpacity) is gone.
     const routerStart = studio.indexOf('const handleOpacityChange = useCallback(');
     expect(routerStart, 'handleOpacityChange must exist').toBeGreaterThan(-1);
     const routerEnd = studio.indexOf('const topBar = topBarPropsMemo.resolve(', routerStart);
     expect(routerEnd, 'router ends before the topBar memo').toBeGreaterThan(routerStart);
     const opacityHandler = studio.slice(routerStart, routerEnd);
-    expect(
-      opacityHandler.includes('setAquarelleParam(\'load\''),
-      'handleOpacityChange watercolor arm must write aquarelleParams.load',
-    ).toBe(true);
-    expect(
-      opacityHandler.includes('setBrushOpacity'),
-      'handleOpacityChange else-arm must write settings.opacity via setBrushOpacity',
-    ).toBe(true);
-    // Call-time module read — never capture activeModule in the memo deps.
-    expect(
-      opacityHandler.includes('activeModule.value === \'watercolor\''),
-      'handleOpacityChange must read activeModule.value at call time',
-    ).toBe(true);
+    expect(opacityHandler, 'the live pigment writes aquarelleParams.load').toContain(
+      "setAquarelleParam('load', value)",
+    );
+    expect(opacityHandler, 'the engine-1 else arm left with engine 1').not.toContain('setBrushOpacity');
+    expect(opacityHandler, 'no module branch remains').not.toContain('activeModule');
     // The topBar memo binds the shared router (not a bare setter).
     const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
     const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
     const topBarBlock = studio.slice(topBarStart, topBarEnd);
     expect(topBarBlock).toContain('onOpacityChange: handleOpacityChange');
-    expect(
-      topBarBlock.includes('onOpacityChange: setBrushOpacity,'),
-      'onOpacityChange must not be a bare setBrushOpacity binding',
-    ).toBe(false);
     // Memo deps stay the slim set — no activeModule captured for the router.
     const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
     expect(topBarDeps.indexOf('activeModule'), 'topBar deps must not capture activeModule').toBe(-1);
   });
 
-  it('Brush size router stays the locked pattern sibling of the opacity router', () => {
+  it('Brush size router is the same unconditional aquarelle writer', () => {
     const routerStart = studio.indexOf('const handleBrushSizeChange = useCallback(');
     expect(routerStart, 'handleBrushSizeChange must exist').toBeGreaterThan(-1);
     const routerEnd = studio.indexOf('const handleOpacityChange = useCallback(', routerStart);
     const sizeHandler = studio.slice(routerStart, routerEnd);
     expect(sizeHandler).toContain("setAquarelleParam('size', value)");
-    expect(sizeHandler).toContain('setBrushSize(value)');
+    expect(sizeHandler, 'the engine-1 size setter left with engine 1').not.toContain('setBrushSize');
+    expect(sizeHandler, 'no module branch remains').not.toContain('activeModule');
     const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
     const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
     const topBarBlock = studio.slice(topBarStart, topBarEnd);
@@ -2740,9 +2751,11 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const clearBlock = section(studio, 'const clearGeneratedRotoDisplayForPaint = useCallback(', 'beginRotoFrameEditImplRef.current = (');
     expect(clearBlock).toContain('clearPreviewBaseImage()');
     expect(clearBlock).toContain('resetBackground()');
-    expect(clearBlock).toContain('.clear()');
+    // 261027-klx: the engine-1 canvas clear left with the Efx child — the
+    // aquarelle sheet reset is the same-frame cleanup seam.
+    expect(clearBlock).not.toContain('.clear()');
     expect(clearBlock).toContain('aquarelleResetSheetRef.current?.()');
-    expect(clearBlock.indexOf('clearPreviewBaseImage()')).toBeLessThan(clearBlock.indexOf('.clear()'));
+    expect(clearBlock.indexOf('clearPreviewBaseImage()')).toBeLessThan(clearBlock.indexOf('aquarelleResetSheetRef.current?.()'));
     expect(beginBlock).toContain('clearGeneratedRotoDisplayForPaint()');
     // Reset registration flows AquarelleCanvasLayer → CanvasMount → Studio.
     const aquarelleLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
@@ -2754,14 +2767,14 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {');
   });
 
-  it('awaits the created key before both capture paths write pixels', () => {
-    const completedBlock = section(studio, 'canvasCompletedMutationImplRef.current = (', 'const handleCanvasCompletedMutation = useCallback(');
-    const awaitIndex = completedBlock.indexOf('await pendingFirstPaintTarget.promise');
-    expect(awaitIndex).toBeGreaterThan(-1);
-    expect(awaitIndex).toBeLessThan(completedBlock.indexOf('rotoPersistence.captureLivePixels('));
-    expect(completedBlock).toContain('firstPaintTarget.ok');
-    expect(completedBlock).toContain('keyId = firstPaintTarget.keyId');
-    expect(completedBlock).toContain('pendingSelfPromotionForCompletedFrame');
+  it('awaits the created key before the aquarelle capture path writes pixels', () => {
+    // 261027-klx: the engine-1 capture path left with the Efx child — the
+    // aquarelle sheet capture is the one remaining path that must wait for the
+    // auto-key promotion, and the ledger completion stays synchronous.
+    const completedBlock = section(studio, 'canvasCompletedMutationImplRef.current = (', 'const cachedRotoPlaybackComposition');
+    expect(completedBlock).not.toContain('await pendingFirstPaintTarget.promise');
+    expect(completedBlock).not.toContain('captureLivePixels');
+    expect(completedBlock).toContain('rotoMoveHistory.observePaintMutation(mutationId, kind);');
     const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
     const aquarelleAwaitIndex = captureBlock.indexOf('await pendingFirstPaintTarget.promise');
     expect(aquarelleAwaitIndex).toBeGreaterThan(-1);
@@ -2833,7 +2846,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     // only on a display-state change; the ref is committed at the block end.
     expect(studio).toContain('const sessionNeedsCommit =');
     expect(studio).toContain('|| (boundSnapshotTrackId !== null && boundSnapshotTrackId !== trackId);');
-    const switchBlock = section(studio, 'if (sessionNeedsCommit) {', 'const engine = engineRef.current as PreviewBackgroundEngine | null;');
+    const switchBlock = section(studio, 'if (sessionNeedsCommit) {', 'setCachedRotoReferenceUrl(null);');
     expect(switchBlock).toContain('const outgoingTrackId = sessionTrackId ?? lastEditStateTrackIdRef.current;');
     expect(switchBlock).toContain('aquarelleSessionTrackIdRef.current = trackId;');
     expect(studio).toContain('aquarelleSessionTrackIdRef.current = trackId;\n      const restored');
@@ -2845,14 +2858,8 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     // a second forced flush it sits out CAPTURE_PRODUCE_QUIET_MS (6000ms) and
     // leaving/closing inside that window strands the pixels — the empty cache
     // on return / after key change.
-    const completedBlock = section(studio, 'canvasCompletedMutationImplRef.current = (', 'const handleCanvasCompletedMutation = useCallback(');
-    expect(completedBlock).toContain('deferredPromotionCapture = true');
-    const engineCaptureIndex = completedBlock.indexOf('rotoPersistence.captureLivePixels(');
-    const engineFlushIndex = completedBlock.indexOf('rotoPersistence.flushLivePixels(appFrame)');
-    expect(engineCaptureIndex).toBeGreaterThan(-1);
-    expect(engineFlushIndex).toBeGreaterThan(engineCaptureIndex);
-    expect(completedBlock).toContain('if (deferredPromotionCapture)');
-
+    // 261027-klx: the engine-1 capture flush left with the Efx child; the
+    // aquarelle capture owns the surviving deferred-promotion gate.
     const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
     const enqueueIndex = captureBlock.indexOf('const work = enqueue()');
     const aquarelleFlushIndex = captureBlock.indexOf('rotoPersistenceRef.current.flushLivePixels(playFrame)');
@@ -2918,7 +2925,10 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
 
   it('discards the stroke and replays an accepted-but-unvalidated key on failure', () => {
     const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const startRotoPaintPromotion = ');
-    expect(failureBlock).toContain('engineRef.current?.undo()');
+    // 261027-klx: the discarded stroke lives on the Water color sheet — the
+    // sheet reset is the cleanup seam (the engine-1 undo left with the Efx
+    // child).
+    expect(failureBlock).not.toContain('engineRef.current?.undo()');
     expect(failureBlock).toContain('aquarelleResetSheetRef.current?.()');
     expect(failureBlock).toContain('acceptedBefore');
     expect(failureBlock).toContain("operationKind: 'undo'");
@@ -3008,44 +3018,31 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
-    expect(toolRail).toContain('title={item.tooltip ?? item.label}');
+    // 261027-klx: the Brush module tool set (and its Move tooltip) left with
+    // engine 1 — the aquarelle rail is the only tool surface left.
+    expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
+    expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {');
   });
 
-  it('greys Move and makes Cmd inert when there is no live script (both modes)', () => {
-    expect(studio).toContain("isMoveAvailable: () => (activeModule.peek() === 'watercolor'");
-    expect(studio).toContain('? watercolorMoveAvailable.peek()');
-    expect(studio).toContain(': moveAvailable.peek()),');
+  it('greys Select and makes Cmd inert when there is no live script', () => {
+    // 261027-klx: Water color is the only module — the Brush Move arm left with
+    // engine 1; the frame-scoped watercolor gate is the only availability law.
+    expect(studio).toContain('isMoveAvailable: () => watercolorMoveAvailable.peek(),');
+    expect(studio).not.toContain('if (moveAvailable.peek())');
     // Deleting the last selectable stroke leaves select mode.
     const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
     expect(selectionSource).toContain('if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);');
   });
 
   it('applies the empty-script Move law to activation and exits a stale Move', () => {
-    expect(studio).toContain('const moveAvailable = useComputed(');
+    // 261027-klx: the Brush-module Move gate (live engine ledger, retained
+    // script, tool-selection funnel) left with engine 1. The Water color gate
+    // is frame-scoped: Select needs a script on the CURRENT key, never a
+    // session-wide stroke count.
+    expect(studio).not.toContain('const moveAvailable = useComputed(');
+    expect(studio).not.toContain('engineHoldsBrushMoveStrokes');
     expect(studio).toContain("if (cell.kind !== 'real') return false;");
-    // A retained script never unlocks Move unless it is hydratable AND bound
-    // to the CURRENT cell's key (legacy null / foreign / partial all fail).
-    expect(studio).toContain('const storedLeg = entry !== undefined');
-    expect(studio).toContain('&& entry.keyId === scriptCell.keyId');
-    expect(studio).toContain('&& isBrushScriptFrameHydratable(entry);');
-    // The first-stroke / mid-session leg reads the live engine ledger.
-    expect(studio).toContain('return engineHoldsBrushMoveStrokes();');
-    // Move entry demand-attaches before arming and never arms without a ledger.
-    expect(studio).toContain(
-      'if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) {',
-    );
-    expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;");
-    expect(studio).toContain("if (activeModule.value !== 'brush' || settings.tool !== 'move') return;");
-    expect(studio).toContain('if (moveAvailable.value || mutationLocked) return;');
-    expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
-    // The owner funnel repairs pre-guard guide captures before resolving.
-    expect(studio).toContain('if (!liveBrush) purgeAquarelleGuideGroups(frame);');
-    // A derived cell drops any stale capture and releases the owner.
-    expect(studio).toContain('dropNonKeyCellBrushScript(currentFrame);');
     expect(studio).toContain('clearFrameScriptOwner();');
-    // The Water color half is frame-scoped: Select needs a script on the
-    // CURRENT key, never a session-wide stroke count.
     expect(studio).toContain('const watercolorMoveAvailable = useComputed(() => {');
     // quick-261026-odd (run-4 fix): a timeline-graph rebuild retires the
     // computed's sources; a Studio generation signal re-binds both gates so a
@@ -3066,8 +3063,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     // override key — that erased the cached rail paint. The proper fix is a
     // base merge, not a target swap.
     expect(studio).not.toContain("const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;");
-    expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
-    expect(studio).toContain('if (moveAvailable.peek()) {');
+    // 261027-klx: the Brush Move re-entry after a key transition left with
+    // engine 1.
+    expect(studio).not.toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
+    expect(studio).not.toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');
     const acceptanceStart = studio.lastIndexOf("if (transition === 'accepted' && accepted) {", acceptanceAnchor);
     expect(studio.slice(acceptanceStart, acceptanceAnchor)).toContain('applyFrameModuleState(currentFrame);');
@@ -3163,17 +3162,13 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
-    // A Cmd tap toggles the persistent select mode in watercolor mode.
+    // A Cmd tap toggles the persistent select mode (Water color is the only
+    // module, so no mode branch remains).
     expect(studio).toContain('onMetaTap: () => {');
-    expect(studio).toContain("if (activeModule.peek() === 'watercolor') {");
     expect(studio).toContain('toggleAquarelleSelectMode();');
-    // Brush mode: Cmd selects Move itself (previous tool deselected); a second
-    // tap returns to the last non-Move tool, and the Move gate matches the rail.
-    expect(studio).toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
-    expect(studio).toContain("if (settings.tool !== 'move') lastNonMoveToolRef.current = settings.tool;");
-    expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
-    expect(studio).toContain("if (settings.tool === 'paint' && moveAvailable.peek()) {");
-    expect(studio).toContain("selectTool('move', settings.physicsMode);");
+    // 261027-klx: the Brush-mode Cmd→Move toggle left with engine 1's tool set.
+    expect(studio).not.toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
+    expect(studio).not.toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
   });
 
   it('declares the aquarelle ledger entry and replay port in the history hook', () => {
@@ -3356,18 +3351,15 @@ describe('261022-ujp stroke stack step', () => {
 
 // 261023-g4p Task 3: Brush Move parity — the engine by-id APIs, the brush
 // port registration, the ONE tool-selection funnel and the mount wiring.
-describe('261023-g4p brush Move script-edition surface', () => {
-  it('registers BOTH module ports and configures the brush context from a render-body ref', () => {
+describe('261023-g4p brush Move script-edition surface (retired by 261027-klx)', () => {
+  it('registers the watercolor stroke-edition port and no Brush port', () => {
     expect(studio).toContain('setScriptStrokeEditionPorts({');
-    expect(studio).toContain('brush: brushScriptEditionPort,');
-    expect(studio).toContain('configureBrushScriptEdition(brushScriptEditionDepsRef.current);');
-    expect(studio).toContain('const brushScriptEditionDepsRef = useRef<BrushScriptEditionContext>({');
-    expect(studio).toContain('getEngine: () => engineRef.current,');
-    expect(studio).toContain('getPlayFrame: () => launchContextRef.current?.startFrame ?? 0,');
-    expect(studio).toContain("isActive: () => activeModule.peek() === 'brush' && settings.tool === 'move',");
-    expect(studio).toContain('isLocked: () => isPhysicalMutationLocked(),');
-    // Studio teardown detaches the port from the dead session.
-    expect(studio).toContain('configureBrushScriptEdition(null);');
+    expect(studio).toContain('watercolor: {');
+    // 261027-klx: the Brush port, its deps context and its render-body
+    // configure call left with engine 1.
+    expect(studio).not.toContain('brushScriptEditionPort');
+    expect(studio).not.toContain('configureBrushScriptEdition');
+    expect(studio).not.toContain('BrushScriptEditionContext');
     // The watercolor port keeps its exact previous contract.
     expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
@@ -3376,60 +3368,25 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(scriptStrokeEdition).toContain('if (watercolor?.isActive()) return watercolor;');
   });
 
-  it('funnels every tool selection through the Move-arming wrapper', () => {
-    expect(studio).toContain('selectTool: selectToolEngine,');
-    expect(studio).toContain('const selectTool = useCallback((tool: ToolType, physicsMode?: \'local\' | null) => {');
-    const wrapperStart = studio.indexOf('const selectTool = useCallback((tool: ToolType');
-    const wrapperBody = studio.slice(wrapperStart, studio.indexOf('// 49-04 UAT fix', wrapperStart));
-    // Refused selection = exact passthrough (no engine writes, no flag change).
-    expect(wrapperBody).toContain('if (!activeEngine || isPhysicalMutationLocked()) {');
-    expect(wrapperBody).toContain('selectToolEngine(tool, physicsMode);');
-    // Move entry: flush the outgoing frame, arm the engine Move, stand down
-    // the engine badges and cursor.
-    expect(wrapperBody).toContain("if (activeModule.peek() === 'brush' && tool === 'move') {");
-    expect(wrapperBody).toContain('flushBrushScriptFrame(');
-    expect(wrapperBody).toContain('activeEngine.getStrokes(),');
-    // 261023-j5b: the capture carries the visit's paint globals.
-    expect(wrapperBody).toContain('activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),');
-    expect(wrapperBody).toContain('activeEngine.setStrokeLabelsSuppressed(true);');
-    expect(wrapperBody).toContain('activeEngine.setCursorVisible(false);');
-    // Any other tool restores both.
-    expect(wrapperBody).toContain('activeEngine.setStrokeLabelsSuppressed(false);');
-    expect(wrapperBody).toContain('activeEngine.setCursorVisible(true);');
-    // The rail and the Cmd tap both use the wrapper (existing pins above).
-    expect(studio).toContain('onSelectTool: selectTool,');
-    expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
-    expect(studio).toContain("selectTool('move', settings.physicsMode);");
-    // The hook itself is untouched.
-    expect(studio).toContain('usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });');
+  it('wires the paper-display engine actions through the app-owned preview base', () => {
+    // 261027-klx: the 11 engine-1 tool setters and the Move-arming selectTool
+    // wrapper left with the Brush engine. The hook receives the app-owned
+    // preview base port for the paper display actions.
+    expect(studio).toContain('const { setBackground, setGrainStrength, setGrainScale } = usePhysicsPaintEngineActions({');
+    expect(studio).toContain('engine: previewBasePort,');
+    expect(studio).not.toContain('selectToolEngine');
+    expect(studio).not.toContain('onSelectTool: selectTool,');
   });
 
-  it('re-applies the Move suppression for a recreated engine', () => {
-    const readyStart = studio.indexOf('installScriptMemoryProbe(readyEngine');
-    const readyBody = studio.slice(readyStart, studio.indexOf('installLookDeltaCapture', readyStart));
-    expect(readyBody).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
-    expect(readyBody).toContain("readyEngine.setTool('move');");
-    expect(readyBody).toContain('readyEngine.setStrokeLabelsSuppressed(true);');
-    expect(readyBody).toContain('readyEngine.setCursorVisible(false);');
-    expect(readyBody).toContain('flushBrushScriptFrame(');
-    expect(readyBody).toContain('readyEngine.getStrokes(),');
-    expect(readyBody).toContain('readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),');
-    expect(readyBody.indexOf('settingsRef.current.tool')).toBeGreaterThan(-1);
-  });
-
-  it('mounts the brush overlay from the canvas mount only while Move is armed', () => {
-    expect(canvasMount).toContain('brushScriptEditionActive?: boolean;');
-    expect(canvasMount).toContain('getBrushScriptPlayFrame?: () => number;');
-    expect(canvasMount).toContain('const getBrushScriptPlayFrameRef = useRef(props.getBrushScriptPlayFrame);');
-    expect(canvasMount).toContain('getBrushScriptPlayFrameRef.current = props.getBrushScriptPlayFrame;');
-    expect(canvasMount).toContain('{!aquarelleActive && (props.brushScriptEditionActive ?? false) ? (');
-    expect(canvasMount).toContain('<BrushScriptOverlay');
-    expect(canvasMount).toContain('getPlayFrame={() => getBrushScriptPlayFrameRef.current?.() ?? 0}');
-    // The engine surface stays mounted underneath.
-    expect(canvasMount.indexOf('<EfxPaintCanvas')).toBeLessThan(canvasMount.indexOf('<BrushScriptOverlay'));
-    expect(studio).toContain('brushScriptEditionActive: settings.tool === \'move\',');
-    expect(studio).toContain('getBrushScriptPlayFrame,');
-    expect(studio).toContain('settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd');
+  it('leaves no Brush Move surface in the Studio or the canvas mount', () => {
+    expect(studio).not.toContain('BrushScriptOverlay');
+    // The mount docstring names the retired engine-1 surface — strip comments
+    // before the negative scan (source-scan discipline).
+    const mountBody = canvasMount.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(mountBody).not.toContain('<BrushScriptOverlay');
+    expect(mountBody).not.toContain('brushScriptEditionActive');
+    expect(mountBody).not.toContain('getBrushScriptPlayFrame');
+    expect(mountBody).not.toContain('<EfxPaintCanvas');
   });
 });
 
@@ -3547,19 +3504,14 @@ describe('261024-mz5 Studio transform handles surface', () => {
   });
 });
 
-// 261023-h9v Task 1: navigation rehydration — the completeness law, the
-// silent baseline restore, and the completion-listener fix. Navigation is
-// the ONE place a retained script may re-enter the engine.
-describe('261023-h9v brush script rehydration surface', () => {
+// 261027-klx: navigation rehydration is watercolor-only. The Brush hydration
+// plan, the observed loader and the engine-ready re-apply seam left with
+// engine-1; the app-owned preview base carries the cached-key pixels.
+describe('261027-klx watercolor navigation surface', () => {
   const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {');
   const navigationBody = studio.slice(
     navigationStart,
     studio.indexOf('const lastReferenceDisplayStateRef', navigationStart),
-  );
-  const listenerStart = studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
-  const listenerBody = studio.slice(
-    listenerStart,
-    studio.indexOf('rotoMoveHistory.observePaintMutation', listenerStart),
   );
   const clearSourceStart = studio.indexOf('const clearActiveSource = useCallback(');
   const clearSourceBody = studio.slice(
@@ -3567,107 +3519,26 @@ describe('261023-h9v brush script rehydration surface', () => {
     studio.indexOf('const navigateToSyncedPhysicalFrame', clearSourceStart),
   );
 
-  it('decides attach-or-cached-pixels once per navigation, pixels BEFORE the ledger', () => {
+  it('clears and reloads through the app-owned preview base only', () => {
     expect(navigationStart).toBeGreaterThan(-1);
-    expect(navigationBody).toContain('engine.clear();');
-    expect(navigationBody).toContain('const hydrationRequest: BrushHydrationRequest = {');
-    expect(navigationBody).toContain('frame,');
-    expect(navigationBody).toContain('destinationKind,');
-    // quick-261026-odd: hydration is key-bound to the destination cell.
-    expect(navigationBody).toContain('keyId: destinationKeyId,');
-    expect(navigationBody).toContain("brushModuleActive: activeModule.peek() !== 'watercolor',");
-    expect(navigationBody).toContain('wasPlaying: wasPlaying || rotoCachedPlayback.isActive,');
-    expect(navigationBody).toContain('scrubActive: scrubActiveRef.current,');
-    expect(navigationBody).toContain('const hydrationPlan = planBrushScriptHydration(hydrationRequest);');
-    // Refusal = the observed cached-pixel path (which records the arrival base).
-    expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
-    // Pixels FIRST, ledger SECOND — the loader's internal engine.clear() must
-    // run before the attach or the attached ledger would be wiped. Round 11:
-    // both the plain path AND the partial-over-durable-base path load their
-    // pixels before their attach (the first load in the block is the preserve
-    // path's base load, followed by its hydrate).
-    expect(navigationBody.indexOf('engine.clear();')).toBeLessThan(
-      navigationBody.indexOf('loadCachedRotoReferenceFrame('),
+    // Pixels BEFORE the ledger: the wipe + cached load run in the synchronous
+    // navigation tick, ahead of the awaited flush.
+    expect(navigationBody).toContain('previewBasePort.clearPreviewBaseImage(true);');
+    expect(navigationBody).toContain('previewBasePort.resetBackground(true);');
+    expect(navigationBody).toContain('loadCachedRotoReferenceFrame(frame, previewBasePort);');
+    expect(navigationBody.indexOf('previewBasePort.clearPreviewBaseImage(true);')).toBeLessThan(
+      navigationBody.indexOf('loadCachedRotoReferenceFrame(frame, previewBasePort);'),
     );
-    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(')).toBeGreaterThan(-1);
-    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(')).toBeLessThan(
-      navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
-    );
-    // Attach success records NO arrival base (the entry must stay complete);
-    // the arrival note exists only on the attach-refusal path.
-    const refusalIndex = navigationBody.indexOf('noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);');
-    expect(refusalIndex).toBeGreaterThan(
-      navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
-    );
-    expect(navigationBody).toContain('if (!loaded) {');
-    // 261023-j5b: the no-cache fallback repaints faithfully with the entry's
-    // captured paint globals.
-    expect(navigationBody).toContain('engine.restoreStrokesBaseline(');
-    expect(navigationBody).toContain('hydrationPlan.entry.groups,');
-    expect(navigationBody).toContain('hydrationPlan.entry.paintSettings ?? null,');
+    // The engine-1 hydration plan / observed loader / clear seam are gone.
+    expect(navigationBody).not.toContain('planBrushScriptHydration');
+    expect(navigationBody).not.toContain('hydrateBrushScriptFrame');
+    expect(navigationBody).not.toContain('loadReferenceObserved');
+    expect(navigationBody).not.toContain('engine.clear();');
     // The post-flush generated repaint stays a cached-pixel path.
     expect(navigationBody).toContain("?.cells[frame]?.kind === 'generated'");
   });
 
-  it('wraps the hydration attempt and the observed loader as stable callbacks', () => {
-    const observedStart = studio.indexOf('const loadReferenceObserved = useCallback(');
-    expect(observedStart).toBeGreaterThan(-1);
-    const observedBody = studio.slice(observedStart, studio.indexOf('const hydrateBrushScriptFrame', observedStart));
-    expect(observedBody).toContain('const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);');
-    expect(observedBody).toContain('noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);');
-    expect(observedBody).toContain('[findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],');
-
-    const hydrateStart = studio.indexOf('const hydrateBrushScriptFrame = useCallback(');
-    const hydrateBody = studio.slice(hydrateStart, studio.indexOf('const clearActiveSource', hydrateStart));
-    expect(hydrateBody).toContain('attemptBrushScriptHydration(targetEngine, request)');
-    expect(hydrateBody).toContain('attemptBrushScriptHydrationOverBase(targetEngine, request)');
-    expect(hydrateBody).toContain('decision.preserveBase');
-    expect(hydrateBody).toContain('useCallback(');
-  });
-
-  it('pins the pre-script raster for a Brush script over a raster/purged key (UAT round 11)', () => {
-    // The raster purge marks the frame arrival-base and drops the ledger, so
-    // the next Brush capture is PARTIAL. The first stroke pins the key's
-    // pre-stroke pixels as the durable base, and the arrival hydrates the
-    // partial ledger over that base instead of leaving it view-only.
-    expect(studio).toContain('const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {');
-    expect(studio).toContain("if ((kind === 'paint' || kind === 'physics') && completedTarget.kind === 'ordinary-key') {");
-    expect(studio).toContain('pinBrushDurableBaseForFirstStroke(appFrame, initialKeyId ?? null);');
-    expect(studio).toContain('durableBaseBytes: durableBaseBytes instanceof Uint8Array ? durableBaseBytes : null,');
-    expect(studio).toContain('if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {');
-    // The base must be the display base BEFORE the attach/rebake, and the
-    // engine's base-clear law must not wipe it.
-    const preserveStart = navigationBody.indexOf('if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {');
-    const preserveBody = navigationBody.slice(preserveStart, navigationBody.indexOf('} else {', preserveStart));
-    expect(preserveBody.indexOf('loadCachedRotoReferenceFrame(')).toBeLessThan(
-      preserveBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
-    );
-    expect(preserveBody).toContain('durableFrame');
-    expect(preserveBody).toContain('durableBaseBytes,');
-    // Fail-closed: an engine refusal reloads the cached pixels (view-only).
-    expect(preserveBody).toContain('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine, undefined, true);');
-    // The pin refuses to claim a composite of an existing script or of a
-    // watercolor-owned frame, and only pins a real key's pre-script cache.
-    const pinStart = studio.indexOf('const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {');
-    const pinBody = studio.slice(pinStart, studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {', pinStart));
-    expect(pinBody).toContain('const existing = getBrushScriptFrameEntry(frame);');
-    expect(pinBody).toContain('if (existing !== undefined && existing.keyId === keyId) return;');
-    expect(pinBody).toContain('if (hasAquarelleScriptForFrame(frame)) return;');
-    expect(pinBody).toContain('if (durableBases.has(keyId)) return;');
-    expect(pinBody).toContain('requirePhysicPaintRotoInlineBytes(record.payload)');
-  });
-
-  it('routes every completion through the ONE completion law and never drops on clear', () => {
-    const brushCompletion = listenerBody.slice(listenerBody.indexOf("if (activeModule.peek() !== 'watercolor') {"));
-    expect(brushCompletion).toContain('applyCompletedBrushMutation(kind, scriptFrame, mutationEngine);');
-    // engine.clear() notifies 'clear' on every navigation — the listener must
-    // never delete the entry the navigation flush just recorded.
-    expect(brushCompletion).not.toContain('deleteBrushScriptFrame');
-    expect(brushCompletion).not.toContain('markBrushScriptFrameDirty');
-    expect(brushCompletion).not.toContain("kind === 'clear'");
-  });
-
-  it('drops both script stores on an explicit user clear (full reset)', () => {
+  it('drops the script store on an explicit user clear (full reset)', () => {
     expect(clearSourceStart).toBeGreaterThan(-1);
     expect(clearSourceBody).toContain('const cleared = rotoFrameEditingRef.current.clearCurrentFrame();');
     expect(clearSourceBody).toContain('purgeMemoryScriptFrame(currentFrame);');
@@ -3691,93 +3562,28 @@ describe('261023-h9v brush script rehydration surface', () => {
     );
   });
 
-  // 261023-h9v Task 2: arrival seams, clobber guards, undo/redo freshness.
-  it('wires the frame-editing loader through the live-handle guard', () => {
-    expect(studio).toContain('loadReferenceFrame: loadReferenceForFrameEditing,');
-    const helperStart = studio.indexOf('const loadReferenceForFrameEditing = useCallback(');
-    expect(helperStart).toBeGreaterThan(-1);
-    const helperBody = studio.slice(helperStart, studio.indexOf('const hydrateBrushScriptFrame', helperStart));
-    expect(helperBody).toContain('if (engineHoldsBrushScriptFrame(targetEngine, frame)) return true;');
-    expect(helperBody).toContain('return loadReferenceObserved(frame, targetEngine);');
-    expect(helperBody.indexOf('engineHoldsBrushScriptFrame')).toBeLessThan(
-      helperBody.indexOf('return loadReferenceObserved'),
-    );
-  });
-
-  it('uses the observed loader at every arrival seam that can be painted', () => {
-    // Navigation refusal branch (Task 1) and display-port real-key loads.
-    expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
-    // Display-state effect reload.
-    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef<string | null>(null);');
-    const effectBody = studio.slice(effectStart, studio.indexOf('rotoNavigation.configureRuntimePort', effectStart));
-    expect(effectBody).toContain('loadReferenceObserved(currentFrame, engine);');
-    // Display-port real-key / blank-real-key restore.
-    const portStart = studio.indexOf('rotoNavigation.configureDisplayPort({');
-    const portBody = studio.slice(portStart, studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', portStart));
-    expect(portBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
-    // Engine-ready loader.
-    expect(studio).toContain("if (workflowMode === 'roto') loadReferenceObserved(currentFrame, readyEngine as PreviewBackgroundEngine);");
-  });
-
-  it('guards the engine-ready flush against an empty fresh engine', () => {
-    const readyStart = studio.indexOf('installScriptMemoryProbe(readyEngine');
-    const readyBody = studio.slice(readyStart, studio.indexOf('installLookDeltaCapture', readyStart));
-    expect(readyBody).toContain('if (readyEngine.getStrokes().length > 0) {');
-    expect(readyBody.indexOf('if (readyEngine.getStrokes().length > 0) {')).toBeLessThan(
-      readyBody.indexOf('flushBrushScriptFrame('),
-    );
-  });
-
-  it('drops the brush store on an in-place track switch', () => {
-    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef<string | null>(null);');
-    const effectBody = studio.slice(effectStart, studio.indexOf('rotoNavigation.configureRuntimePort', effectStart));
-    expect(effectBody).toContain('if (hadPreviousTrack) {');
-    expect(effectBody).toContain('resetBrushScriptStore();');
-    expect(effectBody.indexOf('if (hadPreviousTrack) {')).toBeLessThan(
-      effectBody.indexOf('resetBrushScriptStore();'),
-    );
-  });
-
-  it('clears the retained script when the display port clears the canvas', () => {
-    const portStart = studio.indexOf('rotoNavigation.configureDisplayPort({');
-    const portBody = studio.slice(portStart, studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', portStart));
-    const clearStart = portBody.indexOf('clearCanvas: (frame) => {');
-    expect(clearStart).toBeGreaterThan(-1);
-    const clearBody = portBody.slice(clearStart, portBody.indexOf('navigate:', clearStart));
-    expect(clearBody).toContain('engine.clear();');
-    expect(clearBody).toContain('clearBrushScriptFrame(frame);');
-    expect(clearBody.indexOf('engine.clear();')).toBeLessThan(
-      clearBody.indexOf('clearBrushScriptFrame(frame);'),
-    );
-  });
-
-  it('refreshes the retained script after a successful controller undo/redo', () => {
-    const refreshStart = studio.indexOf('const refreshBrushScriptAfterHistory = useCallback(');
-    expect(refreshStart).toBeGreaterThan(-1);
-    const refreshBody = studio.slice(refreshStart, studio.indexOf('const rotoFrameEditing', refreshStart));
-    expect(refreshBody).toContain('applyCompletedBrushMutation(kind, launchContextRef.current?.startFrame ?? 0, engineRef.current);');
-
-    const wiringStart = studio.indexOf('undoPaint: () => {');
-    const wiringBody = studio.slice(wiringStart, studio.indexOf('const rotoMoveHistoryUndo', wiringStart));
-    expect(wiringBody).toContain("if (undone) refreshBrushScriptAfterHistory('undo');");
-    expect(wiringBody).toContain("if (redone) refreshBrushScriptAfterHistory('redo');");
-  });
-});
-
-// 261023-j5b Task 2: the frame's paint globals must travel with every
-// script capture so the first faithful rebake replays the painted look.
-describe('261023-j5b paint-settings carrier seams', () => {
-  it('the frame-leave capture carries the visit paint settings', () => {
-    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {');
-    const navigationBody = studio.slice(
-      navigationStart,
-      studio.indexOf('const lastReferenceDisplayStateRef', navigationStart),
-    );
-    expect(navigationBody).toContain('engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,');
-  });
-
-  it('the engine exposes the faithful rebake and the single edit seam', () => {
-    expect(studio).toContain('hydrateBrushScriptFrame(engine, hydrationRequest)');
+  it('resets the sheet on a track switch before binding the incoming track', () => {
+    const switchStart = studio.indexOf('if (sessionNeedsCommit) {');
+    const switchBody = studio.slice(switchStart, studio.indexOf('setCachedRotoReferenceUrl(null);', switchStart));
+    expect(switchStart).toBeGreaterThan(-1);
+    // 261027-klx: the aquarelle sheet is the only surface — no Brush store to
+    // reset. The capture + sheet reset precede the save, and the incoming
+    // bind/restore follow the reset.
+    const flushCapture = switchBody.indexOf('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);');
+    const sheetReset = switchBody.indexOf('aquarelleResetSheetRef.current?.();');
+    const saveOutgoing = switchBody.indexOf('void studioScriptSnapshot.saveNow();');
+    const resetWatercolor = switchBody.indexOf('resetAquarelleRecordState();');
+    const bindIncoming = switchBody.indexOf('studioScriptSnapshot.bind(incomingIdentity);');
+    const restoreIncoming = switchBody.indexOf('void studioScriptSnapshot.restore()');
+    expect(flushCapture).toBeGreaterThan(-1);
+    expect(sheetReset).toBeGreaterThan(flushCapture);
+    expect(saveOutgoing).toBeGreaterThan(sheetReset);
+    expect(resetWatercolor).toBeGreaterThan(saveOutgoing);
+    expect(bindIncoming).toBeGreaterThan(resetWatercolor);
+    expect(restoreIncoming).toBeGreaterThan(bindIncoming);
+    expect(switchBody).not.toContain('resetBrushScriptStore();');
+    // The incoming restore seeds the ledger clock past restored ids.
+    expect(switchBody).toContain('paintMutationLedger.reserveNextMutationId(restored.maxRestoredMutationId + 1);');
   });
 });
 
@@ -3799,13 +3605,16 @@ describe('261023-l35 studio script snapshot seams', () => {
     expect(studio).toContain('const projectId = context.project?.projectId ?? \'\';');
     expect(studio).toContain('const trackId = typeof carriedTrackId === \'string\' ? carriedTrackId : \'\';');
     expect(studio).toContain('studioScriptSnapshot.bind(identity);');
-    // 3.6 (261027-klx): the app-owned ledger is the mutation clock.
-    expect(studio).toContain('paintMutationLedger.reserveNextMutationId(nextMutationId);');
+    // 3.6 (261027-klx): the app-owned ledger is the mutation clock — the
+    // launch restore seeds it as a max-raise past every restored id.
+    expect(studio).toContain('paintMutationLedger.reserveNextMutationId(restored.maxRestoredMutationId + 1);');
+    // No separate engine-ready re-apply ref survives the engine-1 removal.
+    expect(studio).not.toContain('studioScriptSnapshotReservedNextMutationIdRef');
   });
 
-  it('re-applies the reserved mutation clock at the engine-ready seam', () => {
-    expect(studio).toContain('const reservedMutationId = studioScriptSnapshotReservedNextMutationIdRef.current;');
-    expect(studio).toContain('if (reservedMutationId > 0) paintMutationLedger.reserveNextMutationId(reservedMutationId);');
+  it('seeds the ledger clock from the restore, never an engine-ready re-apply', () => {
+    expect(studio).toContain('if (restored.maxRestoredMutationId > 0) {');
+    expect(studio).not.toContain('paintMutationLedger.reserveNextMutationId(nextMutationId);');
   });
 
   it('bounds the close-path save and keeps a dirty script pending', () => {
@@ -3848,29 +3657,27 @@ describe('261023-l35 save discipline in the Studio', () => {
     expect(effectBody).toContain('studioScriptSnapshot.dispose();');
   });
 
-  it('saves the outgoing key, resets both stores, then binds and restores', () => {
+  it('saves the outgoing key, resets the store, then binds and restores', () => {
     const switchStart = studio.indexOf('if (sessionNeedsCommit) {');
-    const switchBody = studio.slice(switchStart, studio.indexOf('const engine = engineRef.current as PreviewBackgroundEngine | null;', switchStart));
+    const switchBody = studio.slice(switchStart, studio.indexOf('setCachedRotoReferenceUrl(null);', switchStart));
     // 261027 UAT round 6: the flush is pinned to the OUTGOING track — the
     // document's active track has already moved to the incoming one.
     const flushCapture = switchBody.indexOf('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);');
-    const brushCapture = switchBody.indexOf('flushBrushScriptFrame(');
     const saveOutgoing = switchBody.indexOf('void studioScriptSnapshot.saveNow();');
-    const resetBrush = switchBody.indexOf('resetBrushScriptStore();');
     const resetWatercolor = switchBody.indexOf('resetAquarelleRecordState();');
     const bindIncoming = switchBody.indexOf('studioScriptSnapshot.bind(incomingIdentity);');
     const restoreIncoming = switchBody.indexOf('void studioScriptSnapshot.restore()');
     expect(flushCapture).toBeGreaterThan(-1);
-    expect(brushCapture).toBeGreaterThan(flushCapture);
-    expect(saveOutgoing).toBeGreaterThan(brushCapture);
-    expect(resetBrush).toBeGreaterThan(saveOutgoing);
-    expect(resetWatercolor).toBeGreaterThan(resetBrush);
+    expect(saveOutgoing).toBeGreaterThan(flushCapture);
+    expect(resetWatercolor).toBeGreaterThan(saveOutgoing);
     expect(bindIncoming).toBeGreaterThan(resetWatercolor);
     expect(restoreIncoming).toBeGreaterThan(bindIncoming);
+    // The Brush store reset left with engine 1.
+    expect(switchBody).not.toContain('resetBrushScriptStore();');
     // Restore is dispatched, never awaited inside the synchronous effect.
     expect(switchBody).not.toContain('await studioScriptSnapshot.restore()');
     // The incoming restore reserves the ledger clock past restored ids.
-    expect(switchBody).toContain('paintMutationLedger.reserveNextMutationId(nextMutationId);');
+    expect(switchBody).toContain('paintMutationLedger.reserveNextMutationId(restored.maxRestoredMutationId + 1);');
   });
 });
 
@@ -3952,11 +3759,12 @@ describe('261023-ors rail-delete snapshot cascade in the Studio', () => {
   });
 });
 
-// quick-261024-m20: every accepted physical replace remaps BOTH session stores
-// (brush ledger + watercolor record state) by key identity AFTER the store
-// commit; a failed replace calls neither.
+// quick-261024-m20: every accepted physical replace remaps the surviving
+// session store (watercolor record state) by key identity AFTER the store
+// commit; a failed replace never does. 261027-klx dropped the brush remap with
+// engine-1.
 describe('261024-m20 accepted-replace key-identity remaps', () => {
-  it('calls both remaps after each accepted replace and never on failure', () => {
+  it('calls the watercolor remap after each accepted replace and never on failure', () => {
     const recordsStart = studio.indexOf('const replacePhysicalRecordsWithOwnership = (');
     const documentStart = studio.indexOf('const replacePhysicalDocumentWithOwnership = (', recordsStart);
     const documentEnd = studio.indexOf('const physicalEditCoordinator = useRotoPhysicalEditCoordinator', documentStart);
@@ -3966,9 +3774,10 @@ describe('261024-m20 accepted-replace key-identity remaps', () => {
     const recordsSlice = studio.slice(recordsStart, documentStart);
     const documentSlice = studio.slice(documentStart, documentEnd);
 
-    // ONE wrapper drives both stores.
+    // ONE wrapper drives the surviving store; the brush remap left with
+    // engine-1.
     expect(studio).toContain('const applyScriptRecordRemaps = (');
-    expect(studio).toContain('remapBrushScriptsForRecords(beforeRecords, nextRecords)');
+    expect(studio).not.toContain('remapBrushScriptsForRecords');
     expect(studio).toContain('remapAquarelleScriptsForRecords(beforeRecords, nextRecords)');
 
     // Identical-revision branch: the remap runs only inside the ok branch.
@@ -4069,7 +3878,7 @@ describe('261024-mz5 watercolor transform surface', () => {
 // move paths, and the bundle callback is the dialog's only reorder seam.
 describe('261024-vga watercolor exact stack placement wiring', () => {
   const placeHandlerStart = studio.indexOf('const handleAquarellePlaceStroke = useCallback(');
-  const placeHandlerEnd = studio.indexOf('// 261023-g4p: register BOTH module ports', placeHandlerStart);
+  const placeHandlerEnd = studio.indexOf('setScriptStrokeEditionPorts({', placeHandlerStart);
   const placeHandler = placeHandlerStart >= 0 && placeHandlerEnd > placeHandlerStart
     ? studio.slice(placeHandlerStart, placeHandlerEnd)
     : '';
@@ -4126,16 +3935,16 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
   it('declares ONE stable applyFrameModuleState callback with the owner rule', () => {
     expect(studio).toContain('const applyFrameModuleState = useCallback(');
     const start = studio.indexOf('const applyFrameModuleState = useCallback(');
-    const end = studio.indexOf('// 261023-g4p: the brush script-edition port', start);
+    const end = studio.indexOf('const staticControlsLocked = mutationLocked', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const funnel = studio.slice(start, end);
-    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);');
+    // 261027-klx: Water color is the only module — the funnel publishes the
+    // frame's single owner and no longer switches modules.
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell);');
     expect(funnel).toContain('const scriptCell = resolveStudioScriptCell(frame);');
-    expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
-    // 261027-gh9: the funnel routes through the ONE clamping setter — no
-    // direct signal assignment survives in the slice.
-    expect(funnel).toContain('setActiveModule(owner);');
+    expect(funnel).not.toContain("owner === 'brush'");
+    expect(funnel).not.toContain('setActiveModule(owner);');
     expect(funnel).not.toContain('activeModule.value =');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
     expect(funnel).toContain('[resolveStudioScriptCell],');
@@ -4149,15 +3958,13 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
 
     const funnel = 'if (!wasPlaying && !rotoCachedPlayback.isActive) applyFrameModuleState(frame);';
     const funnelIndex = navigation.indexOf(funnel);
-    const flushIndex = navigation.indexOf('flushBrushScriptFrame(');
+    const flushIndex = navigation.indexOf('aquarelleFlushCaptureRef.current?.();');
     const snapshotIndex = navigation.indexOf('rotoPersistence.snapshotLivePixels(currentFrame);');
     expect(funnelIndex).toBeGreaterThan(-1);
     expect(flushIndex).toBeGreaterThan(-1);
     expect(snapshotIndex).toBeGreaterThan(-1);
     expect(funnelIndex).toBeGreaterThan(flushIndex);
     expect(funnelIndex).toBeLessThan(snapshotIndex);
-    // The destination module governs hydration (read after the funnel).
-    expect(funnelIndex).toBeLessThan(navigation.indexOf('const hydrationPlan = planBrushScriptHydration(hydrationRequest);'));
   });
 
   it('publishes the owner on BOTH launch-restore exits, after the restore', () => {
@@ -4182,17 +3989,16 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
       .toBeLessThan(switchBlock.indexOf('if (restored.maxRestoredMutationId <= 0) return;'));
   });
 
-  it('refreshes after a non-clear brush completion and never on clear', () => {
-    const completionStart = studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
-    const blockStart = studio.indexOf("if (activeModule.peek() !== 'watercolor') {", completionStart);
-    const blockEnd = studio.indexOf('rotoMoveHistory.observePaintMutation(', blockStart);
-    const block = studio.slice(blockStart, blockEnd);
-    expect(blockStart).toBeGreaterThan(-1);
-    expect(block).toContain("if (kind !== 'clear') {");
-    expect(block).toContain('applyFrameModuleState(scriptFrame, {');
-    expect(block).toContain('strokeCount: mutationEngine.getStrokeCount(),');
-    expect(block.indexOf("if (kind !== 'clear') {"))
-      .toBeLessThan(block.indexOf('applyFrameModuleState(scriptFrame, {'));
+  it('leaves no Brush completion refresh in the ledger subscriber', () => {
+    // 261027-klx: the completion law is watercolor-only (stroke-end records
+    // and republishes). The Brush completion refresh left with engine 1.
+    const completionStart = studio.indexOf('canvasCompletedMutationImplRef.current = (mutation) => {');
+    expect(completionStart).toBeGreaterThan(-1);
+    const blockEnd = studio.indexOf('const cachedRotoPlaybackComposition', completionStart);
+    const block = studio.slice(completionStart, blockEnd);
+    expect(block).not.toContain('applyCompletedBrushMutation(');
+    expect(block).not.toContain('applyFrameModuleState(scriptFrame');
+    expect(block).toContain('rotoMoveHistory.observePaintMutation(mutationId, kind);');
   });
 
   it('republishes on the aquarelle stroke-end, delete and history seams', () => {
@@ -4228,7 +4034,10 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     const clearCanvasStart = studio.indexOf('clearCanvas: (frame) => {');
     const clearCanvasEnd = studio.indexOf('navigate: navigateToSyncedPhysicalFrame', clearCanvasStart);
     const clearCanvas = studio.slice(clearCanvasStart, clearCanvasEnd);
-    expect(clearCanvas).toContain('clearBrushScriptFrame(frame);');
+    // 261027-klx: the display clear wipes the app-owned preview base; the
+    // Brush store clear left with engine 1.
+    expect(clearCanvas).toContain('previewBasePort.clearPreviewBaseImage(true);');
+    expect(clearCanvas).not.toContain('clearBrushScriptFrame');
     expect(clearCanvas).toContain('applyFrameModuleState(frame);');
 
     const purgeStart = studio.indexOf('function purgeMemoryScriptFrame(frame: number): boolean {');
@@ -4248,10 +4057,9 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(purgeClear).toContain('applyFrameModuleState(liveFrame);');
   });
 
-  it('wires the brush port delete callback and clears the lock on unmount', () => {
-    expect(studio).toContain('onScriptChanged: (frame) => {');
-    expect(studio).toContain('applyFrameModuleState(frame);');
-    expect(studio).toContain('clearFrameScriptOwner();');
+  it('has no brush script callback and clears the lock on unmount', () => {
+    // 261027-klx: the Brush script-edit callback left with engine 1.
+    expect(studio).not.toContain('onScriptChanged: (frame) => {');
     const teardownStart = studio.indexOf('useEffect(() => () => {\n    clearFrameScriptOwner();');
     expect(teardownStart).toBeGreaterThan(-1);
   });
@@ -4273,8 +4081,9 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
   });
 
   it('refuses in the documented guard order', () => {
+    // 261027-klx: the engine-1 handle guard left with the Efx child — the
+    // owner resolver is the live-surface guard.
     const guards = [
-      'if (!engine) return;',
       'if (isPhysicalMutationLocked()) return;',
       'if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;',
       'if (rotoCachedPlayback.isActive) return;',
@@ -4288,10 +4097,9 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
       expect(index, guard).toBeGreaterThan(previous);
       previous = index;
     }
+    expect(handler).not.toContain('if (!engine) return;');
     expect(handler).toContain('const scriptCell = resolveStudioScriptCell(frame);');
-    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, {');
-    expect(handler).toContain('active: activeModule.peek() === \'brush\',');
-    expect(handler).toContain('strokeCount: engine.getStrokeCount(),');
+    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell);');
     // The frame identity is re-checked after the awaited pixel flush.
     expect(
       countOccurrences(
@@ -4303,15 +4111,12 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
 
   it('runs capture, verification, ledger clear and reload strictly before the purge', () => {
     const order = [
-      'engine.flushPendingStrokeFinalizations();',
-      'engine.forceDry();',
-      'rotoPersistenceRef.current.snapshotLivePixels(frame);',
       'await flushAquarellePixels(frame);',
       'findCachedRotoDisplayFrameRef.current(frame)',
-      'engine.clearPreviewBaseImage(true);',
-      'engine.resetBackground(true);',
-      'engine.clear();',
-      'loadCachedRotoReferenceFrame(frame, engine)',
+      'previewBasePort.clearPreviewBaseImage(true);',
+      'previewBasePort.resetBackground(true);',
+      'previewBasePort.clear();',
+      'loadCachedRotoReferenceFrame(frame, previewBasePort)',
       'purgeMemoryScriptFrame(frame);',
       'applyFrameModuleState(frame);',
     ];
@@ -4321,7 +4126,10 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
       expect(index, step).toBeGreaterThan(previous);
       previous = index;
     }
-    expect(handler).toContain('if (owner !== \'watercolor\') {');
+    // The engine-1 finalize/dry/clear seams are gone.
+    expect(handler).not.toContain('engine.flushPendingStrokeFinalizations();');
+    expect(handler).not.toContain('engine.forceDry();');
+    expect(handler).not.toContain('engine.clear();');
   });
 
   it('fails closed with the nothing-changed copy for both pre-purge failures', () => {
@@ -4455,7 +4263,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     return source.slice(start, end);
   }
 
-  it('re-binds both script gates to the LIVE timeline graph after every rebuild', () => {
+  it('re-binds the watercolor Select gate to the LIVE timeline graph after every rebuild', () => {
     // `useRotoTimelineModel` rebuilds its WHOLE signal graph on structural
     // changes. A once-created Computed keeps the sources its last evaluation
     // registered — the retired graph — and is never notified again. The Studio
@@ -4465,24 +4273,23 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const generation = between(studio, 'const rotoModelGeneration = useSignal(0);', 'const loopResolutionContext');
     expect(generation).toContain('rotoModelGeneration.value += 1;');
     expect(generation).toContain('}, [rotoTimelineModel]);');
-    // Exactly one read per gate — the Move and Water color halves.
-    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(2);
+    // 261027-klx: the Brush Move gate left with engine 1 — exactly one read
+    // remains (the Water color gate).
+    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(1);
+    expect(studio).not.toContain('const moveAvailable = useComputed(');
 
-    const moveGate = between(studio, 'const moveAvailable = useComputed(', 'const watercolorMoveAvailable = useComputed(');
     const waterGate = between(studio, 'const watercolorMoveAvailable = useComputed(() => {', 'const gateDiagnosticsRef = useRef');
-    for (const gate of [moveGate, waterGate]) {
-      const generationRead = gate.indexOf('void rotoModelGeneration.value;');
-      const cellRead = gate.indexOf('rotoTimelineModel.currentCell.value');
-      const projectionRead = gate.indexOf('resolveStudioScriptCell(cell.appFrame)');
-      expect(generationRead).toBeGreaterThan(-1);
-      expect(cellRead).toBeGreaterThan(generationRead);
-      expect(projectionRead).toBeGreaterThan(cellRead);
-      // Identity is projection-only; null / non-real / keyless cells fail closed.
-      expect(gate).toContain("if (cell.kind !== 'real') return false;");
-      expect(gate).toContain("if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;");
-      // The possibly-retired model cell never asserts a key by itself.
-      expect(gate).not.toContain('cell.keyId ===');
-    }
+    const generationRead = waterGate.indexOf('void rotoModelGeneration.value;');
+    const cellRead = waterGate.indexOf('rotoTimelineModel.currentCell.value');
+    const projectionRead = waterGate.indexOf('resolveStudioScriptCell(cell.appFrame)');
+    expect(generationRead).toBeGreaterThan(-1);
+    expect(cellRead).toBeGreaterThan(generationRead);
+    expect(projectionRead).toBeGreaterThan(cellRead);
+    // Identity is projection-only; null / non-real / keyless cells fail closed.
+    expect(waterGate).toContain("if (cell.kind !== 'real') return false;");
+    expect(waterGate).toContain("if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;");
+    // The possibly-retired model cell never asserts a key by itself.
+    expect(waterGate).not.toContain('cell.keyId ===');
     expect(waterGate).toContain('return hasAquarelleScriptForFrame(cell.appFrame);');
     // DEV diagnostics prove the gates' OWN frame/cell context, so the next
     // stale graph can never again hold `true` unnoticed.
@@ -4493,42 +4300,26 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(diagnostics).toContain('if (import.meta.env.DEV) {');
   });
 
-  it('keeps a cache-only key ownerless and Move fail-closed on ONE key-bound predicate', () => {
-    // Every gate/owner/hydration decision shares this key context: the O(1)
-    // physical projection cell. A derived or empty cell carries no key id.
-    const cellResolver = between(studio, 'const resolveStudioScriptCell = useCallback(', '// quick-261026-odd (empty-script gate): the engine leg');
+  it('keeps a cache-only key ownerless and Select fail-closed on ONE key-bound predicate', () => {
+    // Every gate/owner decision shares this key context: the O(1) physical
+    // projection cell. A derived or empty cell carries no key id.
+    const cellResolver = between(studio, 'const resolveStudioScriptCell = useCallback(', '// quick-261026-odd follow-up: Water color');
     expect(cellResolver).toContain('physicPaintStore.getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())?.cells[frame]');
     expect(cellResolver).toContain('? { kind: cell.kind, keyId: cell.keyId }');
     expect(cellResolver).toContain(': { kind: cell.kind, keyId: null };');
 
-    // The Move gate's engine leg preserves the first-stroke re-enable while
-    // staying cheap: creation serials (one per stroke), never a deep copy,
-    // and aquarelle guide proxies never count as a movable Brush script.
-    const engineLeg = between(studio, 'const engineHoldsBrushMoveStrokes = useCallback((): boolean => {', '// quick-261026-odd follow-up: the Move law is bound to the KEY');
-    expect(engineLeg).toContain('const serials = activeEngine.getStrokeSerials();');
-    expect(engineLeg).toContain('if (getRecordedAquarelleStroke(mutationId) === undefined) return true;');
-    expect(engineLeg).not.toContain('getStrokes(');
-
-    // Move entry demand-attaches with the SAME key context, then refuses to
-    // arm when neither the engine nor the attach holds a live ledger (defense
-    // in depth: an enabled Move always has handles).
-    const moveEntry = between(studio, "if (activeModule.peek() === 'brush' && tool === 'move') {", 'selectToolEngine(tool, physicsMode);');
-    expect(moveEntry).toContain('const scriptCell = resolveStudioScriptCell(scriptFrame);');
-    expect(moveEntry).toContain("keyId: scriptCell !== null && scriptCell.kind === 'real' ? scriptCell.keyId : null,");
-    expect(moveEntry).toContain('if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) return;');
-    // The stored leg needs THIS key's id AND hydratability; a legacy
-    // null-keyId row, a foreign key, a partial row or a missing entry all
-    // resolve false (the cached pixels stay view-only, never Move outlines).
-    const moveGate = between(studio, 'const moveAvailable = useComputed(', 'const watercolorMoveAvailable = useComputed(');
-    expect(moveGate).toContain('&& entry.keyId === scriptCell.keyId');
-    expect(moveGate).toContain('&& isBrushScriptFrameHydratable(entry);');
+    // 261027-klx: the Brush Move gate, its engine ledger leg and the tool
+    // selection funnel left with engine 1. The surviving gate is the Water
+    // color Select gate, bound to the same key context.
+    expect(studio).not.toContain('engineHoldsBrushMoveStrokes');
+    expect(studio).not.toContain('isBrushScriptFrameHydratable');
     // Ownership publishes through the same cell; null leaves the module
     // untouched and locks nothing (behavior pinned in frameScriptOwnership /
     // frameModuleLock suites).
-    const funnel = between(studio, 'const applyFrameModuleState = useCallback(', '// 261023-g4p: the brush script-edition port');
+    const funnel = between(studio, 'const applyFrameModuleState = useCallback(', 'const staticControlsLocked = mutationLocked');
     expect(funnel).toContain('const scriptCell = resolveStudioScriptCell(frame);');
-    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);');
-    expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell);');
+    expect(funnel).not.toContain("owner === 'brush'");
     expect(funnel).toContain('setFrameScriptOwner(owner);');
   });
 
@@ -4641,7 +4432,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const trackSwitch = between(
       studio,
       'if (sessionNeedsCommit) {',
-      'const engine = engineRef.current as PreviewBackgroundEngine | null;',
+      'setCachedRotoReferenceUrl(null);',
     );
     expect(trackSwitch).toContain('resetAquarelleRecordState();');
     expect(trackSwitch).not.toContain('resetAquarelleScriptRecording');
@@ -4740,19 +4531,22 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     // The ledger is the completion SOURCE; the ref keeps the existing ordering
     // (latest render's closure) while staying synchronous.
     expect(studio).toContain('useEffect(() => paintMutationLedger.subscribe((mutation) => {');
-    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation, rotoMutationPort);');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation);');
     // The SAME port identity reaches the clipboard and the completion path, or
     // getAcceptedTarget reads null for everything and every apply refuses.
+    // 261027-klx: the Studio only publishes that identity — the controller owns
+    // the accepted-target lookup, so no direct getAcceptedTarget call remains.
     expect(studio).toContain('rotoScript.updateEngine(rotoMutationPort);');
     expect(studio).toContain('getEngine: () => rotoMutationPort,');
     expect(studio).toContain('rotoScript.observeCompletedMutation(rotoMutationPort, mutation);');
-    expect(studio).toContain('rotoScript.getAcceptedTarget(rotoMutationPort, mutationId);');
+    expect(studio).not.toContain('rotoScript.getAcceptedTarget(');
   });
 
-  it('seeds the ledger clock from restores and engine-ready, never an engine reserve', () => {
+  it('seeds the ledger clock from the launch restore and the track-switch restore only', () => {
     const seeds = studio.match(/paintMutationLedger\.reserveNextMutationId\(/g) ?? [];
-    // launch restore + track-switch restore + engine-ready max-raise.
-    expect(seeds).toHaveLength(3);
+    // 261027-klx: launch restore + track-switch restore. The engine-ready
+    // max-raise left with the engine-1 canvas-ready seam.
+    expect(seeds).toHaveLength(2);
     expect(studio).not.toContain('reserveMutationClock');
   });
 

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { createRotoScriptClipboardController, type RecordedStrokeGroup } from '../roto/physicsPaintRotoScriptClipboard';

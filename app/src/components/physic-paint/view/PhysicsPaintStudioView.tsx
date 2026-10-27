@@ -157,9 +157,6 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
 function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   recordPhysicsPaintPerformanceCounter('render.canvasStack');
   const stackRef = useRef<HTMLDivElement>(null);
-  // Brush one-law: the ring is UI, not pigment — it must not sit inside the
-  // tracks group's paper-multiply group. See .physics-paint-brush-cursor-overlay.
-  const brushCursorOverlayRef = useRef<HTMLCanvasElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
@@ -236,7 +233,6 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
         <MemoizedPhysicsPaintCanvasMount
           key={props.canvasKey}
           {...props.mount}
-          cursorOverlayCanvasRef={brushCursorOverlayRef}
           aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}
         />
         {canvasBounds && props.programMonitor ? (
@@ -254,24 +250,8 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           </div>
         ) : null}
       </div>
-      {/* Brush one-law: the tracks group is the paper pass, so the dual ring
-          must render OUTSIDE it or the paper multiplies the white hairline
-          away. Kept mounted in both modules (the engine swaps its cursor
-          target); hidden in Water color, which owns its DOM ring. */}
-      <canvas
-        ref={brushCursorOverlayRef}
-        class="physics-paint-brush-cursor-overlay"
-        width={props.mount.width}
-        height={props.mount.height}
-        aria-hidden="true"
-        style={{
-          left: canvasBounds?.left ?? 0,
-          top: canvasBounds?.top ?? 0,
-          width: canvasBounds?.width ?? '100%',
-          height: canvasBounds?.height ?? '100%',
-          opacity: props.mount.aquarelleActive ? 0 : 1,
-        }}
-      />
+      {/* 261027-klx: the engine-1 brush cursor ring canvas is gone with engine 1.
+          Water color owns its DOM ring on the sheet itself. */}
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"

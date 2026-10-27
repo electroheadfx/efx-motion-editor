@@ -1,6 +1,6 @@
 import { useRef } from 'preact/hooks';
 import type { Dispatch, StateUpdater } from 'preact/hooks';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { AquarelleEnginePort } from '../engine/aquarelleEnginePort';
 import type { PhysicPaintLaunchContext, PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import { buildPhysicsPaintDebugManifest, buildPhysicsPaintStillExport, type PhysicsPaintDebugManifest, type PhysicsPaintStillExport } from '../engine/physicsPaintDevExport';
 import { downloadPhysicsPaintState, LOAD_STATE_SUCCESS_COPY, parsePhysicsPaintStateFile } from '../bridge/physicsPaintSessionFile';
@@ -33,7 +33,8 @@ export function buildPhysicsPaintDebugProof(input: {
 }
 
 export interface PhysicsPaintSessionControllerInput {
-  engine: EfxPaintEngine | null;
+  /** 261027-klx: the narrow watercolor port supplies the debug-proof canvas. */
+  engine: AquarelleEnginePort | null;
   canvasSize: { width: number; height: number };
   launchContext: PhysicPaintLaunchContext | null;
   currentFrame: number;
@@ -67,8 +68,7 @@ export function createPhysicsPaintSessionController(
   const mutationLocked = () => input.isMutationLocked?.() ?? false;
 
   const saveEditableState = async () => {
-    const engine = input.engine;
-    if (!engine || mutationLocked()) return;
+    if (mutationLocked()) return;
     try {
       const layerId = input.launchContext?.layerId;
       const document = layerId ? getDocument(layerId) : null;
@@ -87,16 +87,14 @@ export function createPhysicsPaintSessionController(
   };
 
   const applyLoadedState = (contents: string) => {
-    const engine = input.engine;
-    if (!engine || mutationLocked()) return;
+    if (mutationLocked()) return;
     try {
       const document = parsePhysicsPaintStateFile(contents);
       // The v1.0 session file IS the document. Install it into the store so
-      // the Studio runtime reflects the loaded session, and hand it to the
-      // engine so the package engine validates the same payload fail-closed
-      // (D-03: one document format everywhere).
+      // the Studio runtime reflects the loaded session (D-03: one document
+      // format everywhere). The watercolor engine has no document loader —
+      // the store is the authority and the next frame hydration repaints.
       registerDocument(document);
-      engine.load(document);
       setSuccess(LOAD_STATE_SUCCESS_COPY);
     } catch (error) {
       setFailure(error);
@@ -111,7 +109,7 @@ export function createPhysicsPaintSessionController(
     }
     const file = inputElement.files?.[0];
     inputElement.value = '';
-    if (!input.engine || !file) return;
+    if (!file) return;
 
     const reader = dependencies.createFileReader?.() ?? new FileReader();
     reader.onload = () => {
@@ -126,7 +124,7 @@ export function createPhysicsPaintSessionController(
     const launchContext = input.launchContext;
     if (!engine || !launchContext) return;
     try {
-      const canvas = engine.exportCompositeCanvas();
+      const canvas = engine.exportCanvas('transparent', true);
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('Debug proof canvas is unavailable.');
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);

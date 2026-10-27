@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { type Signal } from '@preact/signals';
 import { GripHorizontal } from 'lucide-preact';
-import type { ToolType } from '@efxlab/efx-physic-paint';
 import { type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
@@ -9,11 +8,9 @@ import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSecti
 import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsPaintAudioListSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
-import { activeModule } from '../../shared/activeModule';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { aquarelleParams } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
-import { BrushModuleSection } from './BrushModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
@@ -29,24 +26,14 @@ export interface PhysicsPaintPlayWiggleSettings {
 }
 
 export interface PhysicsPaintRightPanelProps {
-  activeTool: ToolType;
   color: string;
-  opacity: number;
   /**
-   * 261018-f15 C2: the Paint-tab size/opacity pair is a second home over the
-   * SAME state the top bar writes (setAquarelleParam size/load in watercolor,
-   * setBrushSize/setBrushOpacity otherwise). These are the top-bar routers —
-   * never a second setter.
+   * 261018-f15 C2: the Paint-tab size pair is a second home over the SAME
+   * aquarelle size the top bar writes (`setAquarelleParam('size')`) — the
+   * top-bar router, never a second setter. Engine-1 removal leaves Water color
+   * as the only module, so the pair has no Opacity sibling.
    */
-  brushSize: number;
   onBrushSizeChange: (value: number) => void;
-  onOpacityChange: (value: number) => void;
-  edgeDetail: number;
-  pickup: number;
-  spread: number;
-  smoothing: number;
-  eraseStrength: number;
-  physicsMode: 'local' | null;
   onion: PhysicsPaintOnionState;
   onionDisabled?: boolean;
   engineControlsDisabled?: boolean;
@@ -54,11 +41,6 @@ export interface PhysicsPaintRightPanelProps {
   onColorChange: (color: string, opacity: number) => void;
   /** 261024-p5q UAT: one commit per picker gesture — edits the selected strokes. */
   onColorCommit?: (color: string, opacity: number) => void;
-  onEdgeDetailChange: (value: number) => void;
-  onPickupChange: (value: number) => void;
-  onSpreadChange: (value: number) => void;
-  onSmoothingChange: (value: number) => void;
-  onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
   /** History actions — routed from the tool rail; the retired top-pane Actions tab is gone (261018-cy1). */
@@ -129,10 +111,9 @@ const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
 const TOP_PANE_TAB_LABELS: Readonly<
-  Record<'color' | 'brush' | 'settings' | 'paper' | 'memory', string>
+  Record<'color' | 'settings' | 'paper' | 'memory', string>
 > = Object.freeze({
   color: 'Color',
-  brush: 'Brush',
   settings: 'Settings',
   paper: 'Paper',
   // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
@@ -181,29 +162,14 @@ export function createPhysicsPaintPaneResizeDrag(options: {
 // 261018-0ox I-10: each tab body lives in its RightPanel*Tab component —
 // this shell owns the pane layout, tab row, and tool-pane routing only.
 export function PhysicsPaintRightPanel({
-  activeTool,
   color,
-  opacity,
-  brushSize,
   onBrushSizeChange,
-  onOpacityChange,
-  edgeDetail,
-  pickup,
-  spread,
-  smoothing,
-  eraseStrength,
-  physicsMode,
   onion,
   onionDisabled = false,
   engineControlsDisabled = false,
   playWiggle,
   onColorChange,
   onColorCommit,
-  onEdgeDetailChange,
-  onPickupChange,
-  onSpreadChange,
-  onSmoothingChange,
-  onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
   trackName,
@@ -230,27 +196,19 @@ export function PhysicsPaintRightPanel({
   // The signal read subscribes this memoized panel to selection changes (the
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
-  // 261018-cy1: the top-pane tab list is mode-derived. The retired top-pane
-  // Actions entry is gone in every mode (the bottom-pane scripts tab keeps its
-  // label). 261027-gh9g: the Brush tab is retired too — the brush catalog now
-  // lives in the top-bar dropdown and its floating modal.
-  const isWatercolorModule = activeModule.value === 'watercolor';
-  // quick-261023-ors: 'memory' is LAST in both modes. It is available in both
-  // modes (the gauge reads the active stores).
-  const topPaneTabs = (
-    isWatercolorModule
-      ? ['color', 'settings', 'paper', 'memory']
-      : ['color', 'paper', 'memory']
-  ) as ReadonlyArray<'color' | 'brush' | 'settings' | 'paper' | 'memory'>;
-  // A stale 'brush' selection (or a 'settings' selection after the module
-  // leaves watercolor) falls back to the Color body — derived in render, never
-  // via an effect.
+  // 261018-cy1: the top-pane tab list is fixed. The retired top-pane Actions
+  // entry is gone (the bottom-pane scripts tab keeps its label). 261027-gh9g:
+  // the Brush tab is retired too — the brush catalog now lives in the top-bar
+  // dropdown and its floating modal. Engine-1 removal leaves Water color as the
+  // only module, so there is no mode-derived variant left.
+  // quick-261023-ors: 'memory' is LAST.
+  const topPaneTabs = ['color', 'settings', 'paper', 'memory'] as ReadonlyArray<
+    'color' | 'settings' | 'paper' | 'memory'
+  >;
+  // A stale tab id can never be selected: the union only holds live tabs.
   const [topPaneTab, setTopPaneTab] =
-    useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>('color');
-  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' | 'memory' =
-    topPaneTab === 'brush' || (topPaneTab === 'settings' && !isWatercolorModule)
-      ? 'color'
-      : topPaneTab;
+    useState<'color' | 'settings' | 'paper' | 'memory'>('color');
+  const effectiveTopPaneTab: 'color' | 'settings' | 'paper' | 'memory' = topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -354,7 +312,7 @@ export function PhysicsPaintRightPanel({
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-          {effectiveTopPaneTab === 'settings' && isWatercolorModule ? (
+          {effectiveTopPaneTab === 'settings' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">
               <RightPanelSettingsTab />
             </div>
@@ -389,7 +347,7 @@ export function PhysicsPaintRightPanel({
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel">
             <RightPanelColorTab
               color={color}
-              opacity={opacity}
+              opacity={aquarelleParams.value.load}
               disabled={engineControlsDisabled}
               onColorChange={onColorChange}
               onColorCommit={onColorCommit}
@@ -477,58 +435,27 @@ export function PhysicsPaintRightPanel({
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
-            {/* 261018-f15 C2: Brush size + Opacity pair at the TOP of the Paint
-                tab — a second home over the SAME handlers the top bar uses
-                (write-through, never a second setter). Display rules match the
-                top bar: live aquarelle size in watercolor, settings otherwise.
-                Water color has no global opacity; its Pigment (`load`) lives
-                in the module globals below, so the mislabelled duplicate row
-                is Brush-only. */}
+            {/* 261018-f15 C2: the Brush size pair at the TOP of the Paint tab is
+                a second home over the SAME handler the top bar uses
+                (write-through, never a second setter). Water color has no
+                global opacity; its Pigment (`load`) lives on the top bar and in
+                the module globals below. */}
             <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
               <SliderStepper
                 id="paint-tab-brush-size"
                 label="Brush size"
-                value={activeModule.value === 'watercolor' ? aquarelleParams.value.size : brushSize}
+                value={aquarelleParams.value.size}
                 step={1}
                 min={1}
                 max={80}
                 ariaLabel="Brush size"
                 onChange={onBrushSizeChange}
               />
-              {activeModule.value !== 'watercolor' ? (
-                <SliderStepper
-                  id="paint-tab-brush-opacity"
-                  label="Opacity"
-                  value={opacity}
-                  step={1}
-                  min={10}
-                  max={100}
-                  ariaLabel="Opacity"
-                  onChange={onOpacityChange}
-                />
-              ) : null}
             </div>
-            {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — drains
-                per activeModule. The shared Opacity option-group left with I-05. */}
-            {activeModule.value === 'watercolor' ? (
-              <WatercolorModuleSection />
-            ) : (
-              <BrushModuleSection
-                activeTool={activeTool}
-                edgeDetail={edgeDetail}
-                pickup={pickup}
-                spread={spread}
-                smoothing={smoothing}
-                eraseStrength={eraseStrength}
-                physicsMode={physicsMode}
-                engineControlsDisabled={engineControlsDisabled}
-                onEdgeDetailChange={onEdgeDetailChange}
-                onPickupChange={onPickupChange}
-                onSpreadChange={onSpreadChange}
-                onSmoothingChange={onSmoothingChange}
-                onEraseStrengthChange={onEraseStrengthChange}
-              />
-            )}
+            {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — Water
+                color is the only module left after engine-1 removal. The shared
+                Opacity option-group left with I-05. */}
+            <WatercolorModuleSection />
           </div>
         ) : effectiveToolTab === 'background' ? (
           // 49-06 (S5): a selected Bg clip shows the Background Clip properties

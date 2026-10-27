@@ -139,30 +139,31 @@ function gatedAquarellePort(): {
   };
 }
 
+// 261027-klx: every engine-1 tool setter is gone. The surviving actions are the
+// paper-display writes and their narrow engine seam — the app-owned preview
+// base's background-mode mirror.
 function settingsActions(test: ReturnType<typeof harness>) {
   let settings = makeInitialPhysicsPaintStudioSettings();
   const setSettings = vi.fn((update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {
     settings = typeof update === 'function' ? update(settings) : update;
   });
-  const engine = Object.assign(test.engine, {
-    setTool: vi.fn(), setPhysicsMode: vi.fn(), setColorHex: vi.fn(), setBrushOpacity: vi.fn(),
-    setBrushSize: vi.fn(), setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn(),
-    setEdgeDetail: vi.fn(), setPickup: vi.fn(), setLocalSpreadStrength: vi.fn(), setAntiAlias: vi.fn(),
-    setEraseStrength: vi.fn(), startPhysics: vi.fn(), stopPhysics: vi.fn(),
-  });
+  const previewBase = {
+    setBgMode: vi.fn(),
+    setEmbossStrength: vi.fn(),
+  };
   const actions = createPhysicsPaintEngineActions({
-    engine: engine as never,
+    engine: previewBase,
     settings,
     setSettings,
     isMutationLocked: () => test.controller.mutationLocked.peek(),
   });
   const invokeEveryAction = () => {
-    actions.selectTool('erase', 'local'); actions.setBrushColor('#abcdef', 42); actions.setBrushSize(17);
-    actions.setBrushOpacity(63); actions.setBackground('white');
-    actions.setGrainStrength(0.65); actions.setEdgeDetail(71); actions.setPickup(29); actions.setSpread(36);
-    actions.setSmoothing(3); actions.setEraseStrength(88); actions.startPhysics('all'); actions.stopPhysics();
+    actions.setBackground('white');
+    actions.setGrainStrength(0.65);
+    actions.setGrainScale(2);
+    actions.updateSetting('opacity', 63);
   };
-  return { engine, setSettings, invokeEveryAction };
+  return { previewBase, setSettings, invokeEveryAction };
 }
 
 describe('Roto script clipboard controller', () => {
@@ -656,7 +657,7 @@ describe('Roto script clipboard controller', () => {
     expect(disposed.controller.error.value).toBeNull();
   });
 
-  it('blocks real engine settings actions throughout Copy drain and resumes after accepted completion', async () => {
+  it('blocks the paper-display settings actions throughout Copy drain and resumes after accepted completion', async () => {
     const test = harness([stroke(1)]);
     const settings = settingsActions(test);
     const copying = test.controller.copyScript();
@@ -664,20 +665,18 @@ describe('Roto script clipboard controller', () => {
     expect(test.controller.mutationLocked.value).toBe(true);
     settings.invokeEveryAction();
     expect(settings.setSettings).not.toHaveBeenCalled();
-    for (const method of [settings.engine.setTool, settings.engine.setPhysicsMode, settings.engine.setColorHex, settings.engine.setBrushOpacity,
-      settings.engine.setBrushSize, settings.engine.setBgMode, settings.engine.setEmbossStrength,
-      settings.engine.setEdgeDetail, settings.engine.setPickup, settings.engine.setLocalSpreadStrength, settings.engine.setAntiAlias,
-      settings.engine.setEraseStrength, settings.engine.startPhysics, settings.engine.stopPhysics]) expect(method).not.toHaveBeenCalled();
+    for (const method of [settings.previewBase.setBgMode, settings.previewBase.setEmbossStrength]) expect(method).not.toHaveBeenCalled();
 
     test.controller.observeCompletedMutation(test.engine, completion(1));
     await expect(copying).resolves.toBe(true);
     expect(test.controller.mutationLocked.value).toBe(false);
     settings.invokeEveryAction();
-    expect(settings.engine.setTool).toHaveBeenCalledWith('erase');
+    expect(settings.previewBase.setBgMode).toHaveBeenCalledWith('white');
+    expect(settings.previewBase.setEmbossStrength).toHaveBeenCalledWith(0.65);
     expect(settings.setSettings).toHaveBeenCalled();
   });
 
-  it('blocks real engine settings actions until navigation transition protection releases', async () => {
+  it('blocks the paper-display settings actions until navigation transition protection releases', async () => {
     const test = harness([stroke(1)]);
     await copyCompletedSource(test, [1]);
     test.setStrokes([stroke(2)]);
@@ -696,7 +695,7 @@ describe('Roto script clipboard controller', () => {
     test.controller.completeNavigation();
     expect(test.controller.mutationLocked.value).toBe(false);
     settings.invokeEveryAction();
-    expect(settings.engine.setTool).toHaveBeenCalledWith('erase');
+    expect(settings.previewBase.setBgMode).toHaveBeenCalledWith('white');
   });
 
   it('keeps Copy and navigation locks owned until replacement or disposal handoff completes', async () => {

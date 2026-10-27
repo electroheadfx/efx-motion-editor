@@ -1,18 +1,14 @@
 import { memo } from 'preact/compat';
-import type { PaintHistoryAvailability, ToolType } from '@efxlab/efx-physic-paint';
+import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
 import { Droplet, Eraser, Paintbrush, Pen, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
-import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
-import paintModePhysicsIcon from '../../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
-import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
-import { activeModule } from '../../shared/activeModule';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { readEffectiveTool, temporaryMove } from './physicsPaintTemporaryErase';
+import { temporaryMove } from './physicsPaintTemporaryErase';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import {
   aquarelleSelectMode,
@@ -21,14 +17,7 @@ import {
 } from './aquarelleStrokeSelection';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
-export type PhysicsPaintRailAction =
-  | 'paint'
-  | 'paint-physics'
-  | 'erase'
-  | 'move'
-  | 'undo'
-  | 'redo'
-  | 'clear-frame';
+export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame';
 
 export interface PhysicsPaintToolRailItem {
   id: PhysicsPaintRailAction;
@@ -36,14 +25,16 @@ export interface PhysicsPaintToolRailItem {
   /** Optional hover text; the label stays the short accessible name. */
   tooltip?: string;
   icon: string;
-  kind: 'tool' | 'action' | 'press-action';
+  kind: 'action';
 }
 
+/**
+ * 261027-klx: engine-1 removal leaves the shared history/clear actions. The
+ * Brush tool set (Paint / Paint with physics / Erase / Move) and its engine-1
+ * dispatch are gone — Water color is the only paint surface and its tool row
+ * (Brush | Water | Pen | Lift) lives in `WatercolorRail` below.
+ */
 export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
-  { id: 'paint', label: 'Paint', icon: paintModeNormalIcon, kind: 'tool' },
-  { id: 'paint-physics', label: 'Paint with physics', icon: paintModePhysicsIcon, kind: 'tool' },
-  { id: 'erase', label: 'Erase', icon: eraserIcon, kind: 'tool' },
-  { id: 'move', label: 'Move', tooltip: 'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward', icon: moveToolIcon, kind: 'tool' },
   { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
   { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
@@ -130,8 +121,8 @@ function WatercolorRail({
       >
         <Wind size={18} />
       </button>
-      {/* Global history actions (261018-cy1): same disable semantics as the
-          brush-mode rail; Trash is the existing clear-frame action. */}
+      {/* Global history actions (261018-cy1): same disable semantics as before;
+          Trash is the existing clear-frame action. */}
       <PhysicsPaintHistoryActionButton
         item={undoItem}
         historyAvailability={historyAvailability}
@@ -162,32 +153,15 @@ function WatercolorRail({
 }
 
 export interface PhysicsPaintToolRailProps {
-  activeTool: ToolType;
-  physicsMode: 'local' | null;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
-  /** quick-261026-odd — gates the Move icon; Move needs a Brush script on the current key. */
-  moveAvailable: ReadonlySignal<boolean>;
   /** quick-261026-odd — gates Water color Select; the current key must own a script. */
   selectAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
-  onSelectTool: (tool: ToolType, physicsMode: 'local' | null) => void;
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
   /** Fired after a swatch swap/promote with the new foreground hex so the engine color follows. */
   onActiveColorChanged?: (color: string) => void;
-}
-
-function isItemActive(
-  item: PhysicsPaintToolRailItem,
-  activeTool: ToolType,
-  physicsMode: 'local' | null,
-) {
-  if (item.id === 'paint') return activeTool === 'paint' && physicsMode === null;
-  if (item.id === 'paint-physics') return activeTool === 'paint' && physicsMode === 'local';
-  if (item.id === 'erase') return activeTool === 'erase';
-  if (item.id === 'move') return activeTool === 'move';
-  return false;
 }
 
 function PhysicsPaintHistoryActionButton({
@@ -223,89 +197,27 @@ function PhysicsPaintHistoryActionButton({
 // Undo/Redo read historyAvailability in narrow child subscribers so history
 // updates bypass the memo without rendering the rail shell or unrelated tools.
 function PhysicsPaintToolRailImpl({
-  activeTool,
-  physicsMode,
   historyAvailability,
-  moveAvailable,
   selectAvailable,
   disabled = false,
-  onSelectTool,
   onUndo,
   onRedo,
   onClearFrame,
   onActiveColorChanged,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
-  // UI checklist row 9: Water color mode replaces the rail with
-  // Brush | Water | Pen | Lift | Dry. Signal read bypasses the memo.
-  if (activeModule.value === 'watercolor') {
-    return (
-      <WatercolorRail
-        disabled={disabled}
-        historyAvailability={historyAvailability}
-        selectAvailable={selectAvailable}
-        onUndo={onUndo}
-        onRedo={onRedo}
-        onClearFrame={onClearFrame}
-        onActiveColorChanged={onActiveColorChanged}
-      />
-    );
-  }
-  // Held-Alt/Cmd display only: this narrow read re-renders just this rail (7
-  // buttons) so the active highlight can show Erase/Move while Paint stays
-  // selected.
-  const displayTool = readEffectiveTool(activeTool);
-  // quick-261026-odd: the Move icon is enabled only while the current key owns
-  // a Brush script — same narrow-leaf signal precedent as readEffectiveTool
-  // above.
-  const moveDisabled = !moveAvailable.value;
-  const runAction = (item: PhysicsPaintToolRailItem) => {
-    if (disabled) return;
-    if (item.id === 'paint') onSelectTool('paint', null);
-    if (item.id === 'paint-physics') onSelectTool('paint', 'local');
-    if (item.id === 'erase') onSelectTool('erase', physicsMode);
-    if (item.id === 'move') onSelectTool('move', physicsMode);
-    if (item.id === 'clear-frame') onClearFrame();
-  };
-
+  // 261027-klx: Water color is the only module — the rail is the aquarelle
+  // tool row, Dry, Move/Select and the shared history/clear actions.
   return (
-    <nav class="physics-paint-tool-rail" aria-label="Physics Paint tools">
-      {PHYSICS_PAINT_TOOL_RAIL_ITEMS.map((item) => {
-        if (item.id === 'undo' || item.id === 'redo') {
-          return (
-            <PhysicsPaintHistoryActionButton
-              key={item.id}
-              item={item}
-              historyAvailability={historyAvailability}
-              disabled={disabled}
-              onAction={item.id === 'undo' ? onUndo : onRedo}
-            />
-          );
-        }
-
-        const moveBlocked = item.id === 'move' && moveDisabled;
-        const active = isItemActive(item, displayTool, physicsMode) && !moveBlocked;
-        const className = `physics-paint-icon-button${active ? ' active' : ''}`;
-
-        return (
-          <button
-            key={item.id}
-            type="button"
-            class={className}
-            disabled={disabled || moveBlocked}
-            title={item.tooltip ?? item.label}
-            aria-label={item.label}
-            aria-pressed={item.kind === 'tool' ? active : undefined}
-            onClick={() => runAction(item)}
-          >
-            <img src={item.icon} alt="" aria-hidden="true" />
-          </button>
-        );
-      })}
-      <div style={{ marginTop: '8px' }}>
-        <ForegroundBackgroundSwatch onActiveColorChanged={onActiveColorChanged} />
-      </div>
-    </nav>
+    <WatercolorRail
+      disabled={disabled}
+      historyAvailability={historyAvailability}
+      selectAvailable={selectAvailable}
+      onUndo={onUndo}
+      onRedo={onRedo}
+      onClearFrame={onClearFrame}
+      onActiveColorChanged={onActiveColorChanged}
+    />
   );
 }
 

@@ -1419,13 +1419,6 @@ button.destructive {
   padding: 0 14px 14px;
 }
 
-/* 261018-jlb move 3: Brush tab alone gets 14px top padding (response title
-   removed — content would otherwise jam the tab strip). Paper / generic -flat
-   keep 0 14px 14px. Placed after -flat so it wins. */
-.physics-paint-options-tab-panel-brush {
-  padding: 14px 14px 14px;
-}
-
 /* I-11 follow-up: Settings tab gets a 10px top inset above the response rows. */
 .physics-paint-options-tab-panel-settings {
   padding-top: 10px;
@@ -1496,7 +1489,6 @@ button.destructive {
 }
 
 .physics-paint-memory-frame-watercolor,
-.physics-paint-memory-frame-brush,
 .physics-paint-memory-frame-stats {
   min-width: 0;
   overflow: hidden;
@@ -6979,15 +6971,6 @@ button.destructive {
      The previous per-layer aquarelle multiply glazed the tracks beneath —
      Studio and editor disagreed on the same frame. */
   mix-blend-mode: multiply;
-}
-
-/* The brush ring is UI, never pigment: it renders on its own canvas as a
-   sibling of the tracks group, so the paper pass cannot eat its white
-   hairline. The engine draws into it via setCursorOverlayCanvas. */
-.physics-paint-brush-cursor-overlay {
-  position: absolute;
-  z-index: 3;
-  pointer-events: none;
 }
 
 /* 48-06 (UAT-C): the paper fond layer — drawn BENEATH the isolated tracks

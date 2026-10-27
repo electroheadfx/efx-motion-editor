@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState, ToolType } from './types/paintCore';
-import type { BlendMode, DocumentSoundClip, EfxPaintDocument, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState } from './types/paintCore';
+import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
@@ -79,13 +79,11 @@ import { findAdjacentRealKeyFrame, isPhysicsPaintShortcutTarget } from './view/p
 import {
   mountPhysicsPaintTemporaryErase,
   resolveEffectiveTool,
-  syncTemporaryErase,
-  temporaryErase,
-  temporaryMove,
+  type TemporaryEraseEngine,
   type TemporaryEraseDeps,
 } from './view/physicsPaintTemporaryErase';
 import { aquarelleActiveTool } from './view/aquarelleRecordState';
-import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot, RotoPreviewBasePort } from './roto/rotoCoordinatorPorts';
+import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
 import type { AquarelleEnginePort } from './engine/aquarelleEnginePort';
@@ -98,7 +96,7 @@ import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { getFrameBlobUrl } from './hooks/useRotoReferenceController';
-import { recordsAsRuntimeFramesToleratingReferences, resolveRotoCompletedGroupPaintTarget, resolveRotoLivePixelIdentityKey, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { recordsAsRuntimeFramesToleratingReferences, resolveRotoCompletedGroupPaintTarget, resolveRotoLivePixelIdentityKey, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { classifyPhysicPaintRotoGroupFrameTarget, resolvePhysicPaintRotoGroupSourceKeyIdAtOffset } from './roto/physicsPaintRotoGroupLifecycle';
 import { composeRotoScriptRebakeFrame } from './roto/physicsPaintRotoScriptRebake';
 import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
@@ -118,7 +116,7 @@ import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoB
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
 import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
-import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
+import { interactionIdle, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
 import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
@@ -129,13 +127,9 @@ import { resolvePreviousRealKeyBase } from './roto/physicsPaintRotoPreviousKeyBa
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
-import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from './performance/physicsPaintPerformanceTrace';
+import { recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { captureMoveProvenanceNow } from './performance/moveProvenanceCapture';
 import {
-  captureMoveProvenanceNow,
-  installMoveProvenanceProbe,
-} from './performance/moveProvenanceCapture';
-import {
-  installAquarelleRenderSplitProbe,
   recordAquarelleAlphaProof,
   recordAquarelleRenderSplitEvent,
   summarizePhysicPaintRotoGroupFrameTarget,
@@ -158,13 +152,12 @@ import {
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import { type RotoScriptEnginePort, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { copyAquarelleScriptToFrame, runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
-import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
 import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
@@ -198,9 +191,9 @@ import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilen
 import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
-import { activeModule, setActiveModule } from '../shared/activeModule';
+import { activeModule } from '../shared/activeModule';
 import { clearFrameScriptOwner, frameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
-import type { FrameScriptCell } from './view/frameScriptOwnership';
+import { resolveFrameScriptOwner, type FrameScriptCell } from './view/frameScriptOwnership';
 import {
   anchorUnownedAquarelleStrokesForFrame,
   aquarelleScriptRecordingEnabled,
@@ -208,7 +201,6 @@ import {
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
-  getRecordedAquarelleStroke,
   hasAquarelleScriptForFrame,
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
@@ -525,13 +517,6 @@ const DOCUMENT_SYNC_GESTURE_QUIET_MS = 2500;
 // (user-driven, one-shot) is the last attempt.
 const DOCUMENT_SYNC_MAX_AUTO_RETRIES = 3;
 
-// 52.1 (fresh-frame first-paint freeze): a newly-activated frame's canvas
-// surfaces are cold — the first paint's synchronous readback flushes them
-// mid-stroke (the ~380ms rAF gaps on the fast-chained 2nd stroke). The
-// user-validated recipe is "+key then wait ~1s"; this gate holds the pen that
-// long (in idle) so the GPU settles before the first stroke, with a visible cue.
-const FRESH_FRAME_WARM_MS = 1000;
-
 /**
  * 49-04 (Task 2): merges the main-webview library (authoritative imageStore)
  * with the Studio realm's own imageStore. quick-260921-bjm: the AUTHORITY
@@ -578,31 +563,6 @@ function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): number {
 }
 
 /**
- * quick-261026-odd follow-up: the frames a bound track's Loop Clip rails
- * (Play Script / Reveal) cover. Rails bake pixels only, so a legacy brush
- * script row without a key identity on one of these frames is stale by
- * construction. `null` = no bound identity (callers disable pruning).
- */
-function resolveStudioPixelOnlyFrames(
-  identity: StudioScriptSnapshotIdentity | null,
-): Set<number> | null {
-  if (!identity) return null;
-  const clips = physicPaintStore.getRotoPhysicalLoopClips(identity.layerId, identity.trackId);
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(identity.layerId, identity.trackId);
-  const frames = new Set<number>();
-  for (const clip of clips) {
-    const end = clip.repeat === 'infinity'
-      ? capacity
-      : clip.placementStart + clip.sourceKeyIds.length * clip.repeat;
-    const last = Math.min(end, capacity);
-    for (let frame = Math.max(0, clip.placementStart); frame < last; frame += 1) {
-      frames.add(frame);
-    }
-  }
-  return frames;
-}
-
-/**
  * 261027 (studio-strokes-lost-redraw UAT round 2): a recorded Water color
  * stroke belongs to the KEY it was captured on — never to a frame number.
  * The identity is the bound snapshot identity (layer + track), exactly the
@@ -622,10 +582,6 @@ function resolveStudioScriptKeyIdForFrame(
 
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
-  const profilePerformance = isPhysicsPaintProfilingEnabled();
-  const recordEnginePerformance = (sample: PhysicsPaintPerformanceSample) => {
-    if (profilePerformance) recordPhysicsPaintPerformance(sample);
-  };
   // 3.6 (261027-klx): the ONE app-owned mutation ledger and its ONE Roto port.
   // The ledger owns every accepted watercolor stroke id and emits completion
   // SYNCHRONOUSLY, so copy/apply can never deadlock waiting on a raster. The
@@ -645,7 +601,8 @@ export function PhysicsPaintStudio() {
       copyLiveAlphaCanvas: () => aquarelleSnapshotRef.current?.() ?? null,
     });
   }
-  const rotoMutationPort = rotoMutationPortRef.current;
+  // Set by the block above on the first render and never reassigned.
+  const rotoMutationPort = rotoMutationPortRef.current!;
   // The narrow watercolor engine port, published by `AquarelleCanvasLayer` and
   // null on teardown. A ref mirrors it for synchronous seams; the lifecycle
   // engine state re-renders this component when the mount comes up.
@@ -1494,12 +1451,8 @@ export function PhysicsPaintStudio() {
   const canvasHeight = workingCanvasSize.height;
   const paperTextureScale = canvasWidth / projectCanvasWidth;
   const canvasKey = `${canvasWidth}x${canvasHeight}`;
-  const { engine, engineRef, canvasMounted, setCanvasMounted, handleEngineReady, handleNativePenInputReady } = usePhysicsPaintEngineLifecycle({
+  const { canvasMounted, setCanvasMounted } = usePhysicsPaintEngineLifecycle({
     canvasKey,
-    canvasWidth,
-    canvasHeight,
-    launchContext,
-    setLastError,
     clearExternalState: () => {
       pendingFrameSyncRef.current = null;
       pendingFirstPaintTargetRef.current = null;
@@ -1637,62 +1590,6 @@ export function PhysicsPaintStudio() {
       ? { kind: cell.kind, keyId: cell.keyId }
       : { kind: cell.kind, keyId: null };
   }, []);
-  // quick-261026-odd (empty-script gate): the engine leg of the Move gate. The
-  // engine holds only the CURRENT visit's strokes; Move may arm on the first
-  // live paint before any capture exists. `getStrokes()` deep-copies every
-  // point (too heavy for a render-body read), so read the creation serials —
-  // one entry per movable stroke — and drop the invisible aquarelle guide
-  // proxies by their registry identity.
-  const engineHoldsBrushMoveStrokes = useCallback((): boolean => {
-    const activeEngine = engineRef.current;
-    if (!activeEngine) return false;
-    try {
-      const serials = activeEngine.getStrokeSerials();
-      for (const mutationId of serials.keys()) {
-        if (getRecordedAquarelleStroke(mutationId) === undefined) return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  }, []);
-  // quick-261026-odd follow-up: the Move law is bound to the KEY, never the
-  // display. Only a REAL key can carry a Brush script; a derived
-  // Motion/Static/Reveal rail cell or an empty cell has none by construction,
-  // even while a stale store entry or a Water color guide proxy is still in
-  // memory. Combining the owner gate with the cell kind makes scripts strictly
-  // per key and per track — never a blend borrowed from the display. Rails
-  // stay editable (the user may paint on them again), so rail membership is
-  // deliberately NOT a gate here.
-  const moveAvailable = useComputed(() => {
-    if (!brushMoveAvailable.value) return false;
-    // quick-261026-odd: any store mutation re-evaluates the key-bound leg
-    // without waiting for an owner republish at the next seam.
-    void brushScriptRevision.value;
-    // quick-261026-odd (run-4 fix): re-bind after a timeline-graph rebuild.
-    void rotoModelGeneration.value;
-    const cell = rotoTimelineModel.currentCell.value;
-    if (cell.kind !== 'real') return false;
-    // Identity always comes from the O(1) projection — the SAME key context
-    // the owner resolver uses — never from a possibly-retired model cell.
-    const scriptCell = resolveStudioScriptCell(cell.appFrame);
-    if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;
-    // A retained script belongs to the KEY it was captured on: the entry must
-    // be hydratable AND carry THIS cell's key id. A legacy null-keyId row, a
-    // replaced key, a partial/edit-cost row and a missing entry all fail here
-    // (identity is unprovable — fail closed, cached pixels stay view-only).
-    const entry = getBrushScriptFrameEntry(cell.appFrame);
-    const storedLeg = entry !== undefined
-      && entry.groups.length > 0
-      && entry.keyId !== null
-      && entry.keyId !== undefined
-      && entry.keyId === scriptCell.keyId
-      && isBrushScriptFrameHydratable(entry);
-    if (storedLeg) return true;
-    // First-stroke / mid-session leg: the engine holds this frame's real
-    // strokes even before they are captured into the store.
-    return engineHoldsBrushMoveStrokes();
-  });
   // quick-261026-odd follow-up: Water color's Select/Move is bound to the
   // CURRENT key's script, never the session. The tool rail has no frame prop,
   // so the Studio owns this frame-scoped gate and passes it down. Painting a
@@ -1730,16 +1627,16 @@ export function PhysicsPaintStudio() {
     };
   }
   // quick-261026-odd follow-up: a derived cell has no key script by
-  // construction. Drop any stale brush capture for it and release the owner,
-  // so a Motion/Static/Reveal rail cell can never keep Move or the Brush
-  // module alive through leftover session data.
+  // construction. Release the owner so a Motion/Static/Reveal rail cell can
+  // never keep the script owner alive through leftover session data.
   useEffect(() => {
     if (currentCellKind === 'real') return;
-    dropNonKeyCellBrushScript(currentFrame);
     clearFrameScriptOwner();
-  }, [currentFrame, currentCellKind]);
+  }, [currentCellKind]);
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
-  const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, findAcceptedRotoReferenceFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
+  // 261027-klx: the app-owned preview base (the cached key's paint, rendered by
+  // AquarelleCachedBaseLayer) replaces every engine-1 preview-base reference.
+  const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame, previewBasePort } = rotoPersistence.reference;
   const cachedRotoReferenceUrlRef = useRef(cachedRotoReferenceUrl);
   const cachedRotoRepaintBaseFrameRef = useRef(cachedRotoRepaintBaseFrame);
   cachedRotoReferenceUrlRef.current = cachedRotoReferenceUrl;
@@ -2012,17 +1909,17 @@ export function PhysicsPaintStudio() {
           });
           captureAquarelleRenderSplitDisplay('script-bake-after-publish', frame.appFrame, { bakeOk: ok });
           // aquarelle-apply-invisible: a cache-only publish never reaches the
-          // display — the live aquarelle sheet is empty and the engine-1
-          // preview base still holds the pre-Apply bytes. Force the same
-          // content-token reconcile the completion path uses.
+          // display — the live aquarelle sheet is empty and the cached preview
+          // base still holds the pre-Apply bytes. Force the same content-token
+          // reconcile the completion path uses.
           if (ok && launchContextRef.current?.startFrame === frame.appFrame) {
             const generation = Math.max(
               rotoPreviewBaseContentToken(),
-              engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? 0,
+              previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
             );
             loadCachedRotoReferenceFrame(
               frame.appFrame,
-              engineRef.current as PreviewBackgroundEngine | null,
+              previewBasePort,
               undefined,
               true,
               generation,
@@ -2121,82 +2018,46 @@ export function PhysicsPaintStudio() {
   useEffect(() => () => {
     disarmSolo();
   }, []);
-  // 261023-g4p: Studio disposal clears the per-frame brush script store so a
-  // recreated engine/session can never inherit another session's frames, and
-  // detaches the brush edition port from the dead session. Teardown only — no
-  // selection work, no signal read.
+  // quick-261023-l35: drop the bound snapshot identity and the dirty baseline
+  // with the realm — a dead session must never be read as dirty.
   useEffect(() => () => {
-    resetBrushScriptStore();
-    configureBrushScriptEdition(null);
-    configureBrushScriptKeyProvider(null);
-    // quick-261023-l35: drop the bound snapshot identity and the dirty
-    // baseline with the realm — a dead session must never be read as dirty.
     studioScriptSnapshot.reset();
   }, [studioScriptSnapshot]);
-  // quick-261026-odd follow-up: every live capture stamps the OWNING KEY id.
-  // The provider reads the BOUND snapshot identity (layer + track), which is
-  // exactly the script store's key scope — a late flush can never stamp the
-  // wrong track's key, and a frame with no live key stays honestly null.
-  useEffect(() => {
-    configureBrushScriptKeyProvider((frame) => {
-      const identity = studioScriptSnapshotIdentityRef.current;
-      if (!identity) return null;
-      return physicPaintStore
-        .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, frame)
-        ?.keyId ?? null;
-    });
-    return () => configureBrushScriptKeyProvider(null);
-  }, []);
   // quick-261025-awl: a closed Studio cannot leave a stale ownership lock.
   useEffect(() => () => {
     clearFrameScriptOwner();
   }, []);
-  // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
-  // window listeners (physicsPaintTemporaryErase). The deps live behind a
-  // render-body ref (canvasEngineReadyImplRef precedent) so the
-  // once-installed listeners always read the LATEST settings/tool,
-  // engineRef, mutation lock and shortcut target — never the first render's
-  // closures. No useState, no new UI, no edit to selectTool or the dispatcher.
+  // quick-261003-vos: the held-Cmd arm plus the Cmd TAP toggle live in ONE
+  // module with gated window listeners (physicsPaintTemporaryErase). The deps
+  // sit behind a render-body ref so the once-installed listeners always read
+  // the LATEST mutation lock, shortcut target and Move gate — never the first
+  // render's closures.
+  //
+  // 261027-klx: no engine-1 tool exists to switch, so `getEngine` hands the
+  // module a stable no-op — the gate only checks non-null, and the tap is the
+  // ONE behaviour left (Water color Select). `getSelectedTool` is always
+  // 'paint' (the aquarelle tool row is separate), so a held Cmd only drives
+  // the rail's visual arm.
+  const noopTemporaryEraseEngineRef = useRef<TemporaryEraseEngine>({ setTool: () => {} });
   const temporaryEraseDepsRef = useRef<TemporaryEraseDeps>({
     getSelectedTool: () => 'paint',
     getEngine: () => null,
     isMutationLocked: () => true,
     isShortcutTarget: () => false,
   });
-  // 261022-pim: the Brush-mode Cmd toggle returns to the last non-Move tool
-  // (Paint or Erase). Render-body ref write, same family as settingsRef.
-  const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');
-  if (settings.tool !== 'move') lastNonMoveToolRef.current = settings.tool;
   temporaryEraseDepsRef.current = {
-    // 261022-pim: in Water color mode a held Cmd arms the select overlay
-    // (temporaryMove is the held-Meta arm signal), never the engine-1 Move.
-    getSelectedTool: () => (activeModule.peek() === 'watercolor' ? 'paint' : settings.tool),
-    getEngine: () => engineRef.current,
+    getSelectedTool: () => 'paint',
+    getEngine: () => noopTemporaryEraseEngineRef.current,
     isMutationLocked: isPhysicalMutationLocked,
     isShortcutTarget: isPhysicsPaintShortcutTarget,
-    // 261022-pim: a Cmd TAP (no chord) toggles the persistent tool. Water
-    // color: select overlay. Brush: the Move tool becomes the SELECTED tool
-    // (the previous tool is deselected in the rail); a second tap or picking
-    // any tool leaves Move. Enter only from Paint — the dual-arm rule never
-    // flips Erase — and only when the rail's Move gate is open.
+    // 261022-pim: a Cmd TAP (no chord) toggles the persistent Water color
+    // select overlay. The held arm stays the rail's visual state only.
     onMetaTap: () => {
-      if (activeModule.peek() === 'watercolor') {
-        toggleAquarelleSelectMode();
-        return;
-      }
-      if (settings.tool === 'move') {
-        selectTool(lastNonMoveToolRef.current, settings.physicsMode);
-        return;
-      }
-      if (settings.tool === 'paint' && moveAvailable.peek()) {
-        selectTool('move', settings.physicsMode);
-      }
+      toggleAquarelleSelectMode();
     },
     // 261022-pim: no live script (cooked/baked sheet, or a fresh session) →
-    // Move is greyed in the rail and Cmd is inert in both modes.
-    isMoveAvailable: () => (activeModule.peek() === 'watercolor'
-      ? watercolorMoveAvailable.peek()
-      : moveAvailable.peek()),
+    // Select is greyed in the rail and Cmd is inert.
+    isMoveAvailable: () => watercolorMoveAvailable.peek(),
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
   // getter reads the ref at event time (ref-read deps). Window-level because
@@ -2213,32 +2074,18 @@ export function PhysicsPaintStudio() {
   // lock signal so the Studio top bar never shows a stale owner. Declared here
   // (before every seam) so later closures reference it without a TDZ hazard.
   const applyFrameModuleState = useCallback(
-    (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
-      // DEV-only: the exact pre-switch module, captured for the owner-resolve
-      // report. A peek is free and never subscribes.
-      const activeModuleBefore = activeModule.peek();
+    (frame: number) => {
       // The KEY context every gate shares: the O(1) projection cell only.
       const scriptCell = resolveStudioScriptCell(frame);
-      // quick-261026-odd follow-up: a Water color key's engine-1 guide proxies
-      // are not a Brush script. Drop any guide groups an older capture stored
-      // before resolving ownership, so a wash-only key cannot keep the Brush
-      // module unlocked or Move open. The per-completion live sample is exempt
-      // (O(1) law) — the guarded flushes already refuse guide captures.
-      if (!liveBrush) purgeAquarelleGuideGroups(frame);
-      const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);
-      if (owner === 'brush' || owner === 'watercolor') {
-        // 261027-gh9 — every module write goes through the one clamping setter;
-        // the owner is still published so the DEV report keeps naming 'brush'.
-        setActiveModule(owner);
-      }
+      const owner = resolveFrameScriptOwner(frame, scriptCell);
+      // 261027-klx: Water color is the only module, so there is no module
+      // switch to publish — only the frame's single owner.
       setFrameScriptOwner(owner);
       // DEV-only provenance: an owner republish is the exact reported path
       // (navigate onto a phantom key). Auto-write the report on EVERY resolve
-      // so a fresh diag lands without requiring a Move click. The RESOLVE block
-      // records the raw facts behind the published owner — whether the entry is
-      // key-bound, hydratable, engine-attached, or a legacy/guide artifact —
-      // and the module/lock/gate state before and after the publish. `frame`
-      // (the resolve target) and `currentFrame` (the report's own frame) are
+      // so a fresh diag lands without requiring a Select click. The RESOLVE
+      // block records the raw facts behind the published owner. `frame` (the
+      // resolve target) and `currentFrame` (the report's own frame) are
       // reported side by side: the two can differ during navigation.
       if (import.meta.env.DEV) {
         try {
@@ -2248,25 +2095,9 @@ export function PhysicsPaintStudio() {
           const liveKeyId = launch
             ? physicPaintStore.getRotoRealKeyRecordByAppFrame(launch.layerId, activeTrackId, frame)?.keyId ?? null
             : null;
-          const entry = getBrushScriptFrameEntry(frame);
           // quick-261026-odd (run-4 fix): the gates' OWN evaluation context,
           // so a stale graph can never again hold `true` unnoticed.
           const gate = gateDiagnosticsRef.current();
-          const activeEngine = engineRef.current;
-          let liveRealStrokes = 0;
-          let liveGuideStrokes = 0;
-          if (activeEngine) {
-            for (const stroke of activeEngine.getStrokes()) {
-              if (stroke.guideProxy === true) liveGuideStrokes += 1;
-              else liveRealStrokes += 1;
-            }
-          }
-          let guideGroups = 0;
-          if (entry) {
-            for (const group of entry.groups) {
-              if (group.primary.guideProxy === true) guideGroups += 1;
-            }
-          }
           captureMoveProvenanceNow('owner-resolve', {
             currentFrame: launch?.startFrame ?? null,
             resolve: {
@@ -2274,22 +2105,6 @@ export function PhysicsPaintStudio() {
               cellKind: scriptCell?.kind ?? 'none',
               cellKeyId,
               liveKeyId,
-              entry: entry === undefined ? null : {
-                keyId: entry.keyId ?? null,
-                keyMatchesCell: entry.keyId !== null && entry.keyId !== undefined && entry.keyId === cellKeyId,
-                complete: entry.complete,
-                strokes: entry.strokes,
-                points: entry.points,
-                groups: entry.groups.length,
-                guideGroups,
-                diffusionFrames: entry.diffusionFrames,
-                hydratable: isBrushScriptFrameHydratable(entry),
-                engineHolds: engineHoldsBrushScriptFrame(activeEngine, frame),
-                purged: purgedBrushScriptFrame(frame),
-              },
-              liveBrush: liveBrush ?? null,
-              liveRealStrokes,
-              liveGuideStrokes,
               hasWatercolor: hasAquarelleScriptForFrame(frame),
               // Run-4 diagnostics: what the GATES themselves evaluated.
               gateCellFrame: gate.frame,
@@ -2298,10 +2113,6 @@ export function PhysicsPaintStudio() {
               aquarelleRevision: aquarelleStrokesRevision.peek(),
               publishedOwner: owner,
               lockedModule: lockedModuleForOwner(owner),
-              activeModuleBefore,
-              activeModuleAfter: activeModule.peek(),
-              brushMoveAvailable: brushMoveAvailable.peek(),
-              moveAvailable: moveAvailable.peek(),
               watercolorMoveAvailable: watercolorMoveAvailable.peek(),
             },
           });
@@ -2312,38 +2123,6 @@ export function PhysicsPaintStudio() {
     },
     [resolveStudioScriptCell],
   );
-  // 261023-g4p: the brush script-edition port reads the live Studio seams at
-  // event time through this render-body ref (temporaryEraseDepsRef precedent)
-  // — never the first render's closures. The port gates every op on the
-  // physical-mutation lock; the frame is the Studio's current frame because
-  // brush strokes carry no playFrame metadata.
-  const brushScriptEditionDepsRef = useRef<BrushScriptEditionContext>({
-    getEngine: () => null,
-    getPlayFrame: () => 0,
-    isActive: () => false,
-    isLocked: () => true,
-  });
-  brushScriptEditionDepsRef.current = {
-    getEngine: () => engineRef.current,
-    getPlayFrame: () => launchContextRef.current?.startFrame ?? 0,
-    isActive: () => activeModule.peek() === 'brush' && settings.tool === 'move',
-    isLocked: () => isPhysicalMutationLocked(),
-    // quick-261025-awl: a Move/Select delete can remove the last stroke and
-    // therefore change the frame's owner.
-    onScriptChanged: (frame) => {
-      applyFrameModuleState(frame);
-    },
-  };
-  // Armed-guarded re-apply: engine re-create or a rail tool switch while an
-  // arm is held must land the EFFECTIVE tool (force bypasses the last-applied
-  // dedupe — selectTool and the canvas mount write the engine behind our
-  // back). Disarmed = byte-identical no-op for every existing flow, including
-  // engine re-creation which force-sets 'paint' at PhysicsPaintCanvasMount:104.
-  // Both arms are peeked, never subscribed — no render path changes.
-  useEffect(() => {
-    if (!temporaryErase.peek() && !temporaryMove.peek()) return;
-    syncTemporaryErase(temporaryEraseDepsRef.current, { force: true });
-  }, [engine, settings.tool]);
   // Navigation already locks the engine input and navigation coordinator. Keep
   // the static Studio controls keyed only to real script mutations so the
   // navigation lock's true/false pulse cannot invalidate their memo props.
@@ -2360,23 +2139,6 @@ export function PhysicsPaintStudio() {
     setApplyMessage(null);
     setApplyStatus('idle');
   }, [setApplyMessage, setApplyStatus]);
-  // 261023-j5b follow-up: an engine-1 Apply lands its strokes in the LIVE
-  // engine. Both the Move overlay and the frame-editing reload gate read the
-  // session store, so capture the applied frame the moment the apply settles.
-  // Without this, applying (or duplicating) a script while Move is armed leaves
-  // the canvas in paint with NO script handles until a tool refresh.
-  const flushBrushScriptAfterApply = useCallback(() => {
-    if (activeModule.peek() === 'watercolor') return;
-    const activeEngine = engineRef.current;
-    if (!activeEngine) return;
-    const strokes = activeEngine.getStrokes();
-    if (strokes.length === 0) return;
-    flushBrushScriptFrame(
-      launchContextRef.current?.startFrame ?? rotoScript.source.peek().appFrame,
-      strokes,
-      activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
-    );
-  }, [rotoScript]);
   const handleScriptRowActivate = useCallback(async (id: string) => {
     const loaded = await rotoScriptLibrary.activateAndLoad(id);
     if (!loaded) return;
@@ -2415,7 +2177,6 @@ export function PhysicsPaintStudio() {
       }
       const applied = await rotoScript.applyPreparedScript(preparation);
       if (applied) {
-        flushBrushScriptAfterApply();
         setLastError(null);
         clearOwnedScriptApplyRefusal();
       } else {
@@ -2437,7 +2198,7 @@ export function PhysicsPaintStudio() {
     } finally {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
-  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);
+  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
   // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
   // useCallbacks wired into the workflow memo (the Tools popover Actions
   // section). Bodies moved verbatim from the rightPanel scripts props.
@@ -2445,7 +2206,6 @@ export function PhysicsPaintStudio() {
     void (async () => {
       const success = await rotoScript.applyScript();
       if (success) {
-        flushBrushScriptAfterApply();
         setLastError(null);
         clearOwnedScriptApplyRefusal();
       } else {
@@ -2462,7 +2222,7 @@ export function PhysicsPaintStudio() {
         }
       }
     })();
-  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
   const handleDiscardScript = useCallback(() => {
     rotoScript.discardScript();
     setLastError(null);
@@ -2472,91 +2232,21 @@ export function PhysicsPaintStudio() {
   // warm canvas. The only remaining canvas lock is the physical mutation lease;
   // a live self-promotion is exempt from it so the fast second stroke flows.
   const rotoInputDisabled = mutationLocked && !autoKeyPromotionPaintExempt.value;
-  const {
-    selectTool: selectToolEngine,
-    setBrushColor,
-    setBrushSize,
-    setBrushOpacity,
-    setBackground,
-    setGrainStrength,
-    setGrainScale,
-    setEdgeDetail,
-    setPickup,
-    setSpread,
-    setSmoothing,
-    setEraseStrength,
-  } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
-  // 261023-g4p: the ONE tool-selection funnel for the rail and the Cmd tap.
-  // Entering Move in Brush mode arms the shared script-edition overlay; the
-  // engine keeps tool 'move' (stepStrokeInStack requires it) but its own stack
-  // badges and brush cursor stand down so the overlay is the only visible
-  // script surface. Leaving Move restores both. Water color and a refused
-  // selection (no engine / physical lock) are byte-identical passthroughs —
-  // the hook's own selectTool remains the only engine writer. Identity is
-  // stable per engine+lock because selectToolEngine is the hook's useMemo.
-  const selectTool = useCallback((tool: ToolType, physicsMode?: 'local' | null) => {
-    // quick-261026-odd: the activation boundary — a scriptless Brush key refuses
-    // Move from the rail, the Cmd tap, the held-Cmd arm and every programmatic
-    // reselect. The greyed icon is not the only gate.
-    if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;
-    const activeEngine = engineRef.current;
-    if (!activeEngine || isPhysicalMutationLocked()) {
-      selectToolEngine(tool, physicsMode);
-      return;
-    }
-    if (activeModule.peek() === 'brush' && tool === 'move') {
-      const scriptFrame = launchContextRef.current?.startFrame ?? 0;
-      // 261023-j5b: Move entry is a capture point — carry the frame's paint
-      // globals so the faithful rebake reproduces the painted look.
-      flushBrushScriptFrame(
-        scriptFrame,
-        activeEngine.getStrokes(),
-        activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
-      );
-      // quick-261026-odd (empty-script gate): demand-attach before arming. A
-      // navigation may have refused hydration (or never ran: launch), leaving
-      // the engine empty while a key-bound script exists. Attach it HERE — the
-      // order-free seam — so an enabled Move always has handles. The key gate
-      // in attemptBrushScriptHydration refuses legacy/foreign-key rows.
-      if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) {
-        const scriptCell = resolveStudioScriptCell(scriptFrame);
-        attemptBrushScriptHydration(activeEngine, {
-          frame: scriptFrame,
-          keyId: scriptCell !== null && scriptCell.kind === 'real' ? scriptCell.keyId : null,
-          destinationKind: scriptCell?.kind ?? 'none',
-          brushModuleActive: true,
-          wasPlaying: false,
-          scrubActive: false,
-        });
-      }
-      // DEV-only: the app writes the Move provenance report to /tmp.
-      captureMoveProvenanceNow('move-entry');
-      // Defense in depth: never arm Move without a live ledger — the overlay
-      // would render no handles and every gesture would be dead.
-      if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) return;
-      selectToolEngine(tool, physicsMode);
-      activeEngine.setStrokeLabelsSuppressed(true);
-      activeEngine.setCursorVisible(false);
-      return;
-    }
-    activeEngine.setStrokeLabelsSuppressed(false);
-    activeEngine.setCursorVisible(true);
-    selectToolEngine(tool, physicsMode);
-  }, [engineHoldsBrushMoveStrokes, isPhysicalMutationLocked, resolveStudioScriptCell, selectToolEngine]);
-  // quick-261026-odd: the Move law on the EXIT side. When the current key's
-  // Brush script empties — a Motion/Static/Reveal bake replaced its records, a
-  // delete, or an explicit navigation to a pixel-only key — a persistent Move
-  // must leave the tool too. One gate: brushMoveAvailable. mutationLocked keeps
-  // the effect alive so an exit refused mid-operation retries when the lock
-  // clears. Signal reads/writes happen inside effect(), never the render.
-  useEffect(() => {
-    const dispose = effect(() => {
-      if (activeModule.value !== 'brush' || settings.tool !== 'move') return;
-      if (moveAvailable.value || mutationLocked) return;
-      selectTool(lastNonMoveToolRef.current, settings.physicsMode);
-    });
-    return dispose;
-  }, [selectTool, settings.tool, settings.physicsMode, mutationLocked]);
+  // 261027-klx: only the paper-display actions survive engine-1. Their engine
+  // seam is the app-owned preview base (background mode mirror); every tool
+  // setter left with the Brush engine.
+  const { setBackground, setGrainStrength, setGrainScale } = usePhysicsPaintEngineActions({
+    engine: previewBasePort,
+    settings,
+    setSettings,
+    isMutationLocked: isPhysicalMutationLocked,
+  });
+  // 261027-klx: the live pigment is app state — the canvas mount forwards
+  // settings.color to the aquarelle layer, which reads it at stroke time.
+  // Compare-then-write so a same-color pick never wakes subscribers.
+  const handleActiveColorChanged = useCallback((color: string) => {
+    setSettings((current) => (current.color === color ? current : { ...current, color }));
+  }, [setSettings]);
   // The Water color half of the same law: Select cannot stay armed on a key
   // with no script. Painting the first stroke creates the script and re-arms;
   // navigating to a scriptless key disarms. Same effect() precedent — no
@@ -2638,10 +2328,6 @@ export function PhysicsPaintStudio() {
     beforeRecords: readonly { keyId: string; appFrame: number }[],
     nextRecords: readonly { keyId: string; appFrame: number }[],
   ) => {
-    if (remapBrushScriptsForRecords(beforeRecords, nextRecords) === null) {
-      const pruneFrame = computeBrushScriptPruneFrame(beforeRecords, nextRecords);
-      if (pruneFrame !== null) pruneBrushScriptsFromFrame(pruneFrame);
-    }
     remapAquarelleScriptsForRecords(beforeRecords, nextRecords);
   };
   const replacePhysicalRecordsWithOwnership = (
@@ -2784,7 +2470,8 @@ export function PhysicsPaintStudio() {
   // 3.3/3.6: the engine state is the WATERCOLOR document snapshot — never the
   // eframe document (`EfxPaintDocument` is the app document, a different type).
   const physicalEditCoordinator = useRotoPhysicalEditCoordinator<RotoEditableState>({
-    engine,
+    // 261027-klx: the watercolor port is the coordinator's ONE engine seam.
+    engine: aquarelleEnginePortRef.current,
     records: {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
       getDocument: (layerId) => physicPaintStore.getRotoPhysicalDocument(layerId, studioActiveTrackId()),
@@ -2892,39 +2579,20 @@ export function PhysicsPaintStudio() {
         // content-derived token assigned (equal re-issues re-paint the same
         // content idempotently).
         const acceptedContentToken = rotoPreviewBaseContentToken();
-        const currentAppliedGeneration = engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? null;
+        const currentAppliedGeneration = previewBasePort.getAppliedPreviewBaseContentToken();
         const generation = Math.max(acceptedContentToken, currentAppliedGeneration ?? 0);
         // Synchronous on purpose (52.1): the reconcile is ALSO what refreshes
         // cachedRotoRepaintBaseFrame, which the next stroke's live-pixel
         // capture needs as its merge base. Deferring it left the base stale and
         // every fresh-key stroke re-encoded the full frame (base=no, 390-511ms)
-        // instead of a ~4ms merge. The GPU-heavy engine upload is bounded by the
-        // base apply once; the mid-train capture/encode floods are held out by
-        // the capture+documentSync quiet windows instead.
+        // instead of a ~4ms merge.
         loadCachedRotoReferenceFrame(
           appFrame,
-          engineRef.current as PreviewBackgroundEngine | null,
+          previewBasePort,
           undefined,
           true,
           generation,
         );
-        const intendedFrame = findAcceptedRotoReferenceFrame(appFrame);
-        armRotoCompletionPaintGuard({
-          engine: engineRef.current as PreviewBackgroundEngine | null,
-          appFrame,
-          intendedDataUrl: intendedFrame ? (getFrameBlobUrl(intendedFrame.bytes) || null) : null,
-          intendedBytes: intendedFrame?.bytes ?? new Uint8Array(0),
-          intendedGeneration: generation,
-          getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
-          reload: (frame, bytes, paintGeneration) => {
-            // Repair re-applies ONLY the intended (newest) image at its own
-            // generation — never whatever the frame lookup resolves to later.
-            // The engine generation gate turns this into a no-op if a newer
-            // generation painted between arm and repair.
-            loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null, undefined, true, paintGeneration, bytes);
-          },
-          log: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
-        });
       },
     },
     // 3.6 (261027-klx): the narrow AquarelleEnginePort is the ONLY engine
@@ -3318,10 +2986,8 @@ export function PhysicsPaintStudio() {
     // D-14: a rejected/failed promotion must never leave a held acceptance in
     // the composite ledger — the key is being discarded (replayed below).
     rotoMoveHistory.cancelAutoKeyPaintGroup();
-    if (pending.completedMutationObserved) {
-      engineRef.current?.undo();
-      if (engineRef.current?.getStrokeCount() === 0) engineRef.current?.clear();
-    }
+    // 261027-klx: the discarded stroke lives on the Water color sheet only —
+    // the reset below is the single cleanup seam (engine-1 undo/clear is gone).
     if (activeModule.value === 'watercolor') {
       aquarelleResetSheetRef.current?.();
       aquarelleMergeBaseRef.current = null;
@@ -3668,8 +3334,6 @@ export function PhysicsPaintStudio() {
               const launch = launchContextRef.current;
               return launch ? physicPaintStore.getRotoPhysicalCapacity(launch.layerId, studioActiveTrackId()) : 0;
             },
-            getModule: () => (activeModule.peek() === 'watercolor' ? 'watercolor' : 'brush'),
-            getBrushStrokeCount: () => engineRef.current?.getStrokeCount() ?? 0,
             getAquarelleStrokeEventCount: (appFrame) => {
               let count = 0;
               for (const event of getAquarelleEventsForFrame(appFrame)) {
@@ -3677,54 +3341,12 @@ export function PhysicsPaintStudio() {
               }
               return count;
             },
-            captureBrushScript: () => {
-              const engine = engineRef.current;
-              if (!engine) return null;
-              // normalizeBrushScriptGroups is the SAME engine-strokes
-              // projection every script capture uses (clones points/params,
-              // groups continuations) — minus Water color guide proxies,
-              // which are render input and must never be duplicated as a
-              // Brush script (they would paint as thin visible lines).
-              const brushes = normalizeBrushScriptGroups(engine.getStrokes());
-              if (brushes.length === 0) return null;
-              const launch = launchContextRef.current;
-              return {
-                provenance: {
-                  sessionId: `roto-duplicate-${launch?.operationId ?? 'unlaunched'}`,
-                  layerId: launch?.layerId ?? 'unmounted-layer',
-                  sourceFrame: sourceAppFrame,
-                },
-                sourceFrame: sourceAppFrame,
-                sourceDisplayFrame: sourceAppFrame,
-                sourceRevision: 0,
-                brushes,
-              };
-            },
             getAquarelleEvents: (appFrame) => getAquarelleEventsForFrame(appFrame),
             navigateTo: (frame) => requestDuplicateNavigationRef.current(frame),
             waitForSourceFrame: (frame) => waitForRotoDuplicateSourceFrame(rotoScript.source, {
               originFrame: sourceAppFrame,
               targetFrame: frame,
             }),
-            applyBrushScript: async (script) => {
-              const applied = await rotoScript.applyProvidedScript(script);
-              // 261023-j5b follow-up: the decision table only reaches this
-              // path for an EMPTY destination, so the promoted key is blank and
-              // the applied script IS the whole frame. Adopt it as complete and
-              // capture it NOW: Move (already armed by the duplicate click)
-              // reads the store, not the live engine, for its handles.
-              if (applied) {
-                const engine = engineRef.current;
-                if (engine) {
-                  adoptBrushScriptFrameAsComplete(
-                    rotoScript.source.peek().appFrame,
-                    engine.getStrokes(),
-                    engine.getFramePaintSettings() ?? engine.getPaintRenderSettings(),
-                  );
-                }
-              }
-              return applied;
-            },
             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
             recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
               const launch = launchContextRef.current;
@@ -3932,14 +3554,10 @@ export function PhysicsPaintStudio() {
       await runStudioFlush([
         () => {
           if (workflowMode !== 'roto') return;
-          // Brush: copyLiveAlphaCanvas composites the dry canvas PLUS the live
-          // wet display. The settle capture reads after that cosmetic wet look
-          // has evaporated; closing right after a stroke forced the capture
-          // early and baked the fluorescent wet appearance into the cache.
-          // Bake the wet layer dry first so the durable payload is the settled
-          // colour the user sees once the stroke dries.
-          if (activeModule.value === 'watercolor') engineRef.current?.flushPendingStrokeFinalizations();
-          else engineRef.current?.forceDry();
+          // 261027-klx: watercolor finalizes a stroke synchronously at stroke
+          // end, so the ledger port's drain is the injected no-op — kept as
+          // the ordering seam before the capture.
+          rotoMutationPort.flushPendingStrokeFinalizations?.();
         },
         () => {
           if (workflowMode !== 'roto') return;
@@ -3950,19 +3568,6 @@ export function PhysicsPaintStudio() {
         },
         () => rotoPlaybackSettingsController.flush(),
         () => flushDocumentSyncRef.current(),
-        // quick-261023-l35: the per-frame brush ledger is captured only at
-        // frame leave / Move entry / an explicit edit, so closing right after
-        // a stroke would save a snapshot missing the CURRENT frame. Capture it
-        // with the same call the frame-leave path uses, BEFORE the write.
-        // Watercolor mode has its own capture step above.
-        () => {
-          if (activeModule.peek() === 'watercolor') return;
-          flushBrushScriptFrame(
-            currentFrame,
-            engineRef.current?.getStrokes() ?? null,
-            engineRef.current?.getFramePaintSettings() ?? engineRef.current?.getPaintRenderSettings() ?? null,
-          );
-        },
         // quick-261023-l35 (T-261023-l35-05): the script snapshot save runs
         // LAST and is time-bounded — a hung disk write can never hold the
         // window open. Task 3: flushNow() clears the debounce timer, waits out
@@ -4357,48 +3962,9 @@ export function PhysicsPaintStudio() {
   }, [clearRotoLoopSelection, rotoKeyUtilities]);
   resetRotoKeySessionRef.current = resetRotoSpacingSelectionSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
-  // 261023-h9v: ONE observed arrival seam. Every cached-pixel load records
-  // whether a base actually arrived, so a later capture of this frame stays
-  // PARTIAL and navigation can never replace those pixels with a script.
-  // Defined BEFORE the frame-editing controller (it is wired as its loader).
-  const loadReferenceObserved = useCallback(
-    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
-      const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);
-      noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
-      return loaded;
-    },
-    [findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],
-  );
-  // The frame-change effect must never reload cached pixels over a hydrated
-  // baseline — the engine already holds the whole script.
-  const loadReferenceForFrameEditing = useCallback(
-    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
-      if (engineHoldsBrushScriptFrame(targetEngine, frame)) return true;
-      return loadReferenceObserved(frame, targetEngine);
-    },
-    [loadReferenceObserved],
-  );
-  // Stable hydration seam for the navigation callback (identity-stable deps).
-  // 261027 UAT round 11: a PARTIAL ledger (a raster/purged key repainted with
-  // Brush) hydrates over the key's carried pre-script base — the caller loads
-  // that base as the preview base first, and this seam attaches + faithfully
-  // rebakes the strokes on top of it (base preserved, never cleared).
-  const hydrateBrushScriptFrame = useCallback(
-    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean => {
-      const decision = planBrushScriptHydration(request);
-      if (decision.hydrate && decision.preserveBase) {
-        return attemptBrushScriptHydrationOverBase(targetEngine, request);
-      }
-      return attemptBrushScriptHydration(targetEngine, request);
-    },
-    [],
-  );
-  // 261023-h9v: the engine's deferred undo pops history WITHOUT a completed
-  // mutation. Re-run the ONE completion law after a successful controller
-  // undo/redo so the retained script and the Move overlay stay fresh.
-  const refreshBrushScriptAfterHistory = useCallback((kind: 'undo' | 'redo') => {
-    applyCompletedBrushMutation(kind, launchContextRef.current?.startFrame ?? 0, engineRef.current);
-  }, []);
+  // 261027-klx: the app-owned preview base is the reference loader's ONLY
+  // target. The observed-arrival and Brush-hydration seams left with engine-1 —
+  // watercolor's script never hydrates over a raster base.
   // 3.5 (261027-klx): the persist law reads the WATERCOLOR truth for the frame,
   // never the engine-1 mirror — those stroke arrays stop being populated once
   // acceptance routes through the app-owned ledger, and a painted frame would
@@ -4416,7 +3982,11 @@ export function PhysicsPaintStudio() {
   }, [settings.background]);
   const rotoFrameEditing = useRotoFrameEditingController({
     workflowMode, currentFrame, currentFrameSelectionKind,
-    canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
+    canvasSize: { width: canvasWidth, height: canvasHeight },
+    // 261027-klx: the narrow watercolor port is the ONE engine seam. The ref
+    // read happens on the `canvasMounted` re-render that follows the layer's
+    // port publication.
+    engine: aquarelleEnginePortRef.current, launchContext,
     // 3.2: the app-owned preview base is the "engine" the reference loader
     // talks to — the cached key's paint rendered under the live sheet.
     previewBase: rotoPersistence.reference.previewBasePort,
@@ -4441,7 +4011,7 @@ export function PhysicsPaintStudio() {
         clearCachedRotoReferenceUrl();
       },
       resetReference: resetCachedRotoReference, setReferenceUrl: setCachedRotoReferenceUrl,
-      loadReferenceFrame: loadReferenceForFrameEditing,
+      loadReferenceFrame: loadCachedRotoReferenceFrame,
     },
     clearCachedFrame: rotoPersistence.clearCurrentFrame,
     playback: { stop: rotoCachedPlayback.stop }, syncPendingFrames: syncPendingRotoFrames,
@@ -4461,13 +4031,11 @@ export function PhysicsPaintStudio() {
   // reset (frame-change branch minus the lastPlayFrame update). Generated-cell
   // self-promotion calls it synchronously before dispatch.
   const clearGeneratedRotoDisplayForPaint = useCallback(() => {
-    const previewEngine = engineRef.current as PreviewBackgroundEngine | null;
-    previewEngine?.clearPreviewBaseImage();
-    previewEngine?.resetBackground();
-    previewEngine?.clear();
+    previewBasePort.clearPreviewBaseImage();
+    previewBasePort.resetBackground();
     aquarelleResetSheetRef.current?.();
     aquarelleMergeBaseRef.current = null;
-  }, []);
+  }, [previewBasePort]);
   beginRotoFrameEditImplRef.current = (event?: PointerEvent) => {
     const launch = launchContextRef.current;
     const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;
@@ -4600,7 +4168,9 @@ export function PhysicsPaintStudio() {
     return rotoPlaybackFrameNumbers.map((appFrame) => ({ appFrame, frame: true }));
   }, [rotoPlaybackLayerId, rotoPlaybackFrameNumbers]);
   const missingConditions = selectPhysicsPaintMissingConditions({
-    engineReady: Boolean(engine),
+    // 261027-klx: the watercolor sheet IS the engine — a mounted canvas is the
+    // readiness signal (the port publication precedes this re-render).
+    engineReady: canvasMounted,
     canvasMounted,
     hasLaunchContext: Boolean(launchContext),
     bridgeMode,
@@ -4618,7 +4188,7 @@ export function PhysicsPaintStudio() {
   const forceClearRotoFrameRef = useRef<(frame: number, size: { width: number; height: number }) => boolean>(() => false);
   forceClearRotoFrameRef.current = (frame, size) => rotoPersistence.forceClearFrame(frame, size);
   const clearActiveSource = useCallback(() => {
-    if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
+    if (isPhysicalMutationLocked() || !launchContextRef.current) return;
     const cleared = rotoFrameEditingRef.current.clearCurrentFrame();
     if (!cleared) {
       // 261027-gh9e: the frame editor's selection guards can refuse even
@@ -4628,14 +4198,13 @@ export function PhysicsPaintStudio() {
       // closed.
       if (!forceClearRotoFrameRef.current(currentFrame, { width: canvasWidth, height: canvasHeight })) return;
     }
-    // 261027-gh9f (Trash round 3): the visible Water color sheet is a SEPARATE
-    // engine from the engine-1 instance the frame editor clears. Leaving that
-    // sheet painted let its next settle / frame-leave capture re-commit the
-    // paint over the key the Trash had just blanked — the cache came back.
-    // Reset it on BOTH paths (the frame editor's success arm included).
-    engine.clear();
-    (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-    (engine as PreviewBackgroundEngine).resetBackground();
+    // 261027-gh9f (Trash round 3): the visible Water color sheet is the ONLY
+    // live surface. Leaving it painted let its next settle / frame-leave
+    // capture re-commit the paint over the key the Trash had just blanked —
+    // the cache came back. Reset it on BOTH paths (the frame editor's success
+    // arm included).
+    previewBasePort.clearPreviewBaseImage();
+    previewBasePort.resetBackground();
     aquarelleResetSheetRef.current?.();
     aquarelleMergeBaseRef.current = null;
     // 261027-gh9b: Trash is the full test reset. If the frame editor ran it
@@ -4656,7 +4225,7 @@ export function PhysicsPaintStudio() {
     // refresh OUTSIDE the module gate so the owner lock can never go stale.
     applyFrameModuleState(currentFrame);
     rotoScript.notifySourceRevision();
-  }, [applyFrameModuleState, canvasHeight, canvasWidth, currentFrame, engine, resolveStudioScriptCell, rotoScript]);
+  }, [applyFrameModuleState, canvasHeight, canvasWidth, currentFrame, previewBasePort, resolveStudioScriptCell, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -4664,12 +4233,6 @@ export function PhysicsPaintStudio() {
       ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame] ?? null
       : null;
     const destinationKind = destinationCell?.kind ?? (launchContext ? 'none' : 'no-launch');
-    // quick-261026-odd (empty-script gate): hydration is bound to the
-    // destination KEY, not the frame number — a retained script may only
-    // attach where its captured identity still owns the cell.
-    const destinationKeyId = destinationCell !== null && destinationCell.kind === 'real'
-      ? destinationCell.keyId
-      : null;
     // A new navigation resets the status capsule: the previous operation's
     // rejection/success text no longer applies once the playhead moves, so the
     // capsule falls back to the ambient frame context ("Empty frame • Frame N").
@@ -4697,7 +4260,9 @@ export function PhysicsPaintStudio() {
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       const flushFinalizationsStartedAtMs = performance.now();
-      engine?.flushPendingStrokeFinalizations();
+      // The ledger's no-op drain keeps the ordering seam (watercolor finalizes
+      // its stroke synchronously at stroke end).
+      rotoMutationPort.flushPendingStrokeFinalizations?.();
       recordPhysicsPaintPerformance({ stage: 'nav.flushStrokeFinalizations', category: 'sync-cpu', durationMs: performance.now() - flushFinalizationsStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       // 52.1 (paint-loss fix + scrub regression): snapshot the live canvas
       // SYNCHRONOUSLY before engine.clear() so the flush's produce (which runs
@@ -4710,17 +4275,6 @@ export function PhysicsPaintStudio() {
       // flush — the rAF poll would queue it one rAF after scheduleRotoStartFramePropagation,
       // i.e. after this flush has already drained (the empty-frame-on-return race).
       aquarelleFlushCaptureRef.current?.();
-      // 261023-g4p: retain the outgoing brush frame BEFORE engine.clear()
-      // (engine-1 owns the visible brush script; navigation drops it).
-      if (activeModule.peek() !== 'watercolor') {
-        // 261023-j5b: the frame-leave capture carries the visit's paint globals
-        // (the first-edit faithful rebake replays with them).
-        flushBrushScriptFrame(
-          currentFrame,
-          engine ? engine.getStrokes() : null,
-          engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,
-        );
-      }
       // quick-261025-awl (D-02): an EXPLICIT selection switches the module
       // BEFORE hydration reads activeModule, so the destination's single owner
       // governs the attach. Playback and mid-drag scrubs never switch.
@@ -4730,96 +4284,11 @@ export function PhysicsPaintStudio() {
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
       setCachedRotoReferenceUrl(null);
       const clearAndLoadStartedAtMs = performance.now();
-      if (engine) {
-        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-        (engine as PreviewBackgroundEngine).resetBackground(true);
-        engine.clear();
-        // 261023-j5b LAZY ATTACH: pixels FIRST, ledger SECOND. The retained
-        // script is proof that the cached pixels already show this content, so
-        // navigation never replays it — the attach is a silent ledger install
-        // and the expensive faithful rebake belongs to the first edit. Order
-        // is load-bearing: loadCachedRotoReferenceFrame() internally calls
-        // engine.clear(), which would wipe an earlier attach.
-        // Every refusal is fail-closed: record the arrival base and keep
-        // today's pixels — a PARTIAL script must never replace them.
-        // 261027 UAT round 11: a raster/purged key carries the pixels under a
-        // fresh Brush script as its durable base. A PARTIAL ledger hydrates
-        // only over that base (never over the flattened cached composite,
-        // which already contains the strokes).
-        const durableBaseBytes = destinationKeyId !== null
-          ? aquarelleDurableBaseByKeyRef.current.get(destinationKeyId) ?? null
-          : null;
-        const hydrationRequest: BrushHydrationRequest = {
-          frame,
-          destinationKind,
-          keyId: destinationKeyId,
-          brushModuleActive: activeModule.peek() !== 'watercolor',
-          wasPlaying: wasPlaying || rotoCachedPlayback.isActive,
-          scrubActive: scrubActiveRef.current,
-          durableBaseBytes: durableBaseBytes instanceof Uint8Array ? durableBaseBytes : null,
-        };
-        const hydrationPlan = planBrushScriptHydration(hydrationRequest);
-        if (hydrationPlan.hydrate) {
-          if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {
-            // The pre-script raster IS the display base. The cached frame is
-            // the composite and would double every replayed stroke.
-            const displayFrame = findCachedRotoDisplayFrame(frame);
-            const durableFrame = displayFrame
-              ? { ...displayFrame, bytes: durableBaseBytes }
-              : {
-                  frameIndex: 0,
-                  appFrame: frame,
-                  bytes: durableBaseBytes,
-                  width: canvasWidth,
-                  height: canvasHeight,
-                  keyId: destinationKeyId,
-                };
-            const durableBaseGeneration = Math.max(
-              rotoPreviewBaseContentToken(),
-              engine.getAppliedPreviewBaseContentToken?.() ?? 0,
-            );
-            loadCachedRotoReferenceFrame(
-              frame,
-              engine as PreviewBackgroundEngine,
-              undefined,
-              true,
-              durableBaseGeneration,
-              durableBaseBytes,
-            );
-            // The capture's merge base is the durable raster, never the
-            // composite (which already contains the replayed strokes).
-            setCachedRotoRepaintBaseFrame(durableFrame);
-            if (!hydrateBrushScriptFrame(engine, hydrationRequest)) {
-              // Engine refused the attach: fail closed to the cached pixels
-              // (view-only, the pre-round-11 path) instead of a stroke-less
-              // base.
-              loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine, undefined, true);
-            }
-          } else {
-            const loaded = loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
-            if (hydrateBrushScriptFrame(engine, hydrationRequest)) {
-              // Attach success: NO arrival-base note — the cached pixels render
-              // the same script, so the entry stays COMPLETE for future visits.
-              if (!loaded) {
-                // No cached pixels exist anywhere for this key (a pruned or
-                // never-flushed display frame): repaint the script now so the
-                // frame is not blank. 261023-j5b Task 2 upgrades this stand-in
-                // to rebakeStrokesFaithfully (live deposit semantics).
-                engine.restoreStrokesBaseline(
-                  hydrationPlan.entry.groups,
-                  hydrationPlan.entry.paintSettings ?? null,
-                );
-              }
-            } else {
-              // The engine refused the attach (malformed groups): fall back to
-              // today's observed loader semantics without loading twice.
-              noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
-            }
-          }
-        } else {
-          loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
-        }
-      }
+      // 261027-klx: the app-owned preview base replaces engine-1's surface —
+      // wipe the cached base, then load the destination's cached pixels.
+      previewBasePort.clearPreviewBaseImage(true);
+      previewBasePort.resetBackground(true);
+      loadCachedRotoReferenceFrame(frame, previewBasePort);
       recordPhysicsPaintPerformance({ stage: 'nav.engineClearLoad', category: 'sync-cpu', durationMs: performance.now() - clearAndLoadStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
       recordPhysicsPaintPerformance({ stage: 'nav.preAwait', category: 'sync-cpu', durationMs: performance.now() - navigationSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
       try {
@@ -4844,13 +4313,12 @@ export function PhysicsPaintStudio() {
       // getRotoPhysicalRenderSource, which would run the interpolation render.
       // 47 close-out UAT round 9: read the LIVE active track — after a track
       // switch the launch snapshot still points at the previous track.
-      if (engine && physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
+      if (physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind === 'generated') {
         const postFlushRepaintStartedAtMs = performance.now();
         setCachedRotoReferenceUrl(null);
-        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-        (engine as PreviewBackgroundEngine).resetBackground(true);
-        engine.clear();
-        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        previewBasePort.clearPreviewBaseImage(true);
+        previewBasePort.resetBackground(true);
+        loadCachedRotoReferenceFrame(frame, previewBasePort);
         recordPhysicsPaintPerformance({ stage: 'nav.postFlushRepaint', category: 'sync-cpu', durationMs: performance.now() - postFlushRepaintStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       }
     }
@@ -4874,7 +4342,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlayback.seek(frame);
     }
     return true;
-  }, [applyFrameModuleState, bridgeMode, currentFrame, engine, findCachedRotoDisplayFrame, hydrateBrushScriptFrame, launchContext, loadCachedRotoReferenceFrame, loadReferenceObserved, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  }, [applyFrameModuleState, bridgeMode, currentFrame, launchContext, loadCachedRotoReferenceFrame, previewBasePort, rotoCachedPlayback, rotoMutationPort, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through
@@ -4951,12 +4419,6 @@ export function PhysicsPaintStudio() {
         // sheet-session end (merge-base pin) and stamps the outgoing stroke's
         // measured settle before the save below.
         aquarelleResetSheetRef.current?.();
-        const outgoingEngine = engineRef.current;
-        flushBrushScriptFrame(
-          currentFrame,
-          outgoingEngine?.getStrokes() ?? null,
-          outgoingEngine?.getFramePaintSettings() ?? outgoingEngine?.getPaintRenderSettings() ?? null,
-        );
         void studioScriptSnapshot.saveNow();
       }
       rotoEditBuffer.resetForLaunch();
@@ -4965,11 +4427,9 @@ export function PhysicsPaintStudio() {
       cachedRotoReferenceUrlRef.current = null;
       cachedRotoRepaintBaseFrameRef.current = null;
       setCachedRotoRepaintBaseFrame(null);
-      // 261023-h9v: the brush script is track-scoped session content — a
+      // quick-261023-l35: the watercolor timeline is track-scoped — a
       // cross-track switch must drop it fail-closed so no previous-track
-      // entry can hydrate or draw outlines on the new track.
-      resetBrushScriptStore();
-      // quick-261023-l35: the watercolor timeline is track-scoped too.
+      // entry can hydrate or draw on the new track.
       resetAquarelleRecordState();
         // Bind the incoming key and restore it. Never awaited: this effect is
         // synchronous, and the controller's generation guard — bumped by every
@@ -4991,12 +4451,9 @@ export function PhysicsPaintStudio() {
             // return so switching to a script-less track unlocks.
             applyFrameModuleState(launchContextRef.current?.startFrame ?? currentFrame);
             if (restored.maxRestoredMutationId <= 0) return;
-            const nextMutationId = Math.max(
-              studioScriptSnapshotReservedNextMutationIdRef.current,
-              restored.maxRestoredMutationId + 1,
-            );
-            studioScriptSnapshotReservedNextMutationIdRef.current = nextMutationId;
-            paintMutationLedger.reserveNextMutationId(nextMutationId);
+            // 261027-klx: the app-owned ledger IS the mutation clock — a
+            // max-raise makes every restored id unreachable.
+            paintMutationLedger.reserveNextMutationId(restored.maxRestoredMutationId + 1);
           });
         } else {
           studioScriptSnapshotIdentityRef.current = null;
@@ -5007,18 +4464,14 @@ export function PhysicsPaintStudio() {
       lastEditStateTrackIdRef.current = trackId;
       aquarelleSessionTrackIdRef.current = trackId;
     }
-    const engine = engineRef.current as PreviewBackgroundEngine | null;
     setCachedRotoReferenceUrl(null);
-    if (engine) {
-      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-      engine.resetBackground(true);
-      engine.clear();
-    }
+    previewBasePort.clearPreviewBaseImage(true);
+    previewBasePort.resetBackground(true);
+    previewBasePort.clear();
     // A hidden active track stays a blank canvas (hide/solo truth table); any
     // other switch reloads the current frame through the newly active track.
-    // 261023-h9v: the observed loader records base presence for the frame.
     if (visible) {
-      loadReferenceObserved(currentFrame, engine);
+      loadCachedRotoReferenceFrame(currentFrame, previewBasePort);
     }
     // studio-realm-divergence probe: at every real track-switch commit record
     // the armed cross-track guard, the document cursor and the launch cursor —
@@ -5047,60 +4500,26 @@ export function PhysicsPaintStudio() {
     // The lane's cached-frame fills are track-scoped too: the synchronous
     // guard above useRotoTimelineModel owns latestRotoFramesRef on the switch
     // render (47 close-out UAT round 9 — no one-render stale paint).
-  }, [applyFrameModuleState, efxPaintVersion.value, currentFrame, loadReferenceObserved, setCachedRotoReferenceUrl]);
+  }, [applyFrameModuleState, efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, previewBasePort, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {
       const frame = effect.restore.frame;
       // 38.1 D-03/D-04: canvas paint first within this flow; the startFrame
       // update propagates through the same rAF scheduler as navigation.
-      if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) {
-        // 261023-h9v: the observed loader records the arrival base for the
-        // display-driven real-key loads too.
-        loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
-        // 52.1 fresh-frame warm: after the applied base's decode+drawImage lands,
-        // drain the cold surface upload in the idle so the first stroke never
-        // flushes it mid-paint (the fast-chained 2nd-stroke ~380ms freeze).
-        const warmThenUnlock = async () => {
-          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-          (engine as unknown as { warmCanvasSurfaces?: () => void }).warmCanvasSurfaces?.();
-          // Blank (just-activated) keys are cold — hold the pen so the first
-          // stroke doesn't flush the fresh surfaces mid-paint (user's "+key then
-          // wait" recipe for the paint-without-wait case).
-          if (effect.restore.kind === 'blank-real-key') {
-            setApplyMessage('Préparation du canevas…');
-            warmProgress.value = 0;
-            const warmStartedAt = performance.now();
-            const warmTick = () => {
-              const elapsed = performance.now() - warmStartedAt;
-              const next = Math.min(100, Math.round((elapsed / FRESH_FRAME_WARM_MS) * 100));
-              warmProgress.value = next;
-              if (next < 100) requestAnimationFrame(warmTick);
-            };
-            requestAnimationFrame(warmTick);
-            await (engine as unknown as { lockInputForWarm?: (ms: number) => Promise<void> }).lockInputForWarm?.(FRESH_FRAME_WARM_MS);
-            warmProgress.value = 100;
-            setApplyMessage(null);
-            window.setTimeout(() => { if (warmProgress.peek() === 100) warmProgress.value = 0; }, 300);
-          }
-        };
-        void warmThenUnlock();
+      if (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key') {
+        loadCachedRotoReferenceFrame(frame, previewBasePort);
       }
-      else if (engine && effect.restore.kind === 'clear-blank') {
-        (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-        (engine as PreviewBackgroundEngine).resetBackground(true);
-        engine.clear();
+      else if (effect.restore.kind === 'clear-blank') {
+        previewBasePort.clearPreviewBaseImage(true);
+        previewBasePort.resetBackground(true);
       }
       scheduleRotoStartFramePropagation(frame);
     },
     clearCanvas: (frame) => {
-      if (!engine || frame !== currentFrame) return;
-      (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
-      (engine as PreviewBackgroundEngine).resetBackground(true);
-      engine.clear();
-      // 261023-h9v: a cleared canvas and a retained script cannot both be
-      // true — an explicit display clear drops the frame's script.
-      clearBrushScriptFrame(frame);
+      if (frame !== currentFrame) return;
+      previewBasePort.clearPreviewBaseImage(true);
+      previewBasePort.resetBackground(true);
       // quick-261025-awl (D-02/D-03): the display clear changed the owner.
       applyFrameModuleState(frame);
     },
@@ -5191,18 +4610,11 @@ export function PhysicsPaintStudio() {
         return true;
       },
     },
-    // 261023-h9v: after a successful controller undo/redo, refresh the
-    // retained brush script — the deferred undo path emits no completion.
-    undoPaint: () => {
-      const undone = rotoFrameEditing.undo();
-      if (undone) refreshBrushScriptAfterHistory('undo');
-      return undone;
-    },
-    redoPaint: () => {
-      const redone = rotoFrameEditing.redo();
-      if (redone) refreshBrushScriptAfterHistory('redo');
-      return redone;
-    },
+    // 261027-klx: watercolor's controller undo/redo moves the live sheet and
+    // the script store together — there is no separate engine-1 ledger to
+    // refresh afterwards.
+    undoPaint: () => rotoFrameEditing.undo(),
+    redoPaint: () => rotoFrameEditing.redo(),
   });
 
   // 38-11: the history hook returns a fresh wrapper object per render, but
@@ -5257,8 +4669,7 @@ export function PhysicsPaintStudio() {
   }, [undo, redo]);
 
   const requestRotoFrameNavigation = rotoNavigation.requestNavigation;
-  const { getStrokeMetadata } = usePhysicsPaintLaunchIntegration({
-    engineRef,
+  usePhysicsPaintLaunchIntegration({
     lifecycle: {
       pendingFrameSyncRef,
       pendingApplyRef,
@@ -5278,6 +4689,7 @@ export function PhysicsPaintStudio() {
     resetPersistenceForLaunch: rotoPersistence.resetForLaunch,
     resetNavigationForLaunchRef: resetRotoNavigationForLaunchRef,
     hydratePlaybackSettingsForLaunch: rotoPlaybackSettingsController.hydrateForLaunch,
+    previewBase: previewBasePort,
     resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
     onSettledLaunchContext: (context) => {
@@ -5331,16 +4743,11 @@ export function PhysicsPaintStudio() {
       aquarelleSessionTrackIdRef.current = trackId;
       const restored = await studioScriptSnapshot.restore();
       if (restored.maxRestoredMutationId > 0) {
-        const nextMutationId = Math.max(
-          studioScriptSnapshotReservedNextMutationIdRef.current,
-          restored.maxRestoredMutationId + 1,
-        );
-        studioScriptSnapshotReservedNextMutationIdRef.current = nextMutationId;
         // 3.6: the app-owned ledger is the ONLY mutation clock. It exists for
-        // the whole Studio lifetime, so the launch restore can seed it here;
-        // the engine-ready seam re-applies the reservation as a belt-and-braces
-        // max-raise (never a reset).
-        paintMutationLedger.reserveNextMutationId(nextMutationId);
+        // the whole Studio lifetime, so the launch restore seeds it here as a
+        // max-raise (never a reset) — every later allocation starts above the
+        // restored ids.
+        paintMutationLedger.reserveNextMutationId(restored.maxRestoredMutationId + 1);
       }
       // quick-261025-awl (D-02): the Studio launch settle publishes the start
       // frame's owner so the first render already shows the right module.
@@ -5349,7 +4756,9 @@ export function PhysicsPaintStudio() {
   });
   usePhysicsPaintWorkflowIntegration({
     session: {
-      engine, canvasSize: { width: canvasWidth, height: canvasHeight }, launchContext, currentFrame,
+      // 261027-klx: the narrow watercolor port is the session's engine seam.
+      engine: aquarelleEnginePortRef.current,
+      canvasSize: { width: canvasWidth, height: canvasHeight }, launchContext, currentFrame,
       setLaunchContext, setApplyStatus, setApplyMessage, setLastError,
       isMutationLocked: isPhysicalMutationLocked,
     },
@@ -5458,7 +4867,6 @@ export function PhysicsPaintStudio() {
           }
         }
         const currentLaunch = launchContextRef.current;
-        const currentEngine = engineRef.current;
         const acceptedSelectedKeyId = accepted?.after.selectedKeyId ?? null;
         const acceptedSelectedAppFrame = accepted?.after.selectedAppFrame ?? null;
         // 261019-mj2 Task 3: a direct-paint auto-key promotes a blank key WHILE
@@ -5492,13 +4900,13 @@ export function PhysicsPaintStudio() {
           && currentLaunch?.operationId === accepted.after.launchOperationId
           && currentLaunch.layerId === accepted.after.layerId
           && currentLaunch.startFrame === acceptedSelectedAppFrame
-          && currentEngine
         ) {
           if (!acceptedSelfPromotion) {
             // Synchronous (52.1): this reload is also what refreshes the cached
             // repaint base the next stroke's capture merges onto — deferring it
             // stranded the base and forced a full-frame re-encode per stroke.
-            loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
+            // 261027-klx: the app-owned preview base is the reload target.
+            loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, previewBasePort);
           } else if (pendingSelfPromotion.blankFrame !== null && acceptedSelectedAppFrame !== null) {
             setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame);
             cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame;
@@ -5648,7 +5056,7 @@ export function PhysicsPaintStudio() {
       pasteRotoKey: pasteRotoFrame,
       swapFgBg: () => {
         paintStore.swapFgBg();
-        setBrushColor(paintStore.foregroundColor.peek(), settings.opacity);
+        handleActiveColorChanged(paintStore.foregroundColor.peek());
       },
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       // 261023-g4p: both modules share ONE consume law (registered port
@@ -5867,7 +5275,7 @@ export function PhysicsPaintStudio() {
       // WITHOUT the save-before-leave flush (that stays on the release settle).
       // The pointer-down seek already snapshotted + flushed the origin frame's
       // paint, so this clear cannot drop it.
-      loadCachedRotoReferenceFrame(frame, engineRef.current as PreviewBackgroundEngine | null);
+      loadCachedRotoReferenceFrame(frame, previewBasePort);
       return;
     }
     // Non-scrub navigation clears any settled scrub feed left sticky while the
@@ -5882,7 +5290,7 @@ export function PhysicsPaintStudio() {
         setApplyMessage('Frame change is busy — try again.');
       }
     });
-  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
+  }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame, previewBasePort]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target
   // in the SAME click. The selection is applied SYNCHRONOUSLY in the click
@@ -5977,17 +5385,15 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  // 261018-f15 C2: ONE write-through pair for Brush size + Opacity — the top
-  // bar and the Paint-tab duplicate both call these routers. Routed at call
-  // time (activeModule is a signal, never a memo dep).
+  // 261018-f15 C2 / 261027-klx: ONE write-through pair for Brush size +
+  // Pigment — the top bar and the Paint-tab duplicate both call these routers.
+  // Water color is the only module, so each writes its aquarelle param.
   const handleBrushSizeChange = useCallback((value: number) => {
-    if (activeModule.value === 'watercolor') setAquarelleParam('size', value);
-    else setBrushSize(value);
-  }, [setBrushSize]);
+    setAquarelleParam('size', value);
+  }, []);
   const handleOpacityChange = useCallback((value: number) => {
-    if (activeModule.value === 'watercolor') setAquarelleParam('load', value);
-    else setBrushOpacity(value);
-  }, [setBrushOpacity]);
+    setAquarelleParam('load', value);
+  }, []);
   const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
@@ -6008,18 +5414,14 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, moveAvailable, watercolorMoveAvailable, setBrushColor], () => ({
-    activeTool: settings.tool,
-    physicsMode: settings.physicsMode,
+  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged], () => ({
     historyAvailability,
-    moveAvailable,
     selectAvailable: watercolorMoveAvailable,
-    disabled: !engine || staticControlsLocked,
-    onSelectTool: selectTool,
+    disabled: staticControlsLocked,
     onUndo: undo,
     onRedo: redo,
     onClearFrame: clearActiveSource,
-    onActiveColorChanged: (color: string) => setBrushColor(color, settings.opacity),
+    onActiveColorChanged: handleActiveColorChanged,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -6173,10 +5575,9 @@ export function PhysicsPaintStudio() {
   // purge functions are hoisted declarations below — a false return means
   // nothing was removed, never an error.
   const memorySectionPortsRef = useRef<StudioScriptMemorySectionPorts>({
-    read: () => readStudioScriptMemorySnapshot({
-      engine: engineRef.current,
-      frame: launchContextRef.current?.startFrame ?? 0,
-    }),
+    // 261027-klx: the watercolor registry is the whole script memory — the
+    // snapshot needs no engine and no frame argument.
+    read: () => readStudioScriptMemorySnapshot(),
     purgeFrame: (frame: number) => purgeMemoryScriptFrame(frame),
     purgeRail: (frames: readonly number[]) => purgeMemoryRailScripts(frames),
     clearRail: () => clearMemoryRailScripts(),
@@ -6195,13 +5596,7 @@ export function PhysicsPaintStudio() {
   // the authoritative leg with the pruned payload, then deletes the stale
   // cache fallback. A false return means nothing was removed — never an error.
   function purgeMemoryScriptFrame(frame: number): boolean {
-    const removedWatercolor = purgeAquarelleFrameScript(frame);
-    // Marking the brush frame purged is meaningful even when no entry existed
-    // (it stops a frame-leave flush from capturing the engine's stale strokes),
-    // but the return value counts only actual removals.
-    const removedBrush = purgeBrushScriptFrame(frame);
-    const total = removedWatercolor + (removedBrush ? 1 : 0);
-    if (total === 0) return false;
+    if (!purgeAquarelleFrameScript(frame)) return false;
     // quick-261025-awl (D-02/D-03): only a purge of the CURRENT frame can move
     // the owner; purging another frame must never switch the active module.
     if (frame === (launchContextRef.current?.startFrame ?? -1)) applyFrameModuleState(frame);
@@ -6210,10 +5605,7 @@ export function PhysicsPaintStudio() {
   }
   function purgeMemoryRailScripts(frames: readonly number[]): boolean {
     let removed = 0;
-    for (const frame of frames) {
-      removed += purgeAquarelleFrameScript(frame);
-      if (purgeBrushScriptFrame(frame)) removed += 1;
-    }
+    for (const frame of frames) removed += purgeAquarelleFrameScript(frame);
     if (removed === 0) return false;
     // quick-261025-awl: refresh only when the rail purge touched the live frame.
     const liveFrame = launchContextRef.current?.startFrame ?? -1;
@@ -6222,9 +5614,7 @@ export function PhysicsPaintStudio() {
     return true;
   }
   function clearMemoryRailScripts(): boolean {
-    const removedWatercolor = purgeAllAquarelleKeyScripts();
-    const removedBrush = purgeAllBrushScriptFrames(launchContextRef.current?.startFrame ?? null);
-    if (removedWatercolor + removedBrush === 0) return false;
+    if (!purgeAllAquarelleKeyScripts()) return false;
     // quick-261025-awl: clear-all touches every frame, including the live one.
     const liveFrame = launchContextRef.current?.startFrame;
     if (liveFrame !== undefined) applyFrameModuleState(liveFrame);
@@ -6232,20 +5622,15 @@ export function PhysicsPaintStudio() {
     return true;
   }
   // 261024-p5q UAT: the sidebar Color tab is the ONE picker. Its commit
-  // boundary (one per gesture) recolors the selected strokes when a stroke
-  // edition surface owns the selection; otherwise it is the plain brush-color
-  // write. Peek-only reads — the Studio body never subscribes the selection.
+  // boundary (one per gesture) recolors the selected strokes while Select owns
+  // the selection. Peek-only reads — the Studio body never subscribes it.
   const handleRightPanelColorCommit = useCallback((color: string) => {
     const ids = [...scriptSelectedStrokeIds.peek()];
     if (ids.length === 0) return;
-    if (activeModule.peek() === 'watercolor') {
-      if (!aquarelleSelectMode.peek()) return;
-      void aquarelleAppearanceCommitRef.current?.(ids, { color });
-      return;
-    }
-    if (settings.tool === 'move') applyBrushScriptStrokeAppearance(ids, { color });
-  }, [settings.tool]);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, handleRightPanelColorCommit, undo, redo, clearActiveSource, memorySectionRef], () => {
+    if (!aquarelleSelectMode.peek()) return;
+    void aquarelleAppearanceCommitRef.current?.(ids, { color });
+  }, []);
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -6260,20 +5645,10 @@ export function PhysicsPaintStudio() {
       if (!result.ok) setApplyMessage(result.error);
     };
     return {
-    activeTool: settings.tool,
     color: settings.color,
-    opacity: settings.opacity,
-    // 261018-f15 C2: the Paint-tab size/opacity pair rides the same routers
-    // the top bar uses — one write-through pair, never a second setter.
-    brushSize: settings.size,
+    // 261018-f15 C2: the Paint-tab size rides the same router the top bar
+    // uses — one write-through, never a second setter.
     onBrushSizeChange: handleBrushSizeChange,
-    onOpacityChange: handleOpacityChange,
-    edgeDetail: settings.edgeDetail,
-    pickup: settings.pickup,
-    spread: settings.spread,
-    smoothing: settings.smoothing,
-    eraseStrength: settings.eraseStrength,
-    physicsMode: settings.physicsMode,
     onion,
     onionDisabled: isPlaying,
     engineControlsDisabled: staticControlsLocked,
@@ -6313,16 +5688,11 @@ export function PhysicsPaintStudio() {
     onBackgroundChange: handleBackgroundChange,
     onGrainStrengthChange: handleGrainStrengthChange,
     onGrainScaleChange: handleGrainScaleChange,
-    onColorChange: (color: string, opacity: number) => {
-      setBrushColor(color, opacity);
+    onColorChange: (color: string) => {
+      handleActiveColorChanged(color);
       paintStore.setForeground(color);
     },
     onColorCommit: handleRightPanelColorCommit,
-    onEdgeDetailChange: setEdgeDetail,
-    onPickupChange: setPickup,
-    onSpreadChange: setSpread,
-    onSmoothingChange: setSmoothing,
-    onEraseStrengthChange: setEraseStrength,
     onOnionChange: setOnion,
     onPlayWiggleChange: updatePanelMotion,
     // UI checklist row 6 Actions tab: Undo | Redo | Clear frame — required by
@@ -6364,372 +5734,36 @@ export function PhysicsPaintStudio() {
     brushColor: settings.color,
     returnFocusRef: playButtonRef,
   }));
-  const canvasEngineReadyImplRef = useRef<(readyEngine: EfxPaintEngine) => void>(() => {});
-  canvasEngineReadyImplRef.current = (readyEngine) => {
-    readyEngine.setHistoryAvailabilityListener((availability) => {
-      rotoMoveHistory.reconcilePaintBarriers(availability);
-      rotoScript.notifySourceRevision();
-    });
-    // 260925-iy6 UAT round 8: the preview base lands on its own async decode.
-    // Bump here so the program monitor recomposites the atomic base swap
-    // (new base + dropped dry) the moment it applies — otherwise the monitor
-    // holds the pre-swap pixels until the next stroke.
-    readyEngine.onPreviewBaseSettled(() => {
-      physicPaintVersion.value++;
-    });
-    // quick-261023-l35: a fresh engine restarts its mutation counter at 1, so
-    // the first new stroke would reuse a restored id and silently overwrite
-    // that registry entry. Re-apply the reservation at every engine-ready: the
-    // launch restore usually runs before this engine exists, and a
-    // crash-recovery reload creates a brand-new one.
-    // 3.6: the reservation belongs to the ledger (the app-owned clock that
-    // survives every engine re-create), so re-applying it here is a max-raise
-    // on the SAME counter the stroke-end path allocates from.
-    const reservedMutationId = studioScriptSnapshotReservedNextMutationIdRef.current;
-    if (reservedMutationId > 0) paintMutationLedger.reserveNextMutationId(reservedMutationId);
-    handleEngineReady(readyEngine);
-    rotoScript.updateEngine(rotoMutationPort);
-    // 261023-h9v: the observed loader records base presence for this arrival.
-    if (workflowMode === 'roto') loadReferenceObserved(currentFrame, readyEngine as PreviewBackgroundEngine);
-    // quick 260928-dh1 (DEV ONLY): one-shot deposit speckle capture —
-    // window.__EFX_DH1_CAPTURE__('red' | 'green'). Measurement-only pixel
-    // reader (see depositSpeckleCapture.ts header for the 260925-dso
-    // exemption); installs nothing in a production build. Wired in the
-    // engine-ready seam like the __EFX_PHYSICS_PAINT_PROFILE__ precedent —
-    // no effect, no signal, no component state.
-    if (import.meta.env.DEV) installDh1CaptureHook(readyEngine);
-    // quick 261023-f9c (DEV ONLY): read-only script-memory measurement —
-    // window.__EFX_SCRIPT_MEMORY__.snapshot(). Installs nothing in a production
-    // build; no effect, no signal, no component state.
-    if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine, () => launchContextRef.current?.startFrame ?? 0);
-    // quick-261026-odd (DEV ONLY): Move provenance report. Written to
-    // /tmp/efx-move-provenance.json on Move entry and on demand through
-    // window.__EFX_MOVE_PROVENANCE__(). Installs nothing in production.
-    if (import.meta.env.DEV) {
-      installMoveProvenanceProbe({
-        getIdentity: () => {
-          const launch = launchContextRef.current;
-          return {
-            projectId: launch?.project?.projectId ?? null,
-            layerId: launch?.layerId ?? null,
-            activeTrackId: studioActiveTrackId(),
-            snapshotTrackId: studioScriptSnapshotIdentityRef.current?.trackId ?? null,
-          };
-        },
-        getFrame: () => launchContextRef.current?.startFrame ?? 0,
-        getCellKind: () => {
-          const launch = launchContextRef.current;
-          if (!launch) return 'no-launch';
-          const frame = launch.startFrame ?? 0;
-          return physicPaintStore
-            .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
-            ?.cells[frame]?.kind ?? 'none';
-        },
-        getModule: () => activeModule.peek(),
-        getTool: () => settingsRef.current.tool,
-        getMoveAvailable: () => moveAvailable.peek(),
-        getOwner: () => frameScriptOwner.peek(),
-        getEngine: () => engineRef.current,
-        getCellKeyId: () => {
-          const identity = studioScriptSnapshotIdentityRef.current;
-          const launch = launchContextRef.current;
-          if (!identity || !launch) return null;
-          return physicPaintStore
-            .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, launch.startFrame ?? 0)
-            ?.keyId ?? null;
-        },
-        getLiveKeyIdForFrame: (frame) => {
-          const identity = studioScriptSnapshotIdentityRef.current;
-          if (!identity) return null;
-          return physicPaintStore
-            .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, frame)
-            ?.keyId ?? null;
-        },
-        isPixelOnlyFrame: (frame) =>
-          resolveStudioPixelOnlyFrames(studioScriptSnapshotIdentityRef.current)?.has(frame) ?? false,
-        getOverlayArmed: () => ({
-          selectMode: aquarelleSelectMode.peek(),
-          heldArm: temporaryMove.peek(),
-        }),
-      });
-      // debug-watercolor-loop-render-split (DEV ONLY): the capture -> route ->
-      // settlement -> display report (/tmp/efx-aquarelle-render-split.json).
-      installAquarelleRenderSplitProbe();
-    }
-    // 261023-g4p: a recreated engine must re-enter the brush script-edition
-    // surface. The overlay is MOUNTED independently, but the engine defaults
-    // are fresh (labels + cursor on) — re-apply the suppression and project
-    // the current frame so the first click-select sees a script. Read the
-    // deferred settingsRef here only (this callback runs after mount).
-    if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {
-      if (moveAvailable.peek()) {
-        readyEngine.setTool('move');
-        readyEngine.setStrokeLabelsSuppressed(true);
-        readyEngine.setCursorVisible(false);
-        // 261023-h9v: never flush an EMPTY fresh engine over a retained entry.
-        if (readyEngine.getStrokes().length > 0) {
-          flushBrushScriptFrame(
-            launchContextRef.current?.startFrame ?? 0,
-            readyEngine.getStrokes(),
-            readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),
-          );
-        }
-      } else {
-        // quick-261026-odd: a fresh engine must never resurrect Move on a
-        // scriptless key. Restore the last non-Move tool in both the engine
-        // and settings.
-        readyEngine.setTool(lastNonMoveToolRef.current);
-        readyEngine.setPhysicsMode(settingsRef.current.physicsMode);
-        setSettings((current) => ({ ...current, tool: lastNonMoveToolRef.current, physicsMode: settingsRef.current.physicsMode }));
-      }
-    }
-    // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
-    // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /
-    // m5 on-return, written to /tmp/efx-look-delta.json. No product change.
-    installLookDeltaCapture(readyEngine);
-  };
-  const handleCanvasEngineReady = useCallback((readyEngine: EfxPaintEngine) => {
-    canvasEngineReadyImplRef.current(readyEngine);
-  }, []);
+  // 261027-klx: the engine-1 canvas-ready seam (history listener, preview-base
+  // settle bump, mutation reservation, DEV probes, Brush Move re-entry) left
+  // with engine-1. `AquarelleCanvasLayer` publishes the ONE `AquarelleEnginePort`
+  // through the mount's `onEnginePortReady`; the ledger subscription below is
+  // the only completion path.
   // 3.6 (261027-klx): completions arrive from the app-owned ledger, which emits
   // SYNCHRONOUSLY inside allocateStrokeMutation. The second argument is the
   // SAME memoized Roto port the clipboard keys its accepted-target WeakMap by
   // (`getAcceptedTarget` reads null for a different object identity).
-  const canvasCompletedMutationImplRef = useRef<(mutation: CompletedPaintMutation, mutationEngine: RotoScriptEnginePort) => void>(() => {});
+  const canvasCompletedMutationImplRef = useRef<(mutation: CompletedPaintMutation) => void>(() => {});
   // 3.6: the ledger IS the completion source. Routing through the ref keeps the
   // Studio's existing completion ordering (the latest render's closure runs) and
-  // lets the ledger fire synchronously inside allocateStrokeMutation — the
-  // canvas mount's engine callback is no longer on this path.
+  // lets the ledger fire synchronously inside allocateStrokeMutation.
   useEffect(() => paintMutationLedger.subscribe((mutation) => {
-    canvasCompletedMutationImplRef.current(mutation, rotoMutationPort);
-  }), [paintMutationLedger, rotoMutationPort]);
-  /**
-   * 261027 UAT round 11: a Brush script painted over a raster/purged key is a
-   * PARTIAL ledger — the pixels beneath are not in it. Pin those pre-script
-   * pixels as the key's durable base at the script's FIRST stroke (the same
-   * law the aquarelle ordinary-key base follows), so the frame can hydrate
-   * OVER that base on the next visit instead of staying view-only.
-   */
-  const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {
-    if (!keyId) return;
-    // A script that already belongs to THIS key began in an earlier visit; the
-    // current display is a flattened composite, not the pre-script base. A row
-    // for a REPLACED key is not this key's script — the new key still needs
-    // its own base.
-    const existing = getBrushScriptFrameEntry(frame);
-    if (existing !== undefined && existing.keyId === keyId) return;
-    // A mixed key's display already carries the aquarelle script; the
-    // aquarelle merge owns that content (never pin a foreign composite).
-    if (hasAquarelleScriptForFrame(frame)) return;
-    const durableBases = aquarelleDurableBaseByKeyRef.current;
-    if (durableBases.has(keyId)) return;
-    const launch = launchContextRef.current;
-    if (!launch) return;
-    const trackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackId, keyId);
-    let baseBytes: Uint8Array | null = null;
-    try {
-      baseBytes = record ? requirePhysicPaintRotoInlineBytes(record.payload) : null;
-    } catch {
-      baseBytes = null;
-    }
-    if (!baseBytes) return;
-    durableBases.set(keyId, new Uint8Array(baseBytes));
-  };
-  canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {
+    canvasCompletedMutationImplRef.current(mutation);
+  }), [paintMutationLedger]);
+  canvasCompletedMutationImplRef.current = (mutation) => {
     // 260925-iy6 UAT follow-up: bump the paint version SYNCHRONOUSLY at finalize
     // so the program monitor redraws its live-overlay composite in the same
-    // paint cycle as the engine's wet→dry handoff (no 1-frame hole). The async
-    // capture pipeline below still runs on its own quiet-window schedule.
+    // paint cycle as the engine's wet→dry handoff (no 1-frame hole).
     physicPaintVersion.value++;
     rotoScript.observeCompletedMutation(rotoMutationPort, mutation);
-    const { kind, isEmpty, mutationId } = mutation;
-    // 261023-h9v: ONE completion law. paint/move/erase/physics only MARK the
-    // frame (O(1) — no projection); undo/redo flush from the completing
-    // engine; 'clear' never writes — engine.clear() fires it on every
-    // navigation, right after the navigation flush recorded the frame.
-    if (activeModule.peek() !== 'watercolor') {
-      const scriptFrame = launchContextRef.current?.startFrame ?? 0;
-      applyCompletedBrushMutation(kind, scriptFrame, mutationEngine);
-      // quick-261025-awl (D-02/D-03): paints/erases/undo/redo can change the
-      // owner. 'clear' is EXCLUDED — engine.clear() fires on every navigation
-      // after the outgoing frame was flushed, and refreshing there would
-      // overwrite the destination's owner with the outgoing frame's.
-      if (kind !== 'clear') {
-        applyFrameModuleState(scriptFrame, {
-          active: true,
-          strokeCount: mutationEngine.getStrokeCount(),
-        });
-      }
-    }
+    const { kind, mutationId } = mutation;
+    // 261027-klx: Water color is the only module. The engine-1 completion law
+    // (applyCompletedBrushMutation + the sparse pixel capture) left with
+    // engine-1 — the aquarelle sheet owns the cache pixels through its own
+    // stroke capture. The Move history still records each paint barrier so the
+    // auto-key paint group can pair its acceptance with the stroke.
     rotoMoveHistory.observePaintMutation(mutationId, kind);
-    const acceptedTarget = rotoScript.getAcceptedTarget(rotoMutationPort, mutationId);
-    const publicationIdentity = acceptedTarget?.publicationIdentity;
-    const canPublishCapturedApply = Boolean(publicationIdentity);
-    const appFrame = acceptedTarget?.appFrame ?? currentFrame;
-    const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
-    // Quick 261019-mj2 Task 3: a generated cell is paintable while its
-    // self-promotion is in flight — the capture below attaches to the key that
-    // promotion creates. Real-key/empty paths are unchanged.
-    const pendingSelfPromotionForCompletedFrame = Boolean(
-      pendingFirstPaintTarget
-      && launchContext
-      && pendingFirstPaintTarget.launchOperationId === launchContext.operationId
-      && pendingFirstPaintTarget.layerId === launchContext.layerId
-      && pendingFirstPaintTarget.appFrame === appFrame,
-    );
-    if (pendingSelfPromotionForCompletedFrame && pendingFirstPaintTarget !== null && kind !== 'clear') {
-      pendingFirstPaintTarget.completedMutationObserved = true;
-    }
-    const canPublishCurrentEngine = mutationEngine === engineRef.current
-      && workflowMode === 'roto'
-      && (currentFrameSelectionKind !== 'generated-interpolation' || pendingSelfPromotionForCompletedFrame)
-      && Boolean(launchContext);
-    if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
-    if (acceptedTarget && !acceptedTarget.publishPixels) return;
-    // 56-12 CACHE WRITE: while Water color is live, the aquarelle sheet owns
-    // the cache pixels. engine-1 still observes the enqueued stroke for the
-    // script path above, but its hidden surface must never overwrite the
-    // aquarelle WebP.
-    if (activeModule.value === 'watercolor') return;
-    const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
-    const completedTarget = acceptedTarget?.keyId
-      ? { kind: 'ordinary-key' as const, keyId: acceptedTarget.keyId, appFrame }
-      : document
-        ? resolveRotoCompletedGroupPaintTarget(document, appFrame, currentCellKeyId)
-        : { kind: 'blocked' as const };
-    if (completedTarget.kind === 'blocked') return;
-    const initialKeyId = completedTarget.kind === 'ordinary-key'
-      ? completedTarget.keyId
-      : completedTarget.kind === 'group-frame'
-        ? completedTarget.expectedKeyId
-        : null;
-    // 261027 UAT round 11: the FIRST Brush stroke of a fresh script session
-    // pins the key's pre-stroke pixels as its durable base BEFORE this
-    // capture commits the stroke into the cache. A raster/purged key's new
-    // script is then editable across visits (the ledger replays over it).
-    if ((kind === 'paint' || kind === 'physics') && completedTarget.kind === 'ordinary-key') {
-      pinBrushDurableBaseForFirstStroke(appFrame, initialKeyId ?? null);
-    }
-    // 52.1 (2nd-stroke freeze): do NOT snapshot the engine canvas here — the
-    // eager copyLiveAlphaCanvas() synchronously flushes every pending stroke
-    // finalization (~500-1900ms full-raster drain) at the very moment the user
-    // starts the next stroke. Pass a factory instead; the capture resolve it
-    // inside its settled/idle produce, where the bounded rAF finalize loop has
-    // already applied the pending rasters (queue empty -> fast).
-    const liveAlphaCanvas = isEmpty ? null : (() => mutationEngine.copyLiveAlphaCanvas());
-    // 261019-mj2 cache-loss: navigating away flushes captures BEFORE the
-    // promotion promise resolves, so this capture enqueues after that flush
-    // returned and would wait out CAPTURE_PRODUCE_QUIET_MS (6 s). Track the
-    // deferral and force the transaction gate open once the capture submits.
-    let deferredPromotionCapture = false;
-    void (async () => {
-      let keyId = initialKeyId;
-      if (!keyId && completedTarget.kind === 'empty') {
-        if (
-          !pendingFirstPaintTarget
-          || pendingFirstPaintTarget.launchOperationId !== launchContext.operationId
-          || pendingFirstPaintTarget.layerId !== launchContext.layerId
-          || pendingFirstPaintTarget.appFrame !== appFrame
-        ) return;
-        deferredPromotionCapture = true;
-        const firstPaintTarget = await pendingFirstPaintTarget.promise;
-        if (!firstPaintTarget.ok || firstPaintTarget.appFrame !== appFrame) return;
-        keyId = firstPaintTarget.keyId;
-      }
-
-      const currentLaunch = launchContextRef.current;
-      if (
-        !currentLaunch
-        || currentLaunch.operationId !== launchContext.operationId
-        || currentLaunch.layerId !== launchContext.layerId
-      ) return;
-      // Read the merge base through the ref AFTER the await: the state value
-      // captured in this closure can predate the promotion's blank-frame pin.
-      const cachedRepaintBase = cachedRotoRepaintBaseFrameRef.current;
-      const cachedBaseAppFrame = cachedRepaintBase?.appFrame ?? null;
-      if (isEmpty) {
-        if (cachedRepaintBase && cachedBaseAppFrame === appFrame) {
-          rotoPersistence.invalidateLivePixels(appFrame);
-          rotoPersistence.upsertCachedFrame(cachedRepaintBase, false);
-        } else {
-          // 261003-erase-uat (C): engine-empty ≠ key-empty. `kind === 'clear'`
-          // already early-returns above, so an isEmpty here is an undo/erase
-          // that emptied allActions — the persisted cache may still hold the
-          // base paint. Never destroy it from this path.
-          rotoPersistence.invalidateLivePixels(appFrame);
-        }
-        return;
-      }
-      if (!liveAlphaCanvas) return;
-      // 261023-j5b: a faithful rebake that cleared the duplicate cached base
-      // leaves the WHOLE frame on the live canvas. Merging the frame's cached
-      // base again would bake a second copy of every stroke into the cache —
-      // the phantom survives the edit and reappears on every revisit.
-      const liveCanvasWholeFrame = mutationEngine.isLiveCanvasWholeFrame();
-      const capturedBase = publicationIdentity?.cachedBase ?? null;
-      const capturedBaseAppFrame = capturedBase?.appFrame ?? null;
-      const cachedBase = liveCanvasWholeFrame
-        ? null
-        : publicationIdentity
-          ? capturedBaseAppFrame === appFrame ? capturedBase : null
-          : cachedBaseAppFrame === appFrame ? cachedRepaintBase : null;
-      const snapshotStartedAt = profilePerformance ? performance.now() : 0;
-      const capture = rotoPersistence.captureLivePixels({
-        layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
-        operationId: publicationIdentity?.operationId,
-        keyId: keyId ?? undefined,
-        appFrame,
-        liveAlphaCanvas,
-        cachedBase,
-        // 261003-erase-uat (B): a pixel erase punches the engine's copy of the
-        // cached paint — merge against that, never the original cached bytes.
-        // A cleared-base visit has no duplicated base left to merge at all.
-        baseCanvas: liveCanvasWholeFrame
-          ? null
-          : (mutationEngine as EfxPaintEngine & { getPreviewBasePaintCanvas?: () => HTMLCanvasElement | null }).getPreviewBasePaintCanvas?.() ?? null,
-        background: publicationIdentity?.background,
-        size: { width: canvasWidth, height: canvasHeight },
-        mutationId,
-      });
-      if (profilePerformance) recordPhysicsPaintPerformance({ stage: 'snapshot-handoff', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAt, timestamp: performance.now(), mutationId, sourceFrame: appFrame });
-      if (deferredPromotionCapture) {
-        // The navigation/leave flush already ran while this capture was still
-        // awaiting the promotion, so it never saw the work item. Flush again
-        // now that the transaction is pending; otherwise a leave inside the
-        // 6 s quiet window loses the painted pixels (empty cache on return).
-        void rotoPersistence.flushLivePixels(appFrame).catch((error) => {
-          console.error('[PhysicsPaintStudio] Deferred promotion cache flush failed', error);
-        });
-      }
-      // Layer 1: a failed/superseded capture must never fall back to reloading the
-      // stale cache — that re-serves a partial over the newer settled base. The
-      // authoritative frame is captured by the sequence's own capture at the settled
-      // revision; the superseded capture is dropped (COW-gated, no stale commit).
-      if (!await capture && shouldReloadRotoFrameAfterFailedCapture()) {
-        loadCachedRotoReferenceFrame(
-          appFrame,
-          engineRef.current as PreviewBackgroundEngine | null,
-          undefined,
-          true,
-        );
-      }
-    })().catch((error) => {
-      console.error('[PhysicsPaintStudio] Automatic Roto pixel cache failed', error);
-    }).finally(() => {
-      if (pendingFirstPaintTargetRef.current === pendingFirstPaintTarget) {
-        pendingFirstPaintTargetRef.current = null;
-      }
-    });
   };
-  const handleCanvasCompletedMutation = useCallback((mutation: CompletedPaintMutation, mutationEngine: EfxPaintEngine) => {
-    canvasCompletedMutationImplRef.current(mutation, mutationEngine);
-  }, []);
-  const handleCanvasInputActivity = useCallback((kind: 'down' | 'move' | 'up' | 'cancel', pointerId: number) => {
-    if (kind === 'down') beginInteraction(pointerId);
-    else if (kind === 'move') markInteractionActive();
-    else endInteraction(pointerId);
-  }, []);
   const cachedRotoPlaybackComposition = useMemo(() => launchContext ? {
     width: projectCanvasWidth,
     height: projectCanvasHeight,
@@ -7245,11 +6279,11 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
-  // 261023-g4p: register BOTH module ports. This is a render-body write of a
-  // plain module variable (temporaryEraseDepsRef precedent) — no signal, no
-  // subscription. The keyboard helpers resolve the port whose surface is
-  // active, so rail gestures, Alt+click and Backspace can never diverge. The
-  // brush port reads the live Studio seams through brushScriptEditionDepsRef.
+  // 261027-klx: Water color is the ONLY stroke-edition port. This is a
+  // render-body write of a plain module variable (temporaryEraseDepsRef
+  // precedent) — no signal, no subscription. The keyboard helpers resolve the
+  // port whose surface is active, so rail gestures, Alt+click and Backspace can
+  // never diverge.
   setScriptStrokeEditionPorts({
     watercolor: {
       isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),
@@ -7259,9 +6293,7 @@ export function PhysicsPaintStudio() {
       transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
       stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
     },
-    brush: brushScriptEditionPort,
   });
-  configureBrushScriptEdition(brushScriptEditionDepsRef.current);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
@@ -7575,8 +6607,6 @@ export function PhysicsPaintStudio() {
   // the owner is null, so applyFrameModuleState leaves the module as it was.
   const rasterKeyImplRef = useRef<(frame: number) => Promise<void>>(async () => {});
   rasterKeyImplRef.current = async (frame) => {
-    const engine = engineRef.current as PreviewBackgroundEngine | null;
-    if (!engine) return;
     if (isPhysicalMutationLocked()) return;
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoCachedPlayback.isActive) return;
@@ -7585,10 +6615,7 @@ export function PhysicsPaintStudio() {
     // track switch): a stale frame must never purge a different key.
     if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
     const scriptCell = resolveStudioScriptCell(frame);
-    const owner = resolveFrameScriptOwner(frame, scriptCell, {
-      active: activeModule.peek() === 'brush',
-      strokeCount: engine.getStrokeCount(),
-    });
+    const owner = resolveFrameScriptOwner(frame, scriptCell);
     if (owner === null) return;
     const reportNothingChanged = (message: string) => {
       setLastError(message);
@@ -7596,11 +6623,6 @@ export function PhysicsPaintStudio() {
       setApplyStatus('error');
     };
     try {
-      engine.flushPendingStrokeFinalizations();
-      if (owner !== 'watercolor') {
-        engine.forceDry();
-        rotoPersistenceRef.current.snapshotLivePixels(frame);
-      }
       await flushAquarellePixels(frame);
       // Re-check after the await: navigation may have moved on while the pixel
       // flush was draining.
@@ -7611,10 +6633,10 @@ export function PhysicsPaintStudio() {
         );
         return;
       }
-      engine.clearPreviewBaseImage(true);
-      engine.resetBackground(true);
-      engine.clear();
-      if (!loadCachedRotoReferenceFrame(frame, engine)) {
+      previewBasePort.clearPreviewBaseImage(true);
+      previewBasePort.resetBackground(true);
+      previewBasePort.clear();
+      if (!loadCachedRotoReferenceFrame(frame, previewBasePort)) {
         reportNothingChanged(
           "The key's painted pixels could not be reloaded — nothing changed.",
         );
@@ -7679,13 +6701,6 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  // 261023-g4p: same identity-stable frame getter for the brush script
-  // overlay — frame navigation must not invalidate the mount memo.
-  const getBrushScriptPlayFrame = useCallback(
-    () => launchContextRef.current?.startFrame ?? 0,
-    [],
-  );
-
   // F3 (R2.3): Studio paper → the aquarelle engine's deposit-grain preset.
   // Identity-stable getter — paper changes must not invalidate the mount memo.
   const settingsRef = useRef(settings);
@@ -7702,7 +6717,13 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  // 261027-klx: the mount's prop surface is the watercolor surface alone —
+  // `PhysicsPaintCanvasMount` renders `AquarelleCanvasLayer` (+ the cached base
+  // layer) and nothing else. The engine-1 seams (onEngineReady, pen sampling,
+  // completion/performance/input telemetry, beforeEngineDestroy, stroke
+  // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
+  // Wave 3 D8 narrow port the frame-editing controller consumes.
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -7715,22 +6736,9 @@ export function PhysicsPaintStudio() {
       width: canvasWidth,
       height: canvasHeight,
       paperTextureScale,
-      onEngineReady: handleCanvasEngineReady,
       onCanvasMounted: setCanvasMounted,
-      onNativePenInputReady: handleNativePenInputReady,
-      onCompletedMutation: handleCanvasCompletedMutation,
-      onPerformanceSample: recordEnginePerformance,
-      onInputActivity: handleCanvasInputActivity,
-      beforeEngineDestroy: rotoScript.prepareEngineDisposal,
-      getStrokeMetadata,
       trackOpacity: mountActiveTrack?.opacity ?? 1,
       trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
-      aquarelleActive: activeModule.value === 'watercolor',
-      // 261023-g4p: the Brush Move tool arms the shared script-edition
-      // overlay. The mount additionally gates on !aquarelleActive, so Water
-      // color's own surface is never covered.
-      brushScriptEditionActive: settings.tool === 'move',
-      getBrushScriptPlayFrame,
       color: settings.color,
       // FRAME SCOPE: identity-stable getter — the sheet previews the live
       // edit frame without invalidating the mount memo on navigation.
@@ -7747,6 +6755,7 @@ export function PhysicsPaintStudio() {
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
       onAquarelleTransformStrokes: handleAquarelleTransformStrokes,
+      onEnginePortReady: handleAquarelleEnginePortReady,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
@@ -7792,7 +6801,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -7882,24 +6891,18 @@ export function PhysicsPaintStudio() {
         height: canvasHeight,
         playbackTick: rotoCachedPlayback.playbackTick,
         onMissingSourcesChange: handleProgramMonitorMissingChange,
-        // Water color: the aquarelle canvas IS the active track's live pixels.
-        // The engine-1 baked canvas holds the same strokes re-drawn by the
-        // script-record bridge — a thinner duplicate line under the wash that
-        // the final bake never contains. Never show it in this module.
-        liveOverlay: engineSurfaceHidden || activeModule.value === 'watercolor'
-          ? null
-          : (engine?.getAppliedPreviewBaseContentToken() != null ? engine.getBakedCanvas() : null),
+        // 261027-klx: Water color is the only module and the aquarelle canvas
+        // IS the active track's live pixels — the engine-1 baked overlay it
+        // used to stand in for is gone, so there is never a live overlay.
+        liveOverlay: null,
         // 56-12: the live aquarelle canvas SUPPLIES the active track's pixels.
         // Including them here too double-composites (the "micro flash" when the
-        // cache write lands) and over-saturates the live look.
-        // 261027: the watercolor sandwich replaces the exclude-active single
-        // monitor with the below/above slices (see useWatercolorSlices).
+        // cache write lands) and over-saturates the live look. The watercolor
+        // sandwich handles the at-rest composite with the below/above slices
+        // (see useWatercolorSlices); a hidden active track is already dropped
+        // by the store's hide filter, so exclusion is never needed.
         slice: useWatercolorSlices ? ('below' as const) : null,
-        excludeActive: useWatercolorSlices
-          ? false
-          : activeModule.value === 'watercolor'
-            || engineSurfaceHidden
-            || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
+        excludeActive: false,
       } : null,
       // 261027 (RC-A): the above-monitor — the sandwich's upper slice. The
       // public capsule seam stays on the main monitor (it reads the full
@@ -8352,11 +7355,11 @@ export function PhysicsPaintStudio() {
     await runStudioFlush([
       () => {
         if (!readInteractionIdle()) return;
-        // Brush: force the cosmetic wet layer dry before the capture — the
-        // durable payload must be the settled colour, never the fluorescent
-        // wet look (copyLiveAlphaCanvas composites the wet display on top).
-        if (activeModule.value === 'watercolor') engineRef.current?.flushPendingStrokeFinalizations();
-        else engineRef.current?.forceDry();
+        // 261027-klx: Water color is the only module — drain the queued stroke
+        // finalizations through the app-owned mutation port (the engine-1
+        // wet-layer finalize call left with the Efx child). The sheet itself
+        // flushes in the next step.
+        rotoMutationPort.flushPendingStrokeFinalizations?.();
       },
       // Save must also flush the watercolor sheet. Without this the flush
       // drained an empty queue while the sheet was still wet and the package
@@ -8874,12 +7877,12 @@ export function PhysicsPaintStudio() {
       onClose: closeScriptPicker,
     }),
   );
-  // quick 261024-p5q: the Stroke Settings dialog bundle for the ACTIVE module.
-  // Callbacks only — this body NEVER reads the stroke-selection signals (the
-  // dialog leaf subscribes them).
+  // quick 261024-p5q: the Stroke Settings dialog bundle. Callbacks only — this
+  // body NEVER reads the stroke-selection signals (the dialog leaf subscribes
+  // them). 261027-klx: Water color is the only module, so the Brush bundle (and
+  // its move-tool close path) is gone.
   const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(
     [
-      activeModule.value,
       settings.tool,
       launchContext?.startFrame ?? 0,
       canvasWidth,
@@ -8892,40 +7895,22 @@ export function PhysicsPaintStudio() {
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
       const canvasSize = { width: canvasWidth, height: canvasHeight };
-      if (activeModule.value === 'watercolor') {
-        const bundle: StrokeSettingsDialogBundle = {
-          module: 'watercolor',
-          // Water color's edition surface is Select mode, never a Move tool.
-          brushMoveActive: false,
-          playFrame,
-          canvasSize,
-          listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
-          readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame),
-          applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
-            handleAquarelleAppearanceStrokes(ids, patch),
-          moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
-          transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
-          reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
-          closeMoveMode: () => {
-            if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
-          },
-        };
-        return bundle;
-      }
-      const brushPlayFrame = getBrushScriptPlayFrame();
       const bundle: StrokeSettingsDialogBundle = {
-        module: 'brush',
-        brushMoveActive: settings.tool === 'move',
-        playFrame: brushPlayFrame,
+        module: 'watercolor',
+        // Water color's edition surface is Select mode, never a Move tool.
+        brushMoveActive: false,
+        playFrame,
         canvasSize,
-        listStrokes: (frame, size) => listBrushScriptStrokes(frame, size),
-        readAppearance: (ids, frame) => readBrushScriptStrokeAppearance(ids, frame),
+        listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
+        readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame),
         applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
-          applyBrushScriptStrokeAppearance(ids, patch),
-        moveStrokes: (ids, dxPx, dyPx) => moveBrushScriptStrokes(ids, dxPx, dyPx),
-        transformStrokes: (ids, transform) => transformBrushScriptStrokes(ids, transform),
-        reorderStroke: (mutationId, positionFromTop) => placeBrushScriptStroke(mutationId, positionFromTop),
-        closeMoveMode: () => selectTool(lastNonMoveToolRef.current, settingsRef.current.physicsMode),
+          handleAquarelleAppearanceStrokes(ids, patch),
+        moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
+        transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
+        reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
+        closeMoveMode: () => {
+          if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
+        },
       };
       return bundle;
     },
