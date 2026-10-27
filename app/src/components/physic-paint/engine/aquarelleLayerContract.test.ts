@@ -179,6 +179,22 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     );
     expect(studioSwitch).toContain('const outgoingTrackId = sessionTrackId ?? lastEditStateTrackIdRef.current');
     expect(studioSwitch).toContain('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined)');
+    // 261027 UAT round 10: the outgoing sheet was captured but the aquarelle
+    // engine was never cleared on a track switch, so the incoming track's
+    // strokes painted on top of the outgoing track's settled sheet (the
+    // "under track blends with the foreground colour" report) and the mixed
+    // sheet was captured into the incoming key. The switch commit must end
+    // the sheet session AFTER the (eager) flush capture and BEFORE the save.
+    const flushIdx = studioSwitch.indexOf('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined)');
+    const resetIdx = studioSwitch.indexOf('aquarelleResetSheetRef.current?.()');
+    expect(resetIdx).toBeGreaterThan(flushIdx);
+    // The saveNow call closes the sliced block, so compare its position in the
+    // full source (searched from the same switch commit).
+    const switchStart = studio.indexOf('if (sessionNeedsCommit) {');
+    const saveIdx = studio.indexOf('void studioScriptSnapshot.saveNow();', switchStart);
+    const resetInSwitch = studio.indexOf('aquarelleResetSheetRef.current?.()', switchStart);
+    expect(saveIdx).toBeGreaterThan(-1);
+    expect(resetInSwitch).toBeLessThan(saveIdx);
     // 261027 UAT round 8: the default capture target is the SESSION track (the
     // sheet the snapshot came from). The live document id can diverge from the
     // session, and that divergence cross-wrote the two tracks on disk.

@@ -238,7 +238,8 @@ const MINIMAL_POINT_COUNT_OFFSET = 73;
 function minimalStroke(): StudioStroke<AquarelleStrokePayload> {
   return {
     // Quantization-exact values (0 and 1 survive round(u16 / 65535)).
-    pts: [{ x: 1, y: 0, p: 0, tx: 0, ty: 0, tw: 0, tick: 0 }],
+    // p = -1 is the live no-pressure sentinel; it survives the AQTL wire.
+    pts: [{ x: 1, y: 0, p: -1, tx: 0, ty: 0, tw: 0, tick: 0 }],
     ticks: 1,
     cuisson: 0,
     motion: null,
@@ -403,6 +404,24 @@ describe('AQTL packed binary codec', () => {
     expect(point.ty).toBeCloseTo(-655.34, 6);
     expect(point.tw).toBeCloseTo(655.34, 6);
     expect(point.tick).toBe(3);
+  });
+
+  it('keeps the live no-pressure sentinel -1 across the wire (261027 UAT round 10)', () => {
+    // The live mouse path records p = -1 and the engine derives pressure from
+    // speed. Clamping it to 0 on save made every post-restore re-bake paint at
+    // minimum pressure — the Move/Apply "lost stroke properties" thinning.
+    const stroke = minimalStroke();
+    const mixed: AquarellePayloadEvent = {
+      ...stroke,
+      pts: [
+        { x: 0.5, y: 0.5, p: -1, tx: 0, ty: 0, tw: 0, tick: 0 },
+        { x: 0.5, y: 0.6, p: 0.6, tx: 0, ty: 0, tw: 0, tick: 1 },
+      ],
+    };
+    const [decoded] = decodeScriptTimelineBinary(encodeScriptTimelineBinary([mixed]));
+    const points = asStroke(decoded).pts;
+    expect(points[0]!.p).toBe(-1);
+    expect(points[1]!.p).toBeCloseTo(0.6, 4);
   });
 });
 

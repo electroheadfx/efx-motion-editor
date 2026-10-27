@@ -36,8 +36,12 @@
 //      i16 tw, u32 tick.
 //
 //  QUANTIZATION (points only; every metadata scalar is f64/u32 exact):
-//    x/y/p: clamp [0,1], round(v * 65535) -> u16.
+//    x/y: clamp [0,1], round(v * 65535) -> u16.
 //           Half-step error = 1/65535/2 ≈ 7.6e-6.
+//    p: the live sentinel (-1 = no device pressure, the engine derives it
+//       from speed) rides the wire as 0 and decodes back to -1. Real
+//       pressures clamp [0,1], round(v * 65535) -> u16. A real 0 cannot
+//       occur (a pressureless pen records 0.5, a mouse -1), so 0 is ours.
 //    tx/ty/tw: clamp ±655.34, round(v * 50) -> i16.
 //           Half-step error = 0.02/2 = 0.01 degrees.
 //
@@ -386,6 +390,21 @@ function quantizeUv(value: unknown, what: string): number {
   return Math.round(Math.min(1, Math.max(0, finite)) * UV_MAX);
 }
 
+/**
+ * 261027 UAT round 10: the live pointer path records p = -1 when the device
+ * reports no usable pressure (mouse / trackpad) and the engine then derives
+ * pressure from speed. Clamping that sentinel to 0 stored a REAL minimum
+ * pressure, so every snapshot round-trip re-baked mouse strokes as thin,
+ * pale dabs — a Move after a restore shrank the text wash to a third of its
+ * painted density. Wire value 0 IS the sentinel; a real 0 cannot occur
+ * (a pressureless pen maps to 0.5, a mouse to -1).
+ */
+function quantizePressure(value: unknown): number {
+  const finite = assertFinite(value, 'point.p');
+  if (finite < 0) return 0;
+  return Math.round(Math.min(1, Math.max(0, finite)) * UV_MAX);
+}
+
 function quantizeTilt(value: unknown, what: string): number {
   const finite = assertFinite(value, what);
   return Math.round(Math.min(TILT_LIMIT, Math.max(-TILT_LIMIT, finite)) * TILT_SCALE);
@@ -493,7 +512,7 @@ function encodeStroke(writer: BinaryWriter, stroke: StudioStroke<AquarelleStroke
   for (const point of pts) {
     writer.u16(quantizeUv(point.x, 'point.x'));
     writer.u16(quantizeUv(point.y, 'point.y'));
-    writer.u16(quantizeUv(point.p, 'point.p'));
+    writer.u16(quantizePressure(point.p));
     writer.i16(quantizeTilt(point.tx, 'point.tx'));
     writer.i16(quantizeTilt(point.ty, 'point.ty'));
     writer.i16(quantizeTilt(point.tw, 'point.tw'));
@@ -567,7 +586,11 @@ function decodeOverrideMask(
 function decodePoint(reader: BinaryReader): StudioPoint {
   const x = reader.u16() / UV_MAX;
   const y = reader.u16() / UV_MAX;
-  const p = reader.u16() / UV_MAX;
+  const pRaw = reader.u16();
+  // 0 is the live -1 sentinel (quantizePressure). Files written before the
+  // sentinel existed stored clamped -1 as 0 too, so their mouse strokes also
+  // regain speed-derived pressure on the next restore.
+  const p = pRaw === 0 ? -1 : pRaw / UV_MAX;
   const tx = reader.i16() / TILT_SCALE;
   const ty = reader.i16() / TILT_SCALE;
   const tw = reader.i16() / TILT_SCALE;

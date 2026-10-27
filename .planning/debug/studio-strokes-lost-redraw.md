@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T10:44:00.000Z
+updated: 2026-10-27T11:05:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -994,3 +994,77 @@ status: |
   the bloom before/after; the re-bake must keep the live density. If it still
   thins, the next seam is the bake's deposit simulation (live coalesced pointer
   samples vs the recorded 60 Hz grid), not the paper.
+
+## UAT Round 10 — track-switch sheet leak + pressure-sentinel loss (2026-10-27)
+
+symptom: |
+  Fresh project, two watercolor tracks. User (verbatim): "paint on under track
+  blend with the color of the foreground track - move edit fix the render on
+  the under track but the top track lost strokes properties. NOT FIXED AT ALL".
+  Paint 1 (top, order 0) carried the blue handwriting; Track 1 (under, order 1)
+  the new red wash. Image A (before edits): the under wash looked tinted by the
+  top paint. Image B (after moving each track's stroke): the under wash was
+  clean, the top text had thinned to pale lines.
+
+on_disk_evidence: |
+  Probe (/tmp/efx-aquarelle-render-split.json, 09:44-09:49Z) + the project
+  package (/Users/lmarques/Desktop/efx-motion-editor-project-test/Untitled
+  Project.mce), decoded with the production snapshot codec:
+  - Tracks: fefd435e = Paint 1 (top), d9a416a5 = Track 1 (under).
+  - Top key 25bdccac: live settle capture ink 18.29; its Move re-bake (9
+    events) produced ink 5.86 — a 68% density loss (the thin text).
+  - Under key 2701413d: live settle capture ink 60.34; its Move re-bake (1
+    event) produced 46.92 — 22% less than the LIVE capture because the live
+    capture also held the OUTGOING sheet (see below).
+  - The files retain the previous run's strokes for undo (Paint 1: 9 old
+    strokes anchored to the deleted key fc7629e1 + the 9 new; Track 1: 1 old
+    anchored to 1e17d174 + the new). The restore prunes to live keys, so the
+    scripts themselves never mixed — the probe's bakeEvents were 9 / 1.
+  - EVERY decoded point carries p = 0. The live pointer path records the
+    sentinel -1 for a mouse/trackpad (the engine derives pressure from
+    speed); the AQTL point codec clamped p to [0,1], storing 0.
+
+root_causes: |
+  1. TRACK SWITCH NEVER CLEARED THE LIVE AQUARELLE SHEET. Only a play-frame
+     change clears the aquarelle engine; the switch effect flushed the
+     outgoing sheet but left it mounted. Switching from Paint 1 to Track 1
+     therefore painted the red wash directly onto the settled text sheet —
+     the live wet-on-wet mix the user reported as "the under track blend[s]
+     with the color of the foreground track" — and the next settle capture
+     committed the MIXED sheet into the incoming key (60.34 vs 46.92 on the
+     same script).
+  2. THE AQTL SNAPSHOT CODEC DESTROYED THE PRESSURE SENTINEL. scriptPressure
+     (-1) means "derive pressure from speed"; a saved/restored stroke turned
+     it into scriptPressure(0) = clamp(0, 0.02, 1), painting every re-bake at
+     minimum pressure with the grain threshold raised and concentration at
+     0.6x. The text's Move ran AFTER a track switch (restore round-trip) and
+     lost 68% of its ink; the wash's Moves ran before any restore, keeping
+     its sentinel (only the sheet-leak surplus explains the remaining gap).
+
+fix: |
+  1. PhysicsPaintStudio switch commit: after the (eager) outgoing flush
+     capture and before saveNow, call aquarelleResetSheetRef — the layer's
+     resetSheet clears the aquarelle engine and ends the sheet session
+     (merge-base pin reset, measured settle stamped before the save). Only a
+     REAL track change (hadPreviousTrack) resets; visibility flips and the
+     first bind keep the sheet.
+  2. scriptTimelineCodec AQTL: wire value 0 is now the -1 sentinel
+     (quantizePressure writes 0 for p < 0; decodePoint maps 0 -> -1). Real
+     pressures keep round(v * 65535). A real p of 0 cannot occur (a
+     pressureless pen records 0.5, a mouse -1), so old files also recover on
+     their next restore.
+
+verification: |
+  Pins: AQTL sentinel round-trip (-1 survives; 0.6 stays 0.6), minimal-layout
+  fixture now carries the sentinel; the switch-order contract asserts
+  flush -> resetSheet -> saveNow. Gates: full physic-paint folder 181 files /
+  3978 tests; efx-watercolor package 133 passed / 4 WebGL2-skipped; app
+  typecheck clean.
+
+status: |
+  awaiting live UAT — restart required (the studio codec is app source). Test:
+  paint a wash on the TOP track, then switch to the UNDER track and paint
+  again — the new stroke must NOT mix with the top sheet and the top track
+  must compose unchanged above it. Then Move one stroke on each track: both
+  must keep the density they had when painted, before and after a track
+  switch (the sentinel fix is exercised by the restore round-trip).

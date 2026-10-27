@@ -4848,6 +4848,16 @@ export function PhysicsPaintStudio() {
         // and the next save would write them under the incoming key, the
         // exact cross-track mix the brief forbids.
         aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);
+        // 261027 UAT round 10: a track switch replaces the sheet's OWNER.
+        // The capture above resolved its canvas eagerly, but the aquarelle
+        // engine itself was never cleared on a track switch (only a frame
+        // change clears), so the incoming track's strokes painted on top of
+        // the outgoing track's settled sheet — the user-visible "the under
+        // track blends with the foreground colour" — and the next capture
+        // committed the mixed sheet into the incoming key. Reset is also the
+        // sheet-session end (merge-base pin) and stamps the outgoing stroke's
+        // measured settle before the save below.
+        aquarelleResetSheetRef.current?.();
         const outgoingEngine = engineRef.current;
         flushBrushScriptFrame(
           currentFrame,
