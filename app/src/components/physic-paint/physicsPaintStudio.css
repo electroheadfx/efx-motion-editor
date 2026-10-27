@@ -7008,40 +7008,9 @@ button.destructive {
   max-height: 100%;
 }
 
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
-  background-color: transparent;
-}
-
-.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
-  visibility: hidden;
-}
-
-/* 48-06 (UAT-B): a hidden active track blanks the engine canvas by law
-   (261022-iff: Solo never hides its own target, so hide is the only trigger),
-   but the cleared engine surface can still carry the engine's own background
-   paint and would occlude the program monitor beneath
-   (the monitor owns the remaining visible tracks + the document fond). Mirror
-   the cached-roto-playback treatment: the engine canvases step aside so the
-   monitor owns the surface until the track is visible again. */
-.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {
-  background-color: transparent;
-}
-
-.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {
-  visibility: hidden;
-}
-
 .physics-paint-onion-overlay.canvas-region {
   inset: auto;
   z-index: 5;
-}
-
-.demo-canvas-shell .paint-canvas canvas {
-  z-index: 2 !important;
-}
-
-.demo-canvas-shell .paint-canvas canvas + canvas {
-  z-index: 4 !important;
 }
 
 /* 56-12: the live aquarelle pigment layer sits ABOVE the program monitor
@@ -7071,6 +7040,27 @@ button.destructive {
   pointer-events: none;
 }
 
+/* 261027-klx follow-up: the engine-1 surface is gone, so these steps apply to
+   the watercolor surfaces that replaced it. During cached roto playback the
+   cached playback background owns the frame; the cached base is already
+   omitted at the JSX seam, and the live sheet must not leak over it. */
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-live-canvas,
+.physics-paint-canvas-stack.cached-roto-playback-active.cached-roto-playback-ready .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-cached-base {
+  visibility: hidden;
+}
+
+/* 48-06 (UAT-B): a hidden active track blanks its surface by law
+   (261022-iff: Solo never hides its own target, so hide is the only trigger),
+   but the live sheet can still carry that track's paint and would occlude the
+   program monitor beneath (the monitor owns the remaining visible tracks + the
+   document fond). Mirror the cached-roto-playback treatment: the watercolor
+   surfaces step aside so the monitor owns the surface until the track is
+   visible again. */
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-live-canvas,
+.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-cached-base {
+  visibility: hidden;
+}
+
 /* 48-06 (N2/N3): the engine shell can carry the active track's opacity/blend
    as CSS group opacity + mix-blend-mode (the D-05 exclusion keeps the active
    track out of the monitor's composite). The standalone white .paint-canvas
@@ -7091,10 +7081,10 @@ button.destructive {
   opacity: 0;
 }
 
-/* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
-   canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
-   engine < onion. It draws the flattened composite only — pointer-events none
-   so every interaction passes through to the engine canvas above.
+/* 48-05 (D-05): the program monitor sits BELOW the watercolor surfaces (cached
+   base z-index 3 / live sheet 4) and BELOW the onion overlay (z-index 5):
+   monitor < paint < onion. It draws the flattened composite only —
+   pointer-events none so every interaction passes through to the sheet above.
    Opaque sheets (2026-10-26): the monitor is plain content INSIDE the tracks
    group — the group owns the single multiply over the document fond, so the
    monitor must not multiply a second time (that is what glazed the lower

@@ -162,24 +162,29 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   useEffect(() => {
     const stack = stackRef.current;
     if (!stack) return;
-    let observedCanvas: HTMLCanvasElement | null = null;
+    // 261027-klx follow-up: the canvas region is the mount shell itself. The
+    // previous probe read the engine-1 `.paint-canvas` surface, which no longer
+    // exists — the empty NodeList left canvasBounds null, so the fond layer,
+    // the program monitor and every bounds-anchored overlay never rendered (the
+    // black Studio canvas). The shell always exists and matches the document
+    // aspect: the live aquarelle canvas and the cached base both fill it.
+    let observedShell: HTMLElement | null = null;
     const updateCanvasBounds = () => {
-      const canvases = stack.querySelectorAll('.paint-canvas > canvas');
-      const staticCanvas = canvases[1] ?? canvases[0];
-      if (!(staticCanvas instanceof HTMLCanvasElement)) return;
-      if (observedCanvas !== staticCanvas) {
-        if (observedCanvas) resizeObserver.unobserve(observedCanvas);
-        observedCanvas = staticCanvas;
-        resizeObserver.observe(staticCanvas);
+      const shell = stack.querySelector<HTMLElement>('.demo-canvas-shell');
+      if (!shell) return;
+      if (observedShell !== shell) {
+        if (observedShell) resizeObserver.unobserve(observedShell);
+        observedShell = shell;
+        resizeObserver.observe(shell);
       }
       const stackRect = stack.getBoundingClientRect();
-      const canvasRect = staticCanvas.getBoundingClientRect();
-      if (canvasRect.width <= 0 || canvasRect.height <= 0) return;
+      const shellRect = shell.getBoundingClientRect();
+      if (shellRect.width <= 0 || shellRect.height <= 0) return;
       setCanvasBounds({
-        left: canvasRect.left - stackRect.left,
-        top: canvasRect.top - stackRect.top,
-        width: canvasRect.width,
-        height: canvasRect.height,
+        left: shellRect.left - stackRect.left,
+        top: shellRect.top - stackRect.top,
+        width: shellRect.width,
+        height: shellRect.height,
       });
     };
     const resizeObserver = new ResizeObserver(updateCanvasBounds);

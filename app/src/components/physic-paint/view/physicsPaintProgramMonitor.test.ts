@@ -733,12 +733,13 @@ describe('PhysicsPaintProgramMonitor', () => {
       expect(onionProjection).not.toContain('trackIdOfLaunch');
       expect(onionProjection).not.toContain('getFlattenedFrame');
 
-      // z-order pin: program monitor (z-index 0) below the engine canvases
-      // (z-index 2/4) below the onion overlay (z-index 5) — and the stack JSX
-      // renders engine mount, then program monitor, then onion overlay on top.
+      // z-order pin: program monitor (z-index 0) below the watercolor surfaces
+      // (cached base 3 / live sheet 4) below the onion overlay (z-index 5) —
+      // and the stack JSX renders the mount, then program monitor, then onion
+      // overlay on top.
       expect(css).toContain('.physics-paint-program-monitor {\n  position: absolute;\n  z-index: 0;');
-      expect(css).toContain('.demo-canvas-shell .paint-canvas canvas {\n  z-index: 2 !important;');
-      expect(css).toContain('.demo-canvas-shell .paint-canvas canvas + canvas {\n  z-index: 4 !important;');
+      expect(css).toContain('object-fit: fill;\n  z-index: 3;');
+      expect(css).toContain('.demo-canvas-shell .aquarelle-live-canvas {\n  z-index: 4 !important;');
       expect(css).toContain('.physics-paint-onion-overlay.canvas-region {\n  inset: auto;\n  z-index: 5;');
       const mountIndex = view.indexOf('<MemoizedPhysicsPaintCanvasMount');
       const monitorIndex = view.indexOf('<div class="physics-paint-program-monitor"');

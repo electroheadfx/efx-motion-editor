@@ -51,6 +51,19 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(view).toContain('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
   });
 
+  it('anchors the canvas bounds to the mount shell, not the removed engine-1 surface', () => {
+    // 261027-klx UAT regression: probing `.paint-canvas > canvas` returned an
+    // empty NodeList after the engine-1 surface was removed, so canvasBounds
+    // stayed null and the fond layer, the program monitor and every
+    // bounds-anchored overlay never rendered (the black Studio canvas). The
+    // mount shell IS the canvas region and always exists.
+    const stackStart = view.indexOf('function PhysicsPaintCanvasStackImpl(');
+    const stackEnd = view.indexOf('const MemoizedPhysicsPaintCanvasStack', stackStart);
+    const stackBlock = view.slice(stackStart, stackEnd);
+    expect(stackBlock).toContain("stack.querySelector<HTMLElement>('.demo-canvas-shell')");
+    expect(stackBlock).not.toContain("'.paint-canvas");
+  });
+
   it('renders only the watercolor surfaces — engine-1 is gone', () => {
     // 261027-klx: `@efxlab/efx-watercolor` is the only paint engine. The mount
     // renders the live aquarelle sheet over its cached base and nothing else;
@@ -182,11 +195,11 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
 
   it('hides the engine surface when the active track is hidden so the monitor owns the composite (48-06 UAT-B)', () => {
     // UAT-B: hiding Track 1 while it was the active track blanked the WHOLE
-    // canvas even though Paint 1 stayed visible — the cleared engine surface
-    // can still carry the engine's own background paint and occludes the
-    // program monitor beneath. The stack mirrors the cached-roto-playback
-    // treatment: the engine canvases step aside until the track is visible
-    // again. Hiding a NON-active track never arms the flag.
+    // canvas even though Paint 1 stayed visible — the live surface can still
+    // carry the hidden track's paint and occludes the program monitor beneath.
+    // The stack mirrors the cached-roto-playback treatment: the watercolor
+    // surfaces step aside until the track is visible again. Hiding a NON-active
+    // track never arms the flag.
     const stackBlock = resolveBlock(
       studio,
       'const canvasStack = canvasStackPropsMemo.resolve(',
@@ -196,8 +209,7 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(stackBlock).toContain('engineSurfaceHidden,');
     expect(view).toContain("props.engineSurfaceHidden ? ' active-track-hidden' : ''");
     const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
-    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas {\n  background-color: transparent;');
-    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .paint-canvas > canvas {\n  visibility: hidden;');
+    expect(css).toContain('.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-live-canvas,\n.physics-paint-canvas-stack.active-track-hidden .physics-paint-tracks-group > .demo-canvas-shell .aquarelle-cached-base {\n  visibility: hidden;');
   });
 
   it('isolates the tracks group from a dedicated fond layer so the active-track blend never meets the paper (48-06 UAT-C)', () => {
