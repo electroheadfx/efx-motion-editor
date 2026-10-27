@@ -34,9 +34,8 @@ const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/Aqua
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
-// 261023-g4p Task 3: the brush adapter of the same seam.
-const brushScriptEditionPortSource = readFileSync(fileURLToPath(new URL('./view/brushScriptEditionPort.ts', import.meta.url)), 'utf8');
-const brushScriptOverlay = readFileSync(fileURLToPath(new URL('./engine/BrushScriptOverlay.tsx', import.meta.url)), 'utf8');
+// 261027-klx: the Brush edition adapter and its overlay are gone with engine-1
+// (Wave 2). Wave 3 owns this suite's load path — no read may name a deleted file.
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const memoizedCanvasMount = existsSync(memoizedCanvasMountPath) ? readFileSync(memoizedCanvasMountPath, 'utf8') : '';
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
@@ -59,15 +58,8 @@ const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPai
 const studioKeyboard = readFileSync(fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 // 261022-ujp: the watercolor payload reorder + the engine paint-order projection.
 const aquarelleRecordStateSource = readFileSync(fileURLToPath(new URL('./view/aquarelleRecordState.ts', import.meta.url)), 'utf8');
-const paintEngineSource = readFileSync(fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url)), 'utf8');
 // 260922-rd4: the background transform wiring pins (STEP F).
 const backgroundClipSection = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
-// 261023-j5b: the paint-settings carrier seams (probe + store entry).
-const scriptMemoryProbeSource = readFileSync(fileURLToPath(new URL('./performance/scriptMemoryProbe.ts', import.meta.url)), 'utf8');
-// quick-261023-ors: the ONE assembler moved to the production gauge; the pin
-// follows the code home (the probe now delegates).
-const studioScriptMemoryGaugeSource = readFileSync(fileURLToPath(new URL('./performance/studioScriptMemoryGauge.ts', import.meta.url)), 'utf8');
-const brushScriptRecordStateSource = readFileSync(fileURLToPath(new URL('./view/brushScriptRecordState.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -3355,40 +3347,6 @@ describe('261022-ujp stroke stack step', () => {
     expect(reorder).not.toContain('deleteAquarelleStrokeFromScript');
   });
 
-  it('projects paint order in the engine without reordering the acceptance ledger', () => {
-    expect(paintEngineSource).toContain('private strokeStack: PaintStroke[] = []');
-    const pushStart = paintEngineSource.indexOf('private pushAcceptedActions(');
-    expect(pushStart).toBeGreaterThan(-1);
-    const push = paintEngineSource.slice(pushStart, paintEngineSource.indexOf('private redrawAll()', pushStart));
-    expect(push).toContain('this.allActions.push(...actions)');
-    expect(push).toContain('stack.push(...actions)');
-    // Both accepted-action sites funnel through the one helper.
-    expect(paintEngineSource).toContain('this.pushAcceptedActions(actions)');
-    expect(paintEngineSource).toContain('this.pushAcceptedActions([{');
-    // Render, read, and serialize follow the projection.
-    const redrawStart = paintEngineSource.indexOf('private redrawAll()');
-    const redraw = paintEngineSource.slice(redrawStart, paintEngineSource.indexOf('private replayDiffusion(', redrawStart));
-    expect(redraw).toContain('const ordered = this.liveActionsInPaintOrder()');
-    expect(paintEngineSource).toContain('return this.liveActionsInPaintOrder().map(s => ({');
-    expect(paintEngineSource).toContain('strokes: this.liveActionsInPaintOrder().map(s => ({');
-    // clear resets it; load reseeds it from the loaded ledger.
-    expect(paintEngineSource).toContain('this.strokeStack = []');
-    expect(paintEngineSource).toContain('this.strokeStack = [...this.allActions]');
-    // The step keeps the move-commit contract and never reorders allActions.
-    expect(paintEngineSource).toContain('public getMoveTargetMutationId(): number | null');
-    expect(paintEngineSource).toContain("return this.state.tool === 'move' ? this.moveHoverTargetId : null");
-    expect(paintEngineSource).toContain('public sendStrokeForward(mutationId: number): boolean');
-    const stepStart = paintEngineSource.indexOf('private stepStrokeInStack(');
-    expect(stepStart).toBeGreaterThan(-1);
-    const step = paintEngineSource.slice(stepStart, paintEngineSource.indexOf('private cursorGlyphMode(', stepStart));
-    expect(step).toContain('this.flushPendingStrokeFinalizations()');
-    expect(step.indexOf('this.redoStack = []')).toBeGreaterThan(-1);
-    expect(step.indexOf('this.redoStack = []')).toBeLessThan(
-      step.indexOf("this.notifyCompletedMutation('move', mutationId)"),
-    );
-    expect(step).not.toContain('this.allActions.push');
-  });
-
   it('keeps the 261022-pim delete and 261022-tv1 move pins intact', () => {
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
     expect(studio).toContain('const handleAquarelleMoveStrokes = useCallback(');
@@ -3399,43 +3357,6 @@ describe('261022-ujp stroke stack step', () => {
 // 261023-g4p Task 3: Brush Move parity — the engine by-id APIs, the brush
 // port registration, the ONE tool-selection funnel and the mount wiring.
 describe('261023-g4p brush Move script-edition surface', () => {
-  it('exposes the by-id engine APIs and keeps the erase path on the same removal core', () => {
-    expect(paintEngineSource).toContain('private removeStrokeEntry(mutationId: number): boolean {');
-    expect(paintEngineSource).toContain('public deleteStroke(mutationId: number): boolean {');
-    expect(paintEngineSource).toContain('public moveStroke(mutationId: number, dxPx: number, dyPx: number): boolean {');
-    expect(paintEngineSource).toContain('public getStrokeSerials(): Map<number, number> {');
-    expect(paintEngineSource).toContain('public setStrokeLabelsSuppressed(suppressed: boolean): void {');
-    expect(paintEngineSource).toContain('public setCursorVisible(visible: boolean): void {');
-    // deleteStrokes (the 261024-mz5 batch core): drain first, one 'erase',
-    // zero removals leave state untouched; deleteStroke delegates to it.
-    const deleteStart = paintEngineSource.indexOf('public deleteStrokes(mutationIds: readonly number[]): number {');
-    const deleteBody = paintEngineSource.slice(deleteStart, paintEngineSource.indexOf('public moveStroke(', deleteStart));
-    expect(deleteBody).toContain('this.flushPendingStrokeFinalizations()');
-    expect(deleteBody.indexOf('this.flushPendingStrokeFinalizations()')).toBeLessThan(
-      deleteBody.indexOf('if (this.removeStrokeEntry(mutationId)) removed.push(mutationId)'),
-    );
-    expect(deleteBody).toContain('if (removed.length === 0) return 0');
-    expect(deleteBody).toContain("this.notifyCompletedMutation('erase', removed[0]!)");
-    // moveStrokes (the 261024-mz5 batch core): the SAME commit contract as
-    // the pointer drag — drain, map points, redo cleared, one 'move', one
-    // replay — and moveStroke delegates to it.
-    const moveStart = paintEngineSource.indexOf('public moveStrokes(');
-    expect(moveStart).toBeGreaterThan(-1);
-    const moveBody = paintEngineSource.slice(moveStart, paintEngineSource.indexOf('public getStrokeSerials()', moveStart));
-    expect(moveBody).toContain('this.flushPendingStrokeFinalizations()');
-    expect(moveBody).toContain('this.redoStack = []');
-    expect(moveBody).toContain('this.redrawAfterScriptEdit()');
-    expect(moveBody).toContain("this.notifyCompletedMutation('move', targets[0]!.mutationId)");
-    expect(paintEngineSource).toContain('return this.moveStrokes([mutationId], dxPx, dyPx) > 0');
-    // The erase gesture now funnels through removeStrokeEntry too.
-    expect(paintEngineSource).toContain('if (this.removeStrokeEntry(mid)) removed++');
-    // Suppression gates are the tool gate + an early return.
-    expect(paintEngineSource).toContain('if (this.strokeLabelsSuppressed === true) return');
-    expect(paintEngineSource).toContain('if (this.cursorVisible === false) return null');
-    // redrawDisplayOverlays draws only when bounds survive (null drops the draw).
-    expect(paintEngineSource).toContain('const cursorRect = this.overlayBoundsForCursor()');
-  });
-
   it('registers BOTH module ports and configures the brush context from a render-body ref', () => {
     expect(studio).toContain('setScriptStrokeEditionPorts({');
     expect(studio).toContain('brush: brushScriptEditionPort,');
@@ -3452,10 +3373,7 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
-    // The brush port is the ONE adapter; the shared seam picks the active one.
-    expect(brushScriptEditionPortSource).toContain('export const brushScriptEditionPort: ScriptStrokeEditionPort = {');
     expect(scriptStrokeEdition).toContain('if (watercolor?.isActive()) return watercolor;');
-    expect(scriptStrokeEdition).toContain('if (brush?.isActive()) return brush;');
   });
 
   it('funnels every tool selection through the Move-arming wrapper', () => {
@@ -3512,43 +3430,6 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(studio).toContain('brushScriptEditionActive: settings.tool === \'move\',');
     expect(studio).toContain('getBrushScriptPlayFrame,');
     expect(studio).toContain('settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd');
-    // The adapter owns no gesture logic — it renders the ONE shared surface.
-    expect(brushScriptOverlay).toContain('port={brushScriptEditionPort}');
-    expect(brushScriptOverlay).toContain('selectMode={props.active}');
-    expect(brushScriptOverlay).toContain('moveArmed={false}');
-    expect(brushScriptOverlay).toContain('testId="brush-script-overlay"');
-    expect(brushScriptOverlay).toContain('badgeTestId="brush-stroke-badge"');
-    expect(brushScriptOverlay).toContain('ghostTestId="brush-drag-ghost"');
-    expect(brushScriptOverlay).not.toContain('onPointerDown');
-  });
-
-  it('keeps the brush port peek-only and lock-gated', () => {
-    expect(brushScriptEditionPortSource).toContain('void brushScriptRevision.value;');
-    expect(brushScriptEditionPortSource).toContain('if (!resolved || resolved.context.isLocked()) return false;');
-    expect(brushScriptEditionPortSource).toContain('if (!deleted) return false;');
-    // 261023-j5b: every accepted edit flush carries the visit's paint
-    // settings (captured snapshot first, live globals as the fallback).
-    expect(brushScriptEditionPortSource).toContain('function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {');
-    expect(brushScriptEditionPortSource).toContain('return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();');
-    // 261024-mz5 Task 2: the transform batch is the fourth flush site.
-    // 261024-p5q Task 1: the appearance batch is the fifth flush site.
-    // 261024-vga: the exact-placement flush is the sixth flush site.
-    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(6);
-    expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
-    expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
-    // The Studio render body never subscribes the store revision directly.
-    // Two sanctioned reads: the snapshot coalescing effect (quick-261023-l35
-    // Task 3) and the Move gate's useComputed (quick-261026-odd) — a computed
-    // graph read whose boolean only notifies the component when it flips.
-    expect(countOccurrences(studio, 'brushScriptRevision.value')).toBe(2);
-    const coalescingEffectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
-    expect(coalescingEffectStart).toBeGreaterThan(-1);
-    expect(studio.indexOf('brushScriptRevision.value', coalescingEffectStart)).toBeGreaterThan(coalescingEffectStart);
-    const moveGateStart = studio.indexOf('const moveAvailable = useComputed(');
-    const moveGateEnd = studio.indexOf('const watercolorMoveAvailable = useComputed(', moveGateStart);
-    expect(moveGateStart).toBeGreaterThan(-1);
-    expect(moveGateEnd).toBeGreaterThan(moveGateStart);
-    expect(studio.slice(moveGateStart, moveGateEnd)).toContain('void brushScriptRevision.value;');
   });
 });
 
@@ -3654,44 +3535,10 @@ describe('261024-mz5 Studio transform handles surface', () => {
     expect(strokeCursorSite).toBeGreaterThan(handleCursorSite);
   });
 
-  it('wires the brush adapter, the port and the engine transform core', () => {
-    expect(brushScriptOverlay).toContain('onTransformStrokes={(mutationIds, transform) =>');
-    expect(brushScriptOverlay).toContain('brushScriptEditionPort.transformStrokes(mutationIds, transform)');
-
-    expect(brushScriptEditionPortSource).toContain('export function transformBrushScriptStrokes(');
-    expect(brushScriptEditionPortSource).toContain('resolved.engine.transformStrokes(mutationIds, transform)');
-    expect(brushScriptEditionPortSource).toContain('transformStrokes: (mutationIds, transform) => {');
-    expect(brushScriptEditionPortSource).toContain('transformStrokes(mutationIds: readonly number[], transform: ScriptStrokeTransform): number;');
+  it('wires the shared transform seam', () => {
     // The shared seam exposes the preview signal as compare-then-write.
     expect(scriptStrokeEdition).toContain('export function setScriptStrokeTransform(');
     expect(scriptStrokeEdition).toContain('export function clearScriptStrokeTransform(): void {');
-
-    const transformStart = paintEngineSource.indexOf('public transformStrokes(');
-    expect(transformStart).toBeGreaterThan(-1);
-    const transformBody = paintEngineSource.slice(
-      transformStart,
-      paintEngineSource.indexOf('public getStrokeSerials()', transformStart),
-    );
-    expect(transformBody).toContain('this.flushPendingStrokeFinalizations()');
-    expect(transformBody).toContain('const cos = Math.cos(transform.angleRad)');
-    expect(transformBody).toContain('const sin = Math.sin(transform.angleRad)');
-    expect(transformBody).toContain('const scaledX = transform.anchorX + (p.x - transform.anchorX) * transform.scaleX');
-    expect(transformBody).toContain('const scaledY = transform.anchorY + (p.y - transform.anchorY) * transform.scaleY');
-    expect(transformBody).toContain('const dx = scaledX - transform.centerX');
-    expect(transformBody).toContain('const dy = scaledY - transform.centerY');
-    expect(transformBody).toContain('x: transform.centerX + dx * cos - dy * sin,');
-    expect(transformBody).toContain('y: transform.centerY + dx * sin + dy * cos,');
-    // The Move law: redo dies, one 'move', one replay, no checkpoint.
-    expect(transformBody).toContain('this.redoStack = []');
-    expect(transformBody).toContain('this.redrawAfterScriptEdit()');
-    expect(transformBody).toContain("this.notifyCompletedMutation('move', targets[0]!.mutationId)");
-    expect(transformBody).toContain('this.updateMoveHover()');
-    // Identity and non-finite transforms return before any mutation.
-    expect(transformBody).toContain('Math.abs(transform.angleRad) < 1e-6');
-    expect(transformBody).toContain('Math.abs(transform.scaleX - 1) < 0.01');
-    expect(transformBody).toContain('Math.abs(transform.scaleY - 1) < 0.01');
-    expect(transformBody).not.toContain('params =');
-    expect(transformBody).not.toContain('params:');
   });
 
   it('keeps the transform signals out of the Studio render body', () => {
@@ -3844,16 +3691,6 @@ describe('261023-h9v brush script rehydration surface', () => {
     );
   });
 
-  it('imports the rehydration seam and retires the raw completion writes', () => {
-    expect(studio).toContain("} from './view/brushScriptHydration';");
-    expect(studio).toContain('applyCompletedBrushMutation,');
-    expect(studio).toContain('attemptBrushScriptHydration,');
-    expect(studio).toContain('engineHoldsBrushScriptFrame,');
-    expect(studio).toContain('clearBrushScriptFrame,');
-    expect(studio).toContain('noteBrushScriptArrivalBase,');
-    expect(studio).not.toContain('deleteBrushScriptFrame');
-  });
-
   // 261023-h9v Task 2: arrival seams, clobber guards, undo/redo freshness.
   it('wires the frame-editing loader through the live-handle guard', () => {
     expect(studio).toContain('loadReferenceFrame: loadReferenceForFrameEditing,');
@@ -3939,49 +3776,8 @@ describe('261023-j5b paint-settings carrier seams', () => {
     expect(navigationBody).toContain('engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,');
   });
 
-  it('the shared gauge assembler flush carries the engine paint settings', () => {
-    // quick-261023-ors: the flush moved into readStudioScriptMemorySnapshot;
-    // the DEV probe delegates to it, so the carrier law lives in the gauge.
-    expect(studioScriptMemoryGaugeSource).toContain(
-      'engine.getFramePaintSettings() ?? engine.getPaintRenderSettings()',
-    );
-    expect(scriptMemoryProbeSource).toContain('readStudioScriptMemorySnapshot({');
-    expect(scriptMemoryProbeSource).not.toContain('getFramePaintSettings');
-  });
-
-  it('the store entry carries the STICKY paintSettings snapshot', () => {
-    expect(brushScriptRecordStateSource).toContain('readonly paintSettings?: PaintRenderSettings | null;');
-    expect(brushScriptRecordStateSource).toContain(
-      'paintSettings: previous?.paintSettings ?? paintSettings ?? null,',
-    );
-  });
-
   it('the engine exposes the faithful rebake and the single edit seam', () => {
     expect(studio).toContain('hydrateBrushScriptFrame(engine, hydrationRequest)');
-    expect(paintEngineSource).toContain('public rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number');
-    // 261023-j5b follow-up: the base clear is complete-ledger driven, not
-    // detached-visit driven (a Duplicate-derived live visit must clear too).
-    expect(paintEngineSource).toContain('if (this.scriptBaseClearPending === true && this.cachedBaseClearedThisVisit !== true) {');
-    expect(paintEngineSource).toContain('this.clearPreviewBaseImage(true)');
-    expect(paintEngineSource).toContain('public setScriptBaseClearPending(pending: boolean): void');
-    expect(paintEngineSource).toContain('this.redrawAfterScriptEdit()');
-  });
-
-  it('a cleared-base capture encodes the live canvas alone, never the cached base', () => {
-    expect(paintEngineSource).toContain('public isLiveCanvasWholeFrame(): boolean');
-    expect(studio).toContain('const liveCanvasWholeFrame = mutationEngine.isLiveCanvasWholeFrame();');
-    expect(studio).toContain('const cachedBase = liveCanvasWholeFrame');
-    expect(studio).toContain('baseCanvas: liveCanvasWholeFrame');
-  });
-
-  it('an applied or duplicated script is captured for Move at apply settle', () => {
-    expect(brushScriptRecordStateSource).toContain('export function adoptBrushScriptFrameAsComplete(');
-    // The generic Apply entry points refresh the store as soon as they settle.
-    expect(studio).toContain('const flushBrushScriptAfterApply = useCallback(() => {');
-    expect(studio).toContain('flushBrushScriptAfterApply();');
-    // Duplicate adopts the blank-born destination as COMPLETE.
-    expect(studio).toContain('adoptBrushScriptFrameAsComplete(');
-    expect(studio).toContain('rotoScript.source.peek().appFrame,');
   });
 });
 
@@ -4003,12 +3799,13 @@ describe('261023-l35 studio script snapshot seams', () => {
     expect(studio).toContain('const projectId = context.project?.projectId ?? \'\';');
     expect(studio).toContain('const trackId = typeof carriedTrackId === \'string\' ? carriedTrackId : \'\';');
     expect(studio).toContain('studioScriptSnapshot.bind(identity);');
-    expect(studio).toContain('engineRef.current?.reserveMutationClock(nextMutationId);');
+    // 3.6 (261027-klx): the app-owned ledger is the mutation clock.
+    expect(studio).toContain('paintMutationLedger.reserveNextMutationId(nextMutationId);');
   });
 
   it('re-applies the reserved mutation clock at the engine-ready seam', () => {
     expect(studio).toContain('const reservedMutationId = studioScriptSnapshotReservedNextMutationIdRef.current;');
-    expect(studio).toContain('readyEngine.reserveMutationClock(reservedMutationId);');
+    expect(studio).toContain('if (reservedMutationId > 0) paintMutationLedger.reserveNextMutationId(reservedMutationId);');
   });
 
   it('bounds the close-path save and keeps a dirty script pending', () => {
@@ -4028,35 +3825,24 @@ describe('261023-l35 studio script snapshot seams', () => {
   });
 });
 
-// quick-261023-l35 Task 2: brush frames in the same snapshot.
-describe('261023-l35 brush frames in the Studio script snapshot', () => {
-  it('feeds the per-frame brush ledger to the controller', () => {
-    expect(studio).toContain('getBrushFrames: () => getBrushScriptFrameEntries(),');
-    expect(studio).toContain('${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}');
-  });
-
-  it('captures the current brush frame before the snapshot save on close', () => {
-    const closeStart = studio.indexOf('usePhysicsPaintCloseFlush(');
-    const closeBody = studio.slice(closeStart, studio.indexOf('// 41-05 (D-08): release the audio engine on Studio unmount', closeStart));
-    const captureIndex = closeBody.indexOf('flushBrushScriptFrame(');
-    const saveIndex = closeBody.indexOf('studioScriptSnapshot.flushNow(),');
-    expect(captureIndex).toBeGreaterThan(-1);
-    expect(saveIndex).toBeGreaterThan(captureIndex);
-    // Watercolor mode has its own capture step; the brush capture is gated out.
-    expect(closeBody).toContain("if (activeModule.peek() === 'watercolor') return;");
-    expect(closeBody).toContain('engineRef.current?.getFramePaintSettings() ?? engineRef.current?.getPaintRenderSettings()');
+// quick-261023-l35 Task 2: the snapshot carries the watercolor script only.
+// 261027-klx: the brush half of the snapshot is gone with engine-1 — the
+// controller no longer accepts a brush frame source.
+describe('261023-l35 watercolor-only Studio script snapshot', () => {
+  it('feeds the watercolor revision fingerprint and no brush frame source', () => {
+    expect(studio).toContain('getContentSignature: () => `${aquarelleStrokesRevision.peek()}`,');
+    expect(studio).not.toContain('getBrushFrames');
   });
 });
 
 // quick-261023-l35 Task 3: save discipline — the coalescing subscription, the
 // cross-track handoff, and the disposal path.
 describe('261023-l35 save discipline in the Studio', () => {
-  it('subscribes to BOTH store revisions with a first-run skip', () => {
+  it('subscribes to the watercolor store revision with a first-run skip', () => {
     const effectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
     const effectBody = studio.slice(effectStart, studio.indexOf('}, [studioScriptSnapshot]);', effectStart));
     expect(effectStart).toBeGreaterThan(-1);
     expect(effectBody).toContain('aquarelleStrokesRevision.value;');
-    expect(effectBody).toContain('brushScriptRevision.value;');
     expect(effectBody).toContain('let seedRun = true;');
     expect(effectBody).toContain('studioScriptSnapshot.markDirty();');
     expect(effectBody).toContain('studioScriptSnapshot.dispose();');
@@ -4083,8 +3869,8 @@ describe('261023-l35 save discipline in the Studio', () => {
     expect(restoreIncoming).toBeGreaterThan(bindIncoming);
     // Restore is dispatched, never awaited inside the synchronous effect.
     expect(switchBody).not.toContain('await studioScriptSnapshot.restore()');
-    // The incoming restore reserves the engine clock past restored ids.
-    expect(switchBody).toContain('engineRef.current?.reserveMutationClock(nextMutationId);');
+    // The incoming restore reserves the ledger clock past restored ids.
+    expect(switchBody).toContain('paintMutationLedger.reserveNextMutationId(nextMutationId);');
   });
 });
 
@@ -4468,14 +4254,6 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(studio).toContain('clearFrameScriptOwner();');
     const teardownStart = studio.indexOf('useEffect(() => () => {\n    clearFrameScriptOwner();');
     expect(teardownStart).toBeGreaterThan(-1);
-
-    // ONE notify site in the port, inside deleteBrushScriptStrokes only.
-    expect(brushScriptEditionPortSource).toContain('resolved.context.onScriptChanged?.(resolved.frame);');
-    expect(countOccurrences(brushScriptEditionPortSource, 'onScriptChanged?.(')).toBe(1);
-    const deleteStart = brushScriptEditionPortSource.indexOf('export function deleteBrushScriptStrokes(');
-    const deleteEnd = brushScriptEditionPortSource.indexOf('/** Single-stroke wrapper', deleteStart);
-    expect(brushScriptEditionPortSource.slice(deleteStart, deleteEnd))
-      .toContain('resolved.context.onScriptChanged?.(resolved.frame);');
   });
 });
 
@@ -4797,8 +4575,9 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const branchIndex = strokeEnd.indexOf('if (scriptRecordingOn) {');
     expect(branchIndex).toBeGreaterThan(-1);
     expect(branchIndex).toBeLessThan(pinIndex);
-    // The pixels/enqueue/publish half is NOT gated — Off still paints.
-    expect(strokeEnd).toContain('enqueueRecordedStroke(');
+    // The pixels/acceptance/publish half is NOT gated — Off still paints, and
+    // acceptance goes through the app-owned ledger (3.6, 261027-klx).
+    expect(strokeEnd).toContain('paintMutationLedger.allocateStrokeMutation(');
     expect(strokeEnd).toContain('aquarelleSheetHasPaintRef.current = true;');
     expect(strokeEnd).toContain('applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);');
 
@@ -4915,6 +4694,77 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // marker names this diagnostic revision so a stale window is detectable.
     expect(studio).toContain('if (!import.meta.env.DEV) return;');
     const moveProvenance = readFileSync(fileURLToPath(new URL('./performance/moveProvenanceCapture.ts', import.meta.url)), 'utf8');
-    expect(moveProvenance).toContain("MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-10-model-graph-gate';");
+    expect(moveProvenance).toContain("MOVE_PROVENANCE_BUILD = 'quick-261027-klx-diag-11-watercolor-only';");
+  });
+});
+
+describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', () => {
+  function slice(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('accepts a Water color stroke through the ledger with no raster/finalization dependency', () => {
+    const strokeEnd = slice(
+      studio,
+      'const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {',
+      'const handleAquarelleStrokeSettled',
+    );
+    // ONE synchronous allocation: the ledger emits the completion inside it.
+    expect(strokeEnd).toContain('const mutationId = paintMutationLedger.allocateStrokeMutation({ primary: paintStroke });');
+    // Nothing on this path may wait on an engine, a raster or a dry queue.
+    expect(strokeEnd).not.toContain('enqueueRecordedStroke');
+    expect(strokeEnd).not.toContain('flushPendingStrokeFinalizations');
+    expect(strokeEnd).not.toContain('getPreviewBasePaintCanvas');
+    expect(strokeEnd).not.toContain('engineRef');
+  });
+
+  it('allocates duplicate-script copies through the same ledger, never an engine', () => {
+    const recordCopy = slice(
+      studio,
+      'recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {',
+      'return recorded > 0;',
+    );
+    expect(recordCopy).toContain('allocateMutationId: (stroke) => paintMutationLedger.allocateStrokeMutation({');
+    expect(recordCopy).not.toContain('enqueueRecordedStroke');
+  });
+
+  it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {
+    // Two accepted-stroke paths (live stroke end + duplicate copy) — no third
+    // site may invent an id, or a stroke would complete twice.
+    const allocations = studio.match(/paintMutationLedger\.allocateStrokeMutation\(/g) ?? [];
+    expect(allocations).toHaveLength(2);
+    // The ledger is the completion SOURCE; the ref keeps the existing ordering
+    // (latest render's closure) while staying synchronous.
+    expect(studio).toContain('useEffect(() => paintMutationLedger.subscribe((mutation) => {');
+    expect(studio).toContain('canvasCompletedMutationImplRef.current(mutation, rotoMutationPort);');
+    // The SAME port identity reaches the clipboard and the completion path, or
+    // getAcceptedTarget reads null for everything and every apply refuses.
+    expect(studio).toContain('rotoScript.updateEngine(rotoMutationPort);');
+    expect(studio).toContain('getEngine: () => rotoMutationPort,');
+    expect(studio).toContain('rotoScript.observeCompletedMutation(rotoMutationPort, mutation);');
+    expect(studio).toContain('rotoScript.getAcceptedTarget(rotoMutationPort, mutationId);');
+  });
+
+  it('seeds the ledger clock from restores and engine-ready, never an engine reserve', () => {
+    const seeds = studio.match(/paintMutationLedger\.reserveNextMutationId\(/g) ?? [];
+    // launch restore + track-switch restore + engine-ready max-raise.
+    expect(seeds).toHaveLength(3);
+    expect(studio).not.toContain('reserveMutationClock');
+  });
+
+  it('saves and restores engine state through the narrow AquarelleEnginePort', () => {
+    expect(studio).toContain('saveEngineState: () => aquarelleEnginePortRef.current?.snapshot() ?? null,');
+    expect(studio).toContain('loadEngineState: (state) => { aquarelleEnginePortRef.current?.restore(state); },');
+    expect(studio).not.toContain('engineRef.current?.save()');
+    expect(studio).not.toContain('engineRef.current?.load(');
+    // The frame-editing controller reads the app-owned preview base and the
+    // watercolor truth — never the engine-1 mirror.
+    expect(studio).toContain('previewBase: rotoPersistence.reference.previewBasePort,');
+    expect(studio).toContain('getFrameTruth: getAquarelleFrameTruth,');
+    expect(studio).toContain('const events = getAquarelleEventsForFrame(frame);');
   });
 });

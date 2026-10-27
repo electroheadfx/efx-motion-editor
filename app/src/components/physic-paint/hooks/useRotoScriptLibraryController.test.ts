@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createRotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply } from '../roto/physicsPaintRotoScriptClipboard';
-import { createPersistedRotoScript } from '../roto/physicsPaintRotoScriptSchema';
+import { serializeAquarelleRotoScript } from '../roto/physicsPaintRotoScriptSchema';
+import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoProjectEquality,
@@ -17,7 +18,21 @@ import type { ReferencedActionHistoryCommand } from './useRotoPhysicalEditHistor
 
 const launchContext = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
 const row = { id: '123e4567-e89b-42d3-a456-426614174000', revision: 'rev-1', integritySha256: 'a'.repeat(64), name: 'Script', createdAt: '2026-07-16T12:00:00Z', updatedAt: '2026-07-16T12:00:00Z', source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 };
-const script = createPersistedRotoScript({ id: row.id, name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt, source: row.source, thumbnail: { ...row.thumbnail, dataUrl: 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=' }, brushes: [{ primary: { tool: 'paint', points: [{ x: 10, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] });
+// 261027-klx: the only persistable payload is a recorded wash timeline.
+const events: readonly AquarellePayloadEvent[] = [{
+  pts: [{ x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0, tick: 0 }],
+  ticks: 0,
+  cuisson: 0,
+  motion: null,
+  brushId: 'wc/round-medium',
+  toolOverrides: {},
+  traceSeed: 7,
+  recordedOrder: 1,
+  playFrame: null,
+  color: '#000000',
+  engine: { tool: 'brush', color: '#000000', params: { size: 4 }, brushId: 'wc/round-medium', mutationId: 1, timestamp: 1 },
+}];
+const script = serializeAquarelleRotoScript({ id: row.id, name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt, source: row.source, thumbnail: { ...row.thumbnail, dataUrl: 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=' }, events });
 
 function result(request: PhysicPaintScriptLibraryRequest, extra: Partial<PhysicPaintScriptLibraryResult> = {}): PhysicPaintScriptLibraryResult {
   return { operationId: request.operationId, kind: request.kind, ok: true, rows: [row], skippedInvalidCount: 0, diagnostics: [], ...extra };

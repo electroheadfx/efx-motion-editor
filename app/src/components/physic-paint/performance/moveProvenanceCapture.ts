@@ -4,40 +4,25 @@
 //  Answers "where do these Move handles come from?" without a
 //  console copy: the app writes one JSON report to
 //  /tmp/efx-move-provenance.json (the established app-writes-/tmp
-//  convention). Every listed group is named in all three layers:
-//  the live engine ledger, the session Brush store and the
-//  aquarelle registry, plus the frame's cell kind, owner and
-//  snapshot identity.
+//  convention). After engine-1 removal the report names the ONE
+//  surviving layer — the aquarelle record registry — plus the
+//  frame's cell kind, owner and snapshot identity. The Brush store
+//  and the engine-1 stroke ledger are gone with the package.
 //
 //  Triggers: Move entry (the Studio calls captureMoveProvenanceNow)
 //  and the manual global window.__EFX_MOVE_PROVENANCE__(). Installs
 //  nothing in a production build.
 // ============================================================
 
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import {
-  getBrushScriptFrameEntries,
-  getBrushScriptFrameEntry,
-  isAquarelleGuideGroup,
-  purgedBrushScriptFrame,
-} from '../view/brushScriptRecordState';
-import {
   getAquarelleEventsForFrame,
-  getRecordedAquarelleStroke,
   hasAquarelleScriptForFrame,
 } from '../view/aquarelleRecordState';
-import { engineHoldsBrushScriptFrame } from '../view/brushScriptHydration';
 
 export const MOVE_PROVENANCE_PATH = '/tmp/efx-move-provenance.json';
 /** Bumped by every diagnostic revision so the report names its build. */
-export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-10-model-graph-gate';
-
-export interface MoveProvenanceEngine {
-  getStrokes(): readonly PaintStroke[];
-  getStrokeSerials(): Map<number, number>;
-  getStrokeCount?(): number;
-}
+export const MOVE_PROVENANCE_BUILD = 'quick-261027-klx-diag-11-watercolor-only';
 
 export interface MoveProvenanceIdentity {
   projectId: string | null;
@@ -54,7 +39,6 @@ export interface MoveProvenanceDeps {
   getTool(): string;
   getMoveAvailable(): boolean;
   getOwner(): string | null;
-  getEngine(): MoveProvenanceEngine | null;
   /** The live key occupying the current frame (identity truth). */
   getCellKeyId?(): string | null;
   getLiveKeyIdForFrame?(frame: number): string | null;
@@ -81,23 +65,6 @@ function readOr<T>(read: () => T, fallback: T, errors: string[], label: string):
   }
 }
 
-function engineStrokeReport(
-  stroke: Readonly<PaintStroke>,
-  serials: ReadonlyMap<number, number>,
-): Record<string, unknown> {
-  return {
-    mutationId: stroke.mutationId ?? null,
-    guideProxy: stroke.guideProxy === true,
-    tool: stroke.tool,
-    color: stroke.color ?? null,
-    points: stroke.points.length,
-    paramsSize: stroke.params?.size ?? null,
-    hasPenInput: stroke.hasPenInput === true,
-    playFrame: stroke.playFrame ?? null,
-    serial: stroke.mutationId === undefined ? null : serials.get(stroke.mutationId) ?? null,
-  };
-}
-
 export async function captureMoveProvenance(
   reason: string,
   extra?: Record<string, unknown>,
@@ -115,15 +82,6 @@ export async function captureMoveProvenance(
       errors,
       'identity',
     );
-    const engine = readOr(() => deps.getEngine(), null, errors, 'engine');
-    let strokes: readonly PaintStroke[] = [];
-    let serials: Map<number, number> = new Map();
-    if (engine) {
-      strokes = readOr(() => engine.getStrokes(), [], errors, 'engine.strokes');
-      serials = readOr(() => engine.getStrokeSerials(), new Map(), errors, 'engine.serials');
-    }
-    const entry = getBrushScriptFrameEntry(frame);
-    const groups = entry?.groups ?? [];
     const events = readOr(() => getAquarelleEventsForFrame(frame), [], errors, 'aquarelle.events');
     const report = {
       build: MOVE_PROVENANCE_BUILD,
@@ -144,48 +102,6 @@ export async function captureMoveProvenance(
       railCleanup: deps.getRailCleanupState
         ? readOr(() => deps.getRailCleanupState!(), null, errors, 'railCleanup')
         : null,
-      store: {
-        hasEntry: entry !== undefined,
-        keyId: entry?.keyId ?? null,
-        complete: entry?.complete ?? null,
-        strokes: entry?.strokes ?? 0,
-        points: entry?.points ?? 0,
-        purged: purgedBrushScriptFrame(frame),
-        engineHoldsFrame: engine ? engineHoldsBrushScriptFrame(engine, frame) : false,
-        groups: groups.map((group) => {
-          const primary = group.primary;
-          const mutationId = primary.mutationId;
-          const registered =
-            typeof mutationId === 'number' ? getRecordedAquarelleStroke(mutationId) : undefined;
-          return {
-            mutationId: mutationId ?? null,
-            guideProxy: primary.guideProxy === true,
-            classifiedGuide: isAquarelleGuideGroup(group),
-            registryMatch: registered
-              ? {
-                  color: registered.color ?? null,
-                  points: registered.points.length,
-                  playFrame: registered.playFrame ?? null,
-                  paramsSize: registered.params['size'] ?? null,
-                }
-              : null,
-            points: primary.points.length,
-            color: primary.color ?? null,
-            paramsSize: primary.params?.size ?? null,
-            inEngine:
-              typeof mutationId === 'number' ? serials.has(mutationId) : false,
-            serial:
-              typeof mutationId === 'number' ? serials.get(mutationId) ?? null : null,
-          };
-        }),
-      },
-      engine: {
-        strokeCount: engine
-          ? readOr(() => engine.getStrokeCount?.() ?? strokes.length, strokes.length, errors, 'engine.count')
-          : 0,
-        serialCount: serials.size,
-        strokes: strokes.map((stroke) => engineStrokeReport(stroke, serials)),
-      },
       aquarelle: {
         hasScript: readOr(() => hasAquarelleScriptForFrame(frame), false, errors, 'aquarelle.hasScript'),
         events: events.map((event) => {
@@ -220,26 +136,6 @@ export async function captureMoveProvenance(
           };
         }),
       },
-      storeFrames: getBrushScriptFrameEntries().map((frameEntry) => {
-        let guides = 0;
-        for (const group of frameEntry.groups) {
-          if (isAquarelleGuideGroup(group)) guides += 1;
-        }
-        return {
-          frame: frameEntry.frame,
-          keyId: frameEntry.keyId ?? null,
-          liveKeyId: deps.getLiveKeyIdForFrame
-            ? readOr(() => deps.getLiveKeyIdForFrame!(frameEntry.frame), null, errors, 'liveKeyId')
-            : null,
-          pixelOnly: deps.isPixelOnlyFrame
-            ? readOr(() => deps.isPixelOnlyFrame!(frameEntry.frame), false, errors, 'pixelOnly')
-            : null,
-          strokes: frameEntry.strokes,
-          guideGroups: guides,
-          realGroups: frameEntry.strokes - guides,
-          complete: frameEntry.complete,
-        };
-      }),
       errors,
       ...(extra ?? {}),
     };

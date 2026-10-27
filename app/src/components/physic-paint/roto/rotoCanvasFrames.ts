@@ -1,4 +1,4 @@
-import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { AquarelleEnginePort } from '../engine/aquarelleEnginePort';
 import { buildFrameBytesToken, isWebpBytes, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../lib/rotoAlphaCanvasRegistry';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
@@ -8,7 +8,6 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
-import { readRotoActiveTrack } from './rotoSaveTransactions';
 
 export type RenderedFramePayload = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
@@ -132,30 +131,23 @@ export function addOccupiedRotoFrame(frames: number[], frame: number): number[] 
   return [...new Set([...frames, frame])].sort((a, b) => a - b);
 }
 
-export function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanvasElement {
-  const state = engine.save();
-  const track = readRotoActiveTrack(state);
-  const background = (track?.settings?.bgMode ?? 'transparent') as BgMode;
-  try {
-    engine.setBgMode('transparent');
-    const canvas = engine.exportCompositeCanvas();
-    // 261003-erase-uat (B): exportCompositeCanvas is dry+display only. On a
-    // cached key the paint lives on the preview-base layer, so an Update-frame
-    // capture dropped it — and a pixel erase on it never reached the bytes.
-    const basePaint = (engine as EfxPaintEngine & { getPreviewBasePaintSource?: () => CanvasImageSource | null }).getPreviewBasePaintSource?.() ?? null;
-    if (!basePaint) return canvas;
-    const out = document.createElement('canvas');
-    out.width = canvas.width;
-    out.height = canvas.height;
-    const ctx = out.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return canvas;
-    ctx.drawImage(basePaint, 0, 0, out.width, out.height);
-    ctx.drawImage(canvas, 0, 0, out.width, out.height);
-    return out;
-  } finally {
-    engine.setBgMode(background);
-    engine.load(state);
-  }
+/**
+ * Export the live sheet as the opaque MODE.transparent transmittance sheet.
+ *
+ * Engine-1 had to `save()` the document, flip `setBgMode('transparent')` and
+ * `load()` the state back in a `finally`, because the background was engine
+ * STATE. Watercolor takes the background as an ARGUMENT and
+ * `exportCanvas('transparent')` is a pure readback (it allocates a scratch
+ * target, draws, reads pixels, disposes) — no state is mutated and undo
+ * history is untouched. A `restore(snapshot)` after the export would reset
+ * history and re-upload every texture, so there is deliberately none here.
+ *
+ * The cached key's paint is NOT in this canvas: it is the app-owned preview
+ * base, merged by the caller in transmittance space (see
+ * `useRotoFrameEditingController.snapshotCurrentFrame`, pigment-alpha law).
+ */
+export function exportTransparentStrokeCanvas(port: AquarelleEnginePort): HTMLCanvasElement {
+  return port.exportCanvas('transparent');
 }
 
 export async function buildRotoFrameFromCanvas(canvas: HTMLCanvasElement, appFrame: number, size?: { width: number; height: number }): Promise<RenderedFramePayload> {
@@ -245,6 +237,6 @@ export async function buildBlankRotoFrame(width: number, height: number, appFram
   return buildRenderedFramePayload(canvas, appFrame, bytes);
 }
 
-export async function buildRotoOutputFrame(engine: EfxPaintEngine, appFrame: number, width: number, height: number): Promise<RenderedFramePayload> {
-  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(engine), appFrame, { width, height });
+export async function buildRotoOutputFrame(port: AquarelleEnginePort, appFrame: number, width: number, height: number): Promise<RenderedFramePayload> {
+  return buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(port), appFrame, { width, height });
 }

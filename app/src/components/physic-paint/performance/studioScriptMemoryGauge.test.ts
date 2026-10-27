@@ -1,15 +1,14 @@
 // ============================================================
-//  studioScriptMemoryGauge.test.ts — RED-first suite for the
-//  production script-memory read entry point (quick 261023-ors).
+//  studioScriptMemoryGauge.test.ts — suite for the production
+//  script-memory read entry point (quick 261023-ors).
 //
-//  ONE assembler, two entry points: the Memory tab calls
-//  readStudioScriptMemorySnapshot directly; the DEV probe global
-//  delegates to the same function. The f9c estimator owns the
-//  accounting — this module only supplies its input.
+//  ONE assembler: the Memory tab calls
+//  readStudioScriptMemorySnapshot directly. The f9c estimator owns
+//  the accounting — this module only supplies its input.
 //
-//  Frame rows merge the watercolor timeline and the brush session
-//  store by app frame; rails (derived Loop Clips) have no input
-//  here and can never be listed.
+//  After engine-1 removal the watercolor registry is the WHOLE script
+//  memory: frame rows project the watercolor timeline only, and rails
+//  (derived Loop Clips) have no input here and can never be listed.
 // ============================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,21 +17,11 @@ import type {
   AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke } from '@efxlab/efx-watercolor/payload';
-import type { EfxPaintEngine, PaintStroke } from '@efxlab/efx-physic-paint';
 import { FRAME_LRU_BYTE_CEILING, frameLru } from '../../../lib/frameLru';
 import {
   recordAquarelleStroke,
   resetAquarelleRecordState,
 } from '../view/aquarelleRecordState';
-import {
-  getBrushScriptReport,
-  resetBrushScriptStore,
-} from '../view/brushScriptRecordState';
-import {
-  registerScriptMemoryBrushEngine,
-  registerScriptMemoryBrushFrame,
-  snapshotScriptMemory,
-} from './scriptMemoryProbe';
 import {
   buildStudioScriptMemoryFrameRows,
   formatScriptMemoryBytes,
@@ -72,42 +61,8 @@ function rawStroke(overrides: Partial<AquarelleStroke> = {}): AquarelleStroke {
   };
 }
 
-const BRUSH_STROKES: PaintStroke[] = [
-  {
-    tool: 'paint',
-    points: [
-      { x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.1 },
-      { x: 0.3, y: 0.4, p: 0.6, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-    ],
-    color: '#000000',
-    params: {
-      size: 8,
-      opacity: 80,
-      pressure: 100,
-      waterAmount: 30,
-      dryAmount: 20,
-      edgeDetail: 50,
-      pickup: 10,
-      eraseStrength: 0,
-      antiAlias: 2,
-    },
-    timestamp: 10,
-  },
-];
-
-function fakeEngine(strokes: readonly PaintStroke[] | null): EfxPaintEngine {
-  return {
-    getStrokes: vi.fn(() => strokes),
-    getFramePaintSettings: vi.fn(() => null),
-    getPaintRenderSettings: vi.fn(() => null),
-  } as unknown as EfxPaintEngine;
-}
-
 beforeEach(() => {
   resetAquarelleRecordState();
-  resetBrushScriptStore();
-  registerScriptMemoryBrushEngine(null);
-  registerScriptMemoryBrushFrame(null);
 });
 
 describe('formatScriptMemoryBytes', () => {
@@ -131,7 +86,7 @@ describe('formatScriptMemoryBytes', () => {
 });
 
 describe('buildStudioScriptMemoryFrameRows', () => {
-  it('merges watercolor and brush frames by app frame, ascending, with zeros for the absent store', () => {
+  it('projects the watercolor frames by app frame, ascending, with no brush store', () => {
     const wc0 = rawStroke({ mutationId: 1, playFrame: 0 });
     const wc4 = rawStroke({ mutationId: 2, playFrame: 4 });
     const snapshot = buildScriptMemorySnapshot({
@@ -145,20 +100,12 @@ describe('buildStudioScriptMemoryFrameRows', () => {
       ]),
       isStrokeDeleted: () => false,
       dryEvents: [],
-      brushStrokes: null,
-      brushScript: {
-        frames: [
-          { frame: 7, strokes: 3, points: 9, approxBytes: 900, complete: true, diffusionFrames: 0 },
-          { frame: 0, strokes: 1, points: 2, approxBytes: 100, complete: true, diffusionFrames: 0 },
-        ],
-        totals: { strokes: 4, points: 11, approxBytes: 1000 },
-      },
       frameCaches: [],
     });
 
     const rows = buildStudioScriptMemoryFrameRows(snapshot);
 
-    expect(rows.map((row) => row.frame)).toEqual([0, 4, 7]);
+    expect(rows.map((row) => row.frame)).toEqual([0, 4]);
     expect(rows[0]).toEqual({
       frame: 0,
       // The estimator counts BOTH retained copies per watercolor stroke
@@ -168,9 +115,7 @@ describe('buildStudioScriptMemoryFrameRows', () => {
         points: snapshot.watercolor.frames[0].points,
         approxBytes: snapshot.watercolor.frames[0].approxBytes,
       },
-      brush: { strokes: 1, points: 2, approxBytes: 100 },
     });
-    // Watercolor-only frame: the brush side shows zeros, not another frame's data.
     expect(rows[1]).toEqual({
       frame: 4,
       watercolor: {
@@ -178,14 +123,9 @@ describe('buildStudioScriptMemoryFrameRows', () => {
         points: snapshot.watercolor.frames[1].points,
         approxBytes: snapshot.watercolor.frames[1].approxBytes,
       },
-      brush: { strokes: 0, points: 0, approxBytes: 0 },
     });
-    // Brush-only frame: the watercolor side shows zeros.
-    expect(rows[2]).toEqual({
-      frame: 7,
-      watercolor: { strokes: 0, points: 0, approxBytes: 0 },
-      brush: { strokes: 3, points: 9, approxBytes: 900 },
-    });
+    // The row shape is exactly the watercolor pair — no brush member survives.
+    expect(Object.keys(rows[0]).sort()).toEqual(['frame', 'watercolor']);
   });
 
   it('emits no row for an empty snapshot and never invents rails', () => {
@@ -194,8 +134,6 @@ describe('buildStudioScriptMemoryFrameRows', () => {
       watercolorEntries: new Map(),
       isStrokeDeleted: () => false,
       dryEvents: [],
-      brushStrokes: null,
-      brushScript: { frames: [], totals: { strokes: 0, points: 0, approxBytes: 0 } },
       frameCaches: [],
     });
 
@@ -204,21 +142,39 @@ describe('buildStudioScriptMemoryFrameRows', () => {
 });
 
 describe('readStudioScriptMemorySnapshot', () => {
-  it('returns an unavailable engine frame without throwing when there is no engine', () => {
-    const snapshot = readStudioScriptMemorySnapshot({ engine: null, frame: 2 });
+  it('reads the live watercolor registry with no engine argument', () => {
+    recordAquarelleStroke(11, rawStroke({ mutationId: 11, playFrame: 2 }));
 
-    expect(snapshot.brush.currentEngineFrame).toEqual({
-      available: false,
+    const snapshot = readStudioScriptMemorySnapshot();
+
+    expect(snapshot.watercolor.frames).toEqual([
+      expect.objectContaining({ frame: 2, strokes: 1 }),
+    ]);
+    expect(snapshot.watercolor.totals.strokes).toBe(1);
+    // Engine-1 removal: there is no brush section left in the payload.
+    expect(Object.keys(snapshot).sort()).toEqual([
+      'approxMethod',
+      'capturedAt',
+      'frameCache',
+      'watercolor',
+    ]);
+  });
+
+  it('returns an empty watercolor section without throwing when nothing is recorded', () => {
+    const snapshot = readStudioScriptMemorySnapshot();
+
+    expect(snapshot.watercolor.frames).toEqual([]);
+    expect(snapshot.watercolor.totals).toEqual({
+      frames: 0,
       strokes: 0,
       points: 0,
       approxBytes: 0,
     });
-    expect(snapshot.watercolor.frames).toEqual([]);
   });
 
   it('reports the four named frame caches separately from every script total', () => {
-    const engine = fakeEngine(BRUSH_STROKES);
-    const snapshot = readStudioScriptMemorySnapshot({ engine, frame: 3 });
+    recordAquarelleStroke(11, rawStroke({ mutationId: 11, playFrame: 2 }));
+    const snapshot = readStudioScriptMemorySnapshot();
 
     expect(snapshot.frameCache.caches.map((cache) => cache.name)).toEqual([
       'frameLru',
@@ -241,42 +197,18 @@ describe('readStudioScriptMemorySnapshot', () => {
       + ROTO_STATS.generatedBytes;
     expect(snapshot.frameCache.totalBytes).toBe(expectedTotal);
 
-    // The script totals come from the stores only — no cache byte leaks in.
-    const report = getBrushScriptReport();
-    expect(snapshot.brush.totals).toMatchObject(report.totals);
-    expect(snapshot.watercolor.totals.approxBytes).toBe(0);
+    // The script totals come from the watercolor registry only — no cache
+    // byte leaks in.
+    expect(snapshot.watercolor.totals.approxBytes).toBeGreaterThan(0);
     expect(snapshot.watercolor.totals.approxBytes).toBeLessThan(snapshot.frameCache.totalBytes);
-    expect(snapshot.brush.totals.approxBytes).toBeLessThan(snapshot.frameCache.totalBytes);
   });
 
-  it('flushes the CURRENT brush frame from the engine once and is idempotent on re-read', () => {
-    const engine = fakeEngine(BRUSH_STROKES);
-    const first = readStudioScriptMemorySnapshot({ engine, frame: 3 });
-
-    expect(engine.getStrokes).toHaveBeenCalled();
-    expect(getBrushScriptReport().frames.map((row) => row.frame)).toContain(3);
-    expect(first.brush.frames.map((row) => row.frame)).toContain(3);
-
-    const framesAfterFirst = getBrushScriptReport().frames.length;
-    const second = readStudioScriptMemorySnapshot({ engine, frame: 3 });
-
-    expect(getBrushScriptReport().frames.length).toBe(framesAfterFirst);
-    expect({ ...second, capturedAt: '' }).toEqual({ ...first, capturedAt: '' });
-  });
-
-  it('is one assembler: the DEV probe returns exactly the gauge read for the same stores', () => {
-    const engine = fakeEngine(BRUSH_STROKES);
+  it('is read-only and idempotent: re-reading the same registry is byte-identical', () => {
     recordAquarelleStroke(11, rawStroke({ mutationId: 11, playFrame: 2 }));
-    registerScriptMemoryBrushEngine(engine);
-    registerScriptMemoryBrushFrame(() => 5);
+    const first = readStudioScriptMemorySnapshot();
+    const second = readStudioScriptMemorySnapshot();
 
-    const viaProbe = snapshotScriptMemory();
-    const viaGauge = readStudioScriptMemorySnapshot({ engine, frame: 5 });
-
-    expect({ ...viaGauge, capturedAt: '' }).toEqual({ ...viaProbe, capturedAt: '' });
-    // The watercolor registry is visible through the gauge (not a probe-only read).
-    expect(viaGauge.watercolor.frames).toEqual([
-      expect.objectContaining({ frame: 2, strokes: 1 }),
-    ]);
+    expect({ ...second, capturedAt: '' }).toEqual({ ...first, capturedAt: '' });
+    expect(second.watercolor.totals).toEqual(first.watercolor.totals);
   });
 });

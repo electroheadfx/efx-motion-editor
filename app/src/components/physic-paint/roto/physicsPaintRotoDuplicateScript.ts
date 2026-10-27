@@ -5,15 +5,14 @@ import {
   type AquarellePayloadEvent,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
-import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /**
  * Quick 261023-cxc: the script-aware Duplicate path.
  *
  * Quick 261023-bxm settled the SOURCE key's displayed pixels into the record
  * and let the physical duplicate clone the raster. The clone renders correctly
- * but carries no engine strokes (brush) and no recorded aquarelle timeline
- * (watercolor), so Move / Select / stack-step find nothing to edit.
+ * but carries no recorded aquarelle timeline, so Move / Select / stack-step
+ * find nothing to edit.
  *
  * This module is the pure decision + bounded wait + orchestration half of the
  * fix:
@@ -27,10 +26,12 @@ import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
  *     unchanged 261023-bxm settle-then-clone in the same click; post-navigation
  *     failures return `aborted` with an explicit message and never clone.
  *
+ * 261027-klx: watercolor is the only engine, so the old live-stroke script
+ * branch (capture the engine's strokes, replay them on the duplicate) is gone.
+ * Every duplicate replays the recorded wash timeline.
+ *
  * The module owns no store, DOM, or IPC state and publishes no UI state.
  */
-
-export type RotoDuplicateScriptModule = 'brush' | 'watercolor';
 
 /**
  * The physical kind of `source.appFrame + 1`. `out-of-capacity` is the
@@ -48,7 +49,7 @@ export type RotoDuplicateScriptFallbackReason =
   | 'navigation-failed';
 
 export type RotoDuplicateScriptDecision =
-  | { readonly kind: 'script'; readonly destinationFrame: number; readonly module: RotoDuplicateScriptModule }
+  | { readonly kind: 'script'; readonly destinationFrame: number }
   | { readonly kind: 'fallback'; readonly reason: RotoDuplicateScriptFallbackReason };
 
 export type RotoDuplicateScriptOutcome =
@@ -78,8 +79,6 @@ export interface RotoDuplicateScriptDecisionInput {
   readonly expectedAppFrame: number;
   readonly destinationKind: RotoDuplicateScriptDestinationKind;
   readonly capacity: number;
-  readonly module: RotoDuplicateScriptModule;
-  readonly brushStrokeCount: number;
   readonly aquarelleStrokeEventCount: number;
 }
 
@@ -89,8 +88,8 @@ export interface RotoDuplicateScriptDecisionInput {
  *   2. `source + 1` must be inside capacity;
  *   3. only an EMPTY destination is eligible — a real or generated cell keeps
  *      the 261023-bxm duplicate (which owns the +1 ripple);
- *   4. the source must carry a script (live brush strokes, or recorded
- *      aquarelle stroke events for the source frame).
+ *   4. the source must carry a script (recorded aquarelle stroke events for
+ *      the source frame).
  * Only an `empty` cell reaches the script path, so the promoted destination is
  * the blank key `promoteRotoPaintTargetRef` builds for an empty cell.
  */
@@ -108,11 +107,8 @@ export function resolveRotoDuplicateScriptDecision(
   if (input.destinationKind === 'real' || input.destinationKind === 'generated') {
     return { kind: 'fallback', reason: 'destination-occupied' };
   }
-  const hasScript = input.module === 'brush'
-    ? input.brushStrokeCount > 0
-    : input.aquarelleStrokeEventCount > 0;
-  if (!hasScript) return { kind: 'fallback', reason: 'no-script' };
-  return { kind: 'script', destinationFrame, module: input.module };
+  if (input.aquarelleStrokeEventCount <= 0) return { kind: 'fallback', reason: 'no-script' };
+  return { kind: 'script', destinationFrame };
 }
 
 /**
@@ -234,14 +230,10 @@ export interface RotoDuplicateWithScriptPorts {
   getSource: () => { keyId: string; appFrame: number } | null;
   getDestination: (destinationFrame: number) => RotoDuplicateScriptDestinationKind;
   getCapacity: () => number;
-  getModule: () => RotoDuplicateScriptModule;
-  getBrushStrokeCount: () => number;
   getAquarelleStrokeEventCount: (appFrame: number) => number;
-  captureBrushScript: () => RotoPaintScript | null;
   getAquarelleEvents: (appFrame: number) => readonly AquarellePayloadEvent[];
   navigateTo: (frame: number) => Promise<boolean>;
   waitForSourceFrame: (frame: number) => Promise<RotoDuplicateSourceFrameWaitOutcome>;
-  applyBrushScript: (script: RotoPaintScript) => Promise<boolean>;
   applyAquarelleEvents: (events: readonly AquarellePayloadEvent[]) => Promise<boolean>;
   recordAquarelleScriptCopy: (sourceFrame: number, destinationFrame: number) => Promise<boolean>;
 }
@@ -254,24 +246,21 @@ export interface RotoDuplicateWithScriptInput {
 /**
  * Orchestrate one Duplicate click through the script path.
  *
- * Order (locked): re-check the source → decide → capture → navigate → wait →
- * apply (brush) or apply + record the timeline copy (watercolor). A thrown
- * port rejects to the caller — the caller owns the error surface.
+ * Order (locked): re-check the source → decide → navigate → wait → apply the
+ * recorded timeline + record the copy. A thrown port rejects to the caller —
+ * the caller owns the error surface.
  */
 export async function runRotoDuplicateWithScript(
   input: RotoDuplicateWithScriptInput,
   ports: RotoDuplicateWithScriptPorts,
 ): Promise<RotoDuplicateScriptOutcome> {
-  const module = ports.getModule();
   const decision = resolveRotoDuplicateScriptDecision({
     source: ports.getSource(),
     expectedKeyId: input.sourceKeyId,
     expectedAppFrame: input.sourceAppFrame,
     destinationKind: ports.getDestination(input.sourceAppFrame + 1),
     capacity: ports.getCapacity(),
-    module,
-    brushStrokeCount: module === 'brush' ? ports.getBrushStrokeCount() : 0,
-    aquarelleStrokeEventCount: module === 'watercolor' ? ports.getAquarelleStrokeEventCount(input.sourceAppFrame) : 0,
+    aquarelleStrokeEventCount: ports.getAquarelleStrokeEventCount(input.sourceAppFrame),
   });
   if (decision.kind === 'fallback') return { outcome: 'fallback', reason: decision.reason };
 
@@ -293,15 +282,6 @@ export async function runRotoDuplicateWithScript(
     if (waited === 'timeout') return { outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_TIMEOUT };
     return null;
   };
-
-  if (module === 'brush') {
-    const script = ports.captureBrushScript();
-    if (!script) return { outcome: 'fallback', reason: 'capture-failed' };
-    const interrupted = await navigateAndWait(decision.destinationFrame);
-    if (interrupted) return interrupted;
-    const applied = await ports.applyBrushScript(script);
-    return applied ? { outcome: 'handled' } : { outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_APPLY_FAILED };
-  }
 
   const events = ports.getAquarelleEvents(input.sourceAppFrame);
   if (events.length === 0) return { outcome: 'fallback', reason: 'no-script' };

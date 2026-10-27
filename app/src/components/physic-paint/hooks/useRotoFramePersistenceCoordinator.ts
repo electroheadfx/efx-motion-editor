@@ -1,11 +1,12 @@
 import { useCallback, useRef } from 'preact/hooks';
-import type { BgMode } from '@efxlab/efx-physic-paint';
+import type { BgMode } from '../types/paintCore';
 import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
+import type { RotoEditableState } from '../types/paintCore';
 import { mergeCachedRotoAlphaFrame, type RotoAlphaMergeBlend } from '../roto/physicsPaintRotoAlphaMerge';
 import { createRotoLivePixelCacheTransactions, type RotoLivePixelIdentity } from '../roto/rotoLivePixelCacheTransactions';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
@@ -340,7 +341,7 @@ export function recordsAsRuntimeFramesToleratingReferences(
 }
 
 export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenceCoordinatorInput) {
-  const editBuffer = useRotoEditBufferController<ReturnType<import('@efxlab/efx-physic-paint').EfxPaintEngine['save']>, RenderedFramePayload>();
+  const editBuffer = useRotoEditBufferController<RotoEditableState, RenderedFramePayload>();
   const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());
   const livePixelTransactionsRef = useRef(createRotoLivePixelCacheTransactions());
   const parentDeliveryRef = useRef<Map<string, Promise<void>>>(new Map());

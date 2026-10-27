@@ -1,107 +1,153 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /**
- * 52-01 (RVL-01/RVL-02/RVL-03): the reveal bake mask semantics.
+ * 52-01 (RVL-01/RVL-02/RVL-03) on the watercolor-only path (261027-klx).
  *
- * The bake reuses the PlayScript coverage path (progressive/static schedules →
- * `renderProgressiveAlphaFrame`) but REPLACES the additive merge with a
- * reference-mask composite: the reference image AS PLACED (Phase 50 transform)
- * at FULL source opacity (D-18), masked by the coverage alpha via
- * `destination-in` (D-17). These tests drive a recording canvas context so the
- * composite operations are asserted directly — the reference draw transform,
- * the destination-in mask, and the straight-alpha encode boundary.
+ * The reveal bake reuses the Play/Apply aquarelle wash bake and REPLACES the
+ * old additive merge with a reference-mask composite: the reference image AS
+ * PLACED (Phase 50 transform) at FULL source opacity (D-18), masked by the
+ * wash's PIGMENT alpha via `destination-in` (D-17). The fluid sim itself is
+ * mocked here — these tests own the reveal contract around it: the refusal of
+ * an old Brush script, the transmittance→alpha conversion boundary, the
+ * per-frame reference law (WR-02), static/progressive bake windows, paper
+ * passthrough, abort, and disposal.
  */
 
 type MaskOp =
-  | { type: 'clearRect' }
-  | { type: 'save' }
-  | { type: 'restore' }
-  | { type: 'translate'; x: number; y: number }
-  | { type: 'rotate'; radians: number }
-  | { type: 'scale'; x: number; y: number }
-  | { type: 'drawImage'; source: string; args: number[]; globalAlpha: number; globalCompositeOperation: string }
-  | { type: 'setComposite'; op: string };
+  | { type: 'clearRect'; canvas: number }
+  | { type: 'save'; canvas: number }
+  | { type: 'restore'; canvas: number }
+  | { type: 'translate'; canvas: number; x: number; y: number }
+  | { type: 'rotate'; canvas: number; radians: number }
+  | { type: 'scale'; canvas: number; x: number; y: number }
+  | { type: 'drawImage'; canvas: number; source: string; sourceCanvas: number | null; args: number[]; globalAlpha: number; composite: string }
+  | { type: 'getImageData'; canvas: number }
+  | { type: 'putImageData'; canvas: number };
 
 const harness = vi.hoisted(() => ({
-  scriptAlpha: null as HTMLCanvasElement | null,
   encode: vi.fn(),
-  renderedFrames: [] as Array<Array<{ stroke: PaintStroke; pointCount: number }>>,
-  buildStatic: vi.fn(),
-  buildProgressive: vi.fn(),
-  getStatic: vi.fn(),
-  getProgressive: vi.fn(),
-  transform: vi.fn(),
-  maskOps: [] as MaskOp[],
-  referenceImage: null as HTMLImageElement | null,
-  canvases: [] as Array<{ width: number; height: number }>,
-  /** WR-02 (260920-kov): every createObjectURL call, for the decode-once count. */
+  bakeResult: null as unknown,
+  /**
+   * Mutable harness ledger: `setupHarness` clears it and the bake pushes the
+   * SAME event-array instance (a row asserts identity with `toBe`).
+   */
+  bakeEvents: [] as Array<readonly unknown[]>,
+  bakeOptions: [] as Array<Record<string, unknown>>,
+  bakeDispose: vi.fn(),
+  bakeInterrupt: vi.fn(),
+  adapterOptions: [] as Array<Record<string, unknown>>,
+  adapterDispose: vi.fn(),
+  paperPreset: vi.fn((paperId: string) => `preset:${paperId}`),
+  canvases: [] as Array<{ width: number; height: number; ops: MaskOp[] }>,
+  /** WR-02: every createObjectURL call, for the decode-once count. */
   objectUrlCalls: [] as Array<{ parts?: Uint8Array[] }>,
+  failReadback: false,
 }));
 
-vi.mock('@efxlab/efx-physic-paint', async (importOriginal) => ({
-  ...(await importOriginal()),
-  EfxPaintEngine: class {
-    async init() {}
-    setAnimationMode() {}
-    setInputLocked() {}
-    setBgMode() {}
-    renderProgressiveAlphaFrame(frames: Array<{ stroke: PaintStroke; pointCount: number }>) {
-      harness.renderedFrames.push(frames);
-      return harness.scriptAlpha;
-    }
-    destroy() {}
+vi.mock('@efxlab/efx-watercolor', () => ({
+  createAquarelleEngineAdapter: (options: Record<string, unknown>) => {
+    harness.adapterOptions.push(options);
+    return { dispose: harness.adapterDispose };
   },
 }));
-vi.mock('@efxlab/efx-paint-host/animation', () => ({
-  buildProgressiveStrokeSchedule: harness.buildProgressive,
-  getProgressiveFrameStrokes: harness.getProgressive,
-  buildStaticStrokeSchedule: harness.buildStatic,
-  getStaticFrameStrokes: harness.getStatic,
-  transformRecordedStrokeForHeldPose: harness.transform,
+vi.mock('@efxlab/efx-watercolor/bake', () => ({
+  createAquarelleBake: (_adapter: unknown, options: Record<string, unknown>) => {
+    harness.bakeOptions.push(options);
+    return {
+      bake: async (events: readonly unknown[]) => {
+        harness.bakeEvents.push(events);
+        return harness.bakeResult;
+      },
+      flush: async () => {},
+      beginFlush: () => () => {},
+      dispose: harness.bakeDispose,
+      interrupt: harness.bakeInterrupt,
+      inFlight: 0,
+    };
+  },
 }));
+vi.mock('../engine/AquarelleCanvasLayer', () => ({
+  paperPresetForStudioId: harness.paperPreset,
+}));
+vi.mock('../../../lib/webpFrameCodec', () => ({ encodeWebpFrame: vi.fn() }));
 vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
 
 import { renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
+class RecordingCanvas {
+  readonly __recordingCanvasId: number;
+  readonly ops: MaskOp[] = [];
+  width = 0;
+  height = 0;
+  private context: RecordingContext | null = null;
+
+  constructor() {
+    this.__recordingCanvasId = harness.canvases.length;
+    harness.canvases.push(this);
+  }
+
+  getContext(kind: string): RecordingContext | null {
+    if (kind !== '2d') return null;
+    this.context ??= new RecordingContext(this);
+    return this.context;
+  }
+}
+
 class RecordingContext {
-  readonly ops: MaskOp[];
   globalAlpha = 1;
   globalCompositeOperation = 'source-over';
   private stack: Array<{ globalAlpha: number; globalCompositeOperation: string }> = [];
-  constructor(ops: MaskOp[]) { this.ops = ops; }
-  clearRect(): void { this.ops.push({ type: 'clearRect' }); }
+  constructor(private readonly canvas: RecordingCanvas) {}
+
+  private record(op: MaskOp): void { this.canvas.ops.push(op); }
+  private id(): number { return this.canvas.__recordingCanvasId; }
+
+  clearRect(): void { this.record({ type: 'clearRect', canvas: this.id() }); }
   save(): void {
-    this.ops.push({ type: 'save' });
+    this.record({ type: 'save', canvas: this.id() });
     this.stack.push({ globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
   }
   restore(): void {
-    this.ops.push({ type: 'restore' });
+    this.record({ type: 'restore', canvas: this.id() });
     const top = this.stack.pop();
     if (!top) return;
     this.globalAlpha = top.globalAlpha;
     this.globalCompositeOperation = top.globalCompositeOperation;
   }
-  translate(x: number, y: number): void { this.ops.push({ type: 'translate', x, y }); }
-  rotate(radians: number): void { this.ops.push({ type: 'rotate', radians }); }
-  scale(x: number, y: number): void { this.ops.push({ type: 'scale', x, y }); }
+  translate(x: number, y: number): void { this.record({ type: 'translate', canvas: this.id(), x, y }); }
+  rotate(radians: number): void { this.record({ type: 'rotate', canvas: this.id(), radians }); }
+  scale(x: number, y: number): void { this.record({ type: 'scale', canvas: this.id(), x, y }); }
   drawImage(source?: unknown, ...args: number[]): void {
-    const sourceLabel = source !== null && typeof source === 'object' && 'src' in source
-      ? String((source as { src: unknown }).src)
-      : 'canvas';
-    this.ops.push({ type: 'drawImage', source: sourceLabel, args, globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation });
+    const candidate = source as { __recordingCanvasId?: unknown; src?: unknown } | null;
+    const sourceCanvas = typeof candidate?.__recordingCanvasId === 'number'
+      ? (candidate.__recordingCanvasId as number)
+      : null;
+    const label = sourceCanvas !== null
+      ? `canvas:${sourceCanvas}`
+      : typeof candidate?.src === 'string'
+        ? candidate.src
+        : 'unknown';
+    this.record({
+      type: 'drawImage',
+      canvas: this.id(),
+      source: label,
+      sourceCanvas,
+      args,
+      globalAlpha: this.globalAlpha,
+      composite: this.globalCompositeOperation,
+    });
   }
-}
-
-class RecordingCanvas {
-  width = 0;
-  height = 0;
-  constructor(readonly ops: MaskOp[]) {}
-  getContext(kind: string): RecordingContext | null {
-    return kind === '2d' ? new RecordingContext(this.ops) : null;
+  getImageData(): { data: Uint8ClampedArray } {
+    this.record({ type: 'getImageData', canvas: this.id() });
+    if (harness.failReadback) throw new Error('readback blocked');
+    const data = new Uint8ClampedArray(this.canvas.width * this.canvas.height * 4);
+    data.fill(255);
+    return { data };
   }
+  putImageData(): void { this.record({ type: 'putImageData', canvas: this.id() }); }
 }
 
 class FakeImage {
@@ -110,7 +156,10 @@ class FakeImage {
   width = 4;
   height = 3;
   private currentSrc = '';
-  set src(value: string) { this.currentSrc = value; this.onload?.(); }
+  set src(value: string) {
+    this.currentSrc = value;
+    this.onload?.();
+  }
   get src(): string { return this.currentSrc; }
 }
 
@@ -126,20 +175,76 @@ class RecordingBlob {
   }
 }
 
-function canvas(): HTMLCanvasElement {
-  return { width: 10, height: 10 } as HTMLCanvasElement;
+function setupDom(): void {
+  harness.canvases.length = 0;
+  harness.failReadback = false;
+  vi.stubGlobal('document', {
+    createElement: (tag: string) => (tag === 'canvas' ? new RecordingCanvas() : { replaceChildren: vi.fn() }),
+  });
+  vi.stubGlobal('Image', FakeImage);
+  vi.stubGlobal('HTMLImageElement', FakeImage);
+  harness.objectUrlCalls.length = 0;
+  // WR-02: the object-URL label is derived from the PAYLOAD CONTENT (the
+  // testWebpBytes fixture appends its seed from byte 32), so the mask-op log
+  // can tell distinct reference images apart.
+  vi.stubGlobal('Blob', RecordingBlob);
+  vi.stubGlobal('URL', {
+    createObjectURL: vi.fn((blob: unknown) => {
+      const parts = (blob as { parts?: Uint8Array[] } | null)?.parts ?? [];
+      harness.objectUrlCalls.push({ parts });
+      const seed = Array.from(parts[0]?.slice(32) ?? []).map((code) => String.fromCharCode(code)).join('');
+      return `blob:${seed}`;
+    }),
+    revokeObjectURL: vi.fn(),
+  });
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+}
+
+function strokeEvent(recordedOrder = 1): AquarellePayloadEvent {
+  return {
+    pts: [{ x: 0.25, y: 0.75, p: 0.8, tx: 0, ty: 0, tw: 0, tick: 0 }],
+    ticks: 0,
+    cuisson: 0,
+    motion: null,
+    brushId: 'wc/round-medium',
+    toolOverrides: {},
+    traceSeed: 7,
+    recordedOrder,
+    playFrame: null,
+    color: '#224466',
+    engine: { tool: 'brush', color: '#224466', params: { size: 12 }, brushId: 'wc/round-medium', mutationId: recordedOrder, timestamp: recordedOrder },
+  };
+}
+
+function script(events?: readonly AquarellePayloadEvent[]): RotoPaintScript {
+  return {
+    provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
+    sourceFrame: 0,
+    sourceDisplayFrame: 0,
+    sourceRevision: 1,
+    brushes: [],
+    ...(events === undefined ? {} : { engineId: 'efx-watercolor', aquarelleEvents: events }),
+  };
+}
+
+function washFrame(seed: string, eventIndex = 0) {
+  return { eventIndex, strokeIndex: eventIndex, tick: 0, bytes: testWebpBytes(seed), width: 10, height: 10 };
+}
+
+function stagedBake(seeds: readonly string[]): void {
+  harness.bakeResult = { ok: true, frames: seeds.map((seed, index) => washFrame(seed, index)) };
 }
 
 function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}): Parameters<typeof renderRotoRevealFrames>[0] {
   const canonicalStart = extra.canonicalStart ?? 4;
   const frameCount = extra.frameCount ?? 1;
-  // WR-02 (260920-kov): the reference now carries a per-application-frame bytes
-  // map. The default mirrors the store's single-image shape — ONE shared
-  // instance resolving every frame of the span — which is also the decode-once
-  // case (the renderer caches by payload identity).
+  // WR-02: the reference carries a per-application-frame bytes map. The default
+  // mirrors the store's single-image shape — ONE shared instance resolving every
+  // frame of the span — which is also the decode-once case.
   const sharedBytes = testWebpBytes('ref');
   return {
-    script: { provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 }, sourceFrame: 0, sourceDisplayFrame: 0, sourceRevision: 1, brushes: [] },
+    script: script([strokeEvent()]),
     frameCount: 1,
     canonicalStart: 4,
     motion: { deformation: 0, position: 0 },
@@ -155,74 +260,7 @@ function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}
   };
 }
 
-const point = (index: number) => ({ x: index, y: index * 2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 1 });
-const stroke = (tool: 'paint' | 'erase', color: string | null, points: number, timestamp: number): PaintStroke => ({
-  tool,
-  color,
-  timestamp,
-  points: Array.from({ length: points }, (_, index) => point(index)),
-  params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
-});
-
-function scriptWithStrokes(): RotoPaintScript {
-  return {
-    provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
-    sourceFrame: 0,
-    sourceDisplayFrame: 0,
-    sourceRevision: 1,
-    brushes: [
-      { primary: stroke('paint', '#123456', 3, 1), continuations: [stroke('erase', null, 2, 2)] },
-      { primary: stroke('paint', '#654321', 1, 3), continuations: [] },
-    ],
-  };
-}
-
-/** Route the mocked schedule pair like the real modules: builder returns the stroke list, accessor applies the transform per frame. */
-function enableScheduleFlow(): void {
-  harness.buildStatic.mockImplementation((strokes: PaintStroke[]) => strokes);
-  harness.buildProgressive.mockImplementation((strokes: PaintStroke[]) => strokes);
-  const reveal = (schedule: PaintStroke[], frameIndex: number, transform?: (entry: PaintStroke, frame: number, index: number) => PaintStroke) =>
-    schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: (entry as { pts?: unknown[]; points?: unknown[] }).pts?.length ?? (entry as { points?: unknown[] }).points?.length ?? 0 }));
-  harness.getStatic.mockImplementation(reveal);
-  harness.getProgressive.mockImplementation(reveal);
-}
-
-function setupDom(): void {
-  harness.maskOps.length = 0;
-  harness.canvases.length = 0;
-  vi.stubGlobal('document', {
-    createElement: (tag: string) => {
-      if (tag === 'canvas') {
-        const created = new RecordingCanvas(harness.maskOps);
-        harness.canvases.push(created);
-        return created;
-      }
-      return { replaceChildren: vi.fn() };
-    },
-  });
-  vi.stubGlobal('Image', FakeImage);
-  vi.stubGlobal('HTMLImageElement', FakeImage);
-  harness.objectUrlCalls.length = 0;
-  // WR-02 (260920-kov): the object-URL label is derived from the PAYLOAD
-  // CONTENT (the testWebpBytes fixture appends its seed from byte 32), so the
-  // mask-op log can tell distinct reference images apart. A constant label
-  // cannot express "application frame N drew source image N".
-  vi.stubGlobal('Blob', RecordingBlob);
-  vi.stubGlobal('URL', {
-    createObjectURL: vi.fn((blob: unknown) => {
-      const parts = (blob as { parts?: Uint8Array[] } | null)?.parts ?? [];
-      harness.objectUrlCalls.push({ parts });
-      const seed = Array.from(parts[0]?.slice(32) ?? []).map((code) => String.fromCharCode(code)).join('');
-      return `blob:${seed}`;
-    }),
-    revokeObjectURL: vi.fn(),
-  });
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
-  vi.stubGlobal('cancelAnimationFrame', vi.fn());
-}
-
 function setupHarness(): void {
-  harness.scriptAlpha = canvas();
   harness.encode.mockReset().mockImplementation(async (_canvas: HTMLCanvasElement, destination: number) => ({
     frameIndex: 0,
     appFrame: destination,
@@ -230,14 +268,78 @@ function setupHarness(): void {
     width: 10,
     height: 10,
   }));
-  harness.renderedFrames.length = 0;
-  harness.transform.mockReset().mockImplementation((entry: PaintStroke) => entry);
-  harness.buildStatic.mockReset();
-  harness.buildProgressive.mockReset();
-  harness.getStatic.mockReset();
-  harness.getProgressive.mockReset();
-  enableScheduleFlow();
+  harness.bakeEvents.length = 0;
+  harness.bakeOptions.length = 0;
+  harness.bakeDispose.mockReset();
+  harness.bakeInterrupt.mockReset();
+  harness.adapterOptions.length = 0;
+  harness.adapterDispose.mockReset();
+  harness.paperPreset.mockClear();
+  stagedBake(['wash-0']);
 }
+
+/** The mask canvas is the one that ever applies `destination-in`. */
+function maskCanvasIndices(): number[] {
+  return harness.canvases
+    .map((canvas, index) => ({ canvas, index }))
+    .filter(({ canvas }) => canvas.ops.some((op) => op.type === 'drawImage' && op.composite === 'destination-in'))
+    .map(({ index }) => index);
+}
+
+/** Ops of the mask canvases only — wash-canvas draws are not references. */
+function maskOps(): MaskOp[] {
+  return maskCanvasIndices().flatMap((index) => harness.canvases[index]!.ops);
+}
+
+function referenceDraws(): Array<Extract<MaskOp, { type: 'drawImage' }>> {
+  return maskOps().filter(
+    (op): op is Extract<MaskOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.source.startsWith('blob:'),
+  );
+}
+
+/** True when ANY canvas received a `putImageData` (transmittanceToAlpha's output). */
+function wroteConvertedPixels(): boolean {
+  return harness.canvases.some((canvas) => canvas.ops.some((op) => op.type === 'putImageData'));
+}
+
+describe('renderRotoRevealFrames refuses an old Brush script (261027-klx)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  it('refuses a script with no recorded wash timeline before any bake is created', async () => {
+    await expect(renderRotoRevealFrames(input({ script: script() }))).rejects
+      .toThrow('Reveal needs a Water color script — this script has no recorded wash timeline.');
+    expect(harness.bakeOptions).toHaveLength(0);
+    expect(harness.adapterOptions).toHaveLength(0);
+    expect(harness.encode).not.toHaveBeenCalled();
+  });
+
+  it('refuses a legacy engine id with an empty timeline the same way', async () => {
+    await expect(renderRotoRevealFrames(input({ script: { ...script([]), engineId: 'efx-physic-paint' } }))).rejects
+      .toThrow('Reveal needs a Water color script — this script has no recorded wash timeline.');
+    expect(harness.bakeOptions).toHaveLength(0);
+  });
+
+  it('rejects with AbortError before dispatch when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(renderRotoRevealFrames(input({ signal: controller.signal }))).rejects.toMatchObject({ name: 'AbortError' });
+    expect(harness.bakeOptions).toHaveLength(0);
+  });
+
+  const invalidInputs: Array<[string, Partial<Parameters<typeof renderRotoRevealFrames>[0]>]> = [
+    ['frame count zero', { frameCount: 0 }],
+    ['non-integer canonical start', { canonicalStart: 1.5 }],
+    ['zero canvas size', { size: { width: 0, height: 10 } }],
+    ['unsafe aggregate size', { frameCount: 2_000, size: { width: 4096, height: 4096 } }],
+  ];
+  it.each(invalidInputs)('keeps the render-input bounds check for %s', async (_label, extra) => {
+    await expect(renderRotoRevealFrames(input(extra))).rejects.toBeInstanceOf(RangeError);
+    expect(harness.bakeOptions).toHaveLength(0);
+  });
+});
 
 describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
   beforeEach(() => {
@@ -245,174 +347,160 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     setupHarness();
   });
 
-  it('produces one staged key per frame across the span, straight-alpha encoded', async () => {
-    const staged = await renderRotoRevealFrames(input({ frameCount: 3, canonicalStart: 15 }));
+  it('bakes the recorded wash timeline and stages one key per frame', async () => {
+    const events = [strokeEvent(1), strokeEvent(2)];
+    stagedBake(['wash-0', 'wash-1', 'wash-2']);
+    const staged = await renderRotoRevealFrames(input({ script: script(events), frameCount: 3, canonicalStart: 15 }));
+
     expect(staged.map((frame) => frame.appFrame)).toEqual([15, 16, 17]);
     expect(staged.every((frame) => frame.source === 'real-key')).toBe(true);
+    expect(staged.map((frame) => frame.frameIndex)).toEqual([0, 1, 2]);
     expect(harness.encode).toHaveBeenCalledTimes(3);
+    // The ONE bake: the script's own timeline, no re-flattening.
+    expect(harness.bakeEvents).toHaveLength(1);
+    expect(harness.bakeEvents[0]).toBe(events);
   });
 
-  it('draws the reference AS PLACED at full opacity, then applies the coverage alpha as destination-in (D-14/D-17/D-18)', async () => {
+  it('draws the reference AS PLACED at full opacity, then applies the mask as destination-in (D-14/D-17/D-18)', async () => {
     await renderRotoRevealFrames(input({
       reference: { bytesByAppFrame: new Map([[4, testWebpBytes('ref')]]), transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
     }));
-    const ops = harness.maskOps;
-    // The reference draw: save → translate(center + x·zoom, center + y·zoom) → rotate → scale → drawImage(ref, full alpha) → restore
-    const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'blob:ref');
-    expect(referenceDraw).toBeGreaterThan(-1);
-    const draw = ops[referenceDraw] as Extract<MaskOp, { type: 'drawImage' }>;
-    expect(draw.globalAlpha).toBe(1); // D-18: full source opacity, guide opacity ignored
-    expect(draw.globalCompositeOperation).toBe('source-over');
-    // The mask: destination-in over the coverage alpha canvas
-    const maskDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    expect(maskDraw).toBeGreaterThan(referenceDraw);
-    const mask = ops[maskDraw] as Extract<MaskOp, { type: 'drawImage' }>;
-    expect(mask.globalCompositeOperation).toBe('destination-in');
-    // The transform sequence: translate(5 + 2, 5 + 3) → rotate(45deg) → scale(1.5, 0.5)
+    const maskId = maskCanvasIndices()[0]!;
+    const ops = harness.canvases[maskId]!.ops;
+
+    const referenceDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'blob:ref');
+    expect(referenceDrawIndex).toBeGreaterThan(-1);
+    const draw = ops[referenceDrawIndex] as Extract<MaskOp, { type: 'drawImage' }>;
+    expect(draw.globalAlpha).toBe(1); // D-18: full source opacity
+    expect(draw.composite).toBe('source-over');
+
+    const maskDrawIndex = ops.findIndex((op) => op.type === 'drawImage' && op.composite === 'destination-in');
+    expect(maskDrawIndex).toBeGreaterThan(referenceDrawIndex);
+
     const translate = ops.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
-    expect(translate).toEqual({ type: 'translate', x: 7, y: 8 });
+    expect(translate).toEqual({ type: 'translate', canvas: maskId, x: 7, y: 8 });
     const rotate = ops.find((op) => op.type === 'rotate') as Extract<MaskOp, { type: 'rotate' }>;
     expect(rotate.radians).toBeCloseTo((45 * Math.PI) / 180);
     const scale = ops.find((op) => op.type === 'scale') as Extract<MaskOp, { type: 'scale' }>;
-    expect(scale).toEqual({ type: 'scale', x: 1.5, y: 0.5 });
+    expect(scale).toEqual({ type: 'scale', canvas: maskId, x: 1.5, y: 0.5 });
   });
 
   it('scales the reference draw by zoom — the ghost math — so baked keys overlay the ghost (G-52-2a)', async () => {
-    // Working size 10×10 with zoom 0.5 (a 20×20 project): the reference image
-    // (4×3) draws at 2×1.5 and the transform translation scales by zoom.
     await renderRotoRevealFrames(input({
       reference: { bytesByAppFrame: new Map([[4, testWebpBytes('ref')]]), transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
     }));
-    const ops = harness.maskOps;
+    const maskId = maskCanvasIndices()[0]!;
+    const ops = harness.canvases[maskId]!.ops;
     const translate = ops.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
-    expect(translate).toEqual({ type: 'translate', x: 5 + 2 * 0.5, y: 5 + 3 * 0.5 });
+    expect(translate).toEqual({ type: 'translate', canvas: maskId, x: 5 + 2 * 0.5, y: 5 + 3 * 0.5 });
     const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'blob:ref') as Extract<MaskOp, { type: 'drawImage' }>;
     expect(referenceDraw.args).toEqual([-1, -0.75, 2, 1.5]);
   });
 
+  it('masks with the CONVERTED pigment-alpha canvas, never the raw transmittance wash', async () => {
+    await renderRotoRevealFrames(input());
+    // The wash canvas is the one that received the decoded wash image AND a
+    // pixel readback (transmittanceToAlpha).
+    const washCanvas = harness.canvases.find((canvas) =>
+      canvas.ops.some((op) => op.type === 'drawImage' && op.source.startsWith('blob:wash'))
+      && canvas.ops.some((op) => op.type === 'getImageData'));
+    expect(washCanvas).toBeDefined();
+    // transmittanceToAlpha writes the converted pixels into a NEW canvas.
+    expect(wroteConvertedPixels()).toBe(true);
+
+    const maskId = maskCanvasIndices()[0]!;
+    const maskDraw = harness.canvases[maskId]!.ops.find(
+      (op): op is Extract<MaskOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.composite === 'destination-in',
+    )!;
+    // If the mask drew the wash canvas directly the whole photo would be
+    // revealed (opaque transmittance = alpha 1 everywhere).
+    expect(maskDraw.sourceCanvas).not.toBe((washCanvas as unknown as RecordingCanvas).__recordingCanvasId);
+    expect(maskDraw.args).toEqual([0, 0, 10, 10]);
+  });
+
+  it('fails loudly when the wash pixels cannot be converted to pigment alpha', async () => {
+    harness.failReadback = true;
+    await expect(renderRotoRevealFrames(input())).rejects.toThrow('Could not convert the aquarelle wash to pigment alpha.');
+  });
+
   it('is deterministic: the same script + reference + motion produce identical staged output', async () => {
-    const first = await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
-    harness.renderedFrames.length = 0;
-    harness.maskOps.length = 0;
-    const second = await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
+    stagedBake(['wash-a', 'wash-b']);
+    const first = await renderRotoRevealFrames(input({ frameCount: 2, script: script([strokeEvent()]) }));
+    harness.canvases.length = 0;
+    const second = await renderRotoRevealFrames(input({ frameCount: 2, script: script([strokeEvent()]) }));
     expect(second.map((frame) => frame.bytes)).toEqual(first.map((frame) => frame.bytes));
     expect(second.map((frame) => frame.appFrame)).toEqual(first.map((frame) => frame.appFrame));
   });
-
-  it('releases the temporary coverage canvas but keeps the registry-owned mask canvas alive (G-52-10)', async () => {
-    await renderRotoRevealFrames(input());
-    expect(harness.scriptAlpha?.width).toBe(0);
-    expect(harness.scriptAlpha?.height).toBe(0);
-    // The mask canvas is adopted by the alpha-canvas registry inside
-    // encodeRotoFrameFromCanvas — releasing it zeroed the compositor's
-    // drawImage source (the stuck-dialog bug).
-    expect(harness.canvases.length).toBeGreaterThan(0);
-    for (const created of harness.canvases) {
-      expect([created.width, created.height]).toEqual([10, 10]);
-    }
-  });
 });
 
-describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', () => {
+describe('renderRotoRevealFrames bake window and paper (52-01 Task 2)', () => {
   beforeEach(() => {
     setupDom();
     setupHarness();
   });
 
-  it('routes mode progressive through the progressive schedule pair, never the static pair (RVL-03 motion)', async () => {
-    await renderRotoRevealFrames(input({ mode: 'progressive' }));
-    expect(harness.buildProgressive).toHaveBeenCalledTimes(1);
-    expect(harness.getProgressive).toHaveBeenCalledTimes(1);
-    expect(harness.buildStatic).not.toHaveBeenCalled();
-    expect(harness.getStatic).not.toHaveBeenCalled();
+  it('progressive bakes exactly frameCount frames', async () => {
+    stagedBake(['w0', 'w1', 'w2', 'w3']);
+    await renderRotoRevealFrames(input({ mode: 'progressive', frameCount: 4 }));
+    expect(harness.bakeOptions[0]!.frameCount).toBe(4);
+    expect(harness.encode).toHaveBeenCalledTimes(4);
   });
 
-  it('routes mode static through the static schedule pair, never the progressive pair (RVL-03 static)', async () => {
-    await renderRotoRevealFrames(input({ mode: 'static' }));
-    expect(harness.buildStatic).toHaveBeenCalledTimes(1);
-    expect(harness.getStatic).toHaveBeenCalledTimes(1);
-    expect(harness.buildProgressive).not.toHaveBeenCalled();
-    expect(harness.getProgressive).not.toHaveBeenCalled();
+  it('static bakes ONE settled wash and holds it across the span', async () => {
+    stagedBake(['settled']);
+    const staged = await renderRotoRevealFrames(input({ mode: 'static', frameCount: 3, canonicalStart: 15 }));
+    expect(harness.bakeOptions[0]!.frameCount).toBe(1);
+    expect(staged.map((frame) => frame.appFrame)).toEqual([15, 16, 17]);
+    // One wash decode, three masks: the held wash is reused, never re-baked.
+    expect(harness.bakeEvents).toHaveLength(1);
+    expect(harness.encode).toHaveBeenCalledTimes(3);
+    expect(maskCanvasIndices()).toHaveLength(3);
   });
 
-  it('empty coverage (no strokes on a frame) still runs the mask composite — the destination-in keeps nothing (RVL-02 empty)', async () => {
-    // A script with zero brushes produces an empty frameStrokes list; the engine
-    // returns the coverage alpha canvas (empty in production), and the mask
-    // composite still runs — reference pixels survive only where coverage is.
-    await renderRotoRevealFrames(input({ script: { ...scriptWithStrokes(), brushes: [] } }));
-    expect(harness.renderedFrames).toHaveLength(1);
-    expect(harness.renderedFrames[0]).toEqual([]);
-    const maskDraw = harness.maskOps.findIndex((op) => op.type === 'drawImage' && op.source === 'canvas');
-    expect(maskDraw).toBeGreaterThan(-1);
+  it('forwards the Studio paper to both the adapter and the bake', async () => {
+    const aquarellePaper = { paperId: 'paper-x', grainStrength: 0.4, grainScale: 1.5 };
+    await renderRotoRevealFrames(input({ aquarellePaper }));
+    expect(harness.paperPreset).toHaveBeenCalledWith('paper-x');
+    expect(harness.adapterOptions[0]).toMatchObject({ width: 10, height: 10, paperPreset: 'preset:paper-x', paperStrength: 0.4 });
+    expect(harness.bakeOptions[0]!.paper).toEqual(aquarellePaper);
   });
 
-  it('full coverage bakes the full reference: the reference draw precedes the destination-in mask on every frame (RVL-02 full)', async () => {
-    await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
-    // Two frames → two reference draws + two destination-in masks.
-    const referenceDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'blob:ref');
-    const maskDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'canvas');
-    expect(referenceDraws).toHaveLength(2);
-    expect(maskDraws).toHaveLength(2);
-    for (const mask of maskDraws) {
-      expect((mask as Extract<MaskOp, { type: 'drawImage' }>).globalCompositeOperation).toBe('destination-in');
-    }
+  it('omits the paper from the bake when no Studio paper is supplied', async () => {
+    await renderRotoRevealFrames(input());
+    expect(harness.paperPreset).not.toHaveBeenCalled();
+    expect(harness.adapterOptions[0]!.paperPreset).toBeUndefined();
+    expect(harness.bakeOptions[0]!.paper).toBeUndefined();
   });
 
-  it('partial coverage produces soft edges: the destination-in keeps the reference RGB unmodified (straight alpha, Pitfall 1)', async () => {
-    // The destination-in composite never premultiplies: the reference draw uses
-    // source-over at full alpha, and the mask only clips alpha. The encode
-    // boundary is the existing straight-alpha `encodeRotoFrameFromCanvas`.
-    await renderRotoRevealFrames(input({ script: scriptWithStrokes() }));
-    const referenceDraw = harness.maskOps.find((op) => op.type === 'drawImage' && op.source === 'blob:ref') as Extract<MaskOp, { type: 'drawImage' }>;
-    expect(referenceDraw.globalAlpha).toBe(1);
-    expect(referenceDraw.globalCompositeOperation).toBe('source-over');
-    // No alpha-blend or multiply op is ever set on the mask canvas.
-    expect(harness.maskOps.some((op) => op.type === 'setComposite')).toBe(false);
-  });
+  it('poses the flattened coverage per OUTPUT frame when motion is set', async () => {
+    stagedBake(['w0', 'w1']);
+    await renderRotoRevealFrames(input({ frameCount: 2, canonicalStart: 15, motion: { deformation: 60, position: 40 } }));
+    // Per output frame: wash canvas + pigment-alpha canvas + posed sheet
+    // canvas + mask canvas.
+    expect(harness.canvases).toHaveLength(8);
+    expect(maskCanvasIndices()).toHaveLength(2);
 
-  it('progressive coverage extends frame after frame: the schedule accessor is called once per frame (RVL-03 motion)', async () => {
-    await renderRotoRevealFrames(input({ mode: 'progressive', frameCount: 4, script: scriptWithStrokes() }));
-    expect(harness.getProgressive).toHaveBeenCalledTimes(4);
-    expect(harness.renderedFrames).toHaveLength(4);
-  });
-
-  it('static coverage replays the full stroke set on every frame (RVL-03 static)', async () => {
-    await renderRotoRevealFrames(input({ mode: 'static', frameCount: 3, script: scriptWithStrokes() }));
-    expect(harness.getStatic).toHaveBeenCalledTimes(3);
-    expect(harness.renderedFrames).toHaveLength(3);
-    for (const frame of harness.renderedFrames) {
-      expect(frame.map((entry) => entry.stroke.color)).toEqual(['#123456', null, '#654321']);
-    }
-  });
-
-  it('the eraser is a normal key eraser afterward: erase strokes pass through the schedule untouched (RVL-02 eraser)', async () => {
-    await renderRotoRevealFrames(input({ mode: 'static', script: scriptWithStrokes() }));
-    const rendered = harness.renderedFrames[0].map((entry) => entry.stroke);
-    expect(rendered.map((entry) => entry.tool)).toEqual(['paint', 'erase', 'paint']);
-    expect(rendered.map((entry) => entry.color)).toEqual(['#123456', null, '#654321']);
+    // Zero motion keeps the identity path (no posed sheet canvas) and the mask
+    // still runs once per frame.
+    harness.canvases.length = 0;
+    await renderRotoRevealFrames(input({ frameCount: 2, canonicalStart: 15 }));
+    expect(harness.canvases).toHaveLength(6);
+    expect(maskCanvasIndices()).toHaveLength(2);
   });
 });
 
-// WR-02 (260920-kov): the D-15 frame-aligned law at the RENDERER boundary.
-// The bake used to decode ONE reference image before the frame loop and reuse
-// it for every frame of the span — the second half of the WR-02 surface. The
-// reference now arrives as a per-application-frame bytes map resolved (and
-// fail-closed pre-validated) by the store, and the render loop picks the image
-// for the frame it is drawing.
 describe('renderRotoRevealFrames frame-aligned reference (WR-02, 260920-kov)', () => {
   beforeEach(() => {
     setupDom();
     setupHarness();
   });
 
-  /** The ordered labels of the reference draws, one per frame. */
   function referenceDrawLabels(): string[] {
-    return harness.maskOps
-      .filter((op): op is Extract<MaskOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.source.startsWith('blob:'))
-      .map((op) => op.source);
+    return referenceDraws().map((op) => op.source);
   }
 
   it('WR-02: draws image N on application frame N across the span (D-15)', async () => {
+    stagedBake(['w0', 'w1', 'w2']);
     const bytesByAppFrame = new Map([
       [15, testWebpBytes('ref-0')],
       [16, testWebpBytes('ref-1')],
@@ -421,17 +509,15 @@ describe('renderRotoRevealFrames frame-aligned reference (WR-02, 260920-kov)', (
     await renderRotoRevealFrames(input({
       frameCount: 3,
       canonicalStart: 15,
-      script: scriptWithStrokes(),
       reference: { bytesByAppFrame, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     }));
 
-    // One reference draw per frame, in frame order, each the image that
-    // resolves at that application frame.
     expect(referenceDrawLabels()).toEqual(['blob:ref-0', 'blob:ref-1', 'blob:ref-2']);
     expect(harness.encode).toHaveBeenCalledTimes(3);
   });
 
   it('WR-02: a frame with no reference entry fails closed instead of drawing a stale image', async () => {
+    stagedBake(['w0', 'w1', 'w2']);
     const bytesByAppFrame = new Map([
       [15, testWebpBytes('ref-0')],
       // frame 16 deliberately absent — the store pre-validates, so reaching
@@ -441,83 +527,82 @@ describe('renderRotoRevealFrames frame-aligned reference (WR-02, 260920-kov)', (
     await expect(renderRotoRevealFrames(input({
       frameCount: 3,
       canonicalStart: 15,
-      script: scriptWithStrokes(),
       reference: { bytesByAppFrame, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     }))).rejects.toThrow('reference image for frame 16');
-    // Fail closed: frame 15 renders, frame 16 THROWS before any draw — the
-    // reference is never substituted, and the staged prefix is discarded by
-    // the same `staged.length = 0` catch the abort legs rely on.
     expect(referenceDrawLabels()).toEqual(['blob:ref-0']);
     expect(harness.encode).toHaveBeenCalledTimes(1);
   });
 
   it('WR-02: each DISTINCT payload decodes once — clamped repeats reuse the decoded image (no decode storm)', async () => {
-    // The single-image reference: ONE payload instance resolving every frame of
-    // a 3-frame span (exactly what the store hands for a one-image reference).
-    const shared = testWebpBytes('ref-a');
+    // ONE wash payload instance across the three frames (a settled wash) and
+    // ONE reference payload resolving the whole span: exactly what the store
+    // hands for a clamped repeat.
+    const sharedWash = testWebpBytes('shared-wash');
+    harness.bakeResult = { ok: true, frames: [sharedWash, sharedWash, sharedWash].map((bytes, index) => ({ eventIndex: index, strokeIndex: index, tick: 0, bytes, width: 10, height: 10 })) };
+    const sharedReference = testWebpBytes('ref-b');
     await renderRotoRevealFrames(input({
       frameCount: 3,
       canonicalStart: 15,
-      script: scriptWithStrokes(),
-      reference: { bytesByAppFrame: new Map([[15, shared], [16, shared], [17, shared]]), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+      reference: { bytesByAppFrame: new Map([[15, sharedReference], [16, sharedReference], [17, sharedReference]]), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
     }));
 
-    expect(referenceDrawLabels()).toEqual(['blob:ref-a', 'blob:ref-a', 'blob:ref-a']);
-    // THREE frames, ONE decode: the count is the number of distinct payloads,
-    // never the frame count (the project's decode-storm lesson).
-    expect(harness.objectUrlCalls).toHaveLength(1);
+    expect(referenceDrawLabels()).toEqual(['blob:ref-b', 'blob:ref-b', 'blob:ref-b']);
+    // TWO distinct payloads (one wash, one reference) → two decodes for three
+    // frames, never one per frame (the project's decode-storm lesson).
+    expect(harness.objectUrlCalls).toHaveLength(2);
   });
 
   it('WR-02: a multi-image span decodes each distinct payload exactly once', async () => {
+    stagedBake(['w0', 'w1', 'w2']);
     await renderRotoRevealFrames(input({
       frameCount: 3,
       canonicalStart: 15,
-      script: scriptWithStrokes(),
       reference: {
         bytesByAppFrame: new Map([[15, testWebpBytes('ref-0')], [16, testWebpBytes('ref-1')], [17, testWebpBytes('ref-2')]]),
         transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
         zoom: 1,
       },
     }));
-    expect(harness.objectUrlCalls).toHaveLength(3);
+    // three wash payloads + three reference payloads
+    expect(harness.objectUrlCalls).toHaveLength(6);
   });
 });
 
-describe('renderRotoRevealFrames abort (52-01 D-11 — an interrupted bake stages no keys)', () => {
+describe('renderRotoRevealFrames abort and failure disposal (52-01 D-11)', () => {
   beforeEach(() => {
     setupDom();
     setupHarness();
   });
 
-  it('rejects with AbortError when the bake is aborted before it starts — nothing renders (throwIfAborted)', async () => {
-    const controller = new AbortController();
-    controller.abort();
-    await expect(renderRotoRevealFrames(input({ signal: controller.signal }))).rejects.toMatchObject({ name: 'AbortError' });
-    // Zero frames rendered, zero encodes — the bake never produces output to stage.
-    expect(harness.renderedFrames).toHaveLength(0);
-    expect(harness.encode).not.toHaveBeenCalled();
-  });
-
-  it('rejects with AbortError when aborted mid-bake after the first frame — never resolves the already-staged frame (D-11)', async () => {
+  it('rejects with AbortError when aborted mid-loop after the first frame — the staged prefix is discarded', async () => {
+    stagedBake(['w0', 'w1', 'w2']);
     const controller = new AbortController();
     let encodeCalls = 0;
     harness.encode.mockImplementation(async (_canvas: HTMLCanvasElement, destination: number) => {
       encodeCalls += 1;
-      // Interrupt on the second frame, AFTER frame index 0 was fully staged —
-      // the harshest seam: a partial staged key already exists inside the loop.
       if (encodeCalls === 2) controller.abort();
-      return {
-        frameIndex: 0,
-        appFrame: destination,
-        dataUrl: `data:image/png;base64,encoded-${destination}`,
-        width: 10,
-        height: 10,
-      };
+      return { frameIndex: 0, appFrame: destination, bytes: testWebpBytes(`encoded-${destination}`), width: 10, height: 10 };
     });
     await expect(renderRotoRevealFrames(input({ frameCount: 3, signal: controller.signal }))).rejects.toMatchObject({ name: 'AbortError' });
-    // The remaining frame never renders — the loop stopped at the second frame
-    // (two encodes, not three), and the promise rejected instead of resolving
-    // the partial [frame 0] output.
     expect(encodeCalls).toBe(2);
+    expect(harness.bakeDispose).toHaveBeenCalledTimes(1);
+    expect(harness.adapterDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a failed bake and still disposes the bake and adapter', async () => {
+    harness.bakeResult = { ok: false, reason: 'failed' };
+    await expect(renderRotoRevealFrames(input())).rejects.toThrow('Aquarelle reveal bake failed.');
+    expect(harness.bakeDispose).toHaveBeenCalledTimes(1);
+    expect(harness.adapterDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a cancelled bake with the cancellation wording', async () => {
+    harness.bakeResult = { ok: false, reason: 'cancelled' };
+    await expect(renderRotoRevealFrames(input())).rejects.toThrow('Aquarelle reveal bake cancelled.');
+  });
+
+  it('rejects a bake that produced no frames instead of staging an empty span', async () => {
+    harness.bakeResult = { ok: true, frames: [] };
+    await expect(renderRotoRevealFrames(input({ frameCount: 2 }))).rejects.toThrow('Aquarelle reveal bake produced no frames.');
   });
 });

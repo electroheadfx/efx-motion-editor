@@ -44,6 +44,7 @@ import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
+import { createAquarelleEnginePort, type AquarelleEnginePort } from './aquarelleEnginePort';
 // debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
 // did not reach the Studio capture handler. Installs nothing in production.
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
@@ -293,6 +294,14 @@ export function AquarelleCanvasLayer(props: {
    * UV space and re-bakes through the shared Apply path.
    */
   onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
+  /**
+   * ENGINE PORT (261027-klx Wave 3, Option A): the ONE narrow typed surface
+   * Roto + the Studio may hold over the watercolor engine. Published once per
+   * engine instance after construction; nulled on cleanup. Consumers must keep
+   * this exact object — the Roto clipboard keys accepted-target lookups by
+   * port identity, so a second port over the same engine reads null.
+   */
+  onEnginePortReady?: (port: AquarelleEnginePort | null) => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -313,6 +322,7 @@ export function AquarelleCanvasLayer(props: {
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
   const onTransformStrokesRef = useRef(props.onTransformStrokes);
+  const onEnginePortReadyRef = useRef(props.onEnginePortReady);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -330,6 +340,7 @@ export function AquarelleCanvasLayer(props: {
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
   onTransformStrokesRef.current = props.onTransformStrokes;
+  onEnginePortReadyRef.current = props.onEnginePortReady;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -344,6 +355,9 @@ export function AquarelleCanvasLayer(props: {
     cleanupRef.current?.();
     cleanupRef.current = null;
     engineRef.current = null;
+    // ENGINE PORT: no live engine until the constructor below succeeds, so a
+    // consumer must not be able to reach the previous (or a half-built) one.
+    onEnginePortReadyRef.current?.(null);
     if (!canvas) return;
 
     // PLAY FIDELITY: the last recorded stroke awaiting its measured settle
@@ -421,6 +435,10 @@ export function AquarelleCanvasLayer(props: {
     }
     (engine as unknown as { __samples?: RawSample[] }).__samples = [];
     engineRef.current = engine;
+    // ENGINE PORT (261027-klx): ONE port per engine instance. Roto and the
+    // Studio must both hold this object — the accepted-target WeakMap is keyed
+    // by port identity, so a second port reads every lookup as null.
+    onEnginePortReadyRef.current?.(createAquarelleEnginePort(() => engineRef.current));
 
     // 261027-gh9e NATIVE PRESSURE BRIDGE: on macOS a tablet often reaches the
     // webview as pointerType 'mouse' with no pressure. The Rust side reads the
@@ -702,6 +720,9 @@ export function AquarelleCanvasLayer(props: {
       for (const timer of pendingSettleTimers) window.clearTimeout(timer);
       pendingSettleTimers.clear();
       cancelAnimationFrame(raf);
+      // ENGINE PORT: drop the typed surface BEFORE the engine dies so no
+      // consumer can call into a destroyed instance.
+      onEnginePortReadyRef.current?.(null);
       engine.destroy();
       engineRef.current = null;
       // The next mount starts on a blank sheet — never inherit painted state.

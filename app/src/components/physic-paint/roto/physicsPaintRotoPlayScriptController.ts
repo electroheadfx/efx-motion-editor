@@ -25,7 +25,6 @@ import {
   resolvePhysicPaintRotoGroupEffectiveEnd,
 } from './physicsPaintRotoPhysicalResolver';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
-import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isWebpBytes } from '../../../types/physicPaint';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
@@ -1538,17 +1537,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           throw new Error('Regenerate rejected — saved Script changed.');
         }
       }
-      const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
-      // 56-08 consume branch: aquarelle scripts bake through createAquarelleBake
-      // with mode 'flush-survives-navigation' (AQUA-07 / D-21). The engine-1
-      // path below is byte-stable — this is a branch, not a rewrite.
-      const staged = snapshot.engineId === 'efx-watercolor'
-        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode })
-        : await renderRotoPlayScriptFrames({
-            script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
-            onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },
-          });
+      // 56-08 consume branch: every script bakes through createAquarelleBake
+      // with mode 'flush-survives-navigation' (AQUA-07 / D-21). 261027-klx:
+      // watercolor is the only engine, so there is no engine-1 fallback — an
+      // old Brush envelope never reaches this point (the library refuses it).
+      const staged = await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode });
       assertCurrent(acceptedGeneration);
       const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
       assertCurrent(acceptedGeneration);

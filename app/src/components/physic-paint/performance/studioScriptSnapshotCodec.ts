@@ -1,37 +1,39 @@
 // ============================================================
-//  studioScriptSnapshotCodec — the SNAP v1 container
-//  (quick 261023-l35). Pure TS: no DOM, no IPC, no filesystem.
+//  studioScriptSnapshotCodec — the SNAP v5 container
+//  (quick 261023-l35; v5 = quick 261027-klx). Pure TS: no DOM,
+//  no IPC, no filesystem.
 //
-//  One file holds BOTH Studio script stores for one
+//  One file holds the Studio's watercolor script for one
 //  project/layer/track key, so restore is a single disk read:
 //
-//    magic 'SNP1' (4) | u16 version=4 | u16 flags=0 | u8 railCleanupDone
+//    magic 'SNP1' (4) | u16 version=5 | u16 flags=0 | u8 railCleanupDone
 //    u16 + UTF-8 projectId
 //    u16 + UTF-8 layerId
 //    u16 + UTF-8 trackId
 //    u32 watercolorByteLength  | watercolor body
-//    u32 brushByteLength       | brush body
-//    u32 anchorByteLength      | anchor body      (v3+)
-//    u32 durableBaseByteLength | durable-base body (v4+)
+//    u32 anchorByteLength      | anchor body
+//    u32 durableBaseByteLength | durable-base body
 //
 //  The watercolor body IS the proven AQTL v1 buffer
 //  (encodeScriptTimelineBinary) — the IDs, order, playFrame,
 //  params, toolOverrides, cuisson and Dry events all ride there.
 //  There is deliberately no JSON fallback.
 //
-//  v3 adds the key-anchor section: AQTL carries no key identity, so
-//  every watercolor stroke mutationId is bound to the physical KEY it
-//  was captured on. A restore seeds a stroke only when the file
-//  anchor equals the live key at that playFrame; without this a
-//  deleted key's strokes re-seeded into whatever new key later took
-//  the same frame number (six phantom guides after one new stroke).
+//  The key-anchor section: AQTL carries no key identity, so every
+//  stroke mutationId is bound to the physical KEY it was captured
+//  on. A restore seeds a stroke only when the file anchor equals
+//  the live key at that playFrame.
 //
-//  The brush body is its own versioned block:
-//    u16 version=1 | u16 reserved=0 | u32 frameCount | frames...
-//  BRUSH POINTS ARE PIXEL COORDINATES. They are never clamped or
-//  normalized to [0,1] like the AQTL point records: the engine
-//  produces 3-decimal pixel coordinates and f32 is at least as
-//  precise for them, while a UV projection would destroy them.
+//  The durable-base section: the pre-script raster per key (or a
+//  known-empty marker), so "Move after reopen" has a base.
+//
+//  CLEAN BREAK (261027-klx): engine-1's brush body is GONE. The
+//  retired container versions 1-4 all carried (or implied) a brush
+//  body; keeping them decodable would mean keeping the brush skip
+//  logic and risking silent seeding into a watercolor session, so
+//  they raise the dedicated `snap-v4-retired` code and seed
+//  nothing. An unknown version (0, or >= 6) keeps the generic
+//  `version` code.
 //
 //  Fail closed: magic, version, flags, the three identity strings,
 //  every declared length and any trailing byte are validated
@@ -41,32 +43,25 @@
 // ============================================================
 
 import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
-import type { BrushOpts, PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   decodeScriptTimelineBinary,
   encodeScriptTimelineBinary,
 } from './scriptTimelineCodec';
-import type { RecordedStrokeGroup } from '../view/recordedStrokeGroups';
 
 /** ASCII magic carried by every SNAP buffer. */
 export const STUDIO_SCRIPT_SNAPSHOT_MAGIC = 'SNP1';
 
 /**
- * v2 adds the durable rail-cleanup marker as a container byte (after the flags
- * word, before the identity strings). v3 adds the watercolor key-anchor
- * section after the brush body. v4 adds the per-key durable-base section after
- * the anchor section (261027 UAT round 4: "Move after reopen" needs the
- * PRE-SCRIPT base the key record no longer holds). Older files stay readable
- * (no marker / no anchors / no durable bases respectively).
+ * v5 is the watercolor-only container: no brush body, and ONLY v5 is
+ * accepted. The retired versions keep their number here solely so the
+ * decoder can name the clean break explicitly.
  */
-export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 4;
+export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 5;
 
-const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([
-  1,
-  2,
-  3,
-  STUDIO_SCRIPT_SNAPSHOT_VERSION,
-]);
+const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([STUDIO_SCRIPT_SNAPSHOT_VERSION]);
+
+/** Every container version that predates the watercolor-only format. */
+const STUDIO_SCRIPT_SNAPSHOT_RETIRED_VERSIONS = new Set([1, 2, 3, 4]);
 
 /**
  * The anchor section's own version:
@@ -107,29 +102,17 @@ export interface StudioScriptSnapshotDurableBase {
   readonly bytes: Uint8Array | null;
 }
 
-/**
- * The brush section's own version (it evolves independently).
- *
- * v2 adds the owning key identity per frame: a script follows the physical
- * KEY, so a restore must never re-attach a frame's script to whatever key now
- * occupies that frame. v1 files stay readable (their rows carry no keyId and
- * are treated as unknown identity by the restore policy).
- */
-export const STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION = 2;
-
-/** Every brush-section version this module decodes. */
-const STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSIONS = new Set([1, STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION]);
-
 export type StudioScriptSnapshotCodecErrorCode =
   | 'magic'
   | 'version'
+  /** Container versions 1-4: the retired pre-watercolor-only format. */
+  | 'snap-v4-retired'
   | 'flags'
   | 'identity'
   | 'truncated'
   | 'length'
   | 'count'
   | 'trailing'
-  | 'brush'
   | 'watercolor'
   | 'anchor'
   | 'durableBase';
@@ -154,44 +137,27 @@ export interface StudioScriptSnapshotIdentity {
   trackId: string;
 }
 
-/** One decoded brush frame — the store's entry shape, structurally. */
-export interface StudioScriptSnapshotBrushFrame {
-  frame: number;
-  groups: readonly Readonly<RecordedStrokeGroup>[];
-  complete: boolean;
-  paintSettings?: PaintRenderSettings | null;
-  /**
-   * v2: the physical key this script was captured on. `null`/absent means
-   * unknown identity (a v1 row or a capture with no live key) — the restore
-   * policy treats such a row as untrusted on a rail/loop-clip frame.
-   */
-  keyId?: string | null;
-}
-
 export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIdentity {
   watercolorEvents: readonly AquarellePayloadEvent[];
-  brushFrames?: readonly StudioScriptSnapshotBrushFrame[];
-  /** v3: the owning physical key per watercolor stroke mutationId. */
+  /** The owning physical key per watercolor stroke mutationId. */
   watercolorKeyAnchors?: readonly StudioScriptSnapshotWatercolorKeyAnchor[];
-  /** v4: the pre-script base per ordinary keyId (bytes, or null = empty). */
+  /** The pre-script base per ordinary keyId (bytes, or null = empty). */
   durableBases?: readonly StudioScriptSnapshotDurableBase[];
-  /** v2: the durable one-time rail-cleanup marker. Absent = not done yet. */
+  /** The durable one-time rail-cleanup marker. Absent = not done yet. */
   railCleanupDone?: boolean;
 }
 
 export interface StudioScriptSnapshotDecodeResult {
   watercolorEvents: AquarellePayloadEvent[];
-  brushFrames: StudioScriptSnapshotBrushFrame[];
-  /** v3: the owning key per watercolor stroke. Empty for v1/v2 files. */
+  /** The owning key per watercolor stroke. */
   watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
-  /** v4: the pre-script base per key. Empty for v1-v3 files. */
+  /** The pre-script base per key. */
   durableBases: StudioScriptSnapshotDurableBase[];
-  /** v2: true once the rail cleanup ran for this project/layer/track. */
+  /** True once the rail cleanup ran for this project/layer/track. */
   railCleanupDone: boolean;
 }
 
 const CONTAINER_HEADER_BYTE_LENGTH = 8;
-const BRUSH_HEADER_BYTE_LENGTH = 8;
 const ANCHOR_HEADER_BYTE_LENGTH = 8;
 /** u32 mutationId + a u16 keyId length (an empty keyId is invalid, so this is a true minimum). */
 const ANCHOR_RECORD_MIN_BYTES = 4 + 2;
@@ -376,301 +342,6 @@ function validateIdentityValue(value: unknown, what: string): string {
   return value;
 }
 
-// --- Brush section v1 -----------------------------------------------------
-
-/** frame u32 + flags u8 + reserved u8 + paintSettingsPresent u8 + groupCount u32. */
-// v1's minimum: the v2 keyId byte only makes a frame larger, so the looser
-// guard accepts both versions.
-const BRUSH_FRAME_MIN_BYTES = 4 + 1 + 1 + 1 + 4;
-/** continuationCount u32 + one minimum stroke record. */
-const BRUSH_GROUP_MIN_BYTES = 4 + (4 + 8 + 1 + 1 + 1 + 9 * 8 + 1 + 1 + 1 + 1);
-/** 7 f32 per point (x, y, p, tx, ty, tw, spd). */
-const BRUSH_POINT_BYTES = 7 * 4;
-
-const TOOL_CODES: readonly PaintStroke['tool'][] = ['paint', 'erase', 'move'];
-/** 0 = absent (null/undefined), 1 local, 2 last, 3 all. */
-const PHYSICS_MODE_CODES: readonly (PaintStroke['physicsMode'] | 'absent')[] = [
-  'absent',
-  'local',
-  'last',
-  'all',
-];
-const PARAM_KEYS = [
-  'size',
-  'opacity',
-  'pressure',
-  'waterAmount',
-  'dryAmount',
-  'edgeDetail',
-  'pickup',
-  'eraseStrength',
-  'antiAlias',
-] as const;
-
-function writeOptionalU32(writer: Writer, value: number | undefined): void {
-  if (typeof value === 'number') {
-    writer.u8(1);
-    writer.u32(value);
-  } else {
-    writer.u8(0);
-  }
-}
-
-function encodeStroke(writer: Writer, stroke: Readonly<PaintStroke>): void {
-  writer.u32(stroke.points.length);
-  writer.f64(stroke.timestamp);
-  const toolIndex = TOOL_CODES.indexOf(stroke.tool);
-  if (toolIndex < 0) fail('brush', `unsupported stroke tool "${String(stroke.tool)}"`);
-  writer.u8(toolIndex);
-  const physicsMode = stroke.physicsMode ?? 'absent';
-  const physicsIndex = PHYSICS_MODE_CODES.indexOf(physicsMode);
-  if (physicsIndex < 0) {
-    fail('brush', `unsupported physics mode "${String(physicsMode)}"`);
-  }
-  writer.u8(physicsIndex);
-  if (stroke.color === null || stroke.color === undefined) {
-    writer.u8(0);
-  } else {
-    writer.u8(1);
-    const encoded = UTF8_ENCODER.encode(stroke.color);
-    if (encoded.byteLength > 0xffff) fail('length', 'stroke color exceeds 65535 UTF-8 bytes');
-    writer.u16(encoded.byteLength);
-    writer.raw(encoded);
-  }
-  for (const key of PARAM_KEYS) writer.f64(stroke.params[key]);
-  writeOptionalU32(writer, stroke.mutationId);
-  writeOptionalU32(writer, stroke.diffusionFrames);
-  writeOptionalU32(writer, stroke.playFrame);
-  writer.u8(stroke.hasPenInput === true ? 1 : 0);
-  for (const point of stroke.points) {
-    writer.f32(point.x);
-    writer.f32(point.y);
-    writer.f32(point.p);
-    writer.f32(point.tx);
-    writer.f32(point.ty);
-    writer.f32(point.tw);
-    writer.f32(point.spd);
-  }
-}
-
-function encodeGroup(writer: Writer, group: Readonly<RecordedStrokeGroup>): void {
-  if (group.primary.points.length === 0) {
-    fail('brush', 'a brush group primary must carry points');
-  }
-  const continuations = group.continuations ?? [];
-  for (const continuation of continuations) {
-    if (continuation.points.length !== 0 || (continuation.diffusionFrames ?? 0) <= 0) {
-      // The engine's own baseline rule: a continuation is a zero-point
-      // positive-diffusion record. Never write a file decode would refuse.
-      fail('brush', 'a brush continuation must have no points and a positive diffusion count');
-    }
-  }
-  writer.u32(continuations.length);
-  encodeStroke(writer, group.primary);
-  for (const continuation of continuations) encodeStroke(writer, continuation);
-}
-
-/**
- * The v1 brush block. BRUSH POINTS ARE PIXEL COORDINATES: encoded as f32,
- * never clamped or normalized to [0,1] like the AQTL watercolor records
- * (a UV projection would destroy the 3-decimal pixel coordinates the
- * engine produces).
- */
-function encodeBrushSection(frames: readonly StudioScriptSnapshotBrushFrame[]): Uint8Array {
-  const writer = new Writer();
-  writer.u16(STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION);
-  writer.u16(0);
-  writer.u32(frames.length);
-  const seenFrames = new Set<number>();
-  for (const frame of frames) {
-    if (!Number.isInteger(frame.frame) || frame.frame < 0) {
-      fail('brush', `invalid brush frame ${String(frame.frame)}`);
-    }
-    if (seenFrames.has(frame.frame)) {
-      fail('brush', `duplicate brush frame ${frame.frame}`);
-    }
-    seenFrames.add(frame.frame);
-    writer.u32(frame.frame);
-    writer.u8(frame.complete ? 1 : 0);
-    writer.u8(0);
-    // v2: the owning physical key identity. A script is per key, never per
-    // frame number — a row without an identity can only be trusted where the
-    // key layout is known to be unchanged (see the restore policy).
-    const keyId = frame.keyId;
-    if (typeof keyId === 'string' && keyId.length > 0) {
-      const encodedKeyId = UTF8_ENCODER.encode(keyId);
-      if (encodedKeyId.byteLength > 0xffff) fail('length', 'brush frame keyId exceeds 65535 UTF-8 bytes');
-      writer.u8(1);
-      writer.u16(encodedKeyId.byteLength);
-      writer.raw(encodedKeyId);
-    } else {
-      writer.u8(0);
-    }
-    const settings = frame.paintSettings ?? null;
-    if (settings === null) {
-      writer.u8(0);
-    } else {
-      writer.u8(1);
-      writer.f32(settings.localSpreadStrength);
-      writer.u8(settings.wetPaper ? 1 : 0);
-      writer.f32(settings.physicsStrength);
-      const encoded = UTF8_ENCODER.encode(settings.paperGrain);
-      if (encoded.byteLength > 0xffff) fail('length', 'paperGrain exceeds 65535 UTF-8 bytes');
-      writer.u16(encoded.byteLength);
-      writer.raw(encoded);
-    }
-    writer.u32(frame.groups.length);
-    for (const group of frame.groups) encodeGroup(writer, group);
-  }
-  return writer.finish();
-}
-
-function readOptionalU32(reader: Reader, what: string): number | undefined {
-  const present = reader.u8();
-  if (present > 1) fail('flags', `${what} presence must be 0 or 1`);
-  return present === 1 ? reader.u32() : undefined;
-}
-
-function decodeStroke(reader: Reader): PaintStroke {
-  const pointCount = reader.u32();
-  // Guard the allocation BEFORE reading anything: 7 f32 per point.
-  if (pointCount > Math.floor(reader.remaining / BRUSH_POINT_BYTES)) {
-    fail('count', `stroke declares ${pointCount} points beyond the remaining bytes`, reader.offset);
-  }
-  const timestamp = reader.f64();
-  const toolCode = reader.u8();
-  const tool = TOOL_CODES[toolCode];
-  if (!tool) fail('brush', `unsupported stroke tool code ${toolCode}`);
-  const physicsCode = reader.u8();
-  if (physicsCode >= PHYSICS_MODE_CODES.length) {
-    fail('brush', `unsupported physics mode code ${physicsCode}`);
-  }
-  const physicsMode = PHYSICS_MODE_CODES[physicsCode]!;
-  const colorPresent = reader.u8();
-  if (colorPresent > 1) fail('flags', 'stroke color presence must be 0 or 1');
-  const color = colorPresent === 1 ? reader.string('stroke color') : null;
-  const values = PARAM_KEYS.map(() => reader.f64());
-  const params: BrushOpts = {
-    size: values[0]!,
-    opacity: values[1]!,
-    pressure: values[2]!,
-    waterAmount: values[3]!,
-    dryAmount: values[4]!,
-    edgeDetail: values[5]!,
-    pickup: values[6]!,
-    eraseStrength: values[7]!,
-    antiAlias: values[8]!,
-  };
-  const mutationId = readOptionalU32(reader, 'mutationId');
-  const diffusionFrames = readOptionalU32(reader, 'diffusionFrames');
-  const playFrame = readOptionalU32(reader, 'playFrame');
-  const hasPenInput = reader.u8();
-  if (hasPenInput > 1) fail('flags', 'stroke hasPenInput must be 0 or 1');
-  // The points are LAST: re-check precisely before the loop.
-  if (pointCount > Math.floor(reader.remaining / BRUSH_POINT_BYTES)) {
-    fail('count', `stroke declares ${pointCount} points beyond the remaining bytes`, reader.offset);
-  }
-  const points: PaintStroke['points'] = [];
-  for (let index = 0; index < pointCount; index += 1) {
-    points.push({
-      x: reader.f32(),
-      y: reader.f32(),
-      p: reader.f32(),
-      tx: reader.f32(),
-      ty: reader.f32(),
-      tw: reader.f32(),
-      spd: reader.f32(),
-    });
-  }
-  const stroke: PaintStroke = { tool, points, color, params, timestamp };
-  if (mutationId !== undefined) stroke.mutationId = mutationId;
-  if (diffusionFrames !== undefined) stroke.diffusionFrames = diffusionFrames;
-  if (playFrame !== undefined) stroke.playFrame = playFrame;
-  if (hasPenInput === 1) stroke.hasPenInput = true;
-  if (physicsMode !== 'absent') stroke.physicsMode = physicsMode;
-  return stroke;
-}
-
-function decodeGroup(reader: Reader): Readonly<RecordedStrokeGroup> {
-  const continuationCount = reader.u32();
-  if (continuationCount > Math.floor(reader.remaining / BRUSH_GROUP_MIN_BYTES)) {
-    fail('count', `group declares ${continuationCount} continuations beyond the remaining bytes`, reader.offset);
-  }
-  const primary = decodeStroke(reader);
-  if (primary.points.length === 0) fail('count', 'a brush group primary must carry points');
-  const continuations: PaintStroke[] = [];
-  for (let index = 0; index < continuationCount; index += 1) {
-    const continuation = decodeStroke(reader);
-    if (continuation.points.length !== 0 || (continuation.diffusionFrames ?? 0) <= 0) {
-      fail('count', 'a brush continuation must have no points and a positive diffusion count');
-    }
-    continuations.push(continuation);
-  }
-  return { primary, continuations };
-}
-
-function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[] {
-  const reader = new Reader(bytes);
-  if (bytes.byteLength < BRUSH_HEADER_BYTE_LENGTH) {
-    fail('truncated', 'brush section is shorter than its 8-byte header');
-  }
-  const version = reader.u16();
-  if (!STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSIONS.has(version)) {
-    fail('version', `unsupported brush section version ${version}`);
-  }
-  const reserved = reader.u16();
-  if (reserved !== 0) fail('flags', 'brush section reserved word must be 0');
-  const frameCount = reader.u32();
-  if (frameCount > Math.floor(reader.remaining / BRUSH_FRAME_MIN_BYTES)) {
-    fail('count', `brush declares ${frameCount} frames beyond the remaining bytes`, reader.offset);
-  }
-  const frames: StudioScriptSnapshotBrushFrame[] = [];
-  for (let index = 0; index < frameCount; index += 1) {
-    const frame = reader.u32();
-    const flags = reader.u8();
-    if ((flags & ~1) !== 0) fail('flags', 'unsupported brush frame flags');
-    if (reader.u8() !== 0) fail('flags', 'brush frame reserved byte must be 0');
-    // v1 carried no key identity; its rows decode as unknown (absent).
-    const keyIdPresent = version >= 2 ? reader.u8() : 0;
-    if (keyIdPresent > 1) fail('flags', 'brush frame keyId presence must be 0 or 1');
-    const keyId = keyIdPresent === 1 ? reader.string('brush frame keyId') : undefined;
-    const settingsPresent = reader.u8();
-    if (settingsPresent > 1) fail('flags', 'paint settings presence must be 0 or 1');
-    let paintSettings: PaintRenderSettings | null = null;
-    if (settingsPresent === 1) {
-      const localSpreadStrength = reader.f32();
-      const wetPaperCode = reader.u8();
-      if (wetPaperCode > 1) fail('flags', 'wetPaper must be 0 or 1');
-      const physicsStrength = reader.f32();
-      paintSettings = {
-        localSpreadStrength,
-        wetPaper: wetPaperCode === 1,
-        physicsStrength,
-        paperGrain: reader.string('paperGrain'),
-      };
-    }
-    const groupCount = reader.u32();
-    if (groupCount > Math.floor(reader.remaining / BRUSH_GROUP_MIN_BYTES)) {
-      fail('count', `frame declares ${groupCount} groups beyond the remaining bytes`, reader.offset);
-    }
-    const groups: Readonly<RecordedStrokeGroup>[] = [];
-    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
-      groups.push(decodeGroup(reader));
-    }
-    frames.push({
-      frame,
-      complete: (flags & 1) === 1,
-      paintSettings,
-      ...(keyId !== undefined ? { keyId } : {}),
-      groups,
-    });
-  }
-  if (reader.remaining !== 0) {
-    fail('trailing', 'unread bytes remain in the brush section');
-  }
-  return frames;
-}
-
 // --- Anchor section v1 ----------------------------------------------------
 
 function encodeAnchorSection(
@@ -845,7 +516,6 @@ export function encodeStudioScriptSnapshot(
   const layerId = validateIdentityValue(input.layerId, 'layerId');
   const trackId = validateIdentityValue(input.trackId, 'trackId');
   const watercolor = encodeScriptTimelineBinary(input.watercolorEvents);
-  const brush = encodeBrushSection(input.brushFrames ?? []);
   const anchors = encodeAnchorSection(input.watercolorKeyAnchors ?? []);
   const durableBases = encodeDurableBaseSection(input.durableBases ?? []);
 
@@ -855,14 +525,12 @@ export function encodeStudioScriptSnapshot(
   }
   writer.u16(STUDIO_SCRIPT_SNAPSHOT_VERSION);
   writer.u16(0); // flags
-  writer.u8(input.railCleanupDone === true ? 1 : 0); // v2 marker
+  writer.u8(input.railCleanupDone === true ? 1 : 0); // durable rail-cleanup marker
   writer.string(projectId, 'projectId');
   writer.string(layerId, 'layerId');
   writer.string(trackId, 'trackId');
   writer.u32(watercolor.byteLength);
   writer.raw(watercolor);
-  writer.u32(brush.byteLength);
-  writer.raw(brush);
   writer.u32(anchors.byteLength);
   writer.raw(anchors);
   writer.u32(durableBases.byteLength);
@@ -888,13 +556,18 @@ export function decodeStudioScriptSnapshot(
 
   const reader = new Reader(bytes, 4);
   const version = reader.u16();
+  // The clean break (261027-klx): every retired container carried a brush
+  // body. Name the retirement explicitly so the controller can show the pinned
+  // notice without keeping a single brush decode path alive.
+  if (STUDIO_SCRIPT_SNAPSHOT_RETIRED_VERSIONS.has(version)) {
+    fail('snap-v4-retired', 'SNAP predates the watercolor-only format', 4);
+  }
   if (!STUDIO_SCRIPT_SNAPSHOT_VERSIONS.has(version)) {
     fail('version', `unsupported SNAP version ${version}`, 4);
   }
   const flags = reader.u16();
   if (flags !== 0) fail('flags', `unsupported flags ${flags}`, 6);
-  // v1 has no marker byte; its files decode as "cleanup not done".
-  const railCleanupFlag = version >= 2 ? reader.u8() : 0;
+  const railCleanupFlag = reader.u8();
   if (railCleanupFlag > 1) fail('flags', 'rail cleanup flag must be 0 or 1', 8);
 
   const projectId = reader.string('projectId');
@@ -910,20 +583,10 @@ export function decodeStudioScriptSnapshot(
 
   const watercolorByteLength = reader.u32();
   const watercolorBody = reader.slice(watercolorByteLength, 'watercolor body');
-  const brushByteLength = reader.u32();
-  const brushBody = reader.slice(brushByteLength, 'brush body');
-  // v1/v2 files carry no anchor section: their strokes are unanchored.
-  let anchorBody: Uint8Array | null = null;
-  if (version >= 3) {
-    const anchorByteLength = reader.u32();
-    anchorBody = reader.slice(anchorByteLength, 'anchor body');
-  }
-  // v1-v3 files carry no durable bases: every key is UNKNOWN (fail closed).
-  let durableBaseBody: Uint8Array | null = null;
-  if (version >= 4) {
-    const durableBaseByteLength = reader.u32();
-    durableBaseBody = reader.slice(durableBaseByteLength, 'durable-base body');
-  }
+  const anchorByteLength = reader.u32();
+  const anchorBody = reader.slice(anchorByteLength, 'anchor body');
+  const durableBaseByteLength = reader.u32();
+  const durableBaseBody = reader.slice(durableBaseByteLength, 'durable-base body');
   if (reader.remaining !== 0) {
     fail('trailing', 'buffer is longer than the declared sections', reader.offset);
   }
@@ -941,9 +604,8 @@ export function decodeStudioScriptSnapshot(
 
   return {
     watercolorEvents,
-    brushFrames: decodeBrushSection(brushBody),
-    watercolorKeyAnchors: anchorBody === null ? [] : decodeAnchorSection(anchorBody),
-    durableBases: durableBaseBody === null ? [] : decodeDurableBaseSection(durableBaseBody),
+    watercolorKeyAnchors: decodeAnchorSection(anchorBody),
+    durableBases: decodeDurableBaseSection(durableBaseBody),
     railCleanupDone: railCleanupFlag === 1,
   };
 }

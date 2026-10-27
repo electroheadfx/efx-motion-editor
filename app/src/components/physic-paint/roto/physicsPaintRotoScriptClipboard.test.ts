@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { deleteAquarelleStrokeFromScript, emitAquarelleDry, purgeAllAquarelleKeyScripts, recordAquarelleStroke, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
-import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
+import { serializeAquarelleRotoScript } from './physicsPaintRotoScriptSchema';
 import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
@@ -476,6 +476,33 @@ describe('Roto script clipboard controller', () => {
       publicationIdentity: undefined,
     });
     expect(test.controller.getAcceptedTarget(test.engine, 101)).toBeNull();
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('getAcceptedTarget is same-port, same-id and CONSUMES on read (the ledger-port identity contract)', async () => {
+    const test = harness([stroke(1)]);
+    await copyCompletedSource(test);
+    const claim: RotoScriptPhysicalTarget = { keyId: 'prepared-key', appFrame: 14 };
+    test.setPrepareTarget(async () => claim);
+    test.setSource({ selectionKind: 'empty', layerId: 'layer-a', keyId: null, appFrame: 14 });
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+
+    // Same port object + same id returns the accepted target...
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toEqual({
+      ...claim,
+      publishPixels: true,
+      publicationIdentity: undefined,
+    });
+    // ...and the SECOND read consumes it: a completion may observe a target once.
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toBeNull();
+    // A different port object is a different WeakMap key — never the same target.
+    const foreignPort = { ...test.engine };
+    expect(test.controller.getAcceptedTarget(foreignPort, 101)).toBeNull();
+    expect(test.controller.getAcceptedTarget(foreignPort, 100)).toBeNull();
+
     test.controller.observeCompletedMutation(test.engine, completion(100));
     await expect(applying).resolves.toBe(true);
   });
@@ -1195,10 +1222,12 @@ function scopeLibraryHarness() {
     scopeLibraryRow(SCOPE_HIDDEN_SCRIPT_ID, 'Origin-layer Action', SCOPE_ORIGIN_LAYER_ID, 'Layer 1'),
     scopeLibraryRow(SCOPE_VISIBLE_SCRIPT_ID, 'Current-layer Action', SCOPE_CURRENT_LAYER_ID, 'Layer 2'),
   ];
-  const persisted = new Map(rows.map((row) => [row.id, createPersistedRotoScript({
+  // 261027-klx: watercolor is the only persistable script body — the old
+  // `createPersistedRotoScript` engine-1 builder is gone.
+  const persisted = new Map(rows.map((row) => [row.id, serializeAquarelleRotoScript({
     id: row.id, name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt, source: row.source,
     thumbnail: { ...row.thumbnail, dataUrl: SCOPE_WEBP },
-    brushes: [{ primary: { tool: 'paint', points: [{ x: 10, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }],
+    events: [aquarelleStrokeEvent(1, 1)],
   })]));
   const launch = scopeLibraryHarnessContext();
   const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest): Promise<PhysicPaintScriptLibraryResult> => ({

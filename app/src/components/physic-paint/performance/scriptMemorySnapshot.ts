@@ -15,27 +15,13 @@
 //  `StudioStroke<AquarelleStrokePayload>` entry (a second point copy) —
 //  which is exactly what stays resident until Studio close.
 //
+//  After engine-1 removal there is ONE paint engine, so the report has
+//  no brush section and no separate "current engine frame": the
+//  watercolor registry is the whole script memory.
+//
 //  Frame caches (decoded ImageBitmap LRU, compressed WebP bytes) are
 //  reported in their own `frameCache` section and are NEVER folded
-//  into watercolor or brush totals.
-//
-//  Brush is reported in TWO parts (quick 261023-g4p):
-//    - `brushScript` — the session-level per-frame store, one
-//      retained points copy per stroke, per-frame rows + totals;
-//    - `currentEngineFrame` — the live engine's current frame only,
-//      measured separately (the engine still holds one frame; a
-//      complete real-key frame attaches its script SILENTLY into it
-//      on navigation over the cached pixels — quick 261023-j5b, which
-//      replaced h9v's eager replay).
-//  Neither part ever includes frame-cache bytes.
-//
-//  COMPLETENESS/EDITABILITY (261023-j5b): every brush row reports
-//  `complete` (the captured script is the whole frame content) and
-//  the derived `hydratable` verdict — complete, within the attach
-//  (clone) sanity cap, and no diffusion frames (a physics-run frame's
-//  faithful rebake costs ~700 ms per diffusion frame at HD). A partial
-//  or edit-unaffordable frame keeps cached pixels and is view-only.
-//  The verdict calls the SAME predicate as the live navigation policy.
+//  into watercolor totals.
 // ============================================================
 
 import type {
@@ -44,10 +30,8 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
-import { isBrushScriptFrameHydratable } from '../view/brushScriptHydration';
 
-/** One counted script bucket (watercolor row, deleted bucket, or brush). */
+/** One counted script bucket (watercolor row or deleted bucket). */
 export interface ScriptMemoryScriptStats {
   strokes: number;
   points: number;
@@ -57,26 +41,6 @@ export interface ScriptMemoryScriptStats {
 /** One watercolor frame row. */
 export interface ScriptMemoryFrameStats extends ScriptMemoryScriptStats {
   frame: number;
-}
-
-/** One brush session-store row as supplied by getBrushScriptReport(). */
-export interface ScriptMemoryBrushFrameInput extends ScriptMemoryFrameStats {
-  /** True when the captured script is the WHOLE frame content. */
-  complete: boolean;
-  /** Sum of continuation diffusion counts (each capped at 600). */
-  diffusionFrames: number;
-}
-
-/** One reported brush frame row: the input plus the derived verdict. */
-export interface ScriptMemoryBrushFrameStats extends ScriptMemoryBrushFrameInput {
-  /** complete AND within the attach sanity + edit-affordability caps. */
-  hydratable: boolean;
-}
-
-/** Brush totals: byte/point sums plus the completeness split. */
-export interface ScriptMemoryBrushTotals extends ScriptMemoryScriptStats {
-  completeFrames: number;
-  partialFrames: number;
 }
 
 export type ScriptMemoryCacheKind = 'decoded-image' | 'compressed-bytes';
@@ -110,17 +74,6 @@ export interface ScriptMemorySnapshot {
     /** frames + deleted (deleted bytes are retained memory too). */
     totals: ScriptMemoryScriptStats & { frames: number };
   };
-  brush: {
-    /** per-frame session store — every brush frame captured for this Studio session. */
-    scope: 'per-frame-session-store';
-    /** Captured frame rows, ascending by frame, each with complete/hydratable. */
-    frames: ScriptMemoryBrushFrameStats[];
-    /** Sum of the captured frame rows only, plus the completeness split. */
-    totals: ScriptMemoryBrushTotals;
-    /** The engine's current frame, measured separately (may be unavailable). */
-    currentEngineFrame: ScriptMemoryScriptStats & { available: boolean };
-    note: string;
-  };
   frameCache: {
     scope: 'this-webview';
     totalBytes: number;
@@ -137,13 +90,6 @@ export interface ScriptMemorySnapshotInput {
   isStrokeDeleted: (mutationId: number) => boolean;
   /** Global Dry events (no frame anchor). */
   dryEvents: readonly AquarelleDryEvent[];
-  /** `engine.getStrokes()` for the current frame, or null when no engine. */
-  brushStrokes: readonly PaintStroke[] | null;
-  /** The session-level per-frame brush script store report. */
-  brushScript: {
-    frames: readonly ScriptMemoryBrushFrameInput[];
-    totals: ScriptMemoryScriptStats;
-  };
   frameCaches: readonly ScriptMemoryCacheStat[];
 }
 
@@ -158,9 +104,6 @@ export interface ScriptMemoryWindowLike {
 }
 
 export const SCRIPT_MEMORY_APPROX_METHOD = 'json-utf8-byte-length' as const;
-
-export const SCRIPT_MEMORY_BRUSH_NOTE =
-  'Brush frames are captured per frame for this Studio session only; the current engine frame is measured separately and only the engine\'s current frame is live. A frame is complete when its captured script is the whole content. Navigation never replays a script: a complete, edit-affordable frame attaches its script silently over the cached pixels, while a partial or physics-run (diffusion) frame keeps cached pixels and is view-only.';
 
 function countPoints(points: unknown): number {
   return Array.isArray(points) ? points.length : 0;
@@ -247,39 +190,6 @@ export function buildScriptMemorySnapshot(
       input.dryEvents.length === 0 ? 0 : (safeJsonBytes(input.dryEvents, encoder) ?? 0),
   };
 
-  const brushStrokes = input.brushStrokes;
-  let brushStrokeCount = 0;
-  let brushPoints = 0;
-  let brushApproxBytes = 0;
-
-  if (brushStrokes !== null) {
-    brushStrokeCount = brushStrokes.length;
-    for (const stroke of brushStrokes) {
-      brushPoints += countPoints(stroke.points);
-    }
-    // One serialization for the whole array; per-stroke sums only on failure.
-    const wholeBytes = safeJsonBytes(brushStrokes, encoder);
-    if (wholeBytes === null) {
-      for (const stroke of brushStrokes) {
-        const bytes = safeJsonBytes(stroke, encoder);
-        if (bytes !== null) brushApproxBytes += bytes;
-      }
-    } else {
-      brushApproxBytes = wholeBytes;
-    }
-  }
-
-  // Copy the rows so the snapshot is a plain, detached value, and derive the
-  // ONE editable verdict from the shared navigation predicate.
-  const brushFrames: ScriptMemoryBrushFrameStats[] = input.brushScript.frames.map((row) => ({
-    ...row,
-    hydratable: isBrushScriptFrameHydratable(row),
-  }));
-  let completeFrames = 0;
-  for (const row of brushFrames) {
-    if (row.complete) completeFrames += 1;
-  }
-
   const caches = input.frameCaches.map((cache) => ({ ...cache }));
   const cacheTotalBytes = caches.reduce(
     (sum, cache) => sum + (Number.isFinite(cache.byteTotalBytes) ? cache.byteTotalBytes : 0),
@@ -301,22 +211,6 @@ export function buildScriptMemorySnapshot(
         points: totalPoints,
         approxBytes: totalApproxBytes,
       },
-    },
-    brush: {
-      frames: brushFrames,
-      totals: {
-        ...input.brushScript.totals,
-        completeFrames,
-        partialFrames: brushFrames.length - completeFrames,
-      },
-      currentEngineFrame: {
-        available: brushStrokes !== null,
-        strokes: brushStrokeCount,
-        points: brushPoints,
-        approxBytes: brushApproxBytes,
-      },
-      scope: 'per-frame-session-store',
-      note: SCRIPT_MEMORY_BRUSH_NOTE,
     },
     frameCache: {
       scope: 'this-webview',

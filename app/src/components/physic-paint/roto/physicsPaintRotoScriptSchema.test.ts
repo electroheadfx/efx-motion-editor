@@ -1,30 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
-import type { StudioStroke } from '@efxlab/efx-paint-host';
 
-// Lazy loader — RED: serializeRotoScript / parseRotoScript do not exist yet, so
-// the named export assertions fail intentionally. GREEN: the real module loads.
-// Top-level imports of the NEW codec surface would be a collection error, not
-// a named missing-export RED (tdd.md INVALID_RED).
+// Lazy loader — the schema module is loaded once and every named-export
+// assertion runs against the real surface. Top-level imports of the codec
+// surface would be a collection error, not a named missing-export RED.
 
 type SerializeFn = (input: any) => any;
 type ParseFn = (raw: unknown) =>
   | { ok: true; document: any }
   | { ok: false; refusal: { code: string; detail?: string } };
-type CreateFn = (input: any) => any;
 type ToRuntimeFn = (document: any) => any;
 type IsPersistedFn = (value: unknown) => boolean;
 type RowFn = (document: any, revision: string, integrity: string) => any;
 
 interface SchemaModule {
   ROTO_SCRIPT_KIND?: unknown;
-  ROTO_SCRIPT_ENGINE_ID?: unknown;
+  ROTO_SCRIPT_LEGACY_ENGINE_ID?: unknown;
   ROTO_SCRIPT_ENGINE_ID_AQUARELLE?: unknown;
+  ROTO_SCRIPT_ENGINE_ID?: unknown;
   ROTO_SCRIPT_EXTENSION?: unknown;
   serializeRotoScript?: SerializeFn;
   serializeAquarelleRotoScript?: SerializeFn;
+  createPersistedRotoScript?: SerializeFn;
   parseRotoScript?: ParseFn;
-  createPersistedRotoScript?: CreateFn;
   persistedRotoScriptToRuntime?: ToRuntimeFn;
   isPersistedRotoScriptV1?: IsPersistedFn;
   isPersistedRotoScriptAquarelleV1?: IsPersistedFn;
@@ -43,172 +40,57 @@ const webp = 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=';
 const LEGACY_KIND = 'efx-physics-paint-roto-script';
 const ENVELOPE_KIND = 'efx-studio-paint-script';
 
-function stroke(overrides: Partial<PaintStroke> = {}): PaintStroke {
-  return {
-    mutationId: 9, tool: 'paint', points: [{ x: 1, y: 2, p: 0.5, tx: 3, ty: 4, tw: 5, spd: 6 }], color: '#123456',
-    params: { size: 12, opacity: 90, pressure: 80, waterAmount: 70, dryAmount: 60, edgeDetail: 50, pickup: 40, eraseStrength: 30, antiAlias: 2 },
-    timestamp: 123, hasPenInput: true, playFrame: 7, physicsMode: 'local', ...overrides,
-  };
-}
+// ---------------------------------------------------------------------------
+// 261027-klx: watercolor-only identity (the engine-1 codec is gone)
+// ---------------------------------------------------------------------------
 
-function threePointStroke(): PaintStroke {
-  return stroke({
-    points: [
-      { x: 1, y: 1, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
-      { x: 2, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
-      { x: 3, y: 3, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
-    ],
-  });
-}
-
-function input(overrides: Record<string, unknown> = {}) {
+function legacyBrushEnvelope(engineId = 'efx-physic-paint'): Record<string, unknown> {
   return {
-    id, name: 'Preset', createdAt: '2026-07-16T12:00:00.000Z', updatedAt: '2026-07-16T12:00:00.000Z',
+    kind: ENVELOPE_KIND,
+    schemaVersion: 1,
+    engineId,
+    id,
+    name: 'Old Brush preset',
+    createdAt: '2026-07-16T12:00:00.000Z',
+    updatedAt: '2026-07-16T12:00:00.000Z',
     source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', grainStrength: 0.6 } },
     thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
-    brushes: [{ primary: stroke(), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
-    ...overrides,
+    // The engine-1 serializer's pinned empty snapshot: a real old envelope has it.
+    brushPack: { kind: 'efx-physic-paint', entries: [] },
+    strokes: [{
+      pts: [{ x: 1, y: 2, p: 0.5, tx: 3, ty: 4, tw: 5, tick: 0 }],
+      ticks: 0,
+      cuisson: 0,
+      motion: null,
+      brushId: 'paint',
+      toolOverrides: {},
+      traceSeed: 0,
+      recordedOrder: 123,
+      playFrame: 7,
+      color: '#123456',
+      engine: { tool: 'paint', color: '#123456', params: {}, mutationId: 9, timestamp: 123 },
+    }],
   };
 }
 
-function engineOf(strokeValue: StudioStroke<any>): any {
-  return strokeValue.engine;
-}
-
-describe('engine-1 codec on StudioScriptEnvelope (55-05 DATA-01 / D-13..D-16)', () => {
-  it('schema must export serializeRotoScript and parseRotoScript', async () => {
+describe('watercolor-only script identity (261027-klx)', () => {
+  it('exports the watercolor identity, ONE legacy literal for classification, and no engine-1 builder', async () => {
     const schema = await loadSchema();
-    expect(schema.serializeRotoScript, 'schema must export serializeRotoScript').toBeTypeOf('function');
-    expect(schema.parseRotoScript, 'schema must export parseRotoScript').toBeTypeOf('function');
-  });
-
-  it('serialize emits kind efx-studio-paint-script with engineId efx-physic-paint and an opaque engine slot', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
     expect(schema.ROTO_SCRIPT_KIND).toBe(ENVELOPE_KIND);
-    expect(schema.ROTO_SCRIPT_ENGINE_ID).toBe('efx-physic-paint');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
-    }));
-    expect(value.kind).toBe(ENVELOPE_KIND);
-    expect(value.engineId).toBe('efx-physic-paint');
-    expect(value.schemaVersion).toBe(1);
+    expect(schema.ROTO_SCRIPT_ENGINE_ID_AQUARELLE).toBe('efx-watercolor');
+    // The legacy id survives ONLY to classify an old envelope as refused.
+    expect(schema.ROTO_SCRIPT_LEGACY_ENGINE_ID).toBe('efx-physic-paint');
+    expect(schema.ROTO_SCRIPT_ENGINE_ID, 'ROTO_SCRIPT_ENGINE_ID must be deleted').toBeUndefined();
+    expect(schema.serializeRotoScript, 'the engine-1 serializer must be deleted').toBeUndefined();
+    expect(schema.createPersistedRotoScript, 'the engine-1 builder must be deleted').toBeUndefined();
     expect(schema.managedRotoScriptFilename!(id)).toBe(`${id}${schema.ROTO_SCRIPT_EXTENSION}`);
-    const first = value.strokes[0];
-    const engine = engineOf(first);
-    expect(engine.tool).toBe('paint');
-    expect(engine.color).toBe('#123456');
-    expect(engine.params).toMatchObject({ size: 12, opacity: 90, pressure: 80 });
-    expect(engine.physicsMode).toBe('local');
-    expect(engine.hasPenInput).toBe(true);
-    expect(engine.timestamp).toBe(123);
-    expect(engine.playFrame).toBe(7);
-  });
-
-  it('FIELD-MAPPING: integer tick projection — 3-point stroke has pts tick 0/1/2, ticks 2, and no raw-ms shared timing field', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: threePointStroke(), continuations: [] }],
-    }));
-    const only = value.strokes[0];
-    expect(only.pts.map((point: { tick: number }) => point.tick)).toEqual([0, 1, 2]);
-    expect(only.ticks).toBe(2);
-    expect(Number.isInteger(only.ticks)).toBe(true);
-    expect(only.pts.every((point: { tick: number }) => Number.isInteger(point.tick))).toBe(true);
-    expect(only.pts[0]).toMatchObject({ x: 1, y: 1, p: 1, tx: 0, ty: 0, tw: 0 });
-    for (const forbidden of ['ms', 'timestamp', 'time', 'durationMs', 'elapsed', 'rawMs'] as const) {
-      expect(only).not.toHaveProperty(forbidden);
-    }
-    expect(Number.isFinite(only.recordedOrder)).toBe(true);
-    expect(only.playFrame === null || typeof only.playFrame === 'number').toBe(true);
-  });
-
-  it('FIELD-MAPPING: cuisson vs engine diffusionFrames — 30 → 30, over-cap → engine ceiling, absent → 0', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    const thirty = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke(), continuations: [stroke({ points: [], diffusionFrames: 30 })] }],
-    }));
-    expect(thirty.strokes[1].cuisson).toBe(30);
-    expect(thirty.strokes[1].engine.diffusionFrames).toBe(30);
-
-    const overCap = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke(), continuations: [stroke({ points: [], diffusionFrames: 700 })] }],
-    }));
-    expect(overCap.strokes[1].cuisson).toBe(600);
-    expect(overCap.strokes[1].engine.diffusionFrames).toBe(600);
-
-    const absent = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke(), continuations: [] }],
-    }));
-    expect(absent.strokes[0].cuisson).toBe(0);
-    expect(absent.strokes[0].engine.diffusionFrames).toBeUndefined();
-  });
-
-  it('FIELD-MAPPING: strokes[] reconstruction — group(primary,[cont]) flattens and parse rebuilds the same group', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    expect(schema.parseRotoScript).toBeTypeOf('function');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: threePointStroke(), continuations: [stroke({ points: [], diffusionFrames: 4 })] }],
-    }));
-    expect(value.strokes).toHaveLength(2);
-    expect(value.strokes[0].cuisson).toBe(0);
-    expect(value.strokes[1].cuisson).toBe(4);
-
-    const parsed = schema.parseRotoScript!(value);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(parsed.document.strokes).toHaveLength(2);
-    const runtime = schema.persistedRotoScriptToRuntime!(parsed.document);
-    expect(runtime.brushes).toHaveLength(1);
-    expect(runtime.brushes[0].primary.points).toHaveLength(3);
-    expect(runtime.brushes[0].continuations).toHaveLength(1);
-    expect(runtime.brushes[0].continuations[0].diffusionFrames).toBe(4);
-  });
-
-  it('FIELD-MAPPING: brushPack is the pinned empty snapshot and parse round-trips it', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [] }],
-    }));
-    expect(value.brushPack).toEqual({ kind: 'efx-physic-paint', entries: [] });
-    const parsed = schema.parseRotoScript!(value);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    expect(parsed.document.brushPack).toEqual({ kind: 'efx-physic-paint', entries: [] });
-  });
-
-  it('FIELD-MAPPING: shared stroke law — motion null, brushId, toolOverrides, traceSeed, recordedOrder, playFrame', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: threePointStroke(), continuations: [] }],
-    }));
-    const only = value.strokes[0];
-    expect(only.motion).toBeNull();
-    expect(only.brushId).toBe('efx-physic-paint');
-    expect(only.toolOverrides).toEqual({});
-    expect(Number.isFinite(only.traceSeed)).toBe(true);
-    expect(only.recordedOrder).toBe(123);
-    expect(only.playFrame).toBe(7);
   });
 
   it('parse of a legacy-kind fixture returns the clean-break refusal and never a script', async () => {
     const schema = await loadSchema();
-    expect(schema.parseRotoScript).toBeTypeOf('function');
     const legacy = {
+      ...legacyBrushEnvelope(),
       kind: LEGACY_KIND,
-      schemaVersion: 1,
-      id,
-      name: 'Old',
-      createdAt: '2026-07-16T12:00:00.000Z',
-      updatedAt: '2026-07-16T12:00:00.000Z',
-      source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', grainStrength: 0.6 } },
-      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
-      brushes: [{ primary: stroke(), continuations: [] }],
     };
     const parsed = schema.parseRotoScript!(legacy);
     expect(parsed.ok).toBe(false);
@@ -216,112 +98,48 @@ describe('engine-1 codec on StudioScriptEnvelope (55-05 DATA-01 / D-13..D-16)', 
     expect(parsed.refusal.code).toBe('unreadable-legacy-script');
   });
 
-  it('parse refuses unknown engineId and garbage with named codes', async () => {
+  it('parse of an old Brush envelope refuses as engine-mismatch naming script engine first, target second', async () => {
     const schema = await loadSchema();
-    expect(schema.parseRotoScript).toBeTypeOf('function');
-    const base = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [] }],
-    }));
-    const unknownEngine = schema.parseRotoScript!({ ...base, engineId: 'other' });
+    const parsed = schema.parseRotoScript!(legacyBrushEnvelope());
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.refusal.code).toBe('engine-mismatch');
+    expect(parsed.refusal.detail).toBe('efx-physic-paint:efx-watercolor');
+  });
+
+  it('parse refuses an unknown engine id and garbage with named codes', async () => {
+    const schema = await loadSchema();
+    const aquarelle = schema.serializeAquarelleRotoScript!(aquarelleInput());
+
+    const unknownEngine = schema.parseRotoScript!({ ...aquarelle, engineId: 'other' });
     expect(unknownEngine.ok).toBe(false);
     if (!unknownEngine.ok) expect(unknownEngine.refusal.code).toBe('unknown-engine-id');
+
+    // A KNOWN engine that is not this reader's codec is a mismatch, not a
+    // malformed payload — the envelope parsed cleanly.
+    const krita = schema.parseRotoScript!({ ...aquarelle, engineId: 'efx-krita' });
+    expect(krita.ok).toBe(false);
+    if (!krita.ok) {
+      expect(krita.refusal.code).toBe('engine-mismatch');
+      expect(krita.refusal.detail).toBe('efx-krita:efx-watercolor');
+    }
 
     const garbage = schema.parseRotoScript!(null);
     expect(garbage.ok).toBe(false);
     if (!garbage.ok) expect(garbage.refusal.code).toBe('malformed-engine-payload');
   });
 
-  it('preserves every current physics mode in the engine slot and runtime reconstruction', async () => {
+  it('never accepts a legacy Brush body relabelled with the watercolor engine id', async () => {
     const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    for (const physicsMode of ['local', 'last', 'all', null] as const) {
-      const value = schema.serializeRotoScript!(input({
-        brushes: [{ primary: stroke({ physicsMode }), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
-      }));
-      expect(value.strokes[0].engine.physicsMode).toBe(physicsMode);
-      const parsed = schema.parseRotoScript!(value);
-      expect(parsed.ok).toBe(true);
-      if (!parsed.ok) continue;
-      expect(schema.persistedRotoScriptToRuntime!(parsed.document).brushes[0].primary.physicsMode).toBe(physicsMode);
-    }
-  });
-
-  it('creates fresh runtime and row objects without aliasing persisted input', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript).toBeTypeOf('function');
-    const value = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
-    }));
-    const runtime = schema.persistedRotoScriptToRuntime!(value);
-    const row = schema.rotoScriptLibraryRow!(value, 'revision', 'a'.repeat(64));
-    expect(runtime.brushes[0].primary.points[0]).not.toBe(value.strokes[0].pts[0]);
-    expect(row.source).not.toBe(value.source);
-    expect(row.thumbnail).not.toBe(value.thumbnail);
-  });
-
-  it('accepts safe unknown optional fields and rejects malformed versions, dates, ids and WebP metadata', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript, 'schema must export serializeRotoScript').toBeTypeOf('function');
-    expect(schema.isPersistedRotoScriptV1).toBeTypeOf('function');
-    const base = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [] }],
-    }));
-    const value = structuredClone(base) as any;
-    value.futureOptional = { safe: true };
-    expect(schema.isPersistedRotoScriptV1!(value)).toBe(true);
-    for (const mutate of [
-      (copy: any) => { copy.schemaVersion = 2; },
-      (copy: any) => { copy.id = '../escape'; },
-      (copy: any) => { copy.updatedAt = '2026-07-15T00:00:00Z'; },
-      (copy: any) => { copy.engineId = 'other'; },
-      (copy: any) => { copy.strokes[0].recordedOrder = Number.MAX_SAFE_INTEGER + 1; },
-      (copy: any) => { copy.strokes[0].engine.physicsMode = 'global'; },
-      (copy: any) => { copy.strokes[0].pts[0].p = 2; },
-      (copy: any) => { copy.thumbnail.width = 2; },
-      (copy: any) => { copy.thumbnail.dataUrl = 'data:image/png;base64,AAAA'; },
-    ]) {
-      const copy = structuredClone(base); mutate(copy); expect(schema.isPersistedRotoScriptV1!(copy)).toBe(false);
-    }
-    expect(schema.isPersistedRotoScriptV1!({ ...base, kind: LEGACY_KIND })).toBe(false);
-  });
-
-  // 260925-iy6: the engine's `|| 0` round-trip must not leak diffusionFrames: 0
-  // into the persisted engine slot or the shared cuisson.
-  it('drops the engine round-trip diffusionFrames: 0 so primaries stay persistable', async () => {
-    const schema = await loadSchema();
-    expect(schema.createPersistedRotoScript, 'schema must export createPersistedRotoScript').toBeTypeOf('function');
-    expect(schema.serializeRotoScript, 'schema must export serializeRotoScript').toBeTypeOf('function');
-    const value = schema.createPersistedRotoScript!(input({
-      brushes: [{ primary: stroke({ diffusionFrames: 0 }), continuations: [] }],
-    }));
-    expect(value.strokes[0].engine).not.toHaveProperty('diffusionFrames');
-    expect(value.strokes[0].cuisson).toBe(0);
-    expect(schema.isPersistedRotoScriptV1!(value)).toBe(true);
-  });
-
-  // 260925-iy6: raw engine pen values must project into the shared point contract.
-  it('projects raw engine pen values into the v1 point contract instead of rejecting them', async () => {
-    const schema = await loadSchema();
-    expect(schema.serializeRotoScript, 'schema must export serializeRotoScript').toBeTypeOf('function');
-    const value = schema.createPersistedRotoScript!(input({
-      brushes: [{
-        primary: stroke({
-          points: [{ x: 1, y: 2, p: 1.4, tx: -95, ty: 120, tw: 400, spd: 240_000 }],
-          params: { size: 12, opacity: 90, pressure: 80, waterAmount: 70, dryAmount: 60, edgeDetail: 50, pickup: 40, eraseStrength: 30, antiAlias: 2.5 },
-        }),
-        continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 1200 })],
-      }],
-    }));
-    expect(value.strokes[0].pts[0]).toMatchObject({ x: 1, y: 2, p: 1, tx: -90, ty: 90, tw: 360 });
-    expect(value.strokes[0].engine.params.antiAlias).toBe(3);
-    expect(value.strokes[1].cuisson).toBe(600);
-    expect(value.strokes[1].engine.diffusionFrames).toBe(600);
-    expect(schema.isPersistedRotoScriptV1!(value)).toBe(true);
+    const relabelled = { ...legacyBrushEnvelope('efx-watercolor'), brushPack: { kind: 'efx-watercolor', entries: [] } };
+    const parsed = schema.parseRotoScript!(relabelled);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.refusal.code).toBe('malformed-engine-payload');
   });
 });
 
 // ---------------------------------------------------------------------------
-// 261018-odm: dual-engine aquarelle variant (ODM-01)
+// 261018-odm: the aquarelle variant (ODM-01)
 // ---------------------------------------------------------------------------
 
 const AQUARELLE_ENGINE_ID = 'efx-watercolor';
@@ -393,6 +211,7 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     expect(value.kind).toBe(ENVELOPE_KIND);
     expect(value.engineId).toBe(AQUARELLE_ENGINE_ID);
     expect(value.schemaVersion).toBe(1);
+    expect(value.brushPack).toEqual({ kind: AQUARELLE_ENGINE_ID, entries: [] });
     const only = value.strokes[0];
     expect(only.brushId).toBe(AQUARELLE_ENGINE_ID);
     expect(only.cuisson).toBe(0);
@@ -437,27 +256,16 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     expect(drys).toEqual([{ kind: 'dry', tick: 9, recordedOrder: 55 }]);
   });
 
-  it('parseRotoScript accepts both engineIds and rejects a third with engine-mismatch', async () => {
+  it('parseRotoScript accepts the watercolor envelope and no other engine', async () => {
     const schema = await loadSchema();
     expect(schema.parseRotoScript).toBeTypeOf('function');
-    const engine1 = schema.serializeRotoScript!(input({
-      brushes: [{ primary: stroke({ physicsMode: 'local' }), continuations: [] }],
-    }));
     const aquarelle = schema.serializeAquarelleRotoScript!(aquarelleInput({
       events: [aquarelleStrokeEvent()],
     }));
-    expect(schema.parseRotoScript!(engine1).ok).toBe(true);
     expect(schema.parseRotoScript!(aquarelle).ok).toBe(true);
-
-    const foreign = schema.parseRotoScript!({ ...aquarelle, engineId: 'efx-krita' });
-    expect(foreign.ok).toBe(false);
-    if (!foreign.ok) {
-      expect(foreign.refusal.code).toBe('engine-mismatch');
-      expect(foreign.refusal.detail).toBe(`efx-krita:${schema.ROTO_SCRIPT_ENGINE_ID}`);
-    }
   });
 
-  it('isEnginePayload dispatches on the document engineId — an engine-1 tool id refuses on an aquarelle document', async () => {
+  it('the watercolor guard rejects an engine-1 tool id inside an aquarelle document', async () => {
     const schema = await loadSchema();
     expect(schema.serializeAquarelleRotoScript).toBeTypeOf('function');
     const value = schema.serializeAquarelleRotoScript!(aquarelleInput({
@@ -467,6 +275,20 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     poisoned.strokes[0].engine.tool = 'paint';
     expect(schema.isPersistedRotoScriptV1!(poisoned)).toBe(false);
     expect(schema.isPersistedRotoScriptAquarelleV1!(poisoned)).toBe(false);
+  });
+
+  it('keeps the watercolor brushPack validation', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [aquarelleStrokeEvent()] }));
+    expect(schema.isPersistedRotoScriptAquarelleV1!(value)).toBe(true);
+
+    const noPack = structuredClone(value) as any;
+    delete noPack.brushPack;
+    expect(schema.isPersistedRotoScriptAquarelleV1!(noPack)).toBe(false);
+
+    const badEntries = structuredClone(value) as any;
+    badEntries.brushPack = { kind: AQUARELLE_ENGINE_ID, entries: 'nope' };
+    expect(schema.isPersistedRotoScriptAquarelleV1!(badEntries)).toBe(false);
   });
 
   it('persistedRotoScriptToRuntime sets engineId and aquarelleEvents from the aquarelle document', async () => {
@@ -481,11 +303,21 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     expect(runtime.aquarelleEvents).toHaveLength(3);
     expect(runtime.aquarelleEvents!.filter((event: any) => event.kind === 'dry')).toHaveLength(1);
     expect(runtime.aquarelleEvents!.filter((event: any) => event.kind !== 'dry')).toHaveLength(2);
-    // One non-Dry stroke group per primary, projected into engine-1 pixel space.
+    // One stroke group per non-Dry event, projected into pixel space.
     expect(runtime.brushes).toHaveLength(2);
     expect(runtime.brushes[0].primary.points).toHaveLength(3);
     // UV y-up 0.75 → pixel y-down (1 - 0.75) * 1080 = 270.
     expect(runtime.brushes[0].primary.points[0]).toMatchObject({ x: 0.25 * 1920, y: (1 - 0.75) * 1080 });
+  });
+
+  it('creates fresh runtime and row objects without aliasing persisted input', async () => {
+    const schema = await loadSchema();
+    const value = schema.serializeAquarelleRotoScript!(aquarelleInput({ events: [aquarelleStrokeEvent()] }));
+    const runtime = schema.persistedRotoScriptToRuntime!(value);
+    const row = schema.rotoScriptLibraryRow!(value, 'revision', 'a'.repeat(64));
+    expect(runtime.brushes[0].primary.points[0]).not.toBe(value.strokes[0].pts[0]);
+    expect(row.source).not.toBe(value.source);
+    expect(row.thumbnail).not.toBe(value.thumbnail);
   });
 
   it('rotoScriptLibraryRow brushCount skips Dry markers on an aquarelle document', async () => {
@@ -496,17 +328,8 @@ describe('aquarelle script codec (261018-odm ODM-01)', () => {
     expect(row.brushCount).toBe(2);
   });
 
-  it('engine-1 runtime output stays equivalent to today and the aquarelle round-trip keeps counts', async () => {
+  it('the aquarelle round-trip keeps counts', async () => {
     const schema = await loadSchema();
-    const engine1 = schema.serializeRotoScript!(input({
-      brushes: [{ primary: threePointStroke(), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
-    }));
-    const engine1Runtime = schema.persistedRotoScriptToRuntime!(engine1);
-    expect(engine1Runtime.engineId).toBe('efx-physic-paint');
-    expect(engine1Runtime.aquarelleEvents).toBeUndefined();
-    expect(engine1Runtime.brushes).toHaveLength(1);
-    expect(engine1Runtime.brushes[0].continuations).toHaveLength(1);
-
     const aquarelle = schema.serializeAquarelleRotoScript!(aquarelleInput());
     const parsed = schema.parseRotoScript!(aquarelle);
     expect(parsed.ok).toBe(true);

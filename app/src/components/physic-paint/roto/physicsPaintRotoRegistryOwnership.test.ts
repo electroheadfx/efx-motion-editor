@@ -1,93 +1,89 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /**
- * G-52-10 registry ownership lifecycle pins.
+ * G-52-10 registry ownership lifecycle pins — watercolor-only reveal bake
+ * (261027-klx).
  *
- * These tests drive renderRotoRevealFrames / renderRotoPlayScriptFrames through
- * the REAL encodeRotoFrameFromCanvas into the REAL alpha-canvas registry (only
- * the engine and the animation schedules are mocked). The bug was a
- * register-then-release in the render loop's `finally`: the registry ended up
+ * These tests drive `renderRotoRevealFrames` through the REAL
+ * `encodeRotoFrameFromCanvas` into the REAL alpha-canvas registry (only the
+ * wash bake, the image decode and the WebP encoder are scripted). The bug was
+ * a register-then-release in the render loop's `finally`: the registry ended up
  * mapping each baked dataUrl to a 0×0 canvas, and the compositor's FIX 3
  * branch then threw InvalidStateError at drawImage (the stuck-dialog bug).
  * The pin: after the render completes, every baked dataUrl's registry canvas
- * is alive at full size — a register-then-release fails this at any guard state.
+ * is alive at full size — a register-then-release fails this at any guard
+ * state.
  */
 
 const harness = vi.hoisted(() => ({
-  scriptAlpha: null as { width: number; height: number } | null,
-  renderedFrames: [] as Array<Array<{ stroke: PaintStroke; pointCount: number }>>,
-  buildStatic: vi.fn(),
-  buildProgressive: vi.fn(),
-  getStatic: vi.fn(),
-  getProgressive: vi.fn(),
-  transform: vi.fn(),
+  bakeResult: null as unknown,
+  adapterDispose: vi.fn(),
+  bakeDispose: vi.fn(),
+  encodeCount: 0,
 }));
 
-vi.mock('@efxlab/efx-physic-paint', async (importOriginal) => ({
-  ...(await importOriginal()),
-  EfxPaintEngine: class {
-    async init() {}
-    setAnimationMode() {}
-    setInputLocked() {}
-    setBgMode() {}
-    renderProgressiveAlphaFrame(frames: Array<{ stroke: PaintStroke; pointCount: number }>) {
-      harness.renderedFrames.push(frames);
-      return harness.scriptAlpha;
-    }
-    destroy() {}
-  },
+vi.mock('@efxlab/efx-watercolor', () => ({
+  createAquarelleEngineAdapter: () => ({ dispose: harness.adapterDispose }),
 }));
-vi.mock('@efxlab/efx-paint-host/animation', () => ({
-  buildProgressiveStrokeSchedule: harness.buildProgressive,
-  getProgressiveFrameStrokes: harness.getProgressive,
-  buildStaticStrokeSchedule: harness.buildStatic,
-  getStaticFrameStrokes: harness.getStatic,
-  transformRecordedStrokeForHeldPose: harness.transform,
+vi.mock('@efxlab/efx-watercolor/bake', () => ({
+  createAquarelleBake: () => ({
+    bake: async () => harness.bakeResult,
+    flush: async () => {},
+    beginFlush: () => () => {},
+    dispose: harness.bakeDispose,
+    interrupt: () => {},
+    inFlight: 0,
+  }),
+}));
+vi.mock('../engine/AquarelleCanvasLayer', () => ({
+  paperPresetForStudioId: (paperId: string) => paperId,
 }));
 vi.mock('../../../lib/webpFrameCodec', () => ({
-  encodeWebpFrame: vi.fn(async () => new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c])),
+  // Distinct bytes per bake: each frame must own its registry entry.
+  encodeWebpFrame: vi.fn(async () => {
+    harness.encodeCount += 1;
+    const bytes = new Uint8Array(40);
+    bytes.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+    bytes.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+    bytes.set([0x56, 0x50, 0x38, 0x4c], 12); // VP8L
+    bytes[32] = harness.encodeCount & 0xff;
+    return bytes;
+  }),
   decodeWebpFrame: vi.fn(),
 }));
 
 // The REAL modules under test: the encode registers into the REAL store registry.
 import { hasRotoAlphaCanvasFrame } from '../../../stores/physicPaintStore';
-import { renderRotoPlayScriptFrames, renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
+import { renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+
+class OwnedContext {
+  globalAlpha = 1;
+  globalCompositeOperation = 'source-over';
+  constructor(private readonly canvas: OwnedCanvas) {}
+  clearRect(): void {}
+  save(): void {}
+  restore(): void {}
+  translate(): void {}
+  rotate(): void {}
+  scale(): void {}
+  drawImage(): void {}
+  getImageData(): { data: Uint8ClampedArray } {
+    return { data: new Uint8ClampedArray(this.canvas.width * this.canvas.height * 4) };
+  }
+  putImageData(): void {}
+}
 
 class OwnedCanvas {
   width = 0;
   height = 0;
-  getContext(kind: string) {
+  private context: OwnedContext | null = null;
+  getContext(kind: string): OwnedContext | null {
     if (kind !== '2d') return null;
-    return {
-      globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
-      clearRect: vi.fn(),
-      save: vi.fn(),
-      restore: vi.fn(),
-      translate: vi.fn(),
-      rotate: vi.fn(),
-      scale: vi.fn(),
-      drawImage: vi.fn(),
-      getImageData: () => ({ data: new Uint8Array(this.width * this.height * 4) }),
-    };
-  }
-  toBlob(callback: BlobCallback): void {
-    callback(new Blob(['png'], { type: 'image/png' }));
-  }
-}
-
-class StubFileReader {
-  static count = 0;
-  result: string | ArrayBuffer | null = null;
-  onload: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  readAsDataURL(): void {
-    StubFileReader.count += 1;
-    this.result = `data:image/png;base64,frame-${StubFileReader.count}`;
-    this.onload?.();
+    this.context ??= new OwnedContext(this);
+    return this.context;
   }
 }
 
@@ -96,89 +92,87 @@ class StubImage {
   onerror: (() => void) | null = null;
   width = 4;
   height = 3;
-  #src = '';
-  get src(): string { return this.#src; }
+  private currentSrc = '';
   set src(value: string) {
-    this.#src = value;
+    this.currentSrc = value;
     queueMicrotask(() => this.onload?.());
   }
+  get src(): string { return this.currentSrc; }
 }
 
-const point = (index: number) => ({ x: index, y: index * 2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 1 });
-const stroke = (tool: 'paint' | 'erase', color: string | null, points: number, timestamp: number): PaintStroke => ({
-  tool,
-  color,
-  timestamp,
-  points: Array.from({ length: points }, (_, index) => point(index)),
-  params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
-});
+function strokeEvent(recordedOrder = 1): AquarellePayloadEvent {
+  return {
+    pts: [{ x: 0.25, y: 0.75, p: 0.8, tx: 0, ty: 0, tw: 0, tick: 0 }],
+    ticks: 0,
+    cuisson: 0,
+    motion: null,
+    brushId: 'wc/round-medium',
+    toolOverrides: {},
+    traceSeed: 7,
+    recordedOrder,
+    playFrame: null,
+    color: '#224466',
+    engine: { tool: 'brush', color: '#224466', params: { size: 12 }, brushId: 'wc/round-medium', mutationId: recordedOrder, timestamp: recordedOrder },
+  };
+}
 
-function scriptWithStrokes(): RotoPaintScript {
+function script(): RotoPaintScript {
   return {
     provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 },
     sourceFrame: 0,
     sourceDisplayFrame: 0,
     sourceRevision: 1,
-    brushes: [
-      { primary: stroke('paint', '#123456', 3, 1), continuations: [stroke('erase', null, 2, 2)] },
-      { primary: stroke('paint', '#654321', 1, 3), continuations: [] },
-    ],
+    brushes: [],
+    engineId: 'efx-watercolor',
+    aquarelleEvents: [strokeEvent()],
   };
 }
 
-function revealInput(extra: Record<string, unknown> = {}): Parameters<typeof renderRotoRevealFrames>[0] {
+function washFrame(seed: string) {
+  return { eventIndex: 0, strokeIndex: 0, tick: 0, bytes: testWebpBytes(seed), width: 10, height: 10 };
+}
+
+function revealInput(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}): Parameters<typeof renderRotoRevealFrames>[0] {
+  const canonicalStart = extra.canonicalStart ?? 15;
+  const frameCount = extra.frameCount ?? 3;
   return {
-    script: scriptWithStrokes(),
+    script: script(),
     frameCount: 3,
     canonicalStart: 15,
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    // WR-02 (260920-kov): the reference carries a per-application-frame bytes
-    // map — the span [15, 18) resolves every frame to the one shared payload.
     reference: {
-      bytesByAppFrame: new Map([[15, testWebpBytes('ref')], [16, testWebpBytes('ref')], [17, testWebpBytes('ref')]]),
+      bytesByAppFrame: new Map(Array.from({ length: frameCount }, (_, index) => [canonicalStart + index, testWebpBytes('ref')] as const)),
       transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
       zoom: 1,
     },
     signal: new AbortController().signal,
     ...extra,
-  } as Parameters<typeof renderRotoRevealFrames>[0];
+  };
 }
 
-function paintInput(extra: Record<string, unknown> = {}): Parameters<typeof renderRotoPlayScriptFrames>[0] {
-  return {
-    script: scriptWithStrokes(),
-    frameCount: 3,
-    canonicalStart: 15,
-    motion: { deformation: 0, position: 0 },
-    mode: 'progressive',
-    existingFrames: new Map(),
-    size: { width: 10, height: 10 },
-    signal: new AbortController().signal,
-    ...extra,
-  } as Parameters<typeof renderRotoPlayScriptFrames>[0];
-}
-
-describe('G-52-10 registry ownership (real encode → real registry)', () => {
+describe('G-52-10 registry ownership (real encode → real registry, reveal bake)', () => {
   beforeEach(() => {
     vi.stubGlobal('document', {
       createElement: (tag: string) => (tag === 'canvas' ? new OwnedCanvas() : { replaceChildren: vi.fn() }),
     });
     vi.stubGlobal('Image', StubImage);
     vi.stubGlobal('HTMLImageElement', StubImage);
-    vi.stubGlobal('FileReader', StubFileReader);
+    vi.stubGlobal('Blob', class { constructor(public readonly parts: unknown[]) {} });
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:payload'),
+      revokeObjectURL: vi.fn(),
+    });
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
-    harness.scriptAlpha = { width: 10, height: 10 };
-    harness.renderedFrames.length = 0;
-    harness.transform.mockReset().mockImplementation((entry: PaintStroke) => entry);
-    harness.buildStatic.mockReset().mockImplementation((strokes: PaintStroke[]) => strokes);
-    harness.buildProgressive.mockReset().mockImplementation((strokes: PaintStroke[]) => strokes);
-    const flow = (schedule: PaintStroke[], frameIndex: number, transform?: (entry: PaintStroke, frame: number, index: number) => PaintStroke) =>
-      schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: (entry as { pts?: unknown[]; points?: unknown[] }).pts?.length ?? (entry as { points?: unknown[] }).points?.length ?? 0 }));
-    harness.getStatic.mockReset().mockImplementation(flow);
-    harness.getProgressive.mockReset().mockImplementation(flow);
+    harness.encodeCount = 0;
+    harness.adapterDispose.mockReset();
+    harness.bakeDispose.mockReset();
+    harness.bakeResult = {
+      ok: true,
+      frames: [washFrame('w0'), washFrame('w1'), washFrame('w2')],
+    };
   });
 
   it('reveal bake: every baked dataUrl keeps a live full-size registry canvas', async () => {
@@ -190,19 +184,19 @@ describe('G-52-10 registry ownership (real encode → real registry)', () => {
       // registration — the exact G-52-10 poison the compositor later drew from.
       expect(hasRotoAlphaCanvasFrame(frame.bytes, { width: 10, height: 10 })).toBe(true);
     }
-    // The coverage alpha canvas is never registered, so it is still released.
-    expect(harness.scriptAlpha?.width).toBe(0);
-    expect(harness.scriptAlpha?.height).toBe(0);
+    expect(harness.bakeDispose).toHaveBeenCalledTimes(1);
+    expect(harness.adapterDispose).toHaveBeenCalledTimes(1);
   });
 
-  it('paint PlayScript path: every baked dataUrl keeps a live full-size registry canvas (merged)', async () => {
-    const staged = await renderRotoPlayScriptFrames(paintInput());
+  it('static span: ONE held wash still registers a live canvas per OUTPUT frame', async () => {
+    harness.bakeResult = { ok: true, frames: [washFrame('settled')] };
+    const staged = await renderRotoRevealFrames(revealInput({ mode: 'static', frameCount: 3, canonicalStart: 15 }));
 
     expect(staged.map((frame) => frame.appFrame)).toEqual([15, 16, 17]);
+    const tokens = new Set(staged.map((frame) => frame.bytes));
+    expect(tokens.size).toBe(3);
     for (const frame of staged) {
       expect(hasRotoAlphaCanvasFrame(frame.bytes, { width: 10, height: 10 })).toBe(true);
     }
-    expect(harness.scriptAlpha?.width).toBe(0);
-    expect(harness.scriptAlpha?.height).toBe(0);
   });
 });

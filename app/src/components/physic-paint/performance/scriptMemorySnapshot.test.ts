@@ -1,6 +1,6 @@
 // ============================================================
-//  scriptMemorySnapshot.test.ts — RED-first suite for the
-//  DEV-only Studio script-memory snapshot (quick 261023-f9c).
+//  scriptMemorySnapshot.test.ts — suite for the DEV-only Studio
+//  script-memory snapshot (quick 261023-f9c).
 //
 //  Measurement law: approxBytes is the UTF-8 byte length of
 //  JSON.stringify of the counted object(s), computed with ONE
@@ -8,6 +8,9 @@
 //  registry stroke + projected timeline entry). Frame caches
 //  are reported in their own section and never folded into the
 //  script totals.
+//
+//  After engine-1 removal the watercolor registry is the WHOLE
+//  script memory: the payload has no brush section at all.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -19,7 +22,6 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke } from '@efxlab/efx-watercolor/payload';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   buildScriptMemorySnapshot,
   installScriptMemoryGlobal,
@@ -28,10 +30,6 @@ import {
   type ScriptMemorySnapshotInput,
   type ScriptMemoryWindowLike,
 } from './scriptMemorySnapshot';
-import {
-  MAX_ATTACH_POINTS,
-  MAX_ATTACH_STROKES,
-} from '../view/brushScriptHydration';
 
 const encoder = new TextEncoder();
 const jsonBytes = (value: unknown): number => encoder.encode(JSON.stringify(value)).byteLength;
@@ -106,71 +104,17 @@ function baseInput(from: Fixture): ScriptMemorySnapshotInput {
     watercolorEntries: from.entries,
     isStrokeDeleted: (mutationId) => mutationId === 4,
     dryEvents: from.dry,
-    brushStrokes: null,
-    brushScript: {
-      frames: [],
-      totals: { strokes: 0, points: 0, approxBytes: 0 },
-    },
     frameCaches: [],
   };
 }
 
-const BRUSH_STROKES: PaintStroke[] = [
-  {
-    tool: 'paint',
-    points: [
-      { x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.1 },
-      { x: 0.3, y: 0.4, p: 0.6, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-    ],
-    color: '#000000',
-    params: {
-      size: 8,
-      opacity: 80,
-      pressure: 100,
-      waterAmount: 30,
-      dryAmount: 20,
-      edgeDetail: 50,
-      pickup: 10,
-      eraseStrength: 0,
-      antiAlias: 2,
-    },
-    timestamp: 10,
-  },
-  {
-    tool: 'paint',
-    points: [
-      { x: 0.5, y: 0.6, p: 0.7, tx: 0, ty: 0, tw: 0, spd: 0.3 },
-      { x: 0.7, y: 0.8, p: 0.8, tx: 0, ty: 0, tw: 0, spd: 0.4 },
-      { x: 0.9, y: 0.1, p: 0.9, tx: 0, ty: 0, tw: 0, spd: 0.5 },
-    ],
-    color: '#ffffff',
-    params: {
-      size: 4,
-      opacity: 60,
-      pressure: 90,
-      waterAmount: 50,
-      dryAmount: 10,
-      edgeDetail: 40,
-      pickup: 20,
-      eraseStrength: 0,
-      antiAlias: 1,
-    },
-    timestamp: 20,
-  },
-];
-
 describe('buildScriptMemorySnapshot — empty state', () => {
-  it('returns an empty, fully labelled snapshot', () => {
+  it('returns an empty, fully labelled snapshot with no brush section', () => {
     const snapshot = buildScriptMemorySnapshot({
       watercolorStrokes: new Map(),
       watercolorEntries: new Map(),
       isStrokeDeleted: () => false,
       dryEvents: [],
-      brushStrokes: null,
-      brushScript: {
-        frames: [],
-        totals: { strokes: 0, points: 0, approxBytes: 0 },
-      },
       frameCaches: [],
     });
 
@@ -190,24 +134,14 @@ describe('buildScriptMemorySnapshot — empty state', () => {
       approxBytes: 0,
     });
 
-    expect(snapshot.brush.scope).toBe('per-frame-session-store');
-    expect(snapshot.brush.frames).toEqual([]);
-    expect(snapshot.brush.totals).toEqual({
-      strokes: 0,
-      points: 0,
-      approxBytes: 0,
-      completeFrames: 0,
-      partialFrames: 0,
-    });
-    expect(snapshot.brush.currentEngineFrame).toEqual({
-      available: false,
-      strokes: 0,
-      points: 0,
-      approxBytes: 0,
-    });
-    expect(snapshot.brush.note).toContain('captured per frame');
-
     expect(snapshot.frameCache).toEqual({ scope: 'this-webview', totalBytes: 0, caches: [] });
+    // Engine-1 removal: watercolor + frame caches are the whole payload.
+    expect(Object.keys(snapshot).sort()).toEqual([
+      'approxMethod',
+      'capturedAt',
+      'frameCache',
+      'watercolor',
+    ]);
   });
 });
 
@@ -297,11 +231,6 @@ describe('buildScriptMemorySnapshot — approxBytes method', () => {
       watercolorEntries: new Map(),
       isStrokeDeleted: () => false,
       dryEvents: [],
-      brushStrokes: null,
-      brushScript: {
-        frames: [],
-        totals: { strokes: 0, points: 0, approxBytes: 0 },
-      },
       frameCaches: [],
     });
 
@@ -346,11 +275,6 @@ describe('installScriptMemoryGlobal', () => {
       watercolorEntries: new Map(),
       isStrokeDeleted: () => false,
       dryEvents: [],
-      brushStrokes: null,
-      brushScript: {
-        frames: [],
-        totals: { strokes: 0, points: 0, approxBytes: 0 },
-      },
       frameCaches: [],
     }),
   };
@@ -375,156 +299,6 @@ describe('installScriptMemoryGlobal', () => {
   });
 });
 
-describe('buildScriptMemorySnapshot — brush scope', () => {
-  const BRUSH_SCRIPT = {
-    frames: [
-      { frame: 2, strokes: 1, points: 2, approxBytes: 300, complete: true, diffusionFrames: 0 },
-      { frame: 7, strokes: 3, points: 9, approxBytes: 900, complete: false, diffusionFrames: 12 },
-    ],
-    totals: { strokes: 4, points: 11, approxBytes: 1200 },
-  };
-
-  it('reports the per-frame store separately from the current engine frame', () => {
-    const from = fixture();
-    const snapshot = buildScriptMemorySnapshot({
-      ...baseInput(from),
-      brushStrokes: BRUSH_STROKES,
-      brushScript: BRUSH_SCRIPT,
-    });
-
-    expect(snapshot.brush.scope).toBe('per-frame-session-store');
-    // Complete rows carry the derived hydratable verdict; the partial row is
-    // visible as non-hydratable even though its strokes are retained.
-    expect(snapshot.brush.frames).toEqual([
-      { ...BRUSH_SCRIPT.frames[0], hydratable: true },
-      { ...BRUSH_SCRIPT.frames[1], hydratable: false },
-    ]);
-    expect(snapshot.brush.totals).toEqual({
-      ...BRUSH_SCRIPT.totals,
-      completeFrames: 1,
-      partialFrames: 1,
-    });
-    // The current engine frame keeps the documented JSON-byte method and is
-    // NOT folded into the session totals.
-    expect(snapshot.brush.currentEngineFrame).toEqual({
-      available: true,
-      strokes: 2,
-      points: 5,
-      approxBytes: 687,
-    });
-    expect(snapshot.brush.totals.approxBytes).toBe(1200);
-    // The note states session-only retention, the completeness law, and the
-    // real-key hydration rule.
-    expect(snapshot.brush.note).toContain('captured per frame');
-    expect(snapshot.brush.note).toContain('for this Studio session only');
-    expect(snapshot.brush.note).toContain('current engine frame is measured separately');
-    expect(snapshot.brush.note).toContain('complete when its captured script is the whole content');
-    expect(snapshot.brush.note).toContain('attaches its script silently over the cached pixels');
-  });
-
-  it('keeps the scope and note when the engine has no strokes', () => {
-    const from = fixture();
-    const snapshot = buildScriptMemorySnapshot({
-      ...baseInput(from),
-      brushStrokes: null,
-      brushScript: BRUSH_SCRIPT,
-    });
-
-    expect(snapshot.brush.currentEngineFrame).toEqual({
-      available: false,
-      strokes: 0,
-      points: 0,
-      approxBytes: 0,
-    });
-    // Session rows survive an engine-less read.
-    expect(snapshot.brush.frames).toEqual([
-      { ...BRUSH_SCRIPT.frames[0], hydratable: true },
-      { ...BRUSH_SCRIPT.frames[1], hydratable: false },
-    ]);
-    expect(snapshot.brush.scope).toBe('per-frame-session-store');
-  });
-});
-
-describe('buildScriptMemorySnapshot — brush completeness/hydratability', () => {
-  function brushInput(
-    frames: Array<{
-      frame: number;
-      strokes: number;
-      points: number;
-      approxBytes: number;
-      complete: boolean;
-      diffusionFrames: number;
-    }>,
-  ): ScriptMemorySnapshotInput {
-    return {
-      ...baseInput(fixture()),
-      brushScript: {
-        frames,
-        totals: { strokes: 0, points: 0, approxBytes: 0 },
-      },
-    };
-  }
-
-  const row = (
-    complete: boolean,
-    points: number,
-    diffusionFrames: number,
-  ) => ({ frame: 1, strokes: 1, points, approxBytes: 100, complete, diffusionFrames });
-
-  it('marks a complete row within the caps hydratable and counts the split', () => {
-    const snapshot = buildScriptMemorySnapshot(
-      brushInput([
-        row(true, 100, 0),
-        row(false, 100, 0),
-        { ...row(true, 200, 0), frame: 2 },
-      ]),
-    );
-
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([true, false, true]);
-    expect(snapshot.brush.totals.completeFrames).toBe(2);
-    expect(snapshot.brush.totals.partialFrames).toBe(1);
-  });
-
-  it('marks a complete row over the attach point cap non-hydratable', () => {
-    const snapshot = buildScriptMemorySnapshot(
-      brushInput([row(true, MAX_ATTACH_POINTS + 1, 0), row(true, MAX_ATTACH_POINTS, 0)]),
-    );
-
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
-    // Completeness itself is not changed by the cap.
-    expect(snapshot.brush.totals.completeFrames).toBe(2);
-    expect(snapshot.brush.totals.partialFrames).toBe(0);
-  });
-
-  it('marks a complete row with ANY diffusion frame non-hydratable (unaffordable rebake)', () => {
-    // 261023-j5b Task 3: a physics-run frame's faithful rebake replays solver
-    // frames (~700 ms each at HD), so the probe reports it view-only even
-    // though its script is complete and small.
-    const snapshot = buildScriptMemorySnapshot(
-      brushInput([row(true, 10, 300), row(true, 10, 0)]),
-    );
-
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
-  });
-
-  it('marks a complete row over the attach stroke cap non-hydratable', () => {
-    const snapshot = buildScriptMemorySnapshot(brushInput([
-      { ...row(true, 1, 0), strokes: MAX_ATTACH_STROKES + 1 },
-      { ...row(true, 1, 0), strokes: MAX_ATTACH_STROKES },
-    ]));
-
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
-  });
-
-  it('never promotes a partial row, even when it is well within the caps', () => {
-    const snapshot = buildScriptMemorySnapshot(brushInput([row(false, 1, 0)]));
-
-    expect(snapshot.brush.frames[0]!.complete).toBe(false);
-    expect(snapshot.brush.frames[0]!.hydratable).toBe(false);
-    expect(snapshot.brush.totals).toMatchObject({ completeFrames: 0, partialFrames: 1 });
-  });
-});
-
 describe('buildScriptMemorySnapshot — cache separation', () => {
   const caches: ScriptMemoryCacheStat[] = [
     {
@@ -545,13 +319,9 @@ describe('buildScriptMemorySnapshot — cache separation', () => {
 
   it('reports caches in their own section without touching script totals', () => {
     const from = fixture();
-    const withoutCaches = buildScriptMemorySnapshot({
-      ...baseInput(from),
-      brushStrokes: BRUSH_STROKES,
-    });
+    const withoutCaches = buildScriptMemorySnapshot(baseInput(from));
     const withCaches = buildScriptMemorySnapshot({
       ...baseInput(from),
-      brushStrokes: BRUSH_STROKES,
       frameCaches: caches,
     });
 
@@ -559,6 +329,5 @@ describe('buildScriptMemorySnapshot — cache separation', () => {
     expect(withCaches.frameCache.caches).toEqual(caches);
     expect(withCaches.frameCache.totalBytes).toBe(3072);
     expect(withCaches.watercolor).toEqual(withoutCaches.watercolor);
-    expect(withCaches.brush).toEqual(withoutCaches.brush);
   });
 });

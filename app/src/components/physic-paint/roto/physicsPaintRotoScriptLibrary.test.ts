@@ -3,7 +3,8 @@ import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicP
 import { buildRotoScriptDeleteReferenceImpact, createRotoScriptLibraryController, prepareReferencedActionDeletion } from './physicsPaintRotoScriptLibrary';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
-import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+import { serializeAquarelleRotoScript, type PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
@@ -15,7 +16,18 @@ function harness(saved = true) {
   const requests: PhysicPaintScriptLibraryRequest[] = [];
   const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest) => { requests.push(input); return result(input); });
   const clipboard = { current: null as unknown };
-  const capture: RotoScriptPersistenceCapture = { script: { provenance: { sessionId: 's', layerId: 'layer-1', sourceFrame: 4 }, sourceFrame: 4, sourceDisplayFrame: 4, sourceRevision: 1, brushes: [{ primary: { tool: 'paint', points: [{ x: 1, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] }, scriptAlphaCanvas: {} as HTMLCanvasElement };
+  const capture: RotoScriptPersistenceCapture = {
+    script: {
+      provenance: { sessionId: 's', layerId: 'layer-1', sourceFrame: 4 },
+      sourceFrame: 4,
+      sourceDisplayFrame: 4,
+      sourceRevision: 1,
+      brushes: [{ primary: { tool: 'paint', points: [{ x: 1, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }],
+      engineId: 'efx-watercolor',
+      aquarelleEvents: aquarelleEvents(),
+    },
+    scriptAlphaCanvas: {} as HTMLCanvasElement,
+  };
   // A structurally valid 1x1 VP8L WebP: saveActiveFrame validates the persisted
   // document, so the harness thumbnail must parse (261026-nvq needs a real save).
   const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp };
@@ -35,15 +47,32 @@ const scriptIds = {
 } as const;
 const webp = 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=';
 
+/** 261027-klx: the only persistable payload is a recorded wash timeline. */
+function aquarelleEvents(recordedOrder = 1): readonly AquarellePayloadEvent[] {
+  return [{
+    pts: [{ x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0, tick: 0 }],
+    ticks: 0,
+    cuisson: 0,
+    motion: null,
+    brushId: 'wc/round-medium',
+    toolOverrides: {},
+    traceSeed: 7,
+    recordedOrder,
+    playFrame: null,
+    color: '#000000',
+    engine: { tool: 'brush', color: '#000000', params: { size: 4 }, brushId: 'wc/round-medium', mutationId: recordedOrder, timestamp: recordedOrder },
+  }];
+}
+
 function loadedScript(id: 'a' | 'b', name: string) {
-  return createPersistedRotoScript({
+  return serializeAquarelleRotoScript({
     id: scriptIds[id],
     name,
     createdAt: '2026-07-16T12:00:00Z',
     updatedAt: '2026-07-16T12:00:00Z',
     source: row(id, name).source,
     thumbnail: { ...row(id, name).thumbnail, dataUrl: webp },
-    brushes: [{ primary: { tool: 'paint', points: [{ x: id === 'a' ? 10 : 20, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }],
+    events: aquarelleEvents(id === 'a' ? 10 : 20),
   });
 }
 

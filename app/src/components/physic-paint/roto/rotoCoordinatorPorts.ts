@@ -1,4 +1,5 @@
-import type { EfxPaintDocument, EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { AquarelleEnginePort } from '../engine/aquarelleEnginePort';
+import type { BgMode, RotoEditableState } from '../types/paintCore';
 import type { PhysicPaintRotoCacheFrame, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditApplyPayload, PhysicPaintRotoPhysicalEditOperationKind } from '../../../types/physicPaint';
 import type { RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { RotoSessionCopiedGroupEntry } from './physicsPaintRotoSession';
@@ -305,12 +306,68 @@ export interface RotoPhysicalEditReferencePort {
 }
 
 /**
- * Engine serialized state ownership.
+ * Engine serialized state ownership. `EngineState` is the watercolor
+ * `DocumentSnapshot` (see `types/paintCore.ts`), carried through the
+ * `AquarelleEnginePort`'s `snapshot`/`restore`.
  */
 export interface RotoPhysicalEditEnginePort<EngineState> {
   saveEngineState: () => EngineState | null;
   loadEngineState: (state: EngineState) => void;
 }
+
+// ---------------------------------------------------------------------------
+// APP-OWNED canvas + preview-base ports (quick 261027-klx, Wave 3).
+//
+// Engine-1 owned three things the watercolor engine does not: a background
+// mode, a preview-base layer (the cached key's paint, drawn under the live
+// sheet) and a pending-finalization queue. After the removal they live in the
+// app:
+//   - the live sheet wipe rides `AquarelleEnginePort.clear`;
+//   - the finalization queue is the mutation ledger's injected no-op
+//     (watercolor finalizes synchronously at stroke end);
+//   - the cached base is the Studio's own `cachedRotoReferenceUrl` /
+//     `cachedRotoRepaintBaseFrame` pair, rendered by `AquarelleCachedBaseLayer`.
+// Every consumer reads through these ports so there is exactly ONE source of
+// truth and no second engine-shaped adapter.
+// ---------------------------------------------------------------------------
+
+/** The live-sheet surface Roto may drive. */
+export interface RotoCanvasPort {
+  /**
+   * `clear(preserveDry?)` — the wipe (frame change / clear-blank) is declared
+   * by `RotoPreviewBasePort` below and is the ONE signature both halves share;
+   * repeating it here with a narrower shape made the combined port
+   * (`RotoCanvasAndPreviewBasePort`) impossible to extend.
+   */
+  /**
+   * Ledger no-op: watercolor finalizes a stroke synchronously at stroke end,
+   * so there is never a pending-finalization queue to drain.
+   */
+  flushPendingStrokeFinalizations: () => void;
+}
+
+/**
+ * The app-owned preview base. Shape kept identical to engine-1's preview-base
+ * members so the reference loader's ordering (dirty refusal, plain-refresh
+ * guard, explicit-generation supersede) is preserved verbatim.
+ */
+export interface RotoPreviewBasePort {
+  /** Settings mirror only — the Studio's fond/paper owns the background. */
+  setBgMode: (mode: BgMode) => void;
+  /** Wipe the live sheet (`preserveDry` kept for call-site parity). */
+  clear: (preserveDry?: boolean) => void;
+  setPreviewBaseImageUrl: (dataUrl: string, generation?: number, appFrame?: number) => void;
+  clearPreviewBaseImage: (skipRedraw?: boolean) => void;
+  resetBackground: (skipRedraw?: boolean) => void;
+  getAppliedPreviewBaseDataUrl: () => string | null;
+  getAppliedPreviewBaseAppFrame: () => number | null;
+  getAppliedPreviewBaseExplicit: () => boolean;
+  getAppliedPreviewBaseGeneration: () => number | null;
+  getAppliedPreviewBaseContentToken: () => number | null;
+}
+
+/** Both surfaces in one object, so a caller can never pair mismatched halves. */
+export interface RotoCanvasAndPreviewBasePort extends RotoCanvasPort, RotoPreviewBasePort {}
 
 /**
  * Launch/project/layer identity ownership.
@@ -378,8 +435,9 @@ export interface RotoPhysicalEditStatusPort {
  * owners in Task 3 without introducing an adapter module or alternate
  * transaction implementation.
  */
-export interface RotoPhysicalEditCoordinatorPorts<EngineState = EfxPaintDocument> {
-  readonly engine: EfxPaintEngine | null;
+export interface RotoPhysicalEditCoordinatorPorts<EngineState = RotoEditableState> {
+  /** The watercolor engine port (never the engine itself). */
+  readonly engine: AquarelleEnginePort | null;
   readonly records: RotoPhysicalEditRecordsPort & {
     getDocument: (layerId: string) => PhysicPaintRotoPhysicalDocument | null;
     replaceDocument: (

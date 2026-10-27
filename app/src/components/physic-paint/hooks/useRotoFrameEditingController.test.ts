@@ -32,7 +32,9 @@ function createHarness() {
     currentFrame: 4,
     currentFrameSelectionKind: 'real-key',
     canvasSize: { width: 1000, height: 650 },
-    engine: { resetBackground } as never,
+    engine: null,
+    previewBase: { resetBackground } as never,
+    getFrameTruth: () => ({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' }),
     launchContext: null,
     editBuffer: {
       dirtyFramesRef: { current: dirtyFrames },
@@ -82,7 +84,8 @@ describe('Roto frame editing controller', () => {
 
   it('does not reload the current frame when only cached launch data changes', () => {
     const loadReferenceFrame = vi.fn();
-    const engine = { resetBackground: vi.fn() } as never;
+    const engine = {} as never;
+    const previewBase = { resetBackground: vi.fn() } as never;
     const reference = {
       cachedReferenceUrl: null,
       cachedRepaintBaseFrame: null,
@@ -97,6 +100,8 @@ describe('Roto frame editing controller', () => {
       currentFrameSelectionKind: 'real-key' as const,
       canvasSize: { width: 1000, height: 650 },
       engine,
+      previewBase,
+      getFrameTruth: () => ({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' }),
       editBuffer: {
         dirtyFramesRef: { current: new Set<number>() },
         markDirty: vi.fn(),
@@ -130,7 +135,7 @@ describe('Roto frame editing controller', () => {
     });
 
     expect(loadReferenceFrame).toHaveBeenCalledTimes(1);
-    expect(loadReferenceFrame).toHaveBeenCalledWith(4, engine);
+    expect(loadReferenceFrame).toHaveBeenCalledWith(4, previewBase);
   });
 
   it('applies cached-base overlay ownership only after successful Undo and Redo', () => {
@@ -144,6 +149,8 @@ describe('Roto frame editing controller', () => {
     const controller = useRotoFrameEditingController({
       workflowMode: 'roto', currentFrame: 4, currentFrameSelectionKind: 'real-key', canvasSize: { width: 1000, height: 650 },
       engine: { undo, redo } as never, launchContext: null,
+      previewBase: { resetBackground: vi.fn(), clearPreviewBaseImage: vi.fn() } as never,
+      getFrameTruth: () => ({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' }),
       editBuffer: { dirtyFramesRef: { current: new Set([4]) }, markDirty: vi.fn(), undoOverlay, redoOverlay, clearCachedOverlay: vi.fn(), clearFrame: vi.fn(), snapshotFrame: vi.fn(() => false) },
       session: { markLiveOverlayDirty, markLiveOverlayEmpty },
       reference: { cachedReferenceUrl: 'base', cachedRepaintBaseFrame: { appFrame: 4 } as never, clearReference: vi.fn(), resetReference: vi.fn(), setReferenceUrl: vi.fn(), loadReferenceFrame: vi.fn() },
@@ -166,6 +173,8 @@ describe('Roto frame editing controller', () => {
     const controller = useRotoFrameEditingController({
       workflowMode: 'roto', currentFrame: 4, currentFrameSelectionKind: 'real-key', canvasSize: { width: 1000, height: 650 },
       engine: { undo, redo, clear } as never, launchContext: { layerId: 'layer-1' } as never,
+      previewBase: { resetBackground: vi.fn(), clearPreviewBaseImage: vi.fn() } as never,
+      getFrameTruth: () => ({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' }),
       editBuffer: { dirtyFramesRef: { current: new Set([4]) }, markDirty: vi.fn(), undoOverlay: vi.fn((): 'unchanged' => 'unchanged'), clearCachedOverlay: vi.fn(), clearFrame: vi.fn(), snapshotFrame: vi.fn(() => false) },
       session: { markLiveOverlayDirty: vi.fn(), markLiveOverlayEmpty: vi.fn() },
       reference: { cachedReferenceUrl: null, cachedRepaintBaseFrame: null, clearReference: vi.fn(), resetReference: vi.fn(), setReferenceUrl: vi.fn(), loadReferenceFrame: vi.fn() },

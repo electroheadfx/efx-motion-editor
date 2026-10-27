@@ -17,7 +17,6 @@ import type {
 } from '@efxlab/efx-watercolor/payload';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
-import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
@@ -27,19 +26,12 @@ import {
   restoreAquarelleRecordTimeline,
 } from '../view/aquarelleRecordState';
 import {
-  getBrushScriptFrameEntries,
-  pruneBrushScriptsFromFrame,
-  purgeBrushScriptFrame,
-  resetBrushScriptStore,
-  restoreBrushScriptFrames,
-} from '../view/brushScriptRecordState';
-import {
   decodeStudioScriptSnapshot,
   encodeStudioScriptSnapshot,
-  type StudioScriptSnapshotBrushFrame,
   type StudioScriptSnapshotIdentity,
 } from '../performance/studioScriptSnapshotCodec';
 import {
+  STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE,
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotControllerDeps,
   type StudioScriptSnapshotOperationResult,
@@ -90,50 +82,26 @@ function fixtureEvents(): AquarellePayloadEvent[] {
   return [fixtureStroke(7, 101), fixtureStroke(9, 102), fixtureDry()];
 }
 
-const BRUSH_PARAMS: BrushOpts = {
-  size: 8,
-  opacity: 80,
-  pressure: 100,
-  waterAmount: 30,
-  dryAmount: 20,
-  edgeDetail: 50,
-  pickup: 10,
-  eraseStrength: 0,
-  antiAlias: 2,
-};
-
-function brushPoint(x: number, y: number): PenPoint {
-  return { x, y, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.1 };
-}
-
-function brushStrokeFixture(mutationId: number): PaintStroke {
-  return {
-    tool: 'paint',
-    points: [brushPoint(120.5, 240.25), brushPoint(130.75, 250.125)],
-    color: '#123456',
-    params: { ...BRUSH_PARAMS },
-    timestamp: mutationId,
-    mutationId,
-  };
-}
-
-function brushFrameFixture(frame: number, mutationId: number): StudioScriptSnapshotBrushFrame {
-  return {
-    frame,
-    complete: true,
-    paintSettings: null,
-    groups: [{ primary: brushStrokeFixture(mutationId), continuations: [] }],
-  };
-}
-
-function encodedFixture(
-  brushFrames: readonly StudioScriptSnapshotBrushFrame[] = [],
-): Uint8Array {
+function encodedFixture(): Uint8Array {
   return encodeStudioScriptSnapshot({
     ...IDENTITY,
     watercolorEvents: fixtureEvents(),
-    brushFrames,
   });
+}
+
+/**
+ * A hand-assembled retired container (261027-klx). The v5 decoder rejects on
+ * the version word alone, so a 9-byte header is a complete probe.
+ */
+function retiredContainer(version: number): Uint8Array {
+  const bytes = new Uint8Array(9);
+  const magic = 'SNP1';
+  for (let index = 0; index < magic.length; index += 1) bytes[index] = magic.charCodeAt(index);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(4, version, true); // container version
+  view.setUint16(6, 0, true); // flags
+  bytes[8] = 0; // rail-cleanup marker
+  return bytes;
 }
 
 interface Harness {
@@ -154,11 +122,9 @@ function harness(
     StudioScriptSnapshotControllerDeps,
     | 'getLiveFrames'
     | 'getContentSignature'
-    | 'getBrushFrames'
     | 'getAuthority'
     | 'getLiveKeyIds'
     | 'getForeignKeyIds'
-    | 'getPixelOnlyFrames'
     | 'getWatercolorKeyAnchors'
     | 'getDurableBases'
     | 'seedDurableBases'
@@ -208,12 +174,10 @@ function harness(
   const controller = createStudioScriptSnapshotController({
     getIdentity: () => IDENTITY,
     getWatercolorEvents: () => getRecordedAquarellePayloadTimeline(),
-    getBrushFrames: overrides.getBrushFrames ?? (() => []),
     getContentSignature: overrides.getContentSignature ?? (() => signature),
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
     getLiveKeyIds: overrides.getLiveKeyIds ?? (() => null),
     getForeignKeyIds: overrides.getForeignKeyIds ?? (() => null),
-    getPixelOnlyFrames: overrides.getPixelOnlyFrames ?? (() => null),
     getWatercolorKeyAnchors:
       overrides.getWatercolorKeyAnchors ?? (() => getAquarelleStrokeKeyAnchors()),
     getDurableBases: overrides.getDurableBases ?? (() => durableBaseMap),
@@ -243,7 +207,6 @@ function harness(
 
 beforeEach(() => {
   resetAquarelleRecordState();
-  resetBrushScriptStore();
 });
 
 describe('studioScriptSnapshotController', () => {
@@ -285,7 +248,7 @@ describe('studioScriptSnapshotController', () => {
   });
 
   it('dropRetainedForFrames removes only the purged frames from the saved union', async () => {
-    const bytes = encodedFixture([brushFrameFixture(3, 303)]);
+    const bytes = encodedFixture();
     const { controller, read, write, setSignature } = harness({
       getLiveFrames: () => new Set([3, 7, 9]),
     });
@@ -296,8 +259,7 @@ describe('studioScriptSnapshotController', () => {
     // The rail cleanup purges the session stores AND the retained union for
     // the rail frames; every other retained entry (frame 9, Dry) survives.
     purgeAquarelleFrameScript(7);
-    purgeBrushScriptFrame(3);
-    controller.dropRetainedForFrames(new Set([7, 3]));
+    controller.dropRetainedForFrames(new Set([7]));
     setSignature('sig-1');
     await controller.saveNow();
 
@@ -308,7 +270,6 @@ describe('studioScriptSnapshotController', () => {
       .map((event) => (event as StudioStroke<AquarelleStrokePayload>).playFrame);
     expect(strokeFrames).toEqual([9]);
     expect(decoded.watercolorEvents.some((event) => isAquarelleDryEvent(event))).toBe(true);
-    expect(decoded.brushFrames).toEqual([]);
   });
 
   it('restores the durable rail-cleanup marker from the file', async () => {
@@ -409,89 +370,91 @@ describe('studioScriptSnapshotController', () => {
     expect(controller.isDirty()).toBe(false);
   });
 
-  it('restores brush frames pruned to the live real-key frames', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, read } = harness({ getLiveFrames: () => new Set([7]) });
-    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
-    controller.bind(IDENTITY);
+});
 
-    expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 101 });
-    // Frame 9 is not a live real key: its brush ledger is pruned.
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
-    expect(getBrushScriptFrameEntries()[0]?.complete).toBe(true);
+// ------------------------------------------------------------
+//  261027-klx — the SNAP v5 clean break.
+//
+//  Container versions 1-4 carried (or implied) an engine-1 brush
+//  body. They are RETIRED: the codec raises `snap-v4-retired`,
+//  the controller shows ONE pinned notice per binding and seeds
+//  nothing.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — SNAP v5 clean break (261027-klx)', () => {
+  it('refuses every retired container version with the pinned notice', async () => {
+    for (const version of [1, 2, 3, 4] as const) {
+      const bytes = retiredContainer(version);
+      const { controller, read, report } = harness();
+      read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+      controller.bind(IDENTITY);
+
+      expect(await controller.restore(), `version ${version}`).toEqual({
+        status: 'refused',
+        maxRestoredMutationId: 0,
+      });
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(report.mock.calls[0]?.[0]).toBe(STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE);
+    }
   });
 
-  it('saves the whole brush ledger without save-time pruning', async () => {
-    const { controller, write, setSignature } = harness({
-      getLiveFrames: () => new Set([7]),
-      getBrushFrames: () => getBrushScriptFrameEntries(),
-    });
-    controller.bind(IDENTITY);
-    await controller.restore();
-    restoreBrushScriptFrames([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    setSignature('sig-1');
-
-    await controller.saveNow();
-    const [, bytes] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
-    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
-    // studio-snapshot-empty-save: pruning is a session law, not a file law.
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
-    expect(decoded.brushFrames[0]?.groups[0]?.primary.points[0]?.x).toBe(120.5);
-  });
-
-  it('does not prune brush frames when the live-frame set is unknown', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, read } = harness({ getLiveFrames: () => null });
+  it('pins the exact clean-break wording and never shows the generic message', async () => {
+    const bytes = retiredContainer(4);
+    const { controller, read, report } = harness();
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
     await controller.restore();
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+
+    expect(report.mock.calls[0]?.[0]).toBe(
+      'Studio script snapshot could not be restored — it was written by an earlier Studio format that predates Water color only. The frame pixels are unchanged.',
+    );
+    expect(String(report.mock.calls[0]?.[0])).not.toContain('could not be restored (corrupt:version)');
+    expect(String(report.mock.calls[0]?.[0])).not.toContain('snap-v4-retired');
   });
 
-  it('drops a v2 brush row whose keyId no longer owns its frame', async () => {
-    const bytes = encodedFixture([
-      { ...brushFrameFixture(7, 201), keyId: 'old-key' },
-      { ...brushFrameFixture(9, 202), keyId: 'key-9' },
-    ]);
-    const { controller, read } = harness({
-      getLiveFrames: () => new Set([7, 9]),
-      getLiveKeyIds: () => new Map([[7, 'new-key'], [9, 'key-9']]),
-    });
-    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
-    controller.bind(IDENTITY);
-
-    await controller.restore();
-    // Frame 7 was replaced by a new key (rail/bake): its old script must not
-    // re-attach. Frame 9's identity matches and survives.
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([9]);
-    expect(getBrushScriptFrameEntries()[0]?.keyId).toBe('key-9');
-  });
-
-  it('never seeds a legacy brush row, but keeps the ordinary one in the retained file', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, read, write, setSignature } = harness({
-      getLiveFrames: () => new Set([7, 9]),
-      getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
-      getPixelOnlyFrames: () => new Set([7]),
-      getBrushFrames: () => getBrushScriptFrameEntries(),
-    });
+  it('reports exactly once per binding and re-arms on a new bind', async () => {
+    const bytes = retiredContainer(4);
+    const { controller, read, report } = harness();
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
 
     await controller.restore();
-    // 261027: a v1 row carries no keyId, so its identity is UNPROVABLE on any
-    // frame. It may survive in the file for undo, but it can never seed the
-    // key that now occupies that frame number.
-    expect(getBrushScriptFrameEntries()).toEqual([]);
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(1);
 
-    // The retained union still keeps the ordinary legacy row and cleans the
-    // rail-frame row (rails bake pixels only).
-    setSignature('sig-after-legacy');
-    await controller.saveNow();
-    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
-    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([9]);
-    expect(decoded.brushFrames[0]?.keyId).toBeUndefined();
+    // A track switch is a NEW binding: the notice is allowed again.
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report.mock.calls[1]?.[0]).toBe(STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE);
+  });
+
+  it('seeds nothing from a retired container — no rows, no anchors, no bases', async () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(7, 201)]);
+    const before = [...getRecordedAquarellePayloadTimeline()];
+    const bytes = retiredContainer(4);
+    const { controller, read, seedDurableBases, report } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+    // The store was never touched: the pre-existing timeline is intact.
+    expect(getRecordedAquarellePayloadTimeline()).toEqual(before);
+    expect(getAquarelleStrokeKeyAnchors().size).toBe(0);
+    expect(seedDurableBases).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the generic message for a genuinely unknown container version', async () => {
+    const bytes = retiredContainer(6);
+    const { controller, read, report } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]?.[0]).toContain('could not be restored (corrupt:version)');
+    expect(report.mock.calls[0]?.[0]).not.toBe(STUDIO_SCRIPT_SNAPSHOT_RETIRED_FORMAT_MESSAGE);
   });
 });
 
@@ -770,10 +733,9 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
 
     controller.bind(IDENTITY);
     const restorePromise = controller.restore();
-    // The track switch already reset both module stores: the incoming key's
+    // The track switch already reset the module store: the incoming key's
     // content has not been seeded yet. This is the exact empty window.
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
-    expect(getBrushScriptFrameEntries()).toHaveLength(0);
 
     await controller.saveNow();
     await controller.flushNow();
@@ -819,17 +781,16 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
   });
 
   it('keeps deleted-key entries in the snapshot (no save-time prune)', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const bytes = encodedFixture();
     let liveFrames: ReadonlySet<number> = new Set([7, 9]);
     const { controller, read, write, setSignature } = harness({
       getLiveFrames: () => liveFrames,
-      getBrushFrames: () => getBrushScriptFrameEntries(),
     });
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
     await controller.restore();
-    // Both keys are live at restore: the session holds both script entries.
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+    // Both frames are live at restore: the session holds both strokes.
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(3);
 
     // The key at frame 9 is deleted: it is no longer a live real key. The
     // save must NOT drop its script from the authoritative snapshot.
@@ -840,22 +801,19 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
     expect(write).toHaveBeenCalledTimes(1);
     const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
     expect(decoded.watercolorEvents).toHaveLength(3);
   });
 
   it('does not drop restore-pruned entries from the authoritative snapshot', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const bytes = encodedFixture();
     const { controller, read, write, setSignature } = harness({
       // The key at frame 9 was deleted before this Studio session.
       getLiveFrames: () => new Set([7]),
-      getBrushFrames: () => getBrushScriptFrameEntries(),
     });
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
     await controller.restore();
     // Pruned from the SESSION: the deleted key's script cannot reappear.
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(2);
 
     // A later mutation saves the session plus the file's pruned-out entries.
@@ -863,37 +821,13 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
     await controller.saveNow();
     const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
     expect(decoded.watercolorEvents).toHaveLength(3);
   });
 
-  it('keeps a brush entry the apply-time fail-closed prune removed from the session', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, read, write, setSignature } = harness({
-      getLiveFrames: () => new Set([7, 9]),
-      getBrushFrames: () => getBrushScriptFrameEntries(),
-    });
-    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
-    controller.bind(IDENTITY);
-    await controller.restore();
-
-    // 261023-g4p apply-time law: the physical edit prunes the session entry.
-    expect(pruneBrushScriptsFromFrame(8)).toBe(1);
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
-
-    setSignature('sig-after-apply-prune');
-    await controller.saveNow();
-    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
-    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
-    // The session prune is a SESSION law; the snapshot keeps the entry.
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
-  });
-
   it('lets an explicit purge replace the snapshot with the purged session', async () => {
-    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const bytes = encodedFixture();
     const { controller, read, write, setSignature } = harness({
       getLiveFrames: () => new Set([7, 9]),
-      getBrushFrames: () => getBrushScriptFrameEntries(),
     });
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
@@ -901,13 +835,11 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
 
     // Memory-tab purge: the removed entries must NOT come back.
     expect(purgeAquarelleFrameScript(9)).toBe(1);
-    expect(purgeBrushScriptFrame(9)).toBe(true);
     setSignature('sig-after-purge');
     await controller.persistAfterPurge();
 
     const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7]);
     expect(decoded.watercolorEvents).toHaveLength(2);
   });
 });
@@ -1024,91 +956,6 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
 });
 
 // ------------------------------------------------------------
-//  quick-261023-l35 Task 3 — the measurement record.
-//  FIXTURE-DERIVED: this environment cannot run the app, so a live
-//  heavy-project measurement is not possible; this fixture mirrors
-//  the g4p measured shape (40 primaries x 180 points + one
-//  diffusion continuation each, three frames). The literal below is
-//  the contract — a format change must fail this test loudly.
-// ------------------------------------------------------------
-
-const HEAVY_PRIMARY_POINT_COUNT = 180;
-const HEAVY_GROUPS_PER_FRAME = 40;
-const HEAVY_FRAME_COUNT = 3;
-/**
- * bytes — SNAP container with three heavy brush frames, empty AQTL. Brush
- * section v2 adds one keyId presence byte per frame (+3).
- */
-// +1 for the v2 container's rail-cleanup marker byte, +12 for the v3
-// anchor section (4-byte length word + 8-byte empty header), +12 for the v4
-// durable-base section (4-byte length word + 8-byte empty header).
-const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_818;
-
-function heavyPoint(index: number): PenPoint {
-  return {
-    x: 800 + index * 0.5,
-    y: 400 + index * 0.25,
-    p: 0.5,
-    tx: 0.125,
-    ty: -0.375,
-    tw: 0.0625,
-    spd: 0.25,
-  };
-}
-
-function heavyPrimary(frame: number, mutationId: number): PaintStroke {
-  return {
-    tool: 'paint',
-    points: Array.from({ length: HEAVY_PRIMARY_POINT_COUNT }, (_, index) => heavyPoint(index)),
-    color: '#123456',
-    params: { ...BRUSH_PARAMS },
-    timestamp: mutationId,
-    mutationId,
-    playFrame: frame,
-  };
-}
-
-function heavyContinuation(frame: number, mutationId: number): PaintStroke {
-  return {
-    tool: 'paint',
-    points: [],
-    color: '#123456',
-    params: { ...BRUSH_PARAMS },
-    timestamp: mutationId,
-    mutationId,
-    diffusionFrames: 2,
-    playFrame: frame,
-  };
-}
-
-function heavyBrushFrame(frame: number): StudioScriptSnapshotBrushFrame {
-  return {
-    frame,
-    complete: true,
-    paintSettings: null,
-    groups: Array.from({ length: HEAVY_GROUPS_PER_FRAME }, (_, index) => ({
-      primary: heavyPrimary(frame, 1000 + index),
-      continuations: [heavyContinuation(frame, 5000 + index)],
-    })),
-  };
-}
-
-describe('studioScriptSnapshotController — heavy fixture measurement', () => {
-  it('encodes the heavy three-frame fixture to the recorded byte length', () => {
-    const bytes = encodeStudioScriptSnapshot({
-      ...IDENTITY,
-      watercolorEvents: [],
-      brushFrames: Array.from({ length: HEAVY_FRAME_COUNT }, (_, index) =>
-        heavyBrushFrame(100 + index),
-      ),
-    });
-    expect(bytes.byteLength).toBe(HEAVY_SNAPSHOT_BYTE_LENGTH);
-    // The whole container decodes back, so the measurement is of a legal file.
-    expect(decodeStudioScriptSnapshot(bytes, IDENTITY).brushFrames).toHaveLength(HEAVY_FRAME_COUNT);
-  });
-});
-
-// ------------------------------------------------------------
 //  261027 UAT round 2 — "six phantom guides after one new stroke".
 //
 //  The user deleted every key, created a new key and painted ONE
@@ -1141,44 +988,12 @@ function recordableAquarelleStroke(
 function anchoredFixture(
   events: readonly AquarellePayloadEvent[],
   watercolorKeyAnchors: readonly { mutationId: number; keyId: string }[],
-  brushFrames: readonly StudioScriptSnapshotBrushFrame[] = [],
 ): Uint8Array {
   return encodeStudioScriptSnapshot({
     ...IDENTITY,
     watercolorEvents: events,
     watercolorKeyAnchors,
-    brushFrames,
   });
-}
-
-/** The same snapshot without the v3 anchor section, marked as a v2 file. */
-function containerWithoutAnchorSection(bytes: Uint8Array): Uint8Array {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 9; // magic + version + flags + rail marker
-  for (let index = 0; index < 3; index += 1) {
-    const length = view.getUint16(offset, true);
-    offset += 2 + length;
-  }
-  offset += 4 + view.getUint32(offset, true); // watercolor body
-  offset += 4 + view.getUint32(offset, true); // brush body
-  const out = bytes.slice(0, offset);
-  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 2, true);
-  return out;
-}
-
-/** The same snapshot without the v4 durable-base section, marked as a v3 file. */
-function containerWithoutDurableSection(bytes: Uint8Array): Uint8Array {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 9; // magic + version + flags + rail marker
-  for (let index = 0; index < 3; index += 1) {
-    offset += 2 + view.getUint16(offset, true);
-  }
-  offset += 4 + view.getUint32(offset, true); // watercolor body
-  offset += 4 + view.getUint32(offset, true); // brush body
-  offset += 4 + view.getUint32(offset, true); // anchor body
-  const out = bytes.slice(0, offset);
-  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 3, true);
-  return out;
 }
 
 function durableSnapshotFixture(
@@ -1236,8 +1051,9 @@ describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT 
     expect(getAquarelleStrokeKeyAnchors().has(917)).toBe(false);
   });
 
-  it('never seeds an unanchored (pre-v3) stroke into a live key', async () => {
-    const bytes = containerWithoutAnchorSection(encodedFixture());
+  it('never seeds an unanchored stroke into a live key', async () => {
+    // A legal v5 file whose anchor section is empty: identity is unprovable.
+    const bytes = encodeStudioScriptSnapshot({ ...IDENTITY, watercolorEvents: fixtureEvents() });
     const { controller, read } = harness({
       getLiveFrames: () => new Set([7, 9]),
       getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
@@ -1257,7 +1073,6 @@ describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT 
     const bytes = anchoredFixture(
       [fixtureStroke(0, 917)],
       [{ mutationId: 917, keyId: 'deleted-key' }],
-      [{ ...brushFrameFixture(0, 201), keyId: 'deleted-key' }],
     );
     const { controller, read } = harness({
       getLiveFrames: () => new Set(),
@@ -1268,7 +1083,6 @@ describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT 
 
     await controller.restore();
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
-    expect(getBrushScriptFrameEntries()).toHaveLength(0);
     expect(getAquarelleStrokeKeyAnchors().size).toBe(0);
   });
 
@@ -1464,11 +1278,11 @@ describe('studioScriptSnapshotController — durable bases (261027 UAT round 4)'
     ]);
   });
 
-  it('seeds no durable bases from a v3 (pre-durable) container', async () => {
-    const v4 = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
-    const v3 = containerWithoutDurableSection(v4);
+  it('seeds no durable bases from a container without a durable-base section', async () => {
+    // A legal v5 container with an empty durable-base section.
+    const bytes = encodeStudioScriptSnapshot({ ...IDENTITY, watercolorEvents: fixtureEvents() });
     const { controller, read, seedDurableBases } = harness();
-    read.mockResolvedValue({ ok: true, data: { bytes: v3, digest: 'd', byteLength: v3.byteLength } });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.length } });
     controller.bind(IDENTITY);
 
     await controller.restore();

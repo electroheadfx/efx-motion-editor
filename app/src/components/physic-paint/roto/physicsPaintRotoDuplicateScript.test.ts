@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
 import type {
   AquarelleDryEvent,
@@ -8,7 +7,6 @@ import type {
   AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
-import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
   ROTO_DUPLICATE_SCRIPT_APPLY_FAILED,
   ROTO_DUPLICATE_SCRIPT_NAVIGATION_ABORTED,
@@ -24,30 +22,11 @@ import {
   type RotoDuplicateWithScriptPorts,
 } from './physicsPaintRotoDuplicateScript';
 
-function stroke(mutationId: number, x = 10): PaintStroke {
-  return {
-    mutationId,
-    tool: 'paint',
-    points: [{ x, y: 20, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }],
-    color: '#123456',
-    params: { size: 12, opacity: 100, pressure: 100, waterAmount: 50, dryAmount: 50, edgeDetail: 50, pickup: 50, eraseStrength: 50, antiAlias: 1 },
-    timestamp: mutationId,
-  };
-}
-
-function brushScript(): RotoPaintScript {
-  return {
-    provenance: { sessionId: 'duplicate-cxc', layerId: 'layer-1', sourceFrame: 3 },
-    sourceFrame: 3,
-    sourceDisplayFrame: 3,
-    sourceRevision: 0,
-    brushes: [{ primary: stroke(1), continuations: [] }],
-  };
-}
-
 /**
  * Quick 261023-cxc: only an EMPTY destination cell inside capacity may take the
  * script path. Everything else routes back to the 261023-bxm raster clone.
+ * 261027-klx: watercolor is the only engine — the recorded wash timeline is
+ * the only script input.
  */
 describe('resolveRotoDuplicateScriptDecision', () => {
   const base = {
@@ -56,9 +35,7 @@ describe('resolveRotoDuplicateScriptDecision', () => {
     expectedAppFrame: 3,
     destinationKind: 'empty' as RotoDuplicateScriptDestinationKind,
     capacity: 12,
-    module: 'brush' as const,
-    brushStrokeCount: 2,
-    aquarelleStrokeEventCount: 0,
+    aquarelleStrokeEventCount: 2,
   };
 
   it('falls back source-changed when no source resolves', () => {
@@ -91,22 +68,14 @@ describe('resolveRotoDuplicateScriptDecision', () => {
       .toEqual({ kind: 'fallback', reason: 'destination-out-of-capacity' });
   });
 
-  it('falls back no-script for a brush key with no live strokes', () => {
-    expect(resolveRotoDuplicateScriptDecision({ ...base, brushStrokeCount: 0 })).toEqual({ kind: 'fallback', reason: 'no-script' });
-  });
-
-  it('decides a brush script for the next frame when the source holds strokes', () => {
-    expect(resolveRotoDuplicateScriptDecision(base)).toEqual({ kind: 'script', destinationFrame: 4, module: 'brush' });
-  });
-
-  it('falls back no-script for a watercolor key with no stroke events', () => {
-    expect(resolveRotoDuplicateScriptDecision({ ...base, module: 'watercolor', brushStrokeCount: 0, aquarelleStrokeEventCount: 0 }))
+  it('falls back no-script when the source frame records no stroke events', () => {
+    expect(resolveRotoDuplicateScriptDecision({ ...base, aquarelleStrokeEventCount: 0 }))
       .toEqual({ kind: 'fallback', reason: 'no-script' });
   });
 
-  it('decides a watercolor script for the next frame when the source frame records strokes', () => {
-    expect(resolveRotoDuplicateScriptDecision({ ...base, module: 'watercolor', brushStrokeCount: 0, aquarelleStrokeEventCount: 2 }))
-      .toEqual({ kind: 'script', destinationFrame: 4, module: 'watercolor' });
+  it('decides the script path for the next frame when the source frame records strokes', () => {
+    expect(resolveRotoDuplicateScriptDecision(base))
+      .toEqual({ kind: 'script', destinationFrame: 4 });
   });
 });
 
@@ -171,22 +140,19 @@ interface OrchestratorHarness {
 function orchestratorHarness(overrides: Partial<RotoDuplicateWithScriptPorts> = {}): OrchestratorHarness {
   const calls: string[] = [];
   let source: { keyId: string; appFrame: number } | null = { keyId: 'key-a', appFrame: 3 };
+  const events = [aquarelleEvent(1), dryEvent(2), aquarelleEvent(3)];
   const ports: RotoDuplicateWithScriptPorts = {
     getSource: vi.fn(() => source),
     getDestination: vi.fn(() => 'empty' as RotoDuplicateScriptDestinationKind),
     getCapacity: vi.fn(() => 12),
-    getModule: vi.fn(() => 'brush' as const),
-    getBrushStrokeCount: vi.fn(() => 2),
-    getAquarelleStrokeEventCount: vi.fn(() => 0),
-    captureBrushScript: vi.fn(() => { calls.push('capture'); return brushScript(); }),
-    getAquarelleEvents: vi.fn(() => { calls.push('capture'); return []; }),
+    getAquarelleStrokeEventCount: vi.fn(() => 2),
+    getAquarelleEvents: vi.fn(() => { calls.push('capture'); return events; }),
     navigateTo: vi.fn(async (frame: number) => {
       calls.push('navigate');
       source = { keyId: 'key-destination', appFrame: frame };
       return true;
     }),
     waitForSourceFrame: vi.fn(async () => { calls.push('wait'); return 'ready' as const; }),
-    applyBrushScript: vi.fn(async () => { calls.push('apply'); return true; }),
     applyAquarelleEvents: vi.fn(async () => { calls.push('apply-events'); return true; }),
     recordAquarelleScriptCopy: vi.fn(async () => { calls.push('record'); return true; }),
     ...overrides,
@@ -197,37 +163,33 @@ function orchestratorHarness(overrides: Partial<RotoDuplicateWithScriptPorts> = 
 const RUN_INPUT = { sourceKeyId: 'key-a', sourceAppFrame: 3 };
 
 describe('runRotoDuplicateWithScript', () => {
-  it('captures, navigates, waits, then applies the brush script exactly once', async () => {
+  it('captures the timeline, navigates, waits, applies exactly once, then records the copy', async () => {
     const harness = orchestratorHarness();
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
     expect(outcome).toEqual({ outcome: 'handled' });
-    expect(harness.calls).toEqual(['capture', 'navigate', 'wait', 'apply']);
-    expect(harness.ports.applyBrushScript).toHaveBeenCalledTimes(1);
-    expect(harness.ports.applyBrushScript).toHaveBeenCalledWith(brushScript());
+    expect(harness.calls).toEqual(['capture', 'navigate', 'wait', 'apply-events', 'record']);
     expect(harness.ports.navigateTo).toHaveBeenCalledWith(4);
     expect(harness.ports.waitForSourceFrame).toHaveBeenCalledWith(4);
-    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
-    expect(harness.ports.recordAquarelleScriptCopy).not.toHaveBeenCalled();
   });
 
-  it('falls back without capturing or navigating when the destination is occupied', async () => {
+  it('falls back without navigating when the destination is occupied', async () => {
     const harness = orchestratorHarness({ getDestination: () => 'real' });
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
     expect(outcome).toEqual({ outcome: 'fallback', reason: 'destination-occupied' });
-    expect(harness.ports.captureBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.getAquarelleEvents).not.toHaveBeenCalled();
     expect(harness.ports.navigateTo).not.toHaveBeenCalled();
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
-  it('falls back without navigating when the brush capture is empty', async () => {
-    const harness = orchestratorHarness({ captureBrushScript: () => null });
+  it('falls back without navigating when the source records no stroke events', async () => {
+    const harness = orchestratorHarness({ getAquarelleStrokeEventCount: () => 0 });
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
-    expect(outcome).toEqual({ outcome: 'fallback', reason: 'capture-failed' });
+    expect(outcome).toEqual({ outcome: 'fallback', reason: 'no-script' });
     expect(harness.ports.navigateTo).not.toHaveBeenCalled();
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
   it('falls back when navigation fails and the source never moved', async () => {
@@ -236,7 +198,7 @@ describe('runRotoDuplicateWithScript', () => {
 
     expect(outcome).toEqual({ outcome: 'fallback', reason: 'navigation-failed' });
     expect(harness.ports.waitForSourceFrame).not.toHaveBeenCalled();
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
   it('aborts with the navigation message when navigation fails after the source moved', async () => {
@@ -249,7 +211,7 @@ describe('runRotoDuplicateWithScript', () => {
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
     expect(outcome).toEqual({ outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_NAVIGATION_ABORTED });
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
   it('aborts without applying when the destination wait is superseded', async () => {
@@ -257,7 +219,7 @@ describe('runRotoDuplicateWithScript', () => {
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
     expect(outcome).toEqual({ outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_SUPERSEDED });
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
   it('aborts without applying when the destination wait times out', async () => {
@@ -265,14 +227,7 @@ describe('runRotoDuplicateWithScript', () => {
     const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
 
     expect(outcome).toEqual({ outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_TIMEOUT });
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
-  });
-
-  it('aborts with the apply message when the brush apply fails', async () => {
-    const harness = orchestratorHarness({ applyBrushScript: async () => false });
-    const outcome = await runRotoDuplicateWithScript(RUN_INPUT, harness.ports);
-
-    expect(outcome).toEqual({ outcome: 'aborted', message: ROTO_DUPLICATE_SCRIPT_APPLY_FAILED });
+    expect(harness.ports.applyAquarelleEvents).not.toHaveBeenCalled();
   });
 
   it('rejects to the caller when a port throws', async () => {
@@ -440,14 +395,12 @@ describe('copyAquarelleScriptToFrame', () => {
   });
 });
 
-describe('runRotoDuplicateWithScript watercolor', () => {
+describe('runRotoDuplicateWithScript timeline replay', () => {
   it('applies the whole timeline once, then records the copy on the destination frame', async () => {
     const events = [aquarelleEvent(1), dryEvent(2), aquarelleEvent(3)];
     const order: string[] = [];
     const received: Array<readonly AquarellePayloadEvent[]> = [];
     const harness = orchestratorHarness({
-      getModule: () => 'watercolor' as const,
-      getAquarelleStrokeEventCount: () => 2,
       getAquarelleEvents: vi.fn(() => { order.push('capture'); return events; }),
       navigateTo: vi.fn(async (frame: number) => { order.push(`navigate:${frame}`); return true; }),
       waitForSourceFrame: vi.fn(async (frame: number) => { order.push(`wait:${frame}`); return 'ready' as const; }),
@@ -468,15 +421,10 @@ describe('runRotoDuplicateWithScript watercolor', () => {
     expect(order).toEqual(['capture', 'navigate:4', 'wait:4', 'apply-events', 'record:3->4']);
     expect(received).toHaveLength(1);
     expect(received[0]).toBe(events);
-    expect(harness.ports.captureBrushScript).not.toHaveBeenCalled();
-    expect(harness.ports.applyBrushScript).not.toHaveBeenCalled();
   });
 
   it('aborts without recording when the apply fails', async () => {
     const harness = orchestratorHarness({
-      getModule: () => 'watercolor' as const,
-      getAquarelleStrokeEventCount: () => 1,
-      getAquarelleEvents: vi.fn(() => [aquarelleEvent(1)]),
       applyAquarelleEvents: vi.fn(async () => false),
     });
 
@@ -488,9 +436,6 @@ describe('runRotoDuplicateWithScript watercolor', () => {
 
   it('aborts with the record message when the copy fails after a successful apply', async () => {
     const harness = orchestratorHarness({
-      getModule: () => 'watercolor' as const,
-      getAquarelleStrokeEventCount: () => 1,
-      getAquarelleEvents: vi.fn(() => [aquarelleEvent(1)]),
       applyAquarelleEvents: vi.fn(async () => true),
       recordAquarelleScriptCopy: vi.fn(async () => false),
     });
@@ -504,7 +449,6 @@ describe('runRotoDuplicateWithScript watercolor', () => {
 
   it('falls back no-script on a frame with only Dry events', async () => {
     const harness = orchestratorHarness({
-      getModule: () => 'watercolor' as const,
       getAquarelleStrokeEventCount: () => 0,
       getAquarelleEvents: vi.fn(() => [dryEvent(1)]),
     });

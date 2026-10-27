@@ -10,7 +10,7 @@
 //  receive fresh objects they may freeze at capture time.
 // ============================================================
 
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { PaintStroke } from '../types/paintCore';
 
 export interface RecordedStrokeGroup {
   primary: Readonly<PaintStroke>;

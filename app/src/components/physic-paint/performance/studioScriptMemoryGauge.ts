@@ -9,10 +9,10 @@
 //  — this module only supplies its input bag and the display
 //  helpers the gauge tab needs.
 //
-//  Read-only: the only write is the CURRENT brush frame projection
-//  (`flushBrushScriptFrame`), exactly as the probe has always done.
-//  It is idempotent (a clean captured frame is a no-op), signal-free
-//  and never a hydration trigger.
+//  Read-only: it reads the watercolor registry and the frame caches,
+//  never mutating a store, a signal or a cache. After engine-1 removal
+//  the watercolor registry is the whole script memory — there is no
+//  brush session store and no per-engine frame projection.
 //
 //  Placement law: Motion/Static Rails are derived Loop Clips with no
 //  key scripts. They have no input here, so they can never appear in
@@ -20,7 +20,6 @@
 // ============================================================
 
 import type { Signal } from '@preact/signals';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
 import { FRAME_LRU_BYTE_CEILING, frameLru } from '../../../lib/frameLru';
@@ -39,7 +38,6 @@ import {
   type ScriptMemoryScriptStats,
   type ScriptMemorySnapshot,
 } from './scriptMemorySnapshot';
-import { flushBrushScriptFrame, getBrushScriptReport } from '../view/brushScriptRecordState';
 
 /** The Memory tab's ports (identity-stable ref from the Studio). */
 export interface StudioScriptMemorySectionPorts {
@@ -76,39 +74,17 @@ export interface StudioScriptMemorySection {
   railContext: Signal<StudioScriptMemoryRailContext | null>;
 }
 
-/** One merged gauge row (watercolor and brush side by side). */
+/** One gauge row — watercolor is the only script store left. */
 export interface StudioScriptMemoryFrameRow {
   frame: number;
   watercolor: ScriptMemoryScriptStats;
-  brush: ScriptMemoryScriptStats;
 }
-
-const ZERO_STATS: ScriptMemoryScriptStats = Object.freeze({
-  strokes: 0,
-  points: 0,
-  approxBytes: 0,
-});
 
 /**
  * Assemble the read-only snapshot from the live Studio stores. Safe to call
  * repeatedly; nothing is mutated or purged by a read.
  */
-export function readStudioScriptMemorySnapshot(options: {
-  engine: EfxPaintEngine | null;
-  frame: number;
-}): ScriptMemorySnapshot {
-  const { engine, frame } = options;
-
-  // Refresh the CURRENT frame from the engine first (the sanctioned O(n)
-  // projection point): stroke completion only marks frames dirty, so a gauge
-  // read is where the live engine frame lands in the session store.
-  // Idempotent and signal-free.
-  flushBrushScriptFrame(
-    frame,
-    engine ? engine.getStrokes() : null,
-    engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,
-  );
-
+export function readStudioScriptMemorySnapshot(): ScriptMemorySnapshot {
   const strokes = getRecordedAquarelleStrokeEntries();
   const entries = new Map<number, StudioStroke<AquarelleStrokePayload>>();
   for (const [mutationId, , entry] of captureAquarelleStrokeRegistry().pairs) {
@@ -123,8 +99,6 @@ export function readStudioScriptMemorySnapshot(options: {
     watercolorEntries: entries,
     isStrokeDeleted: isAquarelleStrokeDeleted,
     dryEvents: getRecordedAquarelleDryEvents(),
-    brushStrokes: engine ? engine.getStrokes() : null,
-    brushScript: getBrushScriptReport(),
     frameCaches: [
       {
         name: 'frameLru',
@@ -182,45 +156,18 @@ export function formatScriptMemoryBytes(bytes: number): string {
 }
 
 /**
- * Merge the watercolor frames and the brush session-store frames into one row
- * per app frame, ascending. A frame present in only one store shows zeros for
- * the other. Rails are never an input.
+ * Project the watercolor frames into one gauge row per app frame, ascending.
+ * Rails are never an input.
  */
 export function buildStudioScriptMemoryFrameRows(
   snapshot: ScriptMemorySnapshot,
 ): StudioScriptMemoryFrameRow[] {
-  const rows = new Map<number, {
-    frame: number;
-    watercolor: ScriptMemoryScriptStats;
-    brush: ScriptMemoryScriptStats;
-  }>();
-
-  const rowFor = (frame: number) => {
-    let row = rows.get(frame);
-    if (!row) {
-      row = { frame, watercolor: { ...ZERO_STATS }, brush: { ...ZERO_STATS } };
-      rows.set(frame, row);
-    }
-    return row;
-  };
-
-  for (const stats of snapshot.watercolor.frames) {
-    const row = rowFor(stats.frame);
-    row.watercolor = {
+  return snapshot.watercolor.frames.map((stats) => ({
+    frame: stats.frame,
+    watercolor: {
       strokes: stats.strokes,
       points: stats.points,
       approxBytes: stats.approxBytes,
-    };
-  }
-
-  for (const stats of snapshot.brush.frames) {
-    const row = rowFor(stats.frame);
-    row.brush = {
-      strokes: stats.strokes,
-      points: stats.points,
-      approxBytes: stats.approxBytes,
-    };
-  }
-
-  return [...rows.values()].sort((a, b) => a.frame - b.frame);
+    },
+  }));
 }

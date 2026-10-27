@@ -59,7 +59,7 @@
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { effect, type ReadonlySignal, type Signal } from '@preact/signals';
-import type { CompletedPaintMutation, PaintHistoryAvailability } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, PaintHistoryAvailability } from '../types/paintCore';
 import type {
   PhysicPaintActionHistoryReleaseReason,
   PhysicPaintActionRetainedArtifactReference,

@@ -1,10 +1,13 @@
 import { useCallback, useEffect } from 'preact/hooks';
 import type { RefObject } from 'preact';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
+import type { AquarelleEnginePort } from '../engine/aquarelleEnginePort';
+import type { RotoPreviewBasePort } from '../roto/rotoCoordinatorPorts';
+import type { RotoEditableState } from '../types/paintCore';
 import { buildBlankRotoFrame, buildRotoFrameFromCanvas, exportTransparentStrokeCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
-import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoEditBufferTransactions';
+import { mergeRotoAlphaCanvases } from '../roto/physicsPaintRotoAlphaMerge';
+import { hasEditableRotoContent, shouldPersistRotoFrame } from '../roto/rotoEditBufferTransactions';
 import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 
 interface RotoEditBufferPort<TEditable> {
@@ -20,6 +23,7 @@ interface RotoEditBufferPort<TEditable> {
     capturedFrame: RenderedFramePayload;
     hasCachedReference: boolean;
     shouldPersist: boolean;
+    hasEditableContent: boolean;
   }) => boolean;
 }
 
@@ -34,7 +38,7 @@ interface RotoReferenceEditingPort {
   clearReference: () => void;
   resetReference: () => void;
   setReferenceUrl: (url: string | null) => void;
-  loadReferenceFrame: (frame: number, engine: PreviewBackgroundEngine | null) => void;
+  loadReferenceFrame: (frame: number, previewBase: RotoPreviewBasePort | null) => void;
 }
 
 interface RotoEditingStatusPort {
@@ -42,21 +46,24 @@ interface RotoEditingStatusPort {
   setApplyMessage: (message: string) => void;
 }
 
-type PreviewBackgroundEngine = EfxPaintEngine & {
-  resetBackground: () => void;
-};
-
-type UndoRedoEngine = EfxPaintEngine & {
-  undo: () => boolean;
-  redo: () => boolean;
-};
+/** The watercolor truth for ONE frame (3.5): counts from `aquarelleRecordState`. */
+export interface RotoFrameTruth {
+  recordedStrokeCount: number;
+  payloadEventCount: number;
+  bgMode: string;
+}
 
 export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditableState> {
   workflowMode: PhysicsPaintWorkflowMode;
   currentFrame: number;
   currentFrameSelectionKind: RotoTimelineSelectionKind;
   canvasSize: { width: number; height: number };
-  engine: EfxPaintEngine | null;
+  /** The narrow watercolor engine port (never the engine itself). */
+  engine: AquarelleEnginePort | null;
+  /** The app-owned preview base (cached key paint under the live sheet). */
+  previewBase: RotoPreviewBasePort | null;
+  /** Per-frame watercolor truth for the persist law — never the engine-1 mirror. */
+  getFrameTruth: (frame: number) => RotoFrameTruth;
   launchContext: PhysicPaintLaunchContext | null;
   editBuffer: RotoEditBufferPort<TEditable>;
   session: RotoSessionEditingPort;
@@ -77,15 +84,30 @@ export interface UseRotoFrameEditingControllerInput<TEditable extends RotoEditab
 export function useRotoFrameEditingController<TEditable extends RotoEditableState>(input: UseRotoFrameEditingControllerInput<TEditable>) {
   const snapshotCurrentFrame = useCallback(async () => {
     if (!input.engine || !input.launchContext) return false;
-    const state = input.engine.save() as TEditable;
+    const state = input.engine.snapshot() as TEditable;
+    const truth = input.getFrameTruth(input.currentFrame);
     const hasCachedReference = Boolean(
       input.reference.cachedReferenceUrl
       || input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame,
     );
-    const persist = shouldPersistRotoFrame(state);
+    const persist = shouldPersistRotoFrame(truth);
     const shouldCapture = !(hasCachedReference && !input.editBuffer.dirtyFramesRef.current.has(input.currentFrame)) && persist;
     const capturedFrame = shouldCapture
-      ? await buildRotoFrameFromCanvas(exportTransparentStrokeCanvas(input.engine), input.currentFrame, input.canvasSize)
+      ? await buildRotoFrameFromCanvas(
+        // The live sheet holds only THIS session's strokes; the cached key's
+        // paint is the app-owned preview base and must be merged under it in
+        // transmittance space (the same pigment-alpha law the capture path
+        // uses). Without this, an Update-frame on a cached key drops its paint.
+        await mergeRotoAlphaCanvases(
+          input.reference.cachedRepaintBaseFrame,
+          exportTransparentStrokeCanvas(input.engine),
+          input.canvasSize,
+          undefined,
+          'pigment-alpha',
+        ),
+        input.currentFrame,
+        input.canvasSize,
+      )
       : await buildBlankRotoFrame(input.canvasSize.width, input.canvasSize.height, input.currentFrame);
     return input.editBuffer.snapshotFrame({
       frame: input.currentFrame,
@@ -93,13 +115,14 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
       capturedFrame,
       hasCachedReference,
       shouldPersist: persist,
+      hasEditableContent: hasEditableRotoContent(truth),
     });
   }, [input]);
 
   const undo = useCallback(() => {
     if (input.isMutationLocked?.()) return false;
     input.playback.stop();
-    if (!(input.engine as UndoRedoEngine | null)?.undo()) return false;
+    if (!input.engine?.undo()) return false;
     if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
       const ownership = input.editBuffer.undoOverlay(input.currentFrame);
       if (ownership === 'empty') input.session.markLiveOverlayEmpty(input.currentFrame);
@@ -112,7 +135,7 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
   const redo = useCallback(() => {
     if (input.isMutationLocked?.()) return false;
     input.playback.stop();
-    if (!(input.engine as UndoRedoEngine | null)?.redo()) return false;
+    if (!input.engine?.redo()) return false;
     if (input.workflowMode === 'roto' && input.reference.cachedRepaintBaseFrame?.appFrame === input.currentFrame) {
       input.editBuffer.redoOverlay?.(input.currentFrame);
       input.session.markLiveOverlayDirty(input.currentFrame);
@@ -133,7 +156,12 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     input.playback.stop();
     if (!alreadyDirty) {
       input.reference.clearReference();
-      (input.engine as PreviewBackgroundEngine | null)?.resetBackground?.();
+      // Faithful mapping of engine-1's `resetBackground()`: the app-owned
+      // preview base has no engine background (the Studio fond is the
+      // background), so this is a no-op. It must NOT be `clearPreviewBaseImage()`
+      // — that wipes the visible multiply base and the first dirty stroke would
+      // erase the cached key's paint.
+      input.previewBase?.resetBackground();
     }
     input.syncPendingFrames();
   }, [input]);
@@ -174,8 +202,8 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
     if (!input.clearCachedFrame(selectedKeyId, appFrame, input.canvasSize)) return false;
     input.playback.stop();
     input.engine.clear();
-    (input.engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-    (input.engine as PreviewBackgroundEngine).resetBackground();
+    input.previewBase?.clearPreviewBaseImage();
+    input.previewBase?.resetBackground();
     input.reference.resetReference();
     input.editBuffer.clearFrame(appFrame);
     input.session.markLiveOverlayEmpty(appFrame);
@@ -187,8 +215,11 @@ export function useRotoFrameEditingController<TEditable extends RotoEditableStat
 
   useEffect(() => {
     if (input.workflowMode !== 'roto') return;
-    input.reference.loadReferenceFrame(input.currentFrame, input.engine as PreviewBackgroundEngine | null);
-  }, [input.currentFrame, input.engine, input.launchContext?.layerId, input.launchContext?.operationId, input.reference.loadReferenceFrame, input.workflowMode]);
+    input.reference.loadReferenceFrame(input.currentFrame, input.previewBase);
+    // `input.engine` stays in the deps: the preview base port is memoized from
+    // mount, so the engine identity is what re-runs the load once the sheet is
+    // actually mounted (otherwise the first frame enter is lost).
+  }, [input.currentFrame, input.engine, input.previewBase, input.launchContext?.layerId, input.launchContext?.operationId, input.reference.loadReferenceFrame, input.workflowMode]);
 
   return { undo, redo, beginFrameEdit, acceptScriptBrush, clearCurrentFrame, snapshotCurrentFrame };
 }

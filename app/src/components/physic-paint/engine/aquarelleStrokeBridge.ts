@@ -21,7 +21,7 @@
 // ============================================================
 
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
-import type { PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
+import type { PaintStroke, PenPoint } from '../types/paintCore';
 
 /** Canvas size the engine-1 point space is measured in (Studio working pixels). */
 export interface EnginePixelSize {

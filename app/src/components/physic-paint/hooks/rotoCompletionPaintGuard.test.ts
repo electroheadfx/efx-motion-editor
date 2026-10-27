@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import { describe, expect, it, vi } from 'vitest';
+import type { CompletedPaintMutation, PaintStroke } from '../types/paintCore';
+import type { RotoPreviewBasePort } from '../roto/rotoCoordinatorPorts';
 import { armRotoCompletionPaintGuard } from './rotoCompletionPaintGuard';
 import { createRotoReferenceLoader } from './useRotoReferenceController';
 import { getFrameBlobUrl } from './useRotoReferenceController';
@@ -42,6 +43,25 @@ function makeMockEngine(applied: string | null = null, appliedGeneration: number
 }
 
 const INTENDED = 'data:image/png;base64,committed';
+
+/** An accepted stroke under the app-owned paint-core contract (engine-1 gone). */
+const PAINT_STROKE: PaintStroke = {
+  tool: 'paint',
+  points: [{ x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.1 }],
+  color: '#000000',
+  params: {
+    size: 8,
+    opacity: 80,
+    pressure: 100,
+    waterAmount: 30,
+    dryAmount: 20,
+    edgeDetail: 50,
+    pickup: 10,
+    eraseStrength: 0,
+    antiAlias: 2,
+  },
+  timestamp: 10,
+};
 
 describe('armRotoCompletionPaintGuard', () => {
   it('does nothing when the intended paint already landed (cache-hit apply)', () => {
@@ -208,61 +228,115 @@ describe('armRotoCompletionPaintGuard', () => {
   });
 });
 
+type SettleListener = (
+  dataUrl: string,
+  outcome: 'applied' | 'dropped',
+  generation?: number,
+) => void;
+
+/**
+ * The surviving preview-base seam (engine-1 removed): a cache hit applies
+ * SYNCHRONOUSLY; a cache miss decodes asynchronously and a clear inside the
+ * decode window drops the apply. Generation ordering is monotonic — an older
+ * token is a canvas no-op. Completions are recorded under the app-owned
+ * paint-core contract (`PaintStroke` -> `CompletedPaintMutation`).
+ */
+interface PaintSeam extends RotoPreviewBasePort {
+  readonly pendingDecodes: number;
+  readonly completions: readonly CompletedPaintMutation[];
+  // The guard's settle seam is not part of `RotoPreviewBasePort` (the app-owned
+  // preview base has nothing to decode) — the double adds it for the race rows.
+  onPreviewBaseSettled: (listener: SettleListener) => () => void;
+  decodeNext: () => void;
+  recordStroke: (stroke: PaintStroke) => CompletedPaintMutation;
+}
+
+function createPaintSeam(): PaintSeam {
+  let appliedDataUrl: string | null = null;
+  let appliedAppFrame: number | null = null;
+  let appliedExplicit = false;
+  let appliedGeneration: number | null = null;
+  let generationCounter = 0;
+  let mutationCounter = 0;
+  const decoded = new Set<string>();
+  const listeners = new Set<SettleListener>();
+  const pending: Array<{ dataUrl: string; generation: number; appFrame: number; invalidated: boolean }> = [];
+  const completions: CompletedPaintMutation[] = [];
+
+  const settle = (dataUrl: string, outcome: 'applied' | 'dropped', generation: number) => {
+    for (const listener of [...listeners]) listener(dataUrl, outcome, generation);
+  };
+
+  const seam: PaintSeam = {
+    get pendingDecodes() { return pending.length; },
+    get completions() { return completions; },
+    setBgMode: vi.fn(),
+    clear: vi.fn(),
+    resetBackground: vi.fn(),
+    setPreviewBaseImageUrl(dataUrl, generation, appFrame) {
+      const token = generation ?? (generationCounter += 1);
+      generationCounter = Math.max(generationCounter, token);
+      if (appliedGeneration !== null && token < appliedGeneration) {
+        // Engine-enforced monotonic gate: a stale generation never repaints.
+        settle(dataUrl, 'dropped', token);
+        return;
+      }
+      if (decoded.has(dataUrl)) {
+        // Synchronous cache-hit apply — the repair path converges on this.
+        appliedDataUrl = dataUrl;
+        appliedAppFrame = appFrame ?? null;
+        appliedExplicit = generation !== undefined;
+        appliedGeneration = token;
+        settle(dataUrl, 'applied', token);
+        return;
+      }
+      pending.push({ dataUrl, generation: token, appFrame: appFrame ?? 0, invalidated: false });
+    },
+    clearPreviewBaseImage() {
+      appliedDataUrl = null;
+      appliedAppFrame = null;
+      appliedExplicit = false;
+      // Any in-flight decode is superseded: it lands as a dropped settle.
+      for (const entry of pending) entry.invalidated = true;
+    },
+    getAppliedPreviewBaseDataUrl: () => appliedDataUrl,
+    getAppliedPreviewBaseAppFrame: () => appliedAppFrame,
+    getAppliedPreviewBaseExplicit: () => appliedExplicit,
+    getAppliedPreviewBaseGeneration: () => appliedGeneration,
+    getAppliedPreviewBaseContentToken: () => appliedGeneration,
+    onPreviewBaseSettled(listener: SettleListener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    decodeNext() {
+      const entry = pending.shift();
+      if (!entry) throw new Error('no pending preview-base decode');
+      // The decode itself succeeded, so the bytes are cached either way.
+      decoded.add(entry.dataUrl);
+      if (entry.invalidated) {
+        settle(entry.dataUrl, 'dropped', entry.generation);
+        return;
+      }
+      appliedDataUrl = entry.dataUrl;
+      appliedAppFrame = entry.appFrame;
+      appliedGeneration = entry.generation;
+      settle(entry.dataUrl, 'applied', entry.generation);
+    },
+    recordStroke() {
+      mutationCounter += 1;
+      const completion: CompletedPaintMutation = {
+        kind: 'paint',
+        isEmpty: false,
+        mutationId: mutationCounter,
+      };
+      completions.push(completion);
+      return completion;
+    },
+  };
+  return seam;
+}
+
 describe('completion paint through the reference loader (integration)', () => {
-  type StubImage = { onload: (() => void) | null; onerror: (() => void) | null; src: string };
-  let images: StubImage[];
-
-  function makeEngine() {
-    const engine = Object.create(EfxPaintEngine.prototype) as EfxPaintEngine & Record<string, any>;
-    Object.assign(engine, {
-      width: 8,
-      height: 6,
-      destroyed: false,
-      animationMode: false,
-      state: { drawing: false, bgMode: 'white' },
-      previewBaseRequestId: 0,
-      previewBaseEnabled: false,
-      previewBackgroundSeparated: false,
-      previewBaseImage: null,
-      previewBaseImageCache: new Map<string, unknown>(),
-      // EfxPaintEngine.ts:617 class-field initializer is skipped by
-      // Object.create(prototype), so the harness must supply the cache
-      // repairPreviewBaseMatte reads.
-      previewBaseMatteCache: new Map<string, CanvasImageSource | null>(),
-      previewBackgroundRequestId: 0,
-      appliedPreviewBaseDataUrl: null,
-      previewBaseSettledListeners: null,
-      previewBaseGenerationCounter: 0,
-      appliedPreviewBaseGeneration: null,
-      bgData: null,
-      lastResetBackgroundData: null,
-      lastResetBackgroundInputs: null,
-      paperTextures: new Map(),
-      userPhoto: null,
-      bgCtx: { clearRect: vi.fn(), fillRect: vi.fn(), drawImage: vi.fn(), getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })) },
-      dualCanvas: { dryCanvas: { removeEventListener: vi.fn() }, previewBaseCtx: { clearRect: vi.fn() } },
-      redrawPreviewBase: vi.fn(),
-      redrawAll: vi.fn(),
-      setBgMode: vi.fn(),
-      clear: vi.fn(),
-      resetBackground: vi.fn(),
-    });
-    return engine;
-  }
-
-  beforeEach(() => {
-    images = [];
-    vi.stubGlobal('Image', vi.fn(() => {
-      const image: StubImage = { onload: null, onerror: null, src: '' };
-      images.push(image);
-      return image;
-    }));
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   function makeLoader(frame: { appFrame: number; bytes: Uint8Array }) {
     return createRotoReferenceLoader({
       getWorkflowMode: () => 'roto',
@@ -282,58 +356,61 @@ describe('completion paint through the reference loader (integration)', () => {
 
   it('converges to the committed frame when an invalidation lands inside the completion decode window', () => {
     const committed = { appFrame: 8, bytes: testWebpBytes('committed-many-stroke-frame') };
-    const engine = makeEngine();
+    const seam = createPaintSeam();
     const loader = makeLoader(committed);
     const log = vi.fn();
 
-    // The Studio reconcile wiring (what the fix adds): paint + guard.
+    // The Studio reconcile wiring: paint + guard.
     const reconcile = (appFrame: number) => {
-      loader.load(appFrame, engine);
+      loader.load(appFrame, seam);
       armRotoCompletionPaintGuard({
-        engine,
+        engine: seam,
         appFrame,
         intendedDataUrl: getFrameBlobUrl(committed.bytes),
         intendedBytes: committed.bytes,
         getCurrentAppFrame: () => 8,
-        reload: (frame) => { loader.load(frame, engine); },
+        reload: (frame) => { loader.load(frame, seam); },
         log,
       });
     };
 
     reconcile(8);
-    expect(images.length, 'the completion paint starts one decode').toBe(1);
+    expect(seam.pendingDecodes, 'the completion paint starts one decode').toBe(1);
 
-    // The production race: an invalidation lands before the large-PNG decode completes.
-    engine.clearPreviewBaseImage();
-    images[0].onload!();
+    // The production race: an invalidation lands before the decode completes.
+    seam.clearPreviewBaseImage();
+    seam.decodeNext();
 
     expect(
-      engine.getAppliedPreviewBaseDataUrl(),
+      seam.getAppliedPreviewBaseDataUrl(),
       'the committed frame must be the applied preview base after completion settles',
     ).toBe(getFrameBlobUrl(committed.bytes));
-    expect((engine as unknown as Record<string, unknown>).previewBaseImage).toBe(images[0]);
+    expect(seam.pendingDecodes, 'the repair lands as a synchronous cache hit').toBe(0);
     expect(log).toHaveBeenCalledTimes(1);
+    expect(seam.recordStroke(PAINT_STROKE)).toEqual({ kind: 'paint', isEmpty: false, mutationId: 1 });
+    expect(seam.completions, 'one completion per accepted stroke, no second from the repair').toHaveLength(1);
   });
 
   it('applies the completion paint without repair when no invalidation lands (control)', () => {
     const committed = { appFrame: 8, bytes: testWebpBytes('committed-two-stroke-frame') };
-    const engine = makeEngine();
+    const seam = createPaintSeam();
     const loader = makeLoader(committed);
     const log = vi.fn();
 
-    loader.load(8, engine);
+    loader.load(8, seam);
     armRotoCompletionPaintGuard({
-      engine,
+      engine: seam,
       appFrame: 8,
       intendedDataUrl: getFrameBlobUrl(committed.bytes),
       intendedBytes: committed.bytes,
       getCurrentAppFrame: () => 8,
-      reload: (frame) => { loader.load(frame, engine); },
+      reload: (frame) => { loader.load(frame, seam); },
       log,
     });
-    images[0].onload!();
+    seam.decodeNext();
 
-    expect(engine.getAppliedPreviewBaseDataUrl()).toBe(getFrameBlobUrl(committed.bytes));
+    expect(seam.getAppliedPreviewBaseDataUrl()).toBe(getFrameBlobUrl(committed.bytes));
+    expect(seam.pendingDecodes).toBe(0);
     expect(log, 'no repair when the paint lands cleanly').not.toHaveBeenCalled();
   });
 });

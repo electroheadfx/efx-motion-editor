@@ -8,35 +8,10 @@ import {
   resolveRotoSaveSourceFrame,
   shouldPersistRotoFrame,
   sortedDirtyRotoFrames,
-  type RotoEditableState,
 } from './rotoSaveTransactions';
+import { shouldPersistRotoFrameFromTruth } from './rotoFramePersistTruth';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
-
-const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableState => ({
-  version: 1,
-  parentLayerId: 'layer-1',
-  documentRevision: 0,
-  activeTrackId: 'track-1',
-  tracks: [{
-    id: 'track-1',
-    name: 'Paint',
-    order: 0,
-    visible: true,
-    solo: false,
-    opacity: 1,
-    blendMode: 'normal',
-    revision: 0,
-    frames: {},
-    rotoPhysical: null,
-    loopClips: [],
-    strokes,
-    settings: { bgMode, embossStrength: 0.45, wetPaper: true },
-  }],
-  background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
-  photoReference: null,
-  compositeRevision: 0,
-} as unknown as RotoEditableState);
 
 const launchContext = {
   operationId: 'launch-1',
@@ -53,12 +28,29 @@ describe('rotoSaveTransactions', () => {
     expect(guardRotoFlush({ hasActionContext: true, frame: 2, force: true, dirty: false, inFlight: false })).toEqual({ type: 'flush' });
   });
 
-  it('classifies delete, painted, and background-only editable states', () => {
-    expect(shouldPersistRotoFrame(state())).toBe(false);
-    expect(shouldPersistRotoFrame(state([{}]))).toBe(true);
-    expect(shouldPersistRotoFrame(state([], 'canvas1'))).toBe(true);
-    expect(isBackgroundOnlyRotoFrame(state([], 'canvas1'))).toBe(true);
-    expect(isBackgroundOnlyRotoFrame(state([{}], 'canvas1'))).toBe(false);
+  it('classifies painted, empty, and background-only frames from the watercolor truth table', () => {
+    // 3.5 (261027-klx): the persist law reads `recordedStrokeCount` +
+    // `payloadEventCount` + `bgMode` — never the engine-1 document mirror.
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' })).toBe(false);
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 1, payloadEventCount: 1, bgMode: 'transparent' })).toBe(true);
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'canvas1' })).toBe(true);
+    // Payload events are evidence only: strokes can be deleted while their
+    // timeline entries survive, and such a frame must stay empty.
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 0, payloadEventCount: 4, bgMode: 'transparent' })).toBe(false);
+    expect(shouldPersistRotoFrameFromTruth({ recordedStrokeCount: 0, payloadEventCount: 4, bgMode: 'transparent' })).toBe(false);
+
+    expect(isBackgroundOnlyRotoFrame({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'canvas1' })).toBe(true);
+    expect(isBackgroundOnlyRotoFrame({ recordedStrokeCount: 1, payloadEventCount: 1, bgMode: 'canvas1' })).toBe(false);
+  });
+
+  it('261027-klx regression: engine-1 mirror empty, watercolor recorded strokes present → persist', () => {
+    // The engine-1 mirror (`state.tracks[].strokes`) is empty the moment stroke
+    // acceptance routes through the app-owned ledger. Before 3.5 that empty
+    // mirror classified a painted watercolor frame as EMPTY and persistence
+    // silently dropped real paint. The watercolor record decides now.
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 2, payloadEventCount: 2, bgMode: 'transparent' })).toBe(true);
+    // A frame with neither strokes nor a fond still refuses to persist.
+    expect(shouldPersistRotoFrame({ recordedStrokeCount: 0, payloadEventCount: 0, bgMode: 'transparent' })).toBe(false);
   });
 
   it('resolves explicit save targets before timeline source resolution', () => {

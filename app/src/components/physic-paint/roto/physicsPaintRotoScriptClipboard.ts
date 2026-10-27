@@ -1,5 +1,6 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
-import { toStudioStroke, fromStudioStroke, type CompletedPaintMutation, type PaintStroke } from '@efxlab/efx-physic-paint';
+import { hashMutationId } from '@efxlab/efx-paint-host';
+import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-paint-host/animation';
 import {
   isAquarelleDryEvent,
@@ -7,6 +8,12 @@ import {
   type AquarellePayloadEvent,
 } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import type {
+  CompletedPaintMutation,
+  PaintStroke,
+  PenPoint,
+  PhysicStrokePayload,
+} from '../types/paintCore';
 import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import { freezeRecordedStrokeGroups, normalizeLogicalBrushes, type RecordedStrokeGroup } from '../view/recordedStrokeGroups';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
@@ -78,10 +85,10 @@ export interface RotoPaintScript {
   sourceRevision: number;
   brushes: readonly Readonly<RecordedStrokeGroup>[];
   /**
-   * 56-08: the envelope engine discriminator. Absent = engine-1
-   * ('efx-physic-paint'), which is the byte-stable default. Present as
-   * 'efx-watercolor' routes the Play Script bake through the aquarelle
-   * consume branch (flush-survives-navigation, AQUA-07).
+   * 56-08: the envelope engine discriminator. After engine-1 removal the
+   * only produced value is 'efx-watercolor' (ROTO_SCRIPT_ENGINE_ID_AQUARELLE).
+   * An absent or legacy value classifies as a refused old envelope — it is
+   * never accepted (see physicsPaintRotoScriptSchema / ApplyRefusal).
    */
   engineId?: string;
   /**
@@ -567,8 +574,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       if (scriptAlphaCanvas === null) return null;
       // 261018-odm: when EVERY captured primary has a recorded AquarelleStroke,
       // attach the aquarelle payload timeline so the save path serializes the
-      // efx-watercolor variant. A mixed engine-1 + watercolor key keeps the
-      // engine-1 serialize path (aquarelleEvents stays absent).
+      // efx-watercolor envelope. There is no second engine any more, so a
+      // missing record means the projection is broken — aquarelleEvents stays
+      // absent and the save refuses rather than persisting a bodyless script.
       const aquarelleEvents = buildAquarelleEventsFromCapture(brushes);
       const script = deepFreezeScript({
         provenance: provenanceFor(source), sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame,
@@ -578,9 +586,8 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       return {
         script,
         scriptAlphaCanvas,
-        // 261026-nvq: attach the sheet only for an aquarelle script — a mixed
-        // key keeps today's engine-1 thumbnail source, and a blank sheet (ink
-        // gate returned null) falls back to the engine canvas.
+        // 261026-nvq: attach the sheet only for an aquarelle script; a blank
+        // sheet (ink gate returned null) falls back to the engine canvas.
         ...(aquarelleEvents !== undefined && aquarelleAlphaCanvas !== null ? { aquarelleAlphaCanvas } : {}),
       };
     } catch (cause) {
@@ -752,7 +759,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const brush = operation.script.brushes[brushIndex];
     const motion = ports.getMotion();
     const transformed: RecordedStrokeGroup = {
-      primary: fromStudioStroke(transformRecordedStrokeForHeldPose(toStudioStroke(brush.primary), {
+      primary: studioStrokeToPaintStroke(transformRecordedStrokeForHeldPose(paintStrokeToStudioStroke(brush.primary), {
         destinationSourceFrame: operation.destinationAppFrame,
         strokeIndex: brushIndex,
         deformation: motion.deformation,
@@ -1334,6 +1341,87 @@ function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
   return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
 }
 
+/**
+ * The ONE local PaintStroke → StudioStroke projection. It replaces the
+ * engine-1 package export of the same mapping, keeping its field contract
+ * byte-identical (tick = sample index, ticks = max(1, n-1), cuisson =
+ * diffusionFrames capped at 600, recordedOrder = timestamp). Its only
+ * consumer is the held-pose transform, which keys its noise on
+ * `recordedOrder`, `color` and the point count — the same inputs as before,
+ * so a re-applied script lands on the same stop-motion pose.
+ */
+function paintStrokeToStudioStroke(
+  stroke: Readonly<PaintStroke>,
+): StudioStroke<PhysicStrokePayload> {
+  const pts: StudioPoint[] = stroke.points.map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    p: point.p,
+    tx: point.tx,
+    ty: point.ty,
+    tw: point.tw,
+    tick: index,
+  }));
+  return {
+    pts,
+    ticks: Math.max(1, pts.length - 1),
+    cuisson:
+      stroke.diffusionFrames !== undefined && stroke.diffusionFrames > 0
+        ? Math.min(600, Math.trunc(stroke.diffusionFrames))
+        : 0,
+    motion: null,
+    brushId: 'paint',
+    toolOverrides: {},
+    traceSeed: hashMutationId(stroke.mutationId),
+    recordedOrder: stroke.timestamp,
+    playFrame: stroke.playFrame ?? null,
+    color: stroke.color,
+    engine: {
+      tool: stroke.tool,
+      color: stroke.color,
+      params: { ...stroke.params } as Record<string, number>,
+      mutationId: stroke.mutationId,
+      hasPenInput: stroke.hasPenInput,
+      physicsMode: stroke.physicsMode ?? null,
+      diffusionFrames: stroke.diffusionFrames,
+      timestamp: stroke.timestamp,
+      playFrame: stroke.playFrame,
+    },
+  };
+}
+
+/**
+ * The exact inverse of {@link paintStrokeToStudioStroke}. The watercolor
+ * package has no equivalent (it never projects back), so this half lives
+ * here, next to its only consumer. `spd` is not a host field — it restores
+ * as 0, exactly as the engine-1 inverse did.
+ */
+function studioStrokeToPaintStroke(
+  stroke: StudioStroke<PhysicStrokePayload>,
+): PaintStroke {
+  const points: PenPoint[] = stroke.pts.map((point) => ({
+    x: point.x,
+    y: point.y,
+    p: point.p,
+    tx: point.tx,
+    ty: point.ty,
+    tw: point.tw,
+    spd: 0,
+  }));
+  return {
+    tool: stroke.engine.tool as PaintStroke['tool'],
+    points,
+    color: stroke.color,
+    params: stroke.engine.params as unknown as PaintStroke['params'],
+    timestamp: stroke.recordedOrder,
+    mutationId: stroke.engine.mutationId,
+    hasPenInput: stroke.engine.hasPenInput,
+    diffusionFrames: stroke.engine.diffusionFrames,
+    playFrame: stroke.playFrame ?? undefined,
+    physicsMode: stroke.engine.physicsMode as PaintStroke['physicsMode'],
+  };
+}
+
 function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
   Object.freeze(script.provenance);
   // 261023-g4p: the brush half of the freeze is the ONE shared helper.
@@ -1354,7 +1442,8 @@ function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
 /**
  * 261018-odm: build the aquarelle payload timeline from the captured
  * primaries. Returns undefined when any primary lacks a recorded
- * AquarelleStroke (mixed key) so the engine-1 serialize path stays.
+ * AquarelleStroke — after engine-1 removal every accepted stroke IS an
+ * aquarelle record, so this is a projection guard, not a mixed-key path.
  */
 function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStrokeGroup>[]): AquarellePayloadEvent[] | undefined {
   const captured = new Set<number>();
@@ -1363,11 +1452,11 @@ function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStro
     for (const stroke of chain) {
       const mutationId = stroke.mutationId;
       const recorded = mutationId !== undefined ? getRecordedAquarelleStroke(mutationId) : undefined;
-      // Presence gate law: a missing record means a MIXED engine-1 key — the
-      // serialize path must stay engine-1. A deleted stroke is different: its
-      // record is present (presence stays true) but it is removed from the
-      // script by the marker, so it is skipped in the projection below WITHOUT
-      // tripping the fallback.
+      // Presence gate law: a missing record means the projection has no
+      // watercolor payload to serialize, so the caller gets undefined and the
+      // save refuses. A deleted stroke is different: its record is present
+      // (presence stays true) but it is removed from the script by the marker,
+      // so it is skipped in the projection below WITHOUT tripping the guard.
       if (!recorded) return undefined;
       if (mutationId !== undefined) captured.add(mutationId);
     }

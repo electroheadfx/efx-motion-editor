@@ -103,21 +103,21 @@ describe('Roto edit buffer transactions', () => {
 
   it('does not capture an untouched cached reference or non-persistable state', () => {
     const buffer = createRotoEditBuffer<State, Frame>();
-    const cached = snapshotRotoFrame({ buffer, frame: 3, state: state(1), capturedFrame: { appFrame: 3, dataUrl: 'x' }, hasCachedReference: true, shouldPersist: true });
+    const cached = snapshotRotoFrame({ buffer, frame: 3, state: state(1), capturedFrame: { appFrame: 3, dataUrl: 'x' }, hasCachedReference: true, shouldPersist: true, hasEditableContent: true });
     expect(cached).toEqual({ captured: false, editable: false });
     markRotoFrameDirty(buffer, 3);
-    const empty = snapshotRotoFrame({ buffer, frame: 3, state: state(0), capturedFrame: { appFrame: 3, dataUrl: 'x' }, hasCachedReference: false, shouldPersist: false });
+    const empty = snapshotRotoFrame({ buffer, frame: 3, state: state(0), capturedFrame: { appFrame: 3, dataUrl: 'x' }, hasCachedReference: false, shouldPersist: false, hasEditableContent: false });
     expect(empty).toEqual({ captured: false, editable: false });
   });
 
   it('stores one injected transparent capture and distinguishes background-only from editable paint', () => {
     const buffer = createRotoEditBuffer<State, Frame>();
     const capturedFrame = { appFrame: 6, dataUrl: 'transparent-canvas' };
-    const painted = snapshotRotoFrame({ buffer, frame: 6, state: state(1), capturedFrame, hasCachedReference: false, shouldPersist: true });
+    const painted = snapshotRotoFrame({ buffer, frame: 6, state: state(1), capturedFrame, hasCachedReference: false, shouldPersist: true, hasEditableContent: true });
     expect(painted).toEqual({ captured: true, editable: true });
     expect(buffer.capturedFrames.get(6)).toBe(capturedFrame);
     expect(buffer.previewFrames.get(6)).toBe(capturedFrame);
-    const backgroundOnly = snapshotRotoFrame({ buffer, frame: 7, state: state(0, 'white'), capturedFrame: { appFrame: 7, dataUrl: 'background' }, hasCachedReference: false, shouldPersist: true });
+    const backgroundOnly = snapshotRotoFrame({ buffer, frame: 7, state: state(0, 'white'), capturedFrame: { appFrame: 7, dataUrl: 'background' }, hasCachedReference: false, shouldPersist: true, hasEditableContent: false });
     expect(backgroundOnly).toEqual({ captured: true, editable: false });
   });
 

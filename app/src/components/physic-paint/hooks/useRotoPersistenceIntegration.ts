@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type StateUpdater } from 'preact/hooks';
 import type { RefObject } from 'preact';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
+import type { RotoCanvasAndPreviewBasePort, RotoPreviewBasePort } from '../roto/rotoCoordinatorPorts';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import type { RotoKeyUtilityActiveRestore, RotoKeyUtilityTransaction } from '../roto/physicsPaintRotoKeyController';
@@ -10,12 +10,17 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
-type PreviewBackgroundEngine = EfxPaintEngine & { resetBackground: (skipRedraw?: boolean) => void; clearPreviewBaseImage: (skipRedraw?: boolean) => void };
 
-export function clearRotoEngineCanvas(engine: PreviewBackgroundEngine): void {
-  engine.clearPreviewBaseImage(true);
-  engine.resetBackground(true);
-  engine.clear();
+/**
+ * Wipe the live sheet AND the app-owned preview base. The `flush`
+ * finalization queue is the ledger's injected no-op (watercolor finalizes
+ * synchronously at stroke end) — `RotoCanvasPort` carries it so a caller can
+ * never forget the ordering.
+ */
+export function clearRotoEngineCanvas(port: RotoCanvasAndPreviewBasePort | null): void {
+  port?.clearPreviewBaseImage(true);
+  port?.resetBackground(true);
+  port?.clear();
 }
 
 interface RotoNavigationIntegrationPort {
@@ -45,7 +50,8 @@ export interface UseRotoPersistenceIntegrationInput {
     source: number;
     setLaunchContext: Dispatch<StateUpdater<PhysicPaintLaunchContext | null>>;
   };
-  engine: EfxPaintEngine | null;
+  /** The app-owned canvas + preview-base port (never the watercolor engine). */
+  canvas: RotoCanvasAndPreviewBasePort | null;
   launchContext: PhysicPaintLaunchContext | null;
   /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
    * is stale after an in-place track switch (row click / add / duplicate). */
@@ -53,7 +59,7 @@ export interface UseRotoPersistenceIntegrationInput {
   flushFramePublication: (sourceFrame: number) => Promise<void>;
   reference: {
     setUrl: (url: string | null) => void;
-    loadFrame: (frame: number, engine: PreviewBackgroundEngine | null, refreshedFrame?: PhysicPaintRotoCacheFrame | null) => void;
+    loadFrame: (frame: number, previewBase: RotoPreviewBasePort | null, refreshedFrame?: PhysicPaintRotoCacheFrame | null) => void;
   };
   cache: {
     confirmedFramesRef: RefObject<Map<number, RenderedFramePayload>>;
@@ -78,7 +84,7 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     input.navigation.playback.stop();
     if (input.launchContext) {
       const sourceFrame = input.frame.source;
-      input.engine?.flushPendingStrokeFinalizations();
+      input.canvas?.flushPendingStrokeFinalizations();
       try {
         await input.flushFramePublication(sourceFrame);
       } catch {
@@ -87,10 +93,10 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
         return false;
       }
       input.reference.setUrl(null);
-      if (input.engine) {
-        (input.engine as PreviewBackgroundEngine).resetBackground(true);
-        input.engine.clear();
-        input.reference.loadFrame(frame, input.engine as PreviewBackgroundEngine);
+      if (input.canvas) {
+        input.canvas.resetBackground(true);
+        input.canvas.clear();
+        input.reference.loadFrame(frame, input.canvas);
       }
     }
     input.frame.setLaunchContext((current) => current ? { ...current, startFrame: frame } : current);
@@ -137,9 +143,9 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     input.reference.setUrl(null);
     input.frame.setLaunchContext((current) => current ? { ...current, startFrame: restore.frame } : current);
     const refreshedFrame = refreshedCacheFrames?.find((frame) => (frame.displayFrame ?? frame.appFrame) === restore.frame) ?? null;
-    if ((restore.kind === 'load-real-key' || restore.kind === 'blank-real-key') && input.engine) input.reference.loadFrame(restore.frame, input.engine as PreviewBackgroundEngine, refreshedFrame);
-    else if (restore.kind === 'clear-blank' && input.engine) {
-      clearRotoEngineCanvas(input.engine as PreviewBackgroundEngine);
+    if ((restore.kind === 'load-real-key' || restore.kind === 'blank-real-key') && input.canvas) input.reference.loadFrame(restore.frame, input.canvas, refreshedFrame);
+    else if (restore.kind === 'clear-blank' && input.canvas) {
+      clearRotoEngineCanvas(input.canvas);
     }
   }, [input]);
 
@@ -148,8 +154,8 @@ export function useRotoPersistenceIntegration(input: UseRotoPersistenceIntegrati
     restoreFrame,
     clearCanvas: (frame) => {
       input.reference.setUrl(null);
-      if (input.engine && frame === input.frame.current) {
-        clearRotoEngineCanvas(input.engine as PreviewBackgroundEngine);
+      if (input.canvas && frame === input.frame.current) {
+        clearRotoEngineCanvas(input.canvas);
       }
     },
     navigate: navigateToSyncedFrame,

@@ -1,8 +1,8 @@
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { readRotoActiveTrack } from './rotoSaveTransactions';
+import type { RotoEditableState } from '../types/paintCore';
+import { shouldPersistRotoFrameFromTruth } from './rotoFramePersistTruth';
 
-export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
+export type { RotoEditableState } from '../types/paintCore';
 export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoEditBuffer<State = RotoEditableState, Frame = RotoRenderedFrame> {
@@ -33,14 +33,26 @@ export function removeEditableRotoFrame(frames: number[], frame: number): number
     : frames;
 }
 
-export function hasEditableRotoContent(state: RotoEditableState): boolean {
-  const track = readRotoActiveTrack(state);
-  return (track?.strokes?.length ?? 0) > 0;
+/**
+ * 3.5 (quick 261027-klx): reads the WATERCOLOR truth, never the engine-1
+ * document mirror (`state.tracks[].strokes` stops being populated once stroke
+ * acceptance routes through the ledger).
+ */
+export function shouldPersistRotoFrame(input: {
+  recordedStrokeCount: number;
+  payloadEventCount: number;
+  bgMode: string;
+}): boolean {
+  return shouldPersistRotoFrameFromTruth(input);
 }
 
-export function shouldPersistRotoFrame(state: RotoEditableState): boolean {
-  const track = readRotoActiveTrack(state);
-  return (track?.strokes?.length ?? 0) > 0 || (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
+/** True when the frame holds at least one live recorded stroke. */
+export function hasEditableRotoContent(input: {
+  recordedStrokeCount: number;
+  payloadEventCount: number;
+  bgMode: string;
+}): boolean {
+  return shouldPersistRotoFrameFromTruth({ ...input, bgMode: 'transparent' });
 }
 
 export function markRotoFrameDirty<State, Frame>(buffer: RotoEditBuffer<State, Frame>, frame: number): void {
@@ -83,13 +95,15 @@ export function clearRotoFrame<State, Frame>(buffer: RotoEditBuffer<State, Frame
   buffer.dirtyFrames.add(frame);
 }
 
-export function snapshotRotoFrame<State extends RotoEditableState, Frame>(input: {
+export function snapshotRotoFrame<State, Frame>(input: {
   buffer: RotoEditBuffer<State, Frame>;
   frame: number;
   state: State;
   capturedFrame: Frame;
   hasCachedReference: boolean;
   shouldPersist: boolean;
+  /** Live recorded strokes on this frame (the watercolor truth source). */
+  hasEditableContent: boolean;
 }): { captured: boolean; editable: boolean } {
   const { buffer, frame } = input;
   if ((input.hasCachedReference && !buffer.dirtyFrames.has(frame)) || !input.shouldPersist) {
@@ -101,7 +115,7 @@ export function snapshotRotoFrame<State extends RotoEditableState, Frame>(input:
   buffer.frameStates.set(frame, input.state);
   buffer.capturedFrames.set(frame, input.capturedFrame);
   buffer.previewFrames.set(frame, input.capturedFrame);
-  return { captured: true, editable: hasEditableRotoContent(input.state) };
+  return { captured: true, editable: input.hasEditableContent };
 }
 
 export function resetRotoEditBuffer<State, Frame>(buffer: RotoEditBuffer<State, Frame>): void {

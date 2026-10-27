@@ -1,4 +1,3 @@
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type {
   PhysicPaintApplyPayload,
   PhysicPaintLaunchContext,
@@ -6,8 +5,9 @@ import type {
   PhysicPaintRotoCacheFrame,
   PhysicPaintRotoInterpolationSettings,
 } from '../../../types/physicPaint';
+import { shouldPersistRotoFrameFromTruth } from './rotoFramePersistTruth';
 
-export type RotoEditableState = ReturnType<EfxPaintEngine['save']>;
+export type { RotoEditableState } from '../types/paintCore';
 export type RotoRenderedFrame = PhysicPaintRenderedFrame & Partial<Pick<PhysicPaintRotoCacheFrame, 'sourceFrame' | 'displayFrame' | 'fromSourceFrame' | 'toSourceFrame' | 'interpolationT' | 'backgroundOnly' | 'onionBytes'>>;
 
 export interface RotoFlushOptions {
@@ -37,19 +37,30 @@ export function guardRotoFlush(input: {
   return { type: 'flush' };
 }
 
-/** Active-track engine carrier read: strokes/settings ride the active track in v1.0 documents (D-03). */
-export function readRotoActiveTrack(state: RotoEditableState) {
-  return state.tracks.find((track) => track.id === state.activeTrackId) ?? null;
+/**
+ * 3.5 (quick 261027-klx): the persist law reads the WATERCOLOR truth, not the
+ * engine-1 document mirror. `state.tracks[].strokes` stops being populated the
+ * moment stroke acceptance routes through the app-owned ledger, so a painted
+ * watercolor frame would classify as EMPTY and Roto persistence would silently
+ * drop real paint. The law itself is unchanged — `shouldPersistRotoFrameFromTruth`
+ * states it over an explicit truth input.
+ */
+export function shouldPersistRotoFrame(input: {
+  recordedStrokeCount: number;
+  payloadEventCount: number;
+  bgMode: string;
+}): boolean {
+  return shouldPersistRotoFrameFromTruth(input);
 }
 
-export function shouldPersistRotoFrame(state: RotoEditableState): boolean {
-  const track = readRotoActiveTrack(state);
-  return (track?.strokes?.length ?? 0) > 0 || (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
-}
-
-export function isBackgroundOnlyRotoFrame(state: RotoEditableState): boolean {
-  const track = readRotoActiveTrack(state);
-  return (track?.strokes?.length ?? 0) === 0 && (track?.settings?.bgMode ?? 'transparent') !== 'transparent';
+/** No live strokes but a non-transparent fond — unchanged law, truth input. */
+export function isBackgroundOnlyRotoFrame(input: {
+  recordedStrokeCount: number;
+  payloadEventCount: number;
+  bgMode: string;
+}): boolean {
+  const hasStrokes = shouldPersistRotoFrameFromTruth({ ...input, bgMode: 'transparent' });
+  return !hasStrokes && input.bgMode !== 'transparent';
 }
 
 export function resolveRotoSaveSourceFrame(frame: number, sourceFrameOverride: number | undefined, resolvedSourceFrame: number): number {

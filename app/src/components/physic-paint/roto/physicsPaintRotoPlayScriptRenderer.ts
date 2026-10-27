@@ -1,9 +1,6 @@
-import { EfxPaintEngine, type PaintStroke, toStudioStroke, fromStudioStroke, type PhysicStrokePayload } from '@efxlab/efx-physic-paint';
-import { buildProgressiveStrokeSchedule, buildStaticStrokeSchedule, getProgressiveFrameStrokes, getStaticFrameStrokes, transformRecordedStrokeForHeldPose, type StudioStroke } from '@efxlab/efx-paint-host/animation';
 import { computeAquarelleSheetPose, drawAquarelleSheetPose } from './aquarelleFramePose';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
-import { mergeRotoAlphaCanvases } from './physicsPaintRotoAlphaMerge';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { transmittanceToAlpha } from '../../../lib/rasterAlpha';
 
@@ -12,32 +9,15 @@ const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
 
 export type RotoPlayScriptRenderMode = 'progressive' | 'static';
 
-export interface RotoPlayScriptRenderInput {
-  script: Readonly<RotoPaintScript>;
-  frameCount: number;
-  canonicalStart: number;
-  motion: Readonly<{ deformation: number; position: number }>;
-  existingFrames: ReadonlyMap<number, PhysicPaintRenderedFrame>;
-  size: Readonly<{ width: number; height: number }>;
-  papers?: readonly Readonly<{ name: string; url: string }>[];
-  defaultPaper?: string;
-  paperTextureScale?: number;
-  mode?: RotoPlayScriptRenderMode;
-  overrideColor?: string | null;
-  signal: AbortSignal;
-  onProgress?: (completed: number, total: number) => void;
-}
-
 export interface StagedRotoPlayScriptFrame extends PhysicPaintRenderedFrame {
   source: 'real-key';
 }
 
 /**
- * 52-01 (D-01/D-14/D-18): the reveal bake render input. Reuses the PlayScript
- * coverage path (progressive/static schedules + `renderProgressiveAlphaFrame`)
- * but replaces the additive `mergeRotoAlphaCanvases` step with a reference-mask
- * composite: the reference image AS PLACED (Phase 50 transform) at FULL source
- * opacity, masked by the coverage alpha via `destination-in`.
+ * 52-01 (D-01/D-14/D-18): the reveal bake render input. The wash IS the
+ * coverage — a reference-mask composite where the reference image AS PLACED
+ * (Phase 50 transform) at FULL source opacity is masked by the wash alpha via
+ * `destination-in`.
  */
 export interface RotoRevealRenderInput {
   script: Readonly<RotoPaintScript>;
@@ -46,13 +26,10 @@ export interface RotoRevealRenderInput {
   motion: Readonly<{ deformation: number; position: number }>;
   mode?: RotoPlayScriptRenderMode;
   size: Readonly<{ width: number; height: number }>;
-  papers?: readonly Readonly<{ name: string; url: string }>[];
-  defaultPaper?: string;
-  paperTextureScale?: number;
   /**
-   * The Studio paper an aquarelle wash deposits on (engine-2 only). Engine-1
-   * ignores it; without it the aquarelle bake uses its default paper. The
-   * mask reads the wash alpha, so the paper only shapes the edges.
+   * The Studio paper the wash deposits on. Without it the aquarelle bake uses
+   * its default paper. The mask reads the wash alpha, so the paper only shapes
+   * the edges.
    */
   aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
   /**
@@ -88,116 +65,29 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
   validateRenderInput(input);
   throwIfAborted(input.signal);
 
-  // Engine-2 scripts bake through the aquarelle wash path (the wash IS the
-  // coverage). Engine-1 draws only the guide line for such a script, which is
-  // exactly the wrong mask. Mirror the apply channel's discriminator: the
-  // persisted envelope names 'efx-watercolor', the in-memory capture carries
-  // aquarelleEvents instead.
+  // 261027-klx: the wash alpha IS the coverage, and watercolor is the only
+  // engine. A script without a recorded wash timeline is an old Brush envelope
+  // with nothing to bake — refuse it instead of staging an empty reveal.
   const aquarelleEvents = input.script.aquarelleEvents;
-  if (input.script.engineId === 'efx-watercolor' || (aquarelleEvents !== undefined && aquarelleEvents.length > 0)) {
-    return renderRotoRevealFramesAquarelle(input, aquarelleEvents ?? []);
+  if (aquarelleEvents === undefined || aquarelleEvents.length === 0) {
+    throw new Error('Reveal needs a Water color script — this script has no recorded wash timeline.');
   }
-
-  const host = document.createElement('div');
-  const engine = new EfxPaintEngine(host, {
-    width: input.size.width,
-    height: input.size.height,
-    papers: [...(input.papers ?? [])],
-    defaultPaper: input.defaultPaper,
-    paperTextureScale: input.paperTextureScale,
-  });
-  const staged: StagedRotoPlayScriptFrame[] = [];
-
-  try {
-    await engine.init();
-    throwIfAborted(input.signal);
-    engine.setAnimationMode(true);
-    engine.setInputLocked(true);
-    engine.setBgMode('transparent');
-
-    const strokes = flattenScriptStrokes(input.script);
-    const mode = input.mode ?? 'progressive';
-    const schedule = mode === 'static'
-      ? buildStaticStrokeSchedule(strokes, input.frameCount)
-      : buildProgressiveStrokeSchedule(strokes, input.frameCount);
-    // DECODE-ONCE per distinct payload, keyed by payload identity: a clamped
-    // repeat (one image resolving several frames) reuses the decoded image
-    // instead of paying a fresh blob + decode per frame — the project's
-    // documented decode-storm lesson.
-    const referenceImages = new Map<Uint8Array, HTMLImageElement>();
-
-    for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
-      throwIfAborted(input.signal);
-      const destination = input.canonicalStart + frameIndex;
-      // D-15: the image for THIS application frame. The store pre-validates the
-      // whole span, so a miss here is a caller bug — never a stale substitute.
-      const referenceBytes = input.reference.bytesByAppFrame.get(destination);
-      if (referenceBytes === undefined) throw new Error(`No reveal reference image for frame ${destination}.`);
-      let referenceImage = referenceImages.get(referenceBytes);
-      if (referenceImage === undefined) {
-        referenceImage = await loadRevealWebpImage(referenceBytes);
-        referenceImages.set(referenceBytes, referenceImage);
-      }
-      throwIfAborted(input.signal);
-      const transformFrameStroke = (stroke: StudioStroke<PhysicStrokePayload>, _scheduleFrame: number, strokeIndex: number): StudioStroke<PhysicStrokePayload> => {
-        const transformed = stroke.pts.length === 0
-          ? stroke
-          : transformRecordedStrokeForHeldPose(stroke, {
-            destinationSourceFrame: destination,
-            strokeIndex,
-            deformation: input.motion.deformation,
-            position: input.motion.position,
-          });
-        return transformed;
-      };
-      const frameStrokes = mode === 'static'
-        ? getStaticFrameStrokes(schedule, frameIndex, transformFrameStroke)
-        : getProgressiveFrameStrokes(schedule, frameIndex, transformFrameStroke);
-      let scriptAlpha: HTMLCanvasElement | null = null;
-      let masked: HTMLCanvasElement | null = null;
-      try {
-        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes.map((fs) => ({ stroke: fromStudioStroke(fs.stroke), pointCount: fs.pointCount })));
-        throwIfAborted(input.signal);
-        masked = compositeRevealMask(referenceImage, scriptAlpha, input.size, input.reference.transform, input.reference.zoom);
-        throwIfAborted(input.signal);
-        const encoded = await encodeRotoFrameFromCanvas(masked, destination, input.size);
-        throwIfAborted(input.signal);
-        staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
-        input.onProgress?.(frameIndex + 1, input.frameCount);
-      } finally {
-        // G-52-10: only scriptAlpha is released — `masked` is adopted by the
-        // alpha-canvas registry inside encodeRotoFrameFromCanvas (same-size
-        // path) and must stay alive as the compositor's drawImage source.
-        if (scriptAlpha) releaseCanvas(scriptAlpha);
-      }
-      await yieldToBrowser(input.signal);
-    }
-
-    return staged;
-  } catch (error) {
-    staged.length = 0;
-    throw error;
-  } finally {
-    engine.setInputLocked(false);
-    engine.setAnimationMode(false);
-    engine.destroy();
-    host.replaceChildren();
-  }
+  return renderRotoRevealFramesAquarelle(input, aquarelleEvents);
 }
 
 /**
- * Engine-2 Reveal: the wash alpha IS the coverage. Reuses the exact bake the
+ * The Reveal bake: the wash alpha IS the coverage. Reuses the exact bake the
  * Play/Apply aquarelle path uses (progressive growth across the span, paper,
  * Dry events in recorded order), then feeds each baked wash frame's alpha to
- * the same reference-mask composite engine-1 uses. Static mode bakes one
- * settled wash and holds it across the span.
+ * the reference-mask composite. Static mode bakes one settled wash and holds
+ * it across the span.
  *
  * The fluid sheet is cumulative — deposited pigment cannot be re-warped every
  * frame — and the bake's per-deposit wiggle pose would freeze a single-stroke
  * script into one pose (no motion at all). Reveal only consumes the wash as a
  * mask, so the bake runs unposed and the flattened coverage takes the held
  * pose of the OUTPUT frame (`poseRevealCoverage`): the whole revealed
- * silhouette wiggles with engine-1's amplitude and hold law.
+ * silhouette wiggles with the held-pose amplitude and hold law.
  */
 async function renderRotoRevealFramesAquarelle(
   input: RotoRevealRenderInput,
@@ -393,100 +283,7 @@ function loadRevealWebpImage(bytes: Uint8Array): Promise<HTMLImageElement> {
   });
 }
 
-export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInput): Promise<StagedRotoPlayScriptFrame[]> {
-  validateRenderInput(input);
-  throwIfAborted(input.signal);
-
-  const host = document.createElement('div');
-  const engine = new EfxPaintEngine(host, {
-    width: input.size.width,
-    height: input.size.height,
-    papers: [...(input.papers ?? [])],
-    defaultPaper: input.defaultPaper,
-    paperTextureScale: input.paperTextureScale,
-  });
-  const staged: StagedRotoPlayScriptFrame[] = [];
-
-  try {
-    await engine.init();
-    throwIfAborted(input.signal);
-    engine.setAnimationMode(true);
-    engine.setInputLocked(true);
-    engine.setBgMode('transparent');
-
-    const strokes = flattenScriptStrokes(input.script);
-    const mode = input.mode ?? 'progressive';
-    const schedule = mode === 'static'
-      ? buildStaticStrokeSchedule(strokes, input.frameCount)
-      : buildProgressiveStrokeSchedule(strokes, input.frameCount);
-
-    for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
-      throwIfAborted(input.signal);
-      const destination = input.canonicalStart + frameIndex;
-      const transformFrameStroke = (stroke: StudioStroke<PhysicStrokePayload>, _scheduleFrame: number, strokeIndex: number): StudioStroke<PhysicStrokePayload> => {
-        const transformed = stroke.pts.length === 0
-          ? stroke
-          : transformRecordedStrokeForHeldPose(stroke, {
-            destinationSourceFrame: destination,
-            strokeIndex,
-            deformation: input.motion.deformation,
-            position: input.motion.position,
-          });
-        // Color override applies AFTER the Motion transform (the determinism seed hashes the original color),
-        // recolors paint strokes only, and never touches erase strokes (D-11).
-        return input.overrideColor != null && transformed.engine.tool !== 'erase'
-          ? { ...transformed, color: input.overrideColor }
-          : transformed;
-      };
-      const frameStrokes = mode === 'static'
-        ? getStaticFrameStrokes(schedule, frameIndex, transformFrameStroke)
-        : getProgressiveFrameStrokes(schedule, frameIndex, transformFrameStroke);
-      let scriptAlpha: HTMLCanvasElement | null = null;
-      let merged: HTMLCanvasElement | null = null;
-      try {
-        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes.map((fs) => ({ stroke: fromStudioStroke(fs.stroke), pointCount: fs.pointCount })));
-        throwIfAborted(input.signal);
-        merged = await mergeRotoAlphaCanvases(input.existingFrames.get(destination) ?? null, scriptAlpha, input.size);
-        throwIfAborted(input.signal);
-        const encoded = await encodeRotoFrameFromCanvas(merged, destination, input.size);
-        throwIfAborted(input.signal);
-        staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
-        input.onProgress?.(frameIndex + 1, input.frameCount);
-      } finally {
-        // G-52-10: only scriptAlpha is released — `merged` is adopted by the
-        // alpha-canvas registry inside encodeRotoFrameFromCanvas (same-size
-        // path) and must stay alive as the compositor's drawImage source.
-        if (scriptAlpha) releaseCanvas(scriptAlpha);
-      }
-      await yieldToBrowser(input.signal);
-    }
-
-    return staged;
-  } catch (error) {
-    staged.length = 0;
-    throw error;
-  } finally {
-    engine.setInputLocked(false);
-    engine.setAnimationMode(false);
-    engine.destroy();
-    host.replaceChildren();
-  }
-}
-
-function flattenScriptStrokes(script: Readonly<RotoPaintScript>): StudioStroke<PhysicStrokePayload>[] {
-  const strokes: StudioStroke<PhysicStrokePayload>[] = [];
-  for (const brush of script.brushes) {
-    strokes.push(toStudioStroke(cloneStroke(brush.primary)));
-    for (const continuation of brush.continuations ?? []) strokes.push(toStudioStroke(cloneStroke(continuation)));
-  }
-  return strokes;
-}
-
-function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
-  return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
-}
-
-function validateRenderInput(input: Pick<RotoPlayScriptRenderInput, 'frameCount' | 'canonicalStart' | 'size'>): void {
+function validateRenderInput(input: Pick<RotoRevealRenderInput, 'frameCount' | 'canonicalStart' | 'size'>): void {
   if (!Number.isInteger(input.frameCount) || input.frameCount <= 0 || input.frameCount > MAX_FRAME_COUNT) {
     throw new RangeError(`Play Script frame count must be between 1 and ${MAX_FRAME_COUNT}.`);
   }
@@ -516,9 +313,4 @@ function yieldToBrowser(signal: AbortSignal): Promise<void> {
     };
     signal.addEventListener('abort', abort, { once: true });
   });
-}
-
-function releaseCanvas(canvas: HTMLCanvasElement): void {
-  canvas.width = 0;
-  canvas.height = 0;
 }

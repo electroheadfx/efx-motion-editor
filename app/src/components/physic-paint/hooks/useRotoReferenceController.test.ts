@@ -26,6 +26,7 @@ function createEngine(): RotoReferenceEngine {
     getAppliedPreviewBaseAppFrame: vi.fn(() => null),
     getAppliedPreviewBaseExplicit: vi.fn(() => false),
     getAppliedPreviewBaseGeneration: vi.fn(() => null),
+    getAppliedPreviewBaseContentToken: vi.fn(() => null),
   };
 }
 

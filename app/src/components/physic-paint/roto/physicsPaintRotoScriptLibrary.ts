@@ -12,7 +12,7 @@ import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
-import { createPersistedRotoScript, isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, serializeAquarelleRotoScript, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
+import { isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, serializeAquarelleRotoScript, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 import type { RotoScriptThumbnailComposite } from './physicsPaintRotoScriptThumbnail';
@@ -520,15 +520,11 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
         width: context.width ?? 1000, height: context.height ?? 650,
         background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', grainStrength: 0 },
       };
-      // 261018-odm: an aquarelle capture serializes as the efx-watercolor
-      // variant; anything else keeps the engine-1 serializer.
-      const script = scriptSnapshot.aquarelleEvents
-        ? serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents })
-        : createPersistedRotoScript({
-            id, name, createdAt: now, updatedAt: now,
-            source: sourceBag,
-            thumbnail, brushes: scriptSnapshot.brushes,
-          });
+      // 261027-klx: watercolor is the only engine, so every persisted script is
+      // the efx-watercolor envelope. A capture without an aquarelle timeline has
+      // no persistable payload — report it instead of writing a half-document.
+      if (!scriptSnapshot.aquarelleEvents) return fail('This script has no Water color timeline to save.');
+      const script = serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents });
       const result = await execute({ kind: 'save', operationId: operationId('save'), script }, id);
       status.value = result.ok ? `Saved ${name}` : result.error ?? 'Save failed';
       return result.ok;

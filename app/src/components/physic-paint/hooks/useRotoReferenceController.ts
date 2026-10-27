@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
-import type { BgMode } from '@efxlab/efx-physic-paint';
+import type { BgMode } from '../types/paintCore';
+import type { RotoPreviewBasePort } from '../roto/rotoCoordinatorPorts';
 import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
@@ -35,22 +36,14 @@ export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
   readonly cacheRevision?: string;
 };
 
-export interface RotoReferenceEngine {
-  setBgMode: (mode: BgMode) => void;
-  /** `preserveDry` = preview-base swap (acceptance reload): dry already lives
-   * inside the incoming bytes and must survive the base's async decode. */
-  clear: (preserveDry?: boolean) => void;
-  setPreviewBaseImageUrl: (bytes: string, generation?: number, appFrame?: number) => void;
-  clearPreviewBaseImage: () => void;
-  resetBackground: () => void;
-  /** regression-refresh-multi-paint (3rd rejection): the applied preview base's
-   * origin, used to no-op a plain effect-driven reload that would re-issue
-   * different (stale/partial) content over a completion-settled accepted render. */
-  getAppliedPreviewBaseDataUrl?: () => string | null;
-  getAppliedPreviewBaseAppFrame?: () => number | null;
-  getAppliedPreviewBaseExplicit?: () => boolean;
-  getAppliedPreviewBaseGeneration?: () => number | null;
-}
+/**
+ * The preview base is APP-OWNED after engine-1 removal: the cached key's paint
+ * is `cachedRotoReferenceUrl` (rendered by `AquarelleCachedBaseLayer`) plus
+ * `cachedRotoRepaintBaseFrame`. `RotoPreviewBasePort` keeps the exact member
+ * shape the loader below was written against, so the dirty-refusal /
+ * plain-refresh / explicit-generation ordering is preserved verbatim.
+ */
+export type RotoReferenceEngine = RotoPreviewBasePort;
 
 interface RotoPhysicalLookupInput<Frame extends RotoReferenceFrame> {
   getPhysicalRenderSource?: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
@@ -275,6 +268,8 @@ export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFram
   workflowMode: PhysicsPaintWorkflowMode;
   /** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
   settingsBackground: BgMode | PaperTexture;
+  /** Wipe the live sheet (the app-owned `RotoCanvasPort.clear`). */
+  clearLiveSheet?: () => void;
   getPhysicalRenderSource: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
   getPreviewFrames: () => ReadonlyMap<number, Frame>;
   getDirtyFrames: () => Set<number>;
@@ -294,6 +289,23 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
   const inputRef = useRef(input);
   const explicitRestorationRef = useRef<{ appFrame: number; frame: Frame | null } | null>(null);
   inputRef.current = input;
+  // Render-mirrored refs: the loader reads the APPLIED paint synchronously, so
+  // it must never read a stale preact state value.
+  const referenceUrlRef = useRef(cachedRotoReferenceUrl);
+  referenceUrlRef.current = cachedRotoReferenceUrl;
+  const repaintBaseRef = useRef(cachedRotoRepaintBaseFrame);
+  repaintBaseRef.current = cachedRotoRepaintBaseFrame;
+  const explicitAppliedRef = useRef(false);
+  const appliedTokenRef = useRef<number | null>(null);
+  const applyReferenceUrl = useCallback((value: string | null) => {
+    // Clearing the base clears the applied-origin bits with it — the plain
+    // refresh guard must never see an explicit paint after a navigation wipe.
+    if (value === null) {
+      explicitAppliedRef.current = false;
+      appliedTokenRef.current = null;
+    }
+    setCachedRotoReferenceUrl(value);
+  }, []);
   const getLookup = () => ({
     getPhysicalRenderSource: inputRef.current.getPhysicalRenderSource,
     previewFrames: inputRef.current.getPreviewFrames(),
@@ -317,7 +329,7 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
         : replaceDirtyFrame
           ? findAcceptedReferenceFrame(frame)
           : findReferenceFrame(frame),
-      setReferenceUrl: setCachedRotoReferenceUrl,
+      setReferenceUrl: applyReferenceUrl,
       setRepaintBaseFrame: setCachedRotoRepaintBaseFrame,
       syncPending: currentInput.syncPending,
       setApplyMessage: currentInput.setApplyMessage,
@@ -326,17 +338,55 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
       resolveContentToken: currentInput.resolveContentToken,
       explicitBytes,
     }).load(appFrame, engine);
-  }, [findAcceptedReferenceFrame, findReferenceFrame]);
+  }, [findAcceptedReferenceFrame, findReferenceFrame, applyReferenceUrl]);
   const clearCachedRotoReferenceUrl = useCallback(() => setCachedRotoReferenceUrl(null), []);
   const resetCachedRotoReference = useCallback(() => {
     setCachedRotoReferenceUrl(null);
     setCachedRotoRepaintBaseFrame(null);
   }, []);
 
+  // ------------------------------------------------------------------
+  // APP-OWNED preview base (3.2). Engine-1 kept the cached key's paint in
+  // its preview-base layer; watercolor renders it as a DOM multiply layer
+  // from `cachedRotoReferenceUrl`, so the "engine" the reference loader
+  // talks to is this object over app state.
+  //
+  // Single source of truth: the rendered URL is `cachedRotoReferenceUrl`
+  // (read through a render-mirrored ref) and the applied origin is
+  // `cachedRotoRepaintBaseFrame`.
+  // ------------------------------------------------------------------
+  const clearLiveSheetRef = useRef(input.clearLiveSheet);
+  clearLiveSheetRef.current = input.clearLiveSheet;
+
+  const previewBasePortRef = useRef<RotoPreviewBasePort | null>(null);
+  if (!previewBasePortRef.current) {
+    previewBasePortRef.current = {
+      // The Studio fond/paper owns the background; the engine has no mode.
+      setBgMode: () => {},
+      clear: () => clearLiveSheetRef.current?.(),
+      setPreviewBaseImageUrl: (_dataUrl, generation, _appFrame) => {
+        explicitAppliedRef.current = generation !== undefined;
+        appliedTokenRef.current = generation ?? null;
+      },
+      clearPreviewBaseImage: () => {
+        explicitAppliedRef.current = false;
+        appliedTokenRef.current = null;
+        setCachedRotoReferenceUrl(null);
+      },
+      // No engine background to reset — the Studio fond is the background.
+      resetBackground: () => {},
+      getAppliedPreviewBaseDataUrl: () => referenceUrlRef.current,
+      getAppliedPreviewBaseAppFrame: () => repaintBaseRef.current?.appFrame ?? null,
+      getAppliedPreviewBaseExplicit: () => explicitAppliedRef.current,
+      getAppliedPreviewBaseGeneration: () => appliedTokenRef.current,
+      getAppliedPreviewBaseContentToken: () => appliedTokenRef.current,
+    };
+  }
+
   return {
     cachedRotoReferenceUrl,
     cachedRotoRepaintBaseFrame,
-    setCachedRotoReferenceUrl,
+    setCachedRotoReferenceUrl: applyReferenceUrl,
     setCachedRotoRepaintBaseFrame,
     clearCachedRotoReferenceUrl,
     resetCachedRotoReference,
@@ -344,5 +394,6 @@ export function useRotoReferenceController<Frame extends RotoReferenceFrame>(inp
     findCachedRotoReferenceFrame: findReferenceFrame,
     findAcceptedRotoReferenceFrame: findAcceptedReferenceFrame,
     loadCachedRotoReferenceFrame,
+    previewBasePort: previewBasePortRef.current,
   };
 }
