@@ -3832,6 +3832,16 @@ describe('261023-h9v brush script rehydration surface', () => {
     expect(clearSourceBody.indexOf('clearCurrentFrame()')).toBeLessThan(
       clearSourceBody.indexOf('purgeMemoryScriptFrame('),
     );
+    // 261027-gh9f: the aquarelle sheet lives in its OWN engine; resetting it
+    // only on the fallback left the visible sheet painted, and its next
+    // settle / frame-leave capture re-committed the paint over the blank key.
+    expect(clearSourceBody).toContain('aquarelleResetSheetRef.current?.();');
+    expect(clearSourceBody.indexOf('aquarelleResetSheetRef.current?.()')).toBeGreaterThan(
+      clearSourceBody.indexOf('forceClearRotoFrameRef.current('),
+    );
+    expect(clearSourceBody.indexOf('aquarelleResetSheetRef.current?.()')).toBeLessThan(
+      clearSourceBody.indexOf('purgeMemoryScriptFrame('),
+    );
   });
 
   it('imports the rehydration seam and retires the raw completion writes', () => {

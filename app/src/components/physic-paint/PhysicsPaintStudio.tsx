@@ -4621,12 +4621,17 @@ export function PhysicsPaintStudio() {
       // Generated/group cells have no real key: the fallback still fails
       // closed.
       if (!forceClearRotoFrameRef.current(currentFrame, { width: canvasWidth, height: canvasHeight })) return;
-      engine.clear();
-      (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
-      (engine as PreviewBackgroundEngine).resetBackground();
-      aquarelleResetSheetRef.current?.();
-      aquarelleMergeBaseRef.current = null;
     }
+    // 261027-gh9f (Trash round 3): the visible Water color sheet is a SEPARATE
+    // engine from the engine-1 instance the frame editor clears. Leaving that
+    // sheet painted let its next settle / frame-leave capture re-commit the
+    // paint over the key the Trash had just blanked — the cache came back.
+    // Reset it on BOTH paths (the frame editor's success arm included).
+    engine.clear();
+    (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
+    (engine as PreviewBackgroundEngine).resetBackground();
+    aquarelleResetSheetRef.current?.();
+    aquarelleMergeBaseRef.current = null;
     // 261027-gh9b: Trash is the full test reset. If the frame editor ran it
     // already blanked the key's cached pixels; this drops BOTH script stores
     // (Water color + Brush) exactly like Raster does, but without retaining
@@ -5988,6 +5993,9 @@ export function PhysicsPaintStudio() {
     // call-time module router as Brush size — watercolor drives
     // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
     onOpacityChange: handleOpacityChange,
+    // 261027-gh9f: the top-bar brush thumbnail returns to the Brush tab, the
+    // one surface that can change the active preset.
+    onBrushPreviewClick: () => { rightPanelToolTab.value = 'paint'; },
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
