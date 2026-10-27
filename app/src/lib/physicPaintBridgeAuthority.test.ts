@@ -167,6 +167,41 @@ describe('three-dimensional Roto authority (46-04 Task 1)', async () => {
     expect(authority.capacity).toBeGreaterThan(0);
   });
 
+  // roto-unknown-physic-layer (2026-10-27): the Studio launches from the flat
+  // efxPaint registry, which ignores sequence kind/active state. A paint layer
+  // in a NON-ACTIVE content sequence must still resolve for every parent edit;
+  // the old active+overlay-only lookup rejected it with "Unknown physics paint
+  // layer" while launch succeeded.
+  it('resolves a physics-paint layer from a non-active content sequence', () => {
+    registerTwoTrackDocument(TRACK_B, [makeRecord('key-a-0', 0, 'a@0')]);
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([]);
+    vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+    sequenceStore.sequences.value = [{
+      id: 'inactive-content-sequence',
+      kind: 'content',
+      extrapolation: 'hold',
+      name: 'Inactive content sequence',
+      width: 1920,
+      height: 1080,
+      keyPhotos: [{ id: 'kp-inactive', imageId: '', holdFrames: 600 }],
+      layers: [physicLayer()],
+      inFrame: 0,
+      outFrame: 600,
+    }];
+
+    const authority = getPhysicPaintRotoAuthority({
+      operationId: 'auth-inactive-content',
+      projectContextId: projectStore.projectContextId.peek(),
+      layerId: LAYER,
+      canonicalStart: 5,
+      trackId: TRACK_A,
+    });
+
+    expect(authority.error).not.toBe('Physics Paint layer is unavailable.');
+    expect(authority.ok, authority.error).toBe(true);
+    expect(authority.trackId).toBe(TRACK_A);
+  });
+
   it('fails closed on a foreign trackId — no active-track fallback, no auto-create', async () => {
     registerTwoTrackDocument(TRACK_A, [makeRecord('key-a-0', 0, 'a@0')]);
     mockParentAuthority(physicLayer());

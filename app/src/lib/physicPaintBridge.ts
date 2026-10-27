@@ -448,6 +448,31 @@ function debugReplaySnapshotDiff(
   console.warn(`[replay-diff] replay target mismatch: ${failures.join(' | ') || 'unknown-field'}`);
 }
 
+/**
+ * roto-unknown-physic-layer (2026-10-27): the Studio launches a paint layer
+ * from the flat efxPaint registry, which ignores sequence kind and active
+ * state. Every parent-side apply lookup must mirror that. Searching only
+ * `layerStore.layers` (the ACTIVE sequence) + `overlayLayers` (kind !==
+ * 'content') rejects a real paint layer that lives in a non-active content
+ * sequence — it launches and paints, then every delete/create fails with
+ * "Unknown physics paint layer". Search the common lists first, then every
+ * sequence, with the same physic-paint id/source match.
+ */
+function resolvePhysicPaintLayerById(layerId: string): Layer | undefined {
+  const matches = (candidate: Layer): boolean => (
+    candidate.type === 'physic-paint'
+    && candidate.source.type === 'physic-paint'
+    && (candidate.source.layerId === layerId || candidate.id === layerId)
+  );
+  const direct = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(matches);
+  if (direct) return direct;
+  for (const sequence of sequenceStore.sequences.peek()) {
+    const candidate = sequence.layers.find(matches);
+    if (candidate) return candidate;
+  }
+  return undefined;
+}
+
 export async function applyPhysicPaintPayload(payload: unknown): Promise<PhysicPaintApplyResult> {
   return applyPhysicPaintPayloadWithPublicationLease(payload);
 }
@@ -477,13 +502,7 @@ async function applyPhysicPaintPayloadWithPublicationLease(
       : applyFailureResult(payload, 'Operation ID was already used for a different payload.');
   }
 
-  const targetLayer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find(layer => {
-    if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') return false;
-    const sourceLayerId = typeof layer.source.layerId === 'string' && layer.source.layerId.length > 0
-      ? layer.source.layerId
-      : layer.id;
-    return sourceLayerId === payload.layerId || layer.id === payload.layerId;
-  });
+  const targetLayer = resolvePhysicPaintLayerById(payload.layerId);
   if (!targetLayer) {
     return applyFailureResult(payload, `Unknown physics paint layer: ${payload.layerId}`);
   }
@@ -724,7 +743,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     error,
   });
   if (request.projectContextId !== projectStore.projectContextId.peek()) return failure('Project context changed.');
-  const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === request.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === request.layerId));
+  const layer = resolvePhysicPaintLayerById(request.layerId);
   if (!layer || layer.type !== 'physic-paint') return failure('Physics Paint layer is unavailable.');
   if (!Number.isInteger(request.canonicalStart) || request.canonicalStart < 0) return failure('Canonical Roto start is invalid.');
   // 46-04: the document then track dimensions — the authority revalidates the
@@ -1609,7 +1628,7 @@ async function applyPhysicPaintRotoPhysicalMap(
   if (payload.projectContextId && payload.projectContextId !== projectStore.projectContextId.peek()) {
     return reject('Project context changed before the physical edit could be applied.');
   }
-  const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => candidate.id === payload.layerId || (candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint' && candidate.source.layerId === payload.layerId));
+  const layer = resolvePhysicPaintLayerById(payload.layerId);
   if (!layer || layer.type !== 'physic-paint') {
     return reject('Physics Paint layer is unavailable for the physical edit.');
   }
@@ -2106,12 +2125,7 @@ export function applyPhysicPaintRotoGroupFramePaint(
   if (request.projectContextId !== projectStore.projectContextId.peek()) {
     return Object.freeze({ ok: false, reason: 'stale' });
   }
-  const layer = [...layerStore.layers.peek(), ...layerStore.overlayLayers.peek()].find((candidate) => (
-    candidate.id === request.layerId
-      || (candidate.type === 'physic-paint'
-        && candidate.source.type === 'physic-paint'
-        && candidate.source.layerId === request.layerId)
-  ));
+  const layer = resolvePhysicPaintLayerById(request.layerId);
   if (!layer || layer.type !== 'physic-paint'
     || activeLaunchOperationByLayer.get(request.layerId) !== request.launchOperationId) {
     return Object.freeze({ ok: false, reason: 'stale' });
