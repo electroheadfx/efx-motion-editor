@@ -170,22 +170,25 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     spacing: 0.12, scatter: 0.12, dabs: 1, sizeJitter: 0.22,
     water: 0, load: 1.35, flow: 0.6, capacity: 0.9, grain: 0.35, wetRound: 0,
     tip: (n, N) => tip((u, v, r, ang) => {
-      // Chipped edge: the outline radius wanders with the angle, so the stick
-      // crumbles instead of ending in a disc.
-      const wander = N.fbm(ang * 2.4 + 1.6, r * 4.2, 3) * 2 - 1;
-      const rr = r * (1 + 0.16 * wander);
-      const body = 1 - smoothstep(0.6, 0.98, rr);
-      // 261027-gh9d: porosity lives at the RIM — the core stays solid and the
-      // edge crumbles. Pores and chips scale with the radius instead of
-      // applying uniformly across the tip.
-      const rim = smoothstep(0.4, 0.92, r);
+      // 261027-gh9e: NET edge. Two frequencies of angular wander give the
+      // fibrous, irregular contour engine-1 gets from its hair stamps; a hard
+      // threshold (not the old wide alpha ramp) keeps that contour crisp.
+      const lobes = N.fbm(ang * 2.1 + 1.6, r * 3.2, 3) * 2 - 1;
+      const fibres = N.fbm(ang * 9.5 + 4.2, r * 5.5, 2) * 2 - 1;
+      // Contour radius in tip space, not a multiply on r: a negative wander
+      // must not push the edge into the square's corners.
+      const contour = 0.9 + 0.1 * lobes + 0.05 * fibres;
+      const body = 1 - smoothstep(contour - 0.012, contour + 0.012, r);
+      // Chips bite the rim so the contour breaks instead of closing as a disc.
+      const rim = smoothstep(0.58, 0.95, r);
+      const bite = smoothstep(0.3, 0.5, N.fbm(u * 14 + 11, v * 14 + 3, 4));
+      const chip = 1 - rim * 0.75 * (1 - bite);
+      // Porosity lives at the RIM: solid core, crumbling edge.
       const pores = smoothstep(0.2, 0.4, N.fbm(u * 26 + 5, v * 26 + 11, 3));
-      const bite = smoothstep(0.28, 0.55, N.fbm(u * 9 + 11, v * 9 + 3, 4));
-      const poreDepth = 0.05 + 0.6 * rim;
+      const poreDepth = 0.03 + 0.55 * smoothstep(0.5, 0.95, r);
       const crumble = 1 - poreDepth * (1 - pores);
-      const chip = 1 - rim * 0.55 * (1 - bite);
-      const grit = 0.8 + 0.2 * N.fbm(u * 55 + 3, v * 55 + 7, 2);
-      return body * crumble * chip * grit;
+      const grit = 0.82 + 0.18 * N.fbm(u * 55 + 3, v * 55 + 7, 2);
+      return body * chip * crumble * grit;
     })(n),
   }),
   define({
