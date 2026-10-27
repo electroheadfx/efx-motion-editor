@@ -21,6 +21,7 @@ vi.mock('preact/hooks', async (importOriginal) => {
     ...actual,
     useRef: (initial: unknown) => ({ current: initial }),
     useEffect: () => {},
+    useLayoutEffect: () => {},
     useState: (initial: unknown) => [
       typeof initial === 'function' ? (initial as () => unknown)() : initial,
       () => {},
@@ -128,15 +129,19 @@ describe('261027-gh9g top-bar brush dropdown', () => {
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu {')),
     );
     expect(rule).toContain('position: fixed');
-    // 261027-gh9h: the menu height runs from the trigger to the viewport edge.
-    // A definite height (not maxHeight) is the law: SidebarScrollArea's inner
-    // scroller is absolutely positioned, so a content-sized flex parent would
-    // collapse it to zero and the brush list would vanish.
+    // 261027-gh9h/gh9i: the menu is sized from the trigger to the viewport
+    // edge, but shrinks to the catalog's own height when every row fits. A
+    // definite height (not maxHeight) is still the law: SidebarScrollArea's
+    // inner scroller is absolutely positioned, so a content-sized flex parent
+    // would collapse it to zero and the brush list would vanish.
     expect(MENU_SOURCE).toContain('const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);');
-    expect(MENU_SOURCE).toContain('height: `${availableHeight}px`');
-    expect(MENU_SOURCE).not.toContain('maxHeight: `${availableHeight}px`');
-    const source = readFileSync(resolve(__dirname, 'PhysicsPaintBrushMenu.tsx'), 'utf8');
-    expect(source).toContain('DEFINITE height is required');
+    expect(MENU_SOURCE).toContain('const menuHeight = naturalHeight === null');
+    expect(MENU_SOURCE).toContain('Math.min(availableHeight, naturalHeight)');
+    expect(MENU_SOURCE).toContain('height: `${menuHeight}px`');
+    expect(MENU_SOURCE).toContain('DEFINITE height is required');
+    // Measurement, not hard-coded row math: chrome + the list's own height.
+    expect(MENU_SOURCE).toContain('const chrome = menu.offsetHeight - scroller.clientHeight;');
+    expect(MENU_SOURCE).toContain('const measured = Math.ceil(chrome + list.offsetHeight);');
   });
 
   it('uses the app scrollbar and gives the thumb the row width', () => {

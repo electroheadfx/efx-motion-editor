@@ -12,7 +12,8 @@
 //  would be clipped.
 // ============================================================
 
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
+import { signal, type Signal } from '@preact/signals';
 import { Maximize2 } from 'lucide-preact';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
@@ -31,6 +32,27 @@ export function PhysicsPaintBrushMenu() {
   const anchor = aquarelleBrushMenuAnchor.value;
   const selectedId = aquarelleSelectedTipId.value;
   const menuRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // The catalog's own height, measured once the menu has a definite box. Kept
+  // in a ref-held signal (never written during render).
+  const naturalHeightRef = useRef<Signal<number | null> | null>(null);
+  if (naturalHeightRef.current === null) naturalHeightRef.current = signal<number | null>(null);
+  const naturalHeight = naturalHeightRef.current.value;
+
+  // 261027-gh9i: size to the catalog when it fits — the full available height
+  // is only the ceiling for an overflowing list. Measuring (not constants)
+  // keeps the chrome and row heights in CSS as the single source.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const menu = menuRef.current;
+    const scroller = list?.parentElement ?? null;
+    if (!list || !menu || !scroller) return;
+    const chrome = menu.offsetHeight - scroller.clientHeight;
+    const measured = Math.ceil(chrome + list.offsetHeight);
+    const current = naturalHeightRef.current!;
+    if (current.value !== measured) current.value = measured;
+  }, [open, anchor?.top]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -65,6 +87,11 @@ export function PhysicsPaintBrushMenu() {
   // scroller is absolutely positioned, so with only a max-height the flex
   // child collapses to zero and the brush list disappears.
   const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);
+  // No empty sheet below the last brush: when every row fits, the menu is only
+  // as tall as its content; the available height is the scroll ceiling.
+  const menuHeight = naturalHeight === null
+    ? availableHeight
+    : Math.min(availableHeight, naturalHeight);
 
   return (
     <div
@@ -73,7 +100,7 @@ export function PhysicsPaintBrushMenu() {
       role="menu"
       aria-label="Brushes"
       data-testid="watercolor-brush-menu"
-      style={{ left: `${left}px`, top: `${anchor.top}px`, height: `${availableHeight}px` }}
+      style={{ left: `${left}px`, top: `${anchor.top}px`, height: `${menuHeight}px` }}
     >
       <button
         type="button"
@@ -89,7 +116,7 @@ export function PhysicsPaintBrushMenu() {
       </button>
       <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
       <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
-        <div class="physics-paint-brush-menu-list">
+        <div ref={listRef} class="physics-paint-brush-menu-list">
           {BRUSH_PRESETS.map((preset) => {
             const selected = preset.id === selectedId;
             return (
