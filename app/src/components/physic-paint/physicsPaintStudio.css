@@ -809,8 +809,11 @@ button.destructive {
   box-sizing: border-box;
 }
 
-.physics-paint-script-switch:hover {
-  color: #f4f7fa;
+/* 261027-k6j follow-up: the global button:hover paints a blue block behind
+   the switch. This is a mode control, not a button surface — keep it visually
+   stable on hover. */
+.physics-paint-script-switch:hover:not(:disabled) {
+  background: transparent;
 }
 
 .physics-paint-script-switch:focus-visible {
