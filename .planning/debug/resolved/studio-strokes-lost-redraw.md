@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: |
   I have problem with a debug we closed before called "strokes lost". Actually adding
   strokes to a key with some script, create issue with redraw. When I paint on existing
@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T11:38:00.000Z
+updated: 2026-10-27T11:47:20.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -1130,3 +1130,25 @@ status: |
   awaiting live UAT — restart required. Test on frame 3: paint Brush → leave →
   return: the strokes must show outlines and Move must work; move one, leave
   and return again; the raster paint beneath must stay intact.
+
+## Session Close — 2026-10-27
+
+closed_by: user decision (UAT closed 2026-10-27)
+
+reason: |
+  The Brush module is being retired from the UI in the watercolor-first pivot
+  (Brush + Krita disabled, Water color the only selectable module; engine-1
+  code stays for a later removal phase). Engine-1 Brush script UAT is no
+  longer the active verification path, so the round-11 return checklist is
+  waived with the module retirement rather than re-run.
+
+what_ships: |
+  Round 10 (watercolor track-switch sheet reset + AQTL pressure sentinel) and
+  round 11 (Brush durable base + partial-over-base hydration) remain committed:
+  ec33498f, 221e841e. The watercolor fixes are covered by the watercolor-only
+  UAT; the Brush durable-base path stays in the code while Brush is disabled.
+
+known_limits: |
+  Frames saved before the round-11 fix (partial Brush rows without a pinned
+  base) stay view-only. With Brush disabled they are inert cached pixels; the
+  later engine-1 removal phase must declare their fate.
