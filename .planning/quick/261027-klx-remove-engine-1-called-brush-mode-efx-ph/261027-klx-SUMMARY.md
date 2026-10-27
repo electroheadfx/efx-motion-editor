@@ -2,10 +2,11 @@
 phase: quick-261027-klx
 plan: 261027-klx
 status: complete
-verification: human_needed
+verification: passed
 date: 2026-10-27
+uat: approved 2026-10-27
 waves: 7
-fix_passes: 1
+fix_passes: 2
 commits:
   - fadbbb3d
   - 98b2e50e
@@ -23,14 +24,16 @@ commits:
   - d593af19
   - 4e6ad914
   - b148d5c0
+  - 52b82030
 ---
 
 # Quick 261027-klx — Remove the engine-1 Brush module
 
 **Outcome:** `@efxlab/efx-physic-paint` and every Brush runtime path are gone;
 `@efxlab/efx-watercolor` is the only paint engine. The Studio compiles and the
-full automated gate set is green. **Native UAT is pending** — this report is
-automated-ready only.
+full automated gate set is green. **Native UAT approved 2026-10-27** — all
+seven rows passed, with one follow-up regression found and fixed during the
+pass (below).
 
 ## Wave outcomes
 
@@ -96,10 +99,11 @@ every test hit is enumerated in the W6 summary.
 | Re-pinned after k6j (16:11) | 951,043 |
 | Wave 0 (required null seam) | 951,080 |
 | Wave 6 | 910,611 |
-| **Final (Wave 6.1)** | **911,432** |
+| Wave 6.1 (reviewed blockers) | 911,432 |
+| **Final (UAT canvas-bounds fix)** | **911,381** |
 
-Net vs the Wave 0 baseline: **−39,648 bytes (−4.17%)**; vs the original
-943,411: −31,979 (−3.39%). The 2,000 kB `chunkSizeWarningLimit` is unchanged.
+Net vs the Wave 0 baseline: **−39,699 bytes (−4.17%)**; vs the original
+943,411: −32,030 (−3.40%). The 2,000 kB `chunkSizeWarningLimit` is unchanged.
 
 **The 650–700 KB target was not met.** The engine-1 package's own built chunk
 (252 KB per the inventory) is gone from `app/dist`; the Studio chunk itself
@@ -119,10 +123,13 @@ bundle optimization was in scope.
   suites, 0 failed**.
 - Static gates — **G1-prod = G2 = G3 = G4 = 0**; G1-tests and G5 allowlisted
   and enumerated; do-not-delete probe **21/21**.
-- Verification — **9/9 must-haves VERIFIED**, status `human_needed`.
+- Verification — **9/9 must-haves VERIFIED**; native UAT **approved 2026-10-27**.
 - Code review — **2 blockers fixed**; 4 warnings and 3 info items deferred.
+- Close-out (canvas-bounds fix `52b82030`) — typecheck **0**; full suite
+  **343 files / 6,070 passed / 1 skipped / 96 todo**, 0 failed; build 0,
+  Studio chunk **911,381 bytes ≤ 951,080**.
 
-## Native UAT rows (automated-ready only — not executed)
+## Native UAT rows — approved 2026-10-27
 
 1. Studio opens **Water color only**; no Brush slot/tab/rail/canvas; lower
    memory than the engine-1 build.
@@ -136,7 +143,28 @@ bundle optimization was in scope.
 5. Script library — watercolor scripts load; an old Brush script shows as a
    refused legacy row without a crash.
 6. Composite / export — unchanged.
-7. Devtools memory — no engine-1 allocations; Studio chunk 911,432 bytes.
+7. Devtools memory — no engine-1 allocations; Studio chunk 911,381 bytes.
+
+## UAT follow-up — the black Studio canvas (fixed in `52b82030`)
+
+The first Studio open after the removal showed a **black canvas** instead of
+the paper. Root cause: `PhysicsPaintCanvasStackImpl` measured the canvas region
+with `querySelectorAll('.paint-canvas > canvas')` — `.paint-canvas` was the
+engine-1 `EfxPaintCanvas` element, so the query returned an empty list,
+`canvasBounds` stayed `null`, and every bounds-gated layer never rendered: the
+paper fond layer, the program monitor and the onion/ghost/transform overlays.
+The shell itself is transparent, so the Studio backdrop read as black.
+
+Fix: the probe now measures the mount shell (`.demo-canvas-shell`, always
+present, same document aspect). The cached-roto-playback and hidden-track
+`visibility: hidden` rules were retargeted from `.paint-canvas` to
+`.aquarelle-live-canvas` / `.aquarelle-cached-base`; the dead engine-1
+z-index pair was removed. A static regression pin in
+`PhysicsPaintCanvasMount.test.ts` asserts the shell probe and forbids the
+`.paint-canvas` selector from returning.
+
+Gates after the fix: typecheck 0; full app suite 6,070 passed; Studio chunk
+911,381 bytes. The user re-ran the native pass and approved all seven rows.
 
 ## Code-review outcome
 
@@ -185,7 +213,7 @@ Deferred, non-blocking:
 
 Planning: `fadbbb3d`, `98b2e50e`.
 Code: `d39865bc`, `22d0a8e9`, `79ca9804`, `7622f6a8`, `5effa5e3`,
-`5330b441`, `4e6ad914`, `b148d5c0`.
+`5330b441`, `4e6ad914`, `b148d5c0`, `52b82030` (UAT follow-up).
 Docs: `7474b941`, `2ac6cebc`, `c6edcf58`, `ee7a3db9`, `a57e0279`,
 `d593af19` (+ the final docs commit).
 
