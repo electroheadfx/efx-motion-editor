@@ -255,6 +255,9 @@ export class WatercolorEngine {
   private pencilSeen = false;
   private hover = { x: 0, y: 0, inside: false, type: 'mouse' };
   private force = { value: 0, t: -Infinity };
+  /** Host-injected tablet sample (261027-gh9e) — webviews that report no pen dynamics. */
+  private nativePen: { pressure: number; tiltX: number; tiltY: number } | null = null;
+  private nativePenAt = -Infinity;
   private disposers: (() => void)[] = [];
 
   /** `size` is the sheet in texels; omitted, the sheet follows the window ("screen"). */
@@ -1066,6 +1069,19 @@ export class WatercolorEngine {
     this.updateCursor();
   }
 
+  /**
+   * 261027-gh9e: inject native tablet input for hosts where the webview's
+   * PointerEvent carries no pen dynamics (macOS tablets often arrive as
+   * pointerType 'mouse' / pressure 0). Mirrors the engine-1 host bridge:
+   * the sample is used for a 300 ms window while the pointer reports none.
+   */
+  updateNativePenInput(input: { pressure: number; tiltX?: number; tiltY?: number }): void {
+    const pressure = Math.min(1, Math.max(0, Number(input.pressure)));
+    if (!Number.isFinite(pressure)) return;
+    this.nativePen = { pressure, tiltX: input.tiltX ?? 0, tiltY: input.tiltY ?? 0 };
+    this.nativePenAt = this.clock();
+  }
+
   /* ------------------------------------------------------- reference image */
 
   get hasReference() { return this.ref !== null; }
@@ -1442,9 +1458,27 @@ export class WatercolorEngine {
   private pushSample(e: PointerEvent) {
     const [x, y] = this.toUv(e);
     let p = -1;
-    if (e.pointerType === 'pen') p = e.pressure > 0 ? Math.pow(e.pressure, 0.8) : 0.5;
-    else if (e.pointerType === 'mouse' && this.clock() - this.force.t < 3000) p = this.force.value;
-    const sample = { x, y, p, t: e.timeStamp, tx: e.tiltX || 0, ty: e.tiltY || 0 };
+    let tx = e.tiltX || 0;
+    let ty = e.tiltY || 0;
+    const now = this.clock();
+    // 261027-gh9e: prefer the host's native tablet sample whenever the
+    // PointerEvent reports no pen dynamics (macOS: pointerType 'mouse',
+    // pressure 0 / fixed 0.5). Same law as engine-1's extractPenPoint.
+    const nativeActive = this.nativePenAt > -Infinity && now - this.nativePenAt < 300;
+    const twist = (e as PointerEvent & { twist?: number }).twist || 0;
+    const reportsPenDynamics = e.pointerType === 'pen'
+      && (e.pressure !== 0.5 || tx !== 0 || ty !== 0 || twist !== 0);
+    if (nativeActive && this.nativePen && !reportsPenDynamics
+      && (e.pointerType !== 'mouse' || e.buttons > 0)) {
+      p = Math.pow(this.nativePen.pressure, 0.8);
+      tx = this.nativePen.tiltX;
+      ty = this.nativePen.tiltY;
+    } else if (e.pointerType === 'pen') {
+      p = e.pressure > 0 ? Math.pow(e.pressure, 0.8) : 0.5;
+    } else if (e.pointerType === 'mouse' && now - this.force.t < 3000) {
+      p = this.force.value;
+    }
+    const sample = { x, y, p, t: e.timeStamp, tx, ty };
     this.queue.push(sample);
     this.callbacks.onStrokeSample?.(sample);
   }

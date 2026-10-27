@@ -422,6 +422,33 @@ export function AquarelleCanvasLayer(props: {
     (engine as unknown as { __samples?: RawSample[] }).__samples = [];
     engineRef.current = engine;
 
+    // 261027-gh9e NATIVE PRESSURE BRIDGE: on macOS a tablet often reaches the
+    // webview as pointerType 'mouse' with no pressure. The Rust side reads the
+    // device and emits `tablet:pressure` (the same event the engine-1 brush
+    // consumes); forward it so Water color responds to the pen.
+    let penBridgeDisposed = false;
+    let disposePenBridge: (() => void) | undefined;
+    void (async () => {
+      try {
+        const eventApi = await import('@tauri-apps/api/event');
+        if (typeof eventApi.listen !== 'function') return;
+        const unlisten = await eventApi.listen<{ pressure: number; tilt_x: number; tilt_y: number }>(
+          'tablet:pressure',
+          (event) => {
+            engine.updateNativePenInput({
+              pressure: event.payload.pressure,
+              tiltX: event.payload.tilt_x,
+              tiltY: event.payload.tilt_y,
+            });
+          },
+        );
+        if (penBridgeDisposed) unlisten();
+        else disposePenBridge = unlisten;
+      } catch {
+        // Browser/dev without the native bridge: pointer pressure still works.
+      }
+    })();
+
     // COMPOSITOR LAYER: exact-fit pointer mapping (no fit margin) + pigment
     // display on transparent (the document fond is the compositor's — v1.0).
     engine.setCompositorLayer(true);
@@ -662,6 +689,8 @@ export function AquarelleCanvasLayer(props: {
       // Unregister the flush seam: the engine is about to die, and a stale
       // closure accessing it would fail the save/close flush.
       onFlushCaptureReadyRef.current?.(null);
+      penBridgeDisposed = true;
+      disposePenBridge?.();
       // SAVE PATH (261026-nvq): drop the snapshot seam too — a later Save must
       // never call a closure holding the destroyed engine.
       onSnapshotReadyRef.current?.(null);
