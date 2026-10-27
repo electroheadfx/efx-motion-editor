@@ -11,6 +11,7 @@
  * drains panels only — document and timeline stay put (D-02). Visual family:
  * physics-paint-segmented-button (one CSS language).
  */
+import type { ComponentChildren } from 'preact';
 import {
   activeModule,
   setActiveModule,
@@ -26,6 +27,13 @@ export interface ModuleSwitcherProps {
    * A locked slot is a NATIVE disabled button, exactly like Krita.
    */
   lockedModule?: ActiveModule | null;
+  /**
+   * 261027-gh9f: under WATERCOLOR_ONLY the inert Brush slot is replaced by
+   * this leading slot — the Studio passes the active brush thumbnail so the
+   * top bar shows what the pen will paint. The Toolbar mount passes nothing
+   * and keeps the disabled Brush label.
+   */
+  leadingSlot?: ComponentChildren;
 }
 
 const MODULE_SLOTS = [
@@ -34,19 +42,22 @@ const MODULE_SLOTS = [
   { id: 'krita' as const, label: 'Krita' },
 ] as const;
 
-export function ModuleSwitcher({ lockedModule = null }: ModuleSwitcherProps = {}) {
+export function ModuleSwitcher({ lockedModule = null, leadingSlot }: ModuleSwitcherProps = {}) {
   // Under the seam the active slot is a constant, so a raw signal write can
   // never render a dead active disabled slot (261027-gh9).
   const current: ActiveModule = WATERCOLOR_ONLY ? 'watercolor' : activeModule.value;
   // The seam outranks every ownership lock — Water color is never disabled.
   const effectiveLocked = WATERCOLOR_ONLY ? null : lockedModule;
+  const showLeading = WATERCOLOR_ONLY && leadingSlot !== undefined && leadingSlot !== null;
+  const slots = showLeading ? MODULE_SLOTS.filter((slot) => slot.id !== 'brush') : MODULE_SLOTS;
   return (
     <div
       class="module-switcher physics-paint-segmented-row"
       role="group"
       aria-label="Module"
     >
-      {MODULE_SLOTS.map((slot) => {
+      {showLeading ? <div class="module-switcher-leading">{leadingSlot}</div> : null}
+      {slots.map((slot) => {
         const isInert = slot.id === 'krita' || (WATERCOLOR_ONLY && slot.id === 'brush');
         const isActive = !isInert && current === slot.id;
         const isLocked = !isInert && slot.id === effectiveLocked;

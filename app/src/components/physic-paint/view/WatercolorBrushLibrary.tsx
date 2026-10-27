@@ -29,12 +29,32 @@ import {
   getStrokeThumb,
 } from './watercolorStrokeThumb';
 
+/**
+ * The painted stroke thumbnail, shared by the Brush tab cards and the Studio
+ * top bar. Paint-once cache fill (module-level Map keyed by preset id): first
+ * call paints, later renders are a Map hit — no repaint, no toDataURL.
+ */
+export function WatercolorBrushThumb(props: {
+  presetId: string;
+  class?: string;
+  testId?: string;
+}) {
+  getStrokeThumb(props.presetId);
+  return (
+    <canvas
+      class={props.class ?? 'watercolor-brush-thumb'}
+      data-testid={props.testId}
+      width={STROKE_THUMB_WIDTH}
+      height={STROKE_THUMB_HEIGHT}
+      ref={(el: HTMLCanvasElement | null) => {
+        if (el) blitStrokeThumb(el, props.presetId);
+      }}
+    />
+  );
+}
+
 function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
   const preset = props.preset;
-  // Paint-once cache fill (module-level Map keyed by preset id).
-  // First call paints; later renders are a Map hit — no repaint,
-  // no toDataURL (52.1 D-19).
-  getStrokeThumb(preset.id);
   return (
     <button
       type="button"
@@ -45,14 +65,9 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
       title={preset.hint}
       onClick={() => selectAquarelleTip(preset.id)}
     >
-      <canvas
-        class="watercolor-brush-thumb"
-        data-testid={`watercolor-brush-thumb-${preset.id}`}
-        width={STROKE_THUMB_WIDTH}
-        height={STROKE_THUMB_HEIGHT}
-        ref={(el: HTMLCanvasElement | null) => {
-          if (el) blitStrokeThumb(el, preset.id);
-        }}
+      <WatercolorBrushThumb
+        presetId={preset.id}
+        testId={`watercolor-brush-thumb-${preset.id}`}
       />
       <span class="watercolor-brush-name">
         {preset.name}

@@ -706,6 +706,32 @@ button.destructive {
   border-radius: 8px 0 0 8px;
 }
 
+/* 261027-gh9f: the leading brush-thumbnail slot replaces the inert Brush
+   segment in the Studio top bar. It keeps the same 24px inset-track height;
+   the slot right after it is an inner segment and stays square. */
+.module-switcher-leading {
+  display: flex;
+}
+
+.module-switcher-leading + .module-switcher-slot {
+  border-radius: 0;
+}
+
+.module-switcher-leading .module-switcher-brush-preview {
+  min-width: 0;
+  padding: 0 6px;
+  border-radius: 8px 0 0 8px;
+  justify-content: center;
+}
+
+.module-switcher-brush-preview-thumb {
+  display: block;
+  width: 60px;
+  height: 18px;
+  border-radius: 3px;
+  background: #fff;
+}
+
 .module-switcher-slot:last-child {
   border-radius: 0 8px 8px 0;
 }
@@ -1408,8 +1434,11 @@ button.destructive {
   align-items: center;
 }
 
+/* 261027-gh9f: the selected brush must read at a glance — an orange tint
+   (not the old faint blue) plus a warm border. */
 .watercolor-brush-card[data-selected="true"] {
-  background: var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16));
+  background: rgba(240, 138, 36, 0.32);
+  border-color: #f08a24;
 }
 
 .watercolor-brush-thumb {

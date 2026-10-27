@@ -38,8 +38,8 @@ function resetSelection(): void {
 }
 
 describe('I-11 default brush selection', () => {
-  it('opens with ROUND selected so the Settings tab is not empty', () => {
-    expect(aquarelleSelectedTipId.value).toBe('round');
+  it('opens with CHALK selected (261027-gh9f dry-media default)', () => {
+    expect(aquarelleSelectedTipId.value).toBe('chalk');
     expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
   });
 });
@@ -235,6 +235,14 @@ describe('chalk dry-media preset contract (261027-gh9)', () => {
     expect(chalk!.flow).toBeLessThan(1);
     expect(chalk!.capacity).toBeGreaterThan(0);
     expect(chalk!.capacity).toBeLessThan(1);
+    // 261027-gh9f: dry-media deposit — the stamp shader re-thresholds the tip
+    // per dab and every dab reads a different slice of it.
+    expect(chalk!.roughness).toBeGreaterThan(0);
+    expect(chalk!.roughness).toBeLessThanOrEqual(1);
+    expect(chalk!.stampJitter).toBeGreaterThan(0);
+    // The top-bar size slider must be able to reach a real hairline: the old
+    // 0.03 radius ceiling made size 1 look like a marker.
+    expect(chalk!.size[1]).toBeLessThanOrEqual(0.02);
   });
 
   it('builds a textured, non-empty tip with finite Brush fields', () => {
@@ -260,6 +268,8 @@ describe('chalk dry-media preset contract (261027-gh9)', () => {
       'capacity',
       'grain',
       'wetRound',
+      'roughness',
+      'stampJitter',
     ] as const;
     for (const field of numericFields) {
       expect(Number.isFinite(brush[field]), `finite ${field}`).toBe(true);

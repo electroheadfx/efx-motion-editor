@@ -37,6 +37,7 @@ layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
 uniform sampler2D uTip, uPaper;
 uniform float uAspect, uRadius, uTipAspect, uRound, uGrain, uGrainThr;
+uniform float uRough, uJitter;
 uniform vec2 uPoint, uAxis;
 uniform vec4 uColor0, uColor1;
 void main(){
@@ -44,10 +45,20 @@ void main(){
   vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
   q.y /= uTipAspect;
   if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
-  float t = texture(uTip, q * 0.5 + 0.5).r;
+  // Dry media (uRough > 0): every dab reads a different slice of the tip, so
+  // the silhouette breaks up randomly instead of repeating one contour.
+  float e0 = fract(sin(dot(uPoint, vec2(12.9898, 78.233))) * 43758.5453);
+  float e1 = fract(e0 * 63.7264 + 0.37);
+  vec2 uv = clamp(q * 0.5 + 0.5 + (vec2(e0, e1) - 0.5) * uJitter, 0.0, 1.0);
+  float t = texture(uTip, uv).r;
+  // Re-threshold the tip into a hard, crumbly mask. uRough = 0 keeps the
+  // smooth alpha every wet brush expects.
+  float th = uRough * 0.45;
+  float dry = smoothstep(th, th + 0.02, t);
+  float sharp = mix(t, dry, step(0.0001, uRough));
   float d = dot(q, q);
   float round = 1.0 - smoothstep(0.15, 1.0, d);
-  float f = mix(t, round, uRound);
+  float f = mix(sharp, round, uRound);
   float h = texture(uPaper, vUv).g;
   f *= mix(1.0, smoothstep(uGrainThr - 0.08, uGrainThr + 0.08, h), uGrain);
   o0 = uColor0 * f;

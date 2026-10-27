@@ -121,6 +121,17 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 // 261018-k1o: ModuleSwitcher seats in the top bar LEFT cluster after the
 // Engine ready status pill; primary holds the sliders only; right is unchanged.
 describe('261018-k1o top bar left ModuleSwitcher + centered sliders', () => {
+  it('feeds the active brush thumbnail into the ModuleSwitcher (261027-gh9f)', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const switcher = [...childrenOf(tree)].find(
+      (node) => (node as AnyVNode).type === ModuleSwitcher,
+    ) as AnyVNode | undefined;
+    expect(switcher, 'ModuleSwitcher must render').toBeTruthy();
+    const leading = switcher!.props?.leadingSlot as AnyVNode | undefined;
+    expect(leading, 'the Studio mount passes the brush thumbnail').toBeTruthy();
+    expect(leading!.props?.presetId).toBe('chalk');
+  });
+
   it('ModuleSwitcher seats in the left slot after the status pill; primary holds sliders only', () => {
     const tree = renderTopBar(baseTopBarProps());
     const nodes = childrenOf(tree);
@@ -217,6 +228,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     }));
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
+      aquarelleSelectedTipId: { value: 'chalk' },
       setAquarelleParam: vi.fn(),
     }));
     try {
@@ -243,6 +255,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     }));
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
+      aquarelleSelectedTipId: { value: 'chalk' },
       setAquarelleParam: vi.fn(),
     }));
     try {

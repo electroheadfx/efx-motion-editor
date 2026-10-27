@@ -1,10 +1,12 @@
+import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { activeModule } from '../../shared/activeModule';
 import { frameScriptOwner, lockedModuleForOwner } from '../../shared/frameModuleLock';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
+import { aquarelleParams, aquarelleSelectedTipId, setAquarelleParam } from './aquarelleRecordState';
+import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + ModuleSwitcher +
@@ -40,6 +42,35 @@ export interface PhysicsPaintTopBarProps {
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
+  /** 261027-gh9f: opens the Brush tab from the top-bar brush thumbnail. */
+  onBrushPreviewClick?: () => void;
+}
+
+/**
+ * 261027-gh9f: the inert Brush module slot becomes the active brush's painted
+ * thumbnail — the top bar shows what the pen will paint. Clicking returns to
+ * the Brush tab so the pick can be changed.
+ */
+function TopBarBrushPreview(props: { presetId: string | null; onClick?: () => void }) {
+  const preset = props.presetId
+    ? BRUSH_PRESETS.find((candidate) => candidate.id === props.presetId)
+    : undefined;
+  if (!preset) return null;
+  const label = `Brush — ${preset.name}`;
+  return (
+    <button
+      type="button"
+      class="physics-paint-segmented-button module-switcher-slot module-switcher-brush-preview"
+      title={label}
+      aria-label={label}
+      onClick={props.onClick}
+    >
+      <WatercolorBrushThumb
+        presetId={preset.id}
+        class="module-switcher-brush-preview-thumb"
+      />
+    </button>
+  );
 }
 
 function clampTopBarValue(value: unknown, min: number, max: number): number {
@@ -84,11 +115,18 @@ export function PhysicsPaintTopBar({
   disabled = false,
   onBrushSizeChange,
   onOpacityChange,
+  onBrushPreviewClick,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
   const isWatercolor = activeModule.value === 'watercolor';
+  // Narrow signal read: picking a brush re-renders only this bar. A legacy
+  // tip id (not in BRUSH_PRESETS) falls back to the ordinary Brush slot
+  // rather than an empty leading segment.
+  const selectedTipId = aquarelleSelectedTipId.value;
+  const hasBrushPreview = selectedTipId !== null
+    && BRUSH_PRESETS.some((preset) => preset.id === selectedTipId);
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
   // the live aquarelle size in Water color mode (signal read bypasses the memo).
   const liveBrushSize = isWatercolor ? aquarelleParams.value.size : brushSize;
@@ -103,8 +141,16 @@ export function PhysicsPaintTopBar({
         <div class="physics-paint-topbar-status" aria-live="polite">
           <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
         </div>
-        {/* 56-02 (D-01): module switcher — one shared component, one signal */}
-        <ModuleSwitcher lockedModule={lockedModuleForOwner(frameScriptOwner.value)} />
+        {/* 56-02 (D-01): module switcher — one shared component, one signal.
+            261027-gh9f: under the watercolor-only gate the inert Brush slot is
+            the active brush thumbnail (the same painted thumb as the Brush
+            tab card). */}
+        <ModuleSwitcher
+          lockedModule={lockedModuleForOwner(frameScriptOwner.value)}
+          leadingSlot={isWatercolor && hasBrushPreview
+            ? <TopBarBrushPreview presetId={selectedTipId} onClick={onBrushPreviewClick} />
+            : undefined}
+        />
       </div>
 
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).

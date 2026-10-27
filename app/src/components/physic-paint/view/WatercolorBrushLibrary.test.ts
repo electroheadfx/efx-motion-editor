@@ -271,7 +271,7 @@ describe('WatercolorBrushLibrary 15-card grid (I-03, 261027-gh9)', () => {
     expect(nameRule, 'name is uppercase like the oracle label').toContain('text-transform: uppercase');
   });
 
-  it('every card border is #777777; selected keeps the accent tint (261018-jlb / 261018-l05)', () => {
+  it('every card border is #777777; the selected card is orange (261027-gh9f)', () => {
     // Region-scoped to the card rules — the stylesheet is 7k+ lines and a
     // whole-file negative grep would hit unrelated border/white values.
     const css = readStudioCss();
@@ -282,9 +282,10 @@ describe('WatercolorBrushLibrary 15-card grid (I-03, 261027-gh9)', () => {
     expect(cardRule, 'no #2a3340 fallback').not.toContain('#2a3340');
     // No white / near-white border state (thumb canvas may stay #fff).
     expect(cardRule, 'no white border value').not.toMatch(/border:[^;]*#fff/i);
-    expect(selectedRule, 'selected keeps accent background tint').toContain(
-      'var(--sidebar-accent-soft',
-    );
+    // 261027-gh9f: the old faint blue tint was too easy to miss — the
+    // selected card now carries an orange background and border.
+    expect(selectedRule, 'selected background is orange').toMatch(/background:\s*rgba\(240,\s*138,\s*36/);
+    expect(selectedRule, 'selected border is orange').toContain('border-color: #f08a24');
   });
 
   it('has no category filter, search field, or import affordance', () => {

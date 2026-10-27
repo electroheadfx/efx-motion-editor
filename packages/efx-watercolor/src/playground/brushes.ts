@@ -44,6 +44,18 @@ export interface BrushPreset {
   grain: number;
   /** 0..1: how much the water footprint is a soft ellipse rather than the textured tip. */
   wetRound: number;
+  /**
+   * 0..1: dry-media deposit. 0 keeps the tip's smooth alpha (every wet brush);
+   * above 0 the tip is re-thresholded per dab into a hard, crumbly mask so dry
+   * media get a net, ragged edge instead of a feathered one (chalk).
+   */
+  roughness: number;
+  /**
+   * Tip-space offset amplitude applied per dab (0..~0.2). Each dab reads a
+   * different slice of the tip, so a stroke's silhouette breaks up randomly
+   * instead of repeating one contour.
+   */
+  stampJitter: number;
   custom?: boolean;
 }
 
@@ -151,43 +163,48 @@ const BASE: Omit<BrushPreset, 'id' | 'name' | 'hint' | 'tip'> = {
   size: [0.011, 0.05], pressureSize: 1, speedThin: 0,
   spacing: 0.3, scatter: 0, dabs: 1, sizeJitter: 0,
   water: 1, load: 1, flow: 1, capacity: 1, grain: 0, wetRound: 0.6,
+  roughness: 0, stampJitter: 0,
 };
 
 const define = (p: Partial<BrushPreset> & Pick<BrushPreset, 'id' | 'name' | 'hint' | 'tip'>): BrushPreset => ({ ...BASE, ...p });
 
 export const BRUSH_PRESETS: BrushPreset[] = [
-  // 261027-gh9c: dry media and the FIRST card in the Brush tab grid. Dense
-  // core, fine tooth: the coarse paper gate (grain 0.95) and the oversized
-  // fbm pores of earlier passes read as paper-sized blobs, so grain is now
-  // moderate (the paper modulates, never dominates) and the tip speckle is
-  // high-frequency. The outline wanders so the stick crumbles at the edge.
-  // water 0 deposits no wetness by construction (the engine multiplies
-  // `b.water` into the wet amount and brushWet blends with MAX).
+  // 261027-gh9f: dry media and the FIRST card in the Brush tab grid. The
+  // footprint range is deliberately small so the top-bar size slider reaches a
+  // true hairline at 1; `roughness` re-thresholds the tip per dab in the stamp
+  // shader (net, crumbly edges instead of a feathered alpha ramp) and
+  // `stampJitter` shifts each dab's slice of the tip so the silhouette breaks
+  // up randomly along the stroke. water 0 deposits no wetness by construction
+  // (the engine multiplies `b.water` into the wet amount) and the engine now
+  // also skips the velocity splat for a waterless brush, so strokes never mix
+  // like a wet medium.
   define({
-    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: dense grainy core, crumbling edges, no wet bloom',
+    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: grainy core, crumbling edges, no wet bloom',
     aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 12,
-    size: [0.008, 0.03], pressureSize: 0.9, speedThin: 0.02,
-    spacing: 0.12, scatter: 0.12, dabs: 1, sizeJitter: 0.22,
-    water: 0, load: 1.35, flow: 0.6, capacity: 0.9, grain: 0.35, wetRound: 0,
+    size: [0.003, 0.012], pressureSize: 1.15, speedThin: 0.02,
+    spacing: 0.2, scatter: 0.14, dabs: 1, sizeJitter: 0.28,
+    water: 0, load: 1.1, flow: 0.35, capacity: 0.9, grain: 0.5, wetRound: 0,
+    roughness: 0.7, stampJitter: 0.1,
     tip: (n, N) => tip((u, v, r, ang) => {
-      // 261027-gh9e: NET edge. Two frequencies of angular wander give the
-      // fibrous, irregular contour engine-1 gets from its hair stamps; a hard
-      // threshold (not the old wide alpha ramp) keeps that contour crisp.
+      // NET edge. Three frequencies of angular wander give the fibrous,
+      // irregular contour engine-1 gets from its hair stamps; the hard ramp
+      // keeps that contour crisp (the old wide alpha ramp feathered it).
       const lobes = N.fbm(ang * 2.1 + 1.6, r * 3.2, 3) * 2 - 1;
       const fibres = N.fbm(ang * 9.5 + 4.2, r * 5.5, 2) * 2 - 1;
+      const splits = N.fbm(ang * 23 + 8.7, r * 7, 2) * 2 - 1;
       // Contour radius in tip space, not a multiply on r: a negative wander
       // must not push the edge into the square's corners.
-      const contour = 0.9 + 0.1 * lobes + 0.05 * fibres;
-      const body = 1 - smoothstep(contour - 0.012, contour + 0.012, r);
+      const contour = 0.87 + 0.11 * lobes + 0.06 * fibres + 0.035 * splits;
+      const body = 1 - smoothstep(contour - 0.008, contour + 0.008, r);
       // Chips bite the rim so the contour breaks instead of closing as a disc.
-      const rim = smoothstep(0.58, 0.95, r);
+      const rim = smoothstep(0.5, 0.95, r);
       const bite = smoothstep(0.3, 0.5, N.fbm(u * 14 + 11, v * 14 + 3, 4));
-      const chip = 1 - rim * 0.75 * (1 - bite);
-      // Porosity lives at the RIM: solid core, crumbling edge.
-      const pores = smoothstep(0.2, 0.4, N.fbm(u * 26 + 5, v * 26 + 11, 3));
-      const poreDepth = 0.03 + 0.55 * smoothstep(0.5, 0.95, r);
+      const chip = 1 - rim * 0.85 * (1 - bite);
+      // Porosity runs through the whole stick, deepest at the rim.
+      const pores = smoothstep(0.18, 0.42, N.fbm(u * 30 + 5, v * 30 + 11, 3));
+      const poreDepth = 0.24 + 0.45 * smoothstep(0.25, 0.95, r);
       const crumble = 1 - poreDepth * (1 - pores);
-      const grit = 0.82 + 0.18 * N.fbm(u * 55 + 3, v * 55 + 7, 2);
+      const grit = 0.7 + 0.3 * N.fbm(u * 64 + 3, v * 64 + 7, 2);
       return body * chip * crumble * grit;
     })(n),
   }),

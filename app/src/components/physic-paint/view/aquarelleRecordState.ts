@@ -80,10 +80,10 @@ export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
 });
 export const aquarelleActiveTool = signal<AquarelleTool>('brush');
-// I-11 follow-up: Studio opens on ROUND so the Settings tab has a usable
-// response out of the box (the preset's own shape lives in BRUSH_PRESETS;
-// the multiplier bag starts neutral).
-export const aquarelleSelectedTipId = signal<string | null>('round');
+// 261027-gh9f: Studio opens on the dry CHALK stick — it is the first card in
+// the Brush tab and the preset the dry-media work targets. The preset's own
+// shape lives in BRUSH_PRESETS; the multiplier bag starts neutral.
+export const aquarelleSelectedTipId = signal<string | null>('chalk');
 export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
   ...NEUTRAL_TOOL_OVERRIDES,
 });

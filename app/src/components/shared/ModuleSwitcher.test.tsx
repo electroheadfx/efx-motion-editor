@@ -106,6 +106,15 @@ describe('ModuleSwitcher', () => {
     expect(labels).toEqual(['Brush', 'Water color', 'Krita']);
   });
 
+  it('replaces the inert Brush segment with the leading slot when one is passed (261027-gh9f)', () => {
+    const tree = materialize(ModuleSwitcher({ leadingSlot: 'THUMB' })) as TestVNode;
+    expect(buttonLabels(tree)).toEqual(['Water color', 'Krita']);
+    const leading = [...walk(tree)].find(
+      (node) => String(node.props?.class ?? '') === 'module-switcher-leading',
+    );
+    expect(leading, 'leading slot wrapper must render first').toBeTruthy();
+  });
+
   it('makes Brush and Krita inert native-disabled slots and Water color the only active slot', () => {
     const tree = renderSwitcher();
     const [brush, watercolor, krita] = findButtons(tree);
@@ -285,8 +294,10 @@ describe('activeModule signal', () => {
     // quick-261025-awl: the Studio mount passes the ownership lock; the
     // Toolbar mount stays bare (different realm, no prop -> fully enabled).
     expect(topBarSource).not.toMatch(/<ModuleSwitcher\s*\/>/);
+    // 261027-gh9f: the Studio mount also passes the leading brush thumbnail,
+    // so the element spans multiple lines; the ownership lock stays pinned.
     expect(topBarSource).toMatch(
-      /<ModuleSwitcher\s+lockedModule=\{lockedModuleForOwner\(frameScriptOwner\.value\)\}\s*\/>/,
+      /<ModuleSwitcher\s+lockedModule=\{lockedModuleForOwner\(frameScriptOwner\.value\)\}/,
     );
   });
 });

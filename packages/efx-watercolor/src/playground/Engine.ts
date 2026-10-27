@@ -170,9 +170,9 @@ export class WatercolorEngine {
   params: Params = { ...DEFAULT_PARAMS };
   tool: Tool = 'brush';
   pigment: Pigment = pigmentFromHex('#2338a8');
-  // 261027-gh9b: the catalog leads with chalk (first Brush-tab card); the
-  // engine's neutral default stays the everyday round.
-  brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
+  // 261027-gh9f: the Studio opens on the dry chalk stick (first Brush-tab
+  // card); the everyday round remains the fallback.
+  brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'chalk') ?? BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
   /** Once an Apple Pencil / stylus is seen, fingers paint with clear water. */
   fingerIsWater = true;
   /** When false, pointers on the paper are ignored (another tool, e.g. text, is driving it). */
@@ -1461,16 +1461,19 @@ export class WatercolorEngine {
     let tx = e.tiltX || 0;
     let ty = e.tiltY || 0;
     const now = this.clock();
-    // 261027-gh9e: prefer the host's native tablet sample whenever the
-    // PointerEvent reports no pen dynamics (macOS: pointerType 'mouse',
-    // pressure 0 / fixed 0.5). Same law as engine-1's extractPenPoint.
+    // 261027-gh9e/gh9f: prefer the host's native tablet sample whenever the
+    // PointerEvent reports no real pen pressure. macOS WKWebView sends the
+    // fixed 0.5 sentinel (sometimes with a real pointerType 'pen' and tilt), so
+    // tilt alone must not disqualify the native sample — the old law kept the
+    // constant 0.5 and the pen had almost no dynamic range.
     const nativeActive = this.nativePenAt > -Infinity && now - this.nativePenAt < 300;
-    const twist = (e as PointerEvent & { twist?: number }).twist || 0;
     const reportsPenDynamics = e.pointerType === 'pen'
-      && (e.pressure !== 0.5 || tx !== 0 || ty !== 0 || twist !== 0);
+      && e.pressure !== 0.5 && e.pressure !== 0;
     if (nativeActive && this.nativePen && !reportsPenDynamics
       && (e.pointerType !== 'mouse' || e.buttons > 0)) {
-      p = Math.pow(this.nativePen.pressure, 0.8);
+      // Raw native pressure: engine-1's law. The old pow(0.8) compressed the
+      // low end, which is exactly where the pen's range lives.
+      p = this.nativePen.pressure;
       tx = this.nativePen.tiltX;
       ty = this.nativePen.tiltY;
     } else if (e.pointerType === 'pen') {
@@ -1660,7 +1663,10 @@ export class WatercolorEngine {
         const reservoir = 0.25 + 0.75 * Math.exp(-s.travelled / ((1.5 + 3 * P.water) * b.capacity));
         const dryness = clamp(b.grain + (1 - b.grain) * clamp((0.5 - reservoir) * 2.5, 0, 1) * 0.6, 0, 1);
         const grainThr = 0.74 - 0.45 * pr - 0.05 * P.water;   // pressing harder reaches into the valleys
-        const conc = 0.15 * Math.exp(P.load * 2.8) * reservoir * (0.6 + 0.4 * pr) * b.load;
+        // 261027-gh9f: pressure reaches density much harder than before. At the
+        // old 0.6..1.0 band the overlapping dabs saturated the deposit and a
+        // light pen looked identical to a hard one.
+        const conc = 0.15 * Math.exp(P.load * 2.8) * reservoir * (0.4 + 0.6 * pr) * b.load;
         // spacing / profile integral -> ~conc in the stroke, normalised for sparse tips
         const norm = clamp(Math.sqrt(0.5 / b.tipMean), 0.7, 2.2);
         const amount = conc * Math.min(b.spacing, 1) / 1.8 * norm * dwell;
@@ -1670,10 +1676,14 @@ export class WatercolorEngine {
         const c1 = [c[4] * amount, c[5] * amount, c[6] * amount, this.pigment.white * amount * 1.6];
         this.eachDab(s, x, y, r, (dx, dy, dr, angle) => {
           this.brushInk(dx, dy, dr, angle, c0, c1, dryness, grainThr);
-          // soft brushes wet a little beyond the tip; textured ones keep their edges
-          this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
+          // soft brushes wet a little beyond the tip; textured ones keep their
+          // edges. A waterless brush never wakes the fluid sim at all.
+          if (wet > 0) this.brushWet(dx, dy, dr * (1 + 0.12 * b.wetRound), angle, wet, b.wetRound, dryness, grainThr);
         });
-        if (moving) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
+        // A waterless brush (dry media) imparts no flow: the velocity splat
+        // was stirring the sheet under chalk, making separate strokes blend
+        // like a wet medium.
+        if (moving && b.water > 0) this.splatVelocity(x, y, r * 1.2, vx, vy, (15 + P.flow * 95) * 0.25 * b.flow);
         break;
       }
       case 'water': {
@@ -1742,6 +1752,8 @@ export class WatercolorEngine {
     gl.uniform1f(p.u.uRound, round);
     gl.uniform1f(p.u.uGrain, grain);
     gl.uniform1f(p.u.uGrainThr, grainThr);
+    gl.uniform1f(p.u.uRough, b.roughness ?? 0);
+    gl.uniform1f(p.u.uJitter, b.stampJitter ?? 0);
     gl.uniform4fv(p.u.uColor0, c0);
     gl.uniform4fv(p.u.uColor1, c1);
     g.draw(t, this.stampRect(x, y, r, t.w, t.h, Math.sqrt(1 + b.aspect * b.aspect) * 1.02));

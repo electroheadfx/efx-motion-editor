@@ -29,9 +29,12 @@ describe('261027-gh9e Water color native pen pressure', () => {
     expect(engineSource).toContain('this.nativePenAt = this.clock();');
     expect(engineSource).toContain('now - this.nativePenAt < 300');
     // The pointer path prefers the native sample when the PointerEvent
-    // carries no pen dynamics (macOS reports 'mouse' with pressure 0).
+    // carries no real pen pressure. 261027-gh9f: the 0.5 sentinel wins even
+    // when the pointer reports tilt, and the native value is used raw so the
+    // pen's low end is not compressed away.
     expect(engineSource).toContain('const reportsPenDynamics = e.pointerType === \'pen\'');
-    expect(engineSource).toContain('p = Math.pow(this.nativePen.pressure, 0.8);');
+    expect(engineSource).toContain("&& e.pressure !== 0.5 && e.pressure !== 0;");
+    expect(engineSource).toContain('p = this.nativePen.pressure;');
   });
 
   it('the aquarelle layer forwards the Rust tablet:pressure event to the engine', () => {
