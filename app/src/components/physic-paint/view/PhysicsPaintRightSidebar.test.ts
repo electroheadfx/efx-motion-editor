@@ -43,10 +43,12 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(globals).toContain("{ key: 'load', label: 'Pigment' }");
   });
 
-  it('renders the top pane with mode-derived Color/Brush/Settings/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
+  it('renders the top pane with mode-derived Color/Settings/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
     // 261018-cy1 + I-11 / D: the top-pane tab list is mode-derived (Brush mode
-    // = Color + Paper; watercolor adds Brush + Settings) and the retired
-    // top-pane Actions entry is gone. Middle and bottom panes are unchanged.
+    // = Color + Paper; watercolor adds Settings) and the retired top-pane
+    // Actions entry is gone. 261027-gh9g: the Brush tab is retired from the
+    // right sidebar (top-bar picker + floating modal). Middle and bottom panes
+    // are unchanged.
     expect(rightPanel).toContain('aria-label="Top pane panels"');
     expect(rightPanel).toContain('physics-paint-tab-top-');
     // quick-261023-ors: the Memory tab joins the union as the LAST entry.
@@ -85,7 +87,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     // Background 1 + lower 3).
     expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
     expect(rightPanel).toContain("'color', 'paper', 'memory'");
-    expect(rightPanel).toContain("'color', 'brush', 'settings', 'paper', 'memory'");
+    expect(rightPanel).toContain("'color', 'settings', 'paper', 'memory'");
 
     for (const label of ['Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

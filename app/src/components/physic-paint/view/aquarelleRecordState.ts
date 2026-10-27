@@ -89,6 +89,32 @@ export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
 });
 
 /**
+ * 261027-gh9g: the top-bar brush dropdown (open state + the trigger's viewport
+ * anchor) and the floating full-catalog modal. Both are Studio UI state; the
+ * picked brush still rides `aquarelleSelectedTipId` (the ONE selection seam).
+ */
+export const aquarelleBrushMenuOpen = signal(false);
+export const aquarelleBrushMenuAnchor = signal<{ left: number; top: number } | null>(null);
+export const aquarelleBrushModalOpen = signal(false);
+
+/** Compare-then-write. The anchor is only meaningful while opening. */
+export function setAquarelleBrushMenuOpen(open: boolean, anchor?: { left: number; top: number }): void {
+  if (open && anchor) {
+    const current = aquarelleBrushMenuAnchor.value;
+    if (!current || current.left !== anchor.left || current.top !== anchor.top) {
+      aquarelleBrushMenuAnchor.value = { ...anchor };
+    }
+  }
+  if (aquarelleBrushMenuOpen.value === open) return;
+  aquarelleBrushMenuOpen.value = open;
+}
+
+export function setAquarelleBrushModalOpen(open: boolean): void {
+  if (aquarelleBrushModalOpen.value === open) return;
+  aquarelleBrushModalOpen.value = open;
+}
+
+/**
  * Per-brush response memory (I-11 / D). The active bag above is the one
  * consumer contract; this store keeps each brush's edits keyed by brush id
  * so switching brushes no longer resets them to neutral.

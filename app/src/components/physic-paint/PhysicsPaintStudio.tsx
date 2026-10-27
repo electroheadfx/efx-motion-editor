@@ -5993,9 +5993,6 @@ export function PhysicsPaintStudio() {
     // call-time module router as Brush size — watercolor drives
     // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
     onOpacityChange: handleOpacityChange,
-    // 261027-gh9f: the top-bar brush thumbnail returns to the Brush tab, the
-    // one surface that can change the active preset.
-    onBrushPreviewClick: () => { rightPanelToolTab.value = 'paint'; },
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build

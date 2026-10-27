@@ -15,7 +15,6 @@ import { aquarelleParams } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
-import { RightPanelBrushTab } from './RightPanelBrushTab';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelMemoryTab } from './RightPanelMemoryTab';
@@ -231,25 +230,25 @@ export function PhysicsPaintRightPanel({
   // The signal read subscribes this memoized panel to selection changes (the
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
-  // 261018-cy1: the top-pane tab list is mode-derived. Brush mode offers
-  // Color + Paper; watercolor mode adds Brush + Settings (I-11 / D). The
-  // retired top-pane Actions entry is gone in every mode (the bottom-pane
-  // scripts tab keeps its label).
+  // 261018-cy1: the top-pane tab list is mode-derived. The retired top-pane
+  // Actions entry is gone in every mode (the bottom-pane scripts tab keeps its
+  // label). 261027-gh9g: the Brush tab is retired too — the brush catalog now
+  // lives in the top-bar dropdown and its floating modal.
   const isWatercolorModule = activeModule.value === 'watercolor';
-  // quick-261023-ors: 'memory' is LAST in both modes — after
-  // Color/Brush/Settings/Paper in watercolor and after Color/Paper in Brush
-  // mode. It is available in both modes (the gauge reads the active stores).
+  // quick-261023-ors: 'memory' is LAST in both modes. It is available in both
+  // modes (the gauge reads the active stores).
   const topPaneTabs = (
     isWatercolorModule
-      ? ['color', 'brush', 'settings', 'paper', 'memory']
+      ? ['color', 'settings', 'paper', 'memory']
       : ['color', 'paper', 'memory']
   ) as ReadonlyArray<'color' | 'brush' | 'settings' | 'paper' | 'memory'>;
-  // A stale 'brush'/'settings' selection falls back to the Color body when the
-  // module leaves watercolor — derived in render, never via an effect.
+  // A stale 'brush' selection (or a 'settings' selection after the module
+  // leaves watercolor) falls back to the Color body — derived in render, never
+  // via an effect.
   const [topPaneTab, setTopPaneTab] =
     useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>('color');
   const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' | 'memory' =
-    (topPaneTab === 'brush' || topPaneTab === 'settings') && !isWatercolorModule
+    topPaneTab === 'brush' || (topPaneTab === 'settings' && !isWatercolorModule)
       ? 'color'
       : topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
@@ -355,15 +354,11 @@ export function PhysicsPaintRightPanel({
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-          {topPaneTab === 'brush' && isWatercolorModule ? (
-            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
-              <RightPanelBrushTab />
-            </div>
-          ) : topPaneTab === 'settings' && isWatercolorModule ? (
+          {effectiveTopPaneTab === 'settings' && isWatercolorModule ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">
               <RightPanelSettingsTab />
             </div>
-          ) : topPaneTab === 'paper' ? (
+          ) : effectiveTopPaneTab === 'paper' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Paper">
               <RightPanelPaperTab
                 paperId={paperId}
@@ -377,7 +372,7 @@ export function PhysicsPaintRightPanel({
                 disabled={engineControlsDisabled}
               />
             </div>
-          ) : topPaneTab === 'memory' ? (
+          ) : effectiveTopPaneTab === 'memory' ? (
             // quick-261023-ors: the LAST top-pane tab — the read-only gauge and
             // the confirmed purge actions. Works in BOTH modes; an absent
             // memorySection renders an empty body (no crash, no figures).

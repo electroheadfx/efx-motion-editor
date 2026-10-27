@@ -9,6 +9,8 @@ import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
+import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
+import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
@@ -403,6 +405,9 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         onKeyDown={(event) => layout.onKeyDown(event as unknown as KeyboardEvent)}
       >
         <MemoizedPhysicsPaintTopBar {...topBar} />
+        {/* 261027-gh9g: the brush dropdown is viewport-fixed (the top bar is
+            an overflow-x scroller) and renders outside that scroller. */}
+        {!pickerOpen ? <PhysicsPaintBrushMenu /> : null}
         <PhysicsPaintToolRail {...toolRail} />
 
         <section
@@ -428,6 +433,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
           {!pickerOpen ? (
             <MemoizedPhysicsPaintStrokeSettingsDialog bundle={strokeSettingsDialog} />
           ) : null}
+          {/* 261027-gh9g: the floating brush catalog shares the Move-edit
+              mechanics and seats inside the canvas region (no clip, so it can
+              be dragged over the side panels). */}
+          {!pickerOpen ? <PhysicsPaintBrushModal /> : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

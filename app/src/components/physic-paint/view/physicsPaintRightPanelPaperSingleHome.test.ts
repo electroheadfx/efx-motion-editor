@@ -57,7 +57,7 @@ describe('261017-fz3 PaperPicker single home', () => {
   });
 
   it('surviving mount sits in the Paper tab branch, not the Paint tool tab', () => {
-    const paperTabIndex = panelSource.indexOf("topPaneTab === 'paper'");
+    const paperTabIndex = panelSource.indexOf("effectiveTopPaneTab === 'paper'");
     expect(paperTabIndex).toBeGreaterThan(-1);
 
     // The Paint tool tab branch runs from the paint-tab test to the background
@@ -132,14 +132,17 @@ describe('261017-vcn I-04 remainder paper-tab single home', () => {
     expect(body.indexOf('overflowY'), 'no inner overflowY').toBe(-1);
   });
 
-  it('top bar keeps status + ModuleSwitcher + Brush size + Opacity only', () => {
+  it('top bar keeps status + brush trigger + Brush size + Opacity only', () => {
     // Pin 2: Background / Grain strength / Grain scale rows and those props
     // are gone; Brush size + Opacity remain. Scalar predicates keep TAP
     // diagnostics one-line (project idiom).
     const body = stripComments(topBarSource);
     expect(body.includes('Brush size'), 'Brush size must remain').toBe(true);
     expect(body.includes('Opacity'), 'Opacity must remain').toBe(true);
-    expect(body.includes('ModuleSwitcher'), 'ModuleSwitcher must remain').toBe(true);
+    // 261027-gh9g: the module switcher left the Studio top bar; the enlarged
+    // brush trigger owns that slot.
+    expect(body.includes('ModuleSwitcher'), 'ModuleSwitcher must leave').toBe(false);
+    expect(body.includes('TopBarBrushTrigger'), 'brush trigger must remain').toBe(true);
     expect(body.includes('physics-paint-status-pill'), 'status pill must remain').toBe(true);
     // The Background row leaves with the swatch group.
     expect(body.indexOf('Background'), 'Background row must leave the top bar').toBe(-1);

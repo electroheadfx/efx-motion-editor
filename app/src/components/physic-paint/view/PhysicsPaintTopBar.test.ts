@@ -4,8 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
-import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { activeModule } from '../../shared/activeModule';
+import {
+  aquarelleBrushMenuAnchor,
+  aquarelleBrushMenuOpen,
+} from './aquarelleRecordState';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -118,21 +121,11 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   });
 });
 
-// 261018-k1o: ModuleSwitcher seats in the top bar LEFT cluster after the
-// Engine ready status pill; primary holds the sliders only; right is unchanged.
-describe('261018-k1o top bar left ModuleSwitcher + centered sliders', () => {
-  it('feeds the active brush thumbnail into the ModuleSwitcher (261027-gh9f)', () => {
-    const tree = renderTopBar(baseTopBarProps());
-    const switcher = [...childrenOf(tree)].find(
-      (node) => (node as AnyVNode).type === ModuleSwitcher,
-    ) as AnyVNode | undefined;
-    expect(switcher, 'ModuleSwitcher must render').toBeTruthy();
-    const leading = switcher!.props?.leadingSlot as AnyVNode | undefined;
-    expect(leading, 'the Studio mount passes the brush thumbnail').toBeTruthy();
-    expect(leading!.props?.presetId).toBe('chalk');
-  });
-
-  it('ModuleSwitcher seats in the left slot after the status pill; primary holds sliders only', () => {
+// 261027-gh9g: the module switcher is gone from the Studio top bar. The
+// enlarged brush trigger (thumb + name) seats in the LEFT cluster after the
+// Engine ready status pill and opens the brush dropdown.
+describe('261027-gh9g top bar brush trigger + centered sliders', () => {
+  it('renders the active brush trigger with the preset id in the left slot', () => {
     const tree = renderTopBar(baseTopBarProps());
     const nodes = childrenOf(tree);
     const left = nodes.find((n) => (n as AnyVNode).props?.['class'] === 'physics-paint-topbar-left') as AnyVNode | undefined;
@@ -142,43 +135,66 @@ describe('261018-k1o top bar left ModuleSwitcher + centered sliders', () => {
 
     const leftDesc = childrenOf(left);
     const primaryDesc = childrenOf(primary);
-    const isSwitcher = (n: unknown) => (n as AnyVNode).type === ModuleSwitcher;
+    const trigger = leftDesc.find(
+      (n) => typeof (n as AnyVNode).props?.onToggle === 'function',
+    ) as AnyVNode | undefined;
     const isStatusPill = (n: unknown) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill');
 
-    expect(leftDesc.some(isSwitcher), 'ModuleSwitcher seats in the left slot').toBe(true);
-    expect(primaryDesc.some(isSwitcher), 'primary cluster holds sliders only').toBe(false);
+    expect(trigger, 'brush trigger seats in the left slot').toBeTruthy();
+    expect(trigger!.props?.presetId).toBe('chalk');
+    expect(primaryDesc.some((n) => typeof (n as AnyVNode).props?.onToggle === 'function'), 'primary holds sliders only').toBe(false);
     expect(leftDesc.some(isStatusPill), 'status pill stays in the left slot').toBe(true);
-    expect(primaryDesc.some(isStatusPill), 'primary cluster holds sliders only').toBe(false);
 
     const pillIdx = leftDesc.findIndex(isStatusPill);
-    const switcherIdx = leftDesc.findIndex(isSwitcher);
-    expect(pillIdx, 'status pill renders ahead of the switcher').toBeGreaterThan(-1);
-    expect(switcherIdx, 'ModuleSwitcher follows the status pill').toBeGreaterThan(pillIdx);
+    const triggerIdx = leftDesc.findIndex((n) => typeof (n as AnyVNode).props?.onToggle === 'function');
+    expect(pillIdx, 'status pill renders ahead of the trigger').toBeGreaterThan(-1);
+    expect(triggerIdx, 'brush trigger follows the status pill').toBeGreaterThan(pillIdx);
   });
 
-  it('source keeps the write-through pair and seats the switcher in the left slot', () => {
+  it('the trigger opens the dropdown with its own viewport anchor', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const trigger = [...childrenOf(tree)].find(
+      (n) => typeof (n as AnyVNode).props?.onToggle === 'function',
+    ) as AnyVNode;
+    const onToggle = trigger.props.onToggle as (event: unknown) => void;
+    onToggle({
+      currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 58 }) },
+    });
+    try {
+      expect(aquarelleBrushMenuOpen.value).toBe(true);
+      expect(aquarelleBrushMenuAnchor.value).toEqual({ left: 24, top: 64 });
+    } finally {
+      aquarelleBrushMenuOpen.value = false;
+      aquarelleBrushMenuAnchor.value = null;
+    }
+  });
+
+  it('source has no module switcher and seats the trigger in the left slot', () => {
     const body = stripComments(topBarSource());
     expect(body).toContain('onBrushSizeChange');
     expect(body).toContain('onOpacityChange');
     expect(body).toContain('setAquarelleParam');
+    expect(body, 'the module switcher left the Studio top bar').not.toContain('ModuleSwitcher');
     const leftStart = body.indexOf('class="physics-paint-topbar-left"');
     const primaryStart = body.indexOf('class="physics-paint-topbar-primary"');
-    const switcherAt = body.indexOf('<ModuleSwitcher');
+    const triggerAt = body.indexOf('<TopBarBrushTrigger');
     expect(leftStart).toBeGreaterThan(-1);
     expect(primaryStart).toBeGreaterThan(leftStart);
-    expect(switcherAt, 'ModuleSwitcher follows the left-slot opening tag').toBeGreaterThan(leftStart);
-    expect(switcherAt, 'ModuleSwitcher precedes the primary cluster').toBeLessThan(primaryStart);
+    expect(triggerAt, 'brush trigger follows the left-slot opening tag').toBeGreaterThan(leftStart);
+    expect(triggerAt, 'brush trigger precedes the primary cluster').toBeLessThan(primaryStart);
     const statusAt = body.indexOf('physics-paint-topbar-status', leftStart);
-    expect(statusAt, 'status pill precedes the switcher in the left slot').toBeGreaterThan(leftStart);
-    expect(switcherAt, 'ModuleSwitcher follows the status pill').toBeGreaterThan(statusAt);
+    expect(statusAt, 'status pill precedes the trigger in the left slot').toBeGreaterThan(leftStart);
+    expect(triggerAt, 'brush trigger follows the status pill').toBeGreaterThan(statusAt);
   });
 
-  it('keeps the seating CSS contract: 15px pill gap, shrinkable switcher, one scrolling row', () => {
+  it('keeps the seating CSS contract: 15px separator, larger thumb, one scrolling row', () => {
     const styles = css();
-    const switcher = getCssRuleBlock(styles, '.module-switcher {');
-    expect(switcher, '15px separator faces the status pill').toContain('margin-left: 15px');
-    expect(switcher).not.toContain('margin-right: 15px');
-    expect(switcher, 'switcher compresses before colliding with primary').toContain('flex-shrink: 1');
+    const trigger = getCssRuleBlock(styles, '.physics-paint-brush-trigger {');
+    expect(trigger, '15px separator faces the status pill').toContain('margin-left: 15px');
+    expect(trigger).toContain('height: 38px');
+    const thumb = getCssRuleBlock(styles, '.physics-paint-brush-trigger-thumb {');
+    expect(thumb, 'the brush thumb is larger than the old switcher').toContain('width: 96px');
+    expect(thumb).toContain('height: 28px');
     const left = getCssRuleBlock(styles, '.physics-paint-topbar-left {');
     expect(left, 'left cluster does not stack a second gap').toContain('gap: 0');
     const bar = getCssRuleBlock(styles, '.physics-paint-topbar {');
@@ -229,6 +245,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
       aquarelleSelectedTipId: { value: 'chalk' },
+      aquarelleBrushMenuOpen: { value: false },
+      setAquarelleBrushMenuOpen: vi.fn(),
       setAquarelleParam: vi.fn(),
     }));
     try {
@@ -256,6 +274,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     vi.doMock('./aquarelleRecordState', () => ({
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
       aquarelleSelectedTipId: { value: 'chalk' },
+      aquarelleBrushMenuOpen: { value: false },
+      setAquarelleBrushMenuOpen: vi.fn(),
       setAquarelleParam: vi.fn(),
     }));
     try {

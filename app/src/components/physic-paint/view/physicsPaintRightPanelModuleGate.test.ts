@@ -176,7 +176,7 @@ describe('I-08 Brush-mode context gating', () => {
   it('Paper tab branch mounts the paper surface with no activeModule gate', () => {
     // I-10: the paper surface is RightPanelPaperTab (which mounts PaperPicker);
     // both the panel arm and the tab component stay ungated (I-07 document fond).
-    const paperTabStart = panelSource.indexOf("topPaneTab === 'paper'");
+    const paperTabStart = panelSource.indexOf("effectiveTopPaneTab === 'paper'");
     expect(paperTabStart, 'paper-tab branch must exist').toBeGreaterThan(-1);
     const paperTabEnd = panelSource.indexOf('physics-paint-single-tab-panel', paperTabStart);
     expect(paperTabEnd, 'paper-tab branch ends before the color fallback').toBeGreaterThan(paperTabStart);
@@ -190,13 +190,14 @@ describe('I-08 Brush-mode context gating', () => {
     expect(paperTabBody, 'RightPanelPaperTab stays ungated').not.toMatch(/activeModule/);
   });
 
-  it('top-pane tab row is mode-derived with no Actions entry', () => {
+  it('top-pane tab row is mode-derived with no Actions or Brush entry', () => {
     // 261018-cy1 + I-11 / D: brush mode = Color + Paper; watercolor mode =
-    // Color + Brush + Settings + Paper. The retired top-pane Actions entry is
-    // gone from the list. quick-261023-ors: 'memory' is LAST in BOTH modes.
+    // Color + Settings + Paper. The retired top-pane Actions entry is gone.
+    // 261027-gh9g: the Brush tab is retired too (top-bar picker + modal).
+    // quick-261023-ors: 'memory' is LAST in BOTH modes.
     expect(panelSource, 'brush-mode tab list').toContain("['color', 'paper', 'memory']");
     expect(panelSource, 'watercolor tab list').toContain(
-      "['color', 'brush', 'settings', 'paper', 'memory']",
+      "['color', 'settings', 'paper', 'memory']",
     );
     expect(panelSource, 'no actions id in the tab list').not.toMatch(
       /\[\s*'color',\s*'actions'/,
@@ -204,14 +205,12 @@ describe('I-08 Brush-mode context gating', () => {
     expect(panelSource, 'topPaneTab union drops actions').toContain(
       "useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>",
     );
-    expect(panelSource, 'brush body is watercolor-gated').toContain(
-      "topPaneTab === 'brush' && isWatercolorModule",
-    );
+    expect(panelSource, 'no Brush tab body is mounted').not.toMatch(/<RightPanelBrushTab\b/);
     expect(panelSource, 'settings body is watercolor-gated').toContain(
-      "topPaneTab === 'settings' && isWatercolorModule",
+      "effectiveTopPaneTab === 'settings' && isWatercolorModule",
     );
     expect(panelSource, 'stale settings tab falls back in brush mode').toContain(
-      "topPaneTab === 'settings'",
+      "topPaneTab === 'settings' && !isWatercolorModule",
     );
     // Labels stay the human names (no Watercolor tab).
     expect(panelSource, 'Color label stays').toContain("color: 'Color'");
@@ -225,8 +224,8 @@ describe('I-08 Brush-mode context gating', () => {
   });
 
   it('quick-261023-ors: the Memory tab branch sits after Paper and before the Color fallback', () => {
-    const paperAt = panelSource.indexOf("topPaneTab === 'paper'");
-    const memoryAt = panelSource.indexOf("topPaneTab === 'memory'");
+    const paperAt = panelSource.indexOf("effectiveTopPaneTab === 'paper'");
+    const memoryAt = panelSource.indexOf("effectiveTopPaneTab === 'memory'");
     const colorFallbackAt = panelSource.indexOf('physics-paint-single-tab-panel', memoryAt);
     expect(paperAt, 'paper arm exists').toBeGreaterThan(-1);
     expect(memoryAt, 'memory arm exists').toBeGreaterThan(paperAt);

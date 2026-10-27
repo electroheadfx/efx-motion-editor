@@ -873,10 +873,12 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(topPaneTabLabels(tree)).toEqual(['Color', 'Paper', 'Memory']);
   });
 
-  it('is the LAST top-pane tab in watercolor mode (after Color/Brush/Settings/Paper)', () => {
+  it('is the LAST top-pane tab in watercolor mode (after Color/Settings/Paper)', () => {
     activeModule.value = 'watercolor';
     const tree = renderPanel(baseProps());
-    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Brush', 'Settings', 'Paper', 'Memory']);
+    // 261027-gh9g: the Brush tab is retired — the catalog lives in the
+    // top-bar dropdown and its floating modal.
+    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Settings', 'Paper', 'Memory']);
   });
 
   it('renders the gauge only on the Memory tab: contextual scripts, the selected frame, then frame caches', () => {

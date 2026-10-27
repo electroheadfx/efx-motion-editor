@@ -706,31 +706,6 @@ button.destructive {
   border-radius: 8px 0 0 8px;
 }
 
-/* 261027-gh9f: the leading brush-thumbnail slot replaces the inert Brush
-   segment in the Studio top bar. It keeps the same 24px inset-track height;
-   the slot right after it is an inner segment and stays square. */
-.module-switcher-leading {
-  display: flex;
-}
-
-.module-switcher-leading + .module-switcher-slot {
-  border-radius: 0;
-}
-
-.module-switcher-leading .module-switcher-brush-preview {
-  min-width: 0;
-  padding: 0 6px;
-  border-radius: 8px 0 0 8px;
-  justify-content: center;
-}
-
-.module-switcher-brush-preview-thumb {
-  display: block;
-  width: 60px;
-  height: 18px;
-  border-radius: 3px;
-  background: #fff;
-}
 
 .module-switcher-slot:last-child {
   border-radius: 0 8px 8px 0;
@@ -760,6 +735,163 @@ button.destructive {
   cursor: default;
   opacity: 0.55;
   box-shadow: none;
+}
+
+/* 261027-gh9g: the top-bar brush picker — the retired module switcher's slot.
+   A larger painted thumb + the brush name; it opens the brush dropdown. */
+.physics-paint-brush-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 3px 9px 3px 5px;
+  margin-left: 15px;
+  border: 1px solid #696d72;
+  border-radius: 8px;
+  background: #505255;
+  color: #f4f7fa;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.physics-paint-brush-trigger:hover,
+.physics-paint-brush-trigger.open {
+  border-color: #7a7f86;
+  background: #5a5d61;
+}
+
+.physics-paint-brush-trigger.open {
+  border-color: #6f90ff;
+  background: #365ed6;
+}
+
+.physics-paint-brush-trigger-thumb {
+  display: block;
+  flex: 0 0 auto;
+  width: 96px;
+  height: 28px;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.physics-paint-brush-trigger-thumb.is-empty {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.physics-paint-brush-trigger-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.physics-paint-brush-trigger-chevron {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+/* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an
+   absolutely positioned child would be clipped. */
+.physics-paint-brush-menu {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  max-height: min(520px, calc(100vh - 96px));
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(24, 26, 30, 0.96);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  color: #e8edf4;
+  box-sizing: border-box;
+}
+
+.physics-paint-brush-menu-open-modal {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #4c6bb4;
+  border-radius: 6px;
+  background: #2f4da0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.physics-paint-brush-menu-open-modal:hover {
+  background: #3a5cba;
+}
+
+.physics-paint-brush-menu-separator {
+  flex: 0 0 1px;
+  margin: 6px 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.physics-paint-brush-menu-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.physics-paint-brush-menu-item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #d7dee8;
+  cursor: pointer;
+  text-align: left;
+}
+
+.physics-paint-brush-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.physics-paint-brush-menu-item.active {
+  border-color: #f08a24;
+  background: rgba(240, 138, 36, 0.3);
+  color: #fff;
+}
+
+.physics-paint-brush-menu-thumb {
+  display: block;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 22px;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.physics-paint-brush-menu-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 261027-gh9g: the floating brush modal — a MORE transparent glass panel
+   (0.55, set inline) with the backdrop blur on the surface itself, so the
+   canvas paint reads through it. */
+.physics-paint-brush-modal {
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  backdrop-filter: blur(18px) saturate(1.6);
 }
 
 .physics-paint-canvas-region {

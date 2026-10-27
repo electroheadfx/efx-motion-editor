@@ -343,31 +343,26 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
       /<BrushResponsePanel\b/,
     );
 
-    // The panel mounts the adopted tab components in order:
-    // brush → settings → paper.
+    // The panel mounts the adopted tab components in order: settings → paper.
+    // 261027-gh9g: the Brush tab MOUNT is retired (the component file stays on
+    // disk and keeps the catalog contract above); the catalog now opens from
+    // the top-bar dropdown / floating modal.
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    const brushTabStart = panelSource.indexOf(
-      "topPaneTab === 'brush' && isWatercolorModule",
-    );
-    expect(brushTabStart, 'brush-tab branch must exist').toBeGreaterThan(-1);
+    expect(panelSource, 'no Brush tab mount').not.toMatch(/<RightPanelBrushTab\b/);
     const settingsTabStart = panelSource.indexOf(
-      "topPaneTab === 'settings' && isWatercolorModule",
-      brushTabStart,
+      "effectiveTopPaneTab === 'settings' && isWatercolorModule",
     );
-    expect(settingsTabStart, 'settings-tab branch must follow brush').toBeGreaterThan(
-      brushTabStart,
+    expect(settingsTabStart, 'settings-tab branch must exist').toBeGreaterThan(-1);
+    const paperTabStart = panelSource.indexOf(
+      "effectiveTopPaneTab === 'paper'",
+      settingsTabStart,
     );
-    const paperTabStart = panelSource.indexOf("topPaneTab === 'paper'", settingsTabStart);
     expect(paperTabStart, 'paper-tab branch must follow settings').toBeGreaterThan(
       settingsTabStart,
     );
-    expect(
-      panelSource.slice(brushTabStart, settingsTabStart),
-      'panel mounts RightPanelBrushTab in the brush branch',
-    ).toMatch(/<RightPanelBrushTab\b/);
     const settingsBranch = panelSource.slice(settingsTabStart, paperTabStart);
     expect(
       settingsBranch,

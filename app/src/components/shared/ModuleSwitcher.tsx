@@ -11,7 +11,6 @@
  * drains panels only — document and timeline stay put (D-02). Visual family:
  * physics-paint-segmented-button (one CSS language).
  */
-import type { ComponentChildren } from 'preact';
 import {
   activeModule,
   setActiveModule,
@@ -23,17 +22,10 @@ import { lockedModuleTooltip } from './frameModuleLock';
 export interface ModuleSwitcherProps {
   /**
    * quick-261025-awl (D-03): the non-owning module for the selected key.
-   * Only the Studio's top-bar mount passes it; the Toolbar mount stays bare.
-   * A locked slot is a NATIVE disabled button, exactly like Krita.
+   * The Toolbar mount stays bare; the Studio top bar no longer mounts this
+   * component (261027-gh9g replaced it with the brush picker).
    */
   lockedModule?: ActiveModule | null;
-  /**
-   * 261027-gh9f: under WATERCOLOR_ONLY the inert Brush slot is replaced by
-   * this leading slot — the Studio passes the active brush thumbnail so the
-   * top bar shows what the pen will paint. The Toolbar mount passes nothing
-   * and keeps the disabled Brush label.
-   */
-  leadingSlot?: ComponentChildren;
 }
 
 const MODULE_SLOTS = [
@@ -42,22 +34,19 @@ const MODULE_SLOTS = [
   { id: 'krita' as const, label: 'Krita' },
 ] as const;
 
-export function ModuleSwitcher({ lockedModule = null, leadingSlot }: ModuleSwitcherProps = {}) {
+export function ModuleSwitcher({ lockedModule = null }: ModuleSwitcherProps = {}) {
   // Under the seam the active slot is a constant, so a raw signal write can
   // never render a dead active disabled slot (261027-gh9).
   const current: ActiveModule = WATERCOLOR_ONLY ? 'watercolor' : activeModule.value;
   // The seam outranks every ownership lock — Water color is never disabled.
   const effectiveLocked = WATERCOLOR_ONLY ? null : lockedModule;
-  const showLeading = WATERCOLOR_ONLY && leadingSlot !== undefined && leadingSlot !== null;
-  const slots = showLeading ? MODULE_SLOTS.filter((slot) => slot.id !== 'brush') : MODULE_SLOTS;
   return (
     <div
       class="module-switcher physics-paint-segmented-row"
       role="group"
       aria-label="Module"
     >
-      {showLeading ? <div class="module-switcher-leading">{leadingSlot}</div> : null}
-      {slots.map((slot) => {
+      {MODULE_SLOTS.map((slot) => {
         const isInert = slot.id === 'krita' || (WATERCOLOR_ONLY && slot.id === 'brush');
         const isActive = !isInert && current === slot.id;
         const isLocked = !isInert && slot.id === effectiveLocked;
