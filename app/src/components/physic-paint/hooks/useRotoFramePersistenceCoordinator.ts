@@ -771,6 +771,34 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     reference.clearCachedRotoReferenceUrl();
   }, [reference.clearCachedRotoReferenceUrl, resolveFrameIdentityInput]);
 
+  // 261027-gh9c/gh9e: the ONE blank-payload writer. It drops every display
+  // cache handle first, then commits the blank with the content revision
+  // resolved at COMMIT time (the async encode can outlive a revision), pinned
+  // to the track that owned the key, with one retry.
+  const writeBlankKeyPayload = useCallback((
+    keyId: string,
+    appFrame: number,
+    size: { width: number; height: number },
+    trackId: string,
+    launch: PhysicPaintLaunchContext,
+  ) => {
+    livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
+    confirmedFramesRef.current.delete(appFrame);
+    reference.clearCachedRotoReferenceUrl();
+    const commitBlank = (attempt: number) => {
+      void buildBlankRotoFrame(size.width, size.height, appFrame).then(async (blank) => {
+        // No expected revision is passed: the blank encode is asynchronous, so
+        // a click-time revision can be superseded mid-flight and the store
+        // then rejects the blank as stale, leaving the painted pixels cached.
+        const ok = await upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, undefined, trackId);
+        // One retry with a freshly resolved revision — a legitimate mutation
+        // racing the encode must never leave the painted cache in place.
+        if (!ok && attempt === 0) commitBlank(1);
+      });
+    };
+    commitBlank(0);
+  }, [reference.clearCachedRotoReferenceUrl, upsertCachedFrame]);
+
   const clearCurrentFrame = useCallback((keyId: string, appFrame: number, size: { width: number; height: number }) => {
     const launch = inputRef.current.launchContext;
     if (!launch) return false;
@@ -778,21 +806,22 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const record = inputRef.current.store.getRotoRealKeyRecord(launch.layerId, trackId, keyId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId, trackId);
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
-    livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
-    // 261027-gh9c: drop every display-cache handle NOW — until the blank
-    // payload lands, nothing may serve the old pixels for this frame.
-    confirmedFramesRef.current.delete(appFrame);
-    reference.clearCachedRotoReferenceUrl();
-    void buildBlankRotoFrame(size.width, size.height, appFrame).then((blank) => {
-      // 261027-gh9c: resolve the content revision at COMMIT time (no expected
-      // revision passed). The blank encode is asynchronous, so the revision
-      // read at click time can be superseded mid-flight; the store then
-      // rejected the blank as stale and the painted pixels stayed in the key
-      // cache. The track stays pinned to the one that owned the key.
-      void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, undefined, trackId);
-    });
+    writeBlankKeyPayload(keyId, appFrame, size, trackId, launch);
     return true;
-  }, [reference.clearCachedRotoReferenceUrl, upsertCachedFrame]);
+  }, [writeBlankKeyPayload]);
+
+  // 261027-gh9e: the Trash's fallback when the frame editor's selection
+  // guards refuse. Resolves the key BY FRAME and blanks it anyway; a group or
+  // generated cell has no real key here, so the fallback still fails closed.
+  const forceClearFrame = useCallback((appFrame: number, size: { width: number; height: number }) => {
+    const launch = inputRef.current.launchContext;
+    if (!launch) return false;
+    const trackId = inputRef.current.getActiveTrackId(launch.layerId);
+    const record = inputRef.current.store.getRotoRealKeyRecordByAppFrame(launch.layerId, trackId, appFrame);
+    if (!record || record.appFrame !== appFrame) return false;
+    writeBlankKeyPayload(record.keyId, appFrame, size, trackId, launch);
+    return true;
+  }, [writeBlankKeyPayload]);
 
   const snapshotLivePixels = useCallback((appFrame: number): void => {
     const identity = resolveFrameIdentityInput(appFrame);
@@ -879,6 +908,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     hasPendingLivePixels: () => livePixelTransactionsRef.current.hasPending() || parentDeliveryRef.current.size > 0 || parentDeliveryErrorRef.current.size > 0,
     removeCachedFrame,
     clearCurrentFrame,
+    forceClearFrame,
     syncCurrentPhysicalDocument,
     resetForLaunch,
   };

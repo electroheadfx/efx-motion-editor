@@ -91,13 +91,11 @@ describe('Roto frame persistence coordinator loop-placeholder rejection (D-28, a
   });
 });
 
-describe('261027-gh9c Trash clears the painted cache', () => {
-  it('evicts the display cache and rewrites the key payload to a blank frame', () => {
-    const start = coordinatorSource.indexOf(
-      'const clearCurrentFrame = useCallback((keyId: string, appFrame: number, size:',
-    );
-    expect(start, 'clearCurrentFrame seam').toBeGreaterThan(-1);
-    const end = coordinatorSource.indexOf('const snapshotLivePixels', start);
+describe('261027-gh9c/gh9e Trash clears the painted cache', () => {
+  it('blanks the key payload at commit time, evicting the display cache first', () => {
+    const start = coordinatorSource.indexOf('const writeBlankKeyPayload = useCallback(');
+    expect(start, 'blank writer seam').toBeGreaterThan(-1);
+    const end = coordinatorSource.indexOf('const clearCurrentFrame', start);
     const body = coordinatorSource.slice(start, end);
     expect(body).toContain('livePixelTransactionsRef.current.invalidate(');
     // No cached handle may serve the old pixels while the blank is in flight.
@@ -111,6 +109,17 @@ describe('261027-gh9c Trash clears the painted cache', () => {
       'upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, undefined, trackId)',
     );
     expect(body, 'no click-time revision is passed to the blank commit').not.toContain('keyId, contentRevision)');
+    // 261027-gh9e: one retry with a freshly resolved revision.
+    expect(body).toContain('if (!ok && attempt === 0) commitBlank(1);');
+  });
+
+  it('keeps a by-frame fallback for a key the selection guards refuse', () => {
+    const start = coordinatorSource.indexOf('const forceClearFrame = useCallback(');
+    expect(start, 'force clear seam').toBeGreaterThan(-1);
+    const end = coordinatorSource.indexOf('const snapshotLivePixels', start);
+    const body = coordinatorSource.slice(start, end);
+    expect(body).toContain('getRotoRealKeyRecordByAppFrame(');
+    expect(body).toContain('writeBlankKeyPayload(record.keyId, appFrame, size, trackId, launch);');
   });
 });
 

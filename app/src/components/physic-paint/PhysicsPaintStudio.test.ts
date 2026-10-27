@@ -3822,8 +3822,13 @@ describe('261023-h9v brush script rehydration surface', () => {
 
   it('drops both script stores on an explicit user clear (full reset)', () => {
     expect(clearSourceStart).toBeGreaterThan(-1);
-    expect(clearSourceBody).toContain('if (rotoFrameEditingRef.current.clearCurrentFrame()) {');
+    expect(clearSourceBody).toContain('const cleared = rotoFrameEditingRef.current.clearCurrentFrame();');
     expect(clearSourceBody).toContain('purgeMemoryScriptFrame(currentFrame);');
+    // 261027-gh9e: when the frame editor's guards refuse, the Trash still
+    // blanks the real key by frame before the script purge.
+    expect(clearSourceBody).toContain(
+      'forceClearRotoFrameRef.current(currentFrame, { width: canvasWidth, height: canvasHeight })',
+    );
     expect(clearSourceBody.indexOf('clearCurrentFrame()')).toBeLessThan(
       clearSourceBody.indexOf('purgeMemoryScriptFrame('),
     );

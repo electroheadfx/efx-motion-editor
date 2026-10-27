@@ -4607,29 +4607,45 @@ export function PhysicsPaintStudio() {
   // propagation) and rotoFrameEditing is rebuilt per render — both route
   // through refs so this callback keeps a stable identity across
   // startFrame-only renders. The guards read the exact same live values.
+  // 261027-gh9e: latest coordinator fallback without making the Trash
+  // callback identity-dependent on the per-render coordinator object.
+  const forceClearRotoFrameRef = useRef<(frame: number, size: { width: number; height: number }) => boolean>(() => false);
+  forceClearRotoFrameRef.current = (frame, size) => rotoPersistence.forceClearFrame(frame, size);
   const clearActiveSource = useCallback(() => {
     if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
-    if (rotoFrameEditingRef.current.clearCurrentFrame()) {
-      // 261027-gh9b: Trash is the full test reset. The frame editor above
-      // already blanks the key's cached pixels; this drops BOTH script stores
-      // (Water color + Brush) exactly like Raster does, but without retaining
-      // any raster. 261023-h9v: the completion listener never reacts to
-      // 'clear', so this is the ONE explicit drop site outside prune / launch
-      // teardown.
-      purgeMemoryScriptFrame(currentFrame);
-      // 261027-gh9c: the key's pre-script raster is stale after a full reset —
-      // drop it so the next stroke re-pins the blank key as its durable base
-      // (same ordering law as Raster).
-      const clearedCell = resolveStudioScriptCell(currentFrame);
-      if (clearedCell !== null && clearedCell.kind === 'real' && typeof clearedCell.keyId === 'string') {
-        aquarelleDurableBaseByKeyRef.current.delete(clearedCell.keyId);
-      }
-      // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
-      // refresh OUTSIDE the module gate so the owner lock can never go stale.
-      applyFrameModuleState(currentFrame);
-      rotoScript.notifySourceRevision();
+    const cleared = rotoFrameEditingRef.current.clearCurrentFrame();
+    if (!cleared) {
+      // 261027-gh9e: the frame editor's selection guards can refuse even
+      // though the frame holds a real key. The Trash is the full test reset —
+      // blank the key's cache by frame anyway, then clear the live sheet.
+      // Generated/group cells have no real key: the fallback still fails
+      // closed.
+      if (!forceClearRotoFrameRef.current(currentFrame, { width: canvasWidth, height: canvasHeight })) return;
+      engine.clear();
+      (engine as PreviewBackgroundEngine).clearPreviewBaseImage();
+      (engine as PreviewBackgroundEngine).resetBackground();
+      aquarelleResetSheetRef.current?.();
+      aquarelleMergeBaseRef.current = null;
     }
-  }, [applyFrameModuleState, currentFrame, engine, resolveStudioScriptCell, rotoScript]);
+    // 261027-gh9b: Trash is the full test reset. If the frame editor ran it
+    // already blanked the key's cached pixels; this drops BOTH script stores
+    // (Water color + Brush) exactly like Raster does, but without retaining
+    // any raster. 261023-h9v: the completion listener never reacts to
+    // 'clear', so this is the ONE explicit drop site outside prune / launch
+    // teardown.
+    purgeMemoryScriptFrame(currentFrame);
+    // 261027-gh9c: the key's pre-script raster is stale after a full reset —
+    // drop it so the next stroke re-pins the blank key as its durable base
+    // (same ordering law as Raster).
+    const clearedCell = resolveStudioScriptCell(currentFrame);
+    if (clearedCell !== null && clearedCell.kind === 'real' && typeof clearedCell.keyId === 'string') {
+      aquarelleDurableBaseByKeyRef.current.delete(clearedCell.keyId);
+    }
+    // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
+    // refresh OUTSIDE the module gate so the owner lock can never go stale.
+    applyFrameModuleState(currentFrame);
+    rotoScript.notifySourceRevision();
+  }, [applyFrameModuleState, canvasHeight, canvasWidth, currentFrame, engine, resolveStudioScriptCell, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
