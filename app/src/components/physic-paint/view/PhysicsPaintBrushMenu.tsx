@@ -15,6 +15,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Maximize2 } from 'lucide-preact';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
@@ -57,7 +58,12 @@ export function PhysicsPaintBrushMenu() {
   if (!open || anchor === null) return null;
 
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440;
-  const left = Math.max(8, Math.min(anchor.left, viewportWidth - 272));
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
+  const left = Math.max(8, Math.min(anchor.left, viewportWidth - 308));
+  // 261027-gh9h: the menu uses every pixel from the trigger down to the
+  // viewport edge. With the enlarged rows the catalog overflows on most
+  // windows; the custom EFX scrollbar (never the OS one) takes the rest.
+  const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);
 
   return (
     <div
@@ -66,7 +72,7 @@ export function PhysicsPaintBrushMenu() {
       role="menu"
       aria-label="Brushes"
       data-testid="watercolor-brush-menu"
-      style={{ left: `${left}px`, top: `${anchor.top}px` }}
+      style={{ left: `${left}px`, top: `${anchor.top}px`, maxHeight: `${availableHeight}px` }}
     >
       <button
         type="button"
@@ -81,32 +87,34 @@ export function PhysicsPaintBrushMenu() {
         Open modal
       </button>
       <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
-      <div class="physics-paint-brush-menu-list">
-        {BRUSH_PRESETS.map((preset) => {
-          const selected = preset.id === selectedId;
-          return (
-            <button
-              key={preset.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={selected}
-              class={`physics-paint-brush-menu-item${selected ? ' active' : ''}`}
-              data-testid={`watercolor-brush-menu-item-${preset.id}`}
-              title={preset.hint}
-              onClick={() => {
-                selectAquarelleTip(preset.id);
-                setAquarelleBrushMenuOpen(false);
-              }}
-            >
-              <WatercolorBrushThumb
-                presetId={preset.id}
-                class="physics-paint-brush-menu-thumb"
-              />
-              <span class="physics-paint-brush-menu-name">{preset.name}</span>
-            </button>
-          );
-        })}
-      </div>
+      <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
+        <div class="physics-paint-brush-menu-list">
+          {BRUSH_PRESETS.map((preset) => {
+            const selected = preset.id === selectedId;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                class={`physics-paint-brush-menu-item${selected ? ' active' : ''}`}
+                data-testid={`watercolor-brush-menu-item-${preset.id}`}
+                title={preset.hint}
+                onClick={() => {
+                  selectAquarelleTip(preset.id);
+                  setAquarelleBrushMenuOpen(false);
+                }}
+              >
+                <WatercolorBrushThumb
+                  presetId={preset.id}
+                  class="physics-paint-brush-menu-thumb"
+                />
+                <span class="physics-paint-brush-menu-name">{preset.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </SidebarScrollArea>
     </div>
   );
 }

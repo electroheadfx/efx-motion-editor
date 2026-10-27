@@ -798,8 +798,11 @@ button.destructive {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  width: 264px;
-  max-height: min(520px, calc(100vh - 96px));
+  /* 261027-gh9h: widened for the full-width brush thumbs. The height is
+     computed inline from the trigger's anchor (all the way to the viewport
+     edge), so the list scrolls only when it truly overflows. */
+  width: 300px;
+  min-height: 0;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
@@ -807,6 +810,7 @@ button.destructive {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
   color: #e8edf4;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .physics-paint-brush-menu-open-modal {
@@ -835,24 +839,29 @@ button.destructive {
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* 261027-gh9h: the list rides the app's custom scrollbar (SidebarScrollArea),
+   never the OS one. */
+.physics-paint-brush-menu-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .physics-paint-brush-menu-list {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
-  gap: 2px;
-  min-height: 0;
-  overflow-y: auto;
+  gap: 3px;
+  padding-right: 2px;
 }
 
 .physics-paint-brush-menu-item {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 3px 6px;
+  gap: 9px;
+  height: 46px;
+  padding: 5px 7px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: #d7dee8;
   cursor: pointer;
@@ -869,19 +878,25 @@ button.destructive {
   color: #fff;
 }
 
+/* The thumb stretches across the row's remaining width, mirroring the
+   top-bar trigger (big painted preview + name on the side). */
 .physics-paint-brush-menu-thumb {
   display: block;
-  flex: 0 0 auto;
-  width: 64px;
-  height: 22px;
-  border-radius: 3px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  border-radius: 4px;
   background: #fff;
 }
 
 .physics-paint-brush-menu-name {
+  flex: 0 0 auto;
+  min-width: 58px;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
+  text-align: right;
   text-transform: uppercase;
   white-space: nowrap;
 }

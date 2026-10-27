@@ -122,13 +122,34 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     expect(aquarelleBrushModalOpen.value).toBe(true);
   });
 
-  it('is viewport-fixed (the top bar scrolls and would clip it)', () => {
+  it('is viewport-fixed and fills the height below the trigger', () => {
     const rule = CSS_SOURCE.slice(
       CSS_SOURCE.indexOf('.physics-paint-brush-menu {'),
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu {')),
     );
     expect(rule).toContain('position: fixed');
-    expect(MENU_SOURCE).toContain("style={{ left: `${left}px`, top: `${anchor.top}px` }}");
+    // 261027-gh9h: the menu's max height runs from the trigger to the viewport
+    // edge, so the enlarged rows scroll only when they truly overflow.
+    expect(MENU_SOURCE).toContain('const availableHeight = Math.max(240, viewportHeight - anchor.top - 8);');
+    expect(MENU_SOURCE).toContain('maxHeight: `${availableHeight}px`');
+  });
+
+  it('uses the app scrollbar and gives the thumb the row width', () => {
+    // The OS scrollbar is never used in the Studio — same SidebarScrollArea
+    // thumb as the sidebar.
+    expect(MENU_SOURCE).toContain('<SidebarScrollArea');
+    expect(MENU_SOURCE).not.toContain('overflow-y: auto');
+    const thumbRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-thumb {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-thumb {')),
+    );
+    expect(thumbRule).toContain('flex: 1 1 auto');
+    expect(thumbRule).toContain('height: 34px');
+    const listRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {')),
+    );
+    expect(listRule).not.toContain('overflow-y');
   });
 });
 
