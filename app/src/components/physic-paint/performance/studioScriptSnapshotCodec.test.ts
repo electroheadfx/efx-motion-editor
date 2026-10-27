@@ -166,7 +166,7 @@ describe('studioScriptSnapshotCodec', () => {
   });
 
   it('rejects an unknown container version with the version code', () => {
-    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 3), IDENTITY))).toBe(
+    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 4), IDENTITY))).toBe(
       'version',
     );
   });
@@ -336,6 +336,54 @@ function replaceBrushBody(container: Uint8Array, brushBody: Uint8Array): Uint8Ar
   return out;
 }
 
+/** v3 anchor body start (after the u32 anchor-section length). */
+function anchorBodyOffset(container: Uint8Array): number {
+  const brushStart = brushBodyOffset(container);
+  const view = new DataView(container.buffer, container.byteOffset, container.byteLength);
+  const brushLength = view.getUint32(brushStart - 4, true);
+  return brushStart + brushLength + 4;
+}
+
+/** Rewrite a v3 container's anchor body (length word included). */
+function replaceAnchorBody(container: Uint8Array, anchorBody: Uint8Array): Uint8Array {
+  const offset = anchorBodyOffset(container);
+  const head = container.subarray(0, offset - 4);
+  const out = new Uint8Array(head.byteLength + 4 + anchorBody.byteLength);
+  out.set(head, 0);
+  new DataView(out.buffer).setUint32(head.byteLength, anchorBody.byteLength, true);
+  out.set(anchorBody, head.byteLength + 4);
+  return out;
+}
+
+/** The same snapshot with the anchor section removed and the header marked v2. */
+function containerAsV2(container: Uint8Array): Uint8Array {
+  const anchorLengthOffset = anchorBodyOffset(container) - 4;
+  const out = container.slice(0, anchorLengthOffset);
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 2, true);
+  return out;
+}
+
+function anchorBody(entries: readonly { mutationId: number; keyId: string }[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const records = entries.map((entry) => ({
+    mutationId: entry.mutationId,
+    keyId: encoder.encode(entry.keyId),
+  }));
+  const length = 8 + records.reduce((sum, entry) => sum + 4 + 2 + entry.keyId.byteLength, 0);
+  const body = new Uint8Array(length);
+  const view = new DataView(body.buffer);
+  let offset = 0;
+  view.setUint16(offset, 1, true); offset += 2; // anchor version
+  view.setUint16(offset, 0, true); offset += 2; // reserved
+  view.setUint32(offset, records.length, true); offset += 4;
+  for (const record of records) {
+    view.setUint32(offset, record.mutationId, true); offset += 4;
+    view.setUint16(offset, record.keyId.byteLength, true); offset += 2;
+    body.set(record.keyId, offset); offset += record.keyId.byteLength;
+  }
+  return body;
+}
+
 /** A brush body whose single stroke declares an impossible point count. */
 function brushBodyWithOversizedPointCount(): Uint8Array {
   const body = new Uint8Array(4 + 4 + 4 + 3 + 4 + 4 + 4);
@@ -434,5 +482,81 @@ describe('studioScriptSnapshotCodec — brush section', () => {
     expect(codeOf(() => decodeStudioScriptSnapshot(replaceBrushBody(bytes, body), IDENTITY))).toBe(
       'truncated',
     );
+  });
+});
+
+// ------------------------------------------------------------
+//  261027 UAT round 2 — the v3 watercolor key-anchor section.
+//  AQTL events carry no key identity, so SNAP v3 binds every
+//  stroke mutationId to the physical KEY it was captured on.
+//  Without it a deleted key's strokes re-seed into the key that
+//  later arrives at the same frame number.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotCodec — watercolor key anchors (261027)', () => {
+  function anchoredContainer(
+    anchors: readonly { mutationId: number; keyId: string }[],
+  ): Uint8Array {
+    return encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: fixtureEvents(),
+      watercolorKeyAnchors: anchors,
+    });
+  }
+
+  it('round-trips the anchors and stays byte-stable', () => {
+    const anchors = [
+      { mutationId: 101, keyId: 'key-101' },
+      { mutationId: 202, keyId: 'key with spaces/é' },
+    ];
+    const bytes = anchoredContainer(anchors);
+    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
+
+    expect(decoded.watercolorKeyAnchors).toEqual(anchors);
+    expect(
+      encodeStudioScriptSnapshot({
+        ...IDENTITY,
+        watercolorEvents: decoded.watercolorEvents,
+        watercolorKeyAnchors: decoded.watercolorKeyAnchors,
+      }),
+    ).toEqual(bytes);
+  });
+
+  it('decodes a v2 container (no anchor section) as unanchored', () => {
+    const decoded = decodeStudioScriptSnapshot(containerAsV2(anchoredContainer([
+      { mutationId: 101, keyId: 'key-101' },
+    ])), IDENTITY);
+    expect(decoded.watercolorEvents).toHaveLength(2);
+    expect(decoded.watercolorKeyAnchors).toEqual([]);
+  });
+
+  it('refuses two anchors for the same stroke', () => {
+    const bytes = replaceAnchorBody(
+      anchoredContainer([]),
+      anchorBody([
+        { mutationId: 7, keyId: 'key-a' },
+        { mutationId: 7, keyId: 'key-b' },
+      ]),
+    );
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('anchor');
+  });
+
+  it('refuses an empty anchor key id', () => {
+    const bytes = replaceAnchorBody(
+      anchoredContainer([]),
+      anchorBody([{ mutationId: 7, keyId: '' }]),
+    );
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('anchor');
+  });
+
+  it('refuses an over-declared anchor count before allocating', () => {
+    const body = anchorBody([]);
+    new DataView(body.buffer, body.byteOffset, body.byteLength).setUint32(4, 0xffffff, true);
+    expect(
+      codeOf(() => decodeStudioScriptSnapshot(
+        replaceAnchorBody(anchoredContainer([]), body),
+        IDENTITY,
+      )),
+    ).toBe('count');
   });
 });

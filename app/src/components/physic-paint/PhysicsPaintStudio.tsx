@@ -232,6 +232,7 @@ import {
 import {
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
+  getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   hasAquarelleScriptForFrame,
@@ -635,6 +636,23 @@ function resolveStudioPixelOnlyFrames(
     }
   }
   return frames;
+}
+
+/**
+ * 261027 (studio-strokes-lost-redraw UAT round 2): a recorded Water color
+ * stroke belongs to the KEY it was captured on — never to a frame number.
+ * The identity is the bound snapshot identity (layer + track), exactly the
+ * script store's scope; a frame with no live key stays honestly null (the
+ * event is retained in the file but can never seed a replacement key).
+ */
+function resolveStudioScriptKeyIdForFrame(
+  identity: StudioScriptSnapshotIdentity | null,
+  frame: number,
+): string | null {
+  if (!identity) return null;
+  return physicPaintStore
+    .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, frame)
+    ?.keyId ?? null;
 }
 
 
@@ -1161,6 +1179,10 @@ export function PhysicsPaintStudio() {
         const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
         return new Map(records.map((record) => [record.appFrame, record.keyId]));
       },
+      // 261027: the SESSION side of the same identity law — every recorded
+      // stroke stamps the key it was captured on, so a saved timeline can
+      // prove ownership on restore instead of trusting a frame number.
+      getWatercolorKeyAnchors: () => getAquarelleStrokeKeyAnchors(),
       // Loop Clip rails (Play Script / Reveal) bake pixels only by law. A
       // legacy (v1) row carries no keyId, so on a rail frame its identity is
       // unprovable — such a row is stale and must not restore.
@@ -3656,7 +3678,18 @@ export function PhysicsPaintStudio() {
                 allocateMutationId: (stroke) => engine.enqueueRecordedStroke({
                   primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
                 }),
-                record: (mutationId, stroke) => { recordAquarelleStroke(mutationId, stroke); },
+                // 261027: the copy belongs to the DESTINATION key, never to
+                // the frame number it happens to occupy.
+                record: (mutationId, stroke) => {
+                  recordAquarelleStroke(
+                    mutationId,
+                    stroke,
+                    resolveStudioScriptKeyIdForFrame(
+                      studioScriptSnapshotIdentityRef.current,
+                      destinationFrame,
+                    ),
+                  );
+                },
               });
               return recorded > 0;
             },
@@ -6472,7 +6505,14 @@ export function PhysicsPaintStudio() {
     try {
       const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
-      recordAquarelleStroke(mutationId, { ...stroke, mutationId });
+      // 261027: stamp the OWNING KEY with the stroke. A frame number is not
+      // identity — a deleted key's strokes must never seed the key that
+      // later occupies the same frame.
+      const capturedKeyId = resolveStudioScriptKeyIdForFrame(
+        studioScriptSnapshotIdentityRef.current,
+        launchContextRef.current?.startFrame ?? 0,
+      );
+      recordAquarelleStroke(mutationId, { ...stroke, mutationId }, capturedKeyId);
       // The sheet now holds paint that no queue can see until it is captured;
       // the close/save flush gate reads this flag.
       aquarelleSheetHasPaintRef.current = true;

@@ -5,17 +5,25 @@
 //  One file holds BOTH Studio script stores for one
 //  project/layer/track key, so restore is a single disk read:
 //
-//    magic 'SNP1' (4) | u16 version=2 | u16 flags=0 | u8 railCleanupDone
+//    magic 'SNP1' (4) | u16 version=3 | u16 flags=0 | u8 railCleanupDone
 //    u16 + UTF-8 projectId
 //    u16 + UTF-8 layerId
 //    u16 + UTF-8 trackId
 //    u32 watercolorByteLength | watercolor body
 //    u32 brushByteLength      | brush body
+//    u32 anchorByteLength     | anchor body   (v3+)
 //
 //  The watercolor body IS the proven AQTL v1 buffer
 //  (encodeScriptTimelineBinary) — the IDs, order, playFrame,
 //  params, toolOverrides, cuisson and Dry events all ride there.
 //  There is deliberately no JSON fallback.
+//
+//  v3 adds the key-anchor section: AQTL carries no key identity, so
+//  every watercolor stroke mutationId is bound to the physical KEY it
+//  was captured on. A restore seeds a stroke only when the file
+//  anchor equals the live key at that playFrame; without this a
+//  deleted key's strokes re-seeded into whatever new key later took
+//  the same frame number (six phantom guides after one new stroke).
 //
 //  The brush body is its own versioned block:
 //    u16 version=1 | u16 reserved=0 | u32 frameCount | frames...
@@ -44,13 +52,30 @@ export const STUDIO_SCRIPT_SNAPSHOT_MAGIC = 'SNP1';
 
 /**
  * v2 adds the durable rail-cleanup marker as a container byte (after the flags
- * word, before the identity strings). Per project/layer/track, it survives
- * window restarts and file rewrites — the in-webview localStorage marker that
- * preceded it was not durable here. v1 files stay readable (flag = false).
+ * word, before the identity strings). v3 adds the watercolor key-anchor
+ * section after the brush body. v1/v2 files stay readable (no marker / no
+ * anchors respectively).
  */
-export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 2;
+export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 3;
 
-const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([1, STUDIO_SCRIPT_SNAPSHOT_VERSION]);
+const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([1, 2, STUDIO_SCRIPT_SNAPSHOT_VERSION]);
+
+/**
+ * The anchor section's own version:
+ *   u16 version=1 | u16 reserved=0 | u32 count |
+ *   count x (u32 mutationId, u16 UTF-8 byte length, keyId bytes)
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSION = 1;
+
+const STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSIONS = new Set([
+  STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSION,
+]);
+
+/** One watercolor stroke's owning physical key. */
+export interface StudioScriptSnapshotWatercolorKeyAnchor {
+  readonly mutationId: number;
+  readonly keyId: string;
+}
 
 /**
  * The brush section's own version (it evolves independently).
@@ -75,7 +100,8 @@ export type StudioScriptSnapshotCodecErrorCode =
   | 'count'
   | 'trailing'
   | 'brush'
-  | 'watercolor';
+  | 'watercolor'
+  | 'anchor';
 
 /** Every container failure is this typed error. */
 export class StudioScriptSnapshotCodecError extends Error {
@@ -114,6 +140,8 @@ export interface StudioScriptSnapshotBrushFrame {
 export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIdentity {
   watercolorEvents: readonly AquarellePayloadEvent[];
   brushFrames?: readonly StudioScriptSnapshotBrushFrame[];
+  /** v3: the owning physical key per watercolor stroke mutationId. */
+  watercolorKeyAnchors?: readonly StudioScriptSnapshotWatercolorKeyAnchor[];
   /** v2: the durable one-time rail-cleanup marker. Absent = not done yet. */
   railCleanupDone?: boolean;
 }
@@ -121,12 +149,17 @@ export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIde
 export interface StudioScriptSnapshotDecodeResult {
   watercolorEvents: AquarellePayloadEvent[];
   brushFrames: StudioScriptSnapshotBrushFrame[];
+  /** v3: the owning key per watercolor stroke. Empty for v1/v2 files. */
+  watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
   /** v2: true once the rail cleanup ran for this project/layer/track. */
   railCleanupDone: boolean;
 }
 
 const CONTAINER_HEADER_BYTE_LENGTH = 8;
 const BRUSH_HEADER_BYTE_LENGTH = 8;
+const ANCHOR_HEADER_BYTE_LENGTH = 8;
+/** u32 mutationId + a u16 keyId length (an empty keyId is invalid, so this is a true minimum). */
+const ANCHOR_RECORD_MIN_BYTES = 4 + 2;
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
@@ -600,6 +633,73 @@ function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[]
   return frames;
 }
 
+// --- Anchor section v1 ----------------------------------------------------
+
+function encodeAnchorSection(
+  anchors: readonly StudioScriptSnapshotWatercolorKeyAnchor[],
+): Uint8Array {
+  const writer = new Writer();
+  writer.u16(STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSION);
+  writer.u16(0);
+  writer.u32(anchors.length);
+  const seen = new Set<number>();
+  for (const anchor of anchors) {
+    if (!Number.isInteger(anchor.mutationId) || anchor.mutationId < 0) {
+      fail('anchor', `invalid anchor mutationId ${String(anchor.mutationId)}`);
+    }
+    if (seen.has(anchor.mutationId)) {
+      fail('anchor', `duplicate watercolor key anchor ${anchor.mutationId}`);
+    }
+    seen.add(anchor.mutationId);
+    if (typeof anchor.keyId !== 'string' || anchor.keyId.length === 0) {
+      fail('anchor', 'an anchor keyId must be a non-empty string');
+    }
+    const encodedKeyId = UTF8_ENCODER.encode(anchor.keyId);
+    if (encodedKeyId.byteLength > 0xffff) {
+      fail('length', 'anchor keyId exceeds 65535 UTF-8 bytes');
+    }
+    writer.u32(anchor.mutationId);
+    writer.u16(encodedKeyId.byteLength);
+    writer.raw(encodedKeyId);
+  }
+  return writer.finish();
+}
+
+function decodeAnchorSection(bytes: Uint8Array): StudioScriptSnapshotWatercolorKeyAnchor[] {
+  const reader = new Reader(bytes);
+  if (bytes.byteLength < ANCHOR_HEADER_BYTE_LENGTH) {
+    fail('truncated', 'anchor section is shorter than its 8-byte header');
+  }
+  const version = reader.u16();
+  if (!STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSIONS.has(version)) {
+    fail('version', `unsupported anchor section version ${version}`);
+  }
+  const reserved = reader.u16();
+  if (reserved !== 0) fail('flags', 'anchor section reserved word must be 0');
+  const count = reader.u32();
+  if (count > Math.floor(reader.remaining / ANCHOR_RECORD_MIN_BYTES)) {
+    fail('count', `anchor section declares ${count} anchors beyond the remaining bytes`, reader.offset);
+  }
+  const anchors: StudioScriptSnapshotWatercolorKeyAnchor[] = [];
+  const seen = new Set<number>();
+  for (let index = 0; index < count; index += 1) {
+    const mutationId = reader.u32();
+    const keyId = reader.string('anchor keyId');
+    if (keyId.length === 0) {
+      fail('anchor', 'an anchor keyId must be a non-empty string', reader.offset);
+    }
+    if (seen.has(mutationId)) {
+      fail('anchor', `duplicate watercolor key anchor ${mutationId}`, reader.offset);
+    }
+    seen.add(mutationId);
+    anchors.push({ mutationId, keyId });
+  }
+  if (reader.remaining !== 0) {
+    fail('trailing', 'unread bytes remain in the anchor section');
+  }
+  return anchors;
+}
+
 export function encodeStudioScriptSnapshot(
   input: StudioScriptSnapshotEncodeInput,
 ): Uint8Array {
@@ -608,6 +708,7 @@ export function encodeStudioScriptSnapshot(
   const trackId = validateIdentityValue(input.trackId, 'trackId');
   const watercolor = encodeScriptTimelineBinary(input.watercolorEvents);
   const brush = encodeBrushSection(input.brushFrames ?? []);
+  const anchors = encodeAnchorSection(input.watercolorKeyAnchors ?? []);
 
   const writer = new Writer();
   for (let index = 0; index < STUDIO_SCRIPT_SNAPSHOT_MAGIC.length; index += 1) {
@@ -623,6 +724,8 @@ export function encodeStudioScriptSnapshot(
   writer.raw(watercolor);
   writer.u32(brush.byteLength);
   writer.raw(brush);
+  writer.u32(anchors.byteLength);
+  writer.raw(anchors);
   return writer.finish();
 }
 
@@ -668,6 +771,12 @@ export function decodeStudioScriptSnapshot(
   const watercolorBody = reader.slice(watercolorByteLength, 'watercolor body');
   const brushByteLength = reader.u32();
   const brushBody = reader.slice(brushByteLength, 'brush body');
+  // v1/v2 files carry no anchor section: their strokes are unanchored.
+  let anchorBody: Uint8Array | null = null;
+  if (version >= 3) {
+    const anchorByteLength = reader.u32();
+    anchorBody = reader.slice(anchorByteLength, 'anchor body');
+  }
   if (reader.remaining !== 0) {
     fail('trailing', 'buffer is longer than the declared sections', reader.offset);
   }
@@ -686,6 +795,7 @@ export function decodeStudioScriptSnapshot(
   return {
     watercolorEvents,
     brushFrames: decodeBrushSection(brushBody),
+    watercolorKeyAnchors: anchorBody === null ? [] : decodeAnchorSection(anchorBody),
     railCleanupDone: railCleanupFlag === 1,
   };
 }

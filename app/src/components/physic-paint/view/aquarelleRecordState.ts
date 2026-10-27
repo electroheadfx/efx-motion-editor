@@ -280,6 +280,26 @@ const recordedStrokes = new Map<number, AquarelleStroke>();
 const recordedStrokeEntries = new Map<number, ReturnType<typeof toStudioStroke>>();
 
 /**
+ * 261027 (studio-strokes-lost-redraw UAT round 2): the physical KEY every
+ * recorded watercolor stroke belongs to. AQTL events carry no key identity,
+ * so without this anchor a restore cannot tell a deleted key's stroke from
+ * the new key's stroke that later occupies the same frame number — the
+ * deleted strokes re-seeded as phantom guides (six after ONE new stroke).
+ *
+ * The anchor follows the stroke IDENTITY, not the frame: it survives a
+ * key-identity remap (the same key moved frames) and a soft delete (undo),
+ * and it is dropped only when the stroke or its key leaves the session.
+ * A stroke recorded with no known key has NO anchor — an unprovable
+ * identity must never seed a live key.
+ */
+const aquarelleStrokeKeyIds = new Map<number, string>();
+
+/** Snapshot-save port: the live mutationId → keyId anchors for this session. */
+export function getAquarelleStrokeKeyAnchors(): ReadonlyMap<number, string> {
+  return aquarelleStrokeKeyIds;
+}
+
+/**
  * 261022-pim: the recorded-stroke revision. Bumps whenever the stroke SET or
  * its frame anchors change (record, delete, restore, key-identity remap) —
  * the narrow select overlay leaf reads it so it re-lists outlines without the
@@ -901,6 +921,7 @@ export function purgeAquarelleFrameScript(frame: number): number {
       recordedStrokeEntries.delete(mutationId);
       deletedAquarelleStrokeIds.delete(mutationId);
       aquarelleStrokeSerials.delete(mutationId);
+      aquarelleStrokeKeyIds.delete(mutationId);
     }
     removed += 1;
   }
@@ -935,6 +956,7 @@ export function purgeAllAquarelleKeyScripts(): number {
   deletedAquarelleStrokeIds.clear();
   aquarelleStrokeSerials.clear();
   aquarelleFrameSerialCounters.clear();
+  aquarelleStrokeKeyIds.clear();
   if (removedIds.size === 0) return 0;
   bumpAquarelleStrokesRevision();
   return removedIds.size;
@@ -963,11 +985,19 @@ export function restoreAquarelleStrokeInScript(
 export function recordAquarelleStroke(
   mutationId: number,
   stroke: AquarelleStroke,
+  keyId?: string | null,
 ): void {
   // The payload projection reads the id from the stroke itself, so the registry
   // entry must carry it — a stroke recorded without an id would fall out of
   // every `engine.mutationId` walk (stack position, capture, replay filters).
   const recorded = stroke.mutationId === mutationId ? stroke : { ...stroke, mutationId };
+  // 261027: bind the stroke to the physical key it was painted on. A caller
+  // with no known key records an UNANCHORED stroke (never a guessed identity).
+  if (typeof keyId === 'string' && keyId.length > 0) {
+    aquarelleStrokeKeyIds.set(mutationId, keyId);
+  } else {
+    aquarelleStrokeKeyIds.delete(mutationId);
+  }
   recordedStrokes.set(mutationId, recorded);
   // Creation-order serial FIRST so the badge number can never reshuffle.
   aquarelleStrokeSerial(mutationId, recorded.playFrame ?? 0);
@@ -1000,12 +1030,14 @@ export function recordAquarelleStroke(
  */
 export function restoreAquarelleRecordTimeline(
   events: readonly AquarellePayloadEvent[],
+  keyAnchors?: ReadonlyMap<number, string> | null,
 ): number {
   recordedStrokes.clear();
   recordedStrokeEntries.clear();
   deletedAquarelleStrokeIds.clear();
   aquarelleStrokeSerials.clear();
   aquarelleFrameSerialCounters.clear();
+  aquarelleStrokeKeyIds.clear();
   payloadTimeline.length = 0;
   recordClockTick = 0;
 
@@ -1046,6 +1078,16 @@ export function restoreAquarelleRecordTimeline(
       maxMutationId = Math.max(maxMutationId, mutationId);
     }
     advanceRecordClock(Math.max(1, entry.pts.length - 1));
+  }
+  // 261027: seed the key anchors for events that actually entered the session.
+  // An anchor with no matching stroke is meaningless (Dry events, pruned
+  // events) and must never be carried forward.
+  if (keyAnchors) {
+    for (const [mutationId, keyId] of keyAnchors) {
+      if (!recordedStrokes.has(mutationId)) continue;
+      if (typeof keyId !== 'string' || keyId.length === 0) continue;
+      aquarelleStrokeKeyIds.set(mutationId, keyId);
+    }
   }
   bumpAquarelleStrokesRevision();
   return maxMutationId;
@@ -1199,6 +1241,8 @@ export function remapAquarelleScriptsForRecords(
   for (const mutationId of droppedIds) {
     deletedAquarelleStrokeIds.delete(mutationId);
     aquarelleStrokeSerials.delete(mutationId);
+    // The key vanished: its stroke identity (and anchor) leave the session.
+    aquarelleStrokeKeyIds.delete(mutationId);
   }
   aquarelleFrameSerialCounters.clear();
   for (const [frame, serial] of nextCounters) aquarelleFrameSerialCounters.set(frame, serial);
@@ -1214,12 +1258,14 @@ export function resetAquarelleRecordState(): void {
     recordedStrokes.size > 0 ||
     recordedStrokeEntries.size > 0 ||
     deletedAquarelleStrokeIds.size > 0 ||
+    aquarelleStrokeKeyIds.size > 0 ||
     recordClockTick !== 0;
   recordedStrokes.clear();
   recordedStrokeEntries.clear();
   deletedAquarelleStrokeIds.clear();
   aquarelleStrokeSerials.clear();
   aquarelleFrameSerialCounters.clear();
+  aquarelleStrokeKeyIds.clear();
   payloadTimeline.length = 0;
   recordClockTick = 0;
   if (hadContent) bumpAquarelleStrokesRevision();

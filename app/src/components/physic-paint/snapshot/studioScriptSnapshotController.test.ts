@@ -12,14 +12,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AquarelleDryEvent,
   AquarellePayloadEvent,
+  AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
+  getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
   purgeAquarelleFrameScript,
+  recordAquarelleStroke,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
 } from '../view/aquarelleRecordState';
@@ -152,6 +155,7 @@ function harness(
     | 'getAuthority'
     | 'getLiveKeyIds'
     | 'getPixelOnlyFrames'
+    | 'getWatercolorKeyAnchors'
   >> = {},
 ): Harness {
   let signature = 'sig-0';
@@ -194,6 +198,8 @@ function harness(
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
     getLiveKeyIds: overrides.getLiveKeyIds ?? (() => null),
     getPixelOnlyFrames: overrides.getPixelOnlyFrames ?? (() => null),
+    getWatercolorKeyAnchors:
+      overrides.getWatercolorKeyAnchors ?? (() => getAquarelleStrokeKeyAnchors()),
     getAuthority: overrides.getAuthority ?? (() => authority),
     report,
     write,
@@ -441,21 +447,31 @@ describe('studioScriptSnapshotController', () => {
     expect(getBrushScriptFrameEntries()[0]?.keyId).toBe('key-9');
   });
 
-  it('drops a legacy row on a rail frame and keeps legacy rows elsewhere', async () => {
+  it('never seeds a legacy brush row, but keeps the ordinary one in the retained file', async () => {
     const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, read } = harness({
+    const { controller, read, write, setSignature } = harness({
       getLiveFrames: () => new Set([7, 9]),
       getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
       getPixelOnlyFrames: () => new Set([7]),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
     });
     read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
     controller.bind(IDENTITY);
 
     await controller.restore();
-    // v1 rows carry no keyId: on a rail (pixels-only) frame the identity is
-    // unprovable and the row is stale. An ordinary key keeps its legacy row.
-    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([9]);
-    expect(getBrushScriptFrameEntries()[0]?.keyId).toBeNull();
+    // 261027: a v1 row carries no keyId, so its identity is UNPROVABLE on any
+    // frame. It may survive in the file for undo, but it can never seed the
+    // key that now occupies that frame number.
+    expect(getBrushScriptFrameEntries()).toEqual([]);
+
+    // The retained union still keeps the ordinary legacy row and cleans the
+    // rail-frame row (rails bake pixels only).
+    setSignature('sig-after-legacy');
+    await controller.saveNow();
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([9]);
+    expect(decoded.brushFrames[0]?.keyId).toBeUndefined();
   });
 });
 
@@ -1003,8 +1019,9 @@ const HEAVY_FRAME_COUNT = 3;
  * bytes — SNAP container with three heavy brush frames, empty AQTL. Brush
  * section v2 adds one keyId presence byte per frame (+3).
  */
-// +1 for the v2 container's rail-cleanup marker byte.
-const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_794;
+// +1 for the v2 container's rail-cleanup marker byte, +12 for the v3
+// anchor section (4-byte length word + 8-byte empty header).
+const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_806;
 
 function heavyPoint(index: number): PenPoint {
   return {
@@ -1067,5 +1084,163 @@ describe('studioScriptSnapshotController — heavy fixture measurement', () => {
     expect(bytes.byteLength).toBe(HEAVY_SNAPSHOT_BYTE_LENGTH);
     // The whole container decodes back, so the measurement is of a legal file.
     expect(decodeStudioScriptSnapshot(bytes, IDENTITY).brushFrames).toHaveLength(HEAVY_FRAME_COUNT);
+  });
+});
+
+// ------------------------------------------------------------
+//  261027 UAT round 2 — "six phantom guides after one new stroke".
+//
+//  The user deleted every key, created a new key and painted ONE
+//  watercolor stroke. Six guides appeared because AQTL events carry
+//  no key identity: the restore seeded the deleted key's five
+//  retained strokes into the new key at the same frame number.
+//
+//  LAW: every watercolor seed is scoped to the owning KEY
+//  (file anchor === live key at the event's playFrame). An
+//  unanchored (pre-v3) event can never seed a live key, and a
+//  known-empty live key map seeds nothing at all.
+// ------------------------------------------------------------
+
+function recordableAquarelleStroke(
+  mutationId: number,
+  playFrame: number,
+): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#000000',
+    params: { size: 10 },
+    brushId: 'round',
+    points: [{ x: 0.1, y: 0.2, p: 0.5, tx: 0, ty: 0, tw: 0 }],
+    mutationId,
+    timestamp: 1,
+    playFrame,
+  };
+}
+
+function anchoredFixture(
+  events: readonly AquarellePayloadEvent[],
+  watercolorKeyAnchors: readonly { mutationId: number; keyId: string }[],
+  brushFrames: readonly StudioScriptSnapshotBrushFrame[] = [],
+): Uint8Array {
+  return encodeStudioScriptSnapshot({
+    ...IDENTITY,
+    watercolorEvents: events,
+    watercolorKeyAnchors,
+    brushFrames,
+  });
+}
+
+/** The same snapshot without the v3 anchor section, marked as a v2 file. */
+function containerWithoutAnchorSection(bytes: Uint8Array): Uint8Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 9; // magic + version + flags + rail marker
+  for (let index = 0; index < 3; index += 1) {
+    const length = view.getUint16(offset, true);
+    offset += 2 + length;
+  }
+  offset += 4 + view.getUint32(offset, true); // watercolor body
+  offset += 4 + view.getUint32(offset, true); // brush body
+  const out = bytes.slice(0, offset);
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 2, true);
+  return out;
+}
+
+function seededStrokeIds(): number[] {
+  return getRecordedAquarellePayloadTimeline()
+    .filter((event) => !isAquarelleDryEvent(event))
+    .map((event) => (event as StudioStroke<AquarelleStrokePayload>).engine.mutationId!)
+    .filter((mutationId) => mutationId !== undefined);
+}
+
+describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT round 2)', () => {
+  it('seeds only the stroke anchored to the live key at its frame', async () => {
+    // The exact UAT shape: five strokes from the deleted key and one new
+    // stroke, all on playFrame 0. Only the new-key stroke may seed.
+    const deleted = [917, 920, 921, 922, 923];
+    const events: AquarellePayloadEvent[] = [
+      ...deleted.map((mutationId) => fixtureStroke(0, mutationId)),
+      fixtureStroke(0, 1259),
+      fixtureDry(),
+    ];
+    const anchors = [
+      ...deleted.map((mutationId) => ({ mutationId, keyId: 'deleted-key' })),
+      { mutationId: 1259, keyId: 'new-key' },
+    ];
+    const bytes = anchoredFixture(events, anchors);
+    const { controller, read } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'new-key']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    const result = await controller.restore();
+    expect(result).toEqual({ status: 'restored', maxRestoredMutationId: 1259 });
+    expect(seededStrokeIds()).toEqual([1259]);
+    expect(getRecordedAquarellePayloadTimeline().some(isAquarelleDryEvent)).toBe(true);
+    expect(getAquarelleStrokeKeyAnchors().get(1259)).toBe('new-key');
+    expect(getAquarelleStrokeKeyAnchors().has(917)).toBe(false);
+  });
+
+  it('never seeds an unanchored (pre-v3) stroke into a live key', async () => {
+    const bytes = containerWithoutAnchorSection(encodedFixture());
+    const { controller, read } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    // Identity is unprovable for the file's strokes; only the Dry sheet
+    // action (no frame anchor) is safe to seed.
+    expect(seededStrokeIds()).toEqual([]);
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(1);
+    expect(getAquarelleStrokeKeyAnchors().size).toBe(0);
+  });
+
+  it('seeds nothing when every key was deleted (known-empty live key map)', async () => {
+    const bytes = anchoredFixture(
+      [fixtureStroke(0, 917)],
+      [{ mutationId: 917, keyId: 'deleted-key' }],
+      [{ ...brushFrameFixture(0, 201), keyId: 'deleted-key' }],
+    );
+    const { controller, read } = harness({
+      getLiveFrames: () => new Set(),
+      getLiveKeyIds: () => new Map(),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
+    expect(getBrushScriptFrameEntries()).toHaveLength(0);
+    expect(getAquarelleStrokeKeyAnchors().size).toBe(0);
+  });
+
+  it('saves the seeded anchor and the anchor of a newly recorded stroke', async () => {
+    const bytes = anchoredFixture(
+      [fixtureStroke(0, 301)],
+      [{ mutationId: 301, keyId: 'live-key' }],
+    );
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'live-key']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    expect(seededStrokeIds()).toEqual([301]);
+
+    recordAquarelleStroke(302, recordableAquarelleStroke(302, 0), 'live-key');
+    setSignature('sig-anchors');
+    await controller.saveNow();
+
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.watercolorKeyAnchors).toEqual([
+      { mutationId: 301, keyId: 'live-key' },
+      { mutationId: 302, keyId: 'live-key' },
+    ]);
   });
 });

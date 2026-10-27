@@ -19,20 +19,25 @@
 //
 //  PRUNE LAW: pruning is a SESSION law, never a file law
 //  (studio-snapshot-empty-save). At RESTORE, stroke events (and
-//  brush frames) whose frame is not a live real-key app frame are
-//  kept OUT OF THE SESSION; Dry events are sheet actions with no
-//  frame anchor and are always seeded. The RAW decoded content is
-//  retained for the binding, and a routine save writes the union of
-//  the session and that retained content — the session wins for every
-//  identity it still owns, so a deleted key's script cannot reappear
-//  in the session, yet deleting the key never erases its script from
-//  the authoritative snapshot (undo / a later restore can recover
-//  it). An UNKNOWN live-frame set (null or empty) disables
-//  restore-time pruning instead of wiping the session — an empty set
-//  at launch-restore time means the key records are not loaded yet,
-//  not that the script is empty. Only an EXPLICIT purge
-//  (persistAfterPurge) writes the session alone and drops retained
-//  entries.
+//  brush frames) are kept OUT OF THE SESSION unless they are proven
+//  to belong to a live key — identity, never a frame number. A
+//  watercolor stroke seeds only when its v3 file anchor equals the
+//  live key at its playFrame; a brush row seeds only when its stored
+//  keyId equals the live key at its frame. Dry events are sheet
+//  actions with no frame anchor and are always seeded. The RAW
+//  decoded content is retained for the binding, and a routine save
+//  writes the union of the session and that retained content — the
+//  session wins for every identity it still owns, so a deleted key's
+//  script cannot reappear in the session, yet deleting the key never
+//  erases its script from the authoritative snapshot (undo / a later
+//  restore can recover it).
+//
+//  UNKNOWN vs KNOWN-EMPTY: a null live key map means the key records
+//  are not loaded yet — pruning falls back to the frame set so a
+//  launch race cannot wipe the session. A Map, even an EMPTY one, is
+//  a KNOWN identity set (the user deleted every key): nothing
+//  unproven seeds. Only an EXPLICIT purge (persistAfterPurge) writes
+//  the session alone and drops retained entries.
 //
 //  RESTORE-SETTLEMENT LAW (studio-snapshot-empty-save): a bind
 //  starts a new generation whose session is empty. NO save may be
@@ -73,6 +78,7 @@ import {
   encodeStudioScriptSnapshot,
   type StudioScriptSnapshotBrushFrame,
   type StudioScriptSnapshotIdentity,
+  type StudioScriptSnapshotWatercolorKeyAnchor,
 } from '../performance/studioScriptSnapshotCodec';
 import { restoreAquarelleRecordTimeline } from '../view/aquarelleRecordState';
 import {
@@ -122,12 +128,19 @@ export interface StudioScriptSnapshotControllerDeps {
    */
   getLiveFrames: () => ReadonlySet<number> | null;
   /**
-   * quick-261026-odd follow-up: the live key identity per app frame for the
-   * bound track. A v2 brush row is seeded only when its stored keyId still
-   * matches the key now occupying that frame — a rail/bake that replaced the
-   * key can never inherit the old script. `null` disables identity pruning.
+   * The live key identity per app frame for the bound track. A v2 brush row
+   * and a v3 watercolor anchor are seeded only when the keyId still matches
+   * the key now occupying that frame — a rail/bake/new key can never inherit
+   * the old script. `null` means UNKNOWN (fall back to the frame set); an
+   * EMPTY Map means known-empty and seeds nothing.
    */
   getLiveKeyIds?: () => ReadonlyMap<number, string> | null;
+  /**
+   * 261027: the session's mutationId → keyId anchors (record-state port).
+   * Every saved watercolor stroke keeps the key it was captured on. Absent /
+   * null keeps the retained file anchors only.
+   */
+  getWatercolorKeyAnchors?: () => ReadonlyMap<number, string> | null;
   /**
    * Frames covered by the bound track's Loop Clip rails (Play Script / Reveal).
    * A legacy (v1) brush row carries no keyId, so on a rail frame its identity
@@ -266,6 +279,91 @@ export function pruneBrushFramesToLiveFrames<T extends { frame: number }>(
   return frames.filter((frame) => liveFrames.has(frame.frame));
 }
 
+/** What a restore may seed from a decoded watercolor timeline. */
+export interface StudioWatercolorLiveSeed {
+  events: AquarellePayloadEvent[];
+  keyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
+}
+
+/**
+ * 261027 (studio-strokes-lost-redraw UAT round 2): a watercolor stroke seeds
+ * only into the KEY it was captured on. AQTL carries no identity, so the v3
+ * anchor is the proof: `anchor(mutationId) === liveKeyIds(playFrame)`. An
+ * unanchored (pre-v3) stroke can never be proven and never seeds; a
+ * known-empty key map seeds nothing but Dry.
+ *
+ * An UNKNOWN key map (null/absent — key records not loaded yet) falls back to
+ * the frame-set prune so a launch race cannot wipe the session; anchors that
+ * survive that prune are carried into the session unchanged.
+ */
+export function pruneWatercolorEventsToLiveKeys(
+  events: readonly AquarellePayloadEvent[],
+  liveFrames: ReadonlySet<number> | null,
+  liveKeyIds: ReadonlyMap<number, string> | null | undefined,
+  fileAnchors: readonly StudioScriptSnapshotWatercolorKeyAnchor[],
+): StudioWatercolorLiveSeed {
+  const anchorById = new Map<number, string>();
+  for (const anchor of fileAnchors) {
+    if (anchor.keyId.length > 0) anchorById.set(anchor.mutationId, anchor.keyId);
+  }
+
+  if (liveKeyIds === null || liveKeyIds === undefined) {
+    const pruned = pruneWatercolorEventsToLiveFrames(events, liveFrames);
+    const keyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[] = [];
+    for (const event of pruned) {
+      if (isAquarelleDryEvent(event)) continue;
+      const mutationId = eventMutationId(event);
+      if (mutationId === undefined) continue;
+      const keyId = anchorById.get(mutationId);
+      if (keyId !== undefined) keyAnchors.push({ mutationId, keyId });
+    }
+    return { events: pruned, keyAnchors };
+  }
+
+  const seeded: AquarellePayloadEvent[] = [];
+  const keyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[] = [];
+  for (const event of events) {
+    if (isAquarelleDryEvent(event)) {
+      seeded.push(event);
+      continue;
+    }
+    if (typeof event.playFrame !== 'number') continue;
+    const mutationId = eventMutationId(event);
+    if (mutationId === undefined) continue;
+    const liveKeyId = liveKeyIds.get(event.playFrame);
+    if (liveKeyId === undefined) continue;
+    const anchorKeyId = anchorById.get(mutationId);
+    if (anchorKeyId === undefined || anchorKeyId !== liveKeyId) continue;
+    seeded.push(event);
+    keyAnchors.push({ mutationId, keyId: anchorKeyId });
+  }
+  return { events: seeded, keyAnchors };
+}
+
+/**
+ * 261027: the brush SESSION seed. A row seeds only when its stored keyId is
+ * the live key now occupying that frame; a legacy (no-keyId) row is
+ * unprovable on every frame, and a known-empty key map seeds nothing. An
+ * unknown (null) map keeps the caller's frame-pruned set (launch safety).
+ * The retained/save cleaning uses `withoutForeignKeyFrames` instead — it
+ * deliberately keeps unowned file content for undo.
+ */
+export function selectLiveBrushFrames(
+  frames: readonly StudioScriptSnapshotBrushFrame[],
+  liveKeyIds: ReadonlyMap<number, string> | null | undefined,
+): StudioScriptSnapshotBrushFrame[] {
+  if (liveKeyIds === null || liveKeyIds === undefined) return [...frames];
+  const kept: StudioScriptSnapshotBrushFrame[] = [];
+  for (const frame of frames) {
+    const liveKeyId = liveKeyIds.get(frame.frame);
+    if (liveKeyId === undefined) continue;
+    if (typeof frame.keyId !== 'string' || frame.keyId.length === 0) continue;
+    if (frame.keyId !== liveKeyId) continue;
+    kept.push(frame);
+  }
+  return kept;
+}
+
 /**
  * quick-261026-odd follow-up: a snapshot saved before the guide-capture guard
  * can still carry Water color guide proxies as Brush groups. The aquarelle
@@ -285,14 +383,16 @@ function withoutAquarelleGuideFrames(
 }
 
 /**
- * quick-261026-odd follow-up: scripts are per KEY, never per frame number.
- *  - a v2 row (stored keyId) survives only while the live key at that frame
- *    has the SAME identity — a rail/bake replacement drops it;
+ * quick-261026-odd follow-up: RETAINED/FILE cleaning only (never the session
+ * seed — that is `selectLiveBrushFrames`). Scripts are per KEY, never per
+ * frame number.
+ *  - a v2 row (stored keyId) survives in the file only while the live key at
+ *    that frame has the SAME identity — a rail/bake replacement drops it;
  *  - a legacy/unknown row (v1, no keyId) cannot be proven, so it is dropped on
- *    a rail/loop-clip frame (rails bake pixels only) and kept elsewhere;
+ *    a rail/loop-clip frame (rails bake pixels only) and kept elsewhere for
+ *    undo/retime — it will never seed a key (see `selectLiveBrushFrames`);
  *  - a frame with no live key is kept (the retained-union design preserves a
- *    disappeared key's script for undo/retime; the session prune never seeds
- *    it as a live-key script).
+ *    disappeared key's script for undo/retime).
  */
 function withoutForeignKeyFrames(
   frames: readonly StudioScriptSnapshotBrushFrame[],
@@ -320,6 +420,7 @@ function withoutForeignKeyFrames(
 /** The raw content of one snapshot: what the FILE holds, not the session. */
 export interface StudioScriptSnapshotContent {
   watercolorEvents: AquarellePayloadEvent[];
+  watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
   brushFrames: StudioScriptSnapshotBrushFrame[];
 }
 
@@ -341,6 +442,7 @@ export function mergeStudioScriptSnapshotContent(
   retained: StudioScriptSnapshotContent | null,
   sessionEvents: readonly AquarellePayloadEvent[],
   sessionBrushFrames: readonly StudioScriptSnapshotBrushFrame[],
+  sessionKeyAnchors?: ReadonlyMap<number, string> | null,
 ): StudioScriptSnapshotContent {
   const watercolorEvents: AquarellePayloadEvent[] = [];
   if (!retained) {
@@ -375,6 +477,31 @@ export function mergeStudioScriptSnapshotContent(
     }
   }
 
+  // 261027: every saved stroke keeps the KEY it was captured on. The session
+  // anchor wins (the stroke may have been re-recorded), else the retained
+  // anchor survives untouched so a routine save never strips identity.
+  const retainedAnchorsById = new Map<number, string>();
+  if (retained) {
+    for (const anchor of retained.watercolorKeyAnchors) {
+      if (anchor.keyId.length > 0) retainedAnchorsById.set(anchor.mutationId, anchor.keyId);
+    }
+  }
+  const watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[] = [];
+  const emittedAnchorIds = new Set<number>();
+  for (const event of watercolorEvents) {
+    if (isAquarelleDryEvent(event)) continue;
+    const id = eventMutationId(event);
+    if (id === undefined || emittedAnchorIds.has(id)) continue;
+    emittedAnchorIds.add(id);
+    const sessionKeyId = sessionKeyAnchors?.get(id);
+    const keyId = typeof sessionKeyId === 'string' && sessionKeyId.length > 0
+      ? sessionKeyId
+      : retainedAnchorsById.get(id);
+    if (keyId !== undefined && keyId.length > 0) {
+      watercolorKeyAnchors.push({ mutationId: id, keyId });
+    }
+  }
+
   const sessionByFrame = new Map<number, StudioScriptSnapshotBrushFrame>();
   for (const frame of sessionBrushFrames) {
     if (frame.groups.length > 0) sessionByFrame.set(frame.frame, frame);
@@ -395,7 +522,7 @@ export function mergeStudioScriptSnapshotContent(
     if (seenFrames.has(frame.frame)) continue;
     brushFrames.push(frame);
   }
-  return { watercolorEvents, brushFrames };
+  return { watercolorEvents, watercolorKeyAnchors, brushFrames };
 }
 
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
@@ -530,17 +657,31 @@ export function createStudioScriptSnapshotController(
       const liveFrames = deps.getLiveFrames();
       const liveKeyIds = deps.getLiveKeyIds?.() ?? null;
       const pixelOnlyFrames = deps.getPixelOnlyFrames?.() ?? null;
-      const events = pruneWatercolorEventsToLiveFrames(decoded.watercolorEvents, liveFrames);
-      // The brush ledger is pruned to the SAME live real-key set: a frame whose
-      // key no longer exists must never reappear in the editable store.
+      // 261027: a watercolor stroke seeds only when its file anchor names the
+      // key now living at its playFrame. Frame numbers alone are NOT identity:
+      // a deleted key's strokes must never seed the replacement key.
+      const watercolorSeed = pruneWatercolorEventsToLiveKeys(
+        decoded.watercolorEvents,
+        liveFrames,
+        liveKeyIds,
+        decoded.watercolorKeyAnchors,
+      );
+      // The brush ledger is pruned to the live real-key frames, then to the
+      // exact key identity: a frame whose key no longer exists (or whose key
+      // was replaced) must never reappear in the editable store.
       const liveBrushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
-      const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
+      const seededAnchors = new Map<number, string>();
+      for (const anchor of watercolorSeed.keyAnchors) {
+        seededAnchors.set(anchor.mutationId, anchor.keyId);
+      }
+      const maxRestoredMutationId = restoreAquarelleRecordTimeline(
+        watercolorSeed.events,
+        seededAnchors,
+      );
       // Guide filtering reads the restored aquarelle registry — run it AFTER
       // the timeline seed, on both the session and the retained file content.
-      // Identity filtering runs on the same two sets: a retained script may
-      // only seed the exact key it was captured on.
       const brushFrames = withoutAquarelleGuideFrames(
-        withoutForeignKeyFrames(liveBrushFrames, liveKeyIds, pixelOnlyFrames),
+        selectLiveBrushFrames(liveBrushFrames, liveKeyIds),
       );
       restoreBrushScriptFrames(brushFrames);
       // The FILE holds the UNPRUNED content: pruning was a session seed, not
@@ -550,6 +691,7 @@ export function createStudioScriptSnapshotController(
       // exception — they are corruption, not content, and are cleaned here.
       retainedContent = {
         watercolorEvents: [...decoded.watercolorEvents],
+        watercolorKeyAnchors: [...decoded.watercolorKeyAnchors],
         brushFrames: withoutAquarelleGuideFrames(
           withoutForeignKeyFrames(decoded.brushFrames, liveKeyIds, pixelOnlyFrames),
         ),
@@ -602,6 +744,7 @@ export function createStudioScriptSnapshotController(
         sessionOnly ? null : retainedContent,
         deps.getWatercolorEvents(),
         deps.getBrushFrames(),
+        deps.getWatercolorKeyAnchors?.() ?? null,
       );
       // A guide proxy is engine-1 render input, never Brush script content.
       // The codec never carries the guideProxy flag, so a persisted guide row
@@ -630,6 +773,7 @@ export function createStudioScriptSnapshotController(
       const bytes = encodeStudioScriptSnapshot({
         ...identity,
         watercolorEvents: content.watercolorEvents,
+        watercolorKeyAnchors: content.watercolorKeyAnchors,
         brushFrames: content.brushFrames,
         railCleanupDone,
       });
@@ -780,11 +924,22 @@ export function createStudioScriptSnapshotController(
    */
   function dropRetainedForFrames(frames: ReadonlySet<number>): void {
     if (!retainedContent || frames.size === 0) return;
+    const watercolorEvents = retainedContent.watercolorEvents.filter((event) =>
+      isAquarelleDryEvent(event)
+      || typeof event.playFrame !== 'number'
+      || !frames.has(event.playFrame));
+    // An anchor is only meaningful for a surviving stroke; dropping the
+    // stroke's frame must drop its identity with it.
+    const survivingIds = new Set<number>();
+    for (const event of watercolorEvents) {
+      const mutationId = eventMutationId(event);
+      if (mutationId !== undefined) survivingIds.add(mutationId);
+    }
     retainedContent = {
-      watercolorEvents: retainedContent.watercolorEvents.filter((event) =>
-        isAquarelleDryEvent(event)
-        || typeof event.playFrame !== 'number'
-        || !frames.has(event.playFrame)),
+      watercolorEvents,
+      watercolorKeyAnchors: retainedContent.watercolorKeyAnchors.filter(
+        (anchor) => survivingIds.has(anchor.mutationId),
+      ),
       brushFrames: retainedContent.brushFrames.filter((frame) => !frames.has(frame.frame)),
     };
   }
