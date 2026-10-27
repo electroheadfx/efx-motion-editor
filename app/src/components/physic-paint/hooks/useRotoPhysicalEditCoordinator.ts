@@ -1322,37 +1322,24 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_FAILED_MESSAGE);
         return;
       }
-      if (
-        pending.operationKind === 'undo'
-        || pending.operationKind === 'redo'
-        || pending.operationKind === 'play-script'
-        || pending.operationKind === 'regenerate-group'
-        // Quick 261019-mj2: an accepted gap insert changes the paint at the
-        // cursor frame (the key under it shifts right), so the cached
-        // reference must reconcile exactly like the retired empty-segment
-        // insert did. Its inverse, delete-slot, changes the paint the same
-        // way (the key after the closed slot shifts left onto the cursor).
-        || pending.operationKind === 'insert-slot'
-        || pending.operationKind === 'delete-slot'
-        || pending.operationKind === 'paste-key'
-        || pending.operationKind === 'paint-group-frame'
-        || pending.operationKind === 'delete-group-frame'
-        || pending.operationKind === 'delete-group'
-        || pending.operationKind === 'delete-rails'
-        || pending.operationKind === 'paste'
-      ) {
-        // The reconcile is a VISUAL refresh (cached reference readback + engine
-        // upload). It must never gate the settlement: a throw here used to skip
-        // acceptedSignal and the lease handoff, leaving the exclusive store
-        // lease active (canvas input locked) while the parent had already
-        // committed the key.
-        try {
-          portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
-        } catch (error) {
-          portsRef.current.status.logDiagnostic(
-            `Roto physical edit reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+      // Every accepted physical edit can change the paint the cursor frame
+      // resolves to: delete-key, duplicate-key, moves, rail edits, and the
+      // group/paste operations. The old allowlist omitted ordinary delete-key,
+      // so the deleted key's cached reference stayed on screen until a
+      // navigation — the "old cache after delete/create" report. Reconcile
+      // unconditionally; the loader is dirty-aware and the auto-key promotion
+      // branch preserves the live first stroke.
+      // The reconcile is a VISUAL refresh (cached reference readback + engine
+      // upload). It must never gate the settlement: a throw here used to skip
+      // acceptedSignal and the lease handoff, leaving the exclusive store
+      // lease active (canvas input locked) while the parent had already
+      // committed the key.
+      try {
+        portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
+      } catch (error) {
+        portsRef.current.status.logDiagnostic(
+          `Roto physical edit reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
       acceptedSignal.value = {
         before,

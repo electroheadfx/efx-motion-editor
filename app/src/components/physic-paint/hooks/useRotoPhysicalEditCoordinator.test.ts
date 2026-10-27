@@ -616,6 +616,29 @@ function harness(options: {
       selectedAppFrame: destinationAppFrame,
     });
   };
+  const executeDeleteKey = (keyId: string) => {
+    const intent = { kind: 'delete-key', selectedKeyId: keyId } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId: recordKeyId, appFrame }) => ({ keyId: recordKeyId, appFrame })),
+      records,
+      intent,
+      loopClips,
+      parentEndExclusive,
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    return coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'delete-key',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+      requestedCursorAppFrame: resolution.proposal.cursorAppFrame,
+    });
+  };
   const seedGroupDocument = (document: ReturnType<typeof parsePhysicPaintRotoPhysicalDocument>) => {
     records = document.realKeyRecords;
     groupOverrideRecords = document.groupOverrideRecords ?? [];
@@ -864,6 +887,7 @@ function harness(options: {
     execute,
     executeInsertGap,
     executeDeleteSlot,
+    executeDeleteKey,
     executePasteKey,
     executeGroupPaint,
     executeDeleteGroupFrame,
@@ -1267,6 +1291,17 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getCurrentFrame()).toBe(14);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
+  });
+
+  it('reconciles the cursor frame after an accepted ordinary delete-key', async () => {
+    const test = harness({ dropLoopClips: true });
+
+    expect(await test.executeDeleteKey('C')).toBe(true);
+    expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledOnce();
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(test.getCurrentFrame());
   });
 
   it('settles an accepted paste-key and releases its lease even when the reference reconcile throws', async () => {
