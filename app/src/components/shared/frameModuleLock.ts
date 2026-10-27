@@ -11,7 +11,7 @@
  * declaration — frameScriptOwnership.ts re-exports it.
  */
 import { computed, signal } from '@preact/signals';
-import type { ActiveModule } from './activeModule';
+import { WATERCOLOR_ONLY, type ActiveModule } from './activeModule';
 
 export type FrameScriptOwner = 'brush' | 'watercolor' | 'both' | null;
 
@@ -44,8 +44,19 @@ export const brushMoveAvailable = computed(
   () => frameScriptOwner.value === 'brush' || frameScriptOwner.value === 'both',
 );
 
-/** The non-owning module for a single-owner frame; both/none lock nothing. */
-export function lockedModuleForOwner(owner: FrameScriptOwner): ActiveModule | null {
+/**
+ * The non-owning module for a single-owner frame; both/none lock nothing.
+ *
+ * 261027-gh9 — under the watercolor-only gate no owner locks any slot (a
+ * Brush-owned key must never lock Water color). The ungated branch stays for
+ * reversibility and is exercised by tests through the explicit second
+ * argument.
+ */
+export function lockedModuleForOwner(
+  owner: FrameScriptOwner,
+  watercolorOnly: boolean = WATERCOLOR_ONLY,
+): ActiveModule | null {
+  if (watercolorOnly) return null;
   if (owner === 'brush') return 'watercolor';
   if (owner === 'watercolor') return 'brush';
   return null;

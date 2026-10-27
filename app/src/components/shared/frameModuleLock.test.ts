@@ -2,8 +2,13 @@
 //  quick-261025-awl Task 1 (D-02/D-03) — Studio-scoped module lock.
 //
 //  One ownership signal shared by the Studio seams and the top-bar
-//  switcher: compare-then-write only, brush owns -> Water color locks,
-//  watercolor owns -> Brush locks, both/none leaves both enabled.
+//  switcher: compare-then-write only.
+//
+//  261027-gh9: under the WATERCOLOR_ONLY seam NO owner locks any slot —
+//  a Brush-owned key must never lock Water color. The ungated mapping
+//  (brush owns -> Water color locks, watercolor owns -> Brush locks,
+//  both/none leaves both enabled) stays for reversibility and is
+//  exercised through lockedModuleForOwner's explicit second argument.
 // ============================================================
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -26,18 +31,26 @@ afterEach(() => {
   clearFrameScriptOwner();
 });
 
-describe('lockedModuleForOwner', () => {
+describe('lockedModuleForOwner under the watercolor-only gate (261027-gh9)', () => {
+  it('locks nothing for any owner by default', () => {
+    for (const owner of ['brush', 'watercolor', 'both', null] as FrameScriptOwner[]) {
+      expect(lockedModuleForOwner(owner), `owner ${String(owner)}`).toBeNull();
+    }
+  });
+});
+
+describe('lockedModuleForOwner ungated mapping (kept for reversibility)', () => {
   it('locks Water color when Brush owns the frame', () => {
-    expect(lockedModuleForOwner('brush')).toBe('watercolor');
+    expect(lockedModuleForOwner('brush', false)).toBe('watercolor');
   });
 
   it('locks Brush when Water color owns the frame', () => {
-    expect(lockedModuleForOwner('watercolor')).toBe('brush');
+    expect(lockedModuleForOwner('watercolor', false)).toBe('brush');
   });
 
   it('locks nothing for a both-owned or empty frame', () => {
-    expect(lockedModuleForOwner('both')).toBeNull();
-    expect(lockedModuleForOwner(null)).toBeNull();
+    expect(lockedModuleForOwner('both', false)).toBeNull();
+    expect(lockedModuleForOwner(null, false)).toBeNull();
   });
 });
 
