@@ -170,7 +170,9 @@ export class WatercolorEngine {
   params: Params = { ...DEFAULT_PARAMS };
   tool: Tool = 'brush';
   pigment: Pigment = pigmentFromHex('#2338a8');
-  brush: Brush = buildBrush(BRUSH_PRESETS[0]);
+  // 261027-gh9b: the catalog leads with chalk (first Brush-tab card); the
+  // engine's neutral default stays the everyday round.
+  brush: Brush = buildBrush(BRUSH_PRESETS.find((p) => p.id === 'round') ?? BRUSH_PRESETS[0]!);
   /** Once an Apple Pencil / stylus is seen, fingers paint with clear water. */
   fingerIsWater = true;
   /** When false, pointers on the paper are ignored (another tool, e.g. text, is driving it). */

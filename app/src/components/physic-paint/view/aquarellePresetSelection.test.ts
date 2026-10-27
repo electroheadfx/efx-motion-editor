@@ -51,6 +51,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
 
   it('exposes exactly the 15 playground preset ids in catalog order', () => {
     expect(PRESET_IDS).toEqual([
+      'chalk',
       'round',
       'detail',
       'rigger',
@@ -65,7 +66,6 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'sumi',
       'dagger',
       'stipple',
-      'chalk',
     ]);
   });
 
