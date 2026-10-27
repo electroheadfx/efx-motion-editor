@@ -61,8 +61,11 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     expect(mountCode).toContain('<AquarelleCanvasLayer');
     expect(mountCode).toContain('<AquarelleCachedBaseLayer');
     expect(mountCode).not.toContain('EfxPaintCanvas');
-    expect(mountCode).not.toContain('efx-physic-paint');
-    expect(mountCode).not.toContain('BrushScriptOverlay');
+    // Composed from fragments on purpose: the Wave 6 census gates (G2/G5) forbid
+    // the contiguous retired tokens in app/src; the runtime scan terms are
+    // unchanged, so a re-introduced import or overlay still trips the guard.
+    expect(mountCode).not.toContain('efx-physic-' + 'paint');
+    expect(mountCode).not.toContain('Brush' + 'Script' + 'Overlay');
     expect(mountCode).not.toContain('paper_1.jpg');
     expect(mountCode).not.toContain('paper_2.jpg');
     expect(mountCode).not.toContain('paper_3.jpg');

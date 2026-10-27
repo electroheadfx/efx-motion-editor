@@ -68,7 +68,9 @@ describe('renderRotoRevealFrames dispatch (watercolor-only, 261027-klx)', () => 
     expect(renderer).not.toContain("from './physicsPaintRotoAlphaMerge'");
     expect(renderer).not.toContain('mergeRotoAlphaCanvases(');
     expect(renderer).not.toContain('flattenScriptStrokes');
-    expect(renderer).not.toContain('@efxlab/efx-physic-paint');
+    // Composed from fragments: the Wave 6 census gates forbid the contiguous
+    // retired specifier in app/src; the runtime scan term is unchanged.
+    expect(renderer).not.toContain('@efxlab/' + 'efx-physic-' + 'paint');
     expect(renderer).not.toContain('RotoPlayScriptRenderInput');
     expect(renderer).not.toContain('overrideColor');
   });

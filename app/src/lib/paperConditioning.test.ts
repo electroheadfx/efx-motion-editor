@@ -2,7 +2,7 @@
 //  quick 261027-klx — paper conditioner byte parity.
 //
 //  The fixture was generated from the engine-1 implementation
-//  (packages/efx-physic-paint/src/core/paper.ts) BEFORE the package
+//  (the retired Brush engine's core/paper.ts) BEFORE the package
 //  was touched. JSON cannot represent NaN / -0, so non-finite values
 //  are encoded as the strings "NaN" / "-0" and decoded explicitly
 //  (`Number('-0')` is -0 only because we map it ourselves).

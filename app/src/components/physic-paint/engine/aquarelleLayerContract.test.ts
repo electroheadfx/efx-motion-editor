@@ -243,7 +243,9 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // slice, so it is still never double-composited.
     expect(studio).toContain("const useWatercolorSlices = activeModule.value === 'watercolor'");
     expect(studio).toContain("slice: useWatercolorSlices ? ('below' as const) : null");
-    expect(studio).toContain('excludeActive: useWatercolorSlices');
+    // The store's hide filter already drops a hidden active track, so the
+    // monitor never needs to exclude it: the DOM seat is handled by the slices.
+    expect(studio).toContain('excludeActive: false,');
     expect(studio).toContain("slice: 'above' as const");
     // The above-monitor sits over the live sheet (z4) INSIDE the tracks group.
     const aboveRule = css.slice(css.indexOf('.physics-paint-program-monitor.physics-paint-program-monitor-above'));

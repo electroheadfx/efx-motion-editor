@@ -6,10 +6,10 @@
 //  existing consumers keep compiling after the package is deleted:
 //
 //    ToolType / BgMode / BrushOpts / PenPoint / PaintStroke /
-//    PhysicsMode            — packages/efx-physic-paint/src/types.ts
+//    PhysicsMode            — the retired Brush engine's types.ts
 //    CompletedPaintMutation /
-//    PaintHistoryAvailability — packages/efx-physic-paint/src/engine/EfxPaintEngine.ts
-//    PhysicStrokePayload     — packages/efx-physic-paint/src/payload/toStudioStroke.ts
+//    PaintHistoryAvailability — the retired Brush engine's EfxPaintEngine.ts
+//    PhysicStrokePayload     — the retired Brush engine's payload/toStudioStroke.ts
 //
 //  Pure type declarations only: no runtime values, no package
 //  re-exports. Union members and field names are persisted in

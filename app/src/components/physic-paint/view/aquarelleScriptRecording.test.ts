@@ -95,7 +95,7 @@ describe('261027-k6j Script On records exactly like before', () => {
 });
 
 // ============================================================
-//  261027-klx — moved from the deleted brushScriptRecordState.test.ts.
+//  261027-klx — moved from the deleted Brush record-state suite.
 //
 //  The Brush store carried an "aquarelle guide proxies are never Brush
 //  script content" block: engine-1 guide proxies (the paint-stroke

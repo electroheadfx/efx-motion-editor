@@ -27,15 +27,14 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('keeps the Paint-tab Opacity row Brush-only; Water color shows Pigment', () => {
-    // The top size/opacity pair is Brush-only: watercolor has no global
-    // opacity, and its canonical Pigment (`load`) is a globals row. An
-    // Opacity-labelled slider bound to `load` is the confusion this pins out.
-    expect(rightPanel).toContain("activeModule.value !== 'watercolor' ? (");
-    expect(rightPanel).toContain('label="Opacity"');
-    expect(rightPanel).not.toContain(
-      "value={activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity}",
-    );
+  it('binds the palette opacity to the Water color Pigment and keeps no Opacity-labelled slider', () => {
+    // 261027-klx: the Brush-only Opacity row left with engine-1 and the module
+    // switch. The palette commits the aquarelle `load` global as its opacity;
+    // an Opacity-labelled slider bound to `load` is the confusion this pins
+    // out (Pigment stays a named globals row).
+    expect(rightPanel).not.toContain('activeModule');
+    expect(rightPanel).not.toContain('label="Opacity"');
+    expect(rightPanel).toContain('opacity={aquarelleParams.value.load}');
     const globals = readFileSync(
       fileURLToPath(new URL('./AquarelleGlobalsPanel.tsx', import.meta.url)),
       'utf8',
@@ -43,17 +42,17 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(globals).toContain("{ key: 'load', label: 'Pigment' }");
   });
 
-  it('renders the top pane with mode-derived Color/Settings/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
-    // 261018-cy1 + I-11 / D: the top-pane tab list is mode-derived (Brush mode
-    // = Color + Paper; watercolor adds Settings) and the retired top-pane
-    // Actions entry is gone. 261027-gh9g: the Brush tab is retired from the
-    // right sidebar (top-bar picker + floating modal). Middle and bottom panes
-    // are unchanged.
+  it('renders the top pane with the fixed Color/Settings/Paper/Memory tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Scripts/Onion/Motion tab group', () => {
+    // 261018-cy1 + I-11 / D: the retired top-pane Actions entry is gone.
+    // 261027-gh9g: the Brush tab is retired from the right sidebar (top-bar
+    // picker + floating modal). 261027-klx: engine-1 removal leaves Water color
+    // as the only module, so the tab list is FIXED — no mode-derived subset.
     expect(rightPanel).toContain('aria-label="Top pane panels"');
     expect(rightPanel).toContain('physics-paint-tab-top-');
     // quick-261023-ors: the Memory tab joins the union as the LAST entry.
-    expect(rightPanel).toContain("'color' | 'brush' | 'settings' | 'paper' | 'memory'");
+    expect(rightPanel).toContain("'color' | 'settings' | 'paper' | 'memory'");
     expect(rightPanel).not.toContain("'color' | 'actions' | 'brush' | 'paper'");
+    expect(rightPanel).not.toContain("'color', 'paper', 'memory'");
 
     // The tool pane's own tablist: Paint FIRST and default-open, Track second,
     // Audio third (261008-ryq — the clip list moved into this tab), and the
@@ -86,7 +85,9 @@ describe('native-approved Physics Paint right sidebar', () => {
     // occurrence: 8 stays the literal count (top-map 1 + tool 3 + conditional
     // Background 1 + lower 3).
     expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
-    expect(rightPanel).toContain("'color', 'paper', 'memory'");
+    // 261027-klx: with Water color the only module, the retired Brush-mode
+    // subset ('color', 'paper') does not exist; ONE fixed list remains.
+    expect(rightPanel).not.toContain("'color', 'paper', 'memory'");
     expect(rightPanel).toContain("'color', 'settings', 'paper', 'memory'");
 
     for (const label of ['Scripts', 'Onion', 'Motion']) {

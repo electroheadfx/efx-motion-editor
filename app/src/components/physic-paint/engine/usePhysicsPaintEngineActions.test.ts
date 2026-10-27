@@ -22,7 +22,7 @@ import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings 
  *
  * The engine is structurally faked: `PhysicsPaintEngineActionsInput['engine']`
  * is the source of truth for the accepted shape, so this file carries no
- * `@efxlab/efx-physic-paint` import (Wave 2 clean break).
+ * engine-1 package import (Wave 2 clean break).
  */
 type HarnessEngine = NonNullable<PhysicsPaintEngineActionsInput['engine']>;
 

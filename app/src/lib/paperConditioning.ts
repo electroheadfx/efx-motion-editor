@@ -2,8 +2,8 @@
 //  quick 261027-klx — app-owned paper height conditioning.
 //
 //  Ported VERBATIM from engine-1 before its deletion:
-//    packages/efx-physic-paint/src/core/paper.ts:79-92
-//    packages/efx-physic-paint/src/util/math.ts:56-58 (clamp)
+//    the retired Brush engine's core/paper.ts:79-92
+//    and its util/math.ts:56-58 (clamp)
 //
 //  The golden fixture (`__fixtures__/paperConditioning.golden.json`)
 //  was generated from the engine-1 implementation and

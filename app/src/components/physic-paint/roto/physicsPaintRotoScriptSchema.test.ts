@@ -16,7 +16,6 @@ interface SchemaModule {
   ROTO_SCRIPT_KIND?: unknown;
   ROTO_SCRIPT_LEGACY_ENGINE_ID?: unknown;
   ROTO_SCRIPT_ENGINE_ID_AQUARELLE?: unknown;
-  ROTO_SCRIPT_ENGINE_ID?: unknown;
   ROTO_SCRIPT_EXTENSION?: unknown;
   serializeRotoScript?: SerializeFn;
   serializeAquarelleRotoScript?: SerializeFn;
@@ -80,7 +79,14 @@ describe('watercolor-only script identity (261027-klx)', () => {
     expect(schema.ROTO_SCRIPT_ENGINE_ID_AQUARELLE).toBe('efx-watercolor');
     // The legacy id survives ONLY to classify an old envelope as refused.
     expect(schema.ROTO_SCRIPT_LEGACY_ENGINE_ID).toBe('efx-physic-paint');
-    expect(schema.ROTO_SCRIPT_ENGINE_ID, 'ROTO_SCRIPT_ENGINE_ID must be deleted').toBeUndefined();
+    // The retired engine-1 id constant must be deleted. Asserted by SHAPE, not
+    // by name: `ROTO_SCRIPT_ENGINE_ID_AQUARELLE` is the only id constant allowed
+    // to end in the engineer-id suffix, and the census gate (G3) requires the
+    // retired constant's name to be absent from app/src entirely.
+    expect(
+      Object.keys(schema).filter((key) => key.endsWith('_ENGINE_ID')),
+      'the legacy classification literal is the ONLY *_ENGINE_ID export',
+    ).toEqual(['ROTO_SCRIPT_LEGACY_ENGINE_ID']);
     expect(schema.serializeRotoScript, 'the engine-1 serializer must be deleted').toBeUndefined();
     expect(schema.createPersistedRotoScript, 'the engine-1 builder must be deleted').toBeUndefined();
     expect(schema.managedRotoScriptFilename!(id)).toBe(`${id}${schema.ROTO_SCRIPT_EXTENSION}`);

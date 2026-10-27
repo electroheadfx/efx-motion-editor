@@ -112,8 +112,13 @@ vi.mock('lucide-preact', () => {
 });
 
 import { PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
+import { DEFAULT_AQUARELLE_PARAMS } from './aquarelleRecordState';
 
 const DEFAULTS = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
+
+// 261027-klx: the palette commits the Water color Pigment (the aquarelle
+// `load` global) as its opacity — the engine-1 `opacity` prop is gone.
+const WATERCOLOR_LOAD = DEFAULT_AQUARELLE_PARAMS.load;
 
 function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): PhysicsPaintRightPanelProps {
   return {
@@ -278,7 +283,7 @@ describe('native-approved Physics Paint palette behavior', () => {
     expect(paletteColors(tree)[0]).toBe('#a1b2c3');
     expect(paletteColors(tree).filter((color) => color === '#a1b2c3')).toHaveLength(1);
     expect(mocks.saveFavoriteColors).toHaveBeenLastCalledWith(['#a1b2c3']);
-    expect(props.onColorChange).toHaveBeenLastCalledWith('#a1b2c3', 100);
+    expect(props.onColorChange).toHaveBeenLastCalledWith('#a1b2c3', WATERCOLOR_LOAD);
 
     const addAgain = childrenOf(tree).find((node) => (node as AnyVNode).type === 'button' && (node as AnyVNode).props?.children === '+') as AnyVNode;
     addAgain.props.onClick();
@@ -336,9 +341,9 @@ describe('native-approved Physics Paint palette behavior', () => {
     findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus } });
     expect(focus).toHaveBeenCalledTimes(1);
     expect(onColorChange).toHaveBeenCalledTimes(1);
-    expect(onColorChange).toHaveBeenLastCalledWith('#abcdef', 100);
+    expect(onColorChange).toHaveBeenLastCalledWith('#abcdef', WATERCOLOR_LOAD);
     expect(onColorCommit).toHaveBeenCalledTimes(1);
-    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', 100);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', WATERCOLOR_LOAD);
 
     tree = renderPanel(props);
     expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(true);
@@ -351,7 +356,7 @@ describe('native-approved Physics Paint palette behavior', () => {
     tree = renderPanel(props);
     expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(false);
     expect(onColorCommit).toHaveBeenCalledTimes(2);
-    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', 100);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', WATERCOLOR_LOAD);
   });
 
   it('does not rewrite the previously selected swatch when another swatch is clicked', async () => {
@@ -537,13 +542,13 @@ describe('native-approved Physics Paint palette behavior', () => {
       key: 'Enter',
       currentTarget: { blur: vi.fn() },
     });
-    expect(onColorChange).toHaveBeenLastCalledWith('#22aa44', 100);
+    expect(onColorChange).toHaveBeenLastCalledWith('#22aa44', WATERCOLOR_LOAD);
     expect(onColorCommit).toHaveBeenCalledTimes(1);
-    expect(onColorCommit).toHaveBeenLastCalledWith('#22aa44', 100);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#22aa44', WATERCOLOR_LOAD);
 
     findByAria(tree, 'Use #2d5be3').props.onClick({ currentTarget: { focus: vi.fn() } });
     expect(onColorCommit).toHaveBeenCalledTimes(2);
-    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', 100);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', WATERCOLOR_LOAD);
 
     // A drag on the color box commits on release, not on pointerdown.
     const box = childrenOf(tree).find(
@@ -556,7 +561,7 @@ describe('native-approved Physics Paint palette behavior', () => {
     expect(onColorCommit).toHaveBeenCalledTimes(2);
     box.props.onPointerUp();
     expect(onColorCommit).toHaveBeenCalledTimes(3);
-    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', 100);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', WATERCOLOR_LOAD);
   });
 
   it('restores a removed built-in default through + as the newest persisted favorite', async () => {

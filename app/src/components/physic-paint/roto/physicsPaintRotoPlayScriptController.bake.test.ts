@@ -5,8 +5,10 @@
 //  AQUA-07 / D-21: aquarelle scripts bake through
 //  createAquarelleBake in mode 'flush-survives-navigation', NOT
 //  the abort-on-dispose path. Leaving the frame mid-cuisson
-//  must not discard committed frames. The engine-1 path stays
-//  byte-stable (consume branch, not a rewrite).
+//  must not discard committed frames.
+//
+//  261027-klx: engine-1 is removed — this is the ONLY bake path, so
+//  the suite also pins that no script reaches the retired renderer.
 //
 //  Family: physicsPaintRotoPlayScriptController.test.ts /
 //  bakeHost.test.ts — normal vitest .test.ts, no new config.
@@ -466,18 +468,39 @@ describe('aquarelle bake consume branch (56-08)', () => {
     expect(ok).toBe(true);
   });
 
-  it('the engine-1 path is unchanged (renderRotoPlayScriptFrames, no createAquarelleBake)', async () => {
-    const createAquarelleBake = vi.fn();
+  // 261027-klx: the engine-1 fallback branch is gone, so a script WITHOUT an
+  // engineId takes the SAME watercolor bake path — there is no remaining
+  // renderRotoPlayScriptFrames route.
+  it('a script with no engineId still bakes through createAquarelleBake — the engine-1 renderer is never called', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [0, 1, 2].map((index) => ({
+      eventIndex: index,
+      strokeIndex: index,
+      tick: 0,
+      bytes: webpStub(String(index)),
+      width: 10,
+      height: 10,
+    }));
+    const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, _options?: AquarelleBakeOptions) => bake);
     const createAquarelleAdapter = vi.fn(() => makeAdapter());
     const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot(baseScript(99));
 
     await test.controller.openConfirmation();
     test.controller.countText.value = '3';
-    const ok = await test.controller.confirm();
+    const confirmPromise = test.controller.confirm();
+    // Let confirm reach the in-flight bake, then settle it.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.bakeGate.resolve();
+    const ok = await confirmPromise;
 
     expect(ok).toBe(true);
-    expect(rendered).toHaveBeenCalledTimes(1);
-    expect(createAquarelleBake).not.toHaveBeenCalled();
+    expect(createAquarelleBake).toHaveBeenCalledTimes(1);
+    expect(fake.bakeCalls).toBe(1);
+    expect(rendered).not.toHaveBeenCalled();
     expect(test.commit).toHaveBeenCalled();
   });
 

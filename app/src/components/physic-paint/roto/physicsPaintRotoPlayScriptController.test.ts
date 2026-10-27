@@ -12,6 +12,7 @@ import {
   type RotoPlayScriptPhysicalPublication,
   type RotoPlayScriptSourceCycleMatchInput,
 } from './physicsPaintRotoPlayScriptController';
+import type { AquarelleBakeOptions } from '@efxlab/efx-watercolor/bake';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).
@@ -52,8 +53,64 @@ import {
   type RotoTimelineActionsInput,
 } from '../hooks/useRotoTimelineActions';
 
-const rendered = vi.hoisted(() => vi.fn());
-vi.mock('./physicsPaintRotoPlayScriptRenderer', () => ({ renderRotoPlayScriptFrames: rendered }));
+// 261027-klx: the engine-1 Play Script renderer is gone — every confirmation
+// bakes through the aquarelle port (there is no engine-1 fallback). These
+// doubles observe what the controller actually asks the bake for: the bake
+// options, the projected payload events, and the motion/pose seam. The real
+// bake needs WebGL, so the DOM/encoder edges are stubbed below.
+const bakePose = vi.hoisted(() => ({
+  poser: vi.fn(),
+  deform: vi.fn(),
+}));
+vi.mock('./aquarelleFramePose', () => ({
+  createAquarelleDeformPoser: bakePose.poser,
+  drawAquarelleSheetDeform: bakePose.deform,
+}));
+vi.mock('../../../lib/webpFrameCodec', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/webpFrameCodec')>();
+  return {
+    ...actual,
+    encodeWebpFrame: vi.fn(async () => {
+      const bytes = new Uint8Array(36);
+      bytes.set([0x52, 0x49, 0x46, 0x46], 0); // RIFF
+      bytes.set([0x57, 0x45, 0x42, 0x50], 8); // WEBP
+      bytes.set([0x56, 0x50, 0x38, 0x4c], 12); // VP8L
+      return bytes;
+    }),
+  };
+});
+
+bakePose.poser.mockImplementation(() => (frame: unknown) => frame);
+bakePose.deform.mockImplementation(() => ({}));
+
+// Node environment: the Static/Hold held-pose path decodes and re-encodes
+// through the DOM. A minimal canvas double suffices because the WebP encoder
+// above is mocked.
+(globalThis as unknown as { createImageBitmap: unknown }).createImageBitmap = vi.fn(async () => ({ close: vi.fn(), width: 10, height: 10 }));
+(globalThis as unknown as { document: unknown }).document = {
+  createElement: () => ({
+    width: 0,
+    height: 0,
+    getContext: () => ({
+      drawImage: vi.fn(),
+      getImageData: () => ({ data: new Uint8ClampedArray(400) }),
+    }),
+  }),
+};
+
+type BakeBehavior = (options: Record<string, any>, events: any[]) => Promise<any>;
+let pendingBakeBehavior: BakeBehavior | null = null;
+
+/** One-shot override for the NEXT aquarelle bake (held frame, failure, ...). */
+function nextBakeBehavior(behavior: BakeBehavior): void {
+  pendingBakeBehavior = behavior;
+}
+
+function resetBakeBehavior(): void {
+  pendingBakeBehavior = null;
+  bakePose.poser.mockClear();
+  bakePose.deform.mockClear();
+}
 
 import { getPhysicPaintRotoAuthority } from '../../../lib/physicPaintBridge';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
@@ -151,15 +208,49 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
   }));
   const stopPlayback = vi.fn(); const log = vi.fn();
+  // Engine-2 bake doubles: the single observable seam for what used to be the
+  // engine-1 renderer's arguments. Default behavior stages `frameCount` valid
+  // WebP frames; `nextBakeBehavior` injects held/failing bakes per test.
+  const bakeOptions: Array<Record<string, any>> = [];
+  const bakeEvents: any[][] = [];
+  const bakeAdapter = { dispose: vi.fn() };
+  const createAquarelleAdapter = vi.fn(() => bakeAdapter as never);
+  const createAquarelleBake = vi.fn((_adapter: unknown, options?: AquarelleBakeOptions) => {
+    const optionRecord = options as Record<string, any> | undefined;
+    bakeOptions.push(optionRecord ?? {});
+    return {
+      bake: vi.fn(async (events: any[]) => {
+        bakeEvents.push(events);
+        const behavior = pendingBakeBehavior;
+        if (behavior) {
+          pendingBakeBehavior = null;
+          return behavior(optionRecord ?? {}, events);
+        }
+        return {
+          ok: true,
+          frames: Array.from({ length: options?.frameCount ?? 1 }, (_, index) => ({
+            frameIndex: index,
+            appFrame: index,
+            bytes: testWebpBytes(`staged-${index}`),
+            width: 10,
+            height: 10,
+          })),
+        };
+      }),
+      flush: vi.fn(async () => undefined),
+      dispose: vi.fn(),
+    } as never;
+  });
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
     getBackgroundMetadata,
     getOperationLocked: () => false,
-    getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log, ...overrides,
+    getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log,
+    createAquarelleAdapter, createAquarelleBake, ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 function expectPlayScriptPublication(
@@ -174,18 +265,7 @@ function expectPlayScriptPublication(
 
 describe('createRotoPlayScriptController', () => {
   beforeEach(() => {
-    rendered.mockReset();
-    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
-      const frames = Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      }));
-      onProgress?.(frameCount, frameCount);
-      return frames;
-    });
+    resetBakeBehavior();
   });
 
   it('requires a durable row but permits an empty canonical start and rejects generated starts', () => {
@@ -209,7 +289,7 @@ describe('createRotoPlayScriptController', () => {
     const test = harness(); await test.controller.openConfirmation(); test.controller.countText.value = value;
     expect(test.controller.validationError.value).toBe(message);
     expect(await test.controller.confirm()).toBe(false);
-    expect(rendered).not.toHaveBeenCalled();
+    expect(test.createAquarelleBake).not.toHaveBeenCalled();
   });
 
   it('opens every fresh Create Group at finite 3 with Max off, independent of remembered Group Type', async () => {
@@ -242,7 +322,21 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.loopReadout.value).toBe('Requested: 4f (4f × 1) · Effective: 4f');
     expect(await test.controller.confirm()).toBe(true);
     expect(test.library.loadSnapshot).toHaveBeenCalledWith('script-1');
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ script: expect.objectContaining({ brushes: [expect.objectContaining({ primary: expect.objectContaining({ points: [expect.objectContaining({ x: 99 })] }) })] }), frameCount: 4, canonicalStart: 4, motion: { deformation: 25, position: 40 } }));
+    // The loaded snapshot's projected payload reaches the bake (x: 99 is the
+    // loaded fixture's point), with the requested frame count. The stage maps
+    // 1:1 onto the destination range starting at the canonical start.
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 4 });
+    expect(test.bakeEvents[0]).toEqual([
+      expect.objectContaining({ pts: [expect.objectContaining({ x: 99 })] }),
+    ]);
+    expect(bakePose.poser).toHaveBeenCalledWith(
+      { width: 10, height: 10 },
+      { deformation: 25, position: 40 },
+      4,
+      'white',
+    );
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
+    expect(publication.records.map((record) => record.appFrame)).toEqual([1, 4, 5, 6, 7]);
     expect(test.requestAuthority).toHaveBeenCalledTimes(3);
   });
 
@@ -324,19 +418,22 @@ describe('createRotoPlayScriptController', () => {
     expect(await stale.controller.confirm()).toBe(false);
     expect(stale.commit).not.toHaveBeenCalled();
 
-    rendered.mockReset();
+    resetBakeBehavior();
     let releaseRender!: () => void;
-    rendered.mockImplementationOnce(async ({ frameCount, canonicalStart }) => new Promise((resolve) => {
-      releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      })));
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseRender = () => resolve({
+        ok: true,
+        frames: Array.from({ length: 2 }, (_, index) => ({
+          frameIndex: index,
+          appFrame: index,
+          bytes: testWebpBytes(`staged-${index}`),
+          width: 10,
+          height: 10,
+        })),
+      });
     }));
     const changed = harness(); await changed.controller.openConfirmation(); changed.controller.countText.value = '2';
-    const confirming = changed.controller.confirm(); await vi.waitFor(() => expect(rendered).toHaveBeenCalled()); changed.setSelected('script-2'); releaseRender();
+    const confirming = changed.controller.confirm(); await vi.waitFor(() => expect(changed.bakeEvents).toHaveLength(1)); changed.setSelected('script-2'); releaseRender();
     expect(await confirming).toBe(false);
     expect(changed.commit).not.toHaveBeenCalled();
   });
@@ -347,14 +444,24 @@ describe('createRotoPlayScriptController', () => {
     expect(await failed.controller.confirm()).toBe(false);
     expect(failed.controller.phase.value).toBe('failed');
 
-    rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
+    let releaseBake!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseBake = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-0'), width: 10, height: 10 }],
+      });
+    }));
     const cancelled = harness(); await cancelled.controller.openConfirmation(); cancelled.controller.countText.value = '1';
-    const pending = cancelled.controller.confirm(); await vi.waitFor(() => expect(cancelled.controller.canCancel.value).toBe(true)); cancelled.controller.cancel();
+    const pending = cancelled.controller.confirm();
+    await vi.waitFor(() => expect(cancelled.bakeEvents).toHaveLength(1));
+    cancelled.controller.cancel();
+    releaseBake();
     expect(await pending).toBe(false);
+    expect(cancelled.controller.phase.value).toBe('cancelled');
     expect(cancelled.commit).not.toHaveBeenCalled();
   });
 
-  it('resolves the override color from the getBrushColor port AT CONFIRM TIME — two confirms with different port values render different overrides', async () => {
+  it('resolves the override color from the getBrushColor port AT CONFIRM TIME — two confirms snapshot different overrides', async () => {
     const test = harness();
     await test.controller.openConfirmation();
     // Dialog Motion initializes from the Motion defaults port at open (D-06).
@@ -367,30 +474,48 @@ describe('createRotoPlayScriptController', () => {
     test.setMotion({ deformation: 90, position: 90 }); // Motion port changed after open — must NOT be re-read at confirm
     test.setBrushColor('#3366ff');
     expect(await test.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'static', overrideColor: '#3366ff', motion: { deformation: 5, position: 10 } }));
+    // The confirm-time snapshot (dialog motion 5/10, port color #3366ff) lands
+    // in the applied summary and drives the Static held-pose deform — never the
+    // Motion port's 90/90.
+    expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 5/10');
+    expect(bakePose.deform).toHaveBeenCalledWith(
+      expect.anything(), 10, 10, expect.any(Number), { deformation: 5, position: 10 }, 'white',
+    );
 
-    rendered.mockClear();
+    resetBakeBehavior();
     await test.controller.openConfirmation();
     test.controller.countText.value = '2';
     test.setBrushColor('#aa5500'); // brush color changed after the first Generate — resolved fresh at confirm, never stored
     expect(await test.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: '#aa5500' }));
+    // The dialog remembers Static / Hold across the reopen; the color resolves
+    // fresh from the port. Dialog Motion re-initializes from the Motion port at
+    // open (D-06), so this second confirm snapshots the port's 90/90 — the
+    // override color is what is re-read at confirm time.
+    expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #aa5500 · Motion 90/90');
   });
 
   it('passes progressive defaults and a null override color when options are untouched or the override is disabled (Original colors)', async () => {
     const untouched = harness();
     await untouched.controller.openConfirmation();
     expect(await untouched.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null, motion: { deformation: 25, position: 40 } }));
+    // Progressive: the bake emits one pose per output frame (frameCount = count).
+    expect(untouched.bakeOptions[0]).toMatchObject({ frameCount: 3 });
+    expect(bakePose.poser).toHaveBeenCalledWith(
+      { width: 10, height: 10 },
+      { deformation: 25, position: 40 },
+      4,
+      'white',
+    );
+    expect(untouched.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 25/40');
 
-    rendered.mockClear();
+    resetBakeBehavior();
     const disabled = harness();
     await disabled.controller.openConfirmation();
     // Custom color selected then Original colors re-selected — the override is disabled (D-08R).
     disabled.controller.overrideEnabled.value = true;
     disabled.controller.overrideEnabled.value = false;
     expect(await disabled.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ mode: 'progressive', overrideColor: null }));
+    expect(disabled.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 25/40');
   });
 
   it('exposes no dialog-side overrideColor signal — the getBrushColor port is the only resolution path', async () => {
@@ -401,7 +526,8 @@ describe('createRotoPlayScriptController', () => {
     test.controller.overrideEnabled.value = true;
     test.setBrushColor('#1234ab');
     expect(await test.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: '#1234ab' }));
+    // D-08R: the resolved color lands only in the success summary (the bake
+    // keeps the recorded pigment colors) — never in dialog-side state.
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #1234ab · Motion 25/40');
   });
 
@@ -411,7 +537,6 @@ describe('createRotoPlayScriptController', () => {
     test.controller.overrideEnabled.value = true;
     test.setBrushColor('red'); // malformed port value — defensive guard mirrors existing input discipline
     expect(await test.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ overrideColor: null }));
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 25/40');
   });
 
@@ -438,7 +563,7 @@ describe('createRotoPlayScriptController', () => {
     test.controller.repeatText.value = value;
     expect(test.controller.repeatError.value).toBe('Enter a positive integer.');
     expect(await test.controller.confirm()).toBe(false);
-    expect(rendered).not.toHaveBeenCalled();
+    expect(test.createAquarelleBake).not.toHaveBeenCalled();
   });
 
   it('bounds repeat by the safe product floor(Number.MAX_SAFE_INTEGER / cycle) derived before multiplication', async () => {
@@ -457,7 +582,7 @@ describe('createRotoPlayScriptController', () => {
     test.controller.countText.value = '5';
     test.controller.repeatText.value = '1801439850948199';
     expect(await test.controller.confirm()).toBe(false);
-    expect(rendered).not.toHaveBeenCalled();
+    expect(test.createAquarelleBake).not.toHaveBeenCalled();
   });
 
   it('derives requested/effective/truncation from retained authority signals with locked copy', async () => {
@@ -533,15 +658,14 @@ describe('createRotoPlayScriptController', () => {
     bigRepeat.controller.countText.value = '3';
     bigRepeat.controller.repeatText.value = '999999';
     expect(await bigRepeat.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3 }));
+    expect(bigRepeat.bakeOptions[0]).toMatchObject({ frameCount: 3 });
 
-    rendered.mockClear();
     const infinite = harness();
     await infinite.controller.openConfirmation();
     infinite.controller.countText.value = '2';
     infinite.controller.setInfinity(true);
     expect(await infinite.controller.confirm()).toBe(true);
-    expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 2 }));
+    expect(infinite.bakeOptions[0]).toMatchObject({ frameCount: 2 });
   });
 
   it('clamps a finite Repeat that runs past the parent end into the created Group lifecycle', async () => {
@@ -633,18 +757,15 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.error.value).toBe('rejected');
 
     let releaseRender!: () => void;
-    rendered.mockClear();
-    rendered.mockImplementationOnce(async ({ frameCount, canonicalStart }) => new Promise((resolve) => {
-      releaseRender = () => resolve(Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      })));
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseRender = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-0'), width: 10, height: 10 }],
+      });
     }));
+    const bakesBefore = test.bakeEvents.length;
     const retry = test.controller.confirm();
-    await vi.waitFor(() => expect(rendered).toHaveBeenCalled());
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(bakesBefore + 1));
     expect(test.controller.error.value).toBeNull(); // stale error cleared at generation start
     releaseRender();
     expect(await retry).toBe(true);
@@ -652,8 +773,8 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.phase.value).toBe('complete');
   });
 
-  it('drives the generation-error lifecycle on renderer failure: failed phase, error set, progress hidden, dialog open, inputs enabled, zero mutations', async () => {
-    rendered.mockRejectedValueOnce(new Error('render boom'));
+  it('drives the generation-error lifecycle on bake failure: failed phase, error set, progress hidden, dialog open, inputs enabled, zero mutations', async () => {
+    nextBakeBehavior(async () => { throw new Error('render boom'); });
     const test = harness();
     await test.controller.openConfirmation();
     test.controller.countText.value = '2';
@@ -667,14 +788,20 @@ describe('createRotoPlayScriptController', () => {
   });
 
   it('normal user cancellation returns phase cancelled with a null error channel and zero mutations', async () => {
-    rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
+    let releaseBake!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseBake = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-0'), width: 10, height: 10 }],
+      });
+    }));
     const test = harness();
     await test.controller.openConfirmation();
     test.controller.countText.value = '1';
-    rendered.mockClear();
     const pending = test.controller.confirm();
-    await vi.waitFor(() => expect(rendered).toHaveBeenCalled()); // cancel mid-render, not mid-prepare
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(1)); // cancel mid-render, not mid-prepare
     test.controller.cancel();
+    releaseBake();
     expect(await pending).toBe(false);
     expect(test.controller.phase.value).toBe('cancelled');
     expect(test.controller.error.value).toBeNull(); // never an error shown on normal cancellation
@@ -750,18 +877,26 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
     expect(test.controller.appliedSummary.line2.value).toBe(line2);
 
-    // Generation cancellation (mid-render so the held render consumes its abort listener).
-    rendered.mockClear();
-    rendered.mockImplementationOnce(async ({ signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true })));
+    // Generation cancellation (mid-render: the held bake resolves only after
+    // Cancel trips the generation guard).
+    let releaseBake!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseBake = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-0'), width: 10, height: 10 }],
+      });
+    }));
+    const bakesBefore = test.bakeEvents.length;
     const pending = test.controller.confirm();
-    await vi.waitFor(() => expect(rendered).toHaveBeenCalled());
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(bakesBefore + 1));
     test.controller.cancel();
+    releaseBake();
     expect(await pending).toBe(false);
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
     expect(test.controller.appliedSummary.line2.value).toBe(line2);
 
     // Generation failure.
-    rendered.mockRejectedValueOnce(new Error('boom'));
+    nextBakeBehavior(async () => { throw new Error('boom'); });
     expect(await test.controller.confirm()).toBe(false);
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
     expect(test.controller.appliedSummary.line2.value).toBe(line2);
@@ -797,34 +932,18 @@ describe('createRotoPlayScriptController', () => {
 // result routes through the bounded deviation protocol (never asserted away).
 describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
   beforeEach(() => {
-    rendered.mockReset();
-    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
-      const frames = Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      }));
-      onProgress?.(frameCount, frameCount);
-      return frames;
-    });
+    resetBakeBehavior();
   });
 
-  it('mid-stage cancellation of a static/hold generation commits zero destination keys — the document is byte-identical to before the attempt', async () => {
-    // Renderer parks between staged frames so the cancellation lands mid-stage.
-    rendered.mockImplementationOnce(async ({ frameCount, canonicalStart, onProgress, signal }) => {
-      const staged: Array<{ frameIndex: number; appFrame: number; bytes: Uint8Array; width: number; height: number }> = [];
-      for (let index = 0; index < frameCount; index += 1) {
-        if (signal.aborted) throw new DOMException('cancelled', 'AbortError');
-        staged.push({ frameIndex: 0, appFrame: canonicalStart + index, bytes: pngDataUrl(`staged-${index}`), width: 10, height: 10 });
-        onProgress?.(index + 1, frameCount);
-        if (index < frameCount - 1) {
-          await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true }));
-        }
-      }
-      return staged;
-    });
+  it('mid-generation cancellation of a static/hold generation commits zero destination keys — the document is byte-identical to before the attempt', async () => {
+    // The bake parks mid-generation so the cancellation lands before staging.
+    let releaseBake!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      releaseBake = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-0'), width: 10, height: 10 }],
+      });
+    }));
     const test = harness();
     await test.controller.openConfirmation();
     test.controller.mode.value = 'static';
@@ -832,8 +951,9 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     const documentBefore = JSON.stringify(authority().physicalRecords);
 
     const pending = test.controller.confirm();
-    await vi.waitFor(() => expect(test.controller.progress.value?.completed).toBe(1)); // one frame staged
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(1)); // bake in flight
     test.controller.cancel();
+    releaseBake();
     expect(await pending).toBe(false);
 
     expect(test.controller.phase.value).toBe('cancelled');
@@ -844,11 +964,8 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
     expect(JSON.stringify(authority().physicalRecords)).toBe(documentBefore);
   });
 
-  it('a static/hold renderer failure mid-generation commits zero destination keys and surfaces the inline error', async () => {
-    rendered.mockImplementationOnce(async ({ frameCount, onProgress }) => {
-      for (let index = 0; index < 2; index += 1) onProgress?.(index + 1, frameCount); // two frames staged, then boom
-      throw new Error('renderer exploded mid-range');
-    });
+  it('a static/hold bake failure mid-generation commits zero destination keys and surfaces the inline error', async () => {
+    nextBakeBehavior(async () => { throw new Error('renderer exploded mid-range'); });
     const test = harness();
     await test.controller.openConfirmation();
     test.controller.mode.value = 'static';
@@ -1076,18 +1193,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
   };
 
   beforeEach(() => {
-    rendered.mockReset();
-    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
-      const frames = Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      }));
-      onProgress?.(frameCount, frameCount);
-      return frames;
-    });
+    resetBakeBehavior();
   });
 
   it('surfaces the locked preflight line with N and F when the destination range intersects a loop', async () => {
@@ -1454,18 +1560,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
   };
 
   beforeEach(() => {
-    rendered.mockReset();
-    rendered.mockImplementation(async ({ frameCount, canonicalStart, onProgress }) => {
-      const frames = Array.from({ length: frameCount }, (_, index) => ({
-        frameIndex: 0,
-        appFrame: canonicalStart + index,
-        bytes: pngDataUrl(`staged-${index}`),
-        width: 10,
-        height: 10,
-      }));
-      onProgress?.(frameCount, frameCount);
-      return frames;
-    });
+    resetBakeBehavior();
   });
 
   describe('openLoopEdit (D-01)', () => {
@@ -1588,7 +1683,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(await test.controller.confirm()).toBe(true);
       expect(test.requestAuthority).toHaveBeenCalledTimes(1);
       expect(test.commit).toHaveBeenCalledTimes(1);
-      expect(rendered).not.toHaveBeenCalled(); // no regeneration on a referential op
+      expect(test.createAquarelleBake).not.toHaveBeenCalled(); // no regeneration on a referential op
       const publication = test.commit.mock.calls[0][0];
       expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
       expect(publication.loopClips).toHaveLength(1);
@@ -2338,7 +2433,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       }
 
       expect(commit).toHaveBeenCalledTimes(5);
-      expect(rendered).not.toHaveBeenCalled();
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
     });
 
     it('an unchanged repeat closes without a commit (no phantom history entry)', async () => {
@@ -2381,7 +2476,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const result = await test.controller.unlinkLoop('L1');
       expect(result).toEqual({ ok: true, reason: null });
       expect(test.commit).toHaveBeenCalledTimes(1);
-      expect(rendered).not.toHaveBeenCalled();
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
       const publication = test.commit.mock.calls[0][0];
       expect(publication.loopClips).toEqual([]);
       expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
@@ -2412,7 +2507,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const result = await test.controller.duplicateLinkedLoop('L1', 30);
       expect(result).toEqual({ ok: true, reason: null });
       expect(test.commit).toHaveBeenCalledTimes(1);
-      expect(rendered).not.toHaveBeenCalled(); // no source regeneration
+      expect(test.createAquarelleBake).not.toHaveBeenCalled(); // no source regeneration
       const publication = test.commit.mock.calls[0][0];
       expect(publication.loopClips).toHaveLength(2);
       const duplicate = publication.loopClips?.find((entry) => entry.loopId !== 'L1');
@@ -2492,7 +2587,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(result.reason).toBeTruthy();
       expect(test.controller.confirmationOpen.value).toBe(false);
       expect(test.commit).not.toHaveBeenCalled();
-      expect(rendered).not.toHaveBeenCalled();
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
     });
 
     it('rejects when the record carries no source-cycle provenance', async () => {
@@ -2543,7 +2638,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const result = await test.controller.relinkLoop('LU', [...CYCLE_IDS]);
       expect(result).toEqual({ ok: true, reason: null });
       expect(test.commit).toHaveBeenCalledTimes(1);
-      expect(rendered).not.toHaveBeenCalled(); // relink never regenerates
+      expect(test.createAquarelleBake).not.toHaveBeenCalled(); // relink never regenerates
       const publication = test.commit.mock.calls[0][0];
       expect(publication.loopClips?.find((entry) => entry.loopId === 'LU')?.sourceKeyIds).toEqual([...CYCLE_IDS]);
       expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
@@ -2759,7 +2854,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.identicalSourceCycle.value).not.toBeNull();
       test.controller.linkChoice.value = 'link';
       expect(await test.controller.confirm()).toBe(true);
-      expect(rendered).not.toHaveBeenCalled();
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
       expect(test.commit).toHaveBeenCalledTimes(1);
       const publication = test.commit.mock.calls[0][0];
       expect(publication.semanticDelta).toMatchObject({ loopOnly: true, freshKeyIds: [] });
@@ -2777,7 +2872,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       test.controller.repeatText.value = '2';
       test.controller.linkChoice.value = 'create';
       expect(await test.controller.confirm()).toBe(true);
-      expect(rendered).toHaveBeenCalled();
+      expect(test.bakeEvents).toHaveLength(1);
       const publication = test.commit.mock.calls[0][0];
       const created = publication.loopClips?.find((entry) => entry.loopId !== 'L1');
       const cycleIds = publication.records
@@ -2884,7 +2979,10 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
 
       expect(test.controller.countText.value).toBe('3');
       expect(await test.controller.confirm()).toBe(true);
-      expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3, canonicalStart: 0 }));
+      // Static / Hold bakes ONE settled wash and derives the count posed
+      // copies; the provenance cycle lands on its EXISTING positions (0/3/6)
+      // — the committed records below pin the destination start.
+      expect(test.bakeOptions[0]).toMatchObject({ frameCount: 1 });
       const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
       expect(publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
         { keyId: 'S1', appFrame: 0 },
@@ -2905,7 +3003,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       test.controller.countText.value = '3'; // shrink the cycle 5 → 3
       expect(await test.controller.confirm()).toBe(true);
       expect(test.commit).toHaveBeenCalledTimes(1);
-      expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 3, canonicalStart: 10 }));
+      // Static / Hold: ONE settled bake frame, then the count posed copies.
+      expect(test.bakeOptions[0]).toMatchObject({ frameCount: 1 });
       const publication = test.commit.mock.calls[0][0];
       const newCycleIds = publication.records
         .filter((record) => record.appFrame >= 10 && record.appFrame <= 12)

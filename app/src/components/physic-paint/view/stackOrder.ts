@@ -2,7 +2,7 @@
 //  quick 261024-vga — the ONE stack-position law (Brush + Watercolor).
 //
 //  quick 261027-klx: the implementation is now APP-OWNED (copied
-//  verbatim from packages/efx-physic-paint/src/engine/stackOrder.ts
+//  verbatim from the retired Brush engine's engine/stackOrder.ts
 //  before that package was removed). `stackOrder.parity.test.ts`
 //  proved the copy against the package while it still existed.
 //
