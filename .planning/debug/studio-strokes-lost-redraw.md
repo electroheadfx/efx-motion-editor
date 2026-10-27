@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T09:50:00.000Z
+updated: 2026-10-27T10:05:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -788,6 +788,64 @@ uat_pending: |
   3. Select track 1. PASS: track 1 keeps ITS OWN cache and ITS OWN editable
      script; track 2 is unchanged. Then switch 1 -> 2 -> 1 twice; no cache or
      script crosses.
+
+## UAT Round 7 (2026-10-27) — watercolor script lost on restore (unanchored strokes)
+
+user_verdict: |
+  "I do severals paint on a frame, moved, edited, deleted, keeping all paints.
+  After I leave the key go to another key under this track, and I go back to the
+  first key, and editable seem removed, I lost all script."
+  Answers: watercolor; the painted pixels remain visible; a Studio close/reopen
+  does NOT bring the script back.
+
+on_disk_evidence: |
+  Decoded the real project snapshots with the real codec
+  (`.../test.mce/scripts/7bcc71b6-.../<trackId>-v1.snap`):
+  - Paint 4 (00a78810, written 2026-10-27T09:46): **83 watercolor strokes,
+    only 2 key anchors**; the two anchors name key 0ad41207, which is not a
+    live key. Durable base for that key = known-empty. Brush rows reference
+    two other keys.
+  - Paint 2 (3298f2eb, 09:28): 0 watercolor events, one brush row on a key
+    that the saved document no longer holds.
+  - The saved document (09:46) holds only Paint 2 key 8b638835; Paint 4 /
+    Paint 1 have no keys.
+  The restore law seeds a watercolor stroke only when its file anchor equals
+  the live key at its playFrame; every UNANCHORED stroke is dropped. That is
+  why the script vanished on the first restore (track switch) and stays gone
+  after reopen.
+
+root_cause: |
+  A stroke's anchor is stamped at stroke END from
+  `resolveStudioScriptKeyIdForFrame(identityRef, launch.startFrame)`. On a
+  fresh frame whose key does not exist yet (auto-promotion happens later, at
+  the first capture), that lookup returns undefined and the stroke is
+  recorded with NO anchor. Nothing repaired it afterwards: the save wrote
+  the unanchored event, and every restore dropped it. An identity/active-track
+  lag could produce the same null anchor.
+
+fix: |
+  1. `anchorUnownedAquarelleStrokesForFrame(frame, keyId)` (record state):
+     when an auto-key promotion lands a key, every UNANCHORED stroke of that
+     frame is bound to it. Already-anchored strokes are never retargeted.
+  2. Save-time safety net `backfillSessionWatercolorAnchors` in the snapshot
+     controller: a session stroke with no anchor whose frame has a live key
+     in the bound track is anchored at prepare time. Frames without a live
+     key are never backfilled (deleted-key safety).
+  3. Record-time anchor resolves from the LIVE ACTIVE track (the paint
+     target), not the possibly-lagging snapshot binding.
+
+verification: |
+  New pins: `aquarelleRecordState.anchor.test.ts` (3), two controller save
+  tests (backfill with/without a live key), Studio source contract for the
+  promotion backfill + active-track resolution. Suites: 368 passed across
+  anchor + snapshot + Studio + aquarelle contract. `pnpm typecheck` clean.
+
+declared_consequence: |
+  Strokes already saved WITHOUT an anchor cannot be re-seeded safely — an
+  unanchored stroke is indistinguishable from a deleted key's stroke, and
+  re-seeding those is the phantom-guides regression. Existing lost strokes
+  must be repainted once; every stroke painted under this build carries an
+  anchor and restores.
 
 DATA_END
 

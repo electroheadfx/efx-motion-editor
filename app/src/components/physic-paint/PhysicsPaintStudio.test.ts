@@ -2808,6 +2808,17 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(studio).toContain('aquarelleMergeBaseRef.current = null');
   });
 
+  it('anchors strokes painted before a promoted key existed (UAT round 7)', () => {
+    // On-disk evidence: 83 watercolor strokes saved, only 2 anchored, because
+    // strokes painted before the frame's key existed were recorded with no
+    // anchor — and the restore drops unanchored strokes. The promotion binds
+    // them the moment the key lands.
+    expect(studio).toContain('anchorUnownedAquarelleStrokesForFrame(created.appFrame, created.keyId)');
+    // The record-time anchor resolves against the LIVE active track (the
+    // paint target), not the possibly-lagging snapshot binding.
+    expect(studio).toContain('physicPaintStore.getRotoRealKeyRecordByAppFrame(\n            anchorLaunch.layerId,\n            studioActiveTrackId(),');
+  });
+
   it('forces a promotion-deferred capture through the flush gate the navigation flush already passed', () => {
     // The frame-leave flush runs while the capture is still awaiting the
     // promotion, so the capture is enqueued AFTER that flush returned. Without

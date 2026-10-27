@@ -300,6 +300,34 @@ export function getAquarelleStrokeKeyAnchors(): ReadonlyMap<number, string> {
 }
 
 /**
+ * 261027 UAT round 7 (on-disk evidence: 83 strokes saved, 2 anchored):
+ * strokes painted on a frame whose key is created LATER — an auto-promoted
+ * fresh frame — were recorded with no anchor and could never restore. Once
+ * the promotion lands the key, every UNANCHORED stroke of that frame belongs
+ * to it, so bind them now. Strokes that already carry an anchor are never
+ * retargeted. Returns the number of anchors added; bumps once.
+ */
+export function anchorUnownedAquarelleStrokesForFrame(
+  playFrame: number,
+  keyId: string,
+): number {
+  if (typeof keyId !== 'string' || keyId.length === 0) return 0;
+  let anchored = 0;
+  for (const event of payloadTimeline) {
+    if (isAquarelleDryEvent(event)) continue;
+    if (event.playFrame !== playFrame) continue;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId === undefined) continue;
+    if (aquarelleStrokeKeyIds.has(mutationId)) continue;
+    aquarelleStrokeKeyIds.set(mutationId, keyId);
+    anchored += 1;
+  }
+  if (anchored === 0) return 0;
+  bumpAquarelleStrokesRevision();
+  return anchored;
+}
+
+/**
  * 261022-pim: the recorded-stroke revision. Bumps whenever the stroke SET or
  * its frame anchors change (record, delete, restore, key-identity remap) —
  * the narrow select overlay leaf reads it so it re-lists outlines without the

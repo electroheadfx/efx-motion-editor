@@ -1295,6 +1295,42 @@ describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT 
       { mutationId: 302, keyId: 'live-key' },
     ]);
   });
+
+  // 261027 UAT round 7 (on-disk evidence: 83 strokes saved, only 2 anchored):
+  // a stroke painted on a frame BEFORE its key existed had no anchor and was
+  // dropped by every restore. The save now binds it to the live key at its
+  // frame — and only when that frame HAS a live key (deleted-key safety).
+  it('backfills an unanchored session stroke from the live key at its frame on save', async () => {
+    const { controller, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map([[0, 'live-key']]),
+    });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(501, recordableAquarelleStroke(501, 0));
+    setSignature('sig-backfill');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).watercolorKeyAnchors).toEqual([
+      { mutationId: 501, keyId: 'live-key' },
+    ]);
+  });
+
+  it('never backfills an unanchored stroke on a frame without a live key', async () => {
+    const { controller, write, setSignature } = harness({
+      getLiveFrames: () => new Set([0]),
+      getLiveKeyIds: () => new Map(),
+    });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    recordAquarelleStroke(502, recordableAquarelleStroke(502, 0));
+    setSignature('sig-no-key');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).watercolorKeyAnchors).toEqual([]);
+  });
 });
 
 // ------------------------------------------------------------

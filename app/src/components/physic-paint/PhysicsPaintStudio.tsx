@@ -230,6 +230,7 @@ import {
   type BrushHydrationRequest,
 } from './view/brushScriptHydration';
 import {
+  anchorUnownedAquarelleStrokesForFrame,
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
@@ -3264,6 +3265,20 @@ export function PhysicsPaintStudio() {
         recorded: true,
         source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',
       }, promotedBase ? { baseInk: promotedBase } : undefined);
+    }
+    // 261027 UAT round 7: strokes painted on a fresh frame BEFORE this key
+    // existed were recorded UNANCHORED and the restore law drops unanchored
+    // strokes (on-disk evidence: 83 saved, 2 anchored). The new key now owns
+    // every unanchored stroke of its frame — bind them immediately so the
+    // very next save carries proof of ownership.
+    const anchoredBackfill = anchorUnownedAquarelleStrokesForFrame(created.appFrame, created.keyId);
+    if (anchoredBackfill > 0) {
+      recordAquarelleRenderSplitEvent('anchor-backfill', {
+        appFrame: created.appFrame,
+        keyId: created.keyId,
+        anchored: anchoredBackfill,
+        source: 'auto-key-promotion',
+      });
     }
     return { ok: true, keyId: created.keyId, appFrame: created.appFrame, blankFrame: baseFrame };
   };
@@ -6552,11 +6567,18 @@ export function PhysicsPaintStudio() {
       aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
       // 261027: stamp the OWNING KEY with the stroke. A frame number is not
       // identity — a deleted key's strokes must never seed the key that
-      // later occupies the same frame.
-      const capturedKeyId = resolveStudioScriptKeyIdForFrame(
-        studioScriptSnapshotIdentityRef.current,
-        launchContextRef.current?.startFrame ?? 0,
-      );
+      // later occupies the same frame. 261027 UAT round 7: resolve against
+      // the LIVE ACTIVE track (the paint target), never the possibly-lagging
+      // snapshot binding — a null anchor is unrecoverable on restore.
+      const anchorLaunch = launchContextRef.current;
+      const anchorFrame = anchorLaunch?.startFrame ?? 0;
+      const capturedKeyId = anchorLaunch
+        ? physicPaintStore.getRotoRealKeyRecordByAppFrame(
+            anchorLaunch.layerId,
+            studioActiveTrackId(),
+            anchorFrame,
+          )?.keyId ?? null
+        : null;
       recordAquarelleStroke(mutationId, { ...stroke, mutationId }, capturedKeyId);
       // The sheet now holds paint that no queue can see until it is captured;
       // the close/save flush gate reads this flag.

@@ -595,6 +595,35 @@ export function mergeStudioScriptSnapshotContent(
   return { watercolorEvents, watercolorKeyAnchors, brushFrames, durableBases };
 }
 
+/**
+ * 261027 UAT round 7: a SESSION stroke with no anchor whose frame has a live
+ * key NOW belongs to that key — it was painted before the key existed (an
+ * auto-promoted fresh frame). Backfill it at save time so the file carries
+ * proof of ownership and a later restore can seed it. Retained-only entries
+ * are never passed here, and a frame with no live key gets no anchor: a
+ * deleted key's script must never attach to a replacement.
+ */
+export function backfillSessionWatercolorAnchors(
+  events: readonly AquarellePayloadEvent[],
+  sessionAnchors: ReadonlyMap<number, string> | null | undefined,
+  liveKeyIds: ReadonlyMap<number, string> | null | undefined,
+): ReadonlyMap<number, string> | null {
+  if (!liveKeyIds || liveKeyIds.size === 0) return sessionAnchors ?? null;
+  let merged: Map<number, string> | null = null;
+  for (const event of events) {
+    if (isAquarelleDryEvent(event)) continue;
+    const mutationId = event.engine?.mutationId;
+    if (mutationId === undefined) continue;
+    if (sessionAnchors?.has(mutationId)) continue;
+    if (typeof event.playFrame !== 'number') continue;
+    const keyId = liveKeyIds.get(event.playFrame);
+    if (keyId === undefined || keyId.length === 0) continue;
+    merged ??= new Map(sessionAnchors ?? []);
+    merged.set(mutationId, keyId);
+  }
+  return merged ?? sessionAnchors ?? null;
+}
+
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
   return `Studio script snapshot could not be restored (${kind}). The frame pixels are unchanged.`;
 }
@@ -826,13 +855,22 @@ export function createStudioScriptSnapshotController(
     try {
       // No save-time pruning: the session is unioned with what the file is
       // known to hold, so a deleted key's script survives in the snapshot.
+      // 261027 UAT round 7: unanchored SESSION strokes whose frame now holds
+      // a live key are backfilled here — the last proof-of-ownership seam.
+      const sessionEvents = deps.getWatercolorEvents();
+      const liveKeyIds = deps.getLiveKeyIds?.() ?? null;
+      const sessionAnchors = backfillSessionWatercolorAnchors(
+        sessionEvents,
+        deps.getWatercolorKeyAnchors?.() ?? null,
+        liveKeyIds,
+      );
       const content = mergeStudioScriptSnapshotContent(
         sessionOnly ? null : retainedContent,
-        deps.getWatercolorEvents(),
+        sessionEvents,
         deps.getBrushFrames(),
-        deps.getWatercolorKeyAnchors?.() ?? null,
+        sessionAnchors,
         deps.getDurableBases?.() ?? null,
-        deps.getLiveKeyIds?.() ?? null,
+        liveKeyIds,
       );
       // A guide proxy is engine-1 render input, never Brush script content.
       // The codec never carries the guideProxy flag, so a persisted guide row
