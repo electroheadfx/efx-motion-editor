@@ -73,7 +73,13 @@ const CORRECTED_MIXED_IMPORT_PATHS: string[] = [
   'app/src/lib/paintPreferences.ts',
 ];
 
-function createInputCapturePlugin(captured: { input: unknown; chunkLimit?: number }): Plugin {
+type ResolvedAliasEntry = { find: string | RegExp; replacement: string };
+
+function createInputCapturePlugin(captured: {
+  input: unknown;
+  chunkLimit?: number;
+  alias?: readonly ResolvedAliasEntry[];
+}): Plugin {
   return {
     name: 'test-capture-rollup-input',
     enforce: 'post',
@@ -81,13 +87,27 @@ function createInputCapturePlugin(captured: { input: unknown; chunkLimit?: numbe
       captured.input = config.build.rollupOptions.input;
       // D-14: capture the RESOLVED value so a config typo cannot false-pass.
       captured.chunkLimit = config.build.chunkSizeWarningLimit;
+      captured.alias = config.resolve.alias as readonly ResolvedAliasEntry[];
     },
   };
 }
 
+/** First matching alias for an import specifier, using Vite's prefix rule. */
+function aliasTarget(alias: readonly ResolvedAliasEntry[] | undefined, id: string): string | undefined {
+  for (const entry of alias ?? []) {
+    if (typeof entry.find !== 'string') continue;
+    if (id === entry.find || id.startsWith(`${entry.find}/`)) return entry.replacement;
+  }
+  return undefined;
+}
+
 describe('production vite build', () => {
   let outDir: string;
-  const captured: { input: unknown; chunkLimit?: number } = { input: undefined };
+  const captured: {
+    input: unknown;
+    chunkLimit?: number;
+    alias?: readonly ResolvedAliasEntry[];
+  } = { input: undefined };
 
   beforeAll(async () => {
     outDir = makeTempDir('efx-build-');
@@ -175,6 +195,43 @@ describe('production vite build', () => {
       // lazy chunk; pin the separation by stable prefix, never by content hash.
       const studioChunks = collectFiles(outDir).filter((rel) => /PhysicsPaintStudio-[^/]*\.js$/.test(rel));
       expect(studioChunks.length, 'the PhysicsPaintStudio lazy chunk must remain a separate bundle').toBeGreaterThan(0);
+    },
+  );
+
+  it('resolves the watercolor package and every public subpath to source, never the stale dist', () => {
+    // Root cause of the 2026-10-27 "previous strokes hidden while painting"
+    // report: the app consumed packages/efx-watercolor/dist, which predated the
+    // pigment-alpha compositor display. Every watercolor import must hit source
+    // so the live canvas can never run an older engine build than the app.
+    const sourceRoot = resolve(APP_DIR, '../packages/efx-watercolor/src');
+    const expectations: Array<[string, string]> = [
+      ['@efxlab/efx-watercolor', join(sourceRoot, 'index.ts')],
+      ['@efxlab/efx-watercolor/papers', join(sourceRoot, 'papers/index.ts')],
+      ['@efxlab/efx-watercolor/brushes', join(sourceRoot, 'brushes/index.ts')],
+      ['@efxlab/efx-watercolor/payload', join(sourceRoot, 'payload/index.ts')],
+      ['@efxlab/efx-watercolor/bake', join(sourceRoot, 'bake/index.ts')],
+    ];
+    for (const [specifier, expected] of expectations) {
+      expect(aliasTarget(captured.alias, specifier), specifier).toBe(expected);
+    }
+  });
+
+  it(
+    'bundles the watercolor source engine with the pigment-alpha display path',
+    { timeout: 180_000 },
+    () => {
+      // The compositor display (MODE 4) is the only path that keeps the live
+      // sheet transparent outside pigment, so the committed base stays visible
+      // under a new stroke. This shader marker exists only in the source engine
+      // that landed with 99fc8378; the stale dist has zero occurrences.
+      const bundled = collectFiles(outDir)
+        .filter((rel) => rel.endsWith('.js'))
+        .map((rel) => readFileSync(join(outDir, rel), 'utf8'))
+        .join('\n');
+      expect(
+        bundled,
+        'the pigment-alpha display shader must be bundled from source',
+      ).toContain('float mn = min(min(t.r, t.g), t.b)');
     },
   );
 

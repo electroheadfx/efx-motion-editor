@@ -159,6 +159,18 @@ export default defineConfig({
       '@efxlab/efx-paint-host': fileURLToPath(new URL('../packages/efx-paint-host/src/index.ts', import.meta.url)),
       '@efxlab/efx-physic-paint/preact': fileURLToPath(new URL('../packages/efx-physic-paint/src/preact.tsx', import.meta.url)),
       '@efxlab/efx-physic-paint': fileURLToPath(new URL('../packages/efx-physic-paint/src/index.ts', import.meta.url)),
+      // Watercolor must also resolve to source. Its package exports point at
+      // packages/efx-watercolor/dist, which the root build script never
+      // rebuilds; a stale dist silently ran an older engine (the 2026-10-27
+      // "previous strokes hidden while painting" report: the live sheet still
+      // used MODE.transparent and covered the committed base). The shader and
+      // display law must match the app source at all times. Subpaths precede
+      // the root because Vite matches aliases by prefix in order.
+      '@efxlab/efx-watercolor/papers': fileURLToPath(new URL('../packages/efx-watercolor/src/papers/index.ts', import.meta.url)),
+      '@efxlab/efx-watercolor/brushes': fileURLToPath(new URL('../packages/efx-watercolor/src/brushes/index.ts', import.meta.url)),
+      '@efxlab/efx-watercolor/payload': fileURLToPath(new URL('../packages/efx-watercolor/src/payload/index.ts', import.meta.url)),
+      '@efxlab/efx-watercolor/bake': fileURLToPath(new URL('../packages/efx-watercolor/src/bake/index.ts', import.meta.url)),
+      '@efxlab/efx-watercolor': fileURLToPath(new URL('../packages/efx-watercolor/src/index.ts', import.meta.url)),
     },
   },
   // Tauri-specific config
