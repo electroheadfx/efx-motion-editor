@@ -203,7 +203,16 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     // reproduce — it must not exist on this path.
     expect(scripted).not.toContain('captureLivePixels(');
     expect(scripted).not.toContain('baseCanvas: punched.canvas');
-    expect(scripted).not.toContain('loadCachedRotoReferenceFrame(');
+    // 261028-k03d: the ONE display reconcile allowed here is the failed-
+    // recovery restore (the frame must never be left blank). It may not become
+    // a commit path: exactly one call, inside the failRecovery block.
+    const refreshCalls = scripted.split('loadCachedRotoReferenceFrame(').length - 1;
+    expect(refreshCalls).toBe(1);
+    const failRecovery = scripted.slice(
+      scripted.indexOf('const failRecovery ='),
+      scripted.indexOf('publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);'),
+    );
+    expect(failRecovery).toContain('loadCachedRotoReferenceFrame(');
     expect(scripted).toContain('aquarelleDurableBaseByKeyRef.current.get(plan.keyId)');
     expect(scripted).toContain('punchTransmittanceBytes(durable, size, dabs');
     // The script edit ends the sheet session (the next stroke must re-read the

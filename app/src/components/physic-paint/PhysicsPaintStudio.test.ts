@@ -4643,3 +4643,36 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(studio).toContain('const events = getAquarelleEventsForFrame(frame);');
   });
 });
+
+describe('quick 261028-k03d — key-payload recovery and non-blanking failures', () => {
+  it('prefers the authoritative key payload over the display cache when recovering', () => {
+    const recoveryStart = studio.indexOf('if (plan.recoverBase) {');
+    expect(recoveryStart).toBeGreaterThan(-1);
+    const payloadAt = studio.indexOf('aquarelleKeyPayloadRef.current(plan.frame)', recoveryStart);
+    const displayAt = studio.indexOf('findCachedRotoDisplayFrameRef.current(plan.frame)', recoveryStart);
+    expect(payloadAt, 'the key payload is the primary P source').toBeGreaterThan(recoveryStart);
+    expect(displayAt, 'the display frame stays the fallback').toBeGreaterThan(payloadAt);
+  });
+
+  it('refreshes the display from the key payload on a failed recovery', () => {
+    const failStart = studio.indexOf('const failRecovery =');
+    const failEnd = studio.indexOf('publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);', failStart);
+    expect(failStart).toBeGreaterThan(-1);
+    const failBlock = studio.slice(failStart, failEnd);
+    expect(failBlock, 'a refusal never leaves the frame blank').toContain('loadCachedRotoReferenceFrame(plan.frame');
+    expect(failBlock).toContain('physicPaintVersion.value++');
+  });
+
+  it('recovers the durable base before every script edit', () => {
+    const definition = studio.indexOf('ensureAquarelleDurableBaseRef.current = async');
+    expect(definition, 'the shared recovery helper exists').toBeGreaterThan(-1);
+    const calls = studio.split('await ensureAquarelleDurableBaseRef.current(').length - 1;
+    expect(calls, 'delete + move + appearance + transform').toBe(4);
+    for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
+      const start = studio.indexOf(`const ${handler} = useCallback`);
+      expect(start, `${handler} exists`).toBeGreaterThan(-1);
+      const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);
+      expect(call, `${handler} recovers before editing`).toBeGreaterThan(start);
+    }
+  });
+});

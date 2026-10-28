@@ -75,7 +75,7 @@ import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRej
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
-import { findAdjacentRealKeyFrame, isPhysicsPaintShortcutTarget } from './view/physicsPaintStudioKeyboard';
+import { findAdjacentRealKeyFrame, isPhysicsPaintMoveShortcutTarget } from './view/physicsPaintStudioKeyboard';
 import {
   mountPhysicsPaintTemporaryErase,
   resolveEffectiveTool,
@@ -2116,7 +2116,9 @@ export function PhysicsPaintStudio() {
     getSelectedTool: () => 'paint',
     getEngine: () => noopTemporaryEraseEngineRef.current,
     isMutationLocked: isPhysicalMutationLocked,
-    isShortcutTarget: isPhysicsPaintShortcutTarget,
+    // 261028-k03d: the Move arm ignores text entry only — a focused select or
+    // range control must not leave Cmd inert.
+    isShortcutTarget: isPhysicsPaintMoveShortcutTarget,
     // 261022-pim: a Cmd TAP (no chord) toggles the persistent Water color
     // select overlay. The held arm stays the rail's visual state only.
     onMetaTap: () => {
@@ -5732,9 +5734,6 @@ export function PhysicsPaintStudio() {
     // 261018-f15 C2: the Paint-tab size rides the same router the top bar
     // uses — one write-through, never a second setter.
     onBrushSizeChange: handleBrushSizeChange,
-    // 261028-k03c D2/D3: the restored Brush tab's Lift section shares the top
-    // bar's handler — one selection path, never a second implementation.
-    onSelectLiftStrokes: handleSelectLiftStrokes,
     onion,
     onionDisabled: isPlaying,
     engineControlsDisabled: staticControlsLocked,
@@ -5921,6 +5920,27 @@ export function PhysicsPaintStudio() {
       grainScale: bgMeta.grainScale ?? 1,
     };
   })();
+  // 261028-k03d: the AUTHORITATIVE key payload. The display cache can still be
+  // a stale transparent placeholder right after a settle commit (a 128-byte
+  // frame while the key holds ~540 kB), so a base recovery inverted against the
+  // display frame produces garbage and fails validation. Read the key's own
+  // rendered bytes first; the display frame stays the fallback.
+  const aquarelleKeyPayloadRef = useRef<(frame: number) => { bytes: Uint8Array; width: number; height: number } | null>(() => null);
+  aquarelleKeyPayloadRef.current = (frame) => {
+    const launch = launchContextRef.current;
+    if (!launch) return null;
+    const source = physicPaintStore.getRotoPhysicalRenderSource(launch.layerId, studioActiveTrackId(), frame);
+    if (!source || source.kind === 'loop-placeholder') return null;
+    const rendered = source.renderedFrame;
+    const bytes = rendered.bytes;
+    if (!bytes || bytes.length === 0) return null;
+    const size = aquarelleLiftSizeRef.current;
+    return {
+      bytes,
+      width: rendered.width ?? size.width,
+      height: rendered.height ?? size.height,
+    };
+  };
   const planAquarelleLiftErase = useCallback((frame: number): AquarelleLiftErasePlan => {
     const launch = launchContextRef.current;
     if (!launch) return { kind: 'normal' };
@@ -6000,6 +6020,88 @@ export function PhysicsPaintStudio() {
   // over a render's controller object.
   const aquarelleRebakeRef = useRef<((events: ReturnType<typeof getAquarelleEventsForFrame>) => Promise<boolean>) | null>(null);
   aquarelleRebakeRef.current = (events) => rotoScript.applyAquarelleTimeline(events);
+  // 261028-k03d: legacy keys carry a script but no durable pre-script base, so
+  // every script edit used to fail closed ('durable-base-unknown'). Recover that
+  // base ONCE, before the edit mutates the timeline: P is the key payload and S
+  // is the PRE-edit script bake, which is exactly the pair the inversion needs.
+  // The validated base is seeded into the snapshot map, so later edits and
+  // Apply find it. A failed recovery changes nothing (the publish still refuses).
+  const ensureAquarelleDurableBaseRef = useRef<(appFrame: number) => Promise<boolean>>(async () => false);
+  ensureAquarelleDurableBaseRef.current = async (appFrame) => {
+    const launch = launchContextRef.current;
+    if (!launch) return false;
+    const trackId = studioActiveTrackId();
+    const record = physicPaintStore.getRotoRealKeyRecordByAppFrame(launch.layerId, trackId, appFrame);
+    if (!record) return true;
+    const map = aquarelleDurableBaseByKeyRef.current;
+    if (map.has(record.keyId)) return true;
+    const events = getAquarelleEventsForFrame(appFrame);
+    if (events.length === 0) return true;
+    const payload = aquarelleKeyPayloadRef.current(appFrame);
+    if (!payload) return false;
+    const size = { width: payload.width, height: payload.height };
+    try {
+      const baked = await bakeAquarelleEventsToFrame({
+        events,
+        size,
+        paper: aquarelleLiftPaperRef.current,
+      });
+      if (!baked) {
+        recordAquarelleRenderSplitEvent('lift-erase', {
+          frame: appFrame,
+          trackId,
+          keyId: record.keyId,
+          scripted: true,
+          willPinBase: false,
+          stage: 'base-recovery-failed',
+          source: 'pre-edit',
+          reason: 'bake',
+        });
+        return false;
+      }
+      const recovery = await recoverAquarelleDurableBase({
+        displayBytes: payload.bytes,
+        scriptBytes: baked.bytes,
+        size,
+        appFrame,
+      });
+      if (!recovery.ok) {
+        recordAquarelleRenderSplitEvent('lift-erase', {
+          frame: appFrame,
+          trackId,
+          keyId: record.keyId,
+          scripted: true,
+          willPinBase: false,
+          stage: 'base-recovery-failed',
+          source: 'pre-edit',
+          reason: recovery.reason,
+          meanError: recovery.meanError,
+          clampRatio: recovery.clampRatio,
+          saturatedColorError: recovery.saturatedColorError,
+        });
+        return false;
+      }
+      map.set(record.keyId, recovery.bytes);
+      bumpAquarelleStrokesRevision();
+      studioScriptSnapshot.markDirty();
+      recordAquarelleRenderSplitEvent('lift-erase', {
+        frame: appFrame,
+        trackId,
+        keyId: record.keyId,
+        scripted: true,
+        willPinBase: false,
+        stage: 'base-recovery-ok',
+        source: 'pre-edit',
+        meanError: recovery.meanError,
+        baseInk: recovery.baseInk,
+        clampRatio: recovery.clampRatio,
+        saturatedColorError: recovery.saturatedColorError,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
   // 261028-k03b: the lift transaction. Two truths, by frame state:
   //
   //  SCRIPTED (a script existed before this stroke) — the script bake owns the
@@ -6183,12 +6285,25 @@ export function PhysicsPaintStudio() {
             }
             aquarelleResetSheetRef.current?.();
             revertAquarelleLiftPreview();
+            // 261028-k03d: never leave the frame blank. Clearing the live sheet
+            // is correct only when the cache already shows the key; on the
+            // legacy path the visible paint still lived on the sheet, so force
+            // the same content-token reconcile the Apply/commit paths use.
+            if (launchContextRef.current?.startFrame === plan.frame) {
+              const generation = Math.max(
+                rotoPreviewBaseContentToken(),
+                previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
+              );
+              loadCachedRotoReferenceFrame(plan.frame, previewBasePort, undefined, true, generation);
+              physicPaintVersion.value++;
+            }
             publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
           };
-          // P = the displayed composite. The frame cache holds BOTH the script
-          // pigment and the pre-script base (that is what makes the inversion
-          // possible at all).
-          const display = findCachedRotoDisplayFrameRef.current(plan.frame);
+          // P = the composite that contains BOTH the script pigment and the
+          // pre-script base. Prefer the key payload: the display cache can be a
+          // stale transparent placeholder after a settle commit (261028-k03d).
+          const keyPayload = aquarelleKeyPayloadRef.current(plan.frame);
+          const display = keyPayload ?? findCachedRotoDisplayFrameRef.current(plan.frame);
           if (!display?.bytes || display.bytes.length === 0) {
             failRecovery('no-display');
             return;
@@ -6323,7 +6438,11 @@ export function PhysicsPaintStudio() {
       const sessionBase = mergeBase && mergeBase.appFrame === plan.frame && mergeBase.trackId === plan.trackId
         ? mergeBase.base
         : null;
-      const base = sessionBase ?? findCachedRotoDisplayFrameRef.current(plan.frame);
+      // 261028-k03d: the key payload is authoritative; the display frame can be
+      // a stale placeholder right after a settle commit.
+      const base = sessionBase
+        ?? aquarelleKeyPayloadRef.current(plan.frame)
+        ?? findCachedRotoDisplayFrameRef.current(plan.frame);
       if (!base || !base.bytes || base.bytes.length === 0) {
         publish(AQUARELLE_LIFT_NO_CACHE_REFUSAL);
         revertAquarelleLiftPreview();
@@ -6605,6 +6724,9 @@ export function PhysicsPaintStudio() {
         // The recorded timeline IS the script: replay it directly so a delete
         // keeps working after an Apply refresh clears the engine guide strokes.
         const playFrame = launchContextRef.current?.startFrame ?? 0;
+        // 261028-k03d: recover a legacy key's missing durable base BEFORE the
+        // edit changes the script, or the publish fails closed.
+        await ensureAquarelleDurableBaseRef.current(playFrame);
         aquarelleResetSheetRef.current?.();
         const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
         if (ok) {
@@ -6687,6 +6809,9 @@ export function PhysicsPaintStudio() {
     );
     // One move = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
+    // 261028-k03d: recover a legacy key's missing durable base before the move
+    // mutates the script (the pre-edit bake is what the inversion needs).
+    await ensureAquarelleDurableBaseRef.current(playFrame);
     const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);
     if (editId === null) return false;
     setAquarelleScriptEditInFlight(true);
@@ -6756,6 +6881,8 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
+    // 261028-k03d: recover a legacy key's missing durable base before the edit.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
     // One appearance batch = one edit with before/after script snapshots. The
     // ledger records it only after the re-bake succeeds.
     const editId = beginAquarelleAppearanceEdit(frameIds, patch);
@@ -6836,6 +6963,8 @@ export function PhysicsPaintStudio() {
       { x: transform.anchorX, y: transform.anchorY },
       sheetSize,
     );
+    // 261028-k03d: recover a legacy key's missing durable base before the edit.
+    await ensureAquarelleDurableBaseRef.current(playFrame);
     // One transform = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
     const editId = beginAquarelleTransformEdit(frameIds, {
