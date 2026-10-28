@@ -263,15 +263,39 @@ None — no external service configuration required.
   - App typecheck: `tsc --noEmit` clean.
   - Targeted Task 3 suites: 5 files / 346 tests passing (`aquarelleBaseRecovery` 12, `aquarelleFootprint` 16, `aquarelleLiftEraseContract` 21, `aquarelleLayerContract` 19, `PhysicsPaintStudio` 278).
   - Full app suite: 350 files passed, 2 skipped, 6,190 tests passed, 1 skipped, 96 todo.
-- Native visual UAT remains for the user; rows to watch most closely:
+- Native visual UAT **PASSED 2026-10-29** (user: “congrats it was fixed”). The watch list below surfaced the follow-up rounds documented in the addendum:
   - **Scripted legacy frame (D1)** — the recovery bake runs once; confirm the erase is visible and that deleting the scripted event restores the script paint, Apply re-erases, and raster paint outside the lift survives.
   - **Raster-only durability (D3)** — leave/return and close/reopen with Script ON and OFF; the punched payload, not a settle capture, must be what loads.
   - **Cursor (D4)** — Flat/Round/Filbert shapes, pen tilt on a fixed-rotation tip, and the select/move hiding.
   - **Legend** — the cursor's ring and the painted/erased footprint must agree at high zoom, where a rounding mismatch is most visible.
 
+## Addendum — Native UAT follow-up rounds (2026-10-28 → 2026-10-29)
+
+The automated close left 7 native UAT rows. Running them exposed a chain of real defects; each was fixed, committed and re-tested on-device:
+
+- **k03d** (`d5ddc2f4`, `2b9d27c9`, `3fb30d2a`) — recovery must read P from the key payload, never a display placeholder; a failed Lift refreshes the display instead of blanking it; a failed recovery no longer locks the key out for the session. Catalog-only Brush tab, Lift-owned top bar, Cmd-move gate.
+- **k03e** (`8c4cdb08`) — a refused Lift left the engine erase on the live sheet, which then became the next key payload; one-sided empty-base proof (the display is nowhere darker than the bake → known-empty base, no bake/punch) and P key-payload-first.
+- **k03f** (`e9d3a348`) — a lift-only script owned a raster frame and its blank bake wiped the painted key; Lift script ownership now requires a paint-bearing timeline.
+- **k03g** (`32d9ff80`, `7f6dbb41`, `c8b279e9`, `ad4e3903`) — global Dry events refused every new base pin (gate on `hasAquarelleScriptForFrame`); playback is not reproducible (StrokeWriter `Math.random`), so provenance became a pigment-structure correlation + relaxed numeric bounds; an impossible inversion writes white, never black; a scripted Lift commits the live erase instantly instead of re-baking.
+- **k03h** (`0e51115d`, `657a8b25`, `7208d65d`) — raster Lift re-rendered because the session pinned a 128-byte placeholder as its merge base (prefer the committed key payload); scripted Lift blanked/offset because it reset the sheet before the punch and re-derived dabs from the stroke (now: punch first, engine dab stream); a fresh key's placeholder was never pinned (known-empty pin) and the saturated-colour gate was raised to 96.
+- **k03i** (`21a183c1`) — the recovered durable base was a **forged copy of the script's own wash fringe**; every later re-bake composited the script over that ghost (moving a Lift doubled the erase, deleting one kept it, deleting a paint let its colour resurface). The recovery now samples only pixels the script cannot have painted (≤2 % coverage + a ~22 px fringe band), the correlation compares only script-painted pixels, the empty proof runs first, a proven-empty Lift commits the fresh bake, recovered bases are session-only, durable-base section v2 drops provisional v1 bytes (heals existing snapshots), and a stroke deleted from a live key no longer resurrects on reopen.
+
+**Native UAT PASSED 2026-10-29** (user: “congrats it was fixed”).
+
+Final gates on `21a183c1`:
+- Package `@efxlab/efx-watercolor`: `tsc --noEmit` clean; `vitest run` 10 files / 138 passed, 4 skipped.
+- App: `tsc --noEmit` clean; `vitest run` 350 files passed, 2 skipped / 6,241 passed, 1 skipped, 96 todo.
+
+Declared limitations:
+- A pre-script base hidden under script coverage is unrecoverable; the script is authoritative there (k03i).
+- A Lift within the settle window right after painting can miss uncommitted sheet strokes (the composite punch reads the last committed payload).
+- `collectLiftDabs` remains the fallback when no engine dab stream was captured.
+- Bakes are not reproducible (StrokeWriter `Math.random`); this is the planned bake-speed quick's input.
+
 ---
 *Quick: 261028-k03c*
 *Completed: 2026-10-28*
+*UAT closed: 2026-10-29*
 
 ## Self-Check: PASSED
 

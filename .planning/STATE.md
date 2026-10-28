@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-28 - Quick 261028-k03c automated-complete, awaiting native UAT (Needs Review). Shipped d88aec5f, 86da1294, eebd27b7, 3690114a + review fixes d543c060..6d1fa6b9: legacy scripted base recovery with a provenance-validated inversion, navigation-drift guard, raster capture fence + one retry + revision-bump/markDirty, tip-shaped liftFS/engine/punch/preview, true-footprint cursor, separate Lift tip (Filbert default) and the restored sidebar Brush tab. Gates: package check/build, app typecheck, 6,202 app tests. 7 native UAT rows remain.
+Last activity: 2026-10-29 - Quick 261028-k03c CLOSED, native UAT passed (2026-10-29). UAT rounds k03d..k03i fixed the full Lift chain: key-payload recovery, empty-base proof, raster script ownership, Dry-poisoned base pin, non-reproducible-playback gates, instant scripted commit, engine-dab punching, fresh-key empty pin, and the k03i forged-base law (recovery samples only pigment the script cannot paint; provisional v1 bases dropped; deleted strokes persist). Final commit 21a183c1. Gates: package check clean + 138 tests (4 skipped), app typecheck clean, 6,241 app tests. Declared limitations recorded in the quick SUMMARY addendum.
 
 Progress: [██████████] 100%
 
@@ -604,7 +604,7 @@ None yet.
 | 261027-k6j | Script switch in the Studio top bar: On (default) records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script (existing scripts stay editable) | 2026-10-27 | e1d437fd | [261027-k6j-add-near-brush-dropdown-in-top-bar-an-on](./quick/261027-k6j-add-near-brush-dropdown-in-top-bar-an-on/) |
 | 261027-klx | Remove 'engine-1' called Brush mode (efx-physic-paint) | 2026-10-27 | 52b82030 | [261027-klx-remove-engine-1-called-brush-mode-efx-ph](./quick/261027-klx-remove-engine-1-called-brush-mode-efx-ph/) |
 | 261028-k03 | Lift (eraser) must erase live, scripted, and raster-only paint — settle the three-state truth table first | 2026-10-28 | 234655ad | [261028-k03-lift-eraser-must-erase-live-scripted-and](./quick/261028-k03-lift-eraser-must-erase-live-scripted-and/) |
-| 261028-k03c | Lift eraser UAT blockers: scripted base recovery, raster persistence, real footprint cursor, restored sidebar Brush tab, tip shapes (Filbert default) | 2026-10-28 | 6d1fa6b9 | [261028-k03c-lift-eraser-uat-blockers](./quick/261028-k03c-lift-eraser-uat-blockers/) |
+| 261028-k03c | Lift eraser UAT blockers: scripted base recovery, raster persistence, real footprint cursor, restored sidebar Brush tab, tip shapes (Filbert default) — CLOSED, native UAT passed 2026-10-29 (rounds k03d..k03i) | 2026-10-29 | 21a183c1 | [261028-k03c-lift-eraser-uat-blockers](./quick/261028-k03c-lift-eraser-uat-blockers/) |
 
 ### Roadmap Evolution
 
