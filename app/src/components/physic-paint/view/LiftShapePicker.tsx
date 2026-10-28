@@ -21,8 +21,10 @@ import {
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 
 export function LiftShapePicker(props: { testId: string; disabled?: boolean }) {
-  // Narrow signal read (efx-preact-reactivity rule 5).
-  const liftTipId = aquarelleLiftTipId.value;
+  // Narrow signal read (efx-preact-reactivity rule 5). IN-05: a null id (the
+  // setter normalizes unknown ids to null) must never render a blank select —
+  // the effective tip is the same Filbert fallback the thumb shows.
+  const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
   return (
     <div
       data-testid={props.testId}
@@ -34,14 +36,14 @@ export function LiftShapePicker(props: { testId: string; disabled?: boolean }) {
       }}
     >
       <WatercolorBrushThumb
-        presetId={liftTipId ?? 'filbert'}
+        presetId={liftTipId}
         class="physics-paint-brush-trigger-thumb"
         testId={`${props.testId}-thumb`}
       />
       <select
         data-testid={`${props.testId}-select`}
         aria-label="Lift shape"
-        value={liftTipId ?? ''}
+        value={liftTipId}
         disabled={props.disabled}
         onChange={(event) => setAquarelleLiftTipId(event.currentTarget.value)}
         style={{ maxWidth: '120px', height: '24px' }}
