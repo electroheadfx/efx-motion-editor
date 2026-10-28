@@ -749,10 +749,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     });
   }, [getCurrentIdentity, upsertCachedFrame]);
 
-  const resolveFrameIdentityInput = useCallback((appFrame: number) => {
+  const resolveFrameIdentityInput = useCallback((appFrame: number, trackId?: string) => {
     const launch = inputRef.current.launchContext;
     if (!launch) return null;
-    const document = inputRef.current.store.getRotoPhysicalDocument(launch.layerId, inputRef.current.getActiveTrackId(launch.layerId));
+    // 261028-k03: a track override lets a caller flush/commit the track its
+    // sheet belongs to even when the document's active track has already
+    // moved (the session-vs-active divergence the capture path logs).
+    const document = inputRef.current.store.getRotoPhysicalDocument(launch.layerId, trackId ?? inputRef.current.getActiveTrackId(launch.layerId));
     if (!document) return null;
     const keyId = resolveRotoLivePixelIdentityKey(document, appFrame);
     return keyId === null
@@ -830,8 +833,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     livePixelTransactionsRef.current.snapshot(identity);
   }, [resolveFrameIdentityInput]);
 
-  const flushLivePixels = useCallback(async (appFrame?: number): Promise<void> => {
-    const identity = appFrame === undefined ? undefined : resolveFrameIdentityInput(appFrame) ?? undefined;
+  const flushLivePixels = useCallback(async (appFrame?: number, trackId?: string): Promise<void> => {
+    const identity = appFrame === undefined ? undefined : resolveFrameIdentityInput(appFrame, trackId) ?? undefined;
     await livePixelTransactionsRef.current.flush(identity);
     const deliveryKeys = identity ? [`${identity.launchId}:${identity.layerId}:${identity.keyId}`] : [...parentDeliveryRef.current.keys()];
     for (const key of deliveryKeys) {

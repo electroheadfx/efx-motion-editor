@@ -46,10 +46,11 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePlayFrame?: () => number;
   getAquarellePaperId?: () => string;
   getAquarellePaperGrainStrength?: () => number;
-  /** 261028-k03 D3: a Lift gesture is refused at pointerdown when Script is
-   *  OFF and this frame already owns a script. */
-  getAquarelleLiftBlocked?: () => boolean;
-  onAquarelleLiftBlocked?: () => void;
+  /** 261028-k03 D3/D2: a Lift gesture is refused at pointerdown for every
+   *  fail-closed state (Script OFF with a script, group frame, unknown base,
+   *  no displayable paint). Returns the copy to publish, or null to proceed. */
+  getAquarelleLiftBlocked?: () => string | null;
+  onAquarelleLiftBlocked?: (message: string) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
@@ -179,8 +180,8 @@ export function PhysicsPaintCanvasMount(props: {
         getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
         disabled={false}
-        getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? false}
-        onLiftBlocked={() => onAquarelleLiftBlockedRef.current?.()}
+        getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
+        onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}

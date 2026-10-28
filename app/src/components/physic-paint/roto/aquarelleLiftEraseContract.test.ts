@@ -75,14 +75,17 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
     expect(cancel).toBeGreaterThan(blocked);
     expect(layerGate).toContain('event.preventDefault()');
     expect(layerGate).toContain('event.stopPropagation()');
-    expect(layerGate).toContain('onLiftBlockedRef.current?.()');
-    // The props exist on the layer and the mount forwards both.
-    expect(layer).toContain('getLiftBlocked?: () => boolean;');
-    expect(layer).toContain('onLiftBlocked?: () => void;');
-    expect(mount).toContain('getAquarelleLiftBlocked?: () => boolean;');
-    expect(mount).toContain('onAquarelleLiftBlocked?: () => void;');
-    expect(mount).toContain('getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? false}');
-    expect(mount).toContain('onLiftBlocked={() => onAquarelleLiftBlockedRef.current?.()}');
+    expect(layerGate).toContain('onLiftBlockedRef.current?.(refusal)');
+    // A stylus eraser end is a lift gesture even when the selected tool is brush.
+    expect(layerGate).toContain("event.pointerType === 'pen'");
+    expect(layerGate).toContain('(event.buttons & 32) === 32');
+    // The props exist on the layer and the mount forwards both (message copy).
+    expect(layer).toContain('getLiftBlocked?: () => string | null;');
+    expect(layer).toContain('onLiftBlocked?: (message: string) => void;');
+    expect(mount).toContain('getAquarelleLiftBlocked?: () => string | null;');
+    expect(mount).toContain('onAquarelleLiftBlocked?: (message: string) => void;');
+    expect(mount).toContain('getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}');
+    expect(mount).toContain('onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}');
   });
 });
 
@@ -133,13 +136,13 @@ describe('Lift preflight ordering (261028-k03 D2)', () => {
 describe('Lift erase pipeline order (261028-k03 D2)', () => {
   it('snapshots the sheet eagerly and drains the settle capture before any base read', () => {
     const snapshot = erase.indexOf('aquarelleSnapshotRef.current?.()');
-    const firstAwait = erase.indexOf('await ');
-    const flush = erase.indexOf('flushLivePixels(plan.frame)');
-    const baseRead = erase.indexOf('aquarelleMergeBaseRef.current');
+    const firstPersistenceAwait = erase.indexOf('await rotoPersistenceRef.current.');
+    const flush = erase.indexOf('flushLivePixels(plan.frame, plan.trackId)');
+    const baseRead = erase.indexOf('const mergeBase = aquarelleMergeBaseRef.current');
     const capture = erase.indexOf('captureLivePixels(');
     expect(snapshot).toBeGreaterThanOrEqual(0);
-    expect(firstAwait).toBeGreaterThan(snapshot);
-    expect(flush).toBeGreaterThan(firstAwait);
+    expect(firstPersistenceAwait).toBeGreaterThan(snapshot);
+    expect(flush).toBeGreaterThan(snapshot);
     expect(baseRead).toBeGreaterThan(flush);
     expect(capture).toBeGreaterThan(baseRead);
   });
@@ -154,8 +157,14 @@ describe('Lift erase pipeline order (261028-k03 D2)', () => {
     const okIndex = erase.indexOf('if (!ok) {');
     expect(okIndex).toBeGreaterThan(-1);
     expect(setIndex).toBeGreaterThan(okIndex);
-    // The merge base is re-pinned so no later capture re-applies pre-erase bytes.
-    expect(erase).toContain('aquarelleMergeBaseRef.current = {');
+    // The merge base is re-pinned BEFORE the commit await (a settle capture
+    // enqueued mid-punch must not merge over the pre-erase base) and restored
+    // when the transaction does not acknowledge.
+    const mergePin = erase.indexOf('aquarelleMergeBaseRef.current = {');
+    const captureStart = erase.indexOf('captureLivePixels({');
+    expect(mergePin).toBeGreaterThan(-1);
+    expect(captureStart).toBeGreaterThan(mergePin);
+    expect(erase).toContain('aquarelleMergeBaseRef.current = previousMergeBase;');
   });
 
   it('commits through the existing physical-edit transaction seam', () => {
@@ -176,9 +185,10 @@ describe('Lift erase pipeline order (261028-k03 D2)', () => {
     expect(erase).toContain('getAppliedPreviewBaseContentToken()');
   });
 
-  it('guards re-entrancy with a single pending slot and never leaks in-flight', () => {
+  it('queues re-entrant lifts in order and never leaks in-flight', () => {
     expect(erase).toContain('aquarelleLiftEraseInFlightRef.current');
-    expect(erase).toContain('aquarelleLiftErasePendingRef.current');
+    expect(erase).toContain('aquarelleLiftErasePendingRef.current.push(');
+    expect(erase).toContain('aquarelleLiftErasePendingRef.current.shift()');
     expect(erase).toContain('} finally {');
   });
 });

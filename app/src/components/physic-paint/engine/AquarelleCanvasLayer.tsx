@@ -232,14 +232,15 @@ export function AquarelleCanvasLayer(props: {
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
-   * 261028-k03 D3: Lift (the eraser) needs Script ON to erase recorded paint.
-   * The Studio answers "this frame owns a script and Script is OFF"; the layer
-   * then stops the gesture in the capture phase, before `cancelAutoFix` and
-   * before the engine's own canvas pointerdown — the stroke-end check would
-   * already have erased the live sheet and recorded the event.
+   * 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
+   * frame, unknown pre-script base, no displayable paint) is decided by the
+   * Studio's preflight and applied HERE, in the capture phase — before
+   * `cancelAutoFix` and before the engine's own canvas pointerdown. The
+   * stroke-end check would already have erased the live sheet and recorded
+   * the event. `getLiftBlocked` returns the refusal copy, or null to proceed.
    */
-  getLiftBlocked?: () => boolean;
-  onLiftBlocked?: () => void;
+  getLiftBlocked?: () => string | null;
+  onLiftBlocked?: (message: string) => void;
   /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
@@ -392,12 +393,19 @@ export function AquarelleCanvasLayer(props: {
     let lastWetAt = 0;
     let settleCapArmed = false;
 
+    // 261028-k03: the ENGINE resolves the live tool — a stylus eraser end
+    // forces `lift` even when the selected tool is brush. Record that tool,
+    // not the selection, or a re-bake replays a brush where the user erased.
+    let liveStrokeTool: Tool | null = null;
     let engine: WatercolorEngine;
     try {
       engine = new WatercolorEngine(
         canvas,
         null,
         {
+          onStrokeTool(tool) {
+            if (tool) liveStrokeTool = tool;
+          },
           onStrokeSample(sample) {
             painting = true;
             lastWetAt = performance.now();
@@ -416,7 +424,7 @@ export function AquarelleCanvasLayer(props: {
             if (points.length === 0) return;
             const snap = snapshotAquarelleRecord();
             const stroke: AquarelleStroke = {
-              tool: toolForSelection(),
+              tool: (liveStrokeTool ?? toolForSelection()) as AquarelleTool,
               color: colorRef.current,
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
@@ -588,13 +596,19 @@ export function AquarelleCanvasLayer(props: {
     // on window so this runs BEFORE the engine's own canvas pointerdown.
     const reopenSettleOnPaint = (event: PointerEvent) => {
       if (event.target !== canvas || event.button === 1) return;
-      // 261028-k03 D3: Lift needs Script ON to erase recorded paint. Blocking at
-      // POINTERDOWN is the only place that keeps the gesture out of the engine
-      // — the stroke-end check would already have erased the live sheet.
-      if (toolForSelection() === 'lift' && getLiftBlockedRef.current?.()) {
+      // 261028-k03 D3/D2: every Lift refusal (Script OFF with a script, group
+      // frame, unknown pre-script base, no displayable paint) must happen at
+      // POINTERDOWN — the only place that keeps the gesture out of the engine.
+      // A stroke-end check would already have erased the live sheet and left a
+      // recorded event behind. A stylus eraser end (`buttons & 32`) is a lift
+      // gesture even when the selected tool is brush; the engine resolves it.
+      const liftGesture = toolForSelection() === 'lift'
+        || (event.pointerType === 'pen' && (event.buttons & 32) === 32);
+      const refusal = liftGesture ? getLiftBlockedRef.current?.() ?? null : null;
+      if (refusal !== null) {
         event.preventDefault();
         event.stopPropagation();
-        onLiftBlockedRef.current?.();
+        onLiftBlockedRef.current?.(refusal);
         return;
       }
       engine.cancelAutoFix();

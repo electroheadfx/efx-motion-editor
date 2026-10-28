@@ -1437,17 +1437,18 @@ export function PhysicsPaintStudio() {
   const aquarelleSheetHasPaintRef = useRef(false);
   // 261028-k03 D2: a Lift on a committed frame punches the cached composite and
   // commits it through the physical-edit transaction. Only ONE erase may be in
-  // flight (each one owns a canvas pair it hands to the transaction), so a
-  // second Lift arriving mid-commit waits in this single pending slot.
+  // flight (each one owns a canvas pair it hands to the transaction); further
+  // Lifts queue in order here — never drop one, or its recorded event survives
+  // without a punch and a later Apply resurrects the erased pixels.
   const aquarelleLiftEraseInFlightRef = useRef(false);
-  const aquarelleLiftErasePendingRef = useRef<{
+  const aquarelleLiftErasePendingRef = useRef<Array<{
     frame: number;
     trackId: string;
     keyId: string;
     scripted: boolean;
     willPinBase: boolean;
     stroke: AquarelleStroke;
-  } | null>(null);
+  }>>([]);
   // Captures can suspend on the auto-key promotion before they enqueue. The
   // save/close flush must wait for those enqueues, otherwise it drains an empty
   // queue and the sheet's pixels are serialized as the blank key payload.
@@ -5874,7 +5875,15 @@ export function PhysicsPaintStudio() {
     const rasterBacked = findCachedRotoDisplayFrameRef.current(frame) !== null;
     // Defensive: the pointerdown gate already stopped this gesture.
     if (!scriptRecordingOn && scripted) return { kind: 'refuse', message: AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL };
-    if (!rasterBacked) return { kind: 'normal' };
+    // A live sheet with paint needs no punch — the engine already erased it and
+    // the capture commits the sheet. An EMPTY sheet whose key has no
+    // displayable source has nothing to erase: recording a lift here would pin
+    // a base the punch never touches, and a later Apply could bring it back.
+    if (!rasterBacked) {
+      return aquarelleSheetHasPaintRef.current
+        ? { kind: 'normal' }
+        : { kind: 'refuse', message: AQUARELLE_LIFT_NO_CACHE_REFUSAL };
+    }
     // A reopened scripted key whose pre-script base was never pinned: a MISSING
     // entry (`has === false`) is UNKNOWN, distinct from a known-empty `null`.
     // Only `scripted` refuses — a raster-only key under Script ON always has a
@@ -5893,7 +5902,7 @@ export function PhysicsPaintStudio() {
     stroke: AquarelleStroke,
   ): Promise<void> => {
     if (aquarelleLiftEraseInFlightRef.current) {
-      aquarelleLiftErasePendingRef.current = { ...plan, stroke };
+      aquarelleLiftErasePendingRef.current.push({ ...plan, stroke });
       return;
     }
     aquarelleLiftEraseInFlightRef.current = true;
@@ -5904,12 +5913,16 @@ export function PhysicsPaintStudio() {
     };
     const finish = () => {
       aquarelleLiftEraseInFlightRef.current = false;
-      const pending = aquarelleLiftErasePendingRef.current;
-      aquarelleLiftErasePendingRef.current = null;
+      const pending = aquarelleLiftErasePendingRef.current.shift();
       if (!pending) return;
       const { stroke: pendingStroke, ...pendingPlan } = pending;
       void runAquarelleLiftErase({ kind: 'erase', ...pendingPlan }, pendingStroke);
     };
+    // The session pin is moved BEFORE the commit await (a settle capture
+    // enqueued mid-punch would otherwise merge over the pre-erase base), and
+    // restored if the commit does not acknowledge.
+    let mergeBasePinned = false;
+    let previousMergeBase: typeof aquarelleMergeBaseRef.current = null;
     try {
       const launch = launchContextRef.current;
       if (!launch) {
@@ -5932,7 +5945,7 @@ export function PhysicsPaintStudio() {
       // substitute: invalidation cannot stop a commit that already passed its
       // stale-before-commit check (rotoLivePixelCacheTransactions.ts:186).
       try {
-        await rotoPersistenceRef.current.flushLivePixels(plan.frame);
+        await rotoPersistenceRef.current.flushLivePixels(plan.frame, plan.trackId);
       } catch {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         return;
@@ -5992,7 +6005,18 @@ export function PhysicsPaintStudio() {
           punchedDurableBytes = durablePunch.bytes;
         }
       }
-      // Nothing is written before this await resolves.
+      // Pin the session base BEFORE the await: a settle capture enqueued while
+      // the punch/commit is in flight would otherwise merge over the PRE-erase
+      // base and land old bytes after this erase. The pin is session state, not
+      // the durable store; a failed commit restores it below.
+      previousMergeBase = aquarelleMergeBaseRef.current;
+      mergeBasePinned = true;
+      aquarelleMergeBaseRef.current = {
+        appFrame: plan.frame,
+        trackId: plan.trackId,
+        base: { frameIndex: 0, appFrame: plan.frame, bytes: punched.bytes, width: size.width, height: size.height },
+      };
+      // The durable base and the key payload land only after acknowledgement.
       const ok = await rotoPersistenceRef.current.captureLivePixels({
         layerId: launch.layerId,
         trackId: plan.trackId,
@@ -6004,6 +6028,7 @@ export function PhysicsPaintStudio() {
         size,
       });
       if (!ok) {
+        aquarelleMergeBaseRef.current = previousMergeBase;
         if (launchContextRef.current?.startFrame === plan.frame) publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         recordAquarelleRenderSplitEvent('lift-erase', {
           frame: plan.frame,
@@ -6015,15 +6040,9 @@ export function PhysicsPaintStudio() {
         });
         return;
       }
-      // All three copies together, after the acknowledgement: the session merge
-      // base (so no later capture re-applies the unpunched bytes), the durable
-      // base map (ONE set — a stroke-pinned pre-erase raster becomes D^K), and
-      // the key payload (the transaction above).
-      aquarelleMergeBaseRef.current = {
-        appFrame: plan.frame,
-        trackId: plan.trackId,
-        base: { frameIndex: 0, appFrame: plan.frame, bytes: punched.bytes, width: size.width, height: size.height },
-      };
+      // The session pin is already in place; the durable base map is the one
+      // post-acknowledgement write (a stroke-pinned pre-erase raster becomes
+      // D^K), and the key payload is the transaction above.
       if (plan.scripted || plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
         aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurableBytes);
       }
@@ -6059,6 +6078,7 @@ export function PhysicsPaintStudio() {
         stage: 'committed',
       });
     } catch {
+      if (mergeBasePinned) aquarelleMergeBaseRef.current = previousMergeBase;
       publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
     } finally {
       finish();
@@ -6093,6 +6113,16 @@ export function PhysicsPaintStudio() {
     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
     if (scriptRecordingOn) {
       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
+    }
+    // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
+    // the base UNKNOWN. Never record a lift whose durable base cannot be
+    // punched — refuse before the record, so nothing half-written survives.
+    if (liftPlan?.kind === 'erase' && liftPlan.willPinBase
+      && !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
+      setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+      setApplyStatus('error');
+      setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+      return;
     }
     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
@@ -6994,18 +7024,20 @@ export function PhysicsPaintStudio() {
     () => settingsRef.current.grainStrength,
     [],
   );
-  // 261028-k03 D3: Lift needs Script ON to erase recorded paint. Identity-stable
-  // so the mount memo never invalidates; the peek keeps the Studio body from
-  // subscribing to the switch.
+  // 261028-k03 D3/D2: every Lift refusal is decided by the SAME preflight the
+  // stroke end uses, at POINTERDOWN. Identity-stable so the mount memo never
+  // invalidates; the preflight uses peeks/refs only.
   const getAquarelleLiftBlocked = useCallback(
-    () => !aquarelleScriptRecordingEnabled.peek()
-      && hasAquarelleScriptForFrame(launchContextRef.current?.startFrame ?? 0),
-    [],
+    () => {
+      const plan = planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0);
+      return plan.kind === 'refuse' ? plan.message : null;
+    },
+    [planAquarelleLiftErase],
   );
-  const handleAquarelleLiftBlocked = useCallback(() => {
-    setApplyMessage(AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL);
+  const handleAquarelleLiftBlocked = useCallback((message: string) => {
+    setApplyMessage(message);
     setApplyStatus('error');
-    setLastError(AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL);
+    setLastError(message);
   }, []);
 
   // 261027-klx: the mount's prop surface is the watercolor surface alone —
