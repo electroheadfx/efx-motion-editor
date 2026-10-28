@@ -65,3 +65,6 @@ entities.json
 .planning/.gsd-allow-shrink
 
 .lavish/
+
+# Generated repomix reference skill (regenerate on demand)
+.claude/skills/repomix-reference-efx-motion-editor/
