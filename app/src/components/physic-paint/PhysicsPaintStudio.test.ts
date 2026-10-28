@@ -3107,7 +3107,7 @@ describe('261022-pim watercolor stroke select surface', () => {
       'onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}',
     );
     expect(studio).toContain('onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,');
-    expect(studio).toContain('getAquarellePaperId, getAquarellePaperGrainStrength, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
+    expect(studio).toContain('getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
   });
 });
 
@@ -3232,7 +3232,7 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(canvasMount).toContain('onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(canvasMount).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(studio).toContain('onAquarelleMoveStrokes: handleAquarelleMoveStrokes,');
-    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
+    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(aquarelleStrokeOverlay).toContain('onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
@@ -4397,13 +4397,22 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(studio).toContain("source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',");
     expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
-    // Exactly three pin sites (promotion, prepare fallback, first stroke) and
-    // TWO invalidations by design: Raster replaces the key's content, and the
-    // explicit Trash full reset (261027-gh9c) drops the key's cached pixels
-    // AND both scripts, so its pinned base is stale as well. The map is NEVER
-    // advanced to the composed output — advancing would compound the
-    // already-baked script on the next bake.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(3);
+    // Exactly four pin sites (promotion, prepare fallback, first stroke, and
+    // the 261028-k03 D2 lift-erase durable rewrite) and TWO invalidations by
+    // design: Raster replaces the key's content, and the explicit Trash full
+    // reset (261027-gh9c) drops the key's cached pixels AND both scripts, so
+    // its pinned base is stale as well. The map is NEVER advanced to the
+    // composed output — advancing would compound the already-baked script on
+    // the next bake.
+    //
+    // The fourth pin is the lift-erase rewrite: an eraser must replace the
+    // durable base with the punched B^K, or — when this very stroke pinned the
+    // PRE-erase raster (willPinBase) — with the punched composite D^K. A
+    // surviving entry whose strokes were all deleted (no reported script) is
+    // rewritten too. It still never advances to the composed output, and the
+    // erase path is specified with EXACTLY ONE `set(` statement, so nothing
+    // else in this pin moves.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(4);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');

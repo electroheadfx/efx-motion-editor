@@ -46,6 +46,10 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePlayFrame?: () => number;
   getAquarellePaperId?: () => string;
   getAquarellePaperGrainStrength?: () => number;
+  /** 261028-k03 D3: a Lift gesture is refused at pointerdown when Script is
+   *  OFF and this frame already owns a script. */
+  getAquarelleLiftBlocked?: () => boolean;
+  onAquarelleLiftBlocked?: () => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
@@ -78,6 +82,8 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
   const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
+  const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
+  const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
   const colorRef = useRef(props.color ?? '#103c65');
   onCanvasMountedRef.current = props.onCanvasMounted;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
@@ -94,6 +100,8 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
   getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
+  getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
+  onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
   colorRef.current = props.color ?? '#103c65';
 
   useEffect(() => {
@@ -171,6 +179,8 @@ export function PhysicsPaintCanvasMount(props: {
         getPaperId={() => getAquarellePaperIdRef.current?.() ?? 'paper/cold-press'}
         getPaperGrainStrength={() => getAquarellePaperGrainStrengthRef.current?.() ?? 1}
         disabled={false}
+        getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? false}
+        onLiftBlocked={() => onAquarelleLiftBlockedRef.current?.()}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}

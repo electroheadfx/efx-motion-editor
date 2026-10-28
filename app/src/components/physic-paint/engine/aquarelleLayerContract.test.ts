@@ -134,7 +134,14 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // t' = a*C + (1-a)*t_base — the later one-fond multiply reconstructs the
     // editor's live result exactly. Neither opaque source-over (covers the
     // base wholesale) nor multiply (glazes it) is the law.
-    expect(studio).not.toContain('cachedBase: null');
+    // 261028-k03: exactly ONE `cachedBase: null` site is allowed — the Lift
+    // erase seam, where the base pixels travel in `baseCanvas` (the punched
+    // D^K composite) instead of the cached bytes. Every other capture keeps
+    // the pinned base, so the law above still holds for the ordinary path.
+    const nullBaseSites = studio.match(/cachedBase: null/g) ?? [];
+    expect(nullBaseSites).toHaveLength(1);
+    const eraseCapture = studio.slice(studio.indexOf('cachedBase: null'));
+    expect(eraseCapture).toContain('baseCanvas: punched.canvas');
     expect(studio).toContain('aquarelleMergeBaseRef');
     expect(studio).toContain("mergeBlend: 'pigment-alpha'");
     expect(studio).not.toContain("mergeBlend: 'source-over'");

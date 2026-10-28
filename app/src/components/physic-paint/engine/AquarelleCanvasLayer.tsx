@@ -232,6 +232,15 @@ export function AquarelleCanvasLayer(props: {
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
+   * 261028-k03 D3: Lift (the eraser) needs Script ON to erase recorded paint.
+   * The Studio answers "this frame owns a script and Script is OFF"; the layer
+   * then stops the gesture in the capture phase, before `cancelAutoFix` and
+   * before the engine's own canvas pointerdown — the stroke-end check would
+   * already have erased the live sheet and recorded the event.
+   */
+  getLiftBlocked?: () => boolean;
+  onLiftBlocked?: () => void;
+  /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
    * The record path stamps that measured window as the stroke's cuisson so
@@ -313,6 +322,8 @@ export function AquarelleCanvasLayer(props: {
   const getPaperIdRef = useRef(props.getPaperId);
   const getPaperGrainStrengthRef = useRef(props.getPaperGrainStrength);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
+  const getLiftBlockedRef = useRef(props.getLiftBlocked);
+  const onLiftBlockedRef = useRef(props.onLiftBlocked);
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
@@ -331,6 +342,8 @@ export function AquarelleCanvasLayer(props: {
   getPaperIdRef.current = props.getPaperId;
   getPaperGrainStrengthRef.current = props.getPaperGrainStrength;
   onStrokeEndRef.current = props.onStrokeEnd;
+  getLiftBlockedRef.current = props.getLiftBlocked;
+  onLiftBlockedRef.current = props.onLiftBlocked;
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
@@ -575,6 +588,15 @@ export function AquarelleCanvasLayer(props: {
     // on window so this runs BEFORE the engine's own canvas pointerdown.
     const reopenSettleOnPaint = (event: PointerEvent) => {
       if (event.target !== canvas || event.button === 1) return;
+      // 261028-k03 D3: Lift needs Script ON to erase recorded paint. Blocking at
+      // POINTERDOWN is the only place that keeps the gesture out of the engine
+      // — the stroke-end check would already have erased the live sheet.
+      if (toolForSelection() === 'lift' && getLiftBlockedRef.current?.()) {
+        event.preventDefault();
+        event.stopPropagation();
+        onLiftBlockedRef.current?.();
+        return;
+      }
       engine.cancelAutoFix();
     };
     window.addEventListener('pointerdown', reopenSettleOnPaint, true);
