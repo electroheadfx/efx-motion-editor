@@ -174,7 +174,8 @@ describe('panel split shell — module-only block', () => {
     expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
     expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
     // Globals panel remains; the parent section title left with 261018-f15.
-    // Picker lives in the Brush tab; response lives in the Settings tab (I-11).
+    // Picker lives in the Brush tab; response lives in the Brush/Settings
+    // tabs (I-11, restored as a second view by 261028-k03c D2).
     expect(source, 'section mounts AquarelleGlobalsPanel (I-02)').toMatch(/<AquarelleGlobalsPanel\b/);
     expect(source, 'old wrapper must be gone (I-02)').not.toMatch(/<AquarelleParamsPanel\b/);
     expect(source, 'picker leaves the Paint-tab section (I-01)').not.toMatch(/<BrushesDocker\b/);
@@ -275,10 +276,13 @@ describe('panel split shell — shared block', () => {
 });
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
-  it('Brush tab is the catalog only; Settings tab hosts the response (I-11 / D)', () => {
+  it('Brush tab is the catalog + response multipliers again; Settings keeps its copy (D2)', () => {
     // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
-    // I-11 / D: the response block moves out of the Brush tab into the new
-    // Settings tab; the Brush tab keeps the 14-card catalog only.
+    // I-11 / D moved the response block to Settings; 261027-gh9g retired the
+    // whole mount. 261028-k03c D2 restores the tab as a SECOND VIEW OVER THE
+    // SAME STATE: catalog + response multipliers + Lift section here, while
+    // Settings keeps its own BrushResponsePanel unchanged (two views, one
+    // state — no duplicated signals).
     const brushTabSource = readFileSync(
       resolve(__dirname, 'RightPanelBrushTab.tsx'),
       'utf8',
@@ -286,10 +290,17 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     expect(brushTabSource, 'brush tab mounts WatercolorBrushLibrary').toMatch(
       /<WatercolorBrushLibrary\b/,
     );
-    expect(brushTabSource, 'response leaves the Brush tab').not.toMatch(
+    expect(brushTabSource, 'response multipliers are back in the Brush tab').toMatch(
       /<BrushResponsePanel\b/,
     );
     expect(brushTabSource, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
+    // The Lift section shares the top bar's picker and strength seam.
+    expect(brushTabSource, 'Lift section mounts the shared shape picker').toMatch(
+      /<LiftShapePicker testId="right-panel-lift-shape" \/>/,
+    );
+    expect(brushTabSource, 'Lift strength writes the shared param bag').toContain(
+      "setAquarelleParam('lift'",
+    );
     // The component file stays on disk (I-01 home; not deleted by I-10).
     expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
 
@@ -301,15 +312,13 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
       /<BrushResponsePanel\b/,
     );
 
-    // The panel mounts the adopted tab components in order: settings → paper.
-    // 261027-gh9g: the Brush tab MOUNT is retired (the component file stays on
-    // disk and keeps the catalog contract above); the catalog now opens from
-    // the top-bar dropdown / floating modal.
+    // 261028-k03c D2: the panel mounts the Brush tab again (top pane order
+    // brush → settings → paper; Memory stays last).
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    expect(panelSource, 'no Brush tab mount').not.toMatch(/<RightPanelBrushTab\b/);
+    expect(panelSource, 'Brush tab is mounted again').toMatch(/<RightPanelBrushTab\b/);
     // 261027-klx: the top pane is fixed — Water color is the only module, so
     // the settings arm no longer carries a mode gate.
     const settingsTabStart = panelSource.indexOf("effectiveTopPaneTab === 'settings'");
