@@ -250,7 +250,7 @@ import type {
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
-import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes } from './roto/aquarelleLiftErase';
+import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -1473,6 +1473,8 @@ export function PhysicsPaintStudio() {
     willPinBase: boolean;
     recoverBase: boolean;
     stroke: AquarelleStroke;
+    /** 261028-k03h: the engine's own dabs for THIS queued stroke. */
+    engineDabs?: readonly LiftDab[];
   }>>([]);
   // 261028-k03c D4/T-k03c-03: ONE recovery attempt per key per session. A key
   // whose base failed validation is refused at the preflight for the rest of
@@ -6041,8 +6043,16 @@ export function PhysicsPaintStudio() {
   // shows the engine's own erase. The plan is resolved once per stroke here
   // (a store read per dab would be wasteful) and cleared at stroke end.
   const aquarelleLiftPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
+  // 261028-k03h: the EXACT dabs the engine applied for the gesture in flight.
+  // The punch used to re-derive them from the recorded stroke
+  // (collectLiftDabs), and its spacing law drifts from the engine's — UAT:
+  // "the erase is offset in the direction of the stroke, it erases more".
+  // The engine stream is the only WYSIWYG source; the recorded stroke stays
+  // as the fallback when no dabs were captured (legacy/queued plans).
+  const aquarelleLiftGestureDabsRef = useRef<LiftDab[]>([]);
   const handleAquarelleLiftDab = useCallback(
     (x: number, y: number, r: number, amount: number, angle: number) => {
+      aquarelleLiftGestureDabsRef.current.push({ x, y, r, amount, angle });
       const frame = launchContextRef.current?.startFrame ?? 0;
       const cached = aquarelleLiftPreviewPlanRef.current;
       let active: boolean;
@@ -6192,9 +6202,10 @@ export function PhysicsPaintStudio() {
   const runAquarelleLiftErase = useCallback(async (
     plan: Extract<AquarelleLiftErasePlan, { kind: 'erase' }>,
     stroke: AquarelleStroke,
+    engineDabs?: readonly LiftDab[],
   ): Promise<void> => {
     if (aquarelleLiftEraseInFlightRef.current) {
-      aquarelleLiftErasePendingRef.current.push({ ...plan, stroke });
+      aquarelleLiftErasePendingRef.current.push({ ...plan, stroke, engineDabs });
       return;
     }
     aquarelleLiftEraseInFlightRef.current = true;
@@ -6231,9 +6242,9 @@ export function PhysicsPaintStudio() {
       for (;;) {
         const pending = aquarelleLiftErasePendingRef.current.shift();
         if (!pending) return;
-        const { stroke: pendingStroke, ...pendingPlan } = pending;
+        const { stroke: pendingStroke, engineDabs: pendingDabs, ...pendingPlan } = pending;
         if (stillOnEditTarget(pendingPlan.frame, pendingPlan.trackId)) {
-          void runAquarelleLiftErase({ kind: 'erase', ...pendingPlan }, pendingStroke);
+          void runAquarelleLiftErase({ kind: 'erase', ...pendingPlan }, pendingStroke, pendingDabs);
           return;
         }
         recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6307,7 +6318,12 @@ export function PhysicsPaintStudio() {
       // and every punch below, so the committed erase can never disagree with
       // the live pass or the preview.
       const shape = liftShapeForStroke(stroke);
-      const dabs = collectLiftDabs(stroke, size, shape);
+      // 261028-k03h: the engine's own dab stream IS the erase the user saw
+      // (and the preview punched). Re-deriving it from the recorded stroke
+      // drifted along the stroke and erased more (UAT).
+      const dabs = engineDabs !== undefined && engineDabs.length > 0
+        ? engineDabs
+        : collectLiftDabs(stroke, size, shape);
       if (dabs.length === 0) {
         revertAquarelleLiftPreview();
         return;
@@ -6322,7 +6338,13 @@ export function PhysicsPaintStudio() {
         // per lift transaction on every path. A recoverBase plan OWNS its punch
         // below; running this block too would punch t^K twice (t^(K·K)) and the
         // map must hold exactly t^K.
-        if (plan.recoverBase) {
+        //
+        // 261028-k03h: re-derive the need at TRANSACTION time. A queued plan
+        // carries the stroke-end snapshot, which predates a concurrent
+        // transaction adopting this key's base — the second rapid stroke then
+        // re-ran a 3–5 s recovery and committed identical bytes (UAT).
+        const needsRecovery = !aquarelleDurableBaseByKeyRef.current.has(plan.keyId);
+        if (needsRecovery) {
           const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
           recordAquarelleRenderSplitEvent('lift-erase', {
             frame: plan.frame,
@@ -6522,9 +6544,9 @@ export function PhysicsPaintStudio() {
         // base is already punched, so the next Move/Delete/Apply re-bakes the
         // truth; a Lift itself just commits the live result.
         if (abandonIfDrifted('script-tail')) return;
-        aquarelleResetSheetRef.current?.();
         const composite = aquarelleCompositeRef.current(plan.frame);
         if (!composite) {
+          aquarelleResetSheetRef.current?.();
           // No committed pixels to punch (legacy placeholder key): the scripted
           // re-bake is the only render left.
           recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6547,6 +6569,11 @@ export function PhysicsPaintStudio() {
           setLastError(null);
           return;
         }
+        // 261028-k03h: punch BEFORE the sheet reset. The live sheet keeps the
+        // session's paint visible for the whole punch+encode (2–3 s) and the
+        // preview already holds the erase on the cached base. The old order
+        // reset first, so the frame sat blank until the commit landed (UAT:
+        // "a paint reset with empty paint for 3 seconds").
         const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs, {
           appFrame: plan.frame,
           shape,
@@ -6557,6 +6584,9 @@ export function PhysicsPaintStudio() {
           publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
           return;
         }
+        // The preview already punched the visible base with these exact dabs,
+        // so dropping the sheet reveals the erased result — never a flash.
+        aquarelleResetSheetRef.current?.();
         previousMergeBase = aquarelleMergeBaseRef.current;
         mergeBasePinned = true;
         aquarelleMergeBaseRef.current = {
@@ -6570,6 +6600,27 @@ export function PhysicsPaintStudio() {
             height: size.height,
           },
         };
+        // 261028-k03h: an UNCHANGED punch has nothing to persist — the key
+        // payload already holds exactly these bytes (UAT: the second stroke of
+        // a fast double-lift punched an already-erased area, the coordinator
+        // rejected it as `changed:false`, and the failure path reverted the
+        // preview for a benign no-op). Finish as committed instead.
+        if (compositePunch.changed === false) {
+          setApplyMessage(AQUARELLE_LIFT_PERMANENT_MESSAGE);
+          setApplyStatus('idle');
+          setLastError(null);
+          recordAquarelleRenderSplitEvent('lift-erase', {
+            frame: plan.frame,
+            trackId: plan.trackId,
+            keyId: plan.keyId,
+            scripted: true,
+            willPinBase: false,
+            stage: 'committed-instant',
+            attempts: 0,
+            unchanged: true,
+          });
+          return;
+        }
         // Direct encode of the punched composite. The live sheet is NOT merged:
         // it holds this session's strokes and the composite already carries
         // what was committed — a merge would double-apply them.
@@ -6842,6 +6893,11 @@ export function PhysicsPaintStudio() {
     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
     // refused lift leaves no event and no half-written base. The record stays
     // SYNCHRONOUS so a re-bake sees the lift in order.
+    // 261028-k03h: this gesture's ENGINE dabs — taken ONCE, before any refusal
+    // path, so a refused lift can never leak its dab stream into a later one.
+    const liftGestureDabs = stroke.tool === 'lift'
+      ? aquarelleLiftGestureDabsRef.current.splice(0)
+      : [];
     if (stroke.tool === 'lift') {
       // 261028-k03b: the gesture is over; the painted preview stays until the
       // commit/re-bake replaces it. The per-stroke plan cache must not leak.
@@ -6934,7 +6990,7 @@ export function PhysicsPaintStudio() {
       applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
       // 261028-k03 D2: the record above is synchronous and ordered; the punch
       // is async and owns only the pixel side. It never re-records.
-      if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke);
+      if (liftPlan?.kind === 'erase') void runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs);
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }

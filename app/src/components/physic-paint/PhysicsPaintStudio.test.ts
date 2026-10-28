@@ -4502,8 +4502,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // arm, so a recoverBase transaction has exactly one punch on its path (the
     // map must end on t^K, never t^(K·K)).
     expect(erase).toContain('if (plan.scripted) {');
-    expect(erase).toContain('if (plan.recoverBase) {');
-    const guard = erase.indexOf('if (plan.recoverBase) {');
+    // 261028-k03h: the arm re-derives the need at transaction time (a queued
+    // plan can be stale), so the guard is `needsRecovery`, not the plan flag.
+    expect(erase).toContain('if (needsRecovery) {');
+    const guard = erase.indexOf('if (needsRecovery) {');
     const nonRecoverPunch = erase.indexOf('punchTransmittanceBytes(durable, size, dabs');
     expect(nonRecoverPunch).toBeGreaterThan(guard);
     // 261028-k03e adds an inner `if (!display) … else {` arm, so the recover
@@ -4714,7 +4716,7 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
 
 describe('quick 261028-k03d — key-payload recovery and non-blanking failures', () => {
   it('prefers the authoritative key payload over the display cache when recovering', () => {
-    const recoveryStart = studio.indexOf('if (plan.recoverBase) {');
+    const recoveryStart = studio.indexOf('if (needsRecovery) {');
     expect(recoveryStart).toBeGreaterThan(-1);
     const payloadAt = studio.indexOf('aquarelleKeyPayloadRef.current(plan.frame)', recoveryStart);
     const displayAt = studio.indexOf('findCachedRotoDisplayFrameRef.current(plan.frame)', recoveryStart);

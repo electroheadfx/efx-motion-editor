@@ -132,6 +132,12 @@ export interface LiftCoverage {
 export interface PunchedTransmittance {
   bytes: Uint8Array;
   canvas: HTMLCanvasElement;
+  /**
+   * 261028-k03h: false when the dabs left every channel byte-identical (the
+   * erase hit pixels that were already erased). The transaction then has
+   * nothing to persist — committing would be rejected as `changed:false`.
+   */
+  changed?: boolean;
 }
 
 export interface LiftEraseCodec {
@@ -427,8 +433,9 @@ export function punchTransmittanceRgba(
   width: number,
   height: number,
   coverageRect: LiftCoverageRect,
-): void {
-  if (coverageRect.width <= 0 || coverageRect.height <= 0) return;
+): number {
+  if (coverageRect.width <= 0 || coverageRect.height <= 0) return 0;
+  let changed = 0;
   const x0 = Math.max(0, coverageRect.x);
   const y0 = Math.max(0, coverageRect.y);
   const x1 = Math.min(width, coverageRect.x + coverageRect.width);
@@ -439,11 +446,17 @@ export function punchTransmittanceRgba(
       // K >= 1 (or an unusable value) leaves the pixel untouched.
       if (!(typeof k === 'number') || !(k < 1) || k < 0) continue;
       const index = (y * width + x) * 4;
-      rgba[index] = punchChannel(rgba[index], k);
-      rgba[index + 1] = punchChannel(rgba[index + 1], k);
-      rgba[index + 2] = punchChannel(rgba[index + 2], k);
+      const red = punchChannel(rgba[index], k);
+      const green = punchChannel(rgba[index + 1], k);
+      const blue = punchChannel(rgba[index + 2], k);
+      // 261028-k03h: report a TRUE no-op — an erase over already-erased
+      // pixels must never be committed as a change.
+      if (red !== rgba[index]) { rgba[index] = red; changed += 1; }
+      if (green !== rgba[index + 1]) { rgba[index + 1] = green; changed += 1; }
+      if (blue !== rgba[index + 2]) { rgba[index + 2] = blue; changed += 1; }
     }
   }
+  return changed;
 }
 
 function canvasDocumentFor(source: HTMLCanvasElement): Document | null {
@@ -460,6 +473,7 @@ export function punchTransmittanceCanvas(
   source: HTMLCanvasElement,
   dabs: readonly LiftDab[],
   shape?: LiftFootprintShape,
+  stats?: { changed?: number },
 ): HTMLCanvasElement | null {
   const width = Math.max(0, Math.round(source.width));
   const height = Math.max(0, Math.round(source.height));
@@ -483,7 +497,8 @@ export function punchTransmittanceCanvas(
   if (!targetContext) return null;
 
   const { coverage, coverageRect } = buildLiftCoverage(dabs, width, height, shape);
-  punchTransmittanceRgba(image.data, coverage, width, height, coverageRect);
+  const changedChannels = punchTransmittanceRgba(image.data, coverage, width, height, coverageRect);
+  if (stats) stats.changed = changedChannels;
   targetContext.putImageData(image, 0, 0);
   return target;
 }
@@ -547,13 +562,14 @@ export async function punchTransmittanceBytes(
     if (!source) return null;
     if (dabs.length === 0) {
       const encoded = await encode(source, size, options.appFrame);
-      return encoded && encoded.length > 0 ? { bytes: encoded, canvas: source } : null;
+      return encoded && encoded.length > 0 ? { bytes: encoded, canvas: source, changed: false } : null;
     }
-    const punched = punchTransmittanceCanvas(source, dabs, options.shape);
+    const stats: { changed?: number } = {};
+    const punched = punchTransmittanceCanvas(source, dabs, options.shape, stats);
     if (!punched) return null;
     const encoded = await encode(punched, size, options.appFrame);
     if (!encoded || encoded.length === 0) return null;
-    return { bytes: encoded, canvas: punched };
+    return { bytes: encoded, canvas: punched, changed: (stats.changed ?? 0) > 0 };
   } catch {
     return null;
   }

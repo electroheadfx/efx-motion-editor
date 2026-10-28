@@ -478,6 +478,44 @@ describe('punchTransmittanceCanvas — never mutates its source', () => {
   });
 });
 
+describe('punchTransmittanceBytes — changed flag (261028-k03h)', () => {
+  it('reports changed:false when the dabs hit already-erased (white) pixels', async () => {
+    const result = await punchTransmittanceBytes(new Uint8Array([1]), { width: 16, height: 16 }, [dab({ amount: 0.9, r: 0.4 })], {
+      appFrame: 1,
+      codec: {
+        decode: async () => asHtmlCanvas(makeCanvas(16, 16, [255, 255, 255, 255])),
+        encode: async () => new Uint8Array([1, 2]),
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.changed).toBe(false);
+  });
+
+  it('reports changed:true when the dabs remove pigment', async () => {
+    const result = await punchTransmittanceBytes(new Uint8Array([1]), { width: 16, height: 16 }, [dab({ amount: 0.9, r: 0.4 })], {
+      appFrame: 1,
+      codec: {
+        decode: async () => asHtmlCanvas(makeCanvas(16, 16, [80, 80, 80, 255])),
+        encode: async () => new Uint8Array([1, 2]),
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.changed).toBe(true);
+  });
+
+  it('reports changed:false with no dabs (the source is re-encoded as-is)', async () => {
+    const result = await punchTransmittanceBytes(new Uint8Array([1]), { width: 4, height: 2 }, [], {
+      appFrame: 1,
+      codec: {
+        decode: async () => asHtmlCanvas(makeCanvas(4, 2, [80, 80, 80, 255])),
+        encode: async () => new Uint8Array([1, 2]),
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.changed).toBe(false);
+  });
+});
+
 describe('punchTransmittanceBytes — awaited codec both legs', () => {
   it('awaits decode and encode once each and returns the resolved bytes', async () => {
     const input = new Uint8Array([1, 2, 3]);

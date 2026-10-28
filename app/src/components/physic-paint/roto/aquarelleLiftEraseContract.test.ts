@@ -255,7 +255,7 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   });
 
   it('k03c: a recoverBase lift owns its single punch and adopts the base durably first', () => {
-    const recoverStart = erase.indexOf('if (plan.recoverBase) {');
+    const recoverStart = erase.indexOf('if (needsRecovery) {');
     // 261028-k03e adds an inner `if (!display) … else {` arm; the recover arm
     // still ends at the NON-recover arm, which reads the durable entry.
     const nonRecoverArm = erase.indexOf(
@@ -380,6 +380,44 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     expect(scripted).toContain('getAppliedPreviewBaseContentToken()');
   });
 
+  it('k03h: the punch uses the ENGINE dab stream, never a re-derivation', () => {
+    // Every lift dab the engine applied is captured for the stroke…
+    expect(studio).toContain('aquarelleLiftGestureDabsRef.current.push({ x, y, r, amount, angle });');
+    // …consumed exactly once at stroke end, BEFORE the plan (so a refusal can
+    // never leak dabs into a later stroke)…
+    const take = studio.indexOf('aquarelleLiftGestureDabsRef.current.splice(0)');
+    const plan = studio.indexOf('planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)', take);
+    expect(take).toBeGreaterThan(-1);
+    expect(plan).toBeGreaterThan(take);
+    expect(studio).toContain('runAquarelleLiftErase(liftPlan, stroke, liftGestureDabs)');
+    // …and preferred over the recorded-stroke approximation.
+    expect(erase).toContain('const dabs = engineDabs !== undefined && engineDabs.length > 0');
+    expect(erase).toContain(': collectLiftDabs(stroke, size, shape);');
+    // A queued stroke keeps ITS own dab stream.
+    expect(erase).toContain('aquarelleLiftErasePendingRef.current.push({ ...plan, stroke, engineDabs });');
+    expect(erase).toContain('const { stroke: pendingStroke, engineDabs: pendingDabs, ...pendingPlan } = pending;');
+    expect(erase).toContain('}, pendingStroke, pendingDabs);');
+  });
+
+  it('k03h: the sheet reset follows the punch; an unchanged punch commits nothing', () => {
+    const tailStart = erase.indexOf('const composite = aquarelleCompositeRef.current(plan.frame);');
+    const punch = erase.indexOf(
+      'const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs',
+      tailStart,
+    );
+    const reset = erase.indexOf('aquarelleResetSheetRef.current?.();', punch);
+    const skip = erase.indexOf('if (compositePunch.changed === false) {', punch);
+    const commit = erase.indexOf('const commitInstant = async () =>', punch);
+    expect(tailStart).toBeGreaterThan(-1);
+    expect(punch).toBeGreaterThan(tailStart);
+    // UAT: resetting the sheet BEFORE the 2.5 s punch blanked the frame.
+    expect(reset).toBeGreaterThan(punch);
+    // UAT: the no-op second stroke was rejected as `changed:false` and the
+    // failure path reverted the erase — a true no-op is already committed.
+    expect(skip).toBeGreaterThan(reset);
+    expect(commit).toBeGreaterThan(skip);
+  });
+
   it('k03h: a pinned session merge base never sources from a display placeholder', () => {
     const start = studio.indexOf('const displayBase = findCachedRotoDisplayFrameRef.current(playFrame);');
     const pin = studio.slice(start, studio.indexOf('const currentLaunch = launchContextRef.current;', start));
@@ -467,7 +505,7 @@ describe('Lift navigation guard (261028-k03c CR-01)', () => {
   });
 
   it('WR-02: the non-recover scripted arm bumps the revision and marks dirty after its write', () => {
-    const recoverStart = erase.indexOf('if (plan.recoverBase) {');
+    const recoverStart = erase.indexOf('if (needsRecovery) {');
     const nonRecover = erase.slice(
       erase.indexOf('} else {', recoverStart),
       erase.indexOf('// Shared tail for both scripted arms'),
