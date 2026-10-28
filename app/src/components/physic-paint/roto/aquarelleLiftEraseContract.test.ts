@@ -87,6 +87,15 @@ describe('Lift pointerdown gate (261028-k03 D3)', () => {
     expect(mount).toContain('getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}');
     expect(mount).toContain('onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}');
   });
+
+  it('records the ENGINE-resolved tool per stroke, never a stale carried value', () => {
+    // onStrokeEnd(tool) is the engine's resolved tool for THIS stroke (stylus
+    // eraser end, pen barrel, finger-water). A ref filled from onStrokeTool
+    // would leak across strokes because the engine emits only on a change.
+    expect(layer).toContain('onStrokeEnd(tool)');
+    expect(layer).toContain('tool: (tool ?? toolForSelection()) as AquarelleTool');
+    expect(layer).not.toContain('onStrokeTool');
+  });
 });
 
 describe('Lift preflight ordering (261028-k03 D2)', () => {

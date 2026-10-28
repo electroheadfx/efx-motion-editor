@@ -393,19 +393,12 @@ export function AquarelleCanvasLayer(props: {
     let lastWetAt = 0;
     let settleCapArmed = false;
 
-    // 261028-k03: the ENGINE resolves the live tool — a stylus eraser end
-    // forces `lift` even when the selected tool is brush. Record that tool,
-    // not the selection, or a re-bake replays a brush where the user erased.
-    let liveStrokeTool: Tool | null = null;
     let engine: WatercolorEngine;
     try {
       engine = new WatercolorEngine(
         canvas,
         null,
         {
-          onStrokeTool(tool) {
-            if (tool) liveStrokeTool = tool;
-          },
           onStrokeSample(sample) {
             painting = true;
             lastWetAt = performance.now();
@@ -413,7 +406,7 @@ export function AquarelleCanvasLayer(props: {
             const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
             if (sink) sink.push(sample);
           },
-          onStrokeEnd() {
+          onStrokeEnd(tool) {
             painting = false;
             lastWetAt = performance.now();
             settleCapArmed = false;
@@ -424,7 +417,12 @@ export function AquarelleCanvasLayer(props: {
             if (points.length === 0) return;
             const snap = snapshotAquarelleRecord();
             const stroke: AquarelleStroke = {
-              tool: (liveStrokeTool ?? toolForSelection()) as AquarelleTool,
+              // 261028-k03: the ENGINE resolves the live tool for THIS stroke
+              // (stylus eraser end, pen barrel, finger-water) and hands it to
+              // onStrokeEnd. Record that, not the selection, or a re-bake
+              // replays a brush where the user erased. Never carry it across
+              // strokes: the engine emits only on a change.
+              tool: (tool ?? toolForSelection()) as AquarelleTool,
               color: colorRef.current,
               // CANONICAL AQUA-04 globals — never the mapped bag.
               params: { ...snap.params },
