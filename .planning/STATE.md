@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-28 - Completed quick task 261028-k03: Lift (eraser) must erase live, scripted, and raster-only paint — verification human_needed, native UAT pending (349 lift gates + 3,856 physic-paint tests, typecheck clean)
+Last activity: 2026-10-28 - Quick 261028-k03 CLOSED after native UAT. k03b shipped (5c81d9b9, 729a4896, 6e8ad48b: script-authoritative Lift, live preview, strength, Select lifts). UAT failed: scripted Lift refuses (old project's SNAP v5 durable-base section is empty) and raster-only Lift erase is lost on frame leave/return. Follow-up quick 261028-k03c required: base recovery, capture fencing/commit retry, true-shape cursor, sidebar Brush tab + tip/shape for Brush and Lift (default Filbert).
 
 Progress: [██████████] 100%
 
