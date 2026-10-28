@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   dispatchPhysicsPaintStudioKeyDown,
   findAdjacentRealKeyFrame,
+  isPhysicsPaintMoveShortcutTarget,
   isPhysicsPaintShortcutTarget,
   type PhysicsPaintStudioKeyboardState,
 } from './physicsPaintStudioKeyboard';
@@ -675,6 +676,26 @@ describe('isPhysicsPaintShortcutTarget', () => {
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div') as unknown as EventTarget)).toBe(true);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('input') as unknown as EventTarget)).toBe(false);
     expect(isPhysicsPaintShortcutTarget(new TestHTMLElement('div', { contentEditable: true }) as unknown as EventTarget)).toBe(false);
+  });
+});
+
+describe('isPhysicsPaintMoveShortcutTarget (261028-k03d)', () => {
+  it('keeps non-text controls eligible so Cmd still arms Move after a select/range change', () => {
+    // A <select> or a range keeps focus after a change; the old text-entry gate
+    // made Cmd inert until the canvas was clicked again.
+    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('select') as unknown as EventTarget)).toBe(true);
+    const range = new TestHTMLElement('input');
+    (range as unknown as { type: string }).type = 'range';
+    expect(isPhysicsPaintMoveShortcutTarget(range as unknown as EventTarget)).toBe(true);
+    const checkbox = new TestHTMLElement('input');
+    (checkbox as unknown as { type: string }).type = 'checkbox';
+    expect(isPhysicsPaintMoveShortcutTarget(checkbox as unknown as EventTarget)).toBe(true);
+  });
+
+  it('still blocks real text entry', () => {
+    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('input') as unknown as EventTarget)).toBe(false);
+    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('textarea') as unknown as EventTarget)).toBe(false);
+    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('div', { contentEditable: true }) as unknown as EventTarget)).toBe(false);
   });
 });
 

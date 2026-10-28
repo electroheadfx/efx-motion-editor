@@ -206,12 +206,20 @@ export function PhysicsPaintTopBar({
         </div>
         {/* 261027-gh9g: the module switcher is gone from the Studio top bar —
             a single Water color mode. The active brush's larger painted thumb
-            and name open the brush dropdown. */}
-        <TopBarBrushTrigger
-          presetId={selectedTipId}
-          open={brushMenuOpen}
-          onToggle={toggleBrushMenu}
-        />
+            and name open the brush dropdown.
+            261028-k03d: the Lift tool takes the SAME slot — its shape control
+            replaces the brush dropdown, so the eraser never shows brush chrome. */}
+        {activeTool === 'lift' ? (
+          <div class="physics-paint-topbar-control physics-paint-topbar-lift-shape">
+            <LiftShapePicker testId="physics-lift-shape" disabled={disabled} />
+          </div>
+        ) : (
+          <TopBarBrushTrigger
+            presetId={selectedTipId}
+            open={brushMenuOpen}
+            onToggle={toggleBrushMenu}
+          />
+        )}
         <ScriptRecordingSwitch />
       </div>
 
@@ -223,12 +231,11 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-primary">
         {activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
-            {/* 261028-k03c D3: one Lift shape control (thumb + native select)
-                over the SAME aquarelleLiftTipId the Brush tab's Lift section
-                writes. Shape first, Strength second, Select lifts last. */}
-            <div class="physics-paint-topbar-control physics-paint-topbar-lift-shape">
-              <LiftShapePicker testId="physics-lift-shape" disabled={disabled} />
-            </div>
+            {/* 261028-k03d: the Lift cluster keeps the shared Size (the lift
+                radius runs through the same sizeMult) + Strength + Select.
+                The shape moved to the left slot, where the brush dropdown
+                sits for every other tool. */}
+            <TopBarSlider id="physics-lift-size" label="Size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
             <div
               class="physics-paint-topbar-control physics-paint-topbar-slider physics-paint-topbar-lift-strength"
               data-testid="physics-lift-strength"

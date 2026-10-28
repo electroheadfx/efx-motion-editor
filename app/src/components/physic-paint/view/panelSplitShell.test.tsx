@@ -276,13 +276,11 @@ describe('panel split shell — shared block', () => {
 });
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
-  it('Brush tab is the catalog + response multipliers again; Settings keeps its copy (D2)', () => {
+  it('Brush tab is the catalog + top-bar response; Settings keeps the multipliers (k03d)', () => {
     // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
-    // I-11 / D moved the response block to Settings; 261027-gh9g retired the
-    // whole mount. 261028-k03c D2 restores the tab as a SECOND VIEW OVER THE
-    // SAME STATE: catalog + response multipliers + Lift section here, while
-    // Settings keeps its own BrushResponsePanel unchanged (two views, one
-    // state — no duplicated signals).
+    // 261028-k03d (supersedes the k03c D2 clone): catalog + Size + the seven
+    // globals only. The Settings clone and the Lift section were removed —
+    // Settings owns the eight multipliers, the top bar owns Lift.
     const brushTabSource = readFileSync(
       resolve(__dirname, 'RightPanelBrushTab.tsx'),
       'utf8',
@@ -290,17 +288,16 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     expect(brushTabSource, 'brush tab mounts WatercolorBrushLibrary').toMatch(
       /<WatercolorBrushLibrary\b/,
     );
-    expect(brushTabSource, 'response multipliers are back in the Brush tab').toMatch(
+    expect(brushTabSource, 'brush tab mounts the shared globals panel').toMatch(
+      /<AquarelleGlobalsPanel\b/,
+    );
+    expect(brushTabSource, 'response multipliers stay in Settings').not.toMatch(
       /<BrushResponsePanel\b/,
     );
+    expect(brushTabSource, 'Lift controls stay in the top bar').not.toMatch(
+      /<LiftShapePicker\b/,
+    );
     expect(brushTabSource, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
-    // The Lift section shares the top bar's picker and strength seam.
-    expect(brushTabSource, 'Lift section mounts the shared shape picker').toMatch(
-      /<LiftShapePicker testId="right-panel-lift-shape" \/>/,
-    );
-    expect(brushTabSource, 'Lift strength writes the shared param bag').toContain(
-      "setAquarelleParam('lift'",
-    );
     // The component file stays on disk (I-01 home; not deleted by I-10).
     expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
 

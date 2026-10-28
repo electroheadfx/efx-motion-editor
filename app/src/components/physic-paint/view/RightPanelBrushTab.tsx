@@ -2,16 +2,12 @@
 //  RightPanelBrushTab — the restored Brush tab (UI checklist
 //  row 6). Water color only.
 //
-//  261028-k03c D2: the sidebar Brush tab is BACK (261027-gh9g
-//  had retired it). It is the second view over the SAME state as
-//  the top bar and the floating brush modal — brush catalog +
-//  Size + the seven globals + the eight response multipliers +
-//  a Lift section (shape, strength, Select lifts). No local
-//  state, no copied values: every control writes the existing
-//  aquarelle signals through the existing setters.
-//
-//  The Settings tab keeps BrushResponsePanel unchanged — two
-//  views, one state.
+//  261028-k03d: the tab is the brush CATALOG plus the brush
+//  response the top bar exposes (Size + the seven globals). The
+//  Settings-tab clone (the eight response multipliers) and the
+//  Lift section are gone — the Settings tab keeps the response
+//  block and the top bar keeps the Lift controls, so no control
+//  has two homes.
 //
 //  261018-0ox I-10: adopted into PhysicsPaintRightPanel.
 //  The activeModule branch stays inside this tab component.
@@ -24,15 +20,12 @@ import {
   setAquarelleParam,
 } from './aquarelleRecordState';
 import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
-import { BrushResponsePanel } from './BrushResponsePanel';
-import { LiftShapePicker } from './LiftShapePicker';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 
-export function RightPanelBrushTab(props: { onSelectLiftStrokes?: () => void }) {
+export function RightPanelBrushTab() {
   if (activeModule.value === 'watercolor') {
-    // Narrow signal reads (efx-preact-reactivity rule 5).
+    // Narrow signal read (efx-preact-reactivity rule 5).
     const size = aquarelleParams.value.size;
-    const liftStrength = aquarelleParams.value.lift;
     return (
       <div data-testid="right-panel-brush-tab" data-module="watercolor">
         <WatercolorBrushLibrary />
@@ -53,36 +46,6 @@ export function RightPanelBrushTab(props: { onSelectLiftStrokes?: () => void }) 
         </div>
 
         <AquarelleGlobalsPanel />
-        <BrushResponsePanel />
-
-        {/* 261028-k03c D2/D3: the Lift section — shape (the SAME picker the
-            top-bar Lift cluster mounts), strength and Select lifts. */}
-        <div class="physics-paint-option-group" data-testid="right-panel-lift-section">
-          <span class="physics-paint-right-label">Lift</span>
-          <LiftShapePicker testId="right-panel-lift-shape" />
-          <div class="physics-paint-option-row">
-            <SliderStepper
-              id="right-panel-lift-strength"
-              label="Lift strength"
-              value={liftStrength}
-              onChange={(value) => setAquarelleParam('lift', Math.max(5, Math.min(90, Math.round(value))))}
-              step={1}
-              min={5}
-              max={90}
-              ariaLabel="Lift strength"
-            />
-          </div>
-          <button
-            type="button"
-            data-testid="right-panel-lift-select"
-            class="physics-paint-segmented-button"
-            onClick={props.onSelectLiftStrokes}
-            disabled={props.onSelectLiftStrokes === undefined}
-            title="Select every Lift stroke on this frame"
-          >
-            Select lifts
-          </button>
-        </div>
       </div>
     );
   }

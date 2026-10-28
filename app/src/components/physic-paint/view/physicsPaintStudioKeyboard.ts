@@ -84,6 +84,32 @@ export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolea
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
+/**
+ * 261028-k03d: the temporary-Move arm (and its Cmd tap) gates on TEXT ENTRY
+ * only. A select or a range control keeps focus after a change, so the
+ * text-entry gate above left Cmd inert until the canvas was clicked — the
+ * "sometimes holding Cmd does not switch to Move" report. Non-text controls
+ * carry no Cmd chord of their own, so they stay eligible.
+ */
+export function isPhysicsPaintMoveShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  if (target.isContentEditable) return false;
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === 'textarea') return false;
+  if (tagName === 'input') {
+    const rawType = (target as HTMLInputElement).type;
+    const type = typeof rawType === 'string' ? rawType.toLowerCase() : 'text';
+    return type !== 'text'
+      && type !== 'search'
+      && type !== 'number'
+      && type !== 'email'
+      && type !== 'password'
+      && type !== 'url'
+      && type !== 'tel';
+  }
+  return !target.closest('textarea, [contenteditable="true"], input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"]');
+}
+
 function isPhysicsPaintRotoDeleteTarget(target: EventTarget | null): boolean {
   if (!isPhysicsPaintShortcutTarget(target)) return false;
   if (!(target instanceof Element)) return true;

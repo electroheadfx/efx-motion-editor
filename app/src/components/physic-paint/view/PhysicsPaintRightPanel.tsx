@@ -97,12 +97,6 @@ export interface PhysicsPaintRightPanelProps {
    * the frame signal carries the current app frame for the row marker.
    */
   memorySection?: StudioScriptMemorySection;
-  /**
-   * 261028-k03c D2: the Brush tab's Lift section "Select lifts" button. The
-   * Studio threads the same handler the top-bar Lift cluster uses; an absent
-   * handler renders the button disabled (never a dead click).
-   */
-  onSelectLiftStrokes?: () => void;
 }
 
 /** Minimum sidebar section share (%) — every section keeps at least this much
@@ -200,7 +194,6 @@ export function PhysicsPaintRightPanel({
   onGrainStrengthChange,
   onGrainScaleChange,
   memorySection,
-  onSelectLiftStrokes,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
@@ -324,10 +317,11 @@ export function PhysicsPaintRightPanel({
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
           {effectiveTopPaneTab === 'brush' ? (
-            // 261028-k03c D2: the restored Brush tab — one view over the same
-            // signals as the top bar and the floating brush modal.
+            // 261028-k03d: the Brush tab is the catalog + top-bar response
+            // only. Lift controls live in the top bar; the response
+            // multipliers live in Settings — no control has two homes.
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
-              <RightPanelBrushTab onSelectLiftStrokes={onSelectLiftStrokes} />
+              <RightPanelBrushTab />
             </div>
           ) : effectiveTopPaneTab === 'settings' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">

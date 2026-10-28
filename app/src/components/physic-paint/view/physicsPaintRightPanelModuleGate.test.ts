@@ -93,18 +93,19 @@ function expectMountsBehindWatercolorGate(region: string, component: string): vo
 
 describe('single-engine right panel (261027-klx)', () => {
   it('Brush tab body is mounted again and everything it mounts stays watercolor-gated', () => {
-    // 261028-k03c D2: the Brush tab is back after the 261027-gh9g retirement.
-    // It is one view over the SAME signals as the top bar and the floating
-    // brush modal: catalog + Size + the seven globals + the eight response
-    // multipliers + the Lift section.
+    // 261028-k03d: the Brush tab is the catalog + the top-bar response
+    // (Size + the seven globals). The Settings clone and the Lift section are
+    // gone — Settings owns the response block, the top bar owns Lift.
     const body = stripComments(brushTabSource);
     const gateAt = body.indexOf("activeModule.value === 'watercolor'");
     expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
 
     expectMountsBehindWatercolorGate(body, 'WatercolorBrushLibrary');
     expectMountsBehindWatercolorGate(body, 'AquarelleGlobalsPanel');
-    expectMountsBehindWatercolorGate(body, 'BrushResponsePanel');
-    expectMountsBehindWatercolorGate(body, 'LiftShapePicker');
+    expect(body, 'Settings content stays in the Settings tab').not.toMatch(
+      /<BrushResponsePanel\b/,
+    );
+    expect(body, 'Lift controls stay in the top bar').not.toMatch(/<LiftShapePicker\b/);
     expect(body, 'BrushModuleSection is not mounted in the Brush tab').not.toMatch(
       /<BrushModuleSection\b/,
     );
