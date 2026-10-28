@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-27T21:03:18Z"
+last_updated: "2026-10-28T14:56:38.403Z"
 last_activity: 2026-10-27
 last_activity_desc: Quick task 261027-klx closed — engine-1 Brush module removed; native UAT approved 2026-10-27
-state_head: 52b82030604099ce1d8dfed0432d8b055e1b34ed
+state_head: 234655adbb7a061f225fd14327c3030aae272132
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-27 - Completed quick task 261027-klx: Remove 'engine-1' called Brush mode (efx-physic-paint) — native UAT approved 2026-10-27 (typecheck 0, full suite 6,070 passed, chunk 911,381 bytes)
+Last activity: 2026-10-28 - Completed quick task 261028-k03: Lift (eraser) must erase live, scripted, and raster-only paint — verification human_needed, native UAT pending (349 lift gates + 3,856 physic-paint tests, typecheck clean)
 
 Progress: [██████████] 100%
 
@@ -603,6 +603,7 @@ None yet.
 | 261027-gh9 | Watercolor-only UI gate + Chalk dry-media preset: one WATERCOLOR_ONLY seam, inert Brush/Krita slots, clamped setActiveModule, and a 15-card Brush tab | 2026-10-27 | be27a481 | [261027-gh9-watercolor-only-ui-gate-chalk-dry-brush-](./quick/261027-gh9-watercolor-only-ui-gate-chalk-dry-brush-/) |
 | 261027-k6j | Script switch in the Studio top bar: On (default) records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script (existing scripts stay editable) | 2026-10-27 | e1d437fd | [261027-k6j-add-near-brush-dropdown-in-top-bar-an-on](./quick/261027-k6j-add-near-brush-dropdown-in-top-bar-an-on/) |
 | 261027-klx | Remove 'engine-1' called Brush mode (efx-physic-paint) | 2026-10-27 | 52b82030 | [261027-klx-remove-engine-1-called-brush-mode-efx-ph](./quick/261027-klx-remove-engine-1-called-brush-mode-efx-ph/) |
+| 261028-k03 | Lift (eraser) must erase live, scripted, and raster-only paint — settle the three-state truth table first | 2026-10-28 | 234655ad | [261028-k03-lift-eraser-must-erase-live-scripted-and](./quick/261028-k03-lift-eraser-must-erase-live-scripted-and/) |
 
 ### Roadmap Evolution
 
