@@ -4441,9 +4441,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const preflight = between(studio, 'const planAquarelleLiftErase = useCallback(', 'const aquarelleLiftPreviewPlanRef');
     // An unknown durable base on a scripted frame is RECOVERED, not refused.
     expect(preflight).toContain('recoverBase: true');
-    expect(preflight).toContain('aquarelleLiftRecoveryFailedRef.current.has(target.keyId)');
     expect(preflight).toContain('recoverBase: false');
-    // ONE attempt per key per session: the failure memo is never cleared.
+    // 261028-k03d: a failed recovery is diagnostic-only — it never locks the
+    // key out for the rest of the session (that made Lift "work once").
+    expect(preflight).not.toContain('aquarelleLiftRecoveryFailedRef.current.has(');
     expect(studio).toContain('const aquarelleLiftRecoveryFailedRef = useRef<Set<string>>(new Set());');
     expect(studio).not.toContain('aquarelleLiftRecoveryFailedRef.current.clear(');
 

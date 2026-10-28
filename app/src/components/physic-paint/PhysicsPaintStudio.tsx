@@ -5970,15 +5970,15 @@ export function PhysicsPaintStudio() {
     }
     // A reopened scripted key whose pre-script base was never pinned: a MISSING
     // entry (`has === false`) is UNKNOWN, distinct from a known-empty `null`.
-    // 261028-k03c D4 (truth-table row 3): the displayed composite P already
-    // holds BOTH the script pigment and that pre-script base, so the erase
-    // RECOVERS the base from P plus a raw script bake and validates it at
-    // ≤3/255 instead of refusing. A key that already failed recovery this
-    // session is refused here without re-running the bake (T-k03c-03).
+    // 261028-k03c D4 (truth-table row 3): the composite P already holds BOTH
+    // the script pigment and that pre-script base, so the erase RECOVERS the
+    // base from the key payload plus a raw script bake and validates it at
+    // ≤3/255 instead of refusing.
+    // 261028-k03d: a failed recovery must NOT lock the key out for the rest of
+    // the session — one transient failure (a stale display frame, a busy bake)
+    // used to poison the key and made Lift "work once". Each gesture retries
+    // and re-validates; the memo stays diagnostic-only.
     if (scripted && !aquarelleDurableBaseByKeyRef.current.has(target.keyId)) {
-      if (aquarelleLiftRecoveryFailedRef.current.has(target.keyId)) {
-        return { kind: 'refuse', message: AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL };
-      }
       return {
         kind: 'erase',
         frame,

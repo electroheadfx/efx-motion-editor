@@ -165,11 +165,9 @@ describe('Lift preflight ordering (261028-k03 D2)', () => {
     );
     expect(unknown).toBeGreaterThanOrEqual(0);
     const recovered = preflight.slice(unknown);
-    // The fail-closed memo is checked FIRST: one failed recovery per key per
-    // session — a second attempt would re-bake and re-invert for nothing.
-    const memo = recovered.indexOf('aquarelleLiftRecoveryFailedRef.current.has(target.keyId)');
-    expect(memo).toBeGreaterThan(-1);
-    expect(recovered.indexOf("return { kind: 'refuse'")).toBeGreaterThan(memo);
+    // 261028-k03d: the failure memo is diagnostic-only. A failed recovery must
+    // not lock the key out — every gesture retries and re-validates.
+    expect(recovered).not.toContain('aquarelleLiftRecoveryFailedRef.current.has(');
     // The adopt path never pins a raster — recovery owns the durable write.
     // The ordinary erase keeps the pin classification and recoverBase false.
     expect(recovered).toContain('willPinBase: false,');
