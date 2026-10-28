@@ -6159,7 +6159,12 @@ export function PhysicsPaintStudio() {
           // pigment-alpha recomposition validates at ≤3/255. Nothing may
           // survive a failed recovery — not the event just recorded, not the
           // live sheet session, not the painted preview.
-          const failRecovery = (reason: string, meanError?: number) => {
+          const failRecovery = (
+            reason: string,
+            meanError?: number,
+            clampRatio?: number,
+            saturatedColorError?: number,
+          ) => {
             aquarelleLiftRecoveryFailedRef.current.add(plan.keyId);
             recordAquarelleRenderSplitEvent('lift-erase', {
               frame: plan.frame,
@@ -6170,6 +6175,8 @@ export function PhysicsPaintStudio() {
               stage: 'base-recovery-failed',
               reason,
               meanError: meanError ?? null,
+              clampRatio: clampRatio ?? null,
+              saturatedColorError: saturatedColorError ?? null,
             });
             if (mutationId !== undefined && deleteAquarelleStrokesFromScript([mutationId]) > 0) {
               studioScriptSnapshot.markDirty();
@@ -6214,7 +6221,7 @@ export function PhysicsPaintStudio() {
           });
           if (abandonIfDrifted('recovery-validate')) return;
           if (!recovery.ok) {
-            failRecovery(recovery.reason, recovery.meanError);
+            failRecovery(recovery.reason, recovery.meanError, recovery.clampRatio, recovery.saturatedColorError);
             return;
           }
           recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6226,6 +6233,8 @@ export function PhysicsPaintStudio() {
             stage: 'base-recovery-ok',
             meanError: recovery.meanError,
             baseInk: recovery.baseInk,
+            clampRatio: recovery.clampRatio,
+            saturatedColorError: recovery.saturatedColorError,
           });
           // (d) Adopt the validated base and make the adoption durable first.
           aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);

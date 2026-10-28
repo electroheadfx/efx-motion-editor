@@ -12,7 +12,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO,
   AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR,
+  AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
+  inversionConsistencyStats,
   invertAquarellePigmentCoverage,
   meanAbsoluteChannelError,
   recoveredBaseInk,
@@ -151,6 +154,39 @@ describe('invertAquarellePigmentCoverage (261028-k03c D4)', () => {
   });
 });
 
+describe('inversionConsistencyStats (CR-02 provenance signals)', () => {
+  const PIGMENT: Triple = [200, 40, 0];
+
+  it('reports no clamp violations and no colour error for a pair baked together', () => {
+    const forwards = forward(PIGMENT, 0.5, [120, 200, 60]);
+    const stats = inversionConsistencyStats(
+      rgba([forwards.display]),
+      rgba([forwards.script]),
+    );
+    expect(stats.clampRatio).toBe(0);
+    expect(stats.saturatedColorError).toBe(0);
+  });
+
+  it('flags the impossible base implied by a mismatched pair', () => {
+    // Black pigment at a ≈ 0.902 with a display four units lighter than the
+    // bake implies B ≈ 285 — outside the gamut. The recombination still lands
+    // within 3/255 of P, so ONLY this signal can reject the pair.
+    const stats = inversionConsistencyStats(rgba([[28, 28, 28]]), rgba([[25, 25, 25]]));
+    expect(stats.clampRatio).toBeGreaterThan(AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO);
+  });
+
+  it('flags a saturated script whose composite is not the pigment colour', () => {
+    // a = 250/255 ≈ 0.98, C = (0, 0, 0); the composite must read ≈ black.
+    const stats = inversionConsistencyStats(
+      rgba([[200, 180, 160]]),
+      rgba([[5, 5, 5]]),
+    );
+    expect(stats.saturatedColorError).toBeGreaterThan(
+      AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
+    );
+  });
+});
+
 describe('meanAbsoluteChannelError', () => {
   it('is 0 for identical buffers', () => {
     const buffer = rgba([
@@ -168,6 +204,12 @@ describe('meanAbsoluteChannelError', () => {
     // The alpha channel differs by 255 and must not count.
     b[3] = 0;
     expect(meanAbsoluteChannelError(a, b)).toBe(3);
+  });
+
+  it('is Infinity for empty or unequal buffers (never passes vacuously)', () => {
+    expect(meanAbsoluteChannelError(new Uint8ClampedArray(0), new Uint8ClampedArray(0)))
+      .toBe(Infinity);
+    expect(meanAbsoluteChannelError(filled(100), filled(100, 1))).toBe(Infinity);
   });
 });
 
@@ -229,6 +271,8 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       // The recovered base is the displayed grey, whose pigment coverage is
       // 1 − 100/255 (a white script copies P verbatim).
       baseInk: 1 - 100 / 255,
+      clampRatio: 0,
+      saturatedColorError: 0,
     });
     // The recombined base is the inverted one: a white script copies the display.
     expect(seenBases).toHaveLength(1);
@@ -248,7 +292,119 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       }),
     });
 
-    expect(result).toEqual({ ok: false, reason: 'validation', meanError: 4 });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'validation',
+      meanError: 4,
+      clampRatio: 0,
+      saturatedColorError: 0,
+    });
+  });
+
+  it('IN-09: rejects a P/S pair that did not come from the same bake', async () => {
+    // Black pigment at a ≈ 0.902: the inversion implies B ≈ 285 for this
+    // display. The old ≤3/255 recombination gate ACCEPTED this pair (S over
+    // the clamped base lands within 3 of P) — exactly the tautology CR-02
+    // fixed. The provenance signal must reject it before any recombine.
+    let recombined = 0;
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: codec({
+        display: pixelsOf(filled(28)),
+        script: pixelsOf(filled(25)),
+        recombined: pixelsOf(filled(25)),
+        onRecombine: () => {
+          recombined += 1;
+        },
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('validation');
+    expect(result.clampRatio).toBeGreaterThan(AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO);
+    // Refused on provenance, before the tautological recombination ran.
+    expect(recombined).toBe(0);
+  });
+
+  it('IN-09: rejects a saturated script whose display is not the pigment colour', async () => {
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: codec({
+        display: pixelsOf(filled(200)),
+        script: pixelsOf(filled(5)),
+        recombined: pixelsOf(filled(5)),
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('validation');
+    expect(result.saturatedColorError).toBeGreaterThan(
+      AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
+    );
+  });
+
+  it('rejects decoded buffers that are empty, truncated or a different size', async () => {
+    const truncated = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: codec({
+        display: pixelsOf(filled(100)),
+        script: pixelsOf(filled(255, 1)),
+        recombined: pixelsOf(filled(100)),
+      }),
+    });
+    expect(truncated).toEqual({ ok: false, reason: 'decode' });
+
+    const empty = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: codec({
+        display: pixelsOf(new Uint8ClampedArray(0)),
+        script: pixelsOf(new Uint8ClampedArray(0)),
+        recombined: pixelsOf(new Uint8ClampedArray(0)),
+      }),
+    });
+    expect(empty).toEqual({ ok: false, reason: 'decode' });
+  });
+
+  it('IN-01: maps each leg exception to its own reason', async () => {
+    const failing = (leg: 'decode' | 'recombine' | 'encode'): Partial<AquarelleBaseRecoveryCodec> => ({
+      decode: async () => {
+        if (leg === 'decode') throw new Error('decode exploded');
+        return pixelsOf(filled(255));
+      },
+      recombine: async () => {
+        if (leg === 'recombine') throw new Error('recombine exploded');
+        // A consistent white-over-white recomposition for the encode leg.
+        return pixelsOf(filled(255));
+      },
+      encodePixels: async () => {
+        if (leg === 'encode') throw new Error('encode exploded');
+        return ENCODED;
+      },
+    });
+    for (const leg of ['decode', 'recombine', 'encode'] as const) {
+      const result = await recoverAquarelleDurableBase({
+        displayBytes: new Uint8Array([1]),
+        scriptBytes: new Uint8Array([2]),
+        size: { width: 2, height: 2 },
+        appFrame: 4,
+        codec: failing(leg),
+      });
+      expect(result, leg).toEqual({ ok: false, reason: leg });
+    }
   });
 
   it('rejects a failed decode', async () => {

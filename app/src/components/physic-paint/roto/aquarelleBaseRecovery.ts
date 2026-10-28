@@ -15,10 +15,20 @@
 //  with min() over the RGB channels and C the pigment colour made
 //  coverage-free (min(C) = 0, so a·C = S − min(S)).
 //
-//  The recovered base is VALIDATED, not proven: recombine S over B
-//  with the production `pigment-alpha` law and require the mean
-//  absolute RGB error against P to stay ≤ 3/255. A base that fails
-//  is never adopted (D4 / truth table row 4).
+//  The recovered base is VALIDATED, not proven. The recombination
+//  alone is NOT a provenance gate: because B is inverted from
+//  (P, S), recombining S over B returns P for ANY S — the mean
+//  error only trips on clamping. Provenance therefore needs two
+//  consistency signals computed from the raw inversion itself:
+//
+//    (a) clamp-violation ratio — a consistent pair implies a B
+//        inside [0, 255]; a pair baked from different paper or a
+//        different event set usually implies an impossible B.
+//    (b) saturated-region colour — where script coverage a ≥ 0.97
+//        the composite must read the pigment colour C; a
+//        different bake does not.
+//
+//  A base that fails any gate is never adopted (D4 / row 4).
 //
 //  Pure math first (node-testable, injected codec); the default
 //  codec is the only DOM-touching part and returns null when a
@@ -54,12 +64,46 @@ export interface AquarelleBaseRecoveryCodec {
   ): Promise<AquarelleBasePixels | null>;
 }
 
+/** Non-tautological consistency signals of the (P, S) pair. */
+export interface AquarelleBaseRecoveryStats {
+  /** Fraction of RGB channels whose raw inverted B lies outside [0, 255]. */
+  clampRatio: number;
+  /** Mean |P − C| over saturated script pixels (a ≥ 0.97), 0..255 units. */
+  saturatedColorError: number;
+}
+
 export type AquarelleBaseRecoveryResult =
-  | { ok: true; bytes: Uint8Array; meanError: number; baseInk: number }
-  | { ok: false; reason: 'decode' | 'recombine' | 'validation' | 'encode'; meanError?: number };
+  | {
+    ok: true;
+    bytes: Uint8Array;
+    meanError: number;
+    baseInk: number;
+    clampRatio: number;
+    saturatedColorError: number;
+  }
+  | {
+    ok: false;
+    reason: 'decode' | 'recombine' | 'validation' | 'encode';
+    meanError?: number;
+    clampRatio?: number;
+    saturatedColorError?: number;
+  };
 
 /** The acceptance gate: mean absolute RGB error of the recomposition. */
 export const AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR = 3;
+/**
+ * The provenance gate: a consistent pair implies an in-gamut base, so out-of-
+ * range inversions are evidence the display and the script came from different
+ * bakes. The tolerance absorbs WebP/rounding noise; the ratio is per channel.
+ */
+export const AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO = 0.002;
+/** Raw inverted B may overshoot the gamut by this much before it counts. */
+const CLAMP_VIOLATION_TOLERANCE = 8;
+/**
+ * Where the script is saturated the composite must show the pigment colour:
+ * P = C within (1 − 0.97)·255 ≈ 7.65 plus decode slack.
+ */
+export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 12;
 
 /** Pigment coverage above this is saturated — the base is fully hidden. */
 const SATURATED_COVERAGE = 0.97;
@@ -114,21 +158,84 @@ function clampByte(value: number): number {
   return rounded < 0 ? 0 : rounded > 255 ? 255 : rounded;
 }
 
-/** Mean |Δ| over the RGB channels only (alpha excluded), 0..255 units. */
+/**
+ * The non-tautological consistency of a (display P, script S) pair. The
+ * inversion is an exact inverse, so the recombination returns P for any S and
+ * only these two signals can reveal that P was not baked from this S:
+ *
+ *  - clampRatio: share of RGB channels whose RAW inverted base lies outside
+ *    [0, 255] by more than {@link CLAMP_VIOLATION_TOLERANCE}. A consistent
+ *    pair stays in gamut (rounding/decode noise only).
+ *  - saturatedColorError: mean |P − C| where the script is saturated
+ *    (a ≥ 0.97). There P must read the pigment colour C = (S − min(S)) / a.
+ *
+ * Buffers are expected equal-length (recoverAquarelleDurableBase enforces it);
+ * only the common prefix is measured defensively.
+ */
+export function inversionConsistencyStats(
+  display: Uint8ClampedArray,
+  script: Uint8ClampedArray,
+): AquarelleBaseRecoveryStats {
+  const length = Math.min(display.length, script.length);
+  let channels = 0;
+  let clampViolations = 0;
+  let saturatedChannels = 0;
+  let saturatedError = 0;
+  for (let i = 0; i + 3 < length; i += 4) {
+    const sr = script[i] ?? 255;
+    const sg = script[i + 1] ?? 255;
+    const sb = script[i + 2] ?? 255;
+    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+    const coverage = 1 - min / 255;
+    channels += 3;
+    if (coverage >= SATURATED_COVERAGE) {
+      // P must equal the pigment colour C here; C = (S − min(S)) / a.
+      const inverseCoverage = 1 / coverage;
+      saturatedError += Math.abs((display[i] ?? 255) - (sr - min) * inverseCoverage);
+      saturatedError += Math.abs((display[i + 1] ?? 255) - (sg - min) * inverseCoverage);
+      saturatedError += Math.abs((display[i + 2] ?? 255) - (sb - min) * inverseCoverage);
+      saturatedChannels += 3;
+      continue;
+    }
+    if (coverage < NO_PIGMENT_COVERAGE) continue; // B = P, in gamut by definition
+    const inverse = 1 / (1 - coverage);
+    const rawR = ((display[i] ?? 255) - (sr - min)) * inverse;
+    const rawG = ((display[i + 1] ?? 255) - (sg - min)) * inverse;
+    const rawB = ((display[i + 2] ?? 255) - (sb - min)) * inverse;
+    if (!inGamut(rawR)) clampViolations += 1;
+    if (!inGamut(rawG)) clampViolations += 1;
+    if (!inGamut(rawB)) clampViolations += 1;
+  }
+  return {
+    clampRatio: channels === 0 ? 0 : clampViolations / channels,
+    saturatedColorError: saturatedChannels === 0 ? 0 : saturatedError / saturatedChannels,
+  };
+}
+
+function inGamut(value: number): boolean {
+  if (!Number.isFinite(value)) return false;
+  return value >= -CLAMP_VIOLATION_TOLERANCE && value <= 255 + CLAMP_VIOLATION_TOLERANCE;
+}
+
+/**
+ * Mean |Δ| over the RGB channels only (alpha excluded), 0..255 units.
+ * Unequal or empty buffers are NOT comparable and return Infinity, so a
+ * truncated recomposition can never pass the ≤3 gate vacuously.
+ */
 export function meanAbsoluteChannelError(
   a: Uint8ClampedArray,
   b: Uint8ClampedArray,
 ): number {
-  const length = Math.min(a.length, b.length);
+  if (a.length === 0 || a.length !== b.length) return Infinity;
   let sum = 0;
   let count = 0;
-  for (let i = 0; i < length; i += 4) {
+  for (let i = 0; i + 3 < a.length; i += 4) {
     sum += Math.abs((a[i] ?? 0) - (b[i] ?? 0));
     sum += Math.abs((a[i + 1] ?? 0) - (b[i + 1] ?? 0));
     sum += Math.abs((a[i + 2] ?? 0) - (b[i + 2] ?? 0));
     count += 3;
   }
-  return count === 0 ? 0 : sum / count;
+  return count === 0 ? Infinity : sum / count;
 }
 
 /** Diagnostic scalar: mean pigment coverage of a pixel buffer (0..1). */
@@ -150,8 +257,10 @@ export function recoveredBaseInk(pixels: AquarelleBasePixels): number {
 
 /**
  * Recover B from the displayed composite and the raw script bake, validate
- * the recombination against the display, and encode. Never throws: every
- * failure maps to a `reason`.
+ * provenance and the recombination against the display, then encode. Never
+ * throws: every leg maps an exception to its own `reason` (`decode`,
+ * `recombine`, `encode`), so a codec fault is never diagnosed as a missing
+ * decode capability.
  */
 export async function recoverAquarelleDurableBase(input: {
   displayBytes: Uint8Array;
@@ -165,29 +274,83 @@ export async function recoverAquarelleDurableBase(input: {
   const decode = input.codec?.decode ?? DEFAULT_AQUARELLE_BASE_RECOVERY_CODEC.decode;
   const encodePixels = input.codec?.encodePixels ?? DEFAULT_AQUARELLE_BASE_RECOVERY_CODEC.encodePixels;
   const recombine = input.codec?.recombine ?? DEFAULT_AQUARELLE_BASE_RECOVERY_CODEC.recombine;
-  try {
-    const display = await decode(new Uint8Array(input.displayBytes), input.size);
-    if (!display) return { ok: false, reason: 'decode' };
-    const script = await decode(new Uint8Array(input.scriptBytes), input.size);
-    if (!script) return { ok: false, reason: 'decode' };
 
-    const base: AquarelleBasePixels = {
-      data: invertAquarellePigmentCoverage(display.data, script.data),
-      width: display.width,
-      height: display.height,
-    };
-    const recombined = await recombine(script, base, input.size);
-    if (!recombined) return { ok: false, reason: 'recombine' };
-    const meanError = meanAbsoluteChannelError(recombined.data, display.data);
-    if (!(meanError <= AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR)) {
-      return { ok: false, reason: 'validation', meanError };
-    }
-    const bytes = await encodePixels(base, input.size, input.appFrame);
-    if (!bytes || bytes.length === 0) return { ok: false, reason: 'encode' };
-    return { ok: true, bytes, meanError, baseInk: recoveredBaseInk(base) };
+  let display: AquarelleBasePixels | null = null;
+  try {
+    display = await decode(new Uint8Array(input.displayBytes), input.size);
   } catch {
     return { ok: false, reason: 'decode' };
   }
+  if (!display) return { ok: false, reason: 'decode' };
+
+  let script: AquarelleBasePixels | null = null;
+  try {
+    script = await decode(new Uint8Array(input.scriptBytes), input.size);
+  } catch {
+    return { ok: false, reason: 'decode' };
+  }
+  if (!script) return { ok: false, reason: 'decode' };
+
+  // Full-length, same-size buffers: the inversion indexes both in lockstep and
+  // a truncated or empty decode must never pass the gates vacuously.
+  if (
+    display.width <= 0
+    || display.height <= 0
+    || display.data.length === 0
+    || display.data.length !== script.data.length
+    || display.width !== script.width
+    || display.height !== script.height
+  ) {
+    return { ok: false, reason: 'decode' };
+  }
+
+  // Provenance FIRST: the recombination alone is tautological (it returns P for
+  // ANY S — see inversionConsistencyStats), so a pair that was not baked
+  // together has to be caught here.
+  const stats = inversionConsistencyStats(display.data, script.data);
+  if (
+    stats.clampRatio > AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO
+    || stats.saturatedColorError > AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR
+  ) {
+    return { ok: false, reason: 'validation', ...stats };
+  }
+
+  const base: AquarelleBasePixels = {
+    data: invertAquarellePigmentCoverage(display.data, script.data),
+    width: display.width,
+    height: display.height,
+  };
+
+  let recombined: AquarelleBasePixels | null = null;
+  try {
+    recombined = await recombine(script, base, input.size);
+  } catch {
+    return { ok: false, reason: 'recombine' };
+  }
+  if (!recombined) return { ok: false, reason: 'recombine' };
+  if (
+    recombined.data.length === 0
+    || recombined.data.length !== display.data.length
+    || recombined.width !== display.width
+    || recombined.height !== display.height
+  ) {
+    return { ok: false, reason: 'recombine' };
+  }
+
+  // The remaining gate is the clamp sanity check, not the provenance gate.
+  const meanError = meanAbsoluteChannelError(recombined.data, display.data);
+  if (!(meanError <= AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR)) {
+    return { ok: false, reason: 'validation', meanError, ...stats };
+  }
+
+  let bytes: Uint8Array | null = null;
+  try {
+    bytes = await encodePixels(base, input.size, input.appFrame);
+  } catch {
+    return { ok: false, reason: 'encode' };
+  }
+  if (!bytes || bytes.length === 0) return { ok: false, reason: 'encode' };
+  return { ok: true, bytes, meanError, baseInk: recoveredBaseInk(base), ...stats };
 }
 
 /* ------------------------------------------------------------------ DOM */
