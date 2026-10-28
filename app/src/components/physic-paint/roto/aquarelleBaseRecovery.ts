@@ -130,8 +130,15 @@ const CLAMP_VIOLATION_TOLERANCE = 8;
  * Where the script is saturated the composite must show the pigment colour:
  * P = C within (1 − 0.97)·255 ≈ 7.65 plus decode slack, plus the edge drift
  * of a non-reproducible replay (see above).
+ *
+ * 261028-k03h: 32 rejected legitimate recoveries. A live sheet committed at
+ * the settle cap can be much denser than a fully-dry re-bake — measured
+ * saturatedColorError 66–88 on a key whose clampRatio (0.08) and structure
+ * correlation (0.95) both passed, blocking Lift AND Move with
+ * `durable-base-unknown`. The recombination (masked mean ≤3) and the clamp
+ * ratio carry the real validation; this bound stays a coarse sanity check.
  */
-export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 32;
+export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 96;
 /**
  * The jitter-robust provenance signal: the display and the bake must show the
  * SAME paint. Their darkness maps are compared by Pearson correlation (sampled

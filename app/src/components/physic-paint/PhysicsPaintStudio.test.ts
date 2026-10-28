@@ -4400,6 +4400,12 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(recorder).toContain("reason: 'script-already-present',");
     expect(recorder).toContain('const bytes = new Uint8Array(baseBytes);');
     expect(recorder).toContain('aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);');
+    // 261028-k03h: neither cache holds pixels and the sheet has no earlier
+    // paint — a fresh blank key. Pin the KNOWN-EMPTY entry; leaving it UNKNOWN
+    // sent Lift/Move into a recovery that fails closed (UAT round 3).
+    expect(recorder).toContain('} else if (!aquarelleSheetHasPaintRef.current) {');
+    expect(recorder).toContain('aquarelleDurableBaseByKeyRef.current.set(target.keyId, null);');
+    expect(recorder).toContain("source: 'known-empty',");
 
     // Promotions pin the seeding base (clone bytes / known-empty blank);
     // rastering replaces the key's content, so its pinned base is stale.
@@ -4424,8 +4430,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // (willPinBase) — with the punched composite D^K. A surviving entry whose
     // strokes were all deleted (no reported script) is rewritten too. It still
     // never advances to the composed output, and each erase path is specified
-    // with EXACTLY ONE `set(` statement of its own.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(8);
+    // with EXACTLY ONE `set(` statement of its own. One more (261028-k03h):
+    // the recorder pins the KNOWN-EMPTY entry for a fresh blank key whose two
+    // caches hold only placeholders.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(9);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');

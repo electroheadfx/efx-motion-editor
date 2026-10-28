@@ -451,6 +451,32 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
     );
   });
 
+  it('k03h: accepts a legitimate recovery whose saturated error is above the old 32 bound', async () => {
+    // UAT round 3: a sheet committed at the settle cap reads denser than a
+    // fully-dry re-bake (saturatedColorError 66–88) while clamp and structure
+    // pass — rejecting it blocked Lift AND Move with durable-base-unknown.
+    const display = rgba([[70, 70, 70], [150, 150, 150], [70, 70, 70], [150, 150, 150]]);
+    const script = rgba([[5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200]]);
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: codec({
+        display: pixelsOf(display),
+        script: pixelsOf(script),
+        recombined: pixelsOf(display),
+      }),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.saturatedColorError).toBeGreaterThan(32);
+    expect(result.saturatedColorError).toBeLessThanOrEqual(
+      AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
+    );
+  });
+
   it('rejects decoded buffers that are empty, truncated or a different size', async () => {
     const truncated = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),

@@ -7515,6 +7515,24 @@ export function PhysicsPaintStudio() {
       if (display?.bytes && display.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES) {
         baseBytes = display.bytes;
         baseSource = 'pre-script-display';
+      } else if (!aquarelleSheetHasPaintRef.current) {
+        // 261028-k03h: NEITHER source holds pixels and this sheet has no
+        // earlier paint — a freshly promoted blank key. The pre-script base is
+        // provably EMPTY, so pin the known-empty entry instead of leaving it
+        // UNKNOWN: refusing here sent every Lift/Move of that key into a
+        // multi-second recovery that can fail closed (UAT round 3: "the lift
+        // stroke disappears without removing paint", then Move refused with
+        // durable-base-unknown).
+        aquarelleDurableBaseByKeyRef.current.set(target.keyId, null);
+        bumpAquarelleStrokesRevision();
+        studioScriptSnapshot.markDirty();
+        recordAquarelleRenderSplitEvent('durable-base-record', {
+          appFrame,
+          keyId: target.keyId,
+          recorded: true,
+          source: 'known-empty',
+        });
+        return;
       } else {
         recordAquarelleRenderSplitEvent('durable-base-record', {
           appFrame,
