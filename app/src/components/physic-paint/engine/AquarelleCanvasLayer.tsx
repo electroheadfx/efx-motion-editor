@@ -176,8 +176,9 @@ function AquarelleBrushCursor(): JSX.Element | null {
   const inset = 1.5;
   const innerW = Math.max(0, width - inset * 2);
   const innerH = Math.max(0, height - inset * 2);
-  // The engine skins an aspect < 0.6 tip as a rounded rectangle.
-  const rounded = footprint.aspect < 0.6;
+  // The shared footprint law already carries the engine's rounded flag
+  // (aspect < ROUNDED_ASPECT) — never re-derive the threshold here.
+  const rounded = footprint.rounded;
   return (
     <div
       class="aquarelle-brush-cursor"

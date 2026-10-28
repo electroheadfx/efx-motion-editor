@@ -192,4 +192,10 @@ describe('footprintCssSize', () => {
     const footprint: AquarelleFootprint = { radiusDoc: 0.25, aspect: 0.5, angle: 0, rounded: false };
     expect(footprintCssSize(footprint, 0)).toEqual({ width: 0, height: 0 });
   });
+
+  it('mirrors the engine minimums so a tiny or flat tip stays visible (IN-03)', () => {
+    const footprint: AquarelleFootprint = { radiusDoc: 0.001, aspect: 0.1, angle: 0, rounded: true };
+    // Engine.updateCursor: d = max(4, …), h = max(3, d · aspect).
+    expect(footprintCssSize(footprint, 100)).toEqual({ width: 4, height: 3 });
+  });
 });

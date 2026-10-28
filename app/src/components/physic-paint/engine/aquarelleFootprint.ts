@@ -161,12 +161,18 @@ export function cursorPreviewPressure(
   return HOVER_PRESSURE;
 }
 
-/** Footprint in CSS px at the displayed layer height (Engine.updateCursor's d). */
+/**
+ * Footprint in CSS px at the displayed layer height (Engine.updateCursor):
+ * the long axis is floored at 4 px and the short axis at 3 px, exactly like
+ * the engine's own hover ring, so a very small or flat tip stays visible.
+ * Before the layer has a height the cursor is not renderable — 0 × 0.
+ */
 export function footprintCssSize(
   footprint: AquarelleFootprint,
   layerHeightCss: number,
 ): { width: number; height: number } {
   const layer = Number.isFinite(layerHeightCss) && layerHeightCss > 0 ? layerHeightCss : 0;
-  const width = 2 * footprint.radiusDoc * layer;
-  return { width, height: width * footprint.aspect };
+  if (layer === 0) return { width: 0, height: 0 };
+  const width = Math.max(4, 2 * footprint.radiusDoc * layer);
+  return { width, height: Math.max(3, width * footprint.aspect) };
 }
