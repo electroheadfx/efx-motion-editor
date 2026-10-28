@@ -5,12 +5,15 @@ import {
 } from '../../../lib/rasterAlpha';
 import {
   buildLiftCoverage,
+  liftShapeForStroke,
   punchTransmittanceRgba,
+  type LiftFootprintShape,
 } from '../roto/aquarelleLiftErase';
 import {
   registerAquarelleLiftPreviewSink,
   type AquarelleLiftPreviewDab,
 } from '../roto/aquarelleLiftPreview';
+import { aquarelleBrushForActiveTool } from '../view/aquarelleRecordState';
 
 /**
  * 2026-10-26 (round 2, option B): the committed aquarelle sheet, rendered as a
@@ -39,6 +42,15 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
   const decodedRef = useRef<{ width: number; height: number; image: ImageData } | null>(null);
   /** Pre-gesture copy, so a failed commit can restore what the user saw. */
   const snapshotRef = useRef<ImageData | null>(null);
+  /**
+   * 261028-k03c: THE preview-shape resolution seam. The gesture's tip shape is
+   * resolved ONCE in `begin` from the active-tool selection law
+   * (`aquarelleBrushForActiveTool` → `liftShapeForStroke`, the same law the
+   * record and the bake resolve), so every previewed dab of the gesture
+   * mirrors exactly what the engine bound. The Studio and the mount forward
+   * only the 5-argument dab.
+   */
+  const shapeRef = useRef<LiftFootprintShape | null>(null);
   const pendingRef = useRef<AquarelleLiftPreviewDab[]>([]);
   const previewFrameRef = useRef<number | null>(null);
   const rafRef = useRef(0);
@@ -50,7 +62,12 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
     const canvas = canvasRef.current;
     const dabs = pendingRef.current.splice(0);
     if (!decoded || !canvas || dabs.length === 0) return;
-    const { coverage, coverageRect } = buildLiftCoverage(dabs, decoded.width, decoded.height);
+    const { coverage, coverageRect } = buildLiftCoverage(
+      dabs,
+      decoded.width,
+      decoded.height,
+      shapeRef.current ?? undefined,
+    );
     if (coverageRect.width <= 0 || coverageRect.height <= 0) return;
     punchTransmittanceRgba(decoded.image.data, coverage, decoded.width, decoded.height, coverageRect);
     const context = canvas.getContext('2d');
@@ -74,6 +91,8 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
     begin(frame) {
       previewFrameRef.current = frame;
       pendingRef.current = [];
+      // THE shape seam: one resolution per gesture (Task 2 item 13).
+      shapeRef.current = liftShapeForStroke(aquarelleBrushForActiveTool());
       const decoded = decodedRef.current;
       snapshotRef.current = decoded
         ? new ImageData(new Uint8ClampedArray(decoded.image.data), decoded.width, decoded.height)

@@ -52,8 +52,10 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarelleLiftBlocked?: () => string | null;
   onAquarelleLiftBlocked?: (message: string) => void;
   /** 261028-k03b: every lift dab the engine applied (doc uv, radius in doc
-   *  heights, effective amount) — the cached-base live erase preview. */
-  onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number) => void;
+   *  heights, effective amount) — the cached-base live erase preview.
+   *  261028-k03c: `angle` (radians, y up — the engine's uAxis) is forwarded
+   *  unchanged; the preview shape is resolved in AquarelleCachedBaseLayer. */
+  onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
@@ -187,7 +189,7 @@ export function PhysicsPaintCanvasMount(props: {
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
-        onLiftDab={(x, y, r, amount) => onAquarelleLiftDabRef.current?.(x, y, r, amount)}
+        onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}

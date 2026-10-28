@@ -246,7 +246,7 @@ import type {
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
-import { collectLiftDabs, punchTransmittanceBytes } from './roto/aquarelleLiftErase';
+import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
   endAquarelleLiftPreview,
@@ -5687,7 +5687,7 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return;
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleSelectLiftStrokes, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -5706,6 +5706,9 @@ export function PhysicsPaintStudio() {
     // 261018-f15 C2: the Paint-tab size rides the same router the top bar
     // uses — one write-through, never a second setter.
     onBrushSizeChange: handleBrushSizeChange,
+    // 261028-k03c D2/D3: the restored Brush tab's Lift section shares the top
+    // bar's handler — one selection path, never a second implementation.
+    onSelectLiftStrokes: handleSelectLiftStrokes,
     onion,
     onionDisabled: isPlaying,
     engineControlsDisabled: staticControlsLocked,
@@ -5921,20 +5924,25 @@ export function PhysicsPaintStudio() {
   // shows the engine's own erase. The plan is resolved once per stroke here
   // (a store read per dab would be wasteful) and cleared at stroke end.
   const aquarelleLiftPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
-  const handleAquarelleLiftDab = useCallback((x: number, y: number, r: number, amount: number) => {
-    const frame = launchContextRef.current?.startFrame ?? 0;
-    const cached = aquarelleLiftPreviewPlanRef.current;
-    let active: boolean;
-    if (cached !== null && cached.frame === frame) {
-      active = cached.active;
-    } else {
-      active = planAquarelleLiftErase(frame).kind === 'erase';
-      aquarelleLiftPreviewPlanRef.current = { frame, active };
-      if (active) beginAquarelleLiftPreview(frame);
-    }
-    if (!active) return;
-    pushAquarelleLiftPreviewDab({ x, y, r, amount });
-  }, [planAquarelleLiftErase]);
+  const handleAquarelleLiftDab = useCallback(
+    (x: number, y: number, r: number, amount: number, angle: number) => {
+      const frame = launchContextRef.current?.startFrame ?? 0;
+      const cached = aquarelleLiftPreviewPlanRef.current;
+      let active: boolean;
+      if (cached !== null && cached.frame === frame) {
+        active = cached.active;
+      } else {
+        active = planAquarelleLiftErase(frame).kind === 'erase';
+        aquarelleLiftPreviewPlanRef.current = { frame, active };
+        if (active) beginAquarelleLiftPreview(frame);
+      }
+      if (!active) return;
+      // 261028-k03c: the dab is forwarded UNCHANGED — the preview resolves the
+      // tip shape once per gesture (AquarelleCachedBaseLayer.begin).
+      pushAquarelleLiftPreviewDab({ x, y, r, amount, angle });
+    },
+    [planAquarelleLiftErase],
+  );
   // The re-bake seam, mirrored through a ref: this transaction is identity
   // stable (it must stay out of the stroke-end deps), so it must never close
   // over a render's controller object.
@@ -6010,7 +6018,12 @@ export function PhysicsPaintStudio() {
         return;
       }
       const size = aquarelleLiftSizeRef.current;
-      const dabs = collectLiftDabs(stroke, size);
+      // 261028-k03c: ONE shape resolution for the whole transaction — the
+      // recorded brush's tip/aspect/rotation drives both the per-dab angles
+      // and every punch below, so the committed erase can never disagree with
+      // the live pass or the preview.
+      const shape = liftShapeForStroke(stroke);
+      const dabs = collectLiftDabs(stroke, size, shape);
       if (dabs.length === 0) {
         revertAquarelleLiftPreview();
         return;
@@ -6027,7 +6040,10 @@ export function PhysicsPaintStudio() {
           return;
         }
         if (durable !== null) {
-          const punchedDurable = await punchTransmittanceBytes(durable, size, dabs, { appFrame: plan.frame });
+          const punchedDurable = await punchTransmittanceBytes(durable, size, dabs, {
+            appFrame: plan.frame,
+            shape,
+          });
           if (!punchedDurable) {
             publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
             revertAquarelleLiftPreview();
@@ -6077,7 +6093,10 @@ export function PhysicsPaintStudio() {
         revertAquarelleLiftPreview();
         return;
       }
-      const punched = await punchTransmittanceBytes(base.bytes, size, dabs, { appFrame: plan.frame });
+      const punched = await punchTransmittanceBytes(base.bytes, size, dabs, {
+        appFrame: plan.frame,
+        shape,
+      });
       if (!punched) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         revertAquarelleLiftPreview();
@@ -6106,7 +6125,10 @@ export function PhysicsPaintStudio() {
           revertAquarelleLiftPreview();
           return;
         } else {
-          const durablePunch = await punchTransmittanceBytes(durableSource, size, dabs, { appFrame: plan.frame });
+          const durablePunch = await punchTransmittanceBytes(durableSource, size, dabs, {
+            appFrame: plan.frame,
+            shape,
+          });
           if (!durablePunch) {
             publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
             revertAquarelleLiftPreview();

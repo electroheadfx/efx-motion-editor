@@ -42,8 +42,11 @@ export interface EngineCallbacks {
    * 261028-k03b: one applied Lift dab (doc uv y up, radius in document
    * heights, amount = the effective per-dab erase). The Studio previews it on
    * the cached base so a lift on a cooked frame erases while the user draws.
+   * 261028-k03c: `angle` is the tip angle in radians (y up — the same value
+   * `brushAngle` resolved and the shader bound as uAxis), so the cached-base
+   * preview can reproduce the erased shape.
    */
-  onLiftDab?(x: number, y: number, r: number, amount: number): void;
+  onLiftDab?(x: number, y: number, r: number, amount: number, angle: number): void;
 }
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
@@ -1724,8 +1727,14 @@ export class WatercolorEngine {
         // 261028-k03b: strength is a canonical param (lift/100) recorded per
         // stroke, so the live pass, the bake replay and the cached-raster
         // punch share one number. The 0.22 default keeps old strokes exact.
+        // 261028-k03c: the tip angle is the same law the brush stamps use —
+        // brushAngle already resolves fixed rotation as the sticky pen-tilt
+        // azimuth s.azimuth (set in processInput from atan2(-ty, tx) when
+        // hypot(tx, ty) > 12) falling back to b.angle * DEG, so the live erase
+        // gains the tilt with no extra logic here. The punch and the cursor
+        // mirror this exact law.
         const amount = Math.min(0.9, P.lift * dwell);
-        this.lift(x, y, r, amount);
+        this.lift(x, y, r, this.brushAngle(s), amount);
         break;
       }
     }
@@ -1877,8 +1886,9 @@ export class WatercolorEngine {
     gl.disable(gl.BLEND);
   }
 
-  private lift(x: number, y: number, r: number, amount: number) {
+  private lift(x: number, y: number, r: number, angle: number, amount: number) {
     const { gl, g } = this;
+    const b = this.brush;
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     this.touch(rect);
     // 261028-k03 D1: Lift is the ONE tool that also reaches fixed pigment, so the
@@ -1887,9 +1897,17 @@ export class WatercolorEngine {
     this.history.protect(1, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.fixed.views);
     const p = this.programs.lift;
     p.bind();
+    // 261028-k03c: the tip footprint binds exactly like drawStamp — the same
+    // tip texture, aspect and angle the brush stamps use. uRound = 0 shaves
+    // the silhouette to the tip's contour (the punch's LIFT_TIP_ROUND mirrors
+    // this constant).
+    gl.uniform1i(p.u.uTip, g.bindTex(0, this.tipTexture(b)));
     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
     gl.uniform2f(p.u.uPoint, x, y);
     gl.uniform1f(p.u.uRadius, r);
+    gl.uniform1f(p.u.uTipAspect, b.aspect);
+    gl.uniform2f(p.u.uAxis, Math.cos(angle), Math.sin(angle));
+    gl.uniform1f(p.u.uRound, 0);
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ZERO, gl.ONE_MINUS_SRC_COLOR);
@@ -1903,7 +1921,7 @@ export class WatercolorEngine {
     // Declared consequence: an explicit Dry is permanent for every tool except Lift.
     gl.disable(gl.BLEND);
     // After the draw, so the preview observes exactly the dab the engine applied.
-    this.callbacks.onLiftDab?.(x, y, r, amount);
+    this.callbacks.onLiftDab?.(x, y, r, amount, angle);
   }
 
   /* ----------------------------------------------------------- simulation */

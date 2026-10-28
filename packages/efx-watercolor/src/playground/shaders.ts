@@ -263,14 +263,23 @@ void main(){
 }`;
 
 // Multiplicative stamp (blend ZERO, ONE_MINUS_SRC_COLOR): blotting with a tissue.
+// 261028-k03c: the pre-k03c radial envelope exp(-(q·q)²) stays the erase law;
+// the brush tip then shaves the silhouette to its contour (the same square
+// (-1..1) tip-space mapping stampFS uses). uRound = 1 restores the radial-only
+// erase (a plain soft ellipse); uRound = 0 multiplies by the tip mask.
 export const liftFS = `${HEADER}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
-uniform float uAspect, uRadius, uAmount;
-uniform vec2 uPoint;
+uniform sampler2D uTip;
+uniform float uAspect, uRadius, uAmount, uTipAspect, uRound;
+uniform vec2 uPoint, uAxis;
 void main(){
   vec2 p = vUv - uPoint; p.x *= uAspect;
-  float f = uAmount * exp(-pow(dot(p, p) / (uRadius * uRadius), 2.0));
+  vec2 q = vec2(dot(p, uAxis), dot(p, vec2(-uAxis.y, uAxis.x))) / uRadius;
+  q.y /= uTipAspect;
+  if (abs(q.x) > 1.0 || abs(q.y) > 1.0) discard;
+  float t = texture(uTip, clamp(q * 0.5 + 0.5, 0.0, 1.0)).r;
+  float f = uAmount * exp(-pow(dot(q, q), 2.0)) * mix(t, 1.0, uRound);
   o0 = vec4(f);
   o1 = vec4(f);
 }`;

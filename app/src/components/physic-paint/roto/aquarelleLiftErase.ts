@@ -37,7 +37,7 @@
 //   - a pressure sentinel (p < 0) is treated as 0.45.
 // ============================================================
 
-import { toEngineParams } from '@efxlab/efx-watercolor';
+import { buildBrushForStroke, toEngineParams, type Rotation } from '@efxlab/efx-watercolor';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 
@@ -59,12 +59,55 @@ const LIFT_PRESSURE_SENTINEL = 0.45;
 /** Bounds a pathological stroke so the punch stays finite. */
 const MAX_LIFT_DABS = 50_000;
 
+/**
+ * 261028-k03c: the tip-mask roundness the engine binds for Lift
+ * (`Engine.lift` uniforms uRound = 0 — the tip fully shaves the silhouette).
+ * Kept as a constant so the punch mirrors the shader.
+ */
+export const LIFT_TIP_ROUND = 0;
+
+const DEG = Math.PI / 180;
+
+/**
+ * The footprint the punch reproduces: the RECORDED brush's tip data, aspect,
+ * rotation and preset angle. Anything the engine bound at draw time is derived
+ * from the same `buildBrushForStroke` call, so a bake punch and the live erase
+ * share one shape (buildBrush seeds from the preset id → deterministic).
+ */
+export interface LiftFootprintShape {
+  tipData: Uint8Array;
+  tipSize: number;
+  aspect: number;
+  angle: number;
+  rotation: Rotation;
+}
+
+/**
+ * Resolve a recorded stroke's `brushId`/`toolOverrides` into the punch shape.
+ * `angle` is the preset angle in radians (y up) — the fallback of the
+ * fixed-rotation branch, exactly like `Engine.brushAngle`.
+ */
+export function liftShapeForStroke(
+  stroke: Pick<AquarelleStroke, 'brushId' | 'toolOverrides'>,
+): LiftFootprintShape {
+  const brush = buildBrushForStroke(stroke.brushId || 'filbert', stroke.toolOverrides);
+  return {
+    tipData: brush.tipData,
+    tipSize: brush.tipSize,
+    aspect: brush.aspect,
+    angle: brush.angle * DEG,
+    rotation: brush.rotation,
+  };
+}
+
 /** One lift dab in document UV (y up); `r` is in document heights. */
 export interface LiftDab {
   x: number;
   y: number;
   r: number;
   amount: number;
+  /** 261028-k03c: tip angle in radians (y up — the engine's uAxis angle). */
+  angle?: number;
 }
 
 export interface LiftEraseSize {
@@ -98,6 +141,8 @@ export interface LiftEraseCodec {
 
 export interface LiftErasePunchOptions {
   appFrame: number;
+  /** 261028-k03c: the recorded brush's tip footprint (live/punch parity). */
+  shape?: LiftFootprintShape;
   /** Injected legs for tests; production uses DEFAULT_LIFT_ERASE_CODEC. */
   codec?: Partial<LiftEraseCodec>;
 }
@@ -116,6 +161,7 @@ function normalizePressure(p: number | undefined): number {
 export function collectLiftDabs(
   stroke: Pick<AquarelleStroke, 'points' | 'params'>,
   size: LiftEraseSize,
+  shape?: LiftFootprintShape,
 ): LiftDab[] {
   const points = stroke.points ?? [];
   if (points.length === 0) return [];
@@ -136,10 +182,36 @@ export function collectLiftDabs(
   const radiusAt = (pressure: number | undefined): number =>
     (LIFT_SIZE_BASE + LIFT_SIZE_PRESSURE * normalizePressure(pressure)) * sizeMult;
 
+  // 261028-k03c: mirror Engine.brushAngle for every dab. Stroke.azimuth is
+  // STICKY in the engine and is scanned in processInput BEFORE the point's
+  // stamps, so the tilt of point i also governs the segment ending on it.
+  let azimuth: number | null = null;
+  const scanTilt = (p: AquarelleStroke['points'][number]): void => {
+    if (Math.hypot(p.tx, p.ty) > 12) azimuth = Math.atan2(-p.ty, p.tx);
+  };
+  // follow reads the engine's smoothed s.dx/s.dy; the punch replays the raw
+  // segment direction (declared approximation — the smoothing is not recorded).
+  let segmentAngle = 0;
+  const dabAngle = (): number => {
+    if (!shape) return 0;
+    if (shape.rotation === 'follow') return segmentAngle + shape.angle;
+    if (shape.rotation === 'random') return shape.angle;
+    return azimuth ?? shape.angle;
+  };
+
   const dabs: LiftDab[] = [];
 
   const first = points[0];
-  if (first) dabs.push({ x: first.x, y: first.y, r: radiusAt(first.p), amount: movingAmount });
+  if (first) {
+    scanTilt(first);
+    dabs.push({
+      x: first.x,
+      y: first.y,
+      r: radiusAt(first.p),
+      amount: movingAmount,
+      angle: dabAngle(),
+    });
+  }
 
   // 261028-k03b: the engine carries the unspent spacing across every trace
   // segment (Stroke.carry). Restarting at 0 per recorded sample skipped the
@@ -150,14 +222,22 @@ export function collectLiftDabs(
     const a = points[i - 1];
     const b = points[i];
     if (!a || !b) continue;
+    scanTilt(b);
     const dx = (b.x - a.x) * aspect;
     const dy = b.y - a.y;
     const length = Math.hypot(dx, dy);
+    if (length > 1e-9) segmentAngle = Math.atan2(dy, dx);
 
     // Standing still: the engine stamps one dwell dab per resting tick.
     if (length <= 1e-9) {
       if (dabs.length >= MAX_LIFT_DABS) return dabs;
-      dabs.push({ x: b.x, y: b.y, r: radiusAt(b.p), amount: dwellAmount });
+      dabs.push({
+        x: b.x,
+        y: b.y,
+        r: radiusAt(b.p),
+        amount: dwellAmount,
+        angle: dabAngle(),
+      });
       // A dwell neither spends nor resets the travel carry.
       continue;
     }
@@ -184,6 +264,7 @@ export function collectLiftDabs(
         y: a.y + (b.y - a.y) * t,
         r: radiusAt(a.p + (b.p - a.p) * t),
         amount: movingAmount,
+        angle: dabAngle(),
       });
     }
     carry += length - pos;
@@ -193,15 +274,54 @@ export function collectLiftDabs(
 }
 
 /**
+ * One bilinear tap of the tip texture, mirroring GL_LINEAR + CLAMP_TO_EDGE on
+ * texel centres `(i + 0.5) / size`. `qx`/`qy` are the shader's tip-space
+ * coordinates (-1..1 maps onto the square); the value is normalised to 0..1.
+ */
+function sampleTipBilinear(
+  tipData: Uint8Array,
+  tipSize: number,
+  qx: number,
+  qy: number,
+): number {
+  const u = Math.min(1, Math.max(0, qx * 0.5 + 0.5));
+  const v = Math.min(1, Math.max(0, qy * 0.5 + 0.5));
+  const fx = u * tipSize - 0.5;
+  const fy = v * tipSize - 0.5;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = fx - x0;
+  const ty = fy - y0;
+  const clampIndex = (i: number): number => (i < 0 ? 0 : i >= tipSize ? tipSize - 1 : i);
+  const xa = clampIndex(x0);
+  const xb = clampIndex(x0 + 1);
+  const ya = clampIndex(y0);
+  const yb = clampIndex(y0 + 1);
+  const p00 = tipData[ya * tipSize + xa] ?? 0;
+  const p10 = tipData[ya * tipSize + xb] ?? 0;
+  const p01 = tipData[yb * tipSize + xa] ?? 0;
+  const p11 = tipData[yb * tipSize + xb] ?? 0;
+  const top = p00 + (p10 - p00) * tx;
+  const bottom = p01 + (p11 - p01) * tx;
+  return (top + (bottom - top) * ty) / 255;
+}
+
+/**
  * The per-pixel K map, allocated ONLY over the union bbox of the dabs so the
  * punch leaves every other pixel byte-identical. UV is y-up, the canvas is
  * top-down, and the radius converts as r * height on BOTH axes (the shader
  * divides x by uAspect).
+ *
+ * 261028-k03c: with a `shape`, the footprint mirrors `liftFS` — the tip square
+ * (-1..1) is rotated by the dab angle, squeezed to the brush aspect, and
+ * multiplied by the bilinearly sampled tip mask; pixels outside the square are
+ * discarded (untouched). Without it, the pre-k03c radial law is byte-identical.
  */
 export function buildLiftCoverage(
   dabs: readonly LiftDab[],
   width: number,
   height: number,
+  shape?: LiftFootprintShape,
 ): LiftCoverage {
   const empty: LiftCoverage = {
     coverage: new Float32Array(1).fill(1),
@@ -209,22 +329,27 @@ export function buildLiftCoverage(
   };
   if (dabs.length === 0 || width <= 0 || height <= 0) return empty;
 
-  const placed = dabs.map((dab) => ({
-    cx: dab.x * width,
-    cy: (1 - dab.y) * height,
-    rPx: Math.max(1, dab.r * height),
-    amount: dab.amount,
+  const placed = dabs.map((one) => ({
+    cx: one.x * width,
+    cy: (1 - one.y) * height,
+    rPx: Math.max(1, one.r * height),
+    amount: one.amount,
+    angle: one.angle ?? 0,
   }));
+  // The discard square's corners sit at r * sqrt(1 + aspect²) from the centre;
+  // the old radial law's reach was r (+1 px of anti-alias slack).
+  const margin = shape ? Math.sqrt(1 + shape.aspect * shape.aspect) : 1;
 
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
-  for (const dab of placed) {
-    const x0 = Math.max(0, Math.floor(dab.cx - dab.rPx - 1));
-    const x1 = Math.min(width - 1, Math.ceil(dab.cx + dab.rPx + 1));
-    const y0 = Math.max(0, Math.floor(dab.cy - dab.rPx - 1));
-    const y1 = Math.min(height - 1, Math.ceil(dab.cy + dab.rPx + 1));
+  for (const one of placed) {
+    const reach = one.rPx * margin + 1;
+    const x0 = Math.max(0, Math.floor(one.cx - reach));
+    const x1 = Math.min(width - 1, Math.ceil(one.cx + reach));
+    const y0 = Math.max(0, Math.floor(one.cy - reach));
+    const y1 = Math.min(height - 1, Math.ceil(one.cy + reach));
     if (x1 < x0 || y1 < y0) continue;
     minX = Math.min(minX, x0);
     maxX = Math.max(maxX, x1);
@@ -241,18 +366,33 @@ export function buildLiftCoverage(
   };
   const coverage = new Float32Array(coverageRect.width * coverageRect.height).fill(1);
 
-  for (const dab of placed) {
-    const x0 = Math.max(0, Math.floor(dab.cx - dab.rPx - 1));
-    const x1 = Math.min(width - 1, Math.ceil(dab.cx + dab.rPx + 1));
-    const y0 = Math.max(0, Math.floor(dab.cy - dab.rPx - 1));
-    const y1 = Math.min(height - 1, Math.ceil(dab.cy + dab.rPx + 1));
-    const r2 = dab.rPx * dab.rPx;
+  for (const one of placed) {
+    const reach = one.rPx * margin + 1;
+    const x0 = Math.max(0, Math.floor(one.cx - reach));
+    const x1 = Math.min(width - 1, Math.ceil(one.cx + reach));
+    const y0 = Math.max(0, Math.floor(one.cy - reach));
+    const y1 = Math.min(height - 1, Math.ceil(one.cy + reach));
+    const r2 = one.rPx * one.rPx;
+    const cos = Math.cos(one.angle);
+    const sin = Math.sin(one.angle);
     for (let y = y0; y <= y1; y += 1) {
-      const dy = y - dab.cy;
+      // Doc y is up, canvas rows go down: the offset flips sign here.
+      const dyUp = one.cy - y;
       for (let x = x0; x <= x1; x += 1) {
-        const dx = x - dab.cx;
-        const q = (dx * dx + dy * dy) / r2;
-        const f = dab.amount * Math.exp(-(q * q));
+        const dx = x - one.cx;
+        let f: number;
+        if (shape) {
+          const along = (dx * cos + dyUp * sin) / one.rPx;
+          const across = ((-dx * sin + dyUp * cos) / one.rPx) / shape.aspect;
+          // liftFS: outside the tip square the dab is discarded.
+          if (Math.abs(along) > 1 || Math.abs(across) > 1) continue;
+          const d = along * along + across * across;
+          const mask = sampleTipBilinear(shape.tipData, shape.tipSize, along, across);
+          f = one.amount * Math.exp(-(d * d)) * (mask * (1 - LIFT_TIP_ROUND) + LIFT_TIP_ROUND);
+        } else {
+          const q = (dx * dx + dyUp * dyUp) / r2;
+          f = one.amount * Math.exp(-(q * q));
+        }
         const index = (y - coverageRect.y) * coverageRect.width + (x - coverageRect.x);
         coverage[index] *= 1 - f;
       }
@@ -319,6 +459,7 @@ function canvasDocumentFor(source: HTMLCanvasElement): Document | null {
 export function punchTransmittanceCanvas(
   source: HTMLCanvasElement,
   dabs: readonly LiftDab[],
+  shape?: LiftFootprintShape,
 ): HTMLCanvasElement | null {
   const width = Math.max(0, Math.round(source.width));
   const height = Math.max(0, Math.round(source.height));
@@ -341,7 +482,7 @@ export function punchTransmittanceCanvas(
   const targetContext = target.getContext('2d', { willReadFrequently: true });
   if (!targetContext) return null;
 
-  const { coverage, coverageRect } = buildLiftCoverage(dabs, width, height);
+  const { coverage, coverageRect } = buildLiftCoverage(dabs, width, height, shape);
   punchTransmittanceRgba(image.data, coverage, width, height, coverageRect);
   targetContext.putImageData(image, 0, 0);
   return target;
@@ -408,7 +549,7 @@ export async function punchTransmittanceBytes(
       const encoded = await encode(source, size, options.appFrame);
       return encoded && encoded.length > 0 ? { bytes: encoded, canvas: source } : null;
     }
-    const punched = punchTransmittanceCanvas(source, dabs);
+    const punched = punchTransmittanceCanvas(source, dabs, options.shape);
     if (!punched) return null;
     const encoded = await encode(punched, size, options.appFrame);
     if (!encoded || encoded.length === 0) return null;

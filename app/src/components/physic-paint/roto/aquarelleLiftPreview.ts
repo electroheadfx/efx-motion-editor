@@ -28,6 +28,13 @@ export interface AquarelleLiftPreviewDab {
   r: number;
   /** Effective per-dab erase amount (0..0.9). */
   amount: number;
+  /**
+   * 261028-k03c: the engine's tip angle for this dab (radians, y up — the
+   * same value it bound as uAxis). OPTIONAL so older literals/spies stay
+   * valid; consumers read `angle ?? 0`. The preview stores exactly what
+   * `onLiftDab` delivered and never re-derives it.
+   */
+  angle?: number;
 }
 
 export interface AquarelleLiftPreviewSink {

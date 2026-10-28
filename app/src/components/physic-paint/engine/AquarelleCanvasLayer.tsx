@@ -34,9 +34,9 @@ import {
 import type { AquarellePoint, AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor';
 import {
   aquarelleActiveTool,
+  aquarelleBrushForActiveTool,
   aquarelleParams,
   aquarelleSelectedTipId,
-  aquarelleToolOverrides,
   onAquarelleDry,
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
@@ -205,9 +205,12 @@ function toolForSelection(): AquarelleTool {
 function applyLiveConfig(engine: WatercolorEngine): void {
   engine.setParams(toEngineParams(aquarelleParams.value));
   engine.setTool(aquarelleActiveTool.value as Tool);
-  engine.setBrush(
-    buildBrushForStroke(brushIdForSelection(), aquarelleToolOverrides.value),
-  );
+  // 261028-k03c: the live brush is the SAME selection law the record uses
+  // (`aquarelleBrushForActiveTool`), so a Lift stroke's live erase, its
+  // recorded brushId and the bake can never disagree. `brushIdForSelection`
+  // stays as the historical stroke-end fallback only.
+  const selection = aquarelleBrushForActiveTool();
+  engine.setBrush(buildBrushForStroke(selection.brushId, selection.toolOverrides));
 }
 
 export function AquarelleCanvasLayer(props: {
@@ -246,8 +249,11 @@ export function AquarelleCanvasLayer(props: {
    * the footprint radius in document heights and the effective erase amount.
    * The Studio previews the same dab on the cached base so a lift on a cooked
    * frame erases while the user draws. Only lift strokes emit.
+   * 261028-k03c: `angle` (radians, y up — the engine's uAxis) rides along so
+   * the preview reproduces the erased tip shape; this layer forwards it
+   * unchanged and never re-derives it.
    */
-  onLiftDab?: (x: number, y: number, r: number, amount: number) => void;
+  onLiftDab?: (x: number, y: number, r: number, amount: number, angle: number) => void;
   /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
@@ -418,8 +424,8 @@ export function AquarelleCanvasLayer(props: {
           // 261028-k03b: the exact dab the engine erased with — the cached
           // base preview punches the same numbers, so what the user sees
           // during the stroke is what the live pass applied.
-          onLiftDab(x, y, r, amount) {
-            onLiftDabRef.current?.(x, y, r, amount);
+          onLiftDab(x, y, r, amount, angle) {
+            onLiftDabRef.current?.(x, y, r, amount, angle);
           },
           onStrokeEnd(tool) {
             painting = false;

@@ -231,18 +231,21 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   it('k03b: previews the engine dabs on the cached base only for a cached-display lift', () => {
     expect(preview).toContain("planAquarelleLiftErase(frame).kind === 'erase'");
     expect(preview).toContain('beginAquarelleLiftPreview(frame)');
-    expect(preview).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount })');
+    // 261028-k03c: the 5-argument dab — the angle rides to the preview.
+    expect(preview).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount, angle })');
     // Stroke end closes the gesture and drops the per-stroke plan cache.
     expect(studio).toContain('endAquarelleLiftPreview();');
     expect(studio).toContain('aquarelleLiftPreviewPlanRef.current = null;');
-    // The layer hands over the exact dab the engine applied.
-    expect(layer).toContain('onLiftDab(x, y, r, amount)');
-    expect(mount).toContain('onLiftDab={(x, y, r, amount) => onAquarelleLiftDabRef.current?.(x, y, r, amount)}');
+    // The layer hands over the exact dab the engine applied (angle included).
+    expect(layer).toContain('onLiftDab(x, y, r, amount, angle)');
+    expect(mount).toContain(
+      'onLiftDab={(x, y, r, amount, angle) => onAquarelleLiftDabRef.current?.(x, y, r, amount, angle)}',
+    );
   });
 
   it('k03b: the cached base punches in place and double-buffers URL swaps', () => {
     expect(baseLayer).toContain('punchTransmittanceRgba(');
-    expect(baseLayer).toContain('buildLiftCoverage(dabs');
+    expect(baseLayer).toContain('buildLiftCoverage(');
     expect(baseLayer).toContain('registerAquarelleLiftPreviewSink');
     // The visible canvas is never zeroed before the new bytes are decoded —
     // that reset was the blank flash on every refresh.

@@ -9,15 +9,20 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
+import { buildBrushForStroke } from '@efxlab/efx-watercolor';
+import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   HOST_DT_SECONDS,
+  LIFT_TIP_ROUND,
   buildLiftCoverage,
   collectLiftDabs,
+  liftShapeForStroke,
   punchTransmittanceBytes,
   punchTransmittanceCanvas,
   punchTransmittanceRgba,
   type LiftCoverageRect,
   type LiftDab,
+  type LiftFootprintShape,
 } from './aquarelleLiftErase';
 
 const SIZE = { width: 1000, height: 1000 };
@@ -52,6 +57,39 @@ function srgbByteToPixel(value: number): number {
 
 function dab(overrides: Partial<LiftDab> = {}): LiftDab {
   return { x: 0.5, y: 0.5, r: 0.05, amount: 0.4, ...overrides };
+}
+
+// ---------------------------------------------------------------------------
+// 261028-k03c — tip-shaped footprint doubles.
+// ---------------------------------------------------------------------------
+
+const DEG = Math.PI / 180;
+
+function point(x: number, y: number, tiltX = 0, tiltY = 0) {
+  return { x, y, p: 0.5, tx: tiltX, ty: tiltY, tw: 0 };
+}
+
+/** A shape whose tip mask is uniform, so the sampled mask is a known scalar. */
+function shape(overrides: Partial<LiftFootprintShape> = {}): LiftFootprintShape {
+  return {
+    tipData: new Uint8Array(4).fill(255),
+    tipSize: 2,
+    aspect: 1,
+    angle: 0,
+    rotation: 'fixed',
+    ...overrides,
+  };
+}
+
+/** Read a coverage pixel, treating anything outside the rect as untouched. */
+function coverageAt(
+  coverage: Float32Array,
+  rect: LiftCoverageRect,
+  x: number,
+  y: number,
+): number {
+  if (x < rect.x || x >= rect.x + rect.width || y < rect.y || y >= rect.y + rect.height) return 1;
+  return coverage[(y - rect.y) * rect.width + (x - rect.x)]!;
 }
 
 describe('collectLiftDabs — the engine footprint law', () => {
@@ -530,5 +568,237 @@ describe('punchTransmittanceBytes — awaited codec both legs', () => {
     });
     expect(result).not.toBeNull();
     expect(Array.from(result!.bytes)).toEqual([2, 4, 6]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261028-k03c — the tip-shaped footprint: per-dab angle + the punch mirror.
+//
+// The angle law mirrors Engine.brushAngle (Engine.ts:1550) so the live pass
+// and the punch cannot disagree:
+//   fixed  → the sticky recorded pen-tilt azimuth, else the preset angle;
+//   follow → the segment direction + the preset angle;
+//   random → the preset angle (declared approximation — the engine's RNG is
+//            not reproducible from the record, already true of the bake).
+// ---------------------------------------------------------------------------
+
+describe('collectLiftDabs — per-dab tip angle (261028-k03c)', () => {
+  it('fixed rotation with no tilt uses the preset angle for every dab', () => {
+    const presetAngle = 30 * DEG;
+    const dabs = collectLiftDabs(
+      { points: [point(0.1, 0.5), point(0.4, 0.5), point(0.4, 0.8)], params: CANONICAL },
+      SIZE,
+      shape({ angle: presetAngle }),
+    );
+    expect(dabs.length).toBeGreaterThan(2);
+    for (const one of dabs) expect(one.angle).toBeCloseTo(presetAngle, 9);
+  });
+
+  it('fixed rotation replaces the preset angle with the recorded tilt azimuth', () => {
+    const dabs = collectLiftDabs(
+      {
+        // processInput scans the tilt BEFORE the point's stamps, so the second
+        // point's tilt also governs the dabs of the segment that ends on it.
+        points: [point(0.2, 0.5), point(0.4, 0.5, 0, 40)],
+        params: CANONICAL,
+      },
+      SIZE,
+      shape({ angle: 30 * DEG }),
+    );
+    // The first point has no tilt yet → the preset angle (π/6).
+    expect(dabs[0]!.angle).toBeCloseTo(30 * DEG, 9);
+    expect(dabs[dabs.length - 1]!.angle).toBeCloseTo(Math.atan2(-40, 0), 9);
+    expect(dabs[dabs.length - 1]!.angle).toBeCloseTo(-Math.PI / 2, 9);
+  });
+
+  it('holds the azimuth sticky after a later untilted point', () => {
+    const dabs = collectLiftDabs(
+      { points: [point(0.2, 0.5, 0, -40), point(0.4, 0.5), point(0.6, 0.5)], params: CANONICAL },
+      SIZE,
+      shape({ angle: 30 * DEG }),
+    );
+    // The first point's own tilt (0, -40) → atan2(40, 0) = π/2, including its
+    // own dab; the untilted points keep it (Engine.Stroke.azimuth is sticky).
+    expect(dabs[0]!.angle).toBeCloseTo(Math.PI / 2, 9);
+    for (const one of dabs.slice(1)) expect(one.angle).toBeCloseTo(Math.PI / 2, 9);
+    // The preset angle never leaks back in after the azimuth is known.
+    expect(dabs[dabs.length - 1]!.angle).not.toBeCloseTo(30 * DEG, 6);
+  });
+
+  it('follow rotation tracks the segment direction and adds the preset angle', () => {
+    const dabs = collectLiftDabs(
+      { points: [point(0.2, 0.5), point(0.4, 0.5), point(0.4, 0.7)], params: CANONICAL },
+      SIZE,
+      shape({ angle: 10 * DEG, rotation: 'follow' }),
+    );
+    const alongX = dabs.filter((one) => one.y === 0.5 && one.x > 0.2);
+    expect(alongX.length).toBeGreaterThan(0);
+    for (const one of alongX) expect(one.angle).toBeCloseTo(10 * DEG, 9);
+    const alongY = dabs.filter((one) => one.x === 0.4 && one.y > 0.5);
+    expect(alongY.length).toBeGreaterThan(0);
+    for (const one of alongY) expect(one.angle).toBeCloseTo(Math.PI / 2 + 10 * DEG, 9);
+  });
+
+  it('random rotation holds the preset angle (declared approximation)', () => {
+    const dabs = collectLiftDabs(
+      { points: [point(0.1, 0.2), point(0.5, 0.6), point(0.8, 0.3, 10, 10)], params: CANONICAL },
+      SIZE,
+      shape({ angle: 25 * DEG, rotation: 'random' }),
+    );
+    expect(dabs.length).toBeGreaterThan(1);
+    for (const one of dabs) expect(one.angle).toBeCloseTo(25 * DEG, 9);
+  });
+
+  it('emits angle 0 without a shape (the radial law ignores it)', () => {
+    const dabs = collectLiftDabs(
+      { points: [point(0.1, 0.2), point(0.5, 0.6)], params: CANONICAL },
+      SIZE,
+    );
+    expect(dabs.length).toBeGreaterThan(0);
+    for (const one of dabs) expect(one.angle).toBe(0);
+  });
+});
+
+describe('liftShapeForStroke — the RECORDED brush is the punched shape', () => {
+  it('resolves the preset through buildBrushForStroke, deterministically', () => {
+    const overrides = { ...NEUTRAL_TOOL_OVERRIDES, aspect: 1.5 };
+    const resolved = liftShapeForStroke({ brushId: 'flat', toolOverrides: overrides });
+    const brush = buildBrushForStroke('flat', overrides);
+    expect(resolved.tipSize).toBe(brush.tipSize);
+    expect(resolved.aspect).toBeCloseTo(brush.aspect, 9);
+    expect(resolved.rotation).toBe(brush.rotation);
+    expect(resolved.angle).toBeCloseTo(brush.angle * DEG, 9);
+    // buildBrush seeds from the preset id, so the app regenerates identical data.
+    expect(Array.from(resolved.tipData)).toEqual(Array.from(brush.tipData));
+  });
+
+  it('falls back to filbert when a legacy stroke records no brushId', () => {
+    const resolved = liftShapeForStroke({ brushId: '', toolOverrides: undefined });
+    const brush = buildBrushForStroke('filbert');
+    expect(resolved.aspect).toBeCloseTo(brush.aspect, 9);
+    expect(resolved.rotation).toBe(brush.rotation);
+  });
+});
+
+describe('buildLiftCoverage — the tip-shaped footprint (261028-k03c)', () => {
+  it('a full-mask tip with aspect 1 reproduces the radial law inside the tip square', () => {
+    const width = 200;
+    const height = 200;
+    const dabs = [dab({ x: 0.5, y: 0.5, r: 0.1, amount: 0.4, angle: 0 })];
+    const radial = buildLiftCoverage(dabs, width, height);
+    const shaped = buildLiftCoverage(dabs, width, height, shape());
+    const rPx = 0.1 * height;
+    let inside = 0;
+    let outside = 0;
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const qx = (x - 100) / rPx;
+        const qy = (100 - y) / rPx; // doc y is UP: canvas row = centre - dy
+        const insideSquare = Math.max(Math.abs(qx), Math.abs(qy));
+        const s = coverageAt(shaped.coverage, shaped.coverageRect, x, y);
+        if (insideSquare <= 1) {
+          inside += 1;
+          const r = coverageAt(radial.coverage, radial.coverageRect, x, y);
+          expect(Math.abs(s - r), `radial parity at ${x},${y}`).toBeLessThan(1e-6);
+        } else if (insideSquare > 1.02) {
+          // liftFS discards outside the tip square — and the radial law's tiny
+          // tail beyond it is not reproduced.
+          outside += 1;
+          expect(s, `discarded pixel ${x},${y}`).toBe(1);
+        }
+      }
+    }
+    expect(inside).toBeGreaterThan(0);
+    expect(outside).toBeGreaterThan(0);
+  });
+
+  it('a uniform half-mask tip scales every f by the sampled mask', () => {
+    const width = 120;
+    const height = 120;
+    const dabs = [dab({ x: 0.5, y: 0.5, r: 0.2, amount: 0.5, angle: 0 })];
+    const radial = buildLiftCoverage(dabs, width, height);
+    const shaped = buildLiftCoverage(
+      dabs,
+      width,
+      height,
+      shape({ tipData: new Uint8Array(4).fill(128), tipSize: 2 }),
+    );
+    const mask = 128 / 255;
+    // K = 1 - f with f = f_radial * mask, at every pixel of the tip square.
+    for (let y = 60 - 24; y <= 60 + 24; y += 1) {
+      for (let x = 60 - 24; x <= 60 + 24; x += 1) {
+        const r = coverageAt(radial.coverage, radial.coverageRect, x, y);
+        const s = coverageAt(shaped.coverage, shaped.coverageRect, x, y);
+        expect(1 - s, `scaled f at ${x},${y}`).toBeCloseTo((1 - r) * mask, 6);
+      }
+    }
+    // Sanity: the mask halves the deposit at the centre.
+    expect(1 - coverageAt(shaped.coverage, shaped.coverageRect, 60, 60)).toBeCloseTo(
+      0.5 * mask,
+      5,
+    );
+  });
+
+  it('aspect 0.5 shaves the short axis while the long axis keeps the radius', () => {
+    const width = 400;
+    const height = 400;
+    const dabs = [dab({ x: 0.5, y: 0.5, r: 0.25, amount: 0.4, angle: 0 })];
+    const radial = buildLiftCoverage(dabs, width, height);
+    const shaped = buildLiftCoverage(dabs, width, height, shape({ aspect: 0.5 }));
+    // 0.75r on the SHORT axis: q.y = 0.75 / 0.5 = 1.5 → discarded, while the
+    // radial law still covers the pixel.
+    expect(coverageAt(shaped.coverage, shaped.coverageRect, 200, 200 + 75)).toBe(1);
+    expect(coverageAt(radial.coverage, radial.coverageRect, 200, 200 + 75)).toBeLessThan(1);
+    // 0.75r on the LONG axis stays inside the tip square.
+    expect(coverageAt(shaped.coverage, shaped.coverageRect, 275, 200)).toBeLessThan(1);
+  });
+
+  it('rotates the footprint with the dab angle (doc y up)', () => {
+    const width = 400;
+    const height = 400;
+    const dabs = [dab({ x: 0.5, y: 0.5, r: 0.25, amount: 0.4, angle: Math.PI / 2 })];
+    const shaped = buildLiftCoverage(dabs, width, height, shape({ aspect: 0.5 }));
+    // The long axis now runs doc +y, i.e. UP in canvas rows.
+    expect(coverageAt(shaped.coverage, shaped.coverageRect, 200, 200 - 75)).toBeLessThan(1);
+    // The short axis now runs doc x → 0.75r is discarded.
+    expect(coverageAt(shaped.coverage, shaped.coverageRect, 275, 200)).toBe(1);
+  });
+
+  it('keeps overlapping shaped dabs multiplicative', () => {
+    const twin = buildLiftCoverage(
+      [dab({ amount: 0.4, r: 0.2 }), dab({ amount: 0.4, r: 0.2 })],
+      64,
+      64,
+      shape(),
+    );
+    const centre = coverageAt(twin.coverage, twin.coverageRect, 32, 32);
+    expect(centre).toBeCloseTo((1 - 0.4) * (1 - 0.4), 5);
+  });
+
+  it('pins LIFT_TIP_ROUND to the engine binding (uRound = 0)', () => {
+    expect(LIFT_TIP_ROUND).toBe(0);
+  });
+
+  it('forwards the shape to punchTransmittanceBytes (an empty tip erases nothing)', async () => {
+    let encodedPixels: number[] = [];
+    const result = await punchTransmittanceBytes(
+      new Uint8Array([1]),
+      { width: 4, height: 4 },
+      [dab({ amount: 0.9, r: 0.5 })],
+      {
+        appFrame: 1,
+        shape: shape({ tipData: new Uint8Array(4), tipSize: 2 }),
+        codec: {
+          decode: async () => asHtmlCanvas(makeCanvas(4, 4, [50, 50, 50, 255])),
+          encode: async (canvas) => {
+            encodedPixels = Array.from((canvas as unknown as FakeCanvas).pixels);
+            return new Uint8Array([1]);
+          },
+        },
+      },
+    );
+    expect(result).not.toBeNull();
+    // f = amount * envelope * mask = 0 everywhere → K = 1 → byte-identical.
+    expect(encodedPixels).toEqual(new Array(16).fill([50, 50, 50, 255]).flat());
   });
 });
