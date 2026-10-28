@@ -242,6 +242,13 @@ export function AquarelleCanvasLayer(props: {
   getLiftBlocked?: () => string | null;
   onLiftBlocked?: (message: string) => void;
   /**
+   * 261028-k03b: every Lift dab the ENGINE applied, in document uv (y up) with
+   * the footprint radius in document heights and the effective erase amount.
+   * The Studio previews the same dab on the cached base so a lift on a cooked
+   * frame erases while the user draws. Only lift strokes emit.
+   */
+  onLiftDab?: (x: number, y: number, r: number, amount: number) => void;
+  /**
    * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
    * recorded stroke diffused for `ticks` host-grid ticks since it ended.
    * The record path stamps that measured window as the stroke's cuisson so
@@ -325,6 +332,7 @@ export function AquarelleCanvasLayer(props: {
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const getLiftBlockedRef = useRef(props.getLiftBlocked);
   const onLiftBlockedRef = useRef(props.onLiftBlocked);
+  const onLiftDabRef = useRef(props.onLiftDab);
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
@@ -345,6 +353,7 @@ export function AquarelleCanvasLayer(props: {
   onStrokeEndRef.current = props.onStrokeEnd;
   getLiftBlockedRef.current = props.getLiftBlocked;
   onLiftBlockedRef.current = props.onLiftBlocked;
+  onLiftDabRef.current = props.onLiftDab;
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
@@ -405,6 +414,12 @@ export function AquarelleCanvasLayer(props: {
             settleCapArmed = false;
             const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
             if (sink) sink.push(sample);
+          },
+          // 261028-k03b: the exact dab the engine erased with — the cached
+          // base preview punches the same numbers, so what the user sees
+          // during the stroke is what the live pass applied.
+          onLiftDab(x, y, r, amount) {
+            onLiftDabRef.current?.(x, y, r, amount);
           },
           onStrokeEnd(tool) {
             painting = false;

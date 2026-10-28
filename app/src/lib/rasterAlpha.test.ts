@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isFullyOpaqueRaster, transmittanceSourceToPigmentAlpha, transmittanceToAlpha } from './rasterAlpha'
+import {
+  isFullyOpaqueRaster,
+  transmittanceRectToPigmentAlpha,
+  transmittanceSourceToPigmentAlpha,
+  transmittanceToAlpha,
+} from './rasterAlpha'
 
 const PROBE_PIXELS = 64 * 64
 
@@ -201,3 +206,54 @@ describe('transmittanceSourceToPigmentAlpha', () => {
     expect(Array.from(written[0]!)).toEqual([255, 0, 255, 204])
   })
 })
+
+
+// ============================================================
+//  261028-k03b — the lift preview's dirty-rect conversion.
+// ============================================================
+describe('transmittanceRectToPigmentAlpha', () => {
+  it('converts only the requested rect with the same law', () => {
+    class FakeImageData {
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+      constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+        this.data = new Uint8ClampedArray(width * height * 4);
+      }
+    }
+    vi.stubGlobal('ImageData', FakeImageData);
+    // 2 x 1 sheet: white (no pigment) + magenta (green absorbed at 51).
+    const data = new Uint8ClampedArray([
+      255, 255, 255, 255,
+      255, 51, 255, 255,
+    ]);
+    const out = transmittanceRectToPigmentAlpha(data, 2, 1, { x: 1, y: 0, width: 1, height: 1 });
+    expect(out).not.toBeNull();
+    expect(out!.width).toBe(1);
+    expect(Array.from(out!.data)).toEqual([255, 0, 255, 204]);
+    // The full rect keeps the transparent white pixel as a zeroed RGBA.
+    const full = transmittanceRectToPigmentAlpha(data, 2, 1, { x: 0, y: 0, width: 2, height: 1 });
+    expect(Array.from(full!.data.slice(0, 4))).toEqual([0, 0, 0, 0]);
+  });
+
+  it('clamps an out-of-bounds rect and refuses an empty one', () => {
+    class FakeImageData {
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+      constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+        this.data = new Uint8ClampedArray(width * height * 4);
+      }
+    }
+    vi.stubGlobal('ImageData', FakeImageData);
+    const data = new Uint8ClampedArray(2 * 2 * 4).fill(255);
+    const clamped = transmittanceRectToPigmentAlpha(data, 2, 2, { x: -1, y: -1, width: 4, height: 4 });
+    expect(clamped!.width).toBe(2);
+    expect(clamped!.height).toBe(2);
+    expect(transmittanceRectToPigmentAlpha(data, 2, 2, { x: 5, y: 5, width: 1, height: 1 })).toBeNull();
+  });
+});

@@ -51,6 +51,9 @@ export function PhysicsPaintCanvasMount(props: {
    *  no displayable paint). Returns the copy to publish, or null to proceed. */
   getAquarelleLiftBlocked?: () => string | null;
   onAquarelleLiftBlocked?: (message: string) => void;
+  /** 261028-k03b: every lift dab the engine applied (doc uv, radius in doc
+   *  heights, effective amount) — the cached-base live erase preview. */
+  onAquarelleLiftDab?: (x: number, y: number, r: number, amount: number) => void;
   onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void;
   onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
   onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null, captureTrackId?: string) => void;
@@ -85,6 +88,7 @@ export function PhysicsPaintCanvasMount(props: {
   const getAquarellePaperGrainStrengthRef = useRef(props.getAquarellePaperGrainStrength);
   const getAquarelleLiftBlockedRef = useRef(props.getAquarelleLiftBlocked);
   const onAquarelleLiftBlockedRef = useRef(props.onAquarelleLiftBlocked);
+  const onAquarelleLiftDabRef = useRef(props.onAquarelleLiftDab);
   const colorRef = useRef(props.color ?? '#103c65');
   onCanvasMountedRef.current = props.onCanvasMounted;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
@@ -103,6 +107,7 @@ export function PhysicsPaintCanvasMount(props: {
   getAquarellePaperGrainStrengthRef.current = props.getAquarellePaperGrainStrength;
   getAquarelleLiftBlockedRef.current = props.getAquarelleLiftBlocked;
   onAquarelleLiftBlockedRef.current = props.onAquarelleLiftBlocked;
+  onAquarelleLiftDabRef.current = props.onAquarelleLiftDab;
   colorRef.current = props.color ?? '#103c65';
 
   useEffect(() => {
@@ -182,6 +187,7 @@ export function PhysicsPaintCanvasMount(props: {
         disabled={false}
         getLiftBlocked={() => getAquarelleLiftBlockedRef.current?.() ?? null}
         onLiftBlocked={(message) => onAquarelleLiftBlockedRef.current?.(message)}
+        onLiftDab={(x, y, r, amount) => onAquarelleLiftDabRef.current?.(x, y, r, amount)}
         onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
         onStrokeSettled={(stroke, ticks) => onAquarelleStrokeSettledRef.current?.(stroke, ticks)}
         onCaptureFrame={(playFrame, snapshot, captureTrackId) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot, captureTrackId)}

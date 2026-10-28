@@ -79,6 +79,51 @@ export function transmittanceToAlpha(canvas: HTMLCanvasElement): HTMLCanvasEleme
   }
 }
 
+export interface RasterRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 261028-k03b: the SAME transmittance→pigment-alpha law over one rect of an
+ * already-decoded transmittance ImageData. The lift preview punches a dirty
+ * rect in linear light and must redraw exactly that rect without re-reading
+ * the full sheet. Returns null for an empty/out-of-bounds rect.
+ */
+export function transmittanceRectToPigmentAlpha(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  rect: RasterRect,
+): ImageData | null {
+  const x0 = Math.max(0, Math.floor(rect.x));
+  const y0 = Math.max(0, Math.floor(rect.y));
+  const x1 = Math.min(width, Math.ceil(rect.x + rect.width));
+  const y1 = Math.min(height, Math.ceil(rect.y + rect.height));
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (w <= 0 || h <= 0) return null;
+  const out = new ImageData(w, h);
+  const target = out.data;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const source = ((y0 + y) * width + (x0 + x)) * 4;
+      const index = (y * w + x) * 4;
+      const min = Math.min(data[source], data[source + 1], data[source + 2]);
+      const alpha = 255 - min;
+      if (alpha === 0) continue;
+      const scale = 255 / alpha;
+      target[index] = Math.min(255, Math.round((data[source] - min) * scale));
+      target[index + 1] = Math.min(255, Math.round((data[source + 1] - min) * scale));
+      target[index + 2] = Math.min(255, Math.round((data[source + 2] - min) * scale));
+      target[index + 3] = alpha;
+    }
+  }
+  return out;
+}
+
 /**
  * 2026-10-26 (round 2, option B): the display/composite seam for stored
  * aquarelle sheets. Storage keeps the OPAQUE MODE.transparent transmittance
