@@ -265,8 +265,10 @@ void main(){
 // Multiplicative stamp (blend ZERO, ONE_MINUS_SRC_COLOR): blotting with a tissue.
 // 261028-k03c: the pre-k03c radial envelope exp(-(q·q)²) stays the erase law;
 // the brush tip then shaves the silhouette to its contour (the same square
-// (-1..1) tip-space mapping stampFS uses). uRound = 1 restores the radial-only
-// erase (a plain soft ellipse); uRound = 0 multiplies by the tip mask.
+// (-1..1) tip-space mapping stampFS uses). The square crop is UNCONDITIONAL:
+// uRound only blends the tip MASK towards the full envelope (1 = no tip
+// texture, still clipped to the tip square) — it does not restore a
+// radial-only footprint. The engine always binds uRound = 0.
 export const liftFS = `${HEADER}
 layout(location=0) out vec4 o0;
 layout(location=1) out vec4 o1;
