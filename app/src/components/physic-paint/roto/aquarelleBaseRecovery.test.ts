@@ -148,13 +148,15 @@ describe('invertAquarellePigmentCoverage (261028-k03c D4)', () => {
     expect(channel(invertAquarellePigmentCoverage(display, script), 0)).toEqual([13, 200, 77]);
   });
 
-  it('clamps out-of-range inversions to 0..255', () => {
+  it('writes WHITE for an impossible inversion — never a black ghost', () => {
     // S = (255, 255, 200): min = 200 → a ≈ 0.2157, a·C = (55, 55, 0).
-    // P = (0, 0, 255) pushes the red channel below 0 and the blue above 255.
+    // P = (0, 0, 255) pushes the red base to ≈ −70: no base pigment can
+    // explain the display there. Clamping to 0 used to paint MAXIMUM pigment
+    // exactly where none is provable — the k03g speckle ghost.
     const script = rgba([[255, 255, 200]]);
     const display = rgba([[0, 0, 255]]);
 
-    expect(channel(invertAquarellePigmentCoverage(display, script), 0)).toEqual([0, 0, 255]);
+    expect(channel(invertAquarellePigmentCoverage(display, script), 0)).toEqual([255, 255, 255]);
   });
 });
 

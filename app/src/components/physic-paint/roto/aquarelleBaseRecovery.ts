@@ -243,9 +243,24 @@ export function invertAquarellePigmentCoverage(
       const pr = display[i] ?? 255;
       const pg = display[i + 1] ?? 255;
       const pb = display[i + 2] ?? 255;
-      out[i] = clampByte((pr - (sr - min)) * inv);
-      out[i + 1] = clampByte((pg - (sg - min)) * inv);
-      out[i + 2] = clampByte((pb - (sb - min)) * inv);
+      const rawR = (pr - (sr - min)) * inv;
+      const rawG = (pg - (sg - min)) * inv;
+      const rawB = (pb - (sb - min)) * inv;
+      // 261028-k03g: an out-of-gamut inversion means the pair disagrees there
+      // (a non-reproducible replay), NOT that the base is black. Clamping a
+      // negative B to 0 painted maximum pigment exactly where no base pigment
+      // can be proven — the recovered base carried the wash's own ghost, the
+      // Lift punched it spot-wise and the re-bake surfaced cyan speckle. An
+      // impossible base is white: "no base pigment here".
+      if (isImpossibleBaseChannel(rawR) || isImpossibleBaseChannel(rawG) || isImpossibleBaseChannel(rawB)) {
+        out[i] = 255;
+        out[i + 1] = 255;
+        out[i + 2] = 255;
+      } else {
+        out[i] = clampByte(rawR);
+        out[i + 1] = clampByte(rawG);
+        out[i + 2] = clampByte(rawB);
+      }
     }
     out[i + 3] = 255;
   }
@@ -256,6 +271,11 @@ function clampByte(value: number): number {
   if (!Number.isFinite(value)) return 255;
   const rounded = Math.round(value);
   return rounded < 0 ? 0 : rounded > 255 ? 255 : rounded;
+}
+
+/** True when no base pigment can explain the value (see the k03g note). */
+function isImpossibleBaseChannel(value: number): boolean {
+  return !Number.isFinite(value) || value < -CLAMP_VIOLATION_TOLERANCE || value > 255 + CLAMP_VIOLATION_TOLERANCE;
 }
 
 /**

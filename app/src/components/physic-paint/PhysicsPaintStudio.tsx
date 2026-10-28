@@ -6680,17 +6680,26 @@ export function PhysicsPaintStudio() {
       if (abandonIfDrifted('commit-ack')) return;
       // aquarelle-apply-invisible precedent: the cached preview base still
       // holds the pre-erase bytes, so force the same content-token reconcile.
+      // 261028-k03g: the render source can still report the PREVIOUS payload
+      // for a moment after the ack (the UAT one-behind: each stroke showed the
+      // eraser before the last). When the live sheet carried no paint, the
+      // committed frame IS the punched base — hand those exact bytes to the
+      // loader so the preview base can never lag a commit behind.
       if (launchContextRef.current?.startFrame === plan.frame) {
         const generation = Math.max(
           rotoPreviewBaseContentToken(),
           previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
         );
+        const explicitBytes = measureAquarelleCanvasInk(commitSheet) < AQUARELLE_MIN_CAPTURE_INK
+          ? punched.bytes
+          : null;
         loadCachedRotoReferenceFrame(
           plan.frame,
           previewBasePort,
           undefined,
           true,
           generation,
+          explicitBytes,
         );
         physicPaintVersion.value++;
       }
