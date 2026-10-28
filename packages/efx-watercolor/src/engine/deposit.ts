@@ -200,13 +200,25 @@ function reactivateAt(sheet: FluidSheet, i: number, fraction: number): void {
 
 function liftAt(sheet: FluidSheet, i: number, coverage: number): void {
   const m = sheet.mobile[i] ?? 0
-  if (m <= 0 || coverage <= 0) return
-  const removed = Math.min(m, m * clamp01(coverage))
-  const share = removed / m
-  sheet.mobile[i] = m - removed
-  sheet.mobileR[i] = (sheet.mobileR[i] ?? 0) * (1 - share)
-  sheet.mobileG[i] = (sheet.mobileG[i] ?? 0) * (1 - share)
-  sheet.mobileB[i] = (sheet.mobileB[i] ?? 0) * (1 - share)
+  const f = sheet.fixed[i] ?? 0
+  if (m + f <= 0 || coverage <= 0) return
+  const c = clamp01(coverage)
+  const removedMobile = Math.min(m, m * c)
+  const removedFixed = Math.min(f, f * c)
+  sheet.mobile[i] = m - removedMobile
+  if (m > 0) {
+    const share = removedMobile / m
+    sheet.mobileR[i] = (sheet.mobileR[i] ?? 0) * (1 - share)
+    sheet.mobileG[i] = (sheet.mobileG[i] ?? 0) * (1 - share)
+    sheet.mobileB[i] = (sheet.mobileB[i] ?? 0) * (1 - share)
+  }
+  sheet.fixed[i] = f - removedFixed
+  if (f > 0) {
+    const share = removedFixed / f
+    sheet.fixedR[i] = (sheet.fixedR[i] ?? 0) * (1 - share)
+    sheet.fixedG[i] = (sheet.fixedG[i] ?? 0) * (1 - share)
+    sheet.fixedB[i] = (sheet.fixedB[i] ?? 0) * (1 - share)
+  }
 }
 
 /** Wet-only stamp (tool 'water') — raises wetness, never pigment. */
@@ -248,7 +260,11 @@ function stampWet(
   }
 }
 
-/** Lift stamp (tool 'lift') — subtracts wet pigment, deposits nothing. */
+/**
+ * Lift stamp (tool 'lift') — subtracts mobile AND fixed pigment, deposits
+ * nothing. 261028-k03 D1: an explicit Dry bakes pigment into `fixed`; Lift is
+ * the one tool that reaches it, so the law oracle and the renderer agree.
+ */
 function stampLift(
   sheet: FluidSheet,
   cx: number,

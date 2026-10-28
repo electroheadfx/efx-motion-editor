@@ -6,7 +6,7 @@
 //    3. tide line (edge darker than interior after drying)
 //    4. conservation (pigment never seeps onto dry pixels)
 //    5. tool 'water' wets without pigment
-//    6. tool 'lift' removes wet pigment, deposits nothing
+//    6. tool 'lift' removes wet AND dried pigment, deposits nothing
 //    7. tool 'pen' thinner mark than 'brush' at equal size
 //    8. tool union exhaustiveness: brush | water | pen | lift
 //    9. determinism (same stroke + traceSeed ⇒ same bytes)
@@ -22,6 +22,7 @@ import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createSheet, step, sheetToBytes, totalPigment, wetPixelCount } from './fluid'
 import type { FluidSheet } from './fluid'
 import { AQUARELLE_TOOLS, stampTool, depositStrokeOnSheet } from './deposit'
+import { forceDrySheet } from './drying'
 import type { AquarelleTool } from './deposit'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke } from '../payload/toStudioStroke'
@@ -340,6 +341,29 @@ describe("tool 'lift'", () => {
     expect(totalAt(sheet, 2, 2)).toBe(0)
     expect(totalAt(sheet, 28, 28)).toBe(0)
     expect(totalAt(sheet, 28, 4)).toBe(0)
+  })
+
+  it('removes fixed pigment after the sheet is dried', () => {
+    const sheet = createSheet(W, H)
+
+    stampTool(sheet, 'brush', 16, 16, {
+      radius: 4,
+      strength: 1,
+      water: 0.5,
+      color: '#2244aa',
+    })
+    forceDrySheet(sheet)
+
+    expect(fixedAt(sheet, 16, 16)).toBeGreaterThan(0)
+    expect(mobileAt(sheet, 16, 16)).toBe(0)
+
+    const fixedBefore = fixedAt(sheet, 16, 16)
+    stampTool(sheet, 'lift', 16, 16, { radius: 4, strength: 1 })
+
+    // 261028-k03 D1: an explicit Dry bakes pigment into `fixed`; Lift is the
+    // one tool that reaches it, so the law oracle and the renderer agree.
+    expect(fixedAt(sheet, 16, 16)).toBeLessThan(fixedBefore)
+    expect(totalAt(sheet, 2, 2)).toBe(0)
   })
 })
 

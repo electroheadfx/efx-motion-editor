@@ -1219,7 +1219,7 @@ export class WatercolorEngine {
     if (!auto) this.autoFix = false;
     if (!this.painted || this.fixTimer > 0) return false;
     this.beginStep('dry', 'Dry');
-    // the fixed layer only ever changes here, so it is only snapshotted here
+    // the fixed layer changes here AND at lift() (261028-k03 D1), so both snapshot it
     this.history.protect(1, this.painted, this.fixed.views);
     this.fixTimer = FIX_DURATION;
     this.autoFix = auto;
@@ -1870,6 +1870,10 @@ export class WatercolorEngine {
     const { gl, g } = this;
     const rect = this.stampRect(x, y, r, this.dw, this.dh, 2);
     this.touch(rect);
+    // 261028-k03 D1: Lift is the ONE tool that also reaches fixed pigment, so the
+    // fixed pool is saved before the fixed draw (same per-dab margin as the mobile tiles).
+    const m = PROTECT_MARGIN;
+    this.history.protect(1, { x0: Math.max(0, rect.x0 - m), y0: Math.max(0, rect.y0 - m), x1: Math.min(this.dw, rect.x1 + m), y1: Math.min(this.dh, rect.y1 + m) }, this.fixed.views);
     const p = this.programs.lift;
     p.bind();
     gl.uniform1f(p.u.uAspect, this.dw / this.dh);
@@ -1882,6 +1886,10 @@ export class WatercolorEngine {
     g.draw(this.ink.read, rect);
     gl.uniform1f(p.u.uAmount, amount * 0.8);   // the tissue soaks up water too
     g.draw(this.wet.read, rect);
+    gl.uniform1f(p.u.uAmount, amount);
+    g.draw(this.fixed, rect);
+    // fixed pigment is dry by definition — no tissue water factor, the full amount.
+    // Declared consequence: an explicit Dry is permanent for every tool except Lift.
     gl.disable(gl.BLEND);
   }
 
