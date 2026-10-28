@@ -16,6 +16,7 @@ import {
   AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR,
   AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
   AQUARELLE_BASE_RECOVERY_MIN_CORRELATION,
+  computeAquarelleVisibleBaseMask,
   inversionConsistencyStats,
   invertAquarellePigmentCoverage,
   meanAbsoluteChannelError,
@@ -398,14 +399,11 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
     });
   });
 
-  it('IN-09: rejects a DARKER P/S pair that did not come from the same bake', async () => {
-    // A dark display over a mid-tone script implies an impossible negative
-    // base (B ≈ −57 on red). The old ≤3/255 recombination gate ACCEPTED this
-    // pair (S over the clamped base lands near P) — exactly the tautology
-    // CR-02 fixed. The provenance signal must reject it before any recombine.
-    // 261028-k03e: the pair is DARKER than the script on every channel; a
-    // LIGHTER pair is the erased/stale-sheet state the empty-base proof
-    // handles separately (see provesEmptyAquarelleBase).
+  it('k03i: a darker display under the script adopts EMPTY, never a ghost base', async () => {
+    // A dark display over a mid-tone script cannot be explained by an empty
+    // base, but the extra pigment lies UNDER the script — it cannot be told
+    // apart from a non-reproducible bake. The sound answer is the known-empty
+    // base, not a negative/inverted ghost (the 2026-10-28 UAT corruption).
     let recombined = 0;
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
@@ -422,15 +420,15 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       }),
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('validation');
-    expect(result.clampRatio).toBeGreaterThan(AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO);
-    // Refused on provenance, before the tautological recombination ran.
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('empty');
+    expect(result.emptyProof).toMatchObject({ proven: true, informative: 0, darkerChannels: 0 });
+    // Nothing to recover and no codec work behind it.
     expect(recombined).toBe(0);
   });
 
-  it('IN-09: rejects a saturated script whose display is not the pigment colour', async () => {
+  it('k03i: a fully saturated script leaves no provable base — empty, not a colour guess', async () => {
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
       scriptBytes: new Uint8Array([2]),
@@ -443,34 +441,50 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       }),
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('validation');
-    expect(result.saturatedColorError).toBeGreaterThan(
-      AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
-    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('empty');
   });
 
   it('k03h: accepts a legitimate recovery whose saturated error is above the old 32 bound', async () => {
     // UAT round 3: a sheet committed at the settle cap reads denser than a
     // fully-dry re-bake (saturatedColorError 66–88) while clamp and structure
     // pass — rejecting it blocked Lift AND Move with durable-base-unknown.
-    const display = rgba([[70, 70, 70], [150, 150, 150], [70, 70, 70], [150, 150, 150]]);
-    const script = rgba([[5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200]]);
+    // k03i: the base is sampled from the two white margins; the painted middle
+    // supplies the saturated signal.
+    const display = rgba([
+      [150, 150, 150], [255, 255, 255],
+      [70, 70, 70], [150, 150, 150], [70, 70, 70], [150, 150, 150], [70, 70, 70], [150, 150, 150],
+      [255, 255, 255], [150, 150, 150],
+    ]);
+    const script = rgba([
+      [255, 255, 255], [255, 255, 255],
+      [5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200],
+      [255, 255, 255], [255, 255, 255],
+    ]);
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
       scriptBytes: new Uint8Array([2]),
-      size: { width: 2, height: 2 },
+      size: { width: 10, height: 1 },
       appFrame: 4,
-      codec: codec({
-        display: pixelsOf(display),
-        script: pixelsOf(script),
-        recombined: pixelsOf(display),
-      }),
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return decodes === 1
+              ? { data: display, width: 10, height: 1 }
+              : { data: script, width: 10, height: 1 };
+          };
+        })(),
+        recombine: async () => ({ data: display, width: 10, height: 1 }),
+        encodePixels: async () => new Uint8Array([1, 2, 3]),
+      },
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(result.kind).toBe('base');
     expect(result.saturatedColorError).toBeGreaterThan(32);
     expect(result.saturatedColorError).toBeLessThanOrEqual(
       AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
@@ -625,9 +639,11 @@ describe('261028-k03g recovery provable on a real, jittered pair', () => {
     );
     expect(same.correlation).toBeGreaterThan(0.95);
 
+    // k03i compares only the script's painted pixels, so both buffers carry
+    // paint everywhere and the anti-correlation is fully sampled.
     const foreign = pigmentStructureCorrelation(
-      rgba([[0, 0, 0], [255, 255, 255], [0, 0, 0], [255, 255, 255]]),
       rgba([[255, 255, 255], [0, 0, 0], [255, 255, 255], [0, 0, 0]]),
+      rgba([[0, 0, 0], [120, 120, 120], [0, 0, 0], [120, 120, 120]]),
     );
     expect(foreign.correlation).toBeLessThan(0);
     expect(foreign.correlation).toBeLessThan(AQUARELLE_BASE_RECOVERY_MIN_CORRELATION);
@@ -641,17 +657,19 @@ describe('261028-k03g recovery provable on a real, jittered pair', () => {
 
   it('accepts a JITTERED pair whose clamp ratio is far above the old 0.002 gate', async () => {
     // S = (228,148,128): a ≈ 0.498, a·C = (100,20,0).
-    // Four display pixels at (90,70,50) imply B_red ≈ −20 (clamped); four at
-    // (150,70,50) imply B_red ≈ 100 (in gamut). 4/24 channels clamp = 0.167.
+    // Four painted display pixels at (90,70,50) imply B_red ≈ −20 (clamped);
+    // four at (150,70,50) imply B_red ≈ 100 (in gamut). 4/24 channels clamp =
+    // 0.167. k03i: the white margins carry the only provable base pixels.
     let encoded = 0;
     const display = rgba([
-      [90, 70, 50], [90, 70, 50], [90, 70, 50], [90, 70, 50],
-      [150, 70, 50], [150, 70, 50], [150, 70, 50], [150, 70, 50],
+      [150, 70, 50], [255, 255, 255],
+      [90, 70, 50], [150, 70, 50], [90, 70, 50], [150, 70, 50], [90, 70, 50], [150, 70, 50],
+      [90, 70, 50], [150, 70, 50],
     ]);
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
       scriptBytes: new Uint8Array([2]),
-      size: { width: 8, height: 1 },
+      size: { width: 10, height: 1 },
       appFrame: 4,
       codec: {
         decode: (() => {
@@ -659,11 +677,19 @@ describe('261028-k03g recovery provable on a real, jittered pair', () => {
           return async () => {
             decodes += 1;
             return decodes === 1
-              ? { data: display, width: 8, height: 1 }
-              : { data: rgba(new Array(8).fill([228, 148, 128]) as Triple[]), width: 8, height: 1 };
+              ? { data: display, width: 10, height: 1 }
+              : {
+                  data: rgba([
+                    [255, 255, 255], [255, 255, 255],
+                    [228, 148, 128], [228, 148, 128], [228, 148, 128], [228, 148, 128],
+                    [228, 148, 128], [228, 148, 128], [228, 148, 128], [228, 148, 128],
+                  ]),
+                  width: 10,
+                  height: 1,
+                };
           };
         })(),
-        recombine: async () => ({ data: new Uint8ClampedArray(display), width: 8, height: 1 }),
+        recombine: async () => ({ data: new Uint8ClampedArray(display), width: 10, height: 1 }),
         encodePixels: async () => {
           encoded += 1;
           return new Uint8Array([1, 2, 3]);
@@ -678,16 +704,18 @@ describe('261028-k03g recovery provable on a real, jittered pair', () => {
     expect(result.clampRatio).toBeLessThanOrEqual(AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO);
     // The clamped red channel is excluded from the fidelity mean.
     expect(result.meanError).toBe(0);
-    expect(result.correlation).toBe(1);
+    expect(result.correlation).toBeGreaterThan(AQUARELLE_BASE_RECOVERY_MIN_CORRELATION);
     expect(encoded).toBe(1);
   });
 
   it('refuses a display that shows a different picture, before any recombine', async () => {
+    // k03i: the base-bearing margins pass the empty proof, so the pair reaches
+    // the structure gate, which rejects the foreign paint.
     let recombined = 0;
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
       scriptBytes: new Uint8Array([2]),
-      size: { width: 4, height: 1 },
+      size: { width: 10, height: 1 },
       appFrame: 4,
       codec: {
         decode: (() => {
@@ -695,8 +723,24 @@ describe('261028-k03g recovery provable on a real, jittered pair', () => {
           return async () => {
             decodes += 1;
             return decodes === 1
-              ? { data: rgba([[0, 0, 0], [255, 255, 255], [0, 0, 0], [255, 255, 255]]), width: 4, height: 1 }
-              : { data: rgba([[255, 255, 255], [120, 120, 120], [255, 255, 255], [120, 120, 120]]), width: 4, height: 1 };
+              ? {
+                  data: rgba([
+                    [150, 150, 150], [255, 255, 255],
+                    [255, 255, 255], [0, 0, 0], [255, 255, 255], [0, 0, 0], [255, 255, 255], [0, 0, 0],
+                    [255, 255, 255], [150, 150, 150],
+                  ]),
+                  width: 10,
+                  height: 1,
+                }
+              : {
+                  data: rgba([
+                    [255, 255, 255], [255, 255, 255],
+                    [5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200], [5, 5, 5], [200, 200, 200],
+                    [255, 255, 255], [255, 255, 255],
+                  ]),
+                  width: 10,
+                  height: 1,
+                };
           };
         })(),
         recombine: async () => {
@@ -750,5 +794,129 @@ describe('261028-k03g invertAquarelleBaseForRecovery', () => {
     const script = rgba([[255, 255, 255]]);
     const display = rgba([[13, 200, 77]]);
     expect(channel(invertAquarelleBaseForRecovery(display, script), 0)).toEqual([13, 200, 77]);
+  });
+});
+
+// ============================================================
+//  261028-k03i — the inverted base is only sampled where the
+//  script cannot have painted. The 2026-10-28 UAT corruption:
+//  the old inversion turned the wash's own fringe into a
+//  durable base, so every later re-bake painted the script over
+//  its ghost (delete/move left the erase behind).
+// ============================================================
+describe('261028-k03i visible-base mask', () => {
+  it('trusts only pixels clear of the script paint and its fringe', () => {
+    // 16x1, paint at x=8 → radius = max(1, round(1 × 0.02)) = 1.
+    const script = rgba(Array.from({ length: 16 }, (_, x) =>
+      x === 8 ? [60, 60, 60] as Triple : [255, 255, 255] as Triple));
+    expect(Array.from(computeAquarelleVisibleBaseMask(script, 16, 1))).toEqual([
+      1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1,
+    ]);
+  });
+
+  it('trusts the whole frame when the script paints nothing', () => {
+    const mask = computeAquarelleVisibleBaseMask(filled(255, 16), 16, 1);
+    expect(Array.from(mask)).toEqual(new Array(16).fill(1));
+  });
+
+  it('writes white outside the mask even where the display is dark', () => {
+    const script = rgba([[60, 60, 60], [255, 255, 255]]);
+    const display = rgba([[10, 10, 10], [13, 200, 77]]);
+    const mask = new Uint8Array([0, 1]);
+    const base = invertAquarelleBaseForRecovery(display, script, mask);
+    expect(channel(base, 0)).toEqual([255, 255, 255]);
+    expect(channel(base, 1)).toEqual([13, 200, 77]);
+  });
+});
+
+describe('261028-k03i recovery never forges a base out of the wash', () => {
+  it('a display darker than the bake ONLY under the paint adopts EMPTY', async () => {
+    // The forged-base signature (UAT 2026-10-28): the wash itself reads
+    // denser than the re-bake inside the script band, while the margins are
+    // clean. No pigment exists where the base could be seen → no base.
+    let encoded = 0;
+    const display = rgba([
+      [255, 255, 255], [255, 255, 255],
+      [120, 120, 120], [110, 110, 110], [120, 120, 120], [110, 110, 110], [120, 120, 120], [110, 110, 110],
+      [255, 255, 255], [255, 255, 255],
+    ]);
+    const script = rgba([
+      [255, 255, 255], [255, 255, 255],
+      [160, 160, 160], [150, 150, 150], [160, 160, 160], [150, 150, 150], [160, 160, 160], [150, 150, 150],
+      [255, 255, 255], [255, 255, 255],
+    ]);
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 10, height: 1 },
+      appFrame: 4,
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return decodes === 1
+              ? { data: display, width: 10, height: 1 }
+              : { data: script, width: 10, height: 1 };
+          };
+        })(),
+        recombine: async () => ({ data: display, width: 10, height: 1 }),
+        encodePixels: async () => {
+          encoded += 1;
+          return new Uint8Array([1, 2, 3]);
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('empty');
+    expect(result.emptyProof).toMatchObject({ proven: true, darkerChannels: 0 });
+    expect(encoded).toBe(0);
+  });
+
+  it('recovers pigment the script never painted, verbatim', async () => {
+    const display = rgba([
+      [40, 90, 180], [255, 255, 255],
+      [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120],
+      [255, 255, 255], [180, 40, 90],
+    ]);
+    const script = rgba([
+      [255, 255, 255], [255, 255, 255],
+      [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120], [200, 150, 120],
+      [255, 255, 255], [255, 255, 255],
+    ]);
+    let seenBase: AquarelleBasePixels | null = null;
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 10, height: 1 },
+      appFrame: 4,
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return decodes === 1
+              ? { data: display, width: 10, height: 1 }
+              : { data: script, width: 10, height: 1 };
+          };
+        })(),
+        recombine: async (_script, base) => {
+          seenBase = base;
+          return { data: display, width: 10, height: 1 };
+        },
+        encodePixels: async () => new Uint8Array([1, 2, 3]),
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('base');
+    expect(seenBase).not.toBeNull();
+    // The trusted margins carry the base; the script's own band is white.
+    expect(channel(seenBase!.data, 0)).toEqual([40, 90, 180]);
+    expect(channel(seenBase!.data, 9)).toEqual([180, 40, 90]);
+    expect(channel(seenBase!.data, 5)).toEqual([255, 255, 255]);
   });
 });

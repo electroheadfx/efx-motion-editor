@@ -206,14 +206,20 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     // The durable base is still punched (future bakes erase the pre-script
     // raster) and the script keeps the recorded lift event.
     expect(scripted).toContain('punchTransmittanceBytes(durable, size, dabs');
-    expect(scripted).toContain('const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs');
+    // k03i: a proven-empty base makes the fresh recovery bake the scene.
+    expect(scripted).toContain('recoverySceneBytes = baked.bytes;');
+    expect(scripted).toContain('const sceneBytes = recoverySceneBytes ?? composite?.bytes ?? null;');
+    // k03i: a recovered base stays session-only; a proven-empty one is trusted.
+    expect(scripted).toContain('aquarelleRecoveredBaseKeyIdsRef.current.add(plan.keyId);');
+    expect(scripted).toContain('aquarelleRecoveredBaseKeyIdsRef.current.delete(plan.keyId);');
+    expect(scripted).toContain('const compositePunch = await punchTransmittanceBytes(sceneBytes, size, dabs');
     expect(scripted).toContain('liveAlphaCanvas: compositePunch.canvas');
     // Direct encode: merging the live sheet would double-apply this session.
     expect(scripted).toContain('cachedBase: null');
     expect(scripted).toContain('baseCanvas: null');
     expect(scripted).toContain('const commitInstant = async () => rotoPersistenceRef.current.captureLivePixels({');
     // The re-bake survives ONLY as the no-composite fallback.
-    const fallback = scripted.slice(scripted.indexOf('if (!composite) {'), scripted.indexOf('const compositePunch'));
+    const fallback = scripted.slice(scripted.indexOf('if (!sceneBytes) {'), scripted.indexOf('const compositePunch'));
     expect(fallback).toContain('const rebake = aquarelleRebakeRef.current;');
     const rebakeCalls = scripted.split('await rebake(getAquarelleEventsForFrame(plan.frame))').length - 1;
     expect(rebakeCalls).toBe(1);
@@ -402,7 +408,7 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   it('k03h: the sheet reset follows the punch; an unchanged punch commits nothing', () => {
     const tailStart = erase.indexOf('const composite = aquarelleCompositeRef.current(plan.frame);');
     const punch = erase.indexOf(
-      'const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs',
+      'const compositePunch = await punchTransmittanceBytes(sceneBytes, size, dabs',
       tailStart,
     );
     const reset = erase.indexOf('aquarelleResetSheetRef.current?.();', punch);

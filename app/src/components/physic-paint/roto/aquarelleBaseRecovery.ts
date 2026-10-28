@@ -28,7 +28,27 @@
 //        the composite must read the pigment colour C; a
 //        different bake does not.
 //
-//  A base that fails any gate is never adopted (D4 / row 4).
+//  261028-k03i — THE INVERSION IS ONLY SOUND WHERE THE SCRIPT IS
+//  ABSENT. Playback is not reproducible (StrokeWriter jitter is
+//  Math.random), so inside the script's own wash the display is
+//  always denser or lighter than a re-bake. Dividing that
+//  difference by (1 − a) with a ≠ 0 enlarges it into a base that
+//  is just the script's pigment ghost; a later re-bake composites
+//  the script over that ghost, so deleting or moving a lift leaves
+//  its erase behind and a deleted stroke's colour resurfaces (UAT
+//  2026-10-28: the recovered base was a dotted copy of all three
+//  paint strokes). The recovery therefore samples ONLY pixels the
+//  script cannot have painted:
+//
+//    - script coverage below OPEN_COVERAGE, and
+//    - no meaningful script pigment within a small neighbourhood
+//      (a previous bake's fringe could still sit there).
+//
+//  Everywhere else the base is written WHITE ("no base pigment
+//  provable"). A base hidden under the script is unrecoverable by
+//  construction; the script is authoritative there. When the
+//  provable region shows no pigment the caller adopts the
+//  KNOWN-EMPTY base instead.
 //
 //  Pure math first (node-testable, injected codec); the default
 //  codec is the only DOM-touching part and returns null when a
@@ -154,6 +174,84 @@ const SATURATED_COVERAGE = 0.97;
 const NO_PIGMENT_COVERAGE = 1e-3;
 
 /**
+ * 261028-k03i: script coverage below this leaves the pre-script base visible
+ * enough to sample. Above it the script owns the pixel and the display can
+ * never be trusted to separate the base from the wash.
+ */
+export const AQUARELLE_BASE_RECOVERY_OPEN_COVERAGE = 0.02;
+
+/**
+ * 261028-k03i: the band (as a fraction of the frame's short side) around
+ * meaningful script paint where base pigment is never accepted. A previous
+ * bake's fringe can sit a few pixels outside the current bake's paint, and
+ * that fringe is exactly the ghost the unsound inversion used to adopt.
+ * At 1080p the band is ~22 px.
+ */
+export const AQUARELLE_BASE_RECOVERY_FRINGE_RADIUS_FRACTION = 0.02;
+
+/**
+ * 261028-k03i: 1 where the pre-script base can be sampled — the pixel and its
+ * whole fringe neighbourhood carry no meaningful script pigment. 0 everywhere
+ * the script paints (or might have painted in a previous, non-reproducible
+ * bake). A script-free frame yields an all-1 mask, so its base is recoverable
+ * verbatim.
+ */
+export function computeAquarelleVisibleBaseMask(
+  script: Uint8ClampedArray,
+  width: number,
+  height: number,
+): Uint8Array {
+  const w = Math.max(0, Math.trunc(width));
+  const h = Math.max(0, Math.trunc(height));
+  const count = w * h;
+  const mask = new Uint8Array(count);
+  if (count === 0) return mask;
+  const radius = Math.max(
+    1,
+    Math.round(Math.min(w, h) * AQUARELLE_BASE_RECOVERY_FRINGE_RADIUS_FRACTION),
+  );
+  const painted = new Uint8Array(count);
+  for (let pixel = 0; pixel < count; pixel += 1) {
+    const index = pixel * 4;
+    const sr = script[index] ?? 255;
+    const sg = script[index + 1] ?? 255;
+    const sb = script[index + 2] ?? 255;
+    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+    painted[pixel] = 1 - min / 255 > AQUARELLE_BASE_RECOVERY_OPEN_COVERAGE ? 1 : 0;
+  }
+  // Separable box count: horizontal window counts, then the vertical window
+  // sum of those counts. Positive means at least one painted pixel is within
+  // Chebyshev distance `radius`.
+  const horizontal = new Uint16Array(count);
+  for (let y = 0; y < h; y += 1) {
+    const row = y * w;
+    let sum = 0;
+    const reach = Math.min(w - 1, radius);
+    for (let x = 0; x <= reach; x += 1) sum += painted[row + x]!;
+    for (let x = 0; x < w; x += 1) {
+      horizontal[row + x] = sum;
+      const add = x + radius + 1;
+      if (add < w) sum += painted[row + add]!;
+      const drop = x - radius;
+      if (drop >= 0) sum -= painted[row + drop]!;
+    }
+  }
+  for (let x = 0; x < w; x += 1) {
+    let sum = 0;
+    const reach = Math.min(h - 1, radius);
+    for (let y = 0; y <= reach; y += 1) sum += horizontal[y * w + x]!;
+    for (let y = 0; y < h; y += 1) {
+      mask[y * w + x] = sum > 0 ? 0 : 1;
+      const add = y + radius + 1;
+      if (add < h) sum += horizontal[add * w + x]!;
+      const drop = y - radius;
+      if (drop >= 0) sum -= horizontal[drop * w + x]!;
+    }
+  }
+  return mask;
+}
+
+/**
  * 261028-k03e: how much darker than the raw bake a display channel may read
  * before it counts as pigment the script cannot explain (WebP/decode slack).
  */
@@ -174,34 +272,44 @@ export interface AquarelleEmptyBaseProof {
  * 261028-k03e: prove that the pre-script base holds NO pigment.
  *
  * Merging the script bake S over an empty (white) base returns S exactly, so
- * a display P that is nowhere DARKER than S (outside saturated pixels, where
- * the base is hidden) cannot contain base pigment: any difference is the
- * display being LIGHTER — an erased or stale live-sheet residue that the
+ * a display P that is nowhere DARKER than S in the region the base can
+ * actually be seen cannot contain base pigment: any difference is the display
+ * being LIGHTER — an erased or stale live-sheet residue that the
  * script-authoritative publish is allowed to replace.
  *
  * The proof is one-sided on purpose. A base pigment can only make P darker,
  * so one dark channel keeps the base UNKNOWN and the caller fails closed. It
  * can adopt ONLY the empty base, never an arbitrary recovered one, so it is
  * not the tautological recombination the provenance gate exists to stop.
+ *
+ * 261028-k03i: when `visibleMask` is supplied (the recovery path), ONLY
+ * mask=1 pixels are sampled — the script's own wash and its fringe can never
+ * prove a base, and a frame the script covers completely proves nothing, so
+ * its base is the KNOWN-EMPTY one (nothing visible to preserve).
  */
 export function proveEmptyAquarelleBase(
   display: Uint8ClampedArray,
   script: Uint8ClampedArray,
+  visibleMask?: Uint8Array,
 ): AquarelleEmptyBaseProof {
   const length = Math.min(display.length, script.length);
   let informative = 0;
   let darkerChannels = 0;
   let maxDarker = 0;
-  for (let i = 0; i + 3 < length; i += 4) {
-    const sr = script[i] ?? 255;
-    const sg = script[i + 1] ?? 255;
-    const sb = script[i + 2] ?? 255;
-    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
-    if (1 - min / 255 >= SATURATED_COVERAGE) continue;
+  for (let i = 0, pixel = 0; i + 3 < length; i += 4, pixel += 1) {
+    if (visibleMask !== undefined) {
+      if (visibleMask[pixel] !== 1) continue;
+    } else {
+      const sr = script[i] ?? 255;
+      const sg = script[i + 1] ?? 255;
+      const sb = script[i + 2] ?? 255;
+      const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+      if (1 - min / 255 >= SATURATED_COVERAGE) continue;
+    }
     informative += 1;
-    const dr = sr - (display[i] ?? 255);
-    const dg = sg - (display[i + 1] ?? 255);
-    const db = sb - (display[i + 2] ?? 255);
+    const dr = (script[i] ?? 255) - (display[i] ?? 255);
+    const dg = (script[i + 1] ?? 255) - (display[i + 1] ?? 255);
+    const db = (script[i + 2] ?? 255) - (display[i + 2] ?? 255);
     for (const delta of [dr, dg, db]) {
       if (delta > AQUARELLE_EMPTY_BASE_DARKER_TOLERANCE) {
         darkerChannels += 1;
@@ -210,7 +318,9 @@ export function proveEmptyAquarelleBase(
     }
   }
   return {
-    proven: informative > 0 && darkerChannels === 0,
+    proven: visibleMask !== undefined
+      ? informative === 0 || darkerChannels === 0
+      : informative > 0 && darkerChannels === 0,
     informative,
     darkerChannels,
     maxDarker,
@@ -291,8 +401,20 @@ export const AQUARELLE_BASE_HIDDEN_COVERAGE = 0.35;
 export function invertAquarelleBaseForRecovery(
   display: Uint8ClampedArray,
   script: Uint8ClampedArray,
+  visibleMask?: Uint8Array,
 ): Uint8ClampedArray {
   const out = invertAquarellePigmentCoverage(display, script);
+  if (visibleMask !== undefined) {
+    // k03i: the base exists ONLY where the script cannot have painted. Every
+    // other pixel is written white — no wash ghost can enter the base.
+    for (let i = 0, pixel = 0; i + 3 < display.length; i += 4, pixel += 1) {
+      if (visibleMask[pixel] === 1) continue;
+      out[i] = 255;
+      out[i + 1] = 255;
+      out[i + 2] = 255;
+    }
+    return out;
+  }
   for (let i = 0; i + 3 < display.length; i += 4) {
     const sr = script[i] ?? 255;
     const sg = script[i + 1] ?? 255;
@@ -411,9 +533,11 @@ export interface AquarellePigmentStructure {
  * reproducible: the engine's stroke jitter comes from `Math.random`, so a
  * re-bake of one script differs at every wash edge. Structure survives that
  * drift — the same blob in the same place correlates near 1 — while a stale
- * display, a different frame, or a raster base the script never painted drops
- * the correlation. Sampled every 4th pixel on each axis: 1/16 of a 2 MP frame
- * is plenty and costs a few milliseconds.
+ * display or a different frame drops the correlation. Only pixels the script
+ * actually paints are compared (k03i): a real pre-script base outside the
+ * script is legitimately different and must not fail the gate. Sampled every
+ * 4th pixel on each axis: 1/16 of a 2 MP frame is plenty and costs a few
+ * milliseconds.
  */
 export function pigmentStructureCorrelation(
   display: Uint8ClampedArray,
@@ -430,6 +554,12 @@ export function pigmentStructureCorrelation(
   let sumYY = 0;
   let sumXY = 0;
   for (let i = 0; i + 3 < length; i += stride) {
+    const scriptMin = Math.min(script[i] ?? 255, script[i + 1] ?? 255, script[i + 2] ?? 255);
+    // k03i: the comparison is about the SCRIPT's paint appearing in the
+    // display. Outside that paint a real pre-script base makes the two
+    // pictures legitimately different, so including it would reject exactly
+    // the legacy keys this recovery exists for.
+    if (1 - scriptMin / 255 <= AQUARELLE_BASE_RECOVERY_OPEN_COVERAGE) continue;
     const dr = 255 - (display[i] ?? 255);
     const dg = 255 - (display[i + 1] ?? 255);
     const db = 255 - (display[i + 2] ?? 255);
@@ -471,11 +601,16 @@ export function meanAbsoluteChannelErrorOutsideClampedBases(
   display: Uint8ClampedArray,
   script: Uint8ClampedArray,
   recombined: Uint8ClampedArray,
+  visibleMask?: Uint8Array,
 ): number {
   const length = Math.min(display.length, script.length, recombined.length);
   let sum = 0;
   let count = 0;
-  for (let i = 0; i + 3 < length; i += 4) {
+  for (let i = 0, pixel = 0; i + 3 < length; i += 4, pixel += 1) {
+    // k03i: with a visible mask the check covers exactly the pixels the base
+    // was recovered from; inside the script the white base is intentional and
+    // the recombination difference is the bake's own jitter, not an error.
+    if (visibleMask !== undefined && visibleMask[pixel] !== 1) continue;
     const sr = script[i] ?? 255;
     const sg = script[i + 1] ?? 255;
     const sb = script[i + 2] ?? 255;
@@ -572,22 +707,24 @@ export async function recoverAquarelleDurableBase(input: {
     return { ok: false, reason: 'decode' };
   }
 
-  // Provenance FIRST: the recombination alone is tautological (it returns P for
-  // ANY S — see inversionConsistencyStats), so a pair that was not baked
-  // together has to be caught here. The structure correlation is the only one
-  // of the three signals that survives a non-reproducible replay (k03g).
+  // k03i: the base can only be sampled where the script cannot have painted.
+  // The mask is what stops a non-reproducible replay from turning the wash's
+  // own fringe into a durable base (the 2026-10-28 ghost).
+  const visibleMask = computeAquarelleVisibleBaseMask(
+    script.data,
+    script.width,
+    script.height,
+  );
   const stats = inversionConsistencyStats(display.data, script.data);
-  const emptyProof = proveEmptyAquarelleBase(display.data, script.data);
+  const emptyProof = proveEmptyAquarelleBase(display.data, script.data, visibleMask);
   const correlation = pigmentStructureCorrelation(display.data, script.data).correlation;
-  if (correlation < AQUARELLE_BASE_RECOVERY_MIN_CORRELATION) {
-    return { ok: false, reason: 'structure', ...stats, correlation, emptyProof };
-  }
-  // 261028-k03e: a display that is never darker than the bake carries no base
-  // pigment at all. This is the common legacy state: a refused/failed Lift left
-  // its engine erase on the live sheet, that sheet became the key payload, and
-  // the composite is now LIGHTER than the script everywhere. The clamped base
-  // is white and there is nothing to preserve — refusing here blocked every
-  // Move/Delete/transform on the frame.
+  // 261028-k03e/k03i: a provable region with no base pigment means the script
+  // IS the key's content. This is the common legacy state: a refused/failed
+  // Lift left its engine erase on the live sheet, that sheet became the key
+  // payload, and the composite is now LIGHTER than the script everywhere. It
+  // is also the state of a forged base's own ghost — the fringe lies inside
+  // the script's paint band, so the proof passes and the ghost is dropped.
+  // Refusing here blocked every Move/Delete/transform on the frame.
   if (emptyProof.proven) {
     return {
       ok: true,
@@ -599,6 +736,13 @@ export async function recoverAquarelleDurableBase(input: {
       emptyProof,
     };
   }
+  // Provenance for a REAL base: the recombination alone is tautological (it
+  // returns P for ANY S — see inversionConsistencyStats), so a pair that was
+  // not baked together has to be caught here. The structure correlation is the
+  // only one of the three signals that survives a non-reproducible replay.
+  if (correlation < AQUARELLE_BASE_RECOVERY_MIN_CORRELATION) {
+    return { ok: false, reason: 'structure', ...stats, correlation, emptyProof };
+  }
   if (
     stats.clampRatio > AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO
     || stats.saturatedColorError > AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR
@@ -607,7 +751,7 @@ export async function recoverAquarelleDurableBase(input: {
   }
 
   const base: AquarelleBasePixels = {
-    data: invertAquarelleBaseForRecovery(display.data, script.data),
+    data: invertAquarelleBaseForRecovery(display.data, script.data, visibleMask),
     width: display.width,
     height: display.height,
   };
@@ -635,6 +779,7 @@ export async function recoverAquarelleDurableBase(input: {
     display.data,
     script.data,
     recombined.data,
+    visibleMask,
   );
   if (!(meanError <= AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR)) {
     return { ok: false, reason: 'validation', meanError, ...stats, correlation, emptyProof };

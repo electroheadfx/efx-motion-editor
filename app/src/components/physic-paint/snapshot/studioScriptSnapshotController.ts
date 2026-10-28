@@ -369,6 +369,15 @@ export function mergeStudioScriptSnapshotContent(
   foreignKeyIds?: ReadonlySet<string> | null,
 ): StudioScriptSnapshotContent {
   const watercolorEvents: AquarellePayloadEvent[] = [];
+  // The retained anchors are needed BEFORE the event walk: a retained stroke
+  // missing from the session is only kept when it belongs to a key this
+  // session does not own.
+  const retainedAnchorsById = new Map<number, string>();
+  if (retained) {
+    for (const anchor of retained.watercolorKeyAnchors) {
+      if (anchor.keyId.length > 0) retainedAnchorsById.set(anchor.mutationId, anchor.keyId);
+    }
+  }
   if (!retained) {
     watercolorEvents.push(...sessionEvents);
   } else {
@@ -388,7 +397,25 @@ export function mergeStudioScriptSnapshotContent(
       const id = eventMutationId(event);
       if (id === undefined) continue;
       retainedStrokeIds.add(id);
-      watercolorEvents.push(sessionStrokesById.get(id) ?? event);
+      const sessionEvent = sessionStrokesById.get(id);
+      if (sessionEvent) {
+        watercolorEvents.push(sessionEvent);
+        continue;
+      }
+      // 261028-k03i: the stroke is absent from the session. When its anchor
+      // names the LIVE key at its own frame the user deleted it (or an Apply
+      // replaced it) — the file must lose it too, or a reopen resurrects the
+      // deleted lift and its erase. A stroke anchored to no live key (a
+      // deleted key's script) survives for undo, exactly as before.
+      const anchorKeyId = retainedAnchorsById.get(id);
+      const playFrame = event.playFrame;
+      const liveKeyId = playFrame === null || playFrame === undefined
+        ? undefined
+        : liveKeyIds?.get(playFrame);
+      if (anchorKeyId !== undefined && liveKeyId !== undefined && anchorKeyId === liveKeyId) {
+        continue;
+      }
+      watercolorEvents.push(event);
     }
     for (const event of sessionEvents) {
       if (isAquarelleDryEvent(event)) {
@@ -404,12 +431,6 @@ export function mergeStudioScriptSnapshotContent(
   // 261027: every saved stroke keeps the KEY it was captured on. The session
   // anchor wins (the stroke may have been re-recorded), else the retained
   // anchor survives untouched so a routine save never strips identity.
-  const retainedAnchorsById = new Map<number, string>();
-  if (retained) {
-    for (const anchor of retained.watercolorKeyAnchors) {
-      if (anchor.keyId.length > 0) retainedAnchorsById.set(anchor.mutationId, anchor.keyId);
-    }
-  }
   const watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[] = [];
   const emittedAnchorIds = new Set<number>();
   for (const event of watercolorEvents) {

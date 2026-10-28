@@ -18,6 +18,7 @@ import type {
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
+  deleteAquarelleStrokesFromScript,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
   purgeAquarelleFrameScript,
@@ -821,6 +822,40 @@ describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-e
     await controller.saveNow();
     const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.watercolorEvents).toHaveLength(3);
+  });
+
+  it('k03i: drops a stroke the user deleted from a live key, keeps a deleted key’s', async () => {
+    const bytes = anchoredFixture(
+      [fixtureStroke(7, 101), fixtureStroke(9, 102), fixtureStroke(11, 103), fixtureDry()],
+      [
+        { mutationId: 101, keyId: 'key-7' },
+        { mutationId: 102, keyId: 'key-9' },
+        { mutationId: 103, keyId: 'deleted-key' },
+      ],
+    );
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    // The deleted key's stroke (frame 11) is not seeded; the live ones are.
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(3);
+
+    // Delete the frame-9 stroke in-session — exactly the UAT delete of a Lift.
+    expect(deleteAquarelleStrokesFromScript([102])).toBe(1);
+    setSignature('sig-after-stroke-delete');
+    await controller.saveNow();
+
+    const decoded = writtenSnapshot(write);
+    const ids = decoded.watercolorEvents
+      .filter((event) => !isAquarelleDryEvent(event))
+      .map((event) => (event as StudioStroke<AquarelleStrokePayload>).engine.mutationId);
+    // 102 belongs to the LIVE key at its frame: the user's delete sticks.
+    // 103 belongs to a deleted key: it survives for undo, as before.
+    expect(ids).toEqual([101, 103]);
     expect(decoded.watercolorEvents).toHaveLength(3);
   });
 

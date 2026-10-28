@@ -502,6 +502,20 @@ describe('studioScriptSnapshotCodec — durable bases (261027 UAT round 4)', () 
     ).toEqual(bytes);
   });
 
+  it('k03i: a version-1 byte base is PROVISIONAL — dropped on decode, empty kept', () => {
+    // v1 was written by k03c–k03h, whose inversion could forge a "base" out of
+    // the script's own wash fringe. Those bytes must never be trusted again;
+    // the known-empty marker stays sound.
+    const v1Body = durableBaseBody([
+      { keyId: 'key-empty', bytes: null },
+      { keyId: 'key-forged', bytes: BASE_BYTES },
+    ]);
+    const bytes = replaceDurableBaseBody(durableContainer([]), v1Body);
+    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
+    expect(decoded.durableBases).toEqual([{ keyId: 'key-empty', bytes: null }]);
+    expect(decoded.watercolorEvents).toHaveLength(2);
+  });
+
   it('sorts durable bases by key id regardless of input order', () => {
     const forward = durableContainer([
       { keyId: 'key-a', bytes: null },

@@ -82,18 +82,30 @@ export interface StudioScriptSnapshotWatercolorKeyAnchor {
 
 /**
  * The durable-base section's own version:
- *   u16 version=1 | u16 reserved=0 | u32 count |
+ *   u16 version=2 | u16 reserved=0 | u32 count |
  *   count x (u8 state, u16 UTF-8 keyId length, keyId bytes,
  *            state=1 only: u32 byte length, base bytes)
  *
  * `state=0` is a KNOWN-EMPTY base (blank promotion); `state=1` carries the
- * pre-script raster. An ABSENT key is UNKNOWN and keeps the publish
- * fail-closed — the distinction is the whole contract.
+ * pre-script raster RECORDED at the key's first scripted stroke. An ABSENT
+ * key is UNKNOWN and keeps the publish fail-closed — the distinction is the
+ * whole contract.
+ *
+ * 261028-k03i: version 1 bytes are PROVISIONAL. The k03c–k03h recovery could
+ * forge a "base" out of the script's own wash fringe (playback is not
+ * reproducible), and every such base was written here as state=1. The decoder
+ * therefore DROPS v1 byte records and keeps only the known-empty ones; the
+ * next operation re-derives the base with the k03i law, which samples only
+ * pigment the script cannot have painted. Recovered bases are NEVER written
+ * (the Studio filters them from getDurableBases), so version 2 state=1 always
+ * means "recorded at the first scripted stroke".
  */
-export const STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION = 1;
+export const STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION = 2;
 
 const STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSIONS = new Set([
   STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION,
+  /** k03i: byte entries are provisional and dropped on decode. */
+  1,
 ]);
 
 /** One key's pre-script raster (bytes) or a known-empty base (null). */
@@ -497,8 +509,14 @@ function decodeDurableBaseSection(bytes: Uint8Array): StudioScriptSnapshotDurabl
       if (byteLength === 0) {
         fail('durableBase', `durable base ${keyId} declares empty bytes`, reader.offset);
       }
-      // Copy, never a view: the decoded result must survive its source buffer.
-      bases.push({ keyId, bytes: new Uint8Array(reader.slice(byteLength, 'durable base bytes')) });
+      const payload = reader.slice(byteLength, 'durable base bytes');
+      // k03i: v1 bytes are provisional (possibly a forged wash ghost) — read
+      // them to validate the section, then drop the entry so the key is
+      // UNKNOWN and re-derived under the sound law.
+      if (version === STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION) {
+        // Copy, never a view: the decoded result must survive its source buffer.
+        bases.push({ keyId, bytes: new Uint8Array(payload) });
+      }
     } else {
       bases.push({ keyId, bytes: null });
     }

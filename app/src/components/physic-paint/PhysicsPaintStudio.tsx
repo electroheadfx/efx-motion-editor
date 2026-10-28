@@ -1195,12 +1195,24 @@ export function PhysicsPaintStudio() {
       // keyId; a restored base never overwrites one already pinned this
       // launch (a stroke captured before the restore settled is fresher than
       // the snapshot copy).
-      getDurableBases: () => aquarelleDurableBaseByKeyRef.current,
+      // 261028-k03i: recovered bases never leave the session. A base recorded
+      // at the key's first scripted stroke is the only one the file may keep.
+      getDurableBases: () => {
+        const recovered = aquarelleRecoveredBaseKeyIdsRef.current;
+        if (recovered.size === 0) return aquarelleDurableBaseByKeyRef.current;
+        const persistable = new Map<string, Uint8Array | null>();
+        for (const [keyId, bytes] of aquarelleDurableBaseByKeyRef.current) {
+          if (!recovered.has(keyId)) persistable.set(keyId, bytes);
+        }
+        return persistable;
+      },
       seedDurableBases: (bases) => {
         const durableBaseMap = aquarelleDurableBaseByKeyRef.current;
         for (const [keyId, bytes] of bases) {
           if (durableBaseMap.has(keyId)) continue;
           durableBaseMap.set(keyId, bytes === null ? null : new Uint8Array(bytes));
+          // A v2 file only carries bases recorded at the first scripted stroke.
+          aquarelleRecoveredBaseKeyIdsRef.current.delete(keyId);
         }
       },
       // Read LIVE (never frozen at launch): the controller asks at prepare and
@@ -1439,6 +1451,12 @@ export function PhysicsPaintStudio() {
   // it now rides the SNAP v4 durable-base section and is seeded back by every
   // successful restore, so Move works after a Studio reopen.
   const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());
+  // 261028-k03i: keyIds whose base was RECOVERED (inverted out of the display),
+  // not recorded at the key's first scripted stroke. A recovered base is
+  // session-only — it is filtered from the snapshot save so a mistake can never
+  // become the file's truth on the next reopen (the k03c–k03h inversion could
+  // forge a base out of the script's own wash fringe).
+  const aquarelleRecoveredBaseKeyIdsRef = useRef<Set<string>>(new Set());
   const recordAquarelleOrdinaryDurableBaseRef = useRef<(appFrame: number) => void>(() => {});
   // A replaced launch is a different document/session: a pinned base from the
   // previous launch must never composite into it. The launch key lets the
@@ -1450,6 +1468,7 @@ export function PhysicsPaintStudio() {
     if (aquarelleDurableBaseLaunchKeyRef.current === launchKey) return;
     aquarelleDurableBaseLaunchKeyRef.current = launchKey;
     aquarelleDurableBaseByKeyRef.current = new Map();
+    aquarelleRecoveredBaseKeyIdsRef.current = new Set();
     // 261027-k6j — the Script switch is session state; every Studio launch
     // starts On.
     resetAquarelleScriptRecording();
@@ -3033,6 +3052,8 @@ export function PhysicsPaintStudio() {
     if (!aquarelleDurableBaseByKeyRef.current.has(created.keyId)) {
       const promotedBase = baseKind === 'clone' ? new Uint8Array(baseFrame.bytes) : null;
       aquarelleDurableBaseByKeyRef.current.set(created.keyId, promotedBase);
+      // Promotion records the base the key was seeded with — trusted.
+      aquarelleRecoveredBaseKeyIdsRef.current.delete(created.keyId);
       recordAquarelleRenderSplitEvent('durable-base-record', {
         appFrame: created.appFrame,
         keyId: created.keyId,
@@ -3215,6 +3236,7 @@ export function PhysicsPaintStudio() {
           if (baseBytes) {
             durableBaseBytes = new Uint8Array(baseBytes);
             aquarelleDurableBaseByKeyRef.current.set(target.keyId, durableBaseBytes);
+            aquarelleRecoveredBaseKeyIdsRef.current.delete(target.keyId);
             recordAquarelleRenderSplitEvent('durable-base-record', {
               appFrame: source.appFrame,
               keyId: target.keyId,
@@ -4309,6 +4331,7 @@ export function PhysicsPaintStudio() {
     const clearedCell = resolveStudioScriptCell(currentFrame);
     if (clearedCell !== null && clearedCell.kind === 'real' && typeof clearedCell.keyId === 'string') {
       aquarelleDurableBaseByKeyRef.current.delete(clearedCell.keyId);
+      aquarelleRecoveredBaseKeyIdsRef.current.delete(clearedCell.keyId);
     }
     // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
     // refresh OUTSIDE the module gate so the owner lock can never go stale.
@@ -4812,6 +4835,7 @@ export function PhysicsPaintStudio() {
       if (aquarelleDurableBaseLaunchKeyRef.current !== durableBaseLaunchKey) {
         aquarelleDurableBaseLaunchKeyRef.current = durableBaseLaunchKey;
         aquarelleDurableBaseByKeyRef.current = new Map();
+        aquarelleRecoveredBaseKeyIdsRef.current = new Set();
       }
       if (!projectId || !layerId || !trackId) {
         // No durable project identity (legacy parse tolerance) or no active
@@ -6099,6 +6123,7 @@ export function PhysicsPaintStudio() {
       // same `null` a blank promotion writes) — never a reason to block the
       // edit. Adopt it and skip the expensive bake entirely.
       map.set(record.keyId, null);
+      aquarelleRecoveredBaseKeyIdsRef.current.delete(record.keyId);
       bumpAquarelleStrokesRevision();
       studioScriptSnapshot.markDirty();
       recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6163,6 +6188,9 @@ export function PhysicsPaintStudio() {
       // truth. Storing `null` (not a white payload) keeps later publishes on
       // the raw-bake path with no composite at all.
       map.set(record.keyId, recovery.kind === 'empty' ? null : recovery.bytes);
+      // k03i: a recovered base is session-only; a proven-empty one is trusted.
+      if (recovery.kind === 'empty') aquarelleRecoveredBaseKeyIdsRef.current.delete(record.keyId);
+      else aquarelleRecoveredBaseKeyIdsRef.current.add(record.keyId);
       bumpAquarelleStrokesRevision();
       studioScriptSnapshot.markDirty();
       recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6328,6 +6356,11 @@ export function PhysicsPaintStudio() {
         revertAquarelleLiftPreview();
         return;
       }
+      // 261028-k03i: a recovery that PROVES the base empty also produces the
+      // clean scene (the script bake). The instant commit uses those bytes
+      // instead of the committed composite, so the first post-repair lift also
+      // drops any wash ghost an earlier forged base left in the payload.
+      let recoverySceneBytes: Uint8Array | null = null;
       if (plan.scripted) {
         // SCRIPT-AUTHORITATIVE. The durable base is the only pre-script paint
         // the bake cannot recreate; erase it (permanent by nature), then let
@@ -6406,6 +6439,7 @@ export function PhysicsPaintStudio() {
           const display = aquarelleCompositeRef.current(plan.frame);
           const adoptKnownEmpty = (reason: string, extra: Record<string, unknown> = {}) => {
             aquarelleDurableBaseByKeyRef.current.set(plan.keyId, null);
+            aquarelleRecoveredBaseKeyIdsRef.current.delete(plan.keyId);
             bumpAquarelleStrokesRevision();
             studioScriptSnapshot.markDirty();
             recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6463,9 +6497,11 @@ export function PhysicsPaintStudio() {
               return;
             }
             if (recovery.kind === 'empty') {
-              // The display is nowhere darker than the bake: no pre-script
-              // pigment survives. Adopt the known-empty base; the lift event
-              // alone erases through the re-bake (no punch).
+              // The provable region shows no pre-script pigment. Adopt the
+              // known-empty base; the lift event alone erases through the
+              // re-bake (no punch), and the bake is the CLEAN scene for the
+              // instant commit.
+              recoverySceneBytes = baked.bytes;
               adoptKnownEmpty('empty-base-proof', {
                 meanError: recovery.meanError,
                 clampRatio: recovery.clampRatio,
@@ -6488,8 +6524,11 @@ export function PhysicsPaintStudio() {
                 saturatedColorError: recovery.saturatedColorError,
                 correlation: recovery.correlation,
               });
-              // (d) Adopt the validated base and make the adoption durable first.
+              // (d) Adopt the validated base for THIS session. A recovered base
+              // is never written to the snapshot (k03i): it would outlive the
+              // evidence it was inferred from.
               aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);
+              aquarelleRecoveredBaseKeyIdsRef.current.add(plan.keyId);
               bumpAquarelleStrokesRevision();
               studioScriptSnapshot.markDirty();
               // (e) THE ONE PUNCH of a recoverBase transaction: the recovered
@@ -6545,7 +6584,11 @@ export function PhysicsPaintStudio() {
         // truth; a Lift itself just commits the live result.
         if (abandonIfDrifted('script-tail')) return;
         const composite = aquarelleCompositeRef.current(plan.frame);
-        if (!composite) {
+        // k03i: a proven-empty base means the script IS the whole scene, so the
+        // fresh recovery bake is the correct punch source — the committed
+        // composite may still carry a previous forged base's ghost.
+        const sceneBytes = recoverySceneBytes ?? composite?.bytes ?? null;
+        if (!sceneBytes) {
           aquarelleResetSheetRef.current?.();
           // No committed pixels to punch (legacy placeholder key): the scripted
           // re-bake is the only render left.
@@ -6574,7 +6617,7 @@ export function PhysicsPaintStudio() {
         // preview already holds the erase on the cached base. The old order
         // reset first, so the frame sat blank until the commit landed (UAT:
         // "a paint reset with empty paint for 3 seconds").
-        const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs, {
+        const compositePunch = await punchTransmittanceBytes(sceneBytes, size, dabs, {
           appFrame: plan.frame,
           shape,
         });
@@ -7524,6 +7567,7 @@ export function PhysicsPaintStudio() {
         // stroke disappears without removing paint", then Move refused with
         // durable-base-unknown).
         aquarelleDurableBaseByKeyRef.current.set(target.keyId, null);
+        aquarelleRecoveredBaseKeyIdsRef.current.delete(target.keyId);
         bumpAquarelleStrokesRevision();
         studioScriptSnapshot.markDirty();
         recordAquarelleRenderSplitEvent('durable-base-record', {
@@ -7545,6 +7589,7 @@ export function PhysicsPaintStudio() {
     }
     const bytes = new Uint8Array(baseBytes);
     aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);
+    aquarelleRecoveredBaseKeyIdsRef.current.delete(target.keyId);
     recordAquarelleRenderSplitEvent('durable-base-record', {
       appFrame,
       keyId: target.keyId,
@@ -7872,7 +7917,10 @@ export function PhysicsPaintStudio() {
     // 261026 ordered with the raster: the rastered pixels ARE the key's full
     // content now, so a pinned pre-script base is stale — the next stroke must
     // re-pin the rastered display as the new durable base.
-    if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);
+    if (scriptCell?.keyId) {
+      aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);
+      aquarelleRecoveredBaseKeyIdsRef.current.delete(scriptCell.keyId);
+    }
     applyFrameModuleState(frame);
   };
   const handleRasterKeyRequest = useCallback((frame: number) => {

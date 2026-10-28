@@ -4350,11 +4350,16 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // 261027 UAT round 4: the base is persisted per KEY in the SNAP v4
     // durable-base section and seeded back by every successful restore. The
     // launch map spans tracks; the controller scopes what each track writes.
-    expect(studio).toContain('getDurableBases: () => aquarelleDurableBaseByKeyRef.current,');
+    expect(studio).toContain('getDurableBases: () => {');
+    // k03i: a RECOVERED base is session-only — the file may only keep bases
+    // recorded at the key's first scripted stroke.
+    expect(studio).toContain('const recovered = aquarelleRecoveredBaseKeyIdsRef.current;');
+    expect(studio).toContain('if (!recovered.has(keyId)) persistable.set(keyId, bytes);');
     expect(studio).toContain('seedDurableBases: (bases) => {');
     expect(studio).toContain('const durableBaseMap = aquarelleDurableBaseByKeyRef.current;');
     expect(studio).toContain('if (durableBaseMap.has(keyId)) continue;');
     expect(studio).toContain('durableBaseMap.set(keyId, bytes === null ? null : new Uint8Array(bytes));');
+    expect(studio).toContain('aquarelleRecoveredBaseKeyIdsRef.current.delete(keyId);');
     const restoreBlock = between(studio, 'restoreStudioScriptSnapshot: async (context, document) => {', 'usePhysicsPaintWorkflowIntegration');
     expect(restoreBlock).toContain('aquarelleDurableBaseLaunchKeyRef.current =');
     expect(restoreBlock).toContain('aquarelleDurableBaseByKeyRef.current = new Map();');
@@ -4411,7 +4416,8 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // rastering replaces the key's content, so its pinned base is stale.
     expect(studio).toContain("const promotedBase = baseKind === 'clone' ? new Uint8Array(baseFrame.bytes) : null;");
     expect(studio).toContain("source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',");
-    expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
+    expect(studio).toContain('if (scriptCell?.keyId) {');
+    expect(studio).toContain('aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
     // Eight pin sites by design (re-derived from the source): promotion,
     // prepare fallback, first stroke, the 261028-k03 D2 lift-erase durable
