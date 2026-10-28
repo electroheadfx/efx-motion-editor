@@ -1576,6 +1576,28 @@ export function hasAquarelleScriptForFrame(playFrame: number): boolean {
 }
 
 /**
+ * 261028-k03f: true when the frame's script can actually PAINT it — at least
+ * one recorded, non-deleted stroke whose tool is not `lift`. A lift-only
+ * timeline carries an erase but no source paint, so its bake is a blank
+ * sheet; treating such a frame as script-authoritative made the next bake
+ * publish that blank over real raster pixels (UAT: the paint cache was wiped
+ * one second after a raster Lift). Only this helper may gate script ownership
+ * of a Lift — `hasAquarelleScriptForFrame` still means "has any script" for
+ * the UI and capture surfaces.
+ */
+export function hasAquarellePaintScriptForFrame(playFrame: number): boolean {
+  return payloadTimeline.some((event) => {
+    if (isAquarelleDryEvent(event)) return false;
+    if (event.playFrame !== playFrame) return false;
+    const payload = event.engine as AquarelleStrokePayload;
+    if (payload.mutationId !== undefined && deletedAquarelleStrokeIds.has(payload.mutationId)) {
+      return false;
+    }
+    return payload.tool !== 'lift';
+  });
+}
+
+/**
  * Fire a recorded Dry event (D-15) onto the record path.
  * `tick` is the host-grid tick from the Studio record clock;
  * recordedOrder is the shared ordering key (Date.now() until the

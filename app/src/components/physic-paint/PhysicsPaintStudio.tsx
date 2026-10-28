@@ -203,6 +203,7 @@ import {
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
+  hasAquarellePaintScriptForFrame,
   hasAquarelleScriptForFrame,
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
@@ -5980,8 +5981,13 @@ export function PhysicsPaintStudio() {
     if (target.kind === 'empty') return { kind: 'normal' };
     if (target.kind !== 'ordinary-key') return { kind: 'refuse', message: AQUARELLE_LIFT_GROUP_REFUSAL };
     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
-    const scripted = hasAquarelleScriptForFrame(frame);
-    const willPinBase = scriptRecordingOn && !aquarelleDurableBaseByKeyRef.current.has(target.keyId);
+    // 261028-k03f: only a PAINT-BEARING script owns the frame. A lift-only
+    // timeline (a raster lift recorded by an older build) carries an erase but
+    // no source paint — its bake is blank, so the scripted path would publish
+    // that blank over the raster pixels.
+    const scripted = hasAquarellePaintScriptForFrame(frame);
+    const willPinBase = scriptRecordingOn && scripted
+      && !aquarelleDurableBaseByKeyRef.current.has(target.keyId);
     const rasterBacked = findCachedRotoDisplayFrameRef.current(frame) !== null;
     // Defensive: the pointerdown gate already stopped this gesture.
     if (!scriptRecordingOn && scripted) return { kind: 'refuse', message: AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL };
@@ -6738,10 +6744,17 @@ export function PhysicsPaintStudio() {
       return;
     }
     const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
+    // 261028-k03f: a Lift on a frame whose script cannot PAINT it is a RASTER
+    // operation. Recording it would make the NEXT lift script-authoritative,
+    // and a lift-only bake publishes a blank sheet over the raster pixels (UAT:
+    // the paint cache was wiped one second after the erase). A raster lift
+    // pins nothing and records nothing — the punch IS its content.
+    const liftIsScriptOwned = liftPlan?.kind === 'erase' && liftPlan.scripted;
+    const recordsScript = scriptRecordingOn && (stroke.tool !== 'lift' || liftIsScriptOwned);
     // 261028-k03c D4: a recoverBase lift must NOT pin — for a pre-scripted
     // frame that pin can only refuse with `script-already-present` (the UAT
     // evidence); the recovery arm seeds the map with the validated base.
-    if (scriptRecordingOn && !(liftPlan?.kind === 'erase' && liftPlan.recoverBase)) {
+    if (recordsScript && !(liftPlan?.kind === 'erase' && liftPlan.recoverBase)) {
       recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
     }
     // 261028-k03 D2: the pin can refuse (payload/record unavailable) and leave
@@ -6791,7 +6804,7 @@ export function PhysicsPaintStudio() {
             anchorFrame,
           )?.keyId ?? null
         : null;
-      recordAquarelleStrokeWhenEnabled(scriptRecordingOn, mutationId, { ...stroke, mutationId }, capturedKeyId);
+      recordAquarelleStrokeWhenEnabled(recordsScript, mutationId, { ...stroke, mutationId }, capturedKeyId);
       // The sheet now holds paint that no queue can see until it is captured;
       // the close/save flush gate reads this flag.
       aquarelleSheetHasPaintRef.current = true;

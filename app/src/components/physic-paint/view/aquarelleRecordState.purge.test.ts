@@ -22,6 +22,7 @@ import {
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   getRecordedAquarelleStrokeEntries,
+  hasAquarellePaintScriptForFrame,
   hasAquarelleScriptForFrame,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
@@ -193,6 +194,33 @@ describe('quick-261025-awl hasAquarelleScriptForFrame', () => {
     expect(getRecordedAquarelleStroke(9401)).toBeUndefined();
     expect(getRecordedAquarelleStroke(9402)).toBeUndefined();
     expect(getRecordedAquarelleStroke(9403)).toBeDefined();
+  });
+});
+
+describe('261028-k03f hasAquarellePaintScriptForFrame', () => {
+  it('is true only for a paint-bearing stroke on that frame', () => {
+    recordAquarelleStroke(9501, stroke(9501, 100));
+    expect(hasAquarellePaintScriptForFrame(100)).toBe(true);
+    expect(hasAquarellePaintScriptForFrame(101)).toBe(false);
+  });
+
+  it('is false for a lift-only timeline — a lift carries no source paint', () => {
+    recordAquarelleStroke(9502, { ...stroke(9502, 100), tool: 'lift' });
+    expect(hasAquarelleScriptForFrame(100)).toBe(true);
+    expect(hasAquarellePaintScriptForFrame(100)).toBe(false);
+  });
+
+  it('is true when a paint stroke exists beside lifts', () => {
+    recordAquarelleStroke(9503, { ...stroke(9503, 100), tool: 'lift' });
+    recordAquarelleStroke(9504, stroke(9504, 100));
+    expect(hasAquarellePaintScriptForFrame(100)).toBe(true);
+  });
+
+  it('ignores deleted paint strokes and Dry events', () => {
+    recordAquarelleStroke(9505, stroke(9505, 100));
+    markAquarelleStrokeDeleted(9505);
+    emitAquarelleDry(77);
+    expect(hasAquarellePaintScriptForFrame(100)).toBe(false);
   });
 });
 

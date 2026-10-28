@@ -4373,7 +4373,9 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // Script Off pins nothing. 261028-k03c D4 also skips it for a recoverBase
     // lift — that pin can only refuse with `script-already-present` on a
     // pre-scripted frame.
-    const branchIndex = strokeEnd.indexOf('if (scriptRecordingOn && !(liftPlan?.kind === \'erase\' && liftPlan.recoverBase)) {');
+    // 261028-k03f: the pin and the record share ONE `recordsScript` gate, so a
+    // raster lift (no paint-bearing script) writes neither.
+    const branchIndex = strokeEnd.indexOf('if (recordsScript && !(liftPlan?.kind === \'erase\' && liftPlan.recoverBase)) {');
     expect(branchIndex).toBeGreaterThan(-1);
     expect(branchIndex).toBeLessThan(pinIndex);
     // The pixels/acceptance/publish half is NOT gated — Off still paints, and
@@ -4534,9 +4536,17 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(erase).toContain("adoptKnownEmpty('empty-base-proof', {");
     expect(erase).toContain('const display = aquarelleCompositeRef.current(plan.frame);');
 
+    // 261028-k03f: a raster lift records nothing (a lift-only script would
+    // publish a blank bake over the pixels on the next lift).
+    const plan = between(studio, 'const planAquarelleLiftErase = useCallback(', 'const aquarelleLiftPreviewPlanRef');
+    expect(plan).toContain('const scripted = hasAquarellePaintScriptForFrame(frame);');
+    const strokeEnd = between(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
+    expect(strokeEnd).toContain("const liftIsScriptOwned = liftPlan?.kind === 'erase' && liftPlan.scripted;");
+    expect(strokeEnd).toContain("const recordsScript = scriptRecordingOn && (stroke.tool !== 'lift' || liftIsScriptOwned);");
+    expect(strokeEnd).toContain('recordAquarelleStrokeWhenEnabled(recordsScript, mutationId');
+
     // A refused lift must undo the engine's local erase: the erase used to leak
     // into the next settle capture as the key's pixels.
-    const strokeEnd = between(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
     const planRefusal = strokeEnd.slice(
       strokeEnd.indexOf("if (liftPlan?.kind === 'refuse') {"),
       strokeEnd.indexOf('const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();'),

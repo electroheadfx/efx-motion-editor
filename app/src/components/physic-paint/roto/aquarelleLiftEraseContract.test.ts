@@ -147,9 +147,12 @@ describe('Lift preflight ordering (261028-k03 D2)', () => {
     // stroke is about to pin the PRE-erase raster. Swapping them either
     // skips the durable rewrite or leaves the pre-erase bytes pinned — the
     // next Apply then resurrects the erased pixels.
-    expect(preflight).toContain('const scripted = hasAquarelleScriptForFrame(frame);');
+    // 261028-k03f: script ownership requires a PAINT-BEARING script. A
+    // lift-only timeline bakes blank, so the scripted path would publish that
+    // blank over the raster pixels (the UAT paint wipe).
+    expect(preflight).toContain('const scripted = hasAquarellePaintScriptForFrame(frame);');
     expect(preflight).toContain(
-      'const willPinBase = scriptRecordingOn && !aquarelleDurableBaseByKeyRef.current.has(',
+      'const willPinBase = scriptRecordingOn && scripted',
     );
     const scriptOffRefusal = preflight.indexOf('if (!scriptRecordingOn && scripted)');
     const rasterCheck = preflight.indexOf('if (!rasterBacked)');
