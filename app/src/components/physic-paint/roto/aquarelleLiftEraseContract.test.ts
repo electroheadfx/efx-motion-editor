@@ -384,6 +384,41 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   });
 });
 
+describe('Lift navigation guard (261028-k03c CR-01)', () => {
+  it('re-checks the live (frame, track) and gates every frame/track side effect', () => {
+    // The entry identity is the plan; the live check requires BOTH the
+    // document track and the session pin to still agree.
+    expect(erase).toContain('const stillOnEditTarget = (frame: number, trackId: string): boolean => {');
+    expect(erase).toContain('if (!liveLaunch || liveLaunch.startFrame !== frame) return false;');
+    expect(erase).toContain('if (studioActiveTrackId() !== trackId) return false;');
+    expect(erase).toContain('sessionTrack === null || sessionTrack === trackId');
+    // Each multi-second await is followed by the guard, and the sheet reset,
+    // the re-bake, the recovery adoption and the commit-tail effects are gated.
+    for (const stage of [
+      'flush',
+      'recovery-bake',
+      'recovery-validate',
+      'recovery-punch',
+      'scripted-punch',
+      'script-tail',
+      'script-rebake',
+      'script-rebake-apply',
+      'raster-punch',
+      'durable-punch',
+      'commit-ack',
+    ]) {
+      expect(erase, stage).toContain(`abandonIfDrifted('${stage}')`);
+    }
+    // On drift nothing is published (the user is on another target) and the
+    // preview reverts with a diagnostic.
+    expect(erase).toContain("stage: 'navigation-drift',");
+    expect(erase).toContain('driftStage: stage,');
+    // A queued plan whose target moved is dropped, never replayed.
+    expect(erase).toContain('stillOnEditTarget(pendingPlan.frame, pendingPlan.trackId)');
+    expect(erase).toContain("stage: 'queue-navigation-drift',");
+  });
+});
+
 describe('Lift copy and untouched laws (261028-k03)', () => {
   it('carries all six exact messages', () => {
     expect(studio).toContain("'Lift needs Script ON to erase recorded paint. Turn Script ON, or use Raster Key for a pixel-only erase.'");

@@ -6026,6 +6026,21 @@ export function PhysicsPaintStudio() {
     // (frame, track) for the duration of the transaction. The queued re-entry
     // re-sets it synchronously after `finish` clears it.
     aquarelleLiftEraseTargetRef.current = { frame: plan.frame, trackId: plan.trackId };
+    // CR-01: the transaction awaits for seconds, so the user can switch tracks
+    // from the Studio rail or move the playhead while it runs. The plan IS the
+    // entry identity; every side effect that belongs to (frame, track)
+    // re-checks the live edit target first, so an old keyId can never pair
+    // with another track's display bytes/events, reset the wrong sheet,
+    // re-bake the wrong frame's timeline or persist a wrong base.
+    const stillOnEditTarget = (frame: number, trackId: string): boolean => {
+      const liveLaunch = launchContextRef.current;
+      if (!liveLaunch || liveLaunch.startFrame !== frame) return false;
+      // The document is the routing authority (a rail switch moves it first);
+      // the session pin lags a switch commit by one effect, so BOTH must agree.
+      if (studioActiveTrackId() !== trackId) return false;
+      const sessionTrack = aquarelleSessionTrackIdRef.current;
+      return sessionTrack === null || sessionTrack === trackId;
+    };
     const publish = (message: string) => {
       setApplyMessage(message);
       setApplyStatus('error');
@@ -6034,16 +6049,50 @@ export function PhysicsPaintStudio() {
     const finish = () => {
       aquarelleLiftEraseInFlightRef.current = false;
       aquarelleLiftEraseTargetRef.current = null;
-      const pending = aquarelleLiftErasePendingRef.current.shift();
-      if (!pending) return;
-      const { stroke: pendingStroke, ...pendingPlan } = pending;
-      void runAquarelleLiftErase({ kind: 'erase', ...pendingPlan }, pendingStroke);
+      // CR-01: a queued plan whose (frame, track) no longer matches the live
+      // edit target is dropped — replaying it would apply a stale frame's
+      // events to the new session. A matching plan re-enters as before.
+      for (;;) {
+        const pending = aquarelleLiftErasePendingRef.current.shift();
+        if (!pending) return;
+        const { stroke: pendingStroke, ...pendingPlan } = pending;
+        if (stillOnEditTarget(pendingPlan.frame, pendingPlan.trackId)) {
+          void runAquarelleLiftErase({ kind: 'erase', ...pendingPlan }, pendingStroke);
+          return;
+        }
+        recordAquarelleRenderSplitEvent('lift-erase', {
+          frame: pendingPlan.frame,
+          trackId: pendingPlan.trackId,
+          keyId: pendingPlan.keyId,
+          scripted: pendingPlan.scripted,
+          willPinBase: pendingPlan.willPinBase,
+          stage: 'queue-navigation-drift',
+        });
+      }
     };
     // The session pin is moved BEFORE the commit await (a settle capture
     // enqueued mid-punch would otherwise merge over the pre-erase base), and
     // restored if the commit does not acknowledge.
     let mergeBasePinned = false;
     let previousMergeBase: typeof aquarelleMergeBaseRef.current = null;
+    // CR-01: abandon when the live edit target moved. Nothing is published —
+    // the user is looking at another frame/track, so this frame's failure copy
+    // would be misleading — and the map, sheet and timeline stay untouched.
+    const abandonIfDrifted = (stage: string): boolean => {
+      if (stillOnEditTarget(plan.frame, plan.trackId)) return false;
+      if (mergeBasePinned) aquarelleMergeBaseRef.current = previousMergeBase;
+      revertAquarelleLiftPreview();
+      recordAquarelleRenderSplitEvent('lift-erase', {
+        frame: plan.frame,
+        trackId: plan.trackId,
+        keyId: plan.keyId,
+        scripted: plan.scripted,
+        willPinBase: plan.willPinBase,
+        stage: 'navigation-drift',
+        driftStage: stage,
+      });
+      return true;
+    };
     try {
       const launch = launchContextRef.current;
       if (!launch) {
@@ -6074,6 +6123,7 @@ export function PhysicsPaintStudio() {
         revertAquarelleLiftPreview();
         return;
       }
+      if (abandonIfDrifted('flush')) return;
       const size = aquarelleLiftSizeRef.current;
       // 261028-k03c: ONE shape resolution for the whole transaction — the
       // recorded brush's tip/aspect/rotation drives both the per-dab angles
@@ -6151,6 +6201,7 @@ export function PhysicsPaintStudio() {
             size,
             paper: aquarelleLiftPaperRef.current,
           });
+          if (abandonIfDrifted('recovery-bake')) return;
           if (!baked) {
             failRecovery('bake');
             return;
@@ -6161,6 +6212,7 @@ export function PhysicsPaintStudio() {
             size,
             appFrame: plan.frame,
           });
+          if (abandonIfDrifted('recovery-validate')) return;
           if (!recovery.ok) {
             failRecovery(recovery.reason, recovery.meanError);
             return;
@@ -6185,6 +6237,7 @@ export function PhysicsPaintStudio() {
             appFrame: plan.frame,
             shape,
           });
+          if (abandonIfDrifted('recovery-punch')) return;
           if (!punchedRecovered) {
             revertAquarelleLiftPreview();
             publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
@@ -6205,6 +6258,7 @@ export function PhysicsPaintStudio() {
               appFrame: plan.frame,
               shape,
             });
+            if (abandonIfDrifted('scripted-punch')) return;
             if (!punchedDurable) {
               publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
               revertAquarelleLiftPreview();
@@ -6217,6 +6271,7 @@ export function PhysicsPaintStudio() {
         // the live sheet session — the next stroke must re-read the re-baked
         // cache as its merge base, or its capture would merge over the
         // PRE-lift paint and resurrect it.
+        if (abandonIfDrifted('script-tail')) return;
         aquarelleResetSheetRef.current?.();
         recordAquarelleRenderSplitEvent('lift-erase', {
           frame: plan.frame,
@@ -6227,7 +6282,9 @@ export function PhysicsPaintStudio() {
           stage: 'script-rebake',
         });
         const rebake = aquarelleRebakeRef.current;
+        if (abandonIfDrifted('script-rebake')) return;
         const ok = rebake ? await rebake(getAquarelleEventsForFrame(plan.frame)) : false;
+        if (abandonIfDrifted('script-rebake-apply')) return;
         if (!ok) {
           revertAquarelleLiftPreview();
           publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
@@ -6260,6 +6317,7 @@ export function PhysicsPaintStudio() {
         appFrame: plan.frame,
         shape,
       });
+      if (abandonIfDrifted('raster-punch')) return;
       if (!punched) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         revertAquarelleLiftPreview();
@@ -6292,6 +6350,7 @@ export function PhysicsPaintStudio() {
             appFrame: plan.frame,
             shape,
           });
+          if (abandonIfDrifted('durable-punch')) return;
           if (!durablePunch) {
             publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
             revertAquarelleLiftPreview();
@@ -6350,6 +6409,12 @@ export function PhysicsPaintStudio() {
       // The session pin is already in place; the durable base map is the one
       // post-acknowledgement write (a stroke-pinned pre-erase raster becomes
       // D^K), and the key payload is the transaction above.
+      //
+      // CR-01: this particular write is KEY-addressed — its bytes were derived
+      // before the commit await while (frame, track) was still the live target,
+      // and skipping it after a navigation would resurrect the erased pixels on
+      // the next Apply (WR-02's failure mode). Every FRAME/TRACK-relative side
+      // effect below IS drift-gated instead.
       if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
         aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurableBytes);
         // 261028-k03c D7: `markDirty` no-ops on an unchanged content
@@ -6358,6 +6423,7 @@ export function PhysicsPaintStudio() {
         bumpAquarelleStrokesRevision();
         studioScriptSnapshot.markDirty();
       }
+      if (abandonIfDrifted('commit-ack')) return;
       // aquarelle-apply-invisible precedent: the cached preview base still
       // holds the pre-erase bytes, so force the same content-token reconcile.
       if (launchContextRef.current?.startFrame === plan.frame) {
