@@ -346,4 +346,13 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('stroke="#111111"');
     expect(layer).toContain('stroke="#ffffff"');
   });
+
+  it('WR-01: re-renders on a stationary tilt/pressure change', () => {
+    // The footprint inputs are module variables; only a compare-then-write
+    // version signal can notify the cursor when x/y did not move.
+    expect(layer).toContain('const cursorStateVersion = signal(0);');
+    expect(layer).toContain('void cursorStateVersion.value;');
+    expect(layer).toContain('if (footprintInputsChanged) cursorStateVersion.value += 1;');
+    expect(layer).toContain('footprintInputsChanged = true;');
+  });
 });

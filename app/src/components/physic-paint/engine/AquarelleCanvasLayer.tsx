@@ -77,6 +77,15 @@ const CURSOR_CROSSHAIR_SIZE = 23;
 const cursorX = signal(-1);
 const cursorY = signal(-1);
 const cursorVisible = signal(false);
+/**
+ * 261028-k03c WR-01: the footprint inputs below (tilt, pressure, buttons,
+ * pointer type, movement angle, layer height) are module variables, and an
+ * EQUAL cursorX/cursorY write does not notify — a stationary pen whose
+ * pressure or tilt changes would leave the ring stale. This version is bumped
+ * compare-then-write only when one of those inputs actually changes; the
+ * cursor component reads it so the ring re-renders without a pointer move.
+ */
+const cursorStateVersion = signal(0);
 /** Displayed layer height in CSS px (Engine.updateCursor's view.h / dpr). */
 let cursorLayerHeight = 0;
 /** Previous pointer sample — the follow-rotation movement direction. */
@@ -106,6 +115,9 @@ function AquarelleBrushCursor(): JSX.Element | null {
   const x = cursorX.value;
   const y = cursorY.value;
   const visible = cursorVisible.value;
+  // WR-01: subscribe to stationary footprint-input changes (tilt/pressure/
+  // pointer type/layer height), which no x/y write would notify.
+  void cursorStateVersion.value;
   if (!visible || x < 0) return null;
 
   const params = aquarelleParams.value;
@@ -872,11 +884,20 @@ export function AquarelleCanvasLayer(props: {
       onPointerEnter={(event) => {
         // 261028-k03c D6: the footprint is scaled by the DISPLAYED rect height.
         const height = (event.currentTarget as HTMLElement).getBoundingClientRect().height;
-        if (height > 0 && cursorLayerHeight !== height) cursorLayerHeight = height;
+        if (height > 0 && cursorLayerHeight !== height) {
+          cursorLayerHeight = height;
+          cursorStateVersion.value += 1;
+        }
       }}
       onPointerMove={(event) => {
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        if (rect.height > 0 && cursorLayerHeight !== rect.height) cursorLayerHeight = rect.height;
+        // WR-01: compare-then-write — the version bumps ONLY when a footprint
+        // input actually changed (a stationary pen tilt/pressure sample).
+        let footprintInputsChanged = false;
+        if (rect.height > 0 && cursorLayerHeight !== rect.height) {
+          cursorLayerHeight = rect.height;
+          footprintInputsChanged = true;
+        }
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         // Follow-rotation needs a direction: track it from consecutive samples
@@ -884,18 +905,40 @@ export function AquarelleCanvasLayer(props: {
         if (lastPointerX !== null && lastPointerY !== null) {
           const dx = x - lastPointerX;
           const dy = y - lastPointerY;
-          if (Math.hypot(dx, dy) >= 0.5) lastPointerMoveAngle = Math.atan2(-dy, dx);
+          if (Math.hypot(dx, dy) >= 0.5) {
+            const moveAngle = Math.atan2(-dy, dx);
+            if (moveAngle !== lastPointerMoveAngle) {
+              lastPointerMoveAngle = moveAngle;
+              footprintInputsChanged = true;
+            }
+          }
         }
         lastPointerX = x;
         lastPointerY = y;
-        if (event.tiltX !== lastPointerTiltX) lastPointerTiltX = event.tiltX;
-        if (event.tiltY !== lastPointerTiltY) lastPointerTiltY = event.tiltY;
-        if (event.pointerType !== lastPointerType) lastPointerType = event.pointerType;
-        if (event.buttons !== lastPointerButtons) lastPointerButtons = event.buttons;
-        if (event.pressure !== lastPointerPressure) lastPointerPressure = event.pressure;
+        if (event.tiltX !== lastPointerTiltX) {
+          lastPointerTiltX = event.tiltX;
+          footprintInputsChanged = true;
+        }
+        if (event.tiltY !== lastPointerTiltY) {
+          lastPointerTiltY = event.tiltY;
+          footprintInputsChanged = true;
+        }
+        if (event.pointerType !== lastPointerType) {
+          lastPointerType = event.pointerType;
+          footprintInputsChanged = true;
+        }
+        if (event.buttons !== lastPointerButtons) {
+          lastPointerButtons = event.buttons;
+          footprintInputsChanged = true;
+        }
+        if (event.pressure !== lastPointerPressure) {
+          lastPointerPressure = event.pressure;
+          footprintInputsChanged = true;
+        }
         cursorX.value = x;
         cursorY.value = y;
         if (!cursorVisible.value) cursorVisible.value = true;
+        if (footprintInputsChanged) cursorStateVersion.value += 1;
       }}
       onPointerLeave={() => {
         cursorVisible.value = false;
