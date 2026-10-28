@@ -792,17 +792,17 @@ No missing blocking dependencies.
 
 ## Open Questions
 
-1. **Does the Lift section need its own multiplier bag?**
+All three are RESOLVED and carried into the 261028-k03c plan.
+
+1. **Does the Lift section need its own multiplier bag?** (RESOLVED)
    - What we know: D1 separates only the tip id; D5 says the engine binds "the same `this.brush` tip, aspect and angle the brush uses".
-   - Unclear: whether changing Brush aspect should reshape the Lift footprint.
-   - Recommendation: share the bag (one `buildBrushForStroke(brushId, aquarelleToolOverrides)`), as D5's wording implies; note it in the plan so UAT can object.
+   - Resolution: share the bag — `aquarelleBrushForActiveTool()` on 'lift' returns the Lift tip id with `NEUTRAL_TOOL_OVERRIDES`, so a Lift stroke never inherits Brush's aspect/rotation multipliers (the A4 escalation does not trigger). Plan: Task 1 items 1-5, Task 2 item 5.
 
-2. **Follow-rotation in the cursor preview.**
-   - What we know: the engine uses `Math.atan2(s.dy, s.dx) + b.angle * DEG` while a stroke is live `[VERIFIED: Engine.ts:1551]`.
-   - Unclear: D6 names "aspect, rotation" but not a motion direction for hover.
-   - Recommendation: fixed → preset angle (+ tilt azimuth when the pointer event carries tilt); follow → last movement direction, defaulting to the preset angle when stationary; random → hold the last value (no per-frame flicker).
+2. **Fixed rotation + tilt azimuth, in the punch and the cursor preview.** (RESOLVED)
+   - What we know: fixed rotation is `s.azimuth ?? b.angle * DEG`, where `Stroke.azimuth` is set from `Math.atan2(-q.ty, q.tx)` whenever `hypot(q.tx, q.ty) > 12` and held (sticky) until the next tilted sample `[VERIFIED: Engine.ts:1552/1568]`. The scripted bake replays the recorded tilt (`engineAdapter.ts:230-232` passes `p.tx`/`p.ty`), so a re-bake already uses it.
+   - Resolution: the punch replays the same sticky per-point azimuth and the cursor reads the live pointer `tiltX`/`tiltY`; both fall back to the preset angle. Follow → last movement direction + preset angle; random → hold the last value (no per-frame flicker). Plan: Task 2 items 8-10, Task 3 items 15 and 18.
 
-3. **`markDirty` vs. explicit revision bump.** D7 says call `markDirty();` but the bump is what makes it fire. Recommendation: do both, and assert the ordering in a test.
+3. **`markDirty` vs. explicit revision bump.** (RESOLVED) D7 says call `markDirty();` but the bump is what makes it fire. Resolution: do both, in that order (bump then markDirty), and assert the ordering in a test. Plan: Task 3 items 11-12, 20.
 
 ## Sources
 
