@@ -449,7 +449,7 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
   });
 
-  it('adds the four lift durable-base set sites (3 base + scripted + recovery x2 + raster)', () => {
+  it('adds the seven lift durable-base set sites (3 base + scripted + recovery x2 + raster)', () => {
     // 261028-k03c: the recovery arm adopts the recovered base and then rewrites
     // it as t^K — two writes, both before the shared re-bake tail.
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(7);
