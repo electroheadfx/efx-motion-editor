@@ -138,8 +138,11 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // erase seam, where the base pixels travel in `baseCanvas` (the punched
     // D^K composite) instead of the cached bytes. Every other capture keeps
     // the pinned base, so the law above still holds for the ordinary path.
+    // 261028-k03g: two null-base sites by design — the raster Lift merge and
+    // the scripted Lift's DIRECT encode of the punched composite (which must
+    // never merge the live sheet over a payload that already carries it).
     const nullBaseSites = studio.match(/cachedBase: null/g) ?? [];
-    expect(nullBaseSites).toHaveLength(1);
+    expect(nullBaseSites).toHaveLength(2);
     const eraseCapture = studio.slice(studio.indexOf('cachedBase: null'));
     expect(eraseCapture).toContain('baseCanvas: punched.canvas');
     expect(studio).toContain('aquarelleMergeBaseRef');

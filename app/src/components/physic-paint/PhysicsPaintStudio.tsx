@@ -6503,31 +6503,122 @@ export function PhysicsPaintStudio() {
             studioScriptSnapshot.markDirty();
           }
         }
-        // Shared tail for both scripted arms (row 1/2/3): a script edit ends
-        // the live sheet session — the next stroke must re-read the re-baked
-        // cache as its merge base, or its capture would merge over the
-        // PRE-lift paint and resurrect it.
+        // 261028-k03g (user decision): NO RE-BAKE. The erase the engine already
+        // showed IS the result — the display must never replay a whole session
+        // to show it. The script keeps the recorded lift event and the durable
+        // base is already punched, so the next Move/Delete/Apply re-bakes the
+        // truth; a Lift itself just commits the live result.
         if (abandonIfDrifted('script-tail')) return;
         aquarelleResetSheetRef.current?.();
+        const composite = aquarelleCompositeRef.current(plan.frame);
+        if (!composite) {
+          // No committed pixels to punch (legacy placeholder key): the scripted
+          // re-bake is the only render left.
+          recordAquarelleRenderSplitEvent('lift-erase', {
+            frame: plan.frame,
+            trackId: plan.trackId,
+            keyId: plan.keyId,
+            scripted: true,
+            willPinBase: false,
+            stage: 'script-rebake',
+          });
+          const rebake = aquarelleRebakeRef.current;
+          const ok = rebake ? await rebake(getAquarelleEventsForFrame(plan.frame)) : false;
+          if (abandonIfDrifted('script-rebake-apply')) return;
+          if (!ok) {
+            aquarelleResetSheetRef.current?.();
+            revertAquarelleLiftPreview();
+            publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+            return;
+          }
+          setLastError(null);
+          return;
+        }
+        const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs, {
+          appFrame: plan.frame,
+          shape,
+        });
+        if (!compositePunch) {
+          aquarelleResetSheetRef.current?.();
+          revertAquarelleLiftPreview();
+          publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+          return;
+        }
+        previousMergeBase = aquarelleMergeBaseRef.current;
+        mergeBasePinned = true;
+        aquarelleMergeBaseRef.current = {
+          appFrame: plan.frame,
+          trackId: plan.trackId,
+          base: {
+            frameIndex: 0,
+            appFrame: plan.frame,
+            bytes: compositePunch.bytes,
+            width: size.width,
+            height: size.height,
+          },
+        };
+        // Direct encode of the punched composite. The live sheet is NOT merged:
+        // it holds this session's strokes and the composite already carries
+        // what was committed — a merge would double-apply them.
+        const commitInstant = async () => rotoPersistenceRef.current.captureLivePixels({
+          layerId: launch.layerId,
+          trackId: plan.trackId,
+          appFrame: plan.frame,
+          liveAlphaCanvas: compositePunch.canvas,
+          cachedBase: null,
+          baseCanvas: null,
+          mergeBlend: 'pigment-alpha',
+          size,
+        });
+        let instantAttempts = 1;
+        let instantOk = await commitInstant();
+        if (!instantOk) {
+          instantAttempts = 2;
+          instantOk = await commitInstant();
+        }
+        if (!instantOk) {
+          aquarelleMergeBaseRef.current = previousMergeBase;
+          revertAquarelleLiftPreview();
+          publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+          recordAquarelleRenderSplitEvent('lift-erase', {
+            frame: plan.frame,
+            trackId: plan.trackId,
+            keyId: plan.keyId,
+            scripted: true,
+            willPinBase: false,
+            stage: 'commit-failed',
+            attempts: instantAttempts,
+          });
+          return;
+        }
+        if (abandonIfDrifted('commit-ack')) return;
+        if (launchContextRef.current?.startFrame === plan.frame) {
+          const generation = Math.max(
+            rotoPreviewBaseContentToken(),
+            previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
+          );
+          loadCachedRotoReferenceFrame(
+            plan.frame,
+            previewBasePort,
+            undefined,
+            true,
+            generation,
+            compositePunch.bytes,
+          );
+          physicPaintVersion.value++;
+        }
+        setApplyMessage(AQUARELLE_LIFT_PERMANENT_MESSAGE);
+        setApplyStatus('idle');
+        setLastError(null);
         recordAquarelleRenderSplitEvent('lift-erase', {
           frame: plan.frame,
           trackId: plan.trackId,
           keyId: plan.keyId,
           scripted: true,
           willPinBase: false,
-          stage: 'script-rebake',
+          stage: 'committed-instant',
+          attempts: instantAttempts,
         });
-        const rebake = aquarelleRebakeRef.current;
-        if (abandonIfDrifted('script-rebake')) return;
-        const ok = rebake ? await rebake(getAquarelleEventsForFrame(plan.frame)) : false;
-        if (abandonIfDrifted('script-rebake-apply')) return;
-        if (!ok) {
-          aquarelleResetSheetRef.current?.();
-          revertAquarelleLiftPreview();
-          publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
-          return;
-        }
-        setLastError(null);
         return;
       }
       // RASTER-ONLY: no script to replay — the punch IS the content.

@@ -188,8 +188,10 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     const snapshot = erase.indexOf('aquarelleSnapshotRef.current?.()');
     const firstPersistenceAwait = erase.indexOf('await rotoPersistenceRef.current.');
     const flush = erase.indexOf('flushLivePixels(plan.frame, plan.trackId)');
-    const baseRead = erase.indexOf('const mergeBase = aquarelleMergeBaseRef.current');
-    const capture = erase.indexOf('captureLivePixels(');
+    const rasterStart = erase.indexOf('// RASTER-ONLY:');
+    const rasterOnly = erase.slice(rasterStart);
+    const baseRead = rasterStart + rasterOnly.indexOf('const mergeBase = aquarelleMergeBaseRef.current');
+    const capture = rasterStart + rasterOnly.indexOf('captureLivePixels(');
     expect(snapshot).toBeGreaterThanOrEqual(0);
     expect(firstPersistenceAwait).toBeGreaterThan(snapshot);
     expect(flush).toBeGreaterThan(snapshot);
@@ -197,32 +199,38 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     expect(capture).toBeGreaterThan(baseRead);
   });
 
-  it('k03b: a SCRIPTED lift never commits the composite — it punches the durable base and re-bakes', () => {
+  it('k03g: a SCRIPTED lift commits the punched composite instead of re-baking', () => {
     const scripted = erase.slice(erase.indexOf('if (plan.scripted) {'), erase.indexOf('// RASTER-ONLY:'));
     expect(scripted.length).toBeGreaterThan(0);
-    // The composite punch is what the bake discarded and the script could not
-    // reproduce — it must not exist on this path.
-    expect(scripted).not.toContain('captureLivePixels(');
-    expect(scripted).not.toContain('baseCanvas: punched.canvas');
-    // 261028-k03d: the ONE display reconcile allowed here is the failed-
-    // recovery restore (the frame must never be left blank). It may not become
-    // a commit path: exactly one call, inside the failRecovery block.
+    // The user-approved contract: the erase the engine showed IS the result.
+    // The durable base is still punched (future bakes erase the pre-script
+    // raster) and the script keeps the recorded lift event.
+    expect(scripted).toContain('punchTransmittanceBytes(durable, size, dabs');
+    expect(scripted).toContain('const compositePunch = await punchTransmittanceBytes(composite.bytes, size, dabs');
+    expect(scripted).toContain('liveAlphaCanvas: compositePunch.canvas');
+    // Direct encode: merging the live sheet would double-apply this session.
+    expect(scripted).toContain('cachedBase: null');
+    expect(scripted).toContain('baseCanvas: null');
+    expect(scripted).toContain('const commitInstant = async () => rotoPersistenceRef.current.captureLivePixels({');
+    // The re-bake survives ONLY as the no-composite fallback.
+    const fallback = scripted.slice(scripted.indexOf('if (!composite) {'), scripted.indexOf('const compositePunch'));
+    expect(fallback).toContain('const rebake = aquarelleRebakeRef.current;');
+    const rebakeCalls = scripted.split('await rebake(getAquarelleEventsForFrame(plan.frame))').length - 1;
+    expect(rebakeCalls).toBe(1);
+    // Failed-recovery restore + the success refresh: exactly two reconciles.
     const refreshCalls = scripted.split('loadCachedRotoReferenceFrame(').length - 1;
-    expect(refreshCalls).toBe(1);
+    expect(refreshCalls).toBe(2);
     const failRecovery = scripted.slice(
       scripted.indexOf('const failRecovery ='),
       scripted.indexOf('publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);'),
     );
     expect(failRecovery).toContain('loadCachedRotoReferenceFrame(');
     expect(scripted).toContain('aquarelleDurableBaseByKeyRef.current.get(plan.keyId)');
-    expect(scripted).toContain('punchTransmittanceBytes(durable, size, dabs');
-    // The script edit ends the sheet session (the next stroke must re-read the
-    // re-baked cache as its merge base) and replays the frame's timeline.
     expect(scripted).toContain('aquarelleResetSheetRef.current?.()');
-    expect(scripted).toContain('const rebake = aquarelleRebakeRef.current;');
-    expect(scripted).toContain('await rebake(getAquarelleEventsForFrame(plan.frame))');
     expect(scripted).toContain('revertAquarelleLiftPreview();');
-    expect(scripted).toContain('publish(AQUARELLE_LIFT_FAILURE_MESSAGE);');
+    // The committed bytes ride to the preview base — never a lagging read.
+    expect(scripted).toContain("stage: 'committed-instant'");
+    expect(scripted).toContain('compositePunch.bytes,');
   });
 
   it('k03b: the RASTER-ONLY punch still rewrites the durable base exactly once', () => {
@@ -348,8 +356,9 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   });
 
   it('commits through the existing physical-edit transaction seam', () => {
-    const captureStart = erase.indexOf('captureLivePixels({');
-    expect(captureStart).toBeGreaterThan(-1);
+    const rasterStart = erase.indexOf('// RASTER-ONLY:');
+    const captureStart = erase.indexOf('captureLivePixels({', rasterStart);
+    expect(captureStart).toBeGreaterThan(rasterStart);
     const captureCall = erase.slice(captureStart, erase.indexOf('});', captureStart));
     expect(captureCall).toContain('cachedBase: null');
     expect(captureCall).toContain('baseCanvas: punched.canvas');
@@ -418,7 +427,6 @@ describe('Lift navigation guard (261028-k03c CR-01)', () => {
       'recovery-punch',
       'scripted-punch',
       'script-tail',
-      'script-rebake',
       'script-rebake-apply',
       'commit-ack',
     ]) {
