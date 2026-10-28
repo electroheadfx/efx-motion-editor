@@ -192,7 +192,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { clearFrameScriptOwner, frameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
+import { clearFrameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type FrameScriptCell } from './view/frameScriptOwnership';
 import {
   anchorUnownedAquarelleStrokesForFrame,
@@ -1676,6 +1676,19 @@ export function PhysicsPaintStudio() {
     const scriptCell = resolveStudioScriptCell(cell.appFrame);
     if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;
     return hasAquarelleScriptForFrame(cell.appFrame);
+  });
+  // 261028-k03h: the Raster header action's enablement. It used to read the
+  // PUBLISHED lock signal, which only refreshes on explicit seams — a key
+  // whose script landed through a promotion or a restore after the last
+  // publish stayed greyed ("This key has no script to raster") even though
+  // its script exists. Resolve LIVE for the key the Studio edits; the click
+  // handler runs the identical resolver, so enablement and action agree.
+  const rasterKeyOwner = useComputed(() => {
+    void aquarelleStrokesRevision.value;
+    void rotoModelGeneration.value;
+    void efxPaintVersion.value;
+    const cell = rotoTimelineModel.currentCell.value;
+    return resolveFrameScriptOwner(cell.appFrame, resolveStudioScriptCell(cell.appFrame));
   });
   // DEV-only: the gate's OWN frame context, read by the owner-resolve report.
   // The report's resolve `frame` is the resolver target; this is the frame
@@ -6632,14 +6645,28 @@ export function PhysicsPaintStudio() {
       // post-flush cache. A merge base only counts when it is this frame AND
       // this track (two tracks share frame numbers).
       const mergeBase = aquarelleMergeBaseRef.current;
-      const sessionBase = mergeBase && mergeBase.appFrame === plan.frame && mergeBase.trackId === plan.trackId
+      const pinnedBase = mergeBase && mergeBase.appFrame === plan.frame && mergeBase.trackId === plan.trackId
         ? mergeBase.base
         : null;
+      // 261028-k03h: a placeholder carries no pixels, so it can never be the
+      // punch source. The key payload is the last committed cache — but only a
+      // FRESH session's sheet is empty, so the payload is the session base
+      // exactly when no real pin exists.
+      const sessionBase = pinnedBase !== null
+        && pinnedBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES
+        ? pinnedBase
+        : null;
+      const payloadBase = sessionBase === null ? aquarelleKeyPayloadRef.current(plan.frame) : null;
+      const displayBase = sessionBase === null && payloadBase === null
+        ? findCachedRotoDisplayFrameRef.current(plan.frame)
+        : null;
+      const displayUsable = displayBase !== null
+        && displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES;
       // 261028-k03d: the key payload is authoritative; the display frame can be
       // a stale placeholder right after a settle commit.
       const base = sessionBase
-        ?? aquarelleKeyPayloadRef.current(plan.frame)
-        ?? findCachedRotoDisplayFrameRef.current(plan.frame);
+        ?? payloadBase
+        ?? (displayUsable ? displayBase : pinnedBase ?? displayBase);
       if (!base || !base.bytes || base.bytes.length === 0) {
         publish(AQUARELLE_LIFT_NO_CACHE_REFUSAL);
         aquarelleResetSheetRef.current?.();
@@ -6650,8 +6677,9 @@ export function PhysicsPaintStudio() {
       // (layerId + trackId + appFrame + keyId captured before the await). They
       // must NOT be dropped by navigation: the user's erase had already landed
       // on the sheet, and abandoning here made the paint "come back" seconds
-      // later when they left the frame. Only the FRAME-RELATIVE display refresh
-      // stays drift-gated (`commit-ack`).
+      // later when they left the frame. The transaction owns no frame-relative
+      // side effect (261028-k03h dropped the display reload), so every await
+      // below lands regardless of where the playhead moved.
       const punched = await punchTransmittanceBytes(base.bytes, size, dabs, {
         appFrame: plan.frame,
         shape,
@@ -6769,31 +6797,12 @@ export function PhysicsPaintStudio() {
         studioScriptSnapshot.markDirty();
       }
       if (abandonIfDrifted('commit-ack')) return;
-      // aquarelle-apply-invisible precedent: the cached preview base still
-      // holds the pre-erase bytes, so force the same content-token reconcile.
-      // 261028-k03g: the render source can still report the PREVIOUS payload
-      // for a moment after the ack (the UAT one-behind: each stroke showed the
-      // eraser before the last). When the live sheet carried no paint, the
-      // committed frame IS the punched base — hand those exact bytes to the
-      // loader so the preview base can never lag a commit behind.
-      if (launchContextRef.current?.startFrame === plan.frame) {
-        const generation = Math.max(
-          rotoPreviewBaseContentToken(),
-          previewBasePort.getAppliedPreviewBaseContentToken() ?? 0,
-        );
-        const explicitBytes = measureAquarelleCanvasInk(commitSheet) < AQUARELLE_MIN_CAPTURE_INK
-          ? punched.bytes
-          : null;
-        loadCachedRotoReferenceFrame(
-          plan.frame,
-          previewBasePort,
-          undefined,
-          true,
-          generation,
-          explicitBytes,
-        );
-        physicPaintVersion.value++;
-      }
+      // 261028-k03h (UAT): NO DISPLAY RELOAD. The live preview already punched
+      // these exact dabs into the visible base, so the erase ON SCREEN is the
+      // committed result — a reload re-decodes the whole frame for nothing and
+      // reads as a re-render. This is exactly how painting on a raster key
+      // behaves: the sheet keeps the result, the commit stores it, and the
+      // next navigation loads the committed bytes.
       // D4: a pixel-only erase is permanent. This covers `willPinBase` too —
       // the base punch never replays, even though the event does.
       setApplyMessage(AQUARELLE_LIFT_PERMANENT_MESSAGE);
@@ -7588,10 +7597,32 @@ export function PhysicsPaintStudio() {
           || aquarelleMergeBaseRef.current?.trackId !== targetTrackId
         ) {
           mergeBaseWasFresh = true;
+          // 261028-k03h: the display cache can still be a transparent
+          // placeholder (128-byte WebP) right after a navigation or a settle
+          // commit while the KEY payload holds the real paint. Pinning that
+          // placeholder made every later merge — and every raster Lift punch —
+          // start from an empty base, so the next capture replaced the frame
+          // with the live sheet alone (UAT: the paint vanished, then a full
+          // re-render). Prefer the committed payload whenever the display
+          // cannot prove pixels.
+          const displayBase = findCachedRotoDisplayFrameRef.current(playFrame);
+          const displayUsable = displayBase !== null
+            && displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES;
+          const payloadBase = displayUsable ? null : aquarelleKeyPayloadRef.current(playFrame);
           aquarelleMergeBaseRef.current = {
             appFrame: playFrame,
             trackId: targetTrackId,
-            base: findCachedRotoDisplayFrameRef.current(playFrame),
+            base: displayUsable
+              ? displayBase
+              : payloadBase === null
+                ? null
+                : {
+                    frameIndex: 0,
+                    appFrame: playFrame,
+                    bytes: payloadBase.bytes,
+                    width: payloadBase.width,
+                    height: payloadBase.height,
+                  },
           };
         }
         cachedBase = aquarelleMergeBaseRef.current?.base ?? null;
@@ -9145,7 +9176,7 @@ export function PhysicsPaintStudio() {
         // quick-261025-awl (D-04): the Raster header action. The stable callback
         // and the ownership SIGNAL REFERENCE keep the static-chrome memo intact;
         // only the strip's Raster leaf reads .value.
-        onRasterKey: handleRasterKeyRequest, frameScriptOwner,
+        onRasterKey: handleRasterKeyRequest, frameScriptOwner: rasterKeyOwner,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();

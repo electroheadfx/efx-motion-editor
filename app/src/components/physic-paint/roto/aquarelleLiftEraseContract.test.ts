@@ -368,10 +368,29 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     expect(captureCall).toContain('liveAlphaCanvas: commitSheet');
   });
 
-  it('refreshes the display exactly like the Apply precedent', () => {
-    expect(erase).toContain('loadCachedRotoReferenceFrame(');
-    expect(erase).toContain('physicPaintVersion.value++');
-    expect(erase).toContain('getAppliedPreviewBaseContentToken()');
+  it('k03h: a raster lift never reloads the display — the live preview IS the result', () => {
+    const raster = erase.slice(erase.indexOf('// RASTER-ONLY:'));
+    expect(raster).not.toContain('loadCachedRotoReferenceFrame(');
+    expect(raster).not.toContain('physicPaintVersion.value++');
+    // The SCRIPTED commit still reconciles: it reset the sheet, so the punched
+    // composite must land in the preview base.
+    const scripted = erase.slice(erase.indexOf('if (plan.scripted) {'), erase.indexOf('// RASTER-ONLY:'));
+    expect(scripted).toContain('loadCachedRotoReferenceFrame(');
+    expect(scripted).toContain('physicPaintVersion.value++');
+    expect(scripted).toContain('getAppliedPreviewBaseContentToken()');
+  });
+
+  it('k03h: a pinned session merge base never sources from a display placeholder', () => {
+    const start = studio.indexOf('const displayBase = findCachedRotoDisplayFrameRef.current(playFrame);');
+    const pin = studio.slice(start, studio.indexOf('const currentLaunch = launchContextRef.current;', start));
+    expect(start).toBeGreaterThan(-1);
+    expect(pin.length).toBeGreaterThan(0);
+    expect(pin).toContain('displayBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES');
+    expect(pin).toContain('aquarelleKeyPayloadRef.current(playFrame)');
+    // The raster punch refuses a placeholder pin too.
+    const raster = erase.slice(erase.indexOf('// RASTER-ONLY:'));
+    expect(raster).toContain('pinnedBase.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES');
+    expect(raster).toContain('aquarelleKeyPayloadRef.current(plan.frame)');
   });
 
   it('k03b: previews the engine dabs on the cached base only for a cached-display lift', () => {

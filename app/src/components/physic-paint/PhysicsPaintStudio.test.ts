@@ -4085,7 +4085,9 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
     expect(handlerEnd).toBeGreaterThan(handlerStart);
     expect(studio).toContain('const handleRasterKeyRequest = useCallback((frame: number) => {');
     expect(studio).toContain('void rasterKeyImplRef.current(frame);');
-    expect(studio).toContain('onRasterKey: handleRasterKeyRequest, frameScriptOwner,');
+    // 261028-k03h: the strip reads the LIVE ownership computed, not the
+    // published lock (a lagging publish greyed a scripted key's Raster).
+    expect(studio).toContain('onRasterKey: handleRasterKeyRequest, frameScriptOwner: rasterKeyOwner,');
   });
 
   it('refuses in the documented guard order', () => {
@@ -4281,9 +4283,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const generation = between(studio, 'const rotoModelGeneration = useSignal(0);', 'const loopResolutionContext');
     expect(generation).toContain('rotoModelGeneration.value += 1;');
     expect(generation).toContain('}, [rotoTimelineModel]);');
-    // 261027-klx: the Brush Move gate left with engine 1 — exactly one read
-    // remains (the Water color gate).
-    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(1);
+    // 261027-klx: the Brush Move gate left with engine 1. Two reads remain:
+    // the Water color gate and the 261028-k03h Raster enablement (the same
+    // live-graph rebind law).
+    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(2);
     expect(studio).not.toContain('const moveAvailable = useComputed(');
 
     const waterGate = between(studio, 'const watercolorMoveAvailable = useComputed(() => {', 'const gateDiagnosticsRef = useRef');
