@@ -17,9 +17,15 @@
 //  Footprint (mirrors the bake's own law, which is what a
 //  re-bake replays): radius = (0.012 + 0.03 * pressure) *
 //  3^((engineSize - 0.5) * 2) in document heights, dab spacing
-//  0.5 * r, moving dab amount 0.22, stationery dwell amount
-//  min(0.9, 0.22 * 8 * HOST_DT_SECONDS) — Engine.ts:1526, 1651,
-//  1658, 1716.
+//  0.5 * r, moving dab amount = the stroke's recorded Lift strength
+//  (canonical `lift` / 100, default 0.22), stationery dwell amount
+//  min(0.9, amount * 8 * HOST_DT_SECONDS) — Engine.ts:1526, 1651,
+//  1658, 1710.
+//
+//  261028-k03b: the dab walk carries the unspent spacing across
+//  recorded segments (the engine's Stroke.carry). Restarting per
+//  segment skipped the first dab of every short segment, so the
+//  punch erased less than the live pass.
 //
 //  Declared approximations (do not "fix" them here):
 //   - the dab source is the RECORDED 60 Hz tick grid only (never
@@ -43,10 +49,11 @@ const LIFT_SIZE_BASE = 0.012;
 const LIFT_SIZE_PRESSURE = 0.03;
 /** Dab spacing as a fraction of the footprint radius — Engine.ts:1651. */
 const LIFT_SPACING_FRAC = 0.5;
-/** A moving dab's amount — Engine.ts:1658, 1716. */
+/** Pre-strength moving dab amount; also the default when a stroke has no
+ *  recorded `lift` key (Engine.ts:1658, 1716). */
 const LIFT_MOVING_AMOUNT = 0.22;
-/** A stationery dab's amount on the 60 Hz host grid — Engine.ts:1658, 1716. */
-const LIFT_DWELL_AMOUNT = Math.min(0.9, 0.22 * 8 * HOST_DT_SECONDS);
+/** The engine's own ceiling for a lift dab — Engine.ts:1716. */
+const LIFT_MAX_AMOUNT = 0.9;
 /** Recorded pressure sentinel fallback (declared approximation). */
 const LIFT_PRESSURE_SENTINEL = 0.45;
 /** Bounds a pathological stroke so the punch stays finite. */
@@ -118,6 +125,13 @@ export function collectLiftDabs(
     typeof engine.size === 'number' && Number.isFinite(engine.size) ? engine.size : 0.375;
   const sizeMult = Math.pow(3, (engineSize - 0.5) * 2);
   const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 1;
+  // 261028-k03b: the same strength the engine and the bake use. A stroke
+  // recorded before the setting has no key → 0.22, its exact old erase.
+  const movingAmount = Math.min(
+    LIFT_MAX_AMOUNT,
+    typeof engine.lift === 'number' && Number.isFinite(engine.lift) ? engine.lift : LIFT_MOVING_AMOUNT,
+  );
+  const dwellAmount = Math.min(LIFT_MAX_AMOUNT, movingAmount * 8 * HOST_DT_SECONDS);
 
   const radiusAt = (pressure: number | undefined): number =>
     (LIFT_SIZE_BASE + LIFT_SIZE_PRESSURE * normalizePressure(pressure)) * sizeMult;
@@ -125,8 +139,13 @@ export function collectLiftDabs(
   const dabs: LiftDab[] = [];
 
   const first = points[0];
-  if (first) dabs.push({ x: first.x, y: first.y, r: radiusAt(first.p), amount: LIFT_MOVING_AMOUNT });
+  if (first) dabs.push({ x: first.x, y: first.y, r: radiusAt(first.p), amount: movingAmount });
 
+  // 261028-k03b: the engine carries the unspent spacing across every trace
+  // segment (Stroke.carry). Restarting at 0 per recorded sample skipped the
+  // first dab of every short segment, so the punch erased visibly less than
+  // the live pass — the "very soft" lift. Mirror the carry.
+  let carry = 0;
   for (let i = 1; i < points.length; i += 1) {
     const a = points[i - 1];
     const b = points[i];
@@ -138,28 +157,36 @@ export function collectLiftDabs(
     // Standing still: the engine stamps one dwell dab per resting tick.
     if (length <= 1e-9) {
       if (dabs.length >= MAX_LIFT_DABS) return dabs;
-      dabs.push({ x: b.x, y: b.y, r: radiusAt(b.p), amount: LIFT_DWELL_AMOUNT });
+      dabs.push({ x: b.x, y: b.y, r: radiusAt(b.p), amount: dwellAmount });
+      // A dwell neither spends nor resets the travel carry.
       continue;
     }
 
-    let walked = 0;
+    let pos = 0;
     let guard = 0;
     while (guard < MAX_LIFT_DABS) {
       guard += 1;
-      const u = Math.min(1, walked / length);
+      const u = Math.min(1, pos / length);
       const spacing = LIFT_SPACING_FRAC * radiusAt(a.p + (b.p - a.p) * u);
       if (!(spacing > 1e-9)) break;
-      walked += spacing;
-      if (walked > length) break;
+      const advance = spacing - carry;
+      if (advance <= 0) {
+        carry = 0;
+        continue;
+      }
+      if (pos + advance > length) break;
+      pos += advance;
+      carry = 0;
       if (dabs.length >= MAX_LIFT_DABS) return dabs;
-      const t = walked / length;
+      const t = pos / length;
       dabs.push({
         x: a.x + (b.x - a.x) * t,
         y: a.y + (b.y - a.y) * t,
         r: radiusAt(a.p + (b.p - a.p) * t),
-        amount: LIFT_MOVING_AMOUNT,
+        amount: movingAmount,
       });
     }
+    carry += length - pos;
   }
 
   return dabs;

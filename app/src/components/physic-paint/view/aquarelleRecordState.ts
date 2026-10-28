@@ -45,6 +45,12 @@ export interface AquarelleGlobalParams {
   dry: number;
   edge: number;
   granulation: number;
+  /**
+   * 261028-k03b: Lift (eraser) strength 0..100, recorded with the stroke so
+   * the live pass, the bake and the cached-raster punch erase alike. 22 is
+   * the pre-strength hardcoded amount; strokes without the key keep it.
+   */
+  lift: number;
 }
 
 export type AquarelleGlobalKey = keyof AquarelleGlobalParams;
@@ -58,6 +64,7 @@ export const AQUARELLE_GLOBAL_KEYS: readonly AquarelleGlobalKey[] = Object.freez
   'dry',
   'edge',
   'granulation',
+  'lift',
 ] as const);
 
 export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.freeze({
@@ -69,6 +76,7 @@ export const DEFAULT_AQUARELLE_PARAMS: Readonly<AquarelleGlobalParams> = Object.
   dry: 50,
   edge: 50,
   granulation: 50,
+  lift: 22,
 });
 
 /** D-08 multiplier band. */

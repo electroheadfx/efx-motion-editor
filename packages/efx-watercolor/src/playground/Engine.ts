@@ -17,10 +17,12 @@ export interface Params {
   dry: number;         // drying speed
   edge: number;        // tide-line darkening at drying edges
   granulation: number; // pigment settling into the paper grain
+  lift: number;        // Lift per-dab erase amount (0..0.9)
 }
 
 export const DEFAULT_PARAMS: Params = {
   size: 0.5, water: 0.6, load: 0.5, flow: 0.45, bleed: 0.5, dry: 0.4, edge: 0.5, granulation: 0.45,
+  lift: 0.22,
 };
 
 export interface EngineCallbacks {
@@ -36,6 +38,12 @@ export interface EngineCallbacks {
   onStrokeSample?(sample: { x: number; y: number; p: number; tx: number; ty: number; t: number }): void;
   /** Studio record seam: the pointer stroke ended. */
   onStrokeEnd?(tool: Tool): void;
+  /**
+   * 261028-k03b: one applied Lift dab (doc uv y up, radius in document
+   * heights, amount = the effective per-dab erase). The Studio previews it on
+   * the cached base so a lift on a cooked frame erases while the user draws.
+   */
+  onLiftDab?(x: number, y: number, r: number, amount: number): void;
 }
 
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
@@ -1713,7 +1721,10 @@ export class WatercolorEngine {
         break;
       }
       case 'lift': {
-        const amount = Math.min(0.9, 0.22 * dwell);
+        // 261028-k03b: strength is a canonical param (lift/100) recorded per
+        // stroke, so the live pass, the bake replay and the cached-raster
+        // punch share one number. The 0.22 default keeps old strokes exact.
+        const amount = Math.min(0.9, P.lift * dwell);
         this.lift(x, y, r, amount);
         break;
       }
@@ -1891,6 +1902,8 @@ export class WatercolorEngine {
     // fixed pigment is dry by definition — no tissue water factor, the full amount.
     // Declared consequence: an explicit Dry is permanent for every tool except Lift.
     gl.disable(gl.BLEND);
+    // After the draw, so the preview observes exactly the dab the engine applied.
+    this.callbacks.onLiftDab?.(x, y, r, amount);
   }
 
   /* ----------------------------------------------------------- simulation */

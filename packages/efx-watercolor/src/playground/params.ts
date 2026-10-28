@@ -9,7 +9,7 @@
 
 import type { Params } from './Engine'
 
-/** The 8 AQUA-04 globals as the UI records them. */
+/** The 8 AQUA-04 globals as the UI records them, plus the Lift strength. */
 export interface AquarelleCanonicalParams {
   size: number
   water: number
@@ -19,6 +19,12 @@ export interface AquarelleCanonicalParams {
   dry: number
   edge: number
   granulation: number
+  /**
+   * 261028-k03b: Lift (eraser) strength 0..100. 22 is the pre-strength
+   * hardcoded per-dab amount (0.22), so every recorded stroke without the
+   * key keeps its exact old erase on replay.
+   */
+  lift: number
 }
 
 export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Object.freeze({
@@ -30,6 +36,7 @@ export const DEFAULT_CANONICAL_PARAMS: Readonly<AquarelleCanonicalParams> = Obje
   dry: 50,
   edge: 50,
   granulation: 50,
+  lift: 22,
 })
 
 function num(v: number | undefined, fallback: number): number {
@@ -77,5 +84,6 @@ export function toEngineParams(
     dry: num(p.dry, d.dry) / 100,
     edge: num(p.edge, d.edge) / 100,
     granulation: num(p.granulation, d.granulation) / 100,
+    lift: num(p.lift, d.lift) / 100,
   }
 }

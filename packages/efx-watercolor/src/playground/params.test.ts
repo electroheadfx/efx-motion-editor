@@ -30,6 +30,15 @@ describe('toEngineParams', () => {
 
   it('maps the seven canonical globals onto 0..1', () => {
     expect(toEngineParams({ water: 50, load: 25, flow: 100, bleed: 0, dry: 75, edge: 60, granulation: 40 }))
-      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4 });
+      .toEqual({ size: 12 / 32, water: 0.5, load: 0.25, flow: 1, bleed: 0, dry: 0.75, edge: 0.6, granulation: 0.4, lift: 0.22 });
+  });
+
+  it('maps Lift strength 0..100 onto the 0..0.9 erase amount', () => {
+    // 22 is the pre-strength hardcoded amount: old recorded strokes (no key)
+    // must keep their exact erase.
+    expect(toEngineParams({ lift: 22 }).lift).toBeCloseTo(0.22, 12);
+    expect(toEngineParams({ lift: 90 }).lift).toBeCloseTo(0.9, 12);
+    expect(toEngineParams(undefined).lift).toBeCloseTo(0.22, 12);
+    expect(toEngineParams({ lift: Number.NaN }).lift).toBeCloseTo(0.22, 12);
   });
 });

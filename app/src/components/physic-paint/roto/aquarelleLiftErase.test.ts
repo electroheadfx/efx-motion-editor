@@ -162,6 +162,50 @@ describe('collectLiftDabs — the engine footprint law', () => {
     expect(radiusForPressure(-1)).toBeCloseTo((0.012 + 0.03 * 0.45) * SIZE_MULT, 6);
   });
 
+  it('uses the recorded Lift strength, and 0.22 when the key is absent', () => {
+    const stroke = (params: Record<string, number>) => collectLiftDabs(
+      { points: [{ x: 0.5, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 }], params },
+      SIZE,
+    )[0]!.amount;
+    expect(stroke({ size: 12 })).toBeCloseTo(0.22, 9);
+    expect(stroke({ size: 12, lift: 90 })).toBeCloseTo(0.9, 9);
+    expect(stroke({ size: 12, lift: 5 })).toBeCloseTo(0.05, 9);
+    // The engine's own ceiling.
+    expect(stroke({ size: 12, lift: 100 })).toBeCloseTo(0.9, 9);
+    // The dwell dab scales with the same strength.
+    const dwell = collectLiftDabs(
+      {
+        points: [
+          { x: 0.5, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+          { x: 0.5, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        ],
+        params: { size: 12, lift: 90 },
+      },
+      SIZE,
+    )[1]!;
+    expect(dwell.amount).toBeCloseTo(Math.min(0.9, 0.9 * 8 * HOST_DT_SECONDS), 9);
+  });
+
+  it('carries unspent spacing across recorded segments', () => {
+    // Each segment is shorter than the 0.5r spacing, the pair is longer. The
+    // old per-segment restart emitted no dab at all; the engine's carry emits
+    // the dab where the combined distance reaches the spacing.
+    const spacing = 0.5 * radiusForPressure(0.5);
+    const dabs = collectLiftDabs(
+      {
+        points: [
+          { x: 0, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+          { x: spacing * 0.6, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+          { x: spacing * 1.2, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        ],
+        params: CANONICAL,
+      },
+      SIZE,
+    );
+    expect(dabs).toHaveLength(2);
+    expect(dabs[1]!.x).toBeCloseTo(spacing, 6);
+  });
+
   it('returns nothing for an empty stroke', () => {
     expect(collectLiftDabs({ points: [], params: CANONICAL }, SIZE)).toEqual([]);
   });
