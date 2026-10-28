@@ -267,6 +267,38 @@ export function invertAquarellePigmentCoverage(
   return out;
 }
 
+/** Coverage at/above which no base pigment is provable (see k03g). */
+export const AQUARELLE_BASE_HIDDEN_COVERAGE = 0.35;
+
+/**
+ * 261028-k03g: the base an ACTUAL bake may use.
+ *
+ * The pure inverse is exact in gamut, but where the script covers the paper
+ * the division by (1 − a) amplifies every difference between the display and
+ * a re-bake (playback is not reproducible). That noise is the wash's own
+ * pigment leaking into the base — a bake then surfaces it as saturated
+ * speckle. Where the script has meaningful coverage the base is invisible
+ * anyway, so it is written white: "no base pigment here". Where the script is
+ * nearly transparent the base is fully visible and P is copied verbatim.
+ */
+export function invertAquarelleBaseForRecovery(
+  display: Uint8ClampedArray,
+  script: Uint8ClampedArray,
+): Uint8ClampedArray {
+  const out = invertAquarellePigmentCoverage(display, script);
+  for (let i = 0; i + 3 < display.length; i += 4) {
+    const sr = script[i] ?? 255;
+    const sg = script[i + 1] ?? 255;
+    const sb = script[i + 2] ?? 255;
+    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+    if (1 - min / 255 < AQUARELLE_BASE_HIDDEN_COVERAGE) continue;
+    out[i] = 255;
+    out[i + 1] = 255;
+    out[i + 2] = 255;
+  }
+  return out;
+}
+
 function clampByte(value: number): number {
   if (!Number.isFinite(value)) return 255;
   const rounded = Math.round(value);
@@ -568,7 +600,7 @@ export async function recoverAquarelleDurableBase(input: {
   }
 
   const base: AquarelleBasePixels = {
-    data: invertAquarellePigmentCoverage(display.data, script.data),
+    data: invertAquarelleBaseForRecovery(display.data, script.data),
     width: display.width,
     height: display.height,
   };

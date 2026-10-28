@@ -20,6 +20,7 @@ import {
   invertAquarellePigmentCoverage,
   meanAbsoluteChannelError,
   meanAbsoluteChannelErrorOutsideClampedBases,
+  invertAquarelleBaseForRecovery,
   pigmentStructureCorrelation,
   proveEmptyAquarelleBase,
   recoveredBaseInk,
@@ -707,5 +708,21 @@ describe('261028-k03g meanAbsoluteChannelErrorOutsideClampedBases', () => {
     expect(
       meanAbsoluteChannelErrorOutsideClampedBases(filled(10), filled(0), filled(10)),
     ).toBe(Infinity);
+  });
+});
+
+describe('261028-k03g invertAquarelleBaseForRecovery', () => {
+  it('drops base pigment under meaningful script coverage (no bake ghost)', () => {
+    // S = (228,148,128) → a ≈ 0.498. The pure inverse would carry the wash's
+    // own pigment into the base; the recovery form must not.
+    const script = rgba([[228, 148, 128]]);
+    const display = rgba([[150, 70, 50]]);
+    expect(channel(invertAquarelleBaseForRecovery(display, script), 0)).toEqual([255, 255, 255]);
+  });
+
+  it('keeps the base verbatim where the script is transparent', () => {
+    const script = rgba([[255, 255, 255]]);
+    const display = rgba([[13, 200, 77]]);
+    expect(channel(invertAquarelleBaseForRecovery(display, script), 0)).toEqual([13, 200, 77]);
   });
 });
