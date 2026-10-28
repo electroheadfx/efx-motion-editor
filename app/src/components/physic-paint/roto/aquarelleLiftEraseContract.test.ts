@@ -245,7 +245,13 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
 
   it('k03c: a recoverBase lift owns its single punch and adopts the base durably first', () => {
     const recoverStart = erase.indexOf('if (plan.recoverBase) {');
-    const recoverArm = erase.slice(recoverStart, erase.indexOf('} else {', recoverStart));
+    // 261028-k03e adds an inner `if (!display) … else {` arm; the recover arm
+    // still ends at the NON-recover arm, which reads the durable entry.
+    const nonRecoverArm = erase.indexOf(
+      'const durable = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);',
+      recoverStart,
+    );
+    const recoverArm = erase.slice(recoverStart, nonRecoverArm);
     expect(recoverStart).toBeGreaterThan(-1);
     expect(recoverArm.length).toBeGreaterThan(0);
     // SINGLE-PUNCH LAW: the arms are exclusive, so exactly one punch runs per
@@ -264,8 +270,9 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     expect(punch).toBeGreaterThan(adopt);
     expect(rewrite).toBeGreaterThan(punch);
     // markDirty no-ops on an unchanged signature — the revision bump is the
-    // load-bearing write on BOTH recovery writes.
-    expect(countOccurrences(recoverArm, 'bumpAquarelleStrokesRevision();')).toBe(2);
+    // load-bearing write on BOTH recovered-base writes, and the 261028-k03e
+    // known-empty adoption (`adoptKnownEmpty`) carries its own bump.
+    expect(countOccurrences(recoverArm, 'bumpAquarelleStrokesRevision();')).toBe(3);
   });
 
   it('k03c: a failed recovery erases nothing — the event, sheet and preview all revert', () => {
@@ -410,12 +417,16 @@ describe('Lift navigation guard (261028-k03c CR-01)', () => {
       'script-tail',
       'script-rebake',
       'script-rebake-apply',
-      'raster-punch',
-      'durable-punch',
       'commit-ack',
     ]) {
       expect(erase, stage).toContain(`abandonIfDrifted('${stage}')`);
     }
+    // 261028-k03e: the raster punches are KEY-addressed — their bytes are
+    // derived for a fixed (layerId, trackId, appFrame, keyId) and the user's
+    // erase is already on the sheet. Drift-gating them discarded the gesture
+    // and the paint "came back" after navigation (UAT: erase then revert).
+    expect(erase).not.toContain("abandonIfDrifted('raster-punch')");
+    expect(erase).not.toContain("abandonIfDrifted('durable-punch')");
     // On drift nothing is published (the user is on another target) and the
     // preview reverts with a diagnostic.
     expect(erase).toContain("stage: 'navigation-drift',");
@@ -456,10 +467,12 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
   });
 
-  it('adds the seven lift durable-base set sites (3 base + scripted + recovery x2 + raster)', () => {
+  it('adds the eight lift durable-base set sites (3 base + scripted + recovery x2 + empty + raster)', () => {
     // 261028-k03c: the recovery arm adopts the recovered base and then rewrites
     // it as t^K — two writes, both before the shared re-bake tail.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(7);
+    // 261028-k03e: `adoptKnownEmpty` writes the `null` known-empty entry when
+    // the composite proves there is no pre-script pigment.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(8);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
   });
 });

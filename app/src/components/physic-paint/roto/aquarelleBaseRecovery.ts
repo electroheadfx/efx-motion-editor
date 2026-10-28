@@ -75,11 +75,22 @@ export interface AquarelleBaseRecoveryStats {
 export type AquarelleBaseRecoveryResult =
   | {
     ok: true;
+    kind: 'base';
     bytes: Uint8Array;
     meanError: number;
     baseInk: number;
     clampRatio: number;
     saturatedColorError: number;
+    emptyProof: AquarelleEmptyBaseProof;
+  }
+  | {
+    ok: true;
+    kind: 'empty';
+    /** Mean |P − S| — how far the display drifted from the raw bake. */
+    meanError: number;
+    clampRatio: number;
+    saturatedColorError: number;
+    emptyProof: AquarelleEmptyBaseProof;
   }
   | {
     ok: false;
@@ -87,6 +98,7 @@ export type AquarelleBaseRecoveryResult =
     meanError?: number;
     clampRatio?: number;
     saturatedColorError?: number;
+    emptyProof?: AquarelleEmptyBaseProof;
   };
 
 /** The acceptance gate: mean absolute RGB error of the recomposition. */
@@ -109,6 +121,70 @@ export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 12;
 const SATURATED_COVERAGE = 0.97;
 /** Below this the script sheet carries no pigment — B = P exactly. */
 const NO_PIGMENT_COVERAGE = 1e-3;
+
+/**
+ * 261028-k03e: how much darker than the raw bake a display channel may read
+ * before it counts as pigment the script cannot explain (WebP/decode slack).
+ */
+export const AQUARELLE_EMPTY_BASE_DARKER_TOLERANCE = 3;
+
+export interface AquarelleEmptyBaseProof {
+  /** True only when the display carries NO pigment the script cannot explain. */
+  proven: boolean;
+  /** Pixels where the base is visible at all (script coverage < saturated). */
+  informative: number;
+  /** Channels where P is darker than S beyond the tolerance. */
+  darkerChannels: number;
+  /** Largest single-channel darkening, 0 when the display is never darker. */
+  maxDarker: number;
+}
+
+/**
+ * 261028-k03e: prove that the pre-script base holds NO pigment.
+ *
+ * Merging the script bake S over an empty (white) base returns S exactly, so
+ * a display P that is nowhere DARKER than S (outside saturated pixels, where
+ * the base is hidden) cannot contain base pigment: any difference is the
+ * display being LIGHTER — an erased or stale live-sheet residue that the
+ * script-authoritative publish is allowed to replace.
+ *
+ * The proof is one-sided on purpose. A base pigment can only make P darker,
+ * so one dark channel keeps the base UNKNOWN and the caller fails closed. It
+ * can adopt ONLY the empty base, never an arbitrary recovered one, so it is
+ * not the tautological recombination the provenance gate exists to stop.
+ */
+export function proveEmptyAquarelleBase(
+  display: Uint8ClampedArray,
+  script: Uint8ClampedArray,
+): AquarelleEmptyBaseProof {
+  const length = Math.min(display.length, script.length);
+  let informative = 0;
+  let darkerChannels = 0;
+  let maxDarker = 0;
+  for (let i = 0; i + 3 < length; i += 4) {
+    const sr = script[i] ?? 255;
+    const sg = script[i + 1] ?? 255;
+    const sb = script[i + 2] ?? 255;
+    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+    if (1 - min / 255 >= SATURATED_COVERAGE) continue;
+    informative += 1;
+    const dr = sr - (display[i] ?? 255);
+    const dg = sg - (display[i + 1] ?? 255);
+    const db = sb - (display[i + 2] ?? 255);
+    for (const delta of [dr, dg, db]) {
+      if (delta > AQUARELLE_EMPTY_BASE_DARKER_TOLERANCE) {
+        darkerChannels += 1;
+        if (delta > maxDarker) maxDarker = delta;
+      }
+    }
+  }
+  return {
+    proven: informative > 0 && darkerChannels === 0,
+    informative,
+    darkerChannels,
+    maxDarker,
+  };
+}
 
 /**
  * Invert the pigment-alpha law per pixel. `display` is the composite P,
@@ -308,11 +384,28 @@ export async function recoverAquarelleDurableBase(input: {
   // ANY S — see inversionConsistencyStats), so a pair that was not baked
   // together has to be caught here.
   const stats = inversionConsistencyStats(display.data, script.data);
+  const emptyProof = proveEmptyAquarelleBase(display.data, script.data);
+  // 261028-k03e: a display that is never darker than the bake carries no base
+  // pigment at all. This is the common legacy state: a refused/failed Lift left
+  // its engine erase on the live sheet, that sheet became the key payload, and
+  // the composite is now LIGHTER than the script everywhere. The clamped base
+  // is white and there is nothing to preserve — refusing here blocked every
+  // Move/Delete/transform on the frame.
+  if (emptyProof.proven) {
+    return {
+      ok: true,
+      kind: 'empty',
+      meanError: meanAbsoluteChannelError(script.data, display.data),
+      clampRatio: stats.clampRatio,
+      saturatedColorError: stats.saturatedColorError,
+      emptyProof,
+    };
+  }
   if (
     stats.clampRatio > AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO
     || stats.saturatedColorError > AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR
   ) {
-    return { ok: false, reason: 'validation', ...stats };
+    return { ok: false, reason: 'validation', ...stats, emptyProof };
   }
 
   const base: AquarelleBasePixels = {
@@ -340,7 +433,7 @@ export async function recoverAquarelleDurableBase(input: {
   // The remaining gate is the clamp sanity check, not the provenance gate.
   const meanError = meanAbsoluteChannelError(recombined.data, display.data);
   if (!(meanError <= AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR)) {
-    return { ok: false, reason: 'validation', meanError, ...stats };
+    return { ok: false, reason: 'validation', meanError, ...stats, emptyProof };
   }
 
   let bytes: Uint8Array | null = null;
@@ -350,7 +443,15 @@ export async function recoverAquarelleDurableBase(input: {
     return { ok: false, reason: 'encode' };
   }
   if (!bytes || bytes.length === 0) return { ok: false, reason: 'encode' };
-  return { ok: true, bytes, meanError, baseInk: recoveredBaseInk(base), ...stats };
+  return {
+    ok: true,
+    kind: 'base',
+    bytes,
+    meanError,
+    baseInk: recoveredBaseInk(base),
+    ...stats,
+    emptyProof,
+  };
 }
 
 /* ------------------------------------------------------------------ DOM */

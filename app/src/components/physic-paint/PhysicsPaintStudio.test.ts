@@ -4399,10 +4399,12 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(studio).toContain("source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',");
     expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
-    // Seven pin sites by design (re-derived from the source): promotion,
+    // Eight pin sites by design (re-derived from the source): promotion,
     // prepare fallback, first stroke, the 261028-k03 D2 lift-erase durable
-    // rewrite, and the 261028-k03c D4 recovery's TWO writes (the validated
-    // seed, then the single punched base). TWO invalidations stay: Raster
+    // rewrite, the 261028-k03c D4 recovery's TWO writes (the validated seed,
+    // then the single punched base), and the 261028-k03e recoverBase
+    // known-empty adoption (`adoptKnownEmpty` — a `null` entry proves there is
+    // no pre-script pigment to preserve). TWO invalidations stay: Raster
     // replaces the key's content, and the explicit Trash full reset
     // (261027-gh9c) drops the key's cached pixels AND both scripts, so its
     // pinned base is stale as well. The map is NEVER advanced to the composed
@@ -4415,7 +4417,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // strokes were all deleted (no reported script) is rewritten too. It still
     // never advances to the composed output, and each erase path is specified
     // with EXACTLY ONE `set(` statement of its own.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(7);
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(8);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
@@ -4450,7 +4452,9 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
 
     const erase = between(studio, 'const runAquarelleLiftErase = useCallback(', 'const handleAquarelleStrokeEnd = useCallback(');
     const recoveryStart = erase.indexOf("stage: 'base-recovery-start'");
-    const displayRead = erase.indexOf('findCachedRotoDisplayFrameRef.current(plan.frame)');
+    // 261028-k03e: P resolves through the key-payload-first composite seam; the
+    // raw display read now lives only in the raster fallback.
+    const displayRead = erase.indexOf('const display = aquarelleCompositeRef.current(plan.frame);');
     const bake = erase.indexOf('bakeAquarelleEventsToFrame({');
     const recover = erase.indexOf('recoverAquarelleDurableBase({');
     const seed = erase.indexOf('aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);');
@@ -4494,9 +4498,56 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const guard = erase.indexOf('if (plan.recoverBase) {');
     const nonRecoverPunch = erase.indexOf('punchTransmittanceBytes(durable, size, dabs');
     expect(nonRecoverPunch).toBeGreaterThan(guard);
-    const recoverArm = erase.slice(guard, erase.indexOf('} else {', guard));
+    // 261028-k03e adds an inner `if (!display) … else {` arm, so the recover
+    // arm is bounded by the NON-recover arm's durable read, not the first
+    // `} else {` in the block.
+    const nonRecoverArm = erase.indexOf(
+      'const durable = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);',
+      guard,
+    );
+    const recoverArm = erase.slice(guard, nonRecoverArm);
     expect(recoverArm.match(/punchTransmittanceBytes\(/g)?.length ?? 0).toBe(1);
     expect(recoverArm).not.toContain('aquarelleDurableBaseByKeyRef.current.get(plan.keyId)');
+  });
+
+  it('261028-k03e adopts the known-empty base and never leaks a refused lift erase', () => {
+    const ensure = between(
+      studio,
+      'ensureAquarelleDurableBaseRef.current = async (appFrame) => {',
+      '// 261028-k03b: the lift transaction.',
+    );
+    // The recovery composite is key-payload-first and placeholder-filtered.
+    expect(ensure).toContain('const payload = aquarelleCompositeRef.current(appFrame);');
+    expect(studio).toContain('if (!bytes || bytes.length <= AQUARELLE_PLACEHOLDER_MAX_BYTES) return null;');
+    // No pixels anywhere → the script is the whole key: adopt known-empty and
+    // skip the bake entirely (the 2 s stall).
+    expect(ensure).toContain("reason: 'no-visible-payload',");
+    expect(ensure).toContain("map.set(record.keyId, recovery.kind === 'empty' ? null : recovery.bytes);");
+    expect(ensure).toContain("reason: recovery.kind === 'empty' ? 'empty-base-proof' : 'recovered',");
+
+    const erase = between(studio, 'const runAquarelleLiftErase = useCallback(', 'const handleAquarelleStrokeEnd = useCallback(');
+    // ONE known-empty adoption seam for both the no-payload and the proven-empty
+    // arms; a `null` entry means the script owns the frame (no punch).
+    expect(erase).toContain('const adoptKnownEmpty = (reason: string');
+    expect(erase).toContain('aquarelleDurableBaseByKeyRef.current.set(plan.keyId, null);');
+    expect(erase).toContain("adoptKnownEmpty('no-visible-payload');");
+    expect(erase).toContain("adoptKnownEmpty('empty-base-proof', {");
+    expect(erase).toContain('const display = aquarelleCompositeRef.current(plan.frame);');
+
+    // A refused lift must undo the engine's local erase: the erase used to leak
+    // into the next settle capture as the key's pixels.
+    const strokeEnd = between(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
+    const planRefusal = strokeEnd.slice(
+      strokeEnd.indexOf("if (liftPlan?.kind === 'refuse') {"),
+      strokeEnd.indexOf('const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();'),
+    );
+    expect(planRefusal).toContain('aquarelleResetSheetRef.current?.();');
+    expect(planRefusal).toContain('revertAquarelleLiftPreview();');
+    const pinRefusal = strokeEnd.slice(
+      strokeEnd.indexOf('if (liftPlan?.kind === \'erase\' && !liftPlan.recoverBase && liftPlan.willPinBase'),
+    );
+    expect(pinRefusal).toContain('aquarelleResetSheetRef.current?.();');
+    expect(pinRefusal).toContain('revertAquarelleLiftPreview();');
   });
 
   it('261027-k6j resets the Script switch per launch, never on a track switch', () => {
@@ -4668,12 +4719,17 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     const definition = studio.indexOf('ensureAquarelleDurableBaseRef.current = async');
     expect(definition, 'the shared recovery helper exists').toBeGreaterThan(-1);
     const calls = studio.split('await ensureAquarelleDurableBaseRef.current(').length - 1;
-    expect(calls, 'delete + move + appearance + transform').toBe(4);
+    // 261028-k03e: the Apply/Copy target seam joins the four timeline edits.
+    expect(calls, 'delete + move + appearance + transform + apply target').toBe(5);
     for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const call = studio.indexOf('await ensureAquarelleDurableBaseRef.current(', start);
       expect(call, `${handler} recovers before editing`).toBeGreaterThan(start);
     }
+    const applyTarget = studio.indexOf('prepareRotoScriptTargetRef.current = async (source) => {');
+    expect(applyTarget).toBeGreaterThan(-1);
+    expect(studio.indexOf('await ensureAquarelleDurableBaseRef.current(', applyTarget))
+      .toBeGreaterThan(applyTarget);
   });
 });

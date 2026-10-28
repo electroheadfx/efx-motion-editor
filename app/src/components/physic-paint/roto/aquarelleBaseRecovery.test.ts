@@ -18,6 +18,7 @@ import {
   inversionConsistencyStats,
   invertAquarellePigmentCoverage,
   meanAbsoluteChannelError,
+  proveEmptyAquarelleBase,
   recoveredBaseInk,
   recoverAquarelleDurableBase,
   type AquarelleBasePixels,
@@ -221,6 +222,77 @@ describe('recoveredBaseInk', () => {
   });
 });
 
+describe('proveEmptyAquarelleBase (261028-k03e)', () => {
+  it('proves the base empty when the display equals the bake', () => {
+    const script = rgba([
+      [200, 40, 0],
+      [255, 255, 255],
+      [120, 200, 60],
+      [250, 250, 250],
+    ]);
+    // The [5,5,5] pixel is saturated (a ≈ 0.98) — the base is hidden there.
+    expect(proveEmptyAquarelleBase(script, script)).toEqual({
+      proven: true,
+      informative: 3,
+      darkerChannels: 0,
+      maxDarker: 0,
+    });
+  });
+
+  it('proves it when the display is LIGHTER than the bake (erased/stale sheet)', () => {
+    const script = rgba([
+      [200, 40, 0],
+      [120, 200, 60],
+      [5, 5, 5],
+      [100, 100, 100],
+    ]);
+    const display = rgba([
+      [255, 255, 255],
+      [200, 220, 180],
+      [255, 255, 255],
+      [140, 140, 140],
+    ]);
+    const proof = proveEmptyAquarelleBase(display, script);
+    expect(proof.proven).toBe(true);
+    expect(proof.darkerChannels).toBe(0);
+  });
+
+  it('does NOT prove it when a visible pixel is darker than the bake', () => {
+    const script = rgba([
+      [255, 255, 255],
+      [200, 200, 200],
+      [250, 250, 250],
+      [255, 255, 255],
+    ]);
+    const display = rgba([
+      [255, 255, 255],
+      [180, 200, 200],
+      [250, 250, 250],
+      [255, 255, 255],
+    ]);
+    const proof = proveEmptyAquarelleBase(display, script);
+    expect(proof.proven).toBe(false);
+    expect(proof.darkerChannels).toBe(1);
+    expect(proof.maxDarker).toBe(20);
+  });
+
+  it('ignores saturated script pixels, where the base is hidden', () => {
+    // a = 1 − 5/255 ≈ 0.98 everywhere: nothing informative, nothing proven.
+    expect(proveEmptyAquarelleBase(filled(0), filled(5))).toEqual({
+      proven: false,
+      informative: 0,
+      darkerChannels: 0,
+      maxDarker: 0,
+    });
+  });
+
+  it('tolerates WebP/decode slack up to the tolerance', () => {
+    const script = filled(200);
+    expect(proveEmptyAquarelleBase(filled(203), script).proven).toBe(true);
+    expect(proveEmptyAquarelleBase(filled(196), script).proven).toBe(false);
+  });
+});
+
 describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
   const ENCODED = new Uint8Array([1, 2, 3]);
 
@@ -266,6 +338,7 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
 
     expect(result).toEqual({
       ok: true,
+      kind: 'base',
       bytes: ENCODED,
       meanError: AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR,
       // The recovered base is the displayed grey, whose pigment coverage is
@@ -273,6 +346,14 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       baseInk: 1 - 100 / 255,
       clampRatio: 0,
       saturatedColorError: 0,
+      // P (grey) is darker than the white script, so the EMPTY-base proof
+      // cannot claim there is no base pigment.
+      emptyProof: {
+        proven: false,
+        informative: 4,
+        darkerChannels: 12,
+        maxDarker: 155,
+      },
     });
     // The recombined base is the inverted one: a white script copies the display.
     expect(seenBases).toHaveLength(1);
@@ -298,14 +379,23 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       meanError: 4,
       clampRatio: 0,
       saturatedColorError: 0,
+      emptyProof: {
+        proven: false,
+        informative: 4,
+        darkerChannels: 12,
+        maxDarker: 155,
+      },
     });
   });
 
-  it('IN-09: rejects a P/S pair that did not come from the same bake', async () => {
-    // Black pigment at a ≈ 0.902: the inversion implies B ≈ 285 for this
-    // display. The old ≤3/255 recombination gate ACCEPTED this pair (S over
-    // the clamped base lands within 3 of P) — exactly the tautology CR-02
-    // fixed. The provenance signal must reject it before any recombine.
+  it('IN-09: rejects a DARKER P/S pair that did not come from the same bake', async () => {
+    // A dark display over a mid-tone script implies an impossible negative
+    // base (B ≈ −57 on red). The old ≤3/255 recombination gate ACCEPTED this
+    // pair (S over the clamped base lands near P) — exactly the tautology
+    // CR-02 fixed. The provenance signal must reject it before any recombine.
+    // 261028-k03e: the pair is DARKER than the script on every channel; a
+    // LIGHTER pair is the erased/stale-sheet state the empty-base proof
+    // handles separately (see provesEmptyAquarelleBase).
     let recombined = 0;
     const result = await recoverAquarelleDurableBase({
       displayBytes: new Uint8Array([1]),
@@ -313,9 +403,9 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       size: { width: 2, height: 2 },
       appFrame: 4,
       codec: codec({
-        display: pixelsOf(filled(28)),
-        script: pixelsOf(filled(25)),
-        recombined: pixelsOf(filled(25)),
+        display: pixelsOf(filled(10)),
+        script: pixelsOf(rgba([[120, 100, 90], [120, 100, 90], [120, 100, 90], [120, 100, 90]])),
+        recombined: pixelsOf(filled(10)),
         onRecombine: () => {
           recombined += 1;
         },
@@ -380,21 +470,23 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
   });
 
   it('IN-01: maps each leg exception to its own reason', async () => {
-    const failing = (leg: 'decode' | 'recombine' | 'encode'): Partial<AquarelleBaseRecoveryCodec> => ({
-      decode: async () => {
-        if (leg === 'decode') throw new Error('decode exploded');
-        return pixelsOf(filled(255));
-      },
-      recombine: async () => {
-        if (leg === 'recombine') throw new Error('recombine exploded');
-        // A consistent white-over-white recomposition for the encode leg.
-        return pixelsOf(filled(255));
-      },
-      encodePixels: async () => {
-        if (leg === 'encode') throw new Error('encode exploded');
-        return ENCODED;
-      },
-    });
+    // 261028-k03e: the pair must NOT prove the empty base (a grey display over
+    // a white script is darker), or the proof would short-circuit before the
+    // recombine/encode legs.
+    const failing = (leg: 'decode' | 'recombine' | 'encode'): Partial<AquarelleBaseRecoveryCodec> => {
+      const base = codec({
+        display: pixelsOf(filled(100)),
+        script: pixelsOf(filled(255)),
+        recombined: pixelsOf(filled(100)),
+      });
+      if (leg === 'decode') {
+        return { ...base, decode: async () => { throw new Error('decode exploded'); } };
+      }
+      if (leg === 'recombine') {
+        return { ...base, recombine: async () => { throw new Error('recombine exploded'); } };
+      }
+      return { ...base, encodePixels: async () => { throw new Error('encode exploded'); } };
+    };
     for (const leg of ['decode', 'recombine', 'encode'] as const) {
       const result = await recoverAquarelleDurableBase({
         displayBytes: new Uint8Array([1]),
@@ -443,5 +535,41 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       codec: codec({ display, script, recombined: display, encoded: null }),
     });
     expect(encodeFailed).toEqual({ ok: false, reason: 'encode' });
+  });
+
+  it('adopts the EMPTY base (no recombine/encode) when the display is not darker than the bake', async () => {
+    let encoded = 0;
+    let recombined = 0;
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 2, height: 2 },
+      appFrame: 4,
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return pixelsOf(filled(decodes === 1 ? 220 : 200));
+          };
+        })(),
+        recombine: async () => {
+          recombined += 1;
+          return pixelsOf(filled(220));
+        },
+        encodePixels: async () => {
+          encoded += 1;
+          return ENCODED;
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('empty');
+    expect(result.meanError).toBe(20);
+    expect(result.emptyProof).toMatchObject({ proven: true, darkerChannels: 0 });
+    expect(recombined).toBe(0);
+    expect(encoded).toBe(0);
   });
 });

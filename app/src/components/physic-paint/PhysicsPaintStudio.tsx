@@ -3146,6 +3146,10 @@ export function PhysicsPaintStudio() {
       || source.layerId !== launch.layerId
       || source.appFrame !== launch.startFrame
     ) return null;
+    // 261028-k03e: Apply/Copy shares the script publish gate with the timeline
+    // edits, so a reopened/legacy key must recover its pre-script base here
+    // too — otherwise Apply fails closed on the very same frames Move fixed.
+    await ensureAquarelleDurableBaseRef.current(source.appFrame);
 
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
@@ -5925,6 +5929,12 @@ export function PhysicsPaintStudio() {
   // frame while the key holds ~540 kB), so a base recovery inverted against the
   // display frame produces garbage and fails validation. Read the key's own
   // rendered bytes first; the display frame stays the fallback.
+  // 261028-k03e: a key with NO committed pixels stores the engine's 128-byte
+  // transparent placeholder. A 1080×1920 sheet that carries any pigment is
+  // >100 kB, so a payload this small holds no paint and must never be used as
+  // the recovery composite (the old code inverted against it, producing
+  // clampRatio ≈ 0.17 and a blank refusal).
+  const AQUARELLE_PLACEHOLDER_MAX_BYTES = 256;
   const aquarelleKeyPayloadRef = useRef<(frame: number) => { bytes: Uint8Array; width: number; height: number } | null>(() => null);
   aquarelleKeyPayloadRef.current = (frame) => {
     const launch = launchContextRef.current;
@@ -5933,12 +5943,28 @@ export function PhysicsPaintStudio() {
     if (!source || source.kind === 'loop-placeholder') return null;
     const rendered = source.renderedFrame;
     const bytes = rendered.bytes;
-    if (!bytes || bytes.length === 0) return null;
+    if (!bytes || bytes.length <= AQUARELLE_PLACEHOLDER_MAX_BYTES) return null;
     const size = aquarelleLiftSizeRef.current;
     return {
       bytes,
       width: rendered.width ?? size.width,
       height: rendered.height ?? size.height,
+    };
+  };
+  // The recovery composite P: the key payload when it holds pixels, otherwise
+  // the display cache. `null` = no committed pixels ANYWHERE — the script is
+  // the key's complete content and its base is provably empty.
+  const aquarelleCompositeRef = useRef<(frame: number) => { bytes: Uint8Array; width: number; height: number } | null>(() => null);
+  aquarelleCompositeRef.current = (frame) => {
+    const payload = aquarelleKeyPayloadRef.current(frame);
+    if (payload) return payload;
+    const display = findCachedRotoDisplayFrame(frame);
+    if (!display?.bytes || display.bytes.length <= AQUARELLE_PLACEHOLDER_MAX_BYTES) return null;
+    const size = aquarelleLiftSizeRef.current;
+    return {
+      bytes: display.bytes,
+      width: display.width ?? size.width,
+      height: display.height ?? size.height,
     };
   };
   const planAquarelleLiftErase = useCallback((frame: number): AquarelleLiftErasePlan => {
@@ -6037,8 +6063,28 @@ export function PhysicsPaintStudio() {
     if (map.has(record.keyId)) return true;
     const events = getAquarelleEventsForFrame(appFrame);
     if (events.length === 0) return true;
-    const payload = aquarelleKeyPayloadRef.current(appFrame);
-    if (!payload) return false;
+    const payload = aquarelleCompositeRef.current(appFrame);
+    if (!payload) {
+      // 261028-k03e: no committed pixels anywhere. The script IS the key's
+      // complete content, so its pre-script base is the KNOWN-EMPTY base (the
+      // same `null` a blank promotion writes) — never a reason to block the
+      // edit. Adopt it and skip the expensive bake entirely.
+      map.set(record.keyId, null);
+      bumpAquarelleStrokesRevision();
+      studioScriptSnapshot.markDirty();
+      recordAquarelleRenderSplitEvent('lift-erase', {
+        frame: appFrame,
+        trackId,
+        keyId: record.keyId,
+        scripted: true,
+        willPinBase: false,
+        stage: 'base-recovery-ok',
+        source: 'pre-edit',
+        reason: 'no-visible-payload',
+        baseInk: 0,
+      });
+      return true;
+    }
     const size = { width: payload.width, height: payload.height };
     try {
       const baked = await bakeAquarelleEventsToFrame({
@@ -6078,10 +6124,15 @@ export function PhysicsPaintStudio() {
           meanError: recovery.meanError,
           clampRatio: recovery.clampRatio,
           saturatedColorError: recovery.saturatedColorError,
+          darkerChannels: recovery.emptyProof?.darkerChannels ?? null,
         });
         return false;
       }
-      map.set(record.keyId, recovery.bytes);
+      // 261028-k03e: the display is nowhere darker than the bake — there is no
+      // pre-script pigment to preserve, so the known-empty base is the exact
+      // truth. Storing `null` (not a white payload) keeps later publishes on
+      // the raw-bake path with no composite at all.
+      map.set(record.keyId, recovery.kind === 'empty' ? null : recovery.bytes);
       bumpAquarelleStrokesRevision();
       studioScriptSnapshot.markDirty();
       recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6092,10 +6143,12 @@ export function PhysicsPaintStudio() {
         willPinBase: false,
         stage: 'base-recovery-ok',
         source: 'pre-edit',
+        reason: recovery.kind === 'empty' ? 'empty-base-proof' : 'recovered',
         meanError: recovery.meanError,
-        baseInk: recovery.baseInk,
+        baseInk: recovery.kind === 'empty' ? 0 : recovery.baseInk,
         clampRatio: recovery.clampRatio,
         saturatedColorError: recovery.saturatedColorError,
+        darkerChannels: recovery.emptyProof.darkerChannels,
       });
       return true;
     } catch {
@@ -6222,6 +6275,7 @@ export function PhysicsPaintStudio() {
         await rotoPersistenceRef.current.flushLivePixels(plan.frame, plan.trackId);
       } catch {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        aquarelleResetSheetRef.current?.();
         revertAquarelleLiftPreview();
         return;
       }
@@ -6302,74 +6356,107 @@ export function PhysicsPaintStudio() {
           // P = the composite that contains BOTH the script pigment and the
           // pre-script base. Prefer the key payload: the display cache can be a
           // stale transparent placeholder after a settle commit (261028-k03d).
-          const keyPayload = aquarelleKeyPayloadRef.current(plan.frame);
-          const display = keyPayload ?? findCachedRotoDisplayFrameRef.current(plan.frame);
-          if (!display?.bytes || display.bytes.length === 0) {
-            failRecovery('no-display');
-            return;
+          // 261028-k03e: `null` means NEITHER source holds pixels — the script
+          // is the key's complete content and its base is provably empty.
+          const display = aquarelleCompositeRef.current(plan.frame);
+          const adoptKnownEmpty = (reason: string, extra: Record<string, unknown> = {}) => {
+            aquarelleDurableBaseByKeyRef.current.set(plan.keyId, null);
+            bumpAquarelleStrokesRevision();
+            studioScriptSnapshot.markDirty();
+            recordAquarelleRenderSplitEvent('lift-erase', {
+              frame: plan.frame,
+              trackId: plan.trackId,
+              keyId: plan.keyId,
+              scripted: true,
+              willPinBase: false,
+              stage: 'base-recovery-ok',
+              reason,
+              baseInk: 0,
+              ...extra,
+            });
+          };
+          if (!display) {
+            // No punch: the recorded lift event erases through the re-bake, and
+            // an empty base has no payload to punch.
+            adoptKnownEmpty('no-visible-payload');
+          } else {
+            // S = a raw bake of this frame's timeline WITHOUT the lift event
+            // this stroke just recorded — the bake must show the script BEFORE
+            // the erase, exactly what the displayed composite was built from.
+            const events = getAquarelleEventsForFrame(plan.frame).filter((event) => {
+              if (mutationId === undefined) return true;
+              // Dry events carry no engine payload and always stay (D-15).
+              if (!('engine' in event)) return true;
+              const payload = event.engine as AquarelleStrokePayload;
+              return payload.mutationId !== mutationId;
+            });
+            const baked = await bakeAquarelleEventsToFrame({
+              events,
+              size,
+              paper: aquarelleLiftPaperRef.current,
+            });
+            if (abandonIfDrifted('recovery-bake')) return;
+            if (!baked) {
+              failRecovery('bake');
+              return;
+            }
+            const recovery = await recoverAquarelleDurableBase({
+              displayBytes: display.bytes,
+              scriptBytes: baked.bytes,
+              size,
+              appFrame: plan.frame,
+            });
+            if (abandonIfDrifted('recovery-validate')) return;
+            if (!recovery.ok) {
+              failRecovery(recovery.reason, recovery.meanError, recovery.clampRatio, recovery.saturatedColorError);
+              return;
+            }
+            if (recovery.kind === 'empty') {
+              // The display is nowhere darker than the bake: no pre-script
+              // pigment survives. Adopt the known-empty base; the lift event
+              // alone erases through the re-bake (no punch).
+              adoptKnownEmpty('empty-base-proof', {
+                meanError: recovery.meanError,
+                clampRatio: recovery.clampRatio,
+                saturatedColorError: recovery.saturatedColorError,
+                darkerChannels: recovery.emptyProof.darkerChannels,
+              });
+            } else {
+              recordAquarelleRenderSplitEvent('lift-erase', {
+                frame: plan.frame,
+                trackId: plan.trackId,
+                keyId: plan.keyId,
+                scripted: true,
+                willPinBase: false,
+                stage: 'base-recovery-ok',
+                reason: 'recovered',
+                meanError: recovery.meanError,
+                baseInk: recovery.baseInk,
+                clampRatio: recovery.clampRatio,
+                saturatedColorError: recovery.saturatedColorError,
+              });
+              // (d) Adopt the validated base and make the adoption durable first.
+              aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);
+              bumpAquarelleStrokesRevision();
+              studioScriptSnapshot.markDirty();
+              // (e) THE ONE PUNCH of a recoverBase transaction: the recovered
+              // base becomes t^K in the map. The punch above was skipped.
+              const punchedRecovered = await punchTransmittanceBytes(recovery.bytes, size, dabs, {
+                appFrame: plan.frame,
+                shape,
+              });
+              if (abandonIfDrifted('recovery-punch')) return;
+              if (!punchedRecovered) {
+                aquarelleResetSheetRef.current?.();
+                revertAquarelleLiftPreview();
+                publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+                return;
+              }
+              aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedRecovered.bytes);
+              bumpAquarelleStrokesRevision();
+              studioScriptSnapshot.markDirty();
+            }
           }
-          // S = a raw bake of this frame's timeline WITHOUT the lift event this
-          // stroke just recorded — the bake must show the script BEFORE the
-          // erase, exactly what the displayed composite was built from.
-          const events = getAquarelleEventsForFrame(plan.frame).filter((event) => {
-            if (mutationId === undefined) return true;
-            // Dry events carry no engine payload and always stay (D-15).
-            if (!('engine' in event)) return true;
-            const payload = event.engine as AquarelleStrokePayload;
-            return payload.mutationId !== mutationId;
-          });
-          const baked = await bakeAquarelleEventsToFrame({
-            events,
-            size,
-            paper: aquarelleLiftPaperRef.current,
-          });
-          if (abandonIfDrifted('recovery-bake')) return;
-          if (!baked) {
-            failRecovery('bake');
-            return;
-          }
-          const recovery = await recoverAquarelleDurableBase({
-            displayBytes: display.bytes,
-            scriptBytes: baked.bytes,
-            size,
-            appFrame: plan.frame,
-          });
-          if (abandonIfDrifted('recovery-validate')) return;
-          if (!recovery.ok) {
-            failRecovery(recovery.reason, recovery.meanError, recovery.clampRatio, recovery.saturatedColorError);
-            return;
-          }
-          recordAquarelleRenderSplitEvent('lift-erase', {
-            frame: plan.frame,
-            trackId: plan.trackId,
-            keyId: plan.keyId,
-            scripted: true,
-            willPinBase: false,
-            stage: 'base-recovery-ok',
-            meanError: recovery.meanError,
-            baseInk: recovery.baseInk,
-            clampRatio: recovery.clampRatio,
-            saturatedColorError: recovery.saturatedColorError,
-          });
-          // (d) Adopt the validated base and make the adoption durable first.
-          aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);
-          bumpAquarelleStrokesRevision();
-          studioScriptSnapshot.markDirty();
-          // (e) THE ONE PUNCH of a recoverBase transaction: the recovered base
-          // becomes t^K in the map. The pre-existing punch above was skipped.
-          const punchedRecovered = await punchTransmittanceBytes(recovery.bytes, size, dabs, {
-            appFrame: plan.frame,
-            shape,
-          });
-          if (abandonIfDrifted('recovery-punch')) return;
-          if (!punchedRecovered) {
-            revertAquarelleLiftPreview();
-            publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
-            return;
-          }
-          aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedRecovered.bytes);
-          bumpAquarelleStrokesRevision();
-          studioScriptSnapshot.markDirty();
         } else {
           const durable = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);
           if (durable === undefined) {
@@ -6417,6 +6504,7 @@ export function PhysicsPaintStudio() {
         const ok = rebake ? await rebake(getAquarelleEventsForFrame(plan.frame)) : false;
         if (abandonIfDrifted('script-rebake-apply')) return;
         if (!ok) {
+          aquarelleResetSheetRef.current?.();
           revertAquarelleLiftPreview();
           publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
           return;
@@ -6445,16 +6533,23 @@ export function PhysicsPaintStudio() {
         ?? findCachedRotoDisplayFrameRef.current(plan.frame);
       if (!base || !base.bytes || base.bytes.length === 0) {
         publish(AQUARELLE_LIFT_NO_CACHE_REFUSAL);
+        aquarelleResetSheetRef.current?.();
         revertAquarelleLiftPreview();
         return;
       }
+      // 261028-k03e: the raster punch and the commit below are KEY-addressed
+      // (layerId + trackId + appFrame + keyId captured before the await). They
+      // must NOT be dropped by navigation: the user's erase had already landed
+      // on the sheet, and abandoning here made the paint "come back" seconds
+      // later when they left the frame. Only the FRAME-RELATIVE display refresh
+      // stays drift-gated (`commit-ack`).
       const punched = await punchTransmittanceBytes(base.bytes, size, dabs, {
         appFrame: plan.frame,
         shape,
       });
-      if (abandonIfDrifted('raster-punch')) return;
       if (!punched) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        aquarelleResetSheetRef.current?.();
         revertAquarelleLiftPreview();
         return;
       }
@@ -6478,18 +6573,21 @@ export function PhysicsPaintStudio() {
           // The gate above means the map HAS the entry; a missing one here is
           // the reopened-unknown-base case, never a punchable source.
           publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+          aquarelleResetSheetRef.current?.();
           revertAquarelleLiftPreview();
           return;
         } else {
+          // KEY-addressed like the raster punch above: navigation never drops
+          // a durable rewrite whose bytes were already derived.
           const durablePunch = await punchTransmittanceBytes(durableSource, size, dabs, {
             appFrame: plan.frame,
             shape,
           });
-          if (abandonIfDrifted('durable-punch')) return;
           if (!durablePunch) {
             // IN-04: the base is KNOWN here — a punch/codec failure must not be
             // diagnosed as an unknown base.
             publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+            aquarelleResetSheetRef.current?.();
             revertAquarelleLiftPreview();
             return;
           }
@@ -6530,6 +6628,7 @@ export function PhysicsPaintStudio() {
       }
       if (!ok) {
         aquarelleMergeBaseRef.current = previousMergeBase;
+        aquarelleResetSheetRef.current?.();
         revertAquarelleLiftPreview();
         if (launchContextRef.current?.startFrame === plan.frame) publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6626,6 +6725,13 @@ export function PhysicsPaintStudio() {
       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
       : null;
     if (liftPlan?.kind === 'refuse') {
+      // 261028-k03e: the engine already erased the LIVE SHEET during the
+      // gesture. A refusal must undo that local erase, or the next settle /
+      // frame-leave capture commits it as the frame's pixels while the script
+      // still holds the paint — the exact drift that made every later base
+      // recovery fail and blanked the frame.
+      aquarelleResetSheetRef.current?.();
+      revertAquarelleLiftPreview();
       setApplyMessage(liftPlan.message);
       setApplyStatus('error');
       setLastError(liftPlan.message);
@@ -6645,6 +6751,10 @@ export function PhysicsPaintStudio() {
     // recovered, validated and punched by the transaction itself.
     if (liftPlan?.kind === 'erase' && !liftPlan.recoverBase && liftPlan.willPinBase
       && !aquarelleDurableBaseByKeyRef.current.has(liftPlan.keyId)) {
+      // 261028-k03e: same leak as the plan refusal — undo the engine's local
+      // erase so it can never be captured as the key's pixels.
+      aquarelleResetSheetRef.current?.();
+      revertAquarelleLiftPreview();
       setApplyMessage(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
       setApplyStatus('error');
       setLastError(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
