@@ -6368,7 +6368,9 @@ export function PhysicsPaintStudio() {
           });
           if (abandonIfDrifted('durable-punch')) return;
           if (!durablePunch) {
-            publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+            // IN-04: the base is KNOWN here — a punch/codec failure must not be
+            // diagnosed as an unknown base.
+            publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
             revertAquarelleLiftPreview();
             return;
           }
