@@ -16,12 +16,18 @@
 //  4. The sheet snapshot is taken BEFORE the first await and the
 //     frame's in-flight settle capture is drained BEFORE any
 //     base read or capture.
-//  5. The durable gate runs at the punch read AND the set write
-//     back, rewrites a base this very stroke pinned (willPinBase)
-//     with D^K, and never writes twice.
-//  6. The commit is the existing physical-edit transaction:
-//     baseCanvas + pigment-alpha + cachedBase null.
-//  7. The display refresh follows the Apply precedent.
+//  5. RASTER-ONLY: the durable gate runs at the punch read AND the
+//     set write back, rewrites a base this very stroke pinned
+//     (willPinBase) with D^K, and never writes twice.
+//  6. RASTER-ONLY: the commit is the existing physical-edit
+//     transaction: baseCanvas + pigment-alpha + cachedBase null.
+//  7. RASTER-ONLY: the display refresh follows the Apply precedent.
+//  8. SCRIPTED (261028-k03b): never commits the composite — the
+//     bake would discard it. Punch only the durable pre-script base,
+//     end the sheet session, then re-bake the recorded timeline.
+//  9. The engine's own lift dabs drive a live preview on the cached
+//     base; the layer punches in place and never blanks the canvas
+//     while a new URL decodes.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -31,6 +37,7 @@ import { resolve } from 'node:path';
 const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
 const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
 const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount.tsx'), 'utf8');
+const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
 
 function slice(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -58,6 +65,11 @@ const erase = slice(
   studio,
   'const runAquarelleLiftErase = useCallback(',
   'const handleAquarelleStrokeEnd = useCallback(',
+);
+const preview = slice(
+  studio,
+  'const aquarelleLiftPreviewPlanRef',
+  'const runAquarelleLiftErase = useCallback(',
 );
 const layerGate = slice(
   layer,
@@ -142,8 +154,10 @@ describe('Lift preflight ordering (261028-k03 D2)', () => {
   });
 });
 
-describe('Lift erase pipeline order (261028-k03 D2)', () => {
+describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
   it('snapshots the sheet eagerly and drains the settle capture before any base read', () => {
+    // The snapshot is raster-only (a scripted lift never commits the sheet),
+    // but it must still be taken before the async flush.
     const snapshot = erase.indexOf('aquarelleSnapshotRef.current?.()');
     const firstPersistenceAwait = erase.indexOf('await rotoPersistenceRef.current.');
     const flush = erase.indexOf('flushLivePixels(plan.frame, plan.trackId)');
@@ -156,24 +170,44 @@ describe('Lift erase pipeline order (261028-k03 D2)', () => {
     expect(capture).toBeGreaterThan(baseRead);
   });
 
-  it('punches, then rewrites the durable base exactly once for every reported state', () => {
-    const gate = 'plan.scripted || plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)';
-    expect(countOccurrences(erase, gate)).toBe(2);
-    expect(erase).toContain('plan.willPinBase ? punched.bytes : durable');
-    expect(countOccurrences(erase, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(1);
+  it('k03b: a SCRIPTED lift never commits the composite — it punches the durable base and re-bakes', () => {
+    const scripted = erase.slice(erase.indexOf('if (plan.scripted) {'), erase.indexOf('// RASTER-ONLY:'));
+    expect(scripted.length).toBeGreaterThan(0);
+    // The composite punch is what the bake discarded and the script could not
+    // reproduce — it must not exist on this path.
+    expect(scripted).not.toContain('captureLivePixels(');
+    expect(scripted).not.toContain('baseCanvas: punched.canvas');
+    expect(scripted).not.toContain('loadCachedRotoReferenceFrame(');
+    expect(scripted).toContain('aquarelleDurableBaseByKeyRef.current.get(plan.keyId)');
+    expect(scripted).toContain('punchTransmittanceBytes(durable, size, dabs');
+    // The script edit ends the sheet session (the next stroke must re-read the
+    // re-baked cache as its merge base) and replays the frame's timeline.
+    expect(scripted).toContain('aquarelleResetSheetRef.current?.()');
+    expect(scripted).toContain('const rebake = aquarelleRebakeRef.current;');
+    expect(scripted).toContain('await rebake(getAquarelleEventsForFrame(plan.frame))');
+    expect(scripted).toContain('revertAquarelleLiftPreview();');
+    expect(scripted).toContain('publish(AQUARELLE_LIFT_FAILURE_MESSAGE);');
+  });
+
+  it('k03b: the RASTER-ONLY punch still rewrites the durable base exactly once', () => {
+    const raster = erase.slice(erase.indexOf('// RASTER-ONLY:'));
+    const gate = 'plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)';
+    expect(countOccurrences(raster, gate)).toBe(2);
+    expect(raster).toContain('plan.willPinBase ? punched.bytes : durable');
+    expect(countOccurrences(raster, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(1);
     // Nothing is written before the transaction acknowledges.
-    const setIndex = erase.indexOf('aquarelleDurableBaseByKeyRef.current.set(');
-    const okIndex = erase.indexOf('if (!ok) {');
+    const setIndex = raster.indexOf('aquarelleDurableBaseByKeyRef.current.set(');
+    const okIndex = raster.indexOf('if (!ok) {');
     expect(okIndex).toBeGreaterThan(-1);
     expect(setIndex).toBeGreaterThan(okIndex);
     // The merge base is re-pinned BEFORE the commit await (a settle capture
     // enqueued mid-punch must not merge over the pre-erase base) and restored
     // when the transaction does not acknowledge.
-    const mergePin = erase.indexOf('aquarelleMergeBaseRef.current = {');
-    const captureStart = erase.indexOf('captureLivePixels({');
+    const mergePin = raster.indexOf('aquarelleMergeBaseRef.current = {');
+    const captureStart = raster.indexOf('captureLivePixels({');
     expect(mergePin).toBeGreaterThan(-1);
     expect(captureStart).toBeGreaterThan(mergePin);
-    expect(erase).toContain('aquarelleMergeBaseRef.current = previousMergeBase;');
+    expect(raster).toContain('aquarelleMergeBaseRef.current = previousMergeBase;');
   });
 
   it('commits through the existing physical-edit transaction seam', () => {
@@ -185,13 +219,38 @@ describe('Lift erase pipeline order (261028-k03 D2)', () => {
     expect(captureCall).toContain("mergeBlend: 'pigment-alpha'");
     expect(captureCall).toContain('trackId: plan.trackId');
     expect(captureCall).not.toContain('studioActiveTrackId()');
-    expect(captureCall).toContain('liveAlphaCanvas: sheet');
+    expect(captureCall).toContain('liveAlphaCanvas: commitSheet');
   });
 
   it('refreshes the display exactly like the Apply precedent', () => {
     expect(erase).toContain('loadCachedRotoReferenceFrame(');
     expect(erase).toContain('physicPaintVersion.value++');
     expect(erase).toContain('getAppliedPreviewBaseContentToken()');
+  });
+
+  it('k03b: previews the engine dabs on the cached base only for a cached-display lift', () => {
+    expect(preview).toContain("planAquarelleLiftErase(frame).kind === 'erase'");
+    expect(preview).toContain('beginAquarelleLiftPreview(frame)');
+    expect(preview).toContain('pushAquarelleLiftPreviewDab({ x, y, r, amount })');
+    // Stroke end closes the gesture and drops the per-stroke plan cache.
+    expect(studio).toContain('endAquarelleLiftPreview();');
+    expect(studio).toContain('aquarelleLiftPreviewPlanRef.current = null;');
+    // The layer hands over the exact dab the engine applied.
+    expect(layer).toContain('onLiftDab(x, y, r, amount)');
+    expect(mount).toContain('onLiftDab={(x, y, r, amount) => onAquarelleLiftDabRef.current?.(x, y, r, amount)}');
+  });
+
+  it('k03b: the cached base punches in place and double-buffers URL swaps', () => {
+    expect(baseLayer).toContain('punchTransmittanceRgba(');
+    expect(baseLayer).toContain('buildLiftCoverage(dabs');
+    expect(baseLayer).toContain('registerAquarelleLiftPreviewSink');
+    // The visible canvas is never zeroed before the new bytes are decoded —
+    // that reset was the blank flash on every refresh.
+    expect(baseLayer).not.toContain('canvas.width = 0');
+    const decode = baseLayer.indexOf('image.onload = () => {');
+    const draw = baseLayer.indexOf('context.clearRect(0, 0, width, height)');
+    expect(decode).toBeGreaterThan(-1);
+    expect(draw).toBeGreaterThan(decode);
   });
 
   it('queues re-entrant lifts in order and never leaks in-flight', () => {
@@ -216,8 +275,8 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
   });
 
-  it('adds exactly one durable-base set site (3 -> 4)', () => {
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(4);
+  it('adds the two lift durable-base set sites (3 base + scripted + raster)', () => {
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(5);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
   });
 });

@@ -1,10 +1,11 @@
 import type { TargetedMouseEvent } from 'preact';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown } from 'lucide-preact';
+import { ChevronDown, Eraser } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import {
+  aquarelleActiveTool,
   aquarelleBrushMenuOpen,
   aquarelleParams,
   aquarelleScriptRecordingEnabled,
@@ -53,6 +54,11 @@ export interface PhysicsPaintTopBarProps {
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
+  /**
+   * 261028-k03b: select every recorded Lift stroke of the current edit frame
+   * and enter move mode (the Lift tool's Select button).
+   */
+  onSelectLiftStrokes?: () => void;
 }
 
 /**
@@ -161,6 +167,7 @@ export function PhysicsPaintTopBar({
   disabled = false,
   onBrushSizeChange,
   onOpacityChange,
+  onSelectLiftStrokes,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -183,6 +190,11 @@ export function PhysicsPaintTopBar({
   // Water color has no opacity — its canonical Pigment `load` rides this same
   // primary control, so the bar never shows Opacity and Pigment twice.
   const liveOpacity = aquarelleParams.value.load;
+  // 261028-k03b: the Lift tool owns the primary cluster — a Lift-strength
+  // slider (eraser icon) + Select. The brush knobs (size/pigment/water/edges/
+  // grain) do not describe an eraser stroke.
+  const activeTool = aquarelleActiveTool.value;
+  const liftStrength = aquarelleParams.value.lift;
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -204,48 +216,84 @@ export function PhysicsPaintTopBar({
 
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).
           I-11 follow-up: this cluster centers inside the remaining width after
-          the left cluster; the last optional knobs hide via container queries. */}
+          the left cluster; the last optional knobs hide via container queries.
+          261028-k03b: the Lift tool swaps the whole cluster for its own two
+          controls — Strength (eraser icon) + Select lifts. */}
       <div class="physics-paint-topbar-primary">
-        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
-        <TopBarSlider
-          id="physics-aquarelle-pigment"
-          label="Pigment"
-          min={0}
-          max={100}
-          value={liveOpacity}
-          onChange={onOpacityChange}
-          disabled={disabled}
-        />
-        <TopBarSlider
-          id="physics-aquarelle-water"
-          label="Water"
-          min={0}
-          max={100}
-          value={aquarelleParams.value.water}
-          onChange={(value) => setAquarelleParam('water', value)}
-          disabled={disabled}
-          class="physics-paint-topbar-optional-water"
-        />
-        <TopBarSlider
-          id="physics-aquarelle-edges"
-          label="Edges"
-          min={0}
-          max={100}
-          value={aquarelleParams.value.edge}
-          onChange={(value) => setAquarelleParam('edge', value)}
-          disabled={disabled}
-          class="physics-paint-topbar-optional-edges"
-        />
-        <TopBarSlider
-          id="physics-aquarelle-grain"
-          label="Grain"
-          min={0}
-          max={100}
-          value={aquarelleParams.value.granulation}
-          onChange={(value) => setAquarelleParam('granulation', value)}
-          disabled={disabled}
-          class="physics-paint-topbar-optional-grain"
-        />
+        {activeTool === 'lift' ? (
+          <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
+            <div
+              class="physics-paint-topbar-control physics-paint-topbar-slider physics-paint-topbar-lift-strength"
+              data-testid="physics-lift-strength"
+            >
+              <Eraser size={15} aria-hidden="true" />
+              <SliderStepper
+                id="physics-lift-strength"
+                label="Lift strength"
+                value={liftStrength}
+                onChange={(value) => setAquarelleParam('lift', Math.max(5, Math.min(90, Math.round(value))))}
+                step={1}
+                min={5}
+                max={90}
+                disabled={disabled}
+                ariaLabel="Lift strength"
+              />
+            </div>
+            <button
+              type="button"
+              class="physics-paint-segmented-button physics-paint-topbar-lift-select"
+              data-testid="physics-lift-select"
+              onClick={onSelectLiftStrokes}
+              disabled={disabled || onSelectLiftStrokes === undefined}
+              title="Select every Lift stroke on this frame"
+            >
+              Select lifts
+            </button>
+          </div>
+        ) : (
+          <>
+            <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
+            <TopBarSlider
+              id="physics-aquarelle-pigment"
+              label="Pigment"
+              min={0}
+              max={100}
+              value={liveOpacity}
+              onChange={onOpacityChange}
+              disabled={disabled}
+            />
+            <TopBarSlider
+              id="physics-aquarelle-water"
+              label="Water"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.water}
+              onChange={(value) => setAquarelleParam('water', value)}
+              disabled={disabled}
+              class="physics-paint-topbar-optional-water"
+            />
+            <TopBarSlider
+              id="physics-aquarelle-edges"
+              label="Edges"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.edge}
+              onChange={(value) => setAquarelleParam('edge', value)}
+              disabled={disabled}
+              class="physics-paint-topbar-optional-edges"
+            />
+            <TopBarSlider
+              id="physics-aquarelle-grain"
+              label="Grain"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.granulation}
+              onChange={(value) => setAquarelleParam('granulation', value)}
+              disabled={disabled}
+              class="physics-paint-topbar-optional-grain"
+            />
+          </>
+        )}
       </div>
 
     </header>

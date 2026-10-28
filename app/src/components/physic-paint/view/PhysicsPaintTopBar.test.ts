@@ -14,6 +14,7 @@ import {
   aquarelleBrushMenuOpen,
   aquarelleScriptRecordingEnabled,
   setAquarelleScriptRecordingEnabled,
+  setAquarelleTool,
 } from './aquarelleRecordState';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
@@ -243,7 +244,8 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       setActiveModule: () => {},
     }));
     vi.doMock('./aquarelleRecordState', () => ({
-      aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
+      aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35, lift: 22 } },
+      aquarelleActiveTool: { value: 'brush' },
       aquarelleSelectedTipId: { value: 'chalk' },
       aquarelleBrushMenuOpen: { value: false },
       aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
@@ -483,5 +485,43 @@ describe('261027-k6j Script switch', () => {
     expect(onKnob).toContain('translateX(18px)');
     const label = getCssRuleBlock(styles, '.physics-paint-script-switch-label {');
     expect(label).toContain('font-size: 12px');
+  });
+});
+
+
+describe('261028-k03b Lift tool controls', () => {
+  it('swaps the brush cluster for Lift strength + Select lifts', () => {
+    setAquarelleTool('lift');
+    try {
+      const onSelectLiftStrokes = vi.fn();
+      const tree = renderTopBar({ ...baseTopBarProps(), onSelectLiftStrokes });
+      const nodes = childrenOf(tree) as AnyVNode[];
+      const strength = nodes.find((node) => node.props?.['data-testid'] === 'physics-lift-strength');
+      const select = nodes.find((node) => node.props?.['data-testid'] === 'physics-lift-select');
+      expect(strength).toBeDefined();
+      expect(select).toBeDefined();
+      // The brush knobs do not describe an eraser stroke.
+      expect(nodes.some((node) => node.props?.['aria-label'] === 'Brush size')).toBe(false);
+      expect(nodes.some((node) => node.props?.['aria-label'] === 'Pigment')).toBe(false);
+      // The Select button routes to the Studio's current-frame selection.
+      (select!.props?.onClick as () => void)();
+      expect(onSelectLiftStrokes).toHaveBeenCalledTimes(1);
+    } finally {
+      setAquarelleTool('brush');
+    }
+  });
+
+  it('pins the eraser icon, strength bounds and the Select wiring in source', () => {
+    const body = stripComments(topBarSource());
+    expect(body).toContain('<Eraser size={15}');
+    expect(body).toContain('label="Lift strength"');
+    expect(body).toContain("setAquarelleParam('lift'");
+    expect(body).toContain('min={5}');
+    expect(body).toContain('max={90}');
+    expect(body).toContain('onSelectLiftStrokes');
+    // The Layout B control never stacks the icon above the slider.
+    const styles = css();
+    const row = getCssRuleBlock(styles, '.physics-paint-topbar-lift-strength {');
+    expect(row).toContain('flex-direction: row');
   });
 });

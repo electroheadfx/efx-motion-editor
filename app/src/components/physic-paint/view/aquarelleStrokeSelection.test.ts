@@ -39,6 +39,7 @@ import {
   listSelectableAquarelleStrokes,
   readAquarelleStrokeAppearance,
   restoreAquarelleEditSnapshot,
+  selectAquarelleLiftStrokes,
   selectAquarelleStroke,
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
@@ -460,5 +461,34 @@ describe('261024-p5q watercolor appearance edits', () => {
     } finally {
       dispose();
     }
+  });
+});
+
+
+// ============================================================
+//  261028-k03b — the Lift tool's Select button.
+// ============================================================
+describe('261028-k03b select all Lift strokes', () => {
+  it('selects every live Lift stroke of the frame and enters move mode', () => {
+    recordAquarelleStroke(9901, { ...stroke({ points: [point(0.1, 0.5)], playFrame: 701 }), tool: 'lift' });
+    recordAquarelleStroke(9902, stroke({ points: [point(0.2, 0.5)], playFrame: 701 }));
+    recordAquarelleStroke(9903, { ...stroke({ points: [point(0.3, 0.5)], playFrame: 701 }), tool: 'lift' });
+    // Another frame's lift and a tombstoned lift never join the selection.
+    recordAquarelleStroke(9904, { ...stroke({ points: [point(0.1, 0.5)], playFrame: 702 }), tool: 'lift' });
+    recordAquarelleStroke(9905, { ...stroke({ points: [point(0.4, 0.5)], playFrame: 701 }), tool: 'lift' });
+    markAquarelleStrokeDeleted(9905);
+    setAquarelleSelectMode(false);
+    clearScriptStrokeSelection();
+
+    expect(selectAquarelleLiftStrokes(701)).toBe(2);
+    expect(aquarelleSelectMode.value).toBe(true);
+    expect([...aquarelleSelectedStrokeMutationIds.value].sort((a, b) => a - b)).toEqual([9901, 9903]);
+  });
+
+  it('leaves move mode untouched when the frame has no Lift strokes', () => {
+    recordAquarelleStroke(9911, stroke({ points: [point(0.2, 0.5)], playFrame: 703 }));
+    setAquarelleSelectMode(false);
+    expect(selectAquarelleLiftStrokes(703)).toBe(0);
+    expect(aquarelleSelectMode.value).toBe(false);
   });
 });

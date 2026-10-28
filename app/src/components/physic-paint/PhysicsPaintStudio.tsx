@@ -228,6 +228,7 @@ import {
   readAquarelleStrokeAppearance,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
+  selectAquarelleLiftStrokes,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
@@ -246,6 +247,12 @@ import type {
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, punchTransmittanceBytes } from './roto/aquarelleLiftErase';
+import {
+  beginAquarelleLiftPreview,
+  endAquarelleLiftPreview,
+  pushAquarelleLiftPreviewDab,
+  revertAquarelleLiftPreview,
+} from './roto/aquarelleLiftPreview';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 // quick-261023-l35 (T-261023-l35-05): the close path waits at most this long
@@ -5428,7 +5435,21 @@ export function PhysicsPaintStudio() {
   const handleOpacityChange = useCallback((value: number) => {
     setAquarelleParam('load', value);
   }, []);
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange], () => ({
+  // 261028-k03b: the Lift top-bar Select button. Selects every recorded Lift
+  // stroke of the edit frame and enters move mode, so the existing move /
+  // delete / Stroke Settings gestures can target them.
+  const handleSelectLiftStrokes = useCallback(() => {
+    const frame = launchContextRef.current?.startFrame ?? 0;
+    const count = selectAquarelleLiftStrokes(frame);
+    if (count === 0) {
+      setApplyMessage('No Lift strokes on this frame.');
+      setApplyStatus('idle');
+      return;
+    }
+    setApplyMessage(`Selected ${count} Lift stroke${count === 1 ? '' : 's'}.`);
+    setApplyStatus('idle');
+  }, [setApplyMessage, setApplyStatus]);
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, handleSelectLiftStrokes], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
@@ -5441,6 +5462,8 @@ export function PhysicsPaintStudio() {
     // call-time module router as Brush size — watercolor drives
     // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
     onOpacityChange: handleOpacityChange,
+    // 261028-k03b: Lift's Select button (current edit frame).
+    onSelectLiftStrokes: handleSelectLiftStrokes,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -5893,10 +5916,43 @@ export function PhysicsPaintStudio() {
     }
     return { kind: 'erase', frame, trackId, keyId: target.keyId, scripted, willPinBase };
   }, []);
-  // 261028-k03 D2: punch the displayed composite and the durable pre-script
-  // base in linear-light transmittance (t' = t^K), commit through the existing
-  // physical-edit transaction, then sync all three copies. Refs only, so it
-  // stays out of the stroke-end deps and never captures a stale render.
+  // 261028-k03b: the live erase preview. The engine hands over the exact dab
+  // it applied; only a CACHED-display lift needs it — a live sheet already
+  // shows the engine's own erase. The plan is resolved once per stroke here
+  // (a store read per dab would be wasteful) and cleared at stroke end.
+  const aquarelleLiftPreviewPlanRef = useRef<{ frame: number; active: boolean } | null>(null);
+  const handleAquarelleLiftDab = useCallback((x: number, y: number, r: number, amount: number) => {
+    const frame = launchContextRef.current?.startFrame ?? 0;
+    const cached = aquarelleLiftPreviewPlanRef.current;
+    let active: boolean;
+    if (cached !== null && cached.frame === frame) {
+      active = cached.active;
+    } else {
+      active = planAquarelleLiftErase(frame).kind === 'erase';
+      aquarelleLiftPreviewPlanRef.current = { frame, active };
+      if (active) beginAquarelleLiftPreview(frame);
+    }
+    if (!active) return;
+    pushAquarelleLiftPreviewDab({ x, y, r, amount });
+  }, [planAquarelleLiftErase]);
+  // The re-bake seam, mirrored through a ref: this transaction is identity
+  // stable (it must stay out of the stroke-end deps), so it must never close
+  // over a render's controller object.
+  const aquarelleRebakeRef = useRef<((events: ReturnType<typeof getAquarelleEventsForFrame>) => Promise<boolean>) | null>(null);
+  aquarelleRebakeRef.current = (events) => rotoScript.applyAquarelleTimeline(events);
+  // 261028-k03b: the lift transaction. Two truths, by frame state:
+  //
+  //  SCRIPTED (a script existed before this stroke) — the script bake owns the
+  //  displayed frame. Punch ONLY the durable PRE-script base (paint the bake
+  //  cannot recreate) and re-bake through the shared Apply pipeline. A
+  //  composite punch would be discarded by that bake (the visible no-op) and
+  //  the script could never reproduce it elsewhere (copy/apply mismatch).
+  //
+  //  RASTER-ONLY (no script to replay) — the punch IS the frame's content:
+  //  punch the displayed composite, commit through the physical-edit
+  //  transaction, and refresh the display. Permanent (D4).
+  //
+  // Both paths are refs-only so the callback never captures a stale render.
   const runAquarelleLiftErase = useCallback(async (
     plan: Extract<AquarelleLiftErasePlan, { kind: 'erase' }>,
     stroke: AquarelleStroke,
@@ -5927,14 +5983,16 @@ export function PhysicsPaintStudio() {
       const launch = launchContextRef.current;
       if (!launch) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        revertAquarelleLiftPreview();
         return;
       }
-      // EAGER SHEET SNAPSHOT, taken before any asynchronous hop. The live layer
-      // clears the sheet on frame leave, so a read taken later can commit an
-      // empty or wrong-frame capture over the punched base.
-      const sheet = aquarelleSnapshotRef.current?.() ?? null;
-      if (!sheet) {
+      // EAGER SHEET SNAPSHOT (raster-only commits it), taken before any
+      // asynchronous hop. The live layer clears the sheet on frame leave, so a
+      // read taken later can commit an empty or wrong-frame capture.
+      const sheet = plan.scripted ? null : (aquarelleSnapshotRef.current?.() ?? null);
+      if (!plan.scripted && !sheet) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        revertAquarelleLiftPreview();
         return;
       }
       // DRAIN THIS FRAME'S IN-FLIGHT SETTLE CAPTURE before any base is read.
@@ -5948,11 +6006,64 @@ export function PhysicsPaintStudio() {
         await rotoPersistenceRef.current.flushLivePixels(plan.frame, plan.trackId);
       } catch {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        revertAquarelleLiftPreview();
         return;
       }
       const size = aquarelleLiftSizeRef.current;
       const dabs = collectLiftDabs(stroke, size);
-      if (dabs.length === 0) return;
+      if (dabs.length === 0) {
+        revertAquarelleLiftPreview();
+        return;
+      }
+      if (plan.scripted) {
+        // SCRIPT-AUTHORITATIVE. The durable base is the only pre-script paint
+        // the bake cannot recreate; erase it (permanent by nature), then let
+        // the script bake draw the frame with the recorded lift. The event is
+        // already in the timeline (the record ran before this call).
+        const durable = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);
+        if (durable === undefined) {
+          publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+          revertAquarelleLiftPreview();
+          return;
+        }
+        if (durable !== null) {
+          const punchedDurable = await punchTransmittanceBytes(durable, size, dabs, { appFrame: plan.frame });
+          if (!punchedDurable) {
+            publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+            revertAquarelleLiftPreview();
+            return;
+          }
+          aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurable.bytes);
+        }
+        // A script edit ends the live sheet session: the next stroke must
+        // re-read the re-baked cache as its merge base, or its capture would
+        // merge over the PRE-lift paint and resurrect it.
+        aquarelleResetSheetRef.current?.();
+        recordAquarelleRenderSplitEvent('lift-erase', {
+          frame: plan.frame,
+          trackId: plan.trackId,
+          keyId: plan.keyId,
+          scripted: true,
+          willPinBase: false,
+          stage: 'script-rebake',
+        });
+        const rebake = aquarelleRebakeRef.current;
+        const ok = rebake ? await rebake(getAquarelleEventsForFrame(plan.frame)) : false;
+        if (!ok) {
+          revertAquarelleLiftPreview();
+          publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+          return;
+        }
+        setLastError(null);
+        return;
+      }
+      // RASTER-ONLY: no script to replay — the punch IS the content.
+      const commitSheet = sheet;
+      if (!commitSheet) {
+        publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        revertAquarelleLiftPreview();
+        return;
+      }
       // Read the base AFTER the flush — that is what makes the punch use the
       // post-flush cache. A merge base only counts when it is this frame AND
       // this track (two tracks share frame numbers).
@@ -5963,25 +6074,22 @@ export function PhysicsPaintStudio() {
       const base = sessionBase ?? findCachedRotoDisplayFrameRef.current(plan.frame);
       if (!base || !base.bytes || base.bytes.length === 0) {
         publish(AQUARELLE_LIFT_NO_CACHE_REFUSAL);
+        revertAquarelleLiftPreview();
         return;
       }
       const punched = await punchTransmittanceBytes(base.bytes, size, dabs, { appFrame: plan.frame });
       if (!punched) {
         publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
+        revertAquarelleLiftPreview();
         return;
       }
-      // Durable base: `scripted` rewrites an existing base; `willPinBase`
-      // replaces the raster this stroke pinned; a surviving map entry with no
-      // reported script still rewrites (deleted-stroke case). Punching only
-      // `scripted` leaves the pre-erase raster pinned and the next Apply
+      // Durable base: `willPinBase` replaces the raster this stroke pinned; a
+      // surviving map entry still rewrites (deleted-stroke case). Punching
+      // neither leaves the pre-erase raster pinned and the next Apply
       // resurrects the erased pixels.
       let punchedDurableBytes: Uint8Array | null = null;
-      if (plan.scripted || plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
+      if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
         const durable = aquarelleDurableBaseByKeyRef.current.get(plan.keyId);
-        if (plan.scripted && durable === undefined) {
-          publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
-          return;
-        }
         const durableSource = plan.willPinBase ? punched.bytes : durable;
         if (durableSource === null) {
           // A known-empty base stays known-empty.
@@ -5995,11 +6103,13 @@ export function PhysicsPaintStudio() {
           // The gate above means the map HAS the entry; a missing one here is
           // the reopened-unknown-base case, never a punchable source.
           publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+          revertAquarelleLiftPreview();
           return;
         } else {
           const durablePunch = await punchTransmittanceBytes(durableSource, size, dabs, { appFrame: plan.frame });
           if (!durablePunch) {
             publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);
+            revertAquarelleLiftPreview();
             return;
           }
           punchedDurableBytes = durablePunch.bytes;
@@ -6021,7 +6131,7 @@ export function PhysicsPaintStudio() {
         layerId: launch.layerId,
         trackId: plan.trackId,
         appFrame: plan.frame,
-        liveAlphaCanvas: sheet,
+        liveAlphaCanvas: commitSheet,
         cachedBase: null,
         baseCanvas: punched.canvas,
         mergeBlend: 'pigment-alpha',
@@ -6029,12 +6139,13 @@ export function PhysicsPaintStudio() {
       });
       if (!ok) {
         aquarelleMergeBaseRef.current = previousMergeBase;
+        revertAquarelleLiftPreview();
         if (launchContextRef.current?.startFrame === plan.frame) publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
         recordAquarelleRenderSplitEvent('lift-erase', {
           frame: plan.frame,
           trackId: plan.trackId,
           keyId: plan.keyId,
-          scripted: plan.scripted,
+          scripted: false,
           willPinBase: plan.willPinBase,
           stage: 'commit-failed',
         });
@@ -6043,7 +6154,7 @@ export function PhysicsPaintStudio() {
       // The session pin is already in place; the durable base map is the one
       // post-acknowledgement write (a stroke-pinned pre-erase raster becomes
       // D^K), and the key payload is the transaction above.
-      if (plan.scripted || plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
+      if (plan.willPinBase || aquarelleDurableBaseByKeyRef.current.has(plan.keyId)) {
         aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurableBytes);
       }
       // aquarelle-apply-invisible precedent: the cached preview base still
@@ -6064,21 +6175,20 @@ export function PhysicsPaintStudio() {
       }
       // D4: a pixel-only erase is permanent. This covers `willPinBase` too —
       // the base punch never replays, even though the event does.
-      if (!plan.scripted) {
-        setApplyMessage(AQUARELLE_LIFT_PERMANENT_MESSAGE);
-        setApplyStatus('idle');
-        setLastError(null);
-      }
+      setApplyMessage(AQUARELLE_LIFT_PERMANENT_MESSAGE);
+      setApplyStatus('idle');
+      setLastError(null);
       recordAquarelleRenderSplitEvent('lift-erase', {
         frame: plan.frame,
         trackId: plan.trackId,
         keyId: plan.keyId,
-        scripted: plan.scripted,
+        scripted: false,
         willPinBase: plan.willPinBase,
         stage: 'committed',
       });
     } catch {
       if (mergeBasePinned) aquarelleMergeBaseRef.current = previousMergeBase;
+      revertAquarelleLiftPreview();
       publish(AQUARELLE_LIFT_FAILURE_MESSAGE);
     } finally {
       finish();
@@ -6101,6 +6211,12 @@ export function PhysicsPaintStudio() {
     // 261028-k03 D2: the preflight runs BEFORE the pin and the record so a
     // refused lift leaves no event and no half-written base. The record stays
     // SYNCHRONOUS so a re-bake sees the lift in order.
+    if (stroke.tool === 'lift') {
+      // 261028-k03b: the gesture is over; the painted preview stays until the
+      // commit/re-bake replaces it. The per-stroke plan cache must not leak.
+      aquarelleLiftPreviewPlanRef.current = null;
+      endAquarelleLiftPreview();
+    }
     const liftPlan = stroke.tool === 'lift'
       ? planAquarelleLiftErase(launchContextRef.current?.startFrame ?? 0)
       : null;
@@ -7046,7 +7162,7 @@ export function PhysicsPaintStudio() {
   // completion/performance/input telemetry, beforeEngineDestroy, stroke
   // metadata, the brush script overlay) are gone; `onEnginePortReady` is the
   // Wave 3 D8 narrow port the frame-editing controller consumes.
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, setCanvasMounted, handleAquarelleEnginePortReady, launchContext?.layerId, efxPaintVersion.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, getAquarellePaperGrainStrength, getAquarelleLiftBlocked, handleAquarelleLiftBlocked, handleAquarelleLiftDab, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -7071,6 +7187,8 @@ export function PhysicsPaintStudio() {
       // 261028-k03 D3: the pointerdown gate's two legs.
       getAquarelleLiftBlocked,
       onAquarelleLiftBlocked: handleAquarelleLiftBlocked,
+      // 261028-k03b: the live erase preview source (exact engine dabs).
+      onAquarelleLiftDab: handleAquarelleLiftDab,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,

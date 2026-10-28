@@ -252,6 +252,27 @@ export function selectAquarelleStrokeAt(
 }
 
 /**
+ * 261028-k03b: select every recorded Lift stroke of `playFrame` and enter
+ * move mode, so the existing move / delete / Stroke Settings gestures can
+ * target the eraser strokes. Returns the selected count (0 = none, and the
+ * mode is left untouched).
+ */
+export function selectAquarelleLiftStrokes(playFrame: number): number {
+  void aquarelleStrokesRevision.value;
+  const ids: number[] = [];
+  for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
+    if (stroke.tool !== 'lift') continue;
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    ids.push(mutationId);
+  }
+  if (ids.length === 0) return 0;
+  setScriptSelectMode(true);
+  setScriptStrokeSelection(ids);
+  return ids.length;
+}
+
+/**
  * Every selectable stroke of the frame in recording order. Reads the
  * revision so a narrow leaf re-renders when the stroke set changes.
  */

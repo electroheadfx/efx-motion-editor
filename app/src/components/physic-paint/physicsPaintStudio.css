@@ -517,6 +517,26 @@ button.destructive {
   min-width: 140px;
 }
 
+/* 261028-k03b: the Lift tool's primary cluster — eraser icon + Strength
+   slider + Select lifts. The icon shares the slider's row. */
+.physics-paint-topbar-lift {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.physics-paint-topbar-lift-strength {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  min-width: 180px;
+  color: #9aa5b1;
+}
+
+.physics-paint-topbar-lift-select {
+  white-space: nowrap;
+}
+
 /* I-11 follow-up: hide the last optional watercolor knobs as the settings
    area narrows. Order: Grain → Edges; Water and the primary Pigment control
    stay. Thresholds follow the control widths (140px + 10px gap at wide
