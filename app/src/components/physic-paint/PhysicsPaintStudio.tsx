@@ -6274,6 +6274,13 @@ export function PhysicsPaintStudio() {
               return;
             }
             aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurable.bytes);
+            // WR-02: the snapshot content signature is the aquarelle revision
+            // alone and markDirty no-ops on an unchanged one, so the bump is
+            // the load-bearing write — exactly like the other three durable
+            // writes. Without it the pre-punch base can be the one saved and a
+            // leave/return resurrects the erased pixels.
+            bumpAquarelleStrokesRevision();
+            studioScriptSnapshot.markDirty();
           }
         }
         // Shared tail for both scripted arms (row 1/2/3): a script edit ends

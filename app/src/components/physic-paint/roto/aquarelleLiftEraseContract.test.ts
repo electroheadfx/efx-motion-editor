@@ -417,6 +417,22 @@ describe('Lift navigation guard (261028-k03c CR-01)', () => {
     expect(erase).toContain('stillOnEditTarget(pendingPlan.frame, pendingPlan.trackId)');
     expect(erase).toContain("stage: 'queue-navigation-drift',");
   });
+
+  it('WR-02: the non-recover scripted arm bumps the revision and marks dirty after its write', () => {
+    const recoverStart = erase.indexOf('if (plan.recoverBase) {');
+    const nonRecover = erase.slice(
+      erase.indexOf('} else {', recoverStart),
+      erase.indexOf('// Shared tail for both scripted arms'),
+    );
+    const setIndex = nonRecover.indexOf(
+      'aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurable.bytes);',
+    );
+    const bumpIndex = nonRecover.indexOf('bumpAquarelleStrokesRevision();', setIndex);
+    const dirtyIndex = nonRecover.indexOf('studioScriptSnapshot.markDirty();', bumpIndex);
+    expect(setIndex).toBeGreaterThan(-1);
+    expect(bumpIndex).toBeGreaterThan(setIndex);
+    expect(dirtyIndex).toBeGreaterThan(bumpIndex);
+  });
 });
 
 describe('Lift copy and untouched laws (261028-k03)', () => {
