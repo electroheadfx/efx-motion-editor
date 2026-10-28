@@ -81,6 +81,8 @@ export type AquarelleBaseRecoveryResult =
     baseInk: number;
     clampRatio: number;
     saturatedColorError: number;
+    /** Pigment-structure correlation of the pair (see k03g note). */
+    correlation: number;
     emptyProof: AquarelleEmptyBaseProof;
   }
   | {
@@ -90,32 +92,54 @@ export type AquarelleBaseRecoveryResult =
     meanError: number;
     clampRatio: number;
     saturatedColorError: number;
+    correlation: number;
     emptyProof: AquarelleEmptyBaseProof;
   }
   | {
     ok: false;
-    reason: 'decode' | 'recombine' | 'validation' | 'encode';
+    /**
+     * `structure`: the display and the bake do not show the same paint (a
+     * stale/foreign display). Distinct from `validation`, the numeric bounds.
+     */
+    reason: 'decode' | 'recombine' | 'validation' | 'structure' | 'encode';
     meanError?: number;
     clampRatio?: number;
     saturatedColorError?: number;
+    correlation?: number;
     emptyProof?: AquarelleEmptyBaseProof;
   };
 
 /** The acceptance gate: mean absolute RGB error of the recomposition. */
 export const AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR = 3;
 /**
- * The provenance gate: a consistent pair implies an in-gamut base, so out-of-
- * range inversions are evidence the display and the script came from different
- * bakes. The tolerance absorbs WebP/rounding noise; the ratio is per channel.
+ * 261028-k03g: the display can NEVER be reproduced pixel-exactly from the
+ * same script. The engine's stroke jitter/phase is drawn from `Math.random`
+ * (playground/StrokeWriter.ts), NOT from the bake's seeded RNG, so two bakes
+ * of one timeline differ at every wash edge — and the live sheet differs from
+ * both. Measured on a real 1080×1920 frame: clampRatio 0.089–0.113 and
+ * saturatedColorError 12.8–14.2 on two consecutive attempts of the SAME key.
+ * The old 0.002/12 gates therefore refused every legacy key for good
+ * (Lift reverted ~1 s later, every Move/Delete blocked). They stay as coarse
+ * sanity bounds; the provenance signal that survives jitter is the pigment
+ * STRUCTURE correlation below.
  */
-export const AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO = 0.002;
+export const AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO = 0.3;
 /** Raw inverted B may overshoot the gamut by this much before it counts. */
 const CLAMP_VIOLATION_TOLERANCE = 8;
 /**
  * Where the script is saturated the composite must show the pigment colour:
- * P = C within (1 − 0.97)·255 ≈ 7.65 plus decode slack.
+ * P = C within (1 − 0.97)·255 ≈ 7.65 plus decode slack, plus the edge drift
+ * of a non-reproducible replay (see above).
  */
-export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 12;
+export const AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR = 32;
+/**
+ * The jitter-robust provenance signal: the display and the bake must show the
+ * SAME paint. Their darkness maps are compared by Pearson correlation (sampled
+ * 1/16 of the pixels); edge drift keeps it high, a different frame or a stale
+ * display drops it near zero. When either map has no variance the correlation
+ * carries no information and reads 1 — the numeric gates still apply.
+ */
+export const AQUARELLE_BASE_RECOVERY_MIN_CORRELATION = 0.25;
 
 /** Pigment coverage above this is saturated — the base is fully hidden. */
 const SATURATED_COVERAGE = 0.97;
@@ -314,6 +338,115 @@ export function meanAbsoluteChannelError(
   return count === 0 ? Infinity : sum / count;
 }
 
+export interface AquarellePigmentStructure {
+  /** Pearson correlation of the darkness maps, 1 when either has no variance. */
+  correlation: number;
+  /** Sampled pixels the correlation compared. */
+  samples: number;
+}
+
+/**
+ * 261028-k03g: do the display and the bake show the SAME paint?
+ *
+ * The exact-inverse gates cannot answer that once playback is not
+ * reproducible: the engine's stroke jitter comes from `Math.random`, so a
+ * re-bake of one script differs at every wash edge. Structure survives that
+ * drift — the same blob in the same place correlates near 1 — while a stale
+ * display, a different frame, or a raster base the script never painted drops
+ * the correlation. Sampled every 4th pixel on each axis: 1/16 of a 2 MP frame
+ * is plenty and costs a few milliseconds.
+ */
+export function pigmentStructureCorrelation(
+  display: Uint8ClampedArray,
+  script: Uint8ClampedArray,
+): AquarellePigmentStructure {
+  const length = Math.min(display.length, script.length);
+  // Small buffers (tests, tiles) compare every pixel; a full 2 MP frame
+  // compares every 4th, which is still 500k samples and a few milliseconds.
+  const stride = length > 800_000 ? 16 : 4;
+  let samples = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumYY = 0;
+  let sumXY = 0;
+  for (let i = 0; i + 3 < length; i += stride) {
+    const dr = 255 - (display[i] ?? 255);
+    const dg = 255 - (display[i + 1] ?? 255);
+    const db = 255 - (display[i + 2] ?? 255);
+    const sr = 255 - (script[i] ?? 255);
+    const sg = 255 - (script[i + 1] ?? 255);
+    const sb = 255 - (script[i + 2] ?? 255);
+    const x = dr > dg ? (dr > db ? dr : db) : dg > db ? dg : db;
+    const y = sr > sg ? (sr > sb ? sr : sb) : sg > sb ? sg : sb;
+    samples += 1;
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumYY += y * y;
+    sumXY += x * y;
+  }
+  if (samples < 4) return { correlation: 1, samples };
+  const varianceX = samples * sumXX - sumX * sumX;
+  const varianceY = samples * sumYY - sumY * sumY;
+  if (!(varianceX > 1e-6) || !(varianceY > 1e-6)) return { correlation: 1, samples };
+  const correlation = (samples * sumXY - sumX * sumY) / Math.sqrt(varianceX * varianceY);
+  return {
+    correlation: Number.isFinite(correlation) ? Math.max(-1, Math.min(1, correlation)) : 1,
+    samples,
+  };
+}
+
+/**
+ * 261028-k03g: the recombination error measured ONLY where the inferred base
+ * is representable.
+ *
+ * The inversion is an exact inverse in gamut, so `meanAbsoluteChannelError` is
+ * tautological there; where the raw base clamps, the recombination is EXPECTED
+ * to differ and says nothing about the base's quality. Saturated pixels are
+ * skipped too — the base is hidden there and the comparison is the
+ * saturated-colour signal. `Infinity` when nothing is measurable, so a
+ * measurement-free pair can never pass.
+ */
+export function meanAbsoluteChannelErrorOutsideClampedBases(
+  display: Uint8ClampedArray,
+  script: Uint8ClampedArray,
+  recombined: Uint8ClampedArray,
+): number {
+  const length = Math.min(display.length, script.length, recombined.length);
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i + 3 < length; i += 4) {
+    const sr = script[i] ?? 255;
+    const sg = script[i + 1] ?? 255;
+    const sb = script[i + 2] ?? 255;
+    const min = sr < sg ? (sr < sb ? sr : sb) : sg < sb ? sg : sb;
+    const coverage = 1 - min / 255;
+    // Saturated pixels hide the base entirely: their recombination difference
+    // is the saturated-colour signal, not a base-quality signal.
+    if (coverage >= SATURATED_COVERAGE) continue;
+    // No pigment copies the display (B = P and the recombination returns it),
+    // so those pixels stay in: they are the cheapest real check of the codec.
+    const inverse = 1 / (1 - coverage);
+    const rawR = ((display[i] ?? 255) - (sr - min)) * inverse;
+    const rawG = ((display[i + 1] ?? 255) - (sg - min)) * inverse;
+    const rawB = ((display[i + 2] ?? 255) - (sb - min)) * inverse;
+    if (inGamut(rawR)) {
+      sum += Math.abs((recombined[i] ?? 0) - (display[i] ?? 0));
+      count += 1;
+    }
+    if (inGamut(rawG)) {
+      sum += Math.abs((recombined[i + 1] ?? 0) - (display[i + 1] ?? 0));
+      count += 1;
+    }
+    if (inGamut(rawB)) {
+      sum += Math.abs((recombined[i + 2] ?? 0) - (display[i + 2] ?? 0));
+      count += 1;
+    }
+  }
+  return count === 0 ? Infinity : sum / count;
+}
+
 /** Diagnostic scalar: mean pigment coverage of a pixel buffer (0..1). */
 export function recoveredBaseInk(pixels: AquarelleBasePixels): number {
   const data = pixels.data;
@@ -382,9 +515,14 @@ export async function recoverAquarelleDurableBase(input: {
 
   // Provenance FIRST: the recombination alone is tautological (it returns P for
   // ANY S — see inversionConsistencyStats), so a pair that was not baked
-  // together has to be caught here.
+  // together has to be caught here. The structure correlation is the only one
+  // of the three signals that survives a non-reproducible replay (k03g).
   const stats = inversionConsistencyStats(display.data, script.data);
   const emptyProof = proveEmptyAquarelleBase(display.data, script.data);
+  const correlation = pigmentStructureCorrelation(display.data, script.data).correlation;
+  if (correlation < AQUARELLE_BASE_RECOVERY_MIN_CORRELATION) {
+    return { ok: false, reason: 'structure', ...stats, correlation, emptyProof };
+  }
   // 261028-k03e: a display that is never darker than the bake carries no base
   // pigment at all. This is the common legacy state: a refused/failed Lift left
   // its engine erase on the live sheet, that sheet became the key payload, and
@@ -398,6 +536,7 @@ export async function recoverAquarelleDurableBase(input: {
       meanError: meanAbsoluteChannelError(script.data, display.data),
       clampRatio: stats.clampRatio,
       saturatedColorError: stats.saturatedColorError,
+      correlation,
       emptyProof,
     };
   }
@@ -405,7 +544,7 @@ export async function recoverAquarelleDurableBase(input: {
     stats.clampRatio > AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO
     || stats.saturatedColorError > AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR
   ) {
-    return { ok: false, reason: 'validation', ...stats, emptyProof };
+    return { ok: false, reason: 'validation', ...stats, correlation, emptyProof };
   }
 
   const base: AquarelleBasePixels = {
@@ -431,9 +570,15 @@ export async function recoverAquarelleDurableBase(input: {
   }
 
   // The remaining gate is the clamp sanity check, not the provenance gate.
-  const meanError = meanAbsoluteChannelError(recombined.data, display.data);
+  // 261028-k03g: measured only where the inversion did NOT clamp — a clamped
+  // channel's recombination difference is expected and carries no signal.
+  const meanError = meanAbsoluteChannelErrorOutsideClampedBases(
+    display.data,
+    script.data,
+    recombined.data,
+  );
   if (!(meanError <= AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR)) {
-    return { ok: false, reason: 'validation', meanError, ...stats, emptyProof };
+    return { ok: false, reason: 'validation', meanError, ...stats, correlation, emptyProof };
   }
 
   let bytes: Uint8Array | null = null;
@@ -450,6 +595,7 @@ export async function recoverAquarelleDurableBase(input: {
     meanError,
     baseInk: recoveredBaseInk(base),
     ...stats,
+    correlation,
     emptyProof,
   };
 }

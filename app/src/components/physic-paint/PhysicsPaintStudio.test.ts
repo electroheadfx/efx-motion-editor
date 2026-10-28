@@ -4390,7 +4390,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const recorder = between(studio, 'recordAquarelleOrdinaryDurableBaseRef.current = (appFrame) => {', 'const handleAquarelleCaptureFrame');
     expect(recorder).toContain("if (target.kind !== 'ordinary-key') return;");
     expect(recorder).toContain('if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) return;');
-    expect(recorder).toContain('if (getAquarelleEventsForFrame(appFrame).length > 0) {');
+    // 261028-k03g: a STROKE script owns the frame — Dry is a global sheet
+    // action and must not poison every later pin once one Dry exists.
+    expect(recorder).toContain('if (hasAquarelleScriptForFrame(appFrame)) {');
+    expect(recorder).not.toContain('getAquarelleEventsForFrame(appFrame).length > 0');
     expect(recorder).toContain("reason: 'script-already-present',");
     expect(recorder).toContain('const bytes = new Uint8Array(baseBytes);');
     expect(recorder).toContain('aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);');

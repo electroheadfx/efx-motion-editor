@@ -6130,6 +6130,7 @@ export function PhysicsPaintStudio() {
           meanError: recovery.meanError,
           clampRatio: recovery.clampRatio,
           saturatedColorError: recovery.saturatedColorError,
+          correlation: recovery.correlation ?? null,
           darkerChannels: recovery.emptyProof?.darkerChannels ?? null,
         });
         return false;
@@ -6154,6 +6155,7 @@ export function PhysicsPaintStudio() {
         baseInk: recovery.kind === 'empty' ? 0 : recovery.baseInk,
         clampRatio: recovery.clampRatio,
         saturatedColorError: recovery.saturatedColorError,
+        correlation: recovery.correlation,
         darkerChannels: recovery.emptyProof.darkerChannels,
       });
       return true;
@@ -6326,6 +6328,7 @@ export function PhysicsPaintStudio() {
             meanError?: number,
             clampRatio?: number,
             saturatedColorError?: number,
+            correlation?: number,
           ) => {
             aquarelleLiftRecoveryFailedRef.current.add(plan.keyId);
             recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6339,6 +6342,7 @@ export function PhysicsPaintStudio() {
               meanError: meanError ?? null,
               clampRatio: clampRatio ?? null,
               saturatedColorError: saturatedColorError ?? null,
+              correlation: correlation ?? null,
             });
             if (mutationId !== undefined && deleteAquarelleStrokesFromScript([mutationId]) > 0) {
               studioScriptSnapshot.markDirty();
@@ -6414,7 +6418,13 @@ export function PhysicsPaintStudio() {
             });
             if (abandonIfDrifted('recovery-validate')) return;
             if (!recovery.ok) {
-              failRecovery(recovery.reason, recovery.meanError, recovery.clampRatio, recovery.saturatedColorError);
+              failRecovery(
+                recovery.reason,
+                recovery.meanError,
+                recovery.clampRatio,
+                recovery.saturatedColorError,
+                recovery.correlation,
+              );
               return;
             }
             if (recovery.kind === 'empty') {
@@ -6425,6 +6435,7 @@ export function PhysicsPaintStudio() {
                 meanError: recovery.meanError,
                 clampRatio: recovery.clampRatio,
                 saturatedColorError: recovery.saturatedColorError,
+                correlation: recovery.correlation,
                 darkerChannels: recovery.emptyProof.darkerChannels,
               });
             } else {
@@ -6440,6 +6451,7 @@ export function PhysicsPaintStudio() {
                 baseInk: recovery.baseInk,
                 clampRatio: recovery.clampRatio,
                 saturatedColorError: recovery.saturatedColorError,
+                correlation: recovery.correlation,
               });
               // (d) Adopt the validated base and make the adoption durable first.
               aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);
@@ -7299,12 +7311,18 @@ export function PhysicsPaintStudio() {
     const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame });
     if (target.kind !== 'ordinary-key') return;
     if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) return;
-    // A frame that already carries a script began it in an EARLIER sheet
-    // session (this launch's first stroke always arrives with zero events).
-    // Its current pixels are a flattened composite, not the pre-script base —
-    // recording them would double the earlier strokes on the next bake. Leave
-    // the base UNKNOWN: the script publish fails closed instead.
-    if (getAquarelleEventsForFrame(appFrame).length > 0) {
+    // A frame that already carries a STROKE script began it in an EARLIER
+    // sheet session (this launch's first stroke always arrives with zero
+    // strokes). Its current pixels are a flattened composite, not the
+    // pre-script base — recording them would double the earlier strokes on
+    // the next bake. Leave the base UNKNOWN: the script publish fails closed
+    // instead.
+    // 261028-k03g: Dry is a GLOBAL sheet action (D-15), not a key's script.
+    // `getAquarelleEventsForFrame` returns every Dry event, so after the first
+    // Dry of a session this guard refused EVERY new key and no base was ever
+    // pinned again (render-split: 10/10 refusals for `script-already-present`
+    // on a frame with zero strokes). Only a recorded stroke owns a frame.
+    if (hasAquarelleScriptForFrame(appFrame)) {
       recordAquarelleRenderSplitEvent('durable-base-record', {
         appFrame,
         keyId: target.keyId,
@@ -7322,14 +7340,25 @@ export function PhysicsPaintStudio() {
     } catch {
       baseBytes = null;
     }
-    if (!baseBytes) {
-      recordAquarelleRenderSplitEvent('durable-base-record', {
-        appFrame,
-        keyId: target.keyId,
-        recorded: false,
-        reason: record ? 'payload-unavailable' : 'record-unavailable',
-      });
-      return;
+    // 261028-k03g: a freshly pasted key can hold the engine's ~128-byte
+    // transparent placeholder while its pixels are only in the display cache.
+    // Pinning that placeholder as the pre-script base would erase the key's
+    // raster on the next bake — never adopt a payload that holds no paint.
+    let baseSource = 'pre-script-key-record';
+    if (!baseBytes || baseBytes.length <= AQUARELLE_PLACEHOLDER_MAX_BYTES) {
+      const display = findCachedRotoDisplayFrameRef.current(appFrame);
+      if (display?.bytes && display.bytes.length > AQUARELLE_PLACEHOLDER_MAX_BYTES) {
+        baseBytes = display.bytes;
+        baseSource = 'pre-script-display';
+      } else {
+        recordAquarelleRenderSplitEvent('durable-base-record', {
+          appFrame,
+          keyId: target.keyId,
+          recorded: false,
+          reason: record ? 'payload-unavailable' : 'record-unavailable',
+        });
+        return;
+      }
     }
     const bytes = new Uint8Array(baseBytes);
     aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);
@@ -7337,7 +7366,7 @@ export function PhysicsPaintStudio() {
       appFrame,
       keyId: target.keyId,
       recorded: true,
-      source: 'pre-script-key-record',
+      source: baseSource,
     }, { baseInk: bytes });
     recordAquarelleAlphaProof('durable-base-alpha', {
       appFrame,

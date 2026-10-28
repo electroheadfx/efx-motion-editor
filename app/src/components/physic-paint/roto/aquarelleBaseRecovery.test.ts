@@ -15,9 +15,12 @@ import {
   AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO,
   AQUARELLE_BASE_RECOVERY_MAX_MEAN_ERROR,
   AQUARELLE_BASE_RECOVERY_MAX_SATURATED_COLOR_ERROR,
+  AQUARELLE_BASE_RECOVERY_MIN_CORRELATION,
   inversionConsistencyStats,
   invertAquarellePigmentCoverage,
   meanAbsoluteChannelError,
+  meanAbsoluteChannelErrorOutsideClampedBases,
+  pigmentStructureCorrelation,
   proveEmptyAquarelleBase,
   recoveredBaseInk,
   recoverAquarelleDurableBase,
@@ -346,6 +349,9 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       baseInk: 1 - 100 / 255,
       clampRatio: 0,
       saturatedColorError: 0,
+      // Both maps are constant, so the structure correlation has no variance
+      // to read and reports 1 (k03g) — the numeric gates still apply.
+      correlation: 1,
       // P (grey) is darker than the white script, so the EMPTY-base proof
       // cannot claim there is no base pigment.
       emptyProof: {
@@ -379,6 +385,7 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
       meanError: 4,
       clampRatio: 0,
       saturatedColorError: 0,
+      correlation: 1,
       emptyProof: {
         proven: false,
         informative: 4,
@@ -571,5 +578,132 @@ describe('recoverAquarelleDurableBase (fail-closed gate)', () => {
     expect(result.emptyProof).toMatchObject({ proven: true, darkerChannels: 0 });
     expect(recombined).toBe(0);
     expect(encoded).toBe(0);
+  });
+});
+
+// ============================================================
+//  261028-k03g — the gates must survive a NON-reproducible
+//  replay. The engine's stroke jitter/phase comes from
+//  Math.random, so a bake of one script never equals the live
+//  sheet (measured: clamp 0.089–0.113, satErr 12.8–14.2). The
+//  old 0.002/12 gates refused every legacy key for good.
+// ============================================================
+describe('261028-k03g recovery provable on a real, jittered pair', () => {
+  it('correlates the same paint and rejects a foreign display', () => {
+    const same = pigmentStructureCorrelation(
+      rgba([[10, 10, 10], [200, 200, 200], [120, 120, 120], [40, 40, 40]]),
+      rgba([[20, 20, 20], [190, 190, 190], [130, 130, 130], [50, 50, 50]]),
+    );
+    expect(same.correlation).toBeGreaterThan(0.95);
+
+    const foreign = pigmentStructureCorrelation(
+      rgba([[0, 0, 0], [255, 255, 255], [0, 0, 0], [255, 255, 255]]),
+      rgba([[255, 255, 255], [0, 0, 0], [255, 255, 255], [0, 0, 0]]),
+    );
+    expect(foreign.correlation).toBeLessThan(0);
+    expect(foreign.correlation).toBeLessThan(AQUARELLE_BASE_RECOVERY_MIN_CORRELATION);
+  });
+
+  it('reads 1 when either map has no structure to compare', () => {
+    const structure = pigmentStructureCorrelation(filled(10), filled(200));
+    expect(structure.correlation).toBe(1);
+    expect(structure.samples).toBeGreaterThan(0);
+  });
+
+  it('accepts a JITTERED pair whose clamp ratio is far above the old 0.002 gate', async () => {
+    // S = (228,148,128): a ≈ 0.498, a·C = (100,20,0).
+    // Four display pixels at (90,70,50) imply B_red ≈ −20 (clamped); four at
+    // (150,70,50) imply B_red ≈ 100 (in gamut). 4/24 channels clamp = 0.167.
+    let encoded = 0;
+    const display = rgba([
+      [90, 70, 50], [90, 70, 50], [90, 70, 50], [90, 70, 50],
+      [150, 70, 50], [150, 70, 50], [150, 70, 50], [150, 70, 50],
+    ]);
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 8, height: 1 },
+      appFrame: 4,
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return decodes === 1
+              ? { data: display, width: 8, height: 1 }
+              : { data: rgba(new Array(8).fill([228, 148, 128]) as Triple[]), width: 8, height: 1 };
+          };
+        })(),
+        recombine: async () => ({ data: new Uint8ClampedArray(display), width: 8, height: 1 }),
+        encodePixels: async () => {
+          encoded += 1;
+          return new Uint8Array([1, 2, 3]);
+        },
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.kind).toBe('base');
+    expect(result.clampRatio).toBeGreaterThan(0.002);
+    expect(result.clampRatio).toBeLessThanOrEqual(AQUARELLE_BASE_RECOVERY_MAX_CLAMP_RATIO);
+    // The clamped red channel is excluded from the fidelity mean.
+    expect(result.meanError).toBe(0);
+    expect(result.correlation).toBe(1);
+    expect(encoded).toBe(1);
+  });
+
+  it('refuses a display that shows a different picture, before any recombine', async () => {
+    let recombined = 0;
+    const result = await recoverAquarelleDurableBase({
+      displayBytes: new Uint8Array([1]),
+      scriptBytes: new Uint8Array([2]),
+      size: { width: 4, height: 1 },
+      appFrame: 4,
+      codec: {
+        decode: (() => {
+          let decodes = 0;
+          return async () => {
+            decodes += 1;
+            return decodes === 1
+              ? { data: rgba([[0, 0, 0], [255, 255, 255], [0, 0, 0], [255, 255, 255]]), width: 4, height: 1 }
+              : { data: rgba([[255, 255, 255], [120, 120, 120], [255, 255, 255], [120, 120, 120]]), width: 4, height: 1 };
+          };
+        })(),
+        recombine: async () => {
+          recombined += 1;
+          return pixelsOf(filled(0));
+        },
+        encodePixels: async () => new Uint8Array([1, 2, 3]),
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('structure');
+    expect(result.correlation).toBeLessThan(AQUARELLE_BASE_RECOVERY_MIN_CORRELATION);
+    expect(recombined).toBe(0);
+  });
+});
+
+describe('261028-k03g meanAbsoluteChannelErrorOutsideClampedBases', () => {
+  it('skips a clamped channel and measures the rest', () => {
+    // S = (228,148,128) → a ≈ 0.498; P_red = 90 implies a clamped B_red.
+    const script = rgba([[228, 148, 128]]);
+    const display = rgba([[90, 70, 50]]);
+    const recombined = rgba([[100, 70, 50]]);
+    expect(meanAbsoluteChannelErrorOutsideClampedBases(display, script, recombined)).toBe(0);
+  });
+
+  it('measures a no-pigment pixel like the plain mean', () => {
+    expect(
+      meanAbsoluteChannelErrorOutsideClampedBases(filled(100), filled(255), filled(104)),
+    ).toBe(4);
+  });
+
+  it('is Infinity when every script pixel is saturated (nothing measurable)', () => {
+    expect(
+      meanAbsoluteChannelErrorOutsideClampedBases(filled(10), filled(0), filled(10)),
+    ).toBe(Infinity);
   });
 });
