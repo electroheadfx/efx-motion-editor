@@ -1844,20 +1844,17 @@ async function encodeAquarelleWebpFrame(frame: CanvasImageSource, width: number,
 }
 
 /**
- * 261018: Apply seam for aquarelle scripts — replay the payload timeline
- * through the aquarelle engine and publish the wash onto the target key.
- * Engine-1 `enqueueRecordedStroke` draws only the guide line; this runs the
- * fluid sim so the wash (bleed, granulation, tide lines) is what lands.
+ * 261028-k03c D4: replay a payload timeline into ONE settled frame and return
+ * its bytes. Shared by Apply and by the legacy scripted-Lift base recovery, so
+ * both see exactly the same bake the script would produce.
  */
-export async function applyAquarelleEventsToKey(input: {
+export async function bakeAquarelleEventsToFrame(input: {
   events: readonly AquarellePayloadEvent[];
-  target: { keyId: string; appFrame: number };
   size: { width: number; height: number };
   paper: AquarelleBakePaper;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
-  publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
-}): Promise<boolean> {
+}): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
   const adapter = await createDefaultAquarelleAdapter(input.size, input.paper);
   const bake = defaultCreateAquarelleBake(adapter, {
     width: input.size.width,
@@ -1874,23 +1871,52 @@ export async function applyAquarelleEventsToKey(input: {
   });
   try {
     const result = await bake.bake(input.events);
-    if (!result.ok) return false;
+    if (!result.ok) return null;
     const last = result.frames[result.frames.length - 1];
-    if (!last) return false;
+    if (!last) return null;
     await bake.flush();
-    return input.publish({
-      keyId: input.target.keyId,
-      appFrame: input.target.appFrame,
-      bytes: last.bytes,
-      width: last.width,
-      height: last.height,
-    });
+    return { bytes: last.bytes, width: last.width, height: last.height };
   } finally {
     bake.dispose();
-    // Release the offscreen aquarelle WebGL surface — one Apply must not leave
+    // Release the offscreen aquarelle WebGL surface — one bake must not leave
     // a live context competing with the Studio's own sheet.
     adapter.dispose();
   }
+}
+
+/**
+ * 261018: Apply seam for aquarelle scripts — replay the payload timeline
+ * through the aquarelle engine and publish the wash onto the target key.
+ * Engine-1 `enqueueRecordedStroke` draws only the guide line; this runs the
+ * fluid sim so the wash (bleed, granulation, tide lines) is what lands.
+ *
+ * 261028-k03c: publish now runs AFTER the bake helper disposed its engine — the
+ * baked bytes are self-contained, so the visible behaviour is unchanged and the
+ * per-frame WebGL surface is released before the caller writes the key.
+ */
+export async function applyAquarelleEventsToKey(input: {
+  events: readonly AquarellePayloadEvent[];
+  target: { keyId: string; appFrame: number };
+  size: { width: number; height: number };
+  paper: AquarelleBakePaper;
+  /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
+  onStrokeFed?: (completed: number, total: number) => void;
+  publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
+}): Promise<boolean> {
+  const baked = await bakeAquarelleEventsToFrame({
+    events: input.events,
+    size: input.size,
+    paper: input.paper,
+    onStrokeFed: input.onStrokeFed,
+  });
+  if (!baked) return false;
+  return input.publish({
+    keyId: input.target.keyId,
+    appFrame: input.target.appFrame,
+    bytes: baked.bytes,
+    width: baked.width,
+    height: baked.height,
+  });
 }
 
 /** Default engine-2 adapter — lazy so the fluid engine stays out of the UI chunk. */

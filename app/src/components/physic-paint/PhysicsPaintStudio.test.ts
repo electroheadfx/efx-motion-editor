@@ -4370,8 +4370,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(pinIndex).toBeGreaterThan(peekIndex);
     expect(eventIndex).toBeGreaterThan(pinIndex);
     // The pin only means something for a script that is about to start:
-    // Script Off pins nothing.
-    const branchIndex = strokeEnd.indexOf('if (scriptRecordingOn) {');
+    // Script Off pins nothing. 261028-k03c D4 also skips it for a recoverBase
+    // lift — that pin can only refuse with `script-already-present` on a
+    // pre-scripted frame.
+    const branchIndex = strokeEnd.indexOf('if (scriptRecordingOn && !(liftPlan?.kind === \'erase\' && liftPlan.recoverBase)) {');
     expect(branchIndex).toBeGreaterThan(-1);
     expect(branchIndex).toBeLessThan(pinIndex);
     // The pixels/acceptance/publish half is NOT gated — Off still paints, and
@@ -4397,22 +4399,23 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(studio).toContain("source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',");
     expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
-    // Exactly four pin sites (promotion, prepare fallback, first stroke, and
-    // the 261028-k03 D2 lift-erase durable rewrite) and TWO invalidations by
-    // design: Raster replaces the key's content, and the explicit Trash full
-    // reset (261027-gh9c) drops the key's cached pixels AND both scripts, so
-    // its pinned base is stale as well. The map is NEVER advanced to the
-    // composed output — advancing would compound the already-baked script on
-    // the next bake.
+    // Seven pin sites by design (re-derived from the source): promotion,
+    // prepare fallback, first stroke, the 261028-k03 D2 lift-erase durable
+    // rewrite, and the 261028-k03c D4 recovery's TWO writes (the validated
+    // seed, then the single punched base). TWO invalidations stay: Raster
+    // replaces the key's content, and the explicit Trash full reset
+    // (261027-gh9c) drops the key's cached pixels AND both scripts, so its
+    // pinned base is stale as well. The map is NEVER advanced to the composed
+    // output — advancing would compound the already-baked script on the next
+    // bake.
     //
-    // The fourth pin is the lift-erase rewrite: an eraser must replace the
-    // durable base with the punched B^K, or — when this very stroke pinned the
-    // PRE-erase raster (willPinBase) — with the punched composite D^K. A
-    // surviving entry whose strokes were all deleted (no reported script) is
-    // rewritten too. It still never advances to the composed output, and the
-    // erase path is specified with EXACTLY ONE `set(` statement, so nothing
-    // else in this pin moves.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(5);
+    // The lift-erase rewrite: an eraser must replace the durable base with the
+    // punched B^K, or — when this very stroke pinned the PRE-erase raster
+    // (willPinBase) — with the punched composite D^K. A surviving entry whose
+    // strokes were all deleted (no reported script) is rewritten too. It still
+    // never advances to the composed output, and each erase path is specified
+    // with EXACTLY ONE `set(` statement of its own.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(7);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
@@ -4432,6 +4435,67 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // The COMPOSITE reaches the cache, never the raw stroke-only bake.
     expect(publishBlock).toContain('bytes: publishBytes');
     expect(publishBlock.lastIndexOf('publishBytes = composed.bytes;')).toBeLessThan(upsertIndex);
+  });
+
+  it('261028-k03c pins the legacy scripted base recovery (fail-closed, single punch)', () => {
+    const preflight = between(studio, 'const planAquarelleLiftErase = useCallback(', 'const aquarelleLiftPreviewPlanRef');
+    // An unknown durable base on a scripted frame is RECOVERED, not refused.
+    expect(preflight).toContain('recoverBase: true');
+    expect(preflight).toContain('aquarelleLiftRecoveryFailedRef.current.has(target.keyId)');
+    expect(preflight).toContain('recoverBase: false');
+    // ONE attempt per key per session: the failure memo is never cleared.
+    expect(studio).toContain('const aquarelleLiftRecoveryFailedRef = useRef<Set<string>>(new Set());');
+    expect(studio).not.toContain('aquarelleLiftRecoveryFailedRef.current.clear(');
+
+    const erase = between(studio, 'const runAquarelleLiftErase = useCallback(', 'const handleAquarelleStrokeEnd = useCallback(');
+    const recoveryStart = erase.indexOf("stage: 'base-recovery-start'");
+    const displayRead = erase.indexOf('findCachedRotoDisplayFrameRef.current(plan.frame)');
+    const bake = erase.indexOf('bakeAquarelleEventsToFrame({');
+    const recover = erase.indexOf('recoverAquarelleDurableBase({');
+    const seed = erase.indexOf('aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);');
+    const punch = erase.indexOf('punchTransmittanceBytes(recovery.bytes, size, dabs');
+    const punchedWrite = erase.indexOf('aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedRecovered.bytes);');
+    const tailReset = erase.indexOf('aquarelleResetSheetRef.current?.();', punchedWrite);
+    const rebake = erase.indexOf('await rebake(getAquarelleEventsForFrame(plan.frame))');
+    expect(recoveryStart).toBeGreaterThan(-1);
+    expect(displayRead).toBeGreaterThan(recoveryStart);
+    expect(bake).toBeGreaterThan(displayRead);
+    expect(recover).toBeGreaterThan(bake);
+    expect(seed).toBeGreaterThan(recover);
+    expect(punch).toBeGreaterThan(seed);
+    expect(punchedWrite).toBeGreaterThan(punch);
+    expect(tailReset).toBeGreaterThan(punchedWrite);
+    expect(rebake).toBeGreaterThan(tailReset);
+    // The adopted base is durable BEFORE the punch lands.
+    const seedBump = erase.indexOf('bumpAquarelleStrokesRevision();', seed);
+    const seedDirty = erase.indexOf('studioScriptSnapshot.markDirty();', seed);
+    expect(seedBump).toBeGreaterThan(seed);
+    expect(seedDirty).toBeGreaterThan(seed);
+    expect(seedBump).toBeLessThan(punch);
+    expect(seedDirty).toBeLessThan(punch);
+
+    // Fail-closed (D4 / truth-table row 4): the failure arm removes the event
+    // this very stroke recorded, resets the sheet, reverts the preview and
+    // publishes today's unknown-base copy — nothing erased, nothing adopted.
+    const failure = erase.slice(erase.indexOf('const failRecovery = ('), displayRead);
+    expect(failure).toContain('aquarelleLiftRecoveryFailedRef.current.add(plan.keyId);');
+    expect(failure).toContain("stage: 'base-recovery-failed'");
+    expect(failure).toContain('deleteAquarelleStrokesFromScript([mutationId])');
+    expect(failure).toContain('aquarelleResetSheetRef.current?.();');
+    expect(failure).toContain('revertAquarelleLiftPreview();');
+    expect(failure).toContain('publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);');
+
+    // SINGLE PUNCH: the pre-existing scripted punch sits in the NON-recover
+    // arm, so a recoverBase transaction has exactly one punch on its path (the
+    // map must end on t^K, never t^(K·K)).
+    expect(erase).toContain('if (plan.scripted) {');
+    expect(erase).toContain('if (plan.recoverBase) {');
+    const guard = erase.indexOf('if (plan.recoverBase) {');
+    const nonRecoverPunch = erase.indexOf('punchTransmittanceBytes(durable, size, dabs');
+    expect(nonRecoverPunch).toBeGreaterThan(guard);
+    const recoverArm = erase.slice(guard, erase.indexOf('} else {', guard));
+    expect(recoverArm.match(/punchTransmittanceBytes\(/g)?.length ?? 0).toBe(1);
+    expect(recoverArm).not.toContain('aquarelleDurableBaseByKeyRef.current.get(plan.keyId)');
   });
 
   it('261027-k6j resets the Script switch per launch, never on a track switch', () => {

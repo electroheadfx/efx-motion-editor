@@ -28,6 +28,12 @@
 //  9. The engine's own lift dabs drive a live preview on the cached
 //     base; the layer punches in place and never blanks the canvas
 //     while a new URL decodes.
+// 10. 261028-k03c: an unknown-base scripted lift RECOVERS the
+//     pre-script base from the displayed composite (fail-closed at
+//     ≤3/255) instead of refusing, and owns its single punch. The
+//     raster commit retries once and bumps the strokes revision so
+//     the erase survives leave/return; settle captures of the
+//     lift-owned (track, frame) are fenced for the transaction.
 // ============================================================
 
 import { describe, expect, it } from 'vitest';
@@ -152,6 +158,26 @@ describe('Lift preflight ordering (261028-k03 D2)', () => {
     expect(rasterCheck).toBeGreaterThan(scriptOffRefusal);
     expect(unknownBase).toBeGreaterThan(rasterCheck);
   });
+
+  it('k03c: an unknown-base scripted lift routes to base recovery, never a silent refusal', () => {
+    const unknown = preflight.indexOf(
+      'if (scripted && !aquarelleDurableBaseByKeyRef.current.has(target.keyId))',
+    );
+    expect(unknown).toBeGreaterThanOrEqual(0);
+    const recovered = preflight.slice(unknown);
+    // The fail-closed memo is checked FIRST: one failed recovery per key per
+    // session — a second attempt would re-bake and re-invert for nothing.
+    const memo = recovered.indexOf('aquarelleLiftRecoveryFailedRef.current.has(target.keyId)');
+    expect(memo).toBeGreaterThan(-1);
+    expect(recovered.indexOf("return { kind: 'refuse'")).toBeGreaterThan(memo);
+    // The adopt path never pins a raster — recovery owns the durable write.
+    // The ordinary erase keeps the pin classification and recoverBase false.
+    expect(recovered).toContain('willPinBase: false,');
+    expect(recovered).toContain('recoverBase: true,');
+    expect(preflight).toContain(
+      'return { kind: \'erase\', frame, trackId, keyId: target.keyId, scripted, willPinBase, recoverBase: false };',
+    );
+  });
 });
 
 describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
@@ -208,6 +234,100 @@ describe('Lift erase pipeline order (261028-k03 / k03b)', () => {
     expect(mergePin).toBeGreaterThan(-1);
     expect(captureStart).toBeGreaterThan(mergePin);
     expect(raster).toContain('aquarelleMergeBaseRef.current = previousMergeBase;');
+  });
+
+  it('k03c: a recoverBase lift owns its single punch and adopts the base durably first', () => {
+    const recoverStart = erase.indexOf('if (plan.recoverBase) {');
+    const recoverArm = erase.slice(recoverStart, erase.indexOf('} else {', recoverStart));
+    expect(recoverStart).toBeGreaterThan(-1);
+    expect(recoverArm.length).toBeGreaterThan(0);
+    // SINGLE-PUNCH LAW: the arms are exclusive, so exactly one punch runs per
+    // transaction; the map must hold t^K, never t^(K·K).
+    expect(countOccurrences(recoverArm, 'punchTransmittanceBytes(')).toBe(1);
+    expect(recoverArm).not.toContain('aquarelleDurableBaseByKeyRef.current.get(');
+    // Adopt -> persist, then punch -> rewrite -> persist.
+    const adopt = recoverArm.indexOf(
+      'aquarelleDurableBaseByKeyRef.current.set(plan.keyId, recovery.bytes);',
+    );
+    const punch = recoverArm.indexOf('punchTransmittanceBytes(');
+    const rewrite = recoverArm.indexOf(
+      'aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedRecovered.bytes);',
+    );
+    expect(adopt).toBeGreaterThan(-1);
+    expect(punch).toBeGreaterThan(adopt);
+    expect(rewrite).toBeGreaterThan(punch);
+    // markDirty no-ops on an unchanged signature — the revision bump is the
+    // load-bearing write on BOTH recovery writes.
+    expect(countOccurrences(recoverArm, 'bumpAquarelleStrokesRevision();')).toBe(2);
+  });
+
+  it('k03c: a failed recovery erases nothing — the event, sheet and preview all revert', () => {
+    const fail = erase.slice(
+      erase.indexOf('const failRecovery = '),
+      erase.indexOf('const display = findCachedRotoDisplayFrameRef.current(plan.frame);'),
+    );
+    expect(fail).toContain('aquarelleLiftRecoveryFailedRef.current.add(plan.keyId);');
+    expect(fail).toContain('deleteAquarelleStrokesFromScript([mutationId])');
+    expect(fail).toContain("stage: 'base-recovery-failed',");
+    expect(fail).toContain('reason,');
+    expect(fail).toContain('meanError: meanError ?? null,');
+    expect(fail).toContain('aquarelleResetSheetRef.current?.();');
+    expect(fail).toContain('revertAquarelleLiftPreview();');
+    expect(fail).toContain('publish(AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL);');
+    // The memo lives for the session: it is added to, never cleared.
+    expect(studio).toContain('const aquarelleLiftRecoveryFailedRef = useRef<Set<string>>(new Set());');
+    expect(studio).not.toContain('aquarelleLiftRecoveryFailedRef.current.clear()');
+    expect(studio).not.toContain('aquarelleLiftRecoveryFailedRef.current.delete(');
+  });
+
+  it('k03c: the raster commit retries once and the durable write survives leave/return', () => {
+    const raster = erase.slice(erase.indexOf('// RASTER-ONLY:'));
+    expect(raster).toContain(
+      'const commit = async () => rotoPersistenceRef.current.captureLivePixels({',
+    );
+    expect(raster).toContain('let attempts = 1;');
+    expect(raster).toContain('attempts = 2;');
+    expect(raster).toContain('let ok = await commit();');
+    expect(raster).toContain('ok = await commit();');
+    expect(raster).toContain("stage: 'commit-failed',");
+    expect(raster).toContain("stage: 'committed',");
+    // Both diagnostics carry the attempt count so a real rejection is
+    // distinguishable from the settle race this retry absorbs.
+    expect(countOccurrences(raster, 'attempts,')).toBe(2);
+    // markDirty no-ops on an unchanged signature — the revision bump is the
+    // load-bearing write that makes the punched payload survive leave/return.
+    const setIndex = raster.indexOf(
+      'aquarelleDurableBaseByKeyRef.current.set(plan.keyId, punchedDurableBytes);',
+    );
+    const bumpIndex = raster.indexOf('bumpAquarelleStrokesRevision();', setIndex);
+    const dirtyIndex = raster.indexOf('studioScriptSnapshot.markDirty();', bumpIndex);
+    expect(setIndex).toBeGreaterThan(-1);
+    expect(bumpIndex).toBeGreaterThan(setIndex);
+    expect(dirtyIndex).toBeGreaterThan(bumpIndex);
+  });
+
+  it('k03c: a settle capture for the lift-owned (track, frame) is fenced, other captures run', () => {
+    const fence = studio.slice(
+      studio.indexOf('const liftTarget = aquarelleLiftEraseTargetRef.current;'),
+      studio.indexOf('let cachedBase: RenderedFramePayload | null;'),
+    );
+    expect(fence.length).toBeGreaterThan(0);
+    expect(fence).toContain('aquarelleLiftEraseInFlightRef.current');
+    expect(fence).toContain('liftTarget !== null');
+    expect(fence).toContain('liftTarget.frame === playFrame');
+    expect(fence).toContain('liftTarget.trackId === targetTrackId');
+    expect(fence).toContain("stage: 'lift-in-flight',");
+    expect(fence).toContain('return;');
+    // The fence is per transaction: set before the first await, cleared in
+    // `finish` (a queued re-entry re-sets it synchronously).
+    expect(erase).toContain(
+      'aquarelleLiftEraseTargetRef.current = { frame: plan.frame, trackId: plan.trackId };',
+    );
+    expect(erase).toContain('aquarelleLiftEraseTargetRef.current = null;');
+    const setIndex = erase.indexOf('aquarelleLiftEraseTargetRef.current = {');
+    const firstAwait = erase.indexOf('await ', setIndex);
+    expect(setIndex).toBeGreaterThan(-1);
+    expect(firstAwait).toBeGreaterThan(setIndex);
   });
 
   it('commits through the existing physical-edit transaction seam', () => {
@@ -278,8 +398,10 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
   });
 
-  it('adds the two lift durable-base set sites (3 base + scripted + raster)', () => {
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(5);
+  it('adds the four lift durable-base set sites (3 base + scripted + recovery x2 + raster)', () => {
+    // 261028-k03c: the recovery arm adopts the recovered base and then rewrites
+    // it as t^K — two writes, both before the shared re-bake tail.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(7);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
   });
 });

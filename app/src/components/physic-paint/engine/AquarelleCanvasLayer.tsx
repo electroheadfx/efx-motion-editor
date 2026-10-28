@@ -33,6 +33,7 @@ import {
 } from '@efxlab/efx-watercolor';
 import type { AquarellePoint, AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor';
 import {
+  aquarelleActiveTipId,
   aquarelleActiveTool,
   aquarelleBrushForActiveTool,
   aquarelleParams,
@@ -45,6 +46,11 @@ import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
 import { createAquarelleEnginePort, type AquarelleEnginePort } from './aquarelleEnginePort';
+import {
+  aquarelleFootprintFor,
+  cursorPreviewPressure,
+  footprintCssSize,
+} from './aquarelleFootprint';
 // debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
 // did not reach the Studio capture handler. Installs nothing in production.
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
@@ -57,17 +63,31 @@ const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
 const FIX_SETTLE_MS = 1200;
 
 // ============================================================
-//  Brush-size preview cursor (UI checklist row 1). Same dual-ring
-//  family as engine-1's drawBrushCursor: dark under-stroke +
-//  white over-stroke, crosshair fallback under 8px. The ring
-//  follows the top-bar Brush size (aquarelleParams.size). DOM
-//  refs only — no state, no effect (efx-preact-reactivity).
+//  Footprint cursor (261028-k03c D6). Same dual-ring family as
+//  engine-1's drawBrushCursor — dark under-stroke + white
+//  over-stroke, crosshair fallback under 8 CSS px — but the ring
+//  now shows the ENGINE's footprint law (aquarelleFootprint.ts):
+//  the true radius for the active tool, the tip's aspect, and the
+//  rotation the engine would use (including the live pen-tilt
+//  azimuth for fixed-rotation tips). DOM refs + module variables
+//  only — no state, no effect (efx-preact-reactivity).
 // ============================================================
 
 const CURSOR_CROSSHAIR_SIZE = 23;
 const cursorX = signal(-1);
 const cursorY = signal(-1);
 const cursorVisible = signal(false);
+/** Displayed layer height in CSS px (Engine.updateCursor's view.h / dpr). */
+let cursorLayerHeight = 0;
+/** Previous pointer sample — the follow-rotation movement direction. */
+let lastPointerX: number | null = null;
+let lastPointerY: number | null = null;
+let lastPointerMoveAngle = 0;
+let lastPointerTiltX = 0;
+let lastPointerTiltY = 0;
+let lastPointerType = 'mouse';
+let lastPointerButtons = 0;
+let lastPointerPressure = 0;
 
 /**
  * Opaque-sheet law (2026-10-26): MODE.transparent is OPAQUE white where the
@@ -88,31 +108,41 @@ function AquarelleBrushCursor(): JSX.Element | null {
   const visible = cursorVisible.value;
   if (!visible || x < 0) return null;
 
-  const brushSize = aquarelleParams.value.size;
-  const showCircle = brushSize >= 8;
-  const size = showCircle ? brushSize : CURSOR_CROSSHAIR_SIZE;
-  const r = size / 2 - 1.5;
+  const params = aquarelleParams.value;
+  const tool = aquarelleActiveTool.value;
+  // 261028-k03c D6: the ring IS the engine's footprint — the same radius law,
+  // the same tip/aspect, the same rotation (including the live pen-tilt
+  // azimuth for a fixed-rotation tip), scaled by the displayed layer height.
+  const selection = aquarelleBrushForActiveTool();
+  const footprint = aquarelleFootprintFor({
+    tool,
+    tipId: aquarelleActiveTipId(),
+    toolOverrides: selection.toolOverrides,
+    size: params.size,
+    pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),
+    moveAngle: lastPointerMoveAngle,
+    tiltX: lastPointerTiltX,
+    tiltY: lastPointerTiltY,
+  });
+  const { width, height } = footprintCssSize(footprint, cursorLayerHeight);
+  const longAxis = Math.max(width, height);
 
-  return (
-    <div
-      class="aquarelle-brush-cursor"
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        left: `${x - size / 2}px`,
-        top: `${y - size / 2}px`,
-        width: `${size}px`,
-        height: `${size}px`,
-        pointerEvents: 'none',
-        zIndex: 50,
-      }}
-    >
-      {showCircle ? (
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible', display: 'block' }}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke" />
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-        </svg>
-      ) : (
+  if (!(longAxis >= 8)) {
+    // Crosshair fallback — a ring this small would be a dot.
+    return (
+      <div
+        class="aquarelle-brush-cursor"
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: `${x - CURSOR_CROSSHAIR_SIZE / 2}px`,
+          top: `${y - CURSOR_CROSSHAIR_SIZE / 2}px`,
+          width: `${CURSOR_CROSSHAIR_SIZE}px`,
+          height: `${CURSOR_CROSSHAIR_SIZE}px`,
+          pointerEvents: 'none',
+          zIndex: 50,
+        }}
+      >
         <svg width={CURSOR_CROSSHAIR_SIZE} height={CURSOR_CROSSHAIR_SIZE} viewBox={`0 0 ${CURSOR_CROSSHAIR_SIZE} ${CURSOR_CROSSHAIR_SIZE}`} style={{ overflow: 'visible', display: 'block' }}>
           <g stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke">
             <line x1={0} y1={11.5} x2={10} y2={11.5} />
@@ -127,7 +157,44 @@ function AquarelleBrushCursor(): JSX.Element | null {
             <line x1={11.5} y1={13} x2={11.5} y2={23} />
           </g>
         </svg>
-      )}
+      </div>
+    );
+  }
+
+  const inset = 1.5;
+  const innerW = Math.max(0, width - inset * 2);
+  const innerH = Math.max(0, height - inset * 2);
+  // The engine skins an aspect < 0.6 tip as a rounded rectangle.
+  const rounded = footprint.aspect < 0.6;
+  return (
+    <div
+      class="aquarelle-brush-cursor"
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: `${x - width / 2}px`,
+        top: `${y - height / 2}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+        pointerEvents: 'none',
+        zIndex: 50,
+        // Document space is y up, the screen y down: mirror Engine.updateCursor.
+        transform: `rotate(${-footprint.angle}rad)`,
+      }}
+    >
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible', display: 'block' }}>
+        {rounded ? (
+          <>
+            <rect x={inset} y={inset} width={innerW} height={innerH} rx={height * 0.4} fill="none" stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+            <rect x={inset} y={inset} width={innerW} height={innerH} rx={height * 0.4} fill="none" stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          </>
+        ) : (
+          <>
+            <ellipse cx={width / 2} cy={height / 2} rx={innerW / 2} ry={innerH / 2} fill="none" stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+            <ellipse cx={width / 2} cy={height / 2} rx={innerW / 2} ry={innerH / 2} fill="none" stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+      </svg>
     </div>
   );
 }
@@ -802,14 +869,38 @@ export function AquarelleCanvasLayer(props: {
     <div
       class="aquarelle-live-layer"
       style={{ position: 'absolute', inset: '0' }}
+      onPointerEnter={(event) => {
+        // 261028-k03c D6: the footprint is scaled by the DISPLAYED rect height.
+        const height = (event.currentTarget as HTMLElement).getBoundingClientRect().height;
+        if (height > 0 && cursorLayerHeight !== height) cursorLayerHeight = height;
+      }}
       onPointerMove={(event) => {
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-        cursorX.value = event.clientX - rect.left;
-        cursorY.value = event.clientY - rect.top;
+        if (rect.height > 0 && cursorLayerHeight !== rect.height) cursorLayerHeight = rect.height;
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        // Follow-rotation needs a direction: track it from consecutive samples
+        // in the DOCUMENT frame (y up), like Engine's stroke.dx/dy.
+        if (lastPointerX !== null && lastPointerY !== null) {
+          const dx = x - lastPointerX;
+          const dy = y - lastPointerY;
+          if (Math.hypot(dx, dy) >= 0.5) lastPointerMoveAngle = Math.atan2(-dy, dx);
+        }
+        lastPointerX = x;
+        lastPointerY = y;
+        if (event.tiltX !== lastPointerTiltX) lastPointerTiltX = event.tiltX;
+        if (event.tiltY !== lastPointerTiltY) lastPointerTiltY = event.tiltY;
+        if (event.pointerType !== lastPointerType) lastPointerType = event.pointerType;
+        if (event.buttons !== lastPointerButtons) lastPointerButtons = event.buttons;
+        if (event.pressure !== lastPointerPressure) lastPointerPressure = event.pressure;
+        cursorX.value = x;
+        cursorY.value = y;
         if (!cursorVisible.value) cursorVisible.value = true;
       }}
       onPointerLeave={() => {
         cursorVisible.value = false;
+        lastPointerX = null;
+        lastPointerY = null;
       }}
     >
       <canvas

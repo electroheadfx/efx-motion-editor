@@ -317,11 +317,31 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(studio).toContain('getAquarellePaperGrainStrength');
   });
 
-  it('CURSOR: brush-size preview ring — HTML pointer hidden, ring follows aquarelleParams.size', () => {
+  it('CURSOR: the ring IS the engine footprint — same radius, aspect and angle', () => {
     // The HTML pointer is replaced by the dual-ring cursor (UI checklist row 1).
     expect(css).toContain('cursor: none');
     expect(layer).toContain('AquarelleBrushCursor');
-    expect(layer).toContain('aquarelleParams.value.size');
+    // 261028-k03c D6: no longer a size-slider circle — the ring asks the shared
+    // footprint law for the exact radius/aspect/angle the engine will paint,
+    // tip selection and per-tool overrides included, tilt azimuth live.
+    expect(layer).toContain('const footprint = aquarelleFootprintFor({');
+    expect(layer).toContain('size: params.size,');
+    expect(layer).toContain('tipId: aquarelleActiveTipId(),');
+    expect(layer).toContain('toolOverrides: selection.toolOverrides,');
+    expect(layer).toContain(
+      'pressure: cursorPreviewPressure(lastPointerType, lastPointerButtons, lastPointerPressure),',
+    );
+    expect(layer).toContain('tiltX: lastPointerTiltX,');
+    expect(layer).toContain('tiltY: lastPointerTiltY,');
+    expect(layer).toContain('const { width, height } = footprintCssSize(footprint, cursorLayerHeight);');
+    // Shape branch mirrors Engine.updateCursor: rounded rect under 0.6 aspect,
+    // ellipse above, crosshair below 8 px; the rotation is document-space
+    // angle, screen-mirrored (y down).
+    expect(layer).toContain('if (!(longAxis >= 8)) {');
+    expect(layer).toContain('<rect ');
+    expect(layer).toContain('rx={height * 0.4}');
+    expect(layer).toContain('<ellipse ');
+    expect(layer).toContain('transform: `rotate(${-footprint.angle}rad)`');
     // Dual-ring family: dark under-stroke + white over-stroke.
     expect(layer).toContain('stroke="#111111"');
     expect(layer).toContain('stroke="#ffffff"');
