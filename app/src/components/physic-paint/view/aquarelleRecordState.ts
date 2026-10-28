@@ -88,13 +88,21 @@ export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
 });
 export const aquarelleActiveTool = signal<AquarelleTool>('brush');
-// 261027-gh9f: Studio opens on the dry CHALK stick — it is the first card in
-// the Brush tab and the preset the dry-media work targets. The preset's own
-// shape lives in BRUSH_PRESETS; the multiplier bag starts neutral.
-export const aquarelleSelectedTipId = signal<string | null>('chalk');
+// 261028-k03c D1: FILBERT is the default for NEW Brush strokes (it replaced the
+// 261027-gh9f dry CHALK stick). Existing recorded strokes keep the brushId they
+// carry — this default only describes a fresh session's first stroke.
+export const aquarelleSelectedTipId = signal<string | null>('filbert');
 export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
   ...NEUTRAL_TOOL_OVERRIDES,
 });
+/**
+ * 261028-k03c D1: the Lift (eraser) tool owns a SEPARATE tip selection. A Lift
+ * shape pick never flips the active tool to Brush and never mutates the Brush
+ * selection or its multiplier bag — the two surfaces are independent, and the
+ * Lift stroke records its tip in the same `brushId` field so live, bake and
+ * punch share one number.
+ */
+export const aquarelleLiftTipId = signal<string | null>('filbert');
 
 /**
  * 261027-gh9g: the top-bar brush dropdown (open state + the trigger's viewport
@@ -215,6 +223,56 @@ export function selectAquarelleTip(tipId: string | null): void {
       : { ...NEUTRAL_TOOL_OVERRIDES };
 }
 
+/**
+ * 261028-k03c D1: the Lift shape pick. Compare-then-write (efx-preact-reactivity
+ * rule 3) and deliberately NOT a tool pick: it never calls setAquarelleTool and
+ * never touches aquarelleSelectedTipId, aquarelleToolOverrides or
+ * aquarelleBrushResponseMemory. An unknown id normalizes to null through the
+ * same findTip / BRUSH_PRESETS lookup selectAquarelleTip uses.
+ */
+export function setAquarelleLiftTipId(tipId: string | null): void {
+  const tip = tipId ? findTip(tipId) : undefined;
+  const preset = !tip && tipId
+    ? BRUSH_PRESETS.find((b) => b.id === tipId)
+    : undefined;
+  const nextId = tip ? tip.id : preset ? preset.id : null;
+  if (aquarelleLiftTipId.value === nextId) return;
+  aquarelleLiftTipId.value = nextId;
+}
+
+/**
+ * 261028-k03c D1: the tip the ACTIVE tool paints (or erases) with. Lift has its
+ * own selection and falls back to the Filbert default; every other tool reads
+ * the shared Brush selection.
+ */
+export function aquarelleActiveTipId(): string | null {
+  return aquarelleActiveTool.value === 'lift'
+    ? (aquarelleLiftTipId.value ?? 'filbert')
+    : aquarelleSelectedTipId.value;
+}
+
+/**
+ * 261028-k03c D1 — the ONE live/record binding law. The recorded brush is the
+ * tip the engine had bound, so the live erase (applyLiveConfig), the recorded
+ * brushId and the bake can never disagree. Lift paints with its own tip and a
+ * NEUTRAL override bag (an eraser has no brush-response multipliers).
+ */
+export function aquarelleBrushForActiveTool(): {
+  brushId: string;
+  toolOverrides: AquarelleToolOverrides;
+} {
+  if (aquarelleActiveTool.value === 'lift') {
+    return {
+      brushId: aquarelleLiftTipId.value ?? 'filbert',
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+    };
+  }
+  return {
+    brushId: aquarelleSelectedTipId.value ?? '',
+    toolOverrides: { ...aquarelleToolOverrides.value },
+  };
+}
+
 function overridesEqual(
   a: AquarelleToolOverrides,
   b: AquarelleToolOverrides,
@@ -292,10 +350,12 @@ export function snapshotAquarelleRecord(): {
   for (const key of AQUARELLE_GLOBAL_KEYS) {
     params[key] = live[key];
   }
+  // 261028-k03c D1: ONE law — the recorded brush is the tip the engine bound.
+  const selection = aquarelleBrushForActiveTool();
   return {
     params,
-    toolOverrides: { ...aquarelleToolOverrides.value },
-    brushId: aquarelleSelectedTipId.value ?? '',
+    toolOverrides: selection.toolOverrides,
+    brushId: selection.brushId,
     tool: aquarelleActiveTool.value,
   };
 }

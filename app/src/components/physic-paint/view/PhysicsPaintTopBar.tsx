@@ -15,6 +15,7 @@ import {
   setAquarelleScriptRecordingEnabled,
 } from './aquarelleRecordState';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
+import { LiftShapePicker } from './LiftShapePicker';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + brush trigger +
@@ -222,6 +223,12 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-primary">
         {activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
+            {/* 261028-k03c D3: one Lift shape control (thumb + native select)
+                over the SAME aquarelleLiftTipId the Brush tab's Lift section
+                writes. Shape first, Strength second, Select lifts last. */}
+            <div class="physics-paint-topbar-control physics-paint-topbar-lift-shape">
+              <LiftShapePicker testId="physics-lift-shape" disabled={disabled} />
+            </div>
             <div
               class="physics-paint-topbar-control physics-paint-topbar-slider physics-paint-topbar-lift-strength"
               data-testid="physics-lift-strength"

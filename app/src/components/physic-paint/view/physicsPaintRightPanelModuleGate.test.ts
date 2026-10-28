@@ -5,12 +5,12 @@
 //  @efxlab/efx-watercolor is the only paint engine, so the right
 //  panel no longer branches on `activeModule`: the Paint tool tab
 //  mounts WatercolorModuleSection directly, the top pane is the
-//  fixed Color + Settings + Paper + Memory row, and the Brush
-//  module section / Brush-mode arm are gone. The two surviving
-//  tab components (Settings, Brush) keep their watercolor gate as
-//  an always-true single-arm guard; the Brush tab itself is no
-//  longer mounted (261027-gh9g retired it — the catalog lives in
-//  the top-bar dropdown and its floating modal).
+//  fixed Color + Brush + Settings + Paper + Memory row, and the
+//  Brush module section / Brush-mode arm are gone. Every top-pane
+//  tab component keeps its watercolor gate as an always-true
+//  single-arm guard. 261028-k03c D2: the Brush tab is MOUNTED again
+//  (261027-gh9g had retired it) — it carries the catalog, Size, the
+//  globals, the response multipliers and the Lift section.
 //
 //  The Paper tab stays shared document-fond vocabulary (I-07) — no
 //  module gate between the paper arm and the paper mount.
@@ -92,24 +92,24 @@ function expectMountsBehindWatercolorGate(region: string, component: string): vo
 }
 
 describe('single-engine right panel (261027-klx)', () => {
-  it('Brush tab body stays watercolor-gated even though the tab is unmounted', () => {
-    // 261027-gh9g retired the Brush-tab mount (top-bar picker + modal owns the
-    // catalog), but the component keeps its single-arm watercolor guard while
-    // the file stays on disk.
+  it('Brush tab body is mounted again and everything it mounts stays watercolor-gated', () => {
+    // 261028-k03c D2: the Brush tab is back after the 261027-gh9g retirement.
+    // It is one view over the SAME signals as the top bar and the floating
+    // brush modal: catalog + Size + the seven globals + the eight response
+    // multipliers + the Lift section.
     const body = stripComments(brushTabSource);
     const gateAt = body.indexOf("activeModule.value === 'watercolor'");
     expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
 
     expectMountsBehindWatercolorGate(body, 'WatercolorBrushLibrary');
-    // I-11 / D: the brush response moved to the Settings tab.
-    expect(body, 'BrushResponsePanel leaves the Brush tab').not.toMatch(
-      /<BrushResponsePanel\b/,
-    );
+    expectMountsBehindWatercolorGate(body, 'AquarelleGlobalsPanel');
+    expectMountsBehindWatercolorGate(body, 'BrushResponsePanel');
+    expectMountsBehindWatercolorGate(body, 'LiftShapePicker');
     expect(body, 'BrushModuleSection is not mounted in the Brush tab').not.toMatch(
       /<BrushModuleSection\b/,
     );
-    // The panel no longer mounts the Brush tab at all.
-    expect(stripComments(panelSource), 'no Brush tab body is mounted').not.toMatch(
+    // The panel mounts the Brush tab arm again.
+    expect(stripComments(panelSource), 'the Brush tab body is mounted').toMatch(
       /<RightPanelBrushTab\b/,
     );
   });
@@ -137,10 +137,11 @@ describe('single-engine right panel (261027-klx)', () => {
     expect(paintTab, 'no module branch in the paint tab').not.toMatch(/activeModule/);
   });
 
-  it('AquarelleGlobalsPanel mounts only inside WatercolorModuleSection', () => {
-    // The globals panel is never a direct panel mount — it rides
-    // WatercolorModuleSection, which the paint-tab pin above proves is the only
-    // module surface left.
+  it('AquarelleGlobalsPanel mounts inside WatercolorModuleSection and the gated Brush tab', () => {
+    // The globals panel is never a DIRECT panel mount — it rides
+    // WatercolorModuleSection (the paint-tab pin above proves that is the only
+    // module surface left) and the 261028-k03c restored Brush tab, where the
+    // watercolor gate pin above covers it.
     expect(panelSource, 'globals panel is not a direct panel mount').not.toMatch(
       /<AquarelleGlobalsPanel\b/,
     );
@@ -193,30 +194,30 @@ describe('single-engine right panel (261027-klx)', () => {
     expect(paperTabBody, 'RightPanelPaperTab stays ungated').not.toMatch(/activeModule/);
   });
 
-  it('top-pane tab row is fixed to Color + Settings + Paper + Memory', () => {
-    // 261018-cy1 + I-11 / D retired Actions; 261027-gh9g retired the Brush
-    // tab; 261027-klx removed the mode-derived variant entirely. quick-261023-
-    // ors: 'memory' is LAST.
+  it('top-pane tab row is fixed to Color + Brush + Settings + Paper + Memory', () => {
+    // 261018-cy1 + I-11 / D retired Actions; 261027-klx removed the
+    // mode-derived variant entirely. 261028-k03c D2 reinstated the Brush tab
+    // (261027-gh9g had retired it). quick-261023-ors: 'memory' is LAST.
     expect(panelSource, 'top-pane tab list').toContain(
-      "['color', 'settings', 'paper', 'memory']",
+      "['color', 'brush', 'settings', 'paper', 'memory']",
     );
     expect(panelSource, 'no brush-mode tab list').not.toContain("['color', 'paper', 'memory']");
     expect(panelSource, 'no actions id in the tab list').not.toMatch(
       /\[\s*'color',\s*'actions'/,
     );
-    expect(panelSource, 'topPaneTab union drops actions and brush').toContain(
-      "useState<'color' | 'settings' | 'paper' | 'memory'>",
+    expect(panelSource, 'topPaneTab union carries the live tabs').toContain(
+      "useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>",
     );
     expect(panelSource, 'no mode-derived settings gate').not.toContain('isWatercolorModule');
     expect(panelSource, 'no stale brush-mode fallback').not.toContain(
       "topPaneTab === 'settings' && !isWatercolorModule",
     );
-    // Labels stay the human names (no Watercolor or Brush tab).
+    // Labels stay the human names (no Watercolor tab).
     expect(panelSource, 'Color label stays').toContain("color: 'Color'");
+    expect(panelSource, 'Brush label is back').toContain("brush: 'Brush'");
     expect(panelSource, 'Settings label stays').toContain("settings: 'Settings'");
     expect(panelSource, 'Paper label stays').toContain("paper: 'Paper'");
     expect(panelSource, 'Memory label').toContain("memory: 'Memory'");
-    expect(panelSource, 'Brush label left with the module').not.toContain("brush: 'Brush'");
     // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).
     expect(panelSource, 'no RightPanelActionsTab mount').not.toMatch(/<RightPanelActionsTab\b/);
   });

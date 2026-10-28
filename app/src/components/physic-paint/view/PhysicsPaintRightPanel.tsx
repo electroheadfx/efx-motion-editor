@@ -12,6 +12,7 @@ import { SliderStepper } from '../../shared/SliderStepper';
 import { aquarelleParams } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
+import { RightPanelBrushTab } from './RightPanelBrushTab';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelMemoryTab } from './RightPanelMemoryTab';
@@ -96,6 +97,12 @@ export interface PhysicsPaintRightPanelProps {
    * the frame signal carries the current app frame for the row marker.
    */
   memorySection?: StudioScriptMemorySection;
+  /**
+   * 261028-k03c D2: the Brush tab's Lift section "Select lifts" button. The
+   * Studio threads the same handler the top-bar Lift cluster uses; an absent
+   * handler renders the button disabled (never a dead click).
+   */
+  onSelectLiftStrokes?: () => void;
 }
 
 /** Minimum sidebar section share (%) — every section keeps at least this much
@@ -111,9 +118,12 @@ const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
 const TOP_PANE_TAB_LABELS: Readonly<
-  Record<'color' | 'settings' | 'paper' | 'memory', string>
+  Record<'color' | 'brush' | 'settings' | 'paper' | 'memory', string>
 > = Object.freeze({
   color: 'Color',
+  // 261028-k03c D2: the Brush tab is back (261027-gh9g had retired it) — the
+  // catalog, Size, the globals, the response multipliers and the Lift section.
+  brush: 'Brush',
   settings: 'Settings',
   paper: 'Paper',
   // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
@@ -190,6 +200,7 @@ export function PhysicsPaintRightPanel({
   onGrainStrengthChange,
   onGrainScaleChange,
   memorySection,
+  onSelectLiftStrokes,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
@@ -197,18 +208,18 @@ export function PhysicsPaintRightPanel({
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
   // 261018-cy1: the top-pane tab list is fixed. The retired top-pane Actions
-  // entry is gone (the bottom-pane scripts tab keeps its label). 261027-gh9g:
-  // the Brush tab is retired too — the brush catalog now lives in the top-bar
-  // dropdown and its floating modal. Engine-1 removal leaves Water color as the
-  // only module, so there is no mode-derived variant left.
+  // entry is gone (the bottom-pane scripts tab keeps its label). 261028-k03c
+  // D2: the Brush tab is BACK after the 261027-gh9g retirement. Engine-1
+  // removal leaves Water color as the only module, so there is no mode-derived
+  // variant left.
   // quick-261023-ors: 'memory' is LAST.
-  const topPaneTabs = ['color', 'settings', 'paper', 'memory'] as ReadonlyArray<
-    'color' | 'settings' | 'paper' | 'memory'
+  const topPaneTabs = ['color', 'brush', 'settings', 'paper', 'memory'] as ReadonlyArray<
+    'color' | 'brush' | 'settings' | 'paper' | 'memory'
   >;
   // A stale tab id can never be selected: the union only holds live tabs.
   const [topPaneTab, setTopPaneTab] =
-    useState<'color' | 'settings' | 'paper' | 'memory'>('color');
-  const effectiveTopPaneTab: 'color' | 'settings' | 'paper' | 'memory' = topPaneTab;
+    useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>('color');
+  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' | 'memory' = topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -312,7 +323,13 @@ export function PhysicsPaintRightPanel({
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-          {effectiveTopPaneTab === 'settings' ? (
+          {effectiveTopPaneTab === 'brush' ? (
+            // 261028-k03c D2: the restored Brush tab — one view over the same
+            // signals as the top bar and the floating brush modal.
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
+              <RightPanelBrushTab onSelectLiftStrokes={onSelectLiftStrokes} />
+            </div>
+          ) : effectiveTopPaneTab === 'settings' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">
               <RightPanelSettingsTab />
             </div>

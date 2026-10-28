@@ -148,7 +148,9 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
     const isStatusPill = (n: unknown) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill');
 
     expect(trigger, 'brush trigger seats in the left slot').toBeTruthy();
-    expect(trigger!.props?.presetId).toBe('chalk');
+    // 261028-k03c D1: FILBERT is the new-Brush default (was the 261027-gh9f
+    // dry CHALK stick).
+    expect(trigger!.props?.presetId).toBe('filbert');
     expect(primaryDesc.some((n) => typeof (n as AnyVNode).props?.onToggle === 'function'), 'primary holds sliders only').toBe(false);
     expect(leftDesc.some(isStatusPill), 'status pill stays in the left slot').toBe(true);
 
@@ -523,5 +525,35 @@ describe('261028-k03b Lift tool controls', () => {
     const styles = css();
     const row = getCssRuleBlock(styles, '.physics-paint-topbar-lift-strength {');
     expect(row).toContain('flex-direction: row');
+  });
+
+  it('mounts the Lift Shape picker (261028-k03c D3) before the strength row', () => {
+    setAquarelleTool('lift');
+    try {
+      const tree = renderTopBar({ ...baseTopBarProps(), onSelectLiftStrokes: vi.fn() });
+      const nodes = childrenOf(tree) as AnyVNode[];
+      const shape = nodes.find((node) => node.props?.testId === 'physics-lift-shape');
+      expect(shape, 'the Lift cluster mounts the shared shape picker').toBeDefined();
+      expect(shape!.props?.disabled, 'the picker follows the disabled prop').toBe(false);
+      // Shape sits before Strength inside the Lift cluster (source order).
+      const body = stripComments(topBarSource());
+      const shapeAt = body.indexOf('<LiftShapePicker');
+      const strengthAt = body.indexOf('data-testid="physics-lift-strength"');
+      expect(shapeAt, 'shape picker mount exists').toBeGreaterThan(-1);
+      expect(strengthAt, 'strength row exists').toBeGreaterThan(shapeAt);
+      // The picker writes only the Lift selection — never the Brush seam.
+      const pickerSource = readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), './LiftShapePicker.tsx'),
+        'utf8',
+      );
+      expect(pickerSource).toContain('setAquarelleLiftTipId');
+      expect(pickerSource).not.toContain('selectAquarelleTip');
+      expect(pickerSource).not.toContain('setAquarelleTool');
+      // Compact row layout lives in the component (no stylesheet edit).
+      expect(pickerSource).toContain("flexDirection: 'row'");
+      expect(pickerSource).toContain("maxWidth: '120px'");
+    } finally {
+      setAquarelleTool('brush');
+    }
   });
 });

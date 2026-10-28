@@ -42,15 +42,16 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(globals).toContain("{ key: 'load', label: 'Pigment' }");
   });
 
-  it('renders the top pane with the fixed Color/Settings/Paper/Memory tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Scripts/Onion/Motion tab group', () => {
+  it('renders the top pane with the fixed Color/Brush/Settings/Paper/Memory tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Scripts/Onion/Motion tab group', () => {
     // 261018-cy1 + I-11 / D: the retired top-pane Actions entry is gone.
-    // 261027-gh9g: the Brush tab is retired from the right sidebar (top-bar
-    // picker + floating modal). 261027-klx: engine-1 removal leaves Water color
-    // as the only module, so the tab list is FIXED — no mode-derived subset.
+    // 261028-k03c D2: the Brush tab is BACK in the right sidebar (261027-gh9g
+    // had retired it for the top-bar picker + floating modal). 261027-klx:
+    // engine-1 removal leaves Water color as the only module, so the tab list
+    // is FIXED — no mode-derived subset.
     expect(rightPanel).toContain('aria-label="Top pane panels"');
     expect(rightPanel).toContain('physics-paint-tab-top-');
     // quick-261023-ors: the Memory tab joins the union as the LAST entry.
-    expect(rightPanel).toContain("'color' | 'settings' | 'paper' | 'memory'");
+    expect(rightPanel).toContain("'color' | 'brush' | 'settings' | 'paper' | 'memory'");
     expect(rightPanel).not.toContain("'color' | 'actions' | 'brush' | 'paper'");
     expect(rightPanel).not.toContain("'color', 'paper', 'memory'");
 
@@ -88,7 +89,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     // 261027-klx: with Water color the only module, the retired Brush-mode
     // subset ('color', 'paper') does not exist; ONE fixed list remains.
     expect(rightPanel).not.toContain("'color', 'paper', 'memory'");
-    expect(rightPanel).toContain("'color', 'settings', 'paper', 'memory'");
+    expect(rightPanel).toContain("'color', 'brush', 'settings', 'paper', 'memory'");
 
     for (const label of ['Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

@@ -38,8 +38,11 @@ function resetSelection(): void {
 }
 
 describe('I-11 default brush selection', () => {
-  it('opens with CHALK selected (261027-gh9f dry-media default)', () => {
-    expect(aquarelleSelectedTipId.value).toBe('chalk');
+  it('opens with FILBERT selected (261028-k03c D1 default — new strokes only)', () => {
+    // 261028-k03c D1: Filbert replaced the 261027-gh9f dry CHALK stick as the
+    // default for NEW Brush strokes; existing strokes keep their recorded
+    // brushId. Filbert is also the default Lift shape.
+    expect(aquarelleSelectedTipId.value).toBe('filbert');
     expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
   });
 });
