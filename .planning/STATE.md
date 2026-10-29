@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T15:55:50.850Z"
+last_updated: "2026-10-29T21:01:15.963Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: ac6b3af476df3f65a7e774ed45826d10496e3cf7
+state_head: fb178cf92aca4d40d59b55f812126151832175c6
 progress:
   total_phases: 3
   completed_phases: 3
@@ -614,6 +614,7 @@ None yet.
 | 66 | Studio tool shortcuts: B/W/E/P pick tools, A enters Select, cycles Paint/Eraser/All, then leaves Select for Brush; F dry, C clear (confirm modal), D resets fg/bg swatch to black/white; Cmd/Ctrl arms retired; tooltips name the keys | 2026-10-29 | 95a6929a | — |
 | 261029-lel | Grey out the Water tool while the sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes | 2026-10-29 | 5a35055c | [261029-lel-grey-out-the-water-aquarelle-tool-whenev](./quick/261029-lel-grey-out-the-water-aquarelle-tool-whenev/) |
 | 261029-lsr | UNDO — script-authoritative undo for aquarelle strokes: recorded strokes swap the script edit and use the engine tile history with a script re-bake fallback; replay sources compare structurally; auto-key composites undo/redo as one command — CLOSED, native UAT rows 1-8 approved 2026-10-29 | 2026-10-29 | 093970b2 | [261029-lsr-undo-script-authoritative-undo-for-aquar](./quick/261029-lsr-undo-script-authoritative-undo-for-aquar/) |
+| 69 | Center the brush-tab Settings button (icon+label on one row, 30px) and add 15px bottom padding to the brush tab; commit fb178cf9 | 2026-10-29 | fb178cf9 | — |
 
 ### Roadmap Evolution
 
