@@ -4,6 +4,7 @@ import { History, type StepInfo, type StepKind } from './history';
 import { DEFAULT_PAPER, linearRGB, PAPERS, type PaperPreset } from './papers';
 import * as S from './shaders';
 import { pigmentFromHex, type Pigment } from './spectral';
+import { WET_THRESHOLD, isSheetWet } from './wetState';
 
 export type Tool = 'brush' | 'water' | 'pen' | 'lift';
 
@@ -156,7 +157,6 @@ export const MAX_ZOOM = 32;
 const FIT_PADDING = 24;        // CSS px around the sheet when zoomed to fit
 const PAN_KEEP = 48;           // CSS px of the sheet that always stays on screen
 const FIX_DURATION = 1.2;
-const WET_THRESHOLD = 0.004;   // below this nothing moves, so the sim can sleep
 const MASK_BLOCK = 16;         // texels per wet-mask cell
 const MASK_EVERY = 10;         // frames between wet-mask readbacks that trim the active rect
 const MASK_MARGIN = MASK_BLOCK + 8;
@@ -664,6 +664,20 @@ export class WatercolorEngine {
     const now = this.clock();
     return this.active !== null &&
       (this.stroke !== null || this.fixTimer > 0 || now < this.minAwakeUntil || now < this.wetUntil());
+  }
+
+  /**
+   * True while the sheet holds standing water the Water tool can act on — the
+   * live UI gate's source of truth. False during the Dry fix bake even though
+   * `isAwake` is still true.
+   */
+  get hasStandingWater(): boolean {
+    return isSheetWet({
+      wetPeak: this.wetPeak,
+      wetUntilMs: this.wetUntil(),
+      nowMs: this.clock(),
+      fixing: this.fixTimer > 0,
+    });
   }
 
   /** True when the sheet holds paint (since the last clear) — never capture blank. */
