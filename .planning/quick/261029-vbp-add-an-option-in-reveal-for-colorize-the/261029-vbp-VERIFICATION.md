@@ -240,3 +240,9 @@ One truth (final alpha = referenceAlpha x coverage at the pixel level, including
 
 _Verified: 2026-10-29T22:32:34Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## UAT Close-out
+
+**2026-10-29 — user verdict: all 8 native UAT rows approved** on the live app (Reveal Colorize). The behavior-unverified alpha invariant (row 6 — scaled/panned reference, mix 100 and 40) passed live: no wash-coloured spill outside the photo footprint, and the reveal silhouette matches the unchecked bake. The task is closed; the `human_needed` frontmatter records the verifier's pre-UAT verdict and is superseded by this close-out.
