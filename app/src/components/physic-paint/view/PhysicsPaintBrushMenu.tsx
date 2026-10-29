@@ -28,6 +28,9 @@ import {
   setAquarelleBrushModalOpen,
   setAquarelleLiftTipId,
 } from './aquarelleRecordState';
+// 261029-hy2 CR-01: the catalog's open path must raise its sheet — the seat
+// sits UNDER the Settings sheet, so click-to-front alone can never reach it.
+import { SHEET_ID_BRUSHES, bringSheetToFront } from './floatingSheetStack';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 
 export function PhysicsPaintBrushMenu() {
@@ -153,6 +156,9 @@ export function PhysicsPaintBrushMenu() {
             data-testid="watercolor-brush-menu-open-modal"
             onClick={() => {
               setAquarelleBrushMenuOpen(false);
+              // 261029-hy2 CR-01: raise BEFORE opening (event handler only).
+              // Unconditional, so an already-open-but-covered catalog recovers.
+              bringSheetToFront(SHEET_ID_BRUSHES);
               setAquarelleBrushModalOpen(true);
             }}
           >

@@ -31,8 +31,11 @@ vi.mock('preact/hooks', async (importOriginal) => {
 
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal, resetBrushModalLayout } from './PhysicsPaintBrushModal';
+import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
+import { RightPanelBrushTab } from './RightPanelBrushTab';
 import {
   SHEET_ID_BRUSHES,
+  SHEET_ID_SETTINGS,
   bringSheetToFront,
   resetFloatingSheetStack,
   sheetZIndex,
@@ -46,9 +49,11 @@ import {
   aquarelleBrushModalOpen,
   aquarelleLiftTipId,
   aquarelleSelectedTipId,
+  aquarelleSettingsModalOpen,
   aquarelleToolOverrides,
   setAquarelleBrushMenuOpen,
   setAquarelleBrushModalOpen,
+  setAquarelleSettingsModalOpen,
 } from './aquarelleRecordState';
 
 interface TestVNode {
@@ -94,6 +99,7 @@ beforeEach(() => {
   aquarelleBrushMenuOpen.value = false;
   aquarelleBrushMenuAnchor.value = { left: 20, top: 70 };
   aquarelleBrushModalOpen.value = false;
+  aquarelleSettingsModalOpen.value = false;
   resetBrushModalLayout();
   // The stack order is module-global: a raise in one case would leak.
   resetFloatingSheetStack();
@@ -107,6 +113,7 @@ afterEach(() => {
   aquarelleBrushMenuOpen.value = false;
   aquarelleBrushMenuAnchor.value = null;
   aquarelleBrushModalOpen.value = false;
+  aquarelleSettingsModalOpen.value = false;
   resetBrushModalLayout();
   resetFloatingSheetStack();
 });
@@ -329,5 +336,55 @@ describe('261027-gh9g floating brush catalog', () => {
     bringSheetToFront(SHEET_ID_BRUSHES);
     const after = PhysicsPaintBrushModal() as TestVNode;
     expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(52);
+  });
+});
+
+// 261029-hy2 CR-01: click-to-front alone can never reach a sheet painted
+// beneath a sibling (the covering surface eats every press), so EVERY open
+// path must raise its sheet. The regression runs the adverse order — Settings
+// first (its seat is on top) then the catalog.
+describe('261029-hy2 CR-01 raise-on-open', () => {
+  function openingFromBrushTab(): TestVNode {
+    const settingsTab = RightPanelBrushTab() as TestVNode;
+    const button = collect(settingsTab).find(
+      (node) => node.props?.['data-testid'] === 'brush-tab-open-settings',
+    );
+    expect(button, 'the Brush tab carries the Settings entry point').toBeDefined();
+    return button!;
+  }
+
+  it('opens Settings then Brushes: the newly opened Brushes sheet is on top', () => {
+    click(openingFromBrushTab());
+    expect(aquarelleSettingsModalOpen.value).toBe(true);
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
+
+    setAquarelleBrushMenuOpen(true);
+    const menu = PhysicsPaintBrushMenu() as TestVNode;
+    const openModal = collect(menu).find(
+      (node) => node.props?.['data-testid'] === 'watercolor-brush-menu-open-modal',
+    );
+    expect(openModal, 'the dropdown carries the Open modal action').toBeDefined();
+    click(openModal!);
+    expect(aquarelleBrushModalOpen.value).toBe(true);
+
+    const brushStyle = (PhysicsPaintBrushModal() as TestVNode).props?.style as Record<string, unknown>;
+    const settingsStyle = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
+    expect(brushStyle?.zIndex, 'the newly opened catalog takes the top level').toBe(52);
+    expect(
+      settingsStyle?.zIndex as number,
+      'the covered Settings sheet drops one level',
+    ).toBeLessThan(brushStyle?.zIndex as number);
+  });
+
+  it('re-clicking Settings recovers a covered Settings sheet', () => {
+    setAquarelleSettingsModalOpen(true);
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(51);
+
+    click(openingFromBrushTab());
+    // The setter's compare-then-write early-returns on an already-open sheet;
+    // the raise happens regardless, so the button is never dead.
+    expect(aquarelleSettingsModalOpen.value).toBe(true);
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
   });
 });

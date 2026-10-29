@@ -376,6 +376,14 @@ export function PhysicsPaintStrokeSettingsDialog({
     sawEmptySinceDismiss = false;
   }, [closeMoveMode]);
 
+  // 261029-hy2 CR-01: this sheet opens from the SELECTION — there is no open
+  // handler to raise from — so the open transition itself is the raise seam.
+  // A lifecycle effect, never a render body (efx-preact-reactivity rule 6).
+  useEffect(() => {
+    if (!open) return;
+    bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {

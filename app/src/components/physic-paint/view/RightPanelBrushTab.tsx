@@ -19,6 +19,10 @@
 import { SlidersHorizontal } from 'lucide-preact';
 import { activeModule } from '../../shared/activeModule';
 import { setAquarelleSettingsModalOpen } from './aquarelleRecordState';
+// 261029-hy2 CR-01: the Settings entry point is the ONLY way to recover a
+// covered sheet, so it raises unconditionally — including when the setter's
+// compare-then-write early-returns on an already-open sheet.
+import { SHEET_ID_SETTINGS, bringSheetToFront } from './floatingSheetStack';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 
 export function RightPanelBrushTab() {
@@ -30,7 +34,10 @@ export function RightPanelBrushTab() {
             type="button"
             class="physics-paint-text-button physics-paint-brush-tab-settings"
             data-testid="brush-tab-open-settings"
-            onClick={() => setAquarelleSettingsModalOpen(true)}
+            onClick={() => {
+              bringSheetToFront(SHEET_ID_SETTINGS);
+              setAquarelleSettingsModalOpen(true);
+            }}
           >
             <SlidersHorizontal size={13} aria-hidden="true" />
             Settings
