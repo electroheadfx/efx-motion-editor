@@ -932,7 +932,8 @@ button.destructive {
      way to the viewport edge), so the list scrolls only when it overflows. */
   width: 212px;
   min-height: 0;
-  padding: 6px;
+  /* 15px breathing room above the first action (Open modal). */
+  padding: 15px 6px 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   background: rgba(24, 26, 30, 0.96);
