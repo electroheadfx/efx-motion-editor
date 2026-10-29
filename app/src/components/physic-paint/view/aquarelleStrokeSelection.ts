@@ -17,7 +17,12 @@
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
-import { isAquarelleDryEvent, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import {
+  isAquarelleDryEvent,
+  type AquarellePayloadEvent,
+  type AquarelleStroke,
+  type AquarelleStrokePayload,
+} from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
   type EnginePixelSize,
@@ -58,6 +63,7 @@ import {
   deleteAquarelleStrokesFromScript,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
+  getRecordedAquarelleStroke,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
@@ -616,6 +622,49 @@ export function beginAquarelleDeleteEdit(
 }
 
 /**
+ * 261029-lsr: build the synthetic single-stroke UNDO edit — the one edit that
+ * makes a recorded stroke's undo/redo script-authoritative (D-02, D-04).
+ *
+ * Direction contract: `after` is the live script WITH the stroke (revision R)
+ * and `before` is the same content WITHOUT it (the stroke's timeline entry
+ * removed and the id tombstoned), also at revision R. `undo` therefore installs
+ * the WITHOUT side; that install writes the fresh revision back into `before`,
+ * which is exactly what the matching `redo` validates against. Redo installs
+ * WITH again and clears the tombstone — the inverse swap, never a second edit.
+ *
+ * The build mutates no live state: the authority guard must still pass on the
+ * immediate undo. The caller builds it AFTER the durable-base recovery, which
+ * can bump `aquarelleStrokesRevision` (a stale `after` would fail every undo).
+ * Refuses: an in-flight script edit, a non-finite id, an unknown id, an
+ * already-tombstoned id, and a stroke the timeline does not carry (not
+ * script-owned — no event to remove is no edit to make).
+ */
+export function beginAquarelleStrokeUndoEdit(mutationId: number): number | null {
+  if (aquarelleScriptEditInFlight) return null;
+  if (!Number.isFinite(mutationId)) return null;
+  if (getRecordedAquarelleStroke(mutationId) === undefined) return null;
+  if (isAquarelleStrokeDeleted(mutationId)) return null;
+  const after = captureAquarelleSnapshot();
+  // Dry events are global sheet actions (no frame anchor): they survive.
+  const timeline = after.timeline.filter((event) =>
+    isAquarelleDryEvent(event)
+      ? true
+      : (event.engine as AquarelleStrokePayload).mutationId !== mutationId,
+  );
+  // No engine id on the timeline means this stroke is not script-owned.
+  if (timeline.length === after.timeline.length) return null;
+  const before: AquarelleScriptSnapshot = {
+    timeline,
+    deleted: [...after.deleted, mutationId],
+    // Shared by reference, exactly like a capture pair: the redo side keeps
+    // the same stroke objects.
+    registry: after.registry,
+    revision: after.revision,
+  };
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
  * 261022-tv1 / 261024-mz5: move one stroke or the whole selection by a
  * document-UV delta as a single edit (move + its re-bake = ONE
  * `aquarelle-script` ledger command). The selection is kept — every stroke
@@ -747,4 +796,26 @@ export function restoreAquarelleEditSnapshot(
  */
 export function restoreAquarelleSnapshotRaw(snapshot: AquarelleScriptSnapshot): void {
   applySnapshotContent(snapshot);
+}
+
+/**
+ * 261029-lsr: re-seat the ATTEMPTED side of an existing edit at the live
+ * revision. A failed re-bake's raw rollback (`restoreAquarelleSnapshotRaw`)
+ * bumps `aquarelleStrokesRevision` without writing the fresh revision back
+ * into the edit, so every retry would fail the guard forever — the undo of
+ * that stroke would be permanently blocked. Only the direction the caller
+ * just attempted is forgiven: the opposite side keeps its stale revision and
+ * every other edit stays fail-closed, so a foreign script mutation is never
+ * forgiven. Never bumps the revision, never installs content, never prunes
+ * the edit (a redo needs the same edit alive).
+ */
+export function reanchorAquarelleEditRevision(
+  editId: number,
+  direction: 'undo' | 'redo',
+): boolean {
+  const edit = aquarelleEdits.get(editId);
+  if (!edit) return false;
+  const liveSide = direction === 'undo' ? edit.after : edit.before;
+  liveSide.revision = aquarelleStrokesRevision.value;
+  return true;
 }

@@ -21,8 +21,13 @@ import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
 import {
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
+  clearAquarelleStrokeDeletion,
+  deleteAquarelleStrokesFromScript,
+  emitAquarelleDry,
+  getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
   recordAquarelleStroke,
   sendAquarelleStrokeBackwardInScript,
@@ -40,14 +45,18 @@ import {
   aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
+  beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
   cycleAquarelleStrokeTypeFilter,
   hitTestAquarelleStroke,
   listSelectableAquarelleStrokes,
   matchesAquarelleStrokeFilter,
   readAquarelleStrokeAppearance,
+  reanchorAquarelleEditRevision,
   restoreAquarelleEditSnapshot,
+  restoreAquarelleSnapshotRaw,
   selectAquarelleStroke,
+  setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
@@ -810,5 +819,149 @@ describe('261029-eur lift ribbon listing (LIFT-RIBBON)', () => {
     expect(
       hitTestAquarelleStroke({ x: 200, y: 100 + radiusPx * 2 + 1 }, 808, SHEET, 'lift'),
     ).toBeNull();
+  });
+});
+
+// ============================================================
+//  261029-lsr — script-authoritative undo/redo of a recorded stroke.
+//
+//  ONE synthetic edit per stroke: `after` is the live script WITH
+//  the stroke, `before` is the same content WITHOUT it (timeline
+//  entry removed AND the id tombstoned), both sides at the live
+//  revision so the immediate undo passes the authority guard.
+//  The same id serves undo/redo forever; a failed re-bake's raw
+//  rollback strands the revision, so the attempted side can be
+//  re-seated once — and only that side.
+// ============================================================
+describe('261029-lsr script-authoritative stroke undo edit', () => {
+  function mutationIdsOf(events: readonly AquarellePayloadEvent[]): number[] {
+    const out: number[] = [];
+    for (const event of events) {
+      if (isAquarelleDryEvent(event)) continue;
+      out.push(event.engine.mutationId ?? -1);
+    }
+    return out;
+  }
+
+  /** Non-dry timeline mutation ids in recording order. */
+  function timelineMutationIds(): number[] {
+    return mutationIdsOf(getRecordedAquarellePayloadTimeline());
+  }
+
+  function frameMutationIds(playFrame: number): number[] {
+    return mutationIdsOf(getAquarelleEventsForFrame(playFrame));
+  }
+
+  it('builds WITH-after / WITHOUT-before at one revision and installs WITHOUT on undo', () => {
+    recordAquarelleStroke(9760, stroke({ points: [point(0.2, 0.5)], playFrame: 901 }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    const editId = beginAquarelleStrokeUndoEdit(9760);
+    expect(editId).not.toBeNull();
+    // Building the edit mutates NOTHING: same revision, stroke still script-owned.
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(9760)).toBeDefined();
+    expect(isAquarelleStrokeDeleted(9760)).toBe(false);
+    expect(timelineMutationIds()).toContain(9760);
+
+    // The immediate undo passes the authority guard (before.revision == live R).
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9760)).toBe(true);
+    expect(timelineMutationIds()).not.toContain(9760);
+    // The frame's replay list no longer carries the stroke.
+    expect(frameMutationIds(901)).not.toContain(9760);
+  });
+
+  it('redo reinstalls the same stroke objects and one edit id serves the whole cycle', () => {
+    recordAquarelleStroke(9761, stroke({ points: [point(0.3, 0.5)], playFrame: 902, timestamp: 12 }));
+    const editId = beginAquarelleStrokeUndoEdit(9761)!;
+    const entryBefore = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9761);
+
+    expect(restoreAquarelleEditSnapshot(editId, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9761)).toBe(true);
+
+    expect(restoreAquarelleEditSnapshot(editId, 'redo')).not.toBeNull();
+    // Redo reinstalls the SAME timeline entry object and clears the tombstone.
+    expect(strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9761)).toBe(entryBefore);
+    expect(isAquarelleStrokeDeleted(9761)).toBe(false);
+
+    // A second undo/redo cycle on that one stroke still uses that one id.
+    expect(restoreAquarelleEditSnapshot(editId, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9761)).toBe(true);
+    expect(restoreAquarelleEditSnapshot(editId, 'redo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9761)).toBe(false);
+  });
+
+  it('refuses unknown, non-finite, deleted, de-anchored and in-flight ids without mutating', () => {
+    recordAquarelleStroke(9762, stroke({ points: [point(0.4, 0.5)], playFrame: 903 }));
+    recordAquarelleStroke(9763, stroke({ points: [point(0.5, 0.5)], playFrame: 903 }));
+    recordAquarelleStroke(9764, stroke({ points: [point(0.6, 0.5)], playFrame: 903 }));
+    // 9764: the registry still knows it, but the timeline no longer carries
+    // its entry (a de-anchored, not-script-owned stroke).
+    expect(deleteAquarelleStrokesFromScript([9764])).toBe(1);
+    clearAquarelleStrokeDeletion(9764);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(beginAquarelleStrokeUndoEdit(999999)).toBeNull();
+    expect(beginAquarelleStrokeUndoEdit(Number.NaN)).toBeNull();
+    expect(beginAquarelleStrokeUndoEdit(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(beginAquarelleStrokeUndoEdit(9764)).toBeNull();
+
+    markAquarelleStrokeDeleted(9763);
+    expect(beginAquarelleStrokeUndoEdit(9763)).toBeNull();
+
+    setAquarelleScriptEditInFlight(true);
+    try {
+      expect(beginAquarelleStrokeUndoEdit(9762)).toBeNull();
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+
+    // Every refusal above was side-effect free.
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(isAquarelleStrokeDeleted(9762)).toBe(false);
+  });
+
+  it('keeps global Dry events on the synthetic before side', () => {
+    const dry = emitAquarelleDry(7);
+    recordAquarelleStroke(9765, stroke({ points: [point(0.7, 0.5)], playFrame: 904 }));
+
+    const editId = beginAquarelleStrokeUndoEdit(9765);
+    expect(editId).not.toBeNull();
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    // Dry is a sheet action with no frame anchor: it survives untouched.
+    expect(getRecordedAquarellePayloadTimeline()).toContain(dry);
+    expect(timelineMutationIds()).not.toContain(9765);
+  });
+
+  it('re-anchors only the attempted side after a failed re-bake rollback', () => {
+    recordAquarelleStroke(9766, stroke({ points: [point(0.8, 0.5)], playFrame: 905 }));
+    const editId = beginAquarelleStrokeUndoEdit(9766)!;
+
+    const revert = restoreAquarelleEditSnapshot(editId, 'undo');
+    expect(revert).not.toBeNull();
+    // The failed re-bake's raw rollback bumps the revision without writing it
+    // back into the edit — the immediate retry is stranded on the guard.
+    restoreAquarelleSnapshotRaw(revert!);
+    expect(isAquarelleStrokeDeleted(9766)).toBe(false);
+    expect(restoreAquarelleEditSnapshot(editId, 'undo')).toBeNull();
+
+    expect(reanchorAquarelleEditRevision(999999, 'undo')).toBe(false);
+
+    const strandedRevision = aquarelleStrokesRevision.value;
+    const strandedTimeline = [...getRecordedAquarellePayloadTimeline()];
+    expect(reanchorAquarelleEditRevision(editId, 'undo')).toBe(true);
+    // No bump, no content install, no prune: only the revision is re-seated.
+    expect(aquarelleStrokesRevision.value).toBe(strandedRevision);
+    expect(getRecordedAquarellePayloadTimeline()).toEqual(strandedTimeline);
+    expect(getRecordedAquarelleStroke(9766)).toBeDefined();
+
+    // The OPPOSITE direction keeps its stale revision: redo stays fail-closed.
+    expect(restoreAquarelleEditSnapshot(editId, 'redo')).toBeNull();
+
+    // The attempted direction retries cleanly and installs the WITHOUT side.
+    expect(restoreAquarelleEditSnapshot(editId, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9766)).toBe(true);
+    expect(timelineMutationIds()).not.toContain(9766);
   });
 });
