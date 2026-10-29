@@ -4695,6 +4695,14 @@ export function PhysicsPaintStudio() {
   // would carry a stale `after.revision`). The guard block runs BEFORE the
   // playback stop: a refused Cmd+Z must neither kill a queued capture nor stop
   // playback (D-07).
+  // TEMP EXPERIMENT (261029-lsr UAT, user request): undo without the frame
+  // re-bake. The script still mutates through the same edit swap, but the
+  // pixels come from the engine's own tile undo and the sheet is never reset —
+  // no full re-render, no flash. Flip to false to restore the
+  // script-authoritative re-bake. Test on a FRESH Studio session with paints
+  // only: once a delete/move has re-baked, the engine history is a re-bake
+  // history and tile undo is no longer the pre-stroke sheet.
+  const AQUARELLE_UNDO_WITHOUT_REBAKE = true;
   const runScriptReplay = useCallback(async ({
     direction,
     editId,
@@ -4729,9 +4737,18 @@ export function PhysicsPaintStudio() {
           prepare,
           restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
           resetSheet: () => {
+            // TEMP: an undo keeps the live sheet — no reset, so nothing flashes.
+            if (AQUARELLE_UNDO_WITHOUT_REBAKE && direction === 'undo') return;
             aquarelleResetSheetRef.current?.();
           },
-          rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+          rebake: () => {
+            // TEMP: the engine's tile undo IS the pixel side of this undo. It
+            // restores the exact pre-stroke sheet without re-rendering anything.
+            if (AQUARELLE_UNDO_WITHOUT_REBAKE && direction === 'undo') {
+              return Promise.resolve(rotoFrameEditing.undo());
+            }
+            return rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+          },
           rollback: (revert) => {
             restoreAquarelleSnapshotRaw(revert);
           },
@@ -4742,7 +4759,7 @@ export function PhysicsPaintStudio() {
     } finally {
       setAquarelleScriptEditInFlight(false);
     }
-  }, [isPhysicalMutationLocked, rotoScript, rotoPersistence]);
+  }, [isPhysicalMutationLocked, rotoScript, rotoPersistence, rotoFrameEditing]);
   const rotoMoveHistory = useRotoPhysicalEditHistory<RotoEditableState>({
     identity: launchContext ? {
       launchOperationId: launchContext.operationId,
