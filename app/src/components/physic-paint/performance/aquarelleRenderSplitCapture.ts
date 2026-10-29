@@ -57,6 +57,8 @@ let writePending = false;
 let installed = false;
 
 function canWrite(): boolean {
+  // No browser, no probe file: a unit test runs with DEV true but cannot write.
+  if (typeof window === 'undefined') return false;
   try {
     return import.meta.env.DEV === true;
   } catch {

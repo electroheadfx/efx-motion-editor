@@ -4903,6 +4903,16 @@ export function PhysicsPaintStudio() {
                 return created;
               },
             });
+        // TEMP UAT probe (261029-lsr) — remove with the history-debug events.
+        recordAquarelleRenderSplitEvent('history-debug', {
+          stage: 'replay-stroke',
+          direction,
+          mutationId,
+          cached: cached !== undefined,
+          enteredReplay,
+          reachedRebake,
+          ok,
+        });
         if (ok) return true;
         if (enteredReplay) {
           const editId = aquarelleStrokeEditIdsRef.current.get(mutationId);
