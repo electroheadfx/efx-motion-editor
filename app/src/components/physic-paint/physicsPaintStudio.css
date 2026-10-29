@@ -1487,15 +1487,18 @@ button.destructive {
   padding: 0 14px 14px;
 }
 
-/* 261029-hy2: the Brush tab body — the Settings button flush at the top, a
-   15px gap, then the brush grid. The gap lives here, never as a grid margin.
-   261029: 15px bottom padding so the last card row clears the pane edge. */
+/* 261029-hy2: the Brush tab body — the Settings button at the top, a 15px
+   gap, then the brush grid. The gap lives here, never as a grid margin. */
 .physics-paint-brush-tab-body {
   display: flex;
   flex-direction: column;
   gap: 15px;
   min-width: 0;
-  padding-bottom: 15px;
+}
+
+/* 261029: the Brush tab content starts 15px below the tab strip. */
+.physics-paint-options-tab-panel-brush {
+  padding-top: 15px;
 }
 
 /* 261029: the Settings entry point is ONE centered row. Tailwind's preflight
