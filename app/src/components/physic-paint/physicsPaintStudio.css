@@ -1488,12 +1488,29 @@ button.destructive {
 }
 
 /* 261029-hy2: the Brush tab body — the Settings button flush at the top, a
-   15px gap, then the brush grid. The gap lives here, never as a grid margin. */
+   15px gap, then the brush grid. The gap lives here, never as a grid margin.
+   261029: 15px bottom padding so the last card row clears the pane edge. */
 .physics-paint-brush-tab-body {
   display: flex;
   flex-direction: column;
   gap: 15px;
   min-width: 0;
+  padding-bottom: 15px;
+}
+
+/* 261029: the Settings entry point is ONE centered row. Tailwind's preflight
+   makes every svg display:block, which stacked the icon above the label and
+   doubled the button height. Explicit height + flex centering keep the icon
+   and label on the same line, vertically centered. */
+.physics-paint-brush-tab-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  line-height: 1;
 }
 
 /* quick-261023-ors: Memory tab (read-only script-memory gauge + confirmed
