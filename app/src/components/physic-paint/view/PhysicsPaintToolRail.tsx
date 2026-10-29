@@ -1,12 +1,11 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, RefreshCcwDot, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
-import refreshScriptIcon from '../../../assets/physics-paint-ui/icons/refresh-script.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
@@ -25,7 +24,8 @@ export interface PhysicsPaintToolRailItem {
   label: string;
   /** Optional hover text; the label stays the short accessible name. */
   tooltip?: string;
-  icon: string;
+  /** SVG asset; omitted when the button renders a lucide component instead. */
+  icon?: string;
   kind: 'action';
 }
 
@@ -43,7 +43,6 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
     id: 'rebake-script',
     label: 'Re-render this frame from its script',
     tooltip: 'Re-render this frame from its script (Shift+R)',
-    icon: refreshScriptIcon,
     kind: 'action',
   },
 ];
@@ -171,7 +170,7 @@ function WatercolorRail({
         aria-label="Re-render from script"
         onClick={onRebakeScript}
       >
-        <img src={rebakeItem.icon} alt="" aria-hidden="true" />
+        <RefreshCcwDot size={18} />
       </button>
       <button
         type="button"
