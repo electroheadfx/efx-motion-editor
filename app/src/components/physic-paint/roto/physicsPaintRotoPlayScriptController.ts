@@ -34,6 +34,7 @@ import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecorded
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
   type AquarelleBake,
+  type AquarelleBakeDiagnostics,
   type AquarelleBakeOptions,
   type AquarelleBakePaper,
 } from '@efxlab/efx-watercolor/bake';
@@ -1827,6 +1828,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   };
 }
 
+/** 261029-bks: wall clock for bake diagnostics (`performance.now` when available). */
+function readNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
 /** Rust VP8L encoder for a squarelle bake frames — toDataURL emits lossy VP8. */
 async function encodeAquarelleWebpFrame(frame: CanvasImageSource, width: number, height: number): Promise<Uint8Array> {
   const canvas = document.createElement('canvas');
@@ -1844,6 +1852,26 @@ async function encodeAquarelleWebpFrame(frame: CanvasImageSource, width: number,
 }
 
 /**
+ * 261029-bks: the bake diagnostics merged with the adapter's lifecycle cost
+ * (creation span + finally teardown span). The render-split payload shape.
+ */
+export type AquarelleApplyDiagnostics = AquarelleBakeDiagnostics & { adapterCreateMs: number };
+
+/** 261029-bks: the record forwarded when the bake never emitted (adapter threw). */
+function zeroDiagnostics(): AquarelleBakeDiagnostics {
+  return {
+    path: 'timed',
+    timelineTicks: 0,
+    simulatedTicks: 0,
+    skippedGapTicks: 0,
+    gapCount: 0,
+    settleTicks: 0,
+    bakeMs: 0,
+    encodeMs: 0,
+  };
+}
+
+/**
  * 261028-k03c D4: replay a payload timeline into ONE settled frame and return
  * its bytes. Shared by Apply and by the legacy scripted-Lift base recovery, so
  * both see exactly the same bake the script would produce.
@@ -1854,8 +1882,21 @@ export async function bakeAquarelleEventsToFrame(input: {
   paper: AquarelleBakePaper;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
+  /**
+   * 261029-bks: fires exactly once on every exit (success, cancelled, failed,
+   * no frames) with the bake's diagnostics merged with `adapterCreateMs`.
+   * Called AFTER `bake.dispose()` and `adapter.dispose()`.
+   */
+  onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
 }): Promise<{ bytes: Uint8Array; width: number; height: number } | null> {
+  const createStartedAt = readNow();
   const adapter = await createDefaultAquarelleAdapter(input.size, input.paper);
+  // Creation span: the dynamic import + engine construction. The teardown
+  // span is added in the finally — the field is the adapter's lifecycle cost,
+  // never the whole bake.
+  let adapterCreateMs = readNow() - createStartedAt;
+  // A holder, not a bare let: the bake's emit runs inside a callback.
+  const bakeDiagnostics: { current: AquarelleBakeDiagnostics | null } = { current: null };
   const bake = defaultCreateAquarelleBake(adapter, {
     width: input.size.width,
     height: input.size.height,
@@ -1868,6 +1909,9 @@ export async function bakeAquarelleEventsToFrame(input: {
     // came out denser than the paint.
     frameCount: 1,
     onStrokeFed: input.onStrokeFed,
+    onDiagnostics: (record) => {
+      bakeDiagnostics.current = record;
+    },
   });
   try {
     const result = await bake.bake(input.events);
@@ -1877,10 +1921,22 @@ export async function bakeAquarelleEventsToFrame(input: {
     await bake.flush();
     return { bytes: last.bytes, width: last.width, height: last.height };
   } finally {
+    const teardownStartedAt = readNow();
     bake.dispose();
     // Release the offscreen aquarelle WebGL surface — one bake must not leave
     // a live context competing with the Studio's own sheet.
     adapter.dispose();
+    adapterCreateMs += readNow() - teardownStartedAt;
+    const consumer = input.onDiagnostics;
+    if (consumer) {
+      try {
+        // The Studio's publish closure runs after this helper returned, so the
+        // record is populated before anything reads it.
+        consumer({ ...(bakeDiagnostics.current ?? zeroDiagnostics()), adapterCreateMs });
+      } catch {
+        // T-bks-02: a throwing diagnostics consumer never fails the helper.
+      }
+    }
   }
 }
 
@@ -1901,6 +1957,8 @@ export async function applyAquarelleEventsToKey(input: {
   paper: AquarelleBakePaper;
   /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
   onStrokeFed?: (completed: number, total: number) => void;
+  /** 261029-bks: forwarded unchanged to `bakeAquarelleEventsToFrame`. */
+  onDiagnostics?: (d: AquarelleApplyDiagnostics) => void;
   publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
 }): Promise<boolean> {
   const baked = await bakeAquarelleEventsToFrame({
@@ -1908,6 +1966,7 @@ export async function applyAquarelleEventsToKey(input: {
     size: input.size,
     paper: input.paper,
     onStrokeFed: input.onStrokeFed,
+    onDiagnostics: input.onDiagnostics,
   });
   if (!baked) return false;
   return input.publish({

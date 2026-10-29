@@ -71,7 +71,7 @@ import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysic
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
+import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics } from './roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -1839,10 +1839,16 @@ export function PhysicsPaintStudio() {
     // the wash onto the target key (engine-1 draws only the guide line).
     applyAquarelleEvents: async ({ events, target, onProgress }) => {
       const bgMeta = buildRotoBackgroundMetadata(settings);
+      // 261029-bks: the helper fires its callback before returning, so the
+      // publish closure below always reads the populated record.
+      let bakeDiagnostics: AquarelleApplyDiagnostics | null = null;
       return applyAquarelleEventsToKey({
         events,
         target,
         onStrokeFed: onProgress,
+        onDiagnostics: (diagnostics) => {
+          bakeDiagnostics = diagnostics;
+        },
         size: { width: canvasWidth, height: canvasHeight },
         paper: {
           paperId: bgMeta.background,
@@ -1987,6 +1993,7 @@ export function PhysicsPaintStudio() {
             durableBaseKeyId: target.durableBaseKeyId ?? null,
             durableBase: durableBaseSource,
             events: events.length,
+            diagnostics: bakeDiagnostics,
             width: frame.width ?? null,
             height: frame.height ?? null,
             currentFrame: launchContextRef.current?.startFrame ?? null,
@@ -6136,15 +6143,23 @@ export function PhysicsPaintStudio() {
         source: 'pre-edit',
         reason: 'no-visible-payload',
         baseInk: 0,
+        // 261029-bks: no bake ran on this path — the honest value is null.
+        diagnostics: null,
       });
       return true;
     }
+    // 261029-bks: the pre-edit bake's diagnostics, carried onto every
+    // lift-erase record of this recovery.
+    let recoveryDiagnostics: AquarelleApplyDiagnostics | null = null;
     const size = { width: payload.width, height: payload.height };
     try {
       const baked = await bakeAquarelleEventsToFrame({
         events,
         size,
         paper: aquarelleLiftPaperRef.current,
+        onDiagnostics: (diagnostics) => {
+          recoveryDiagnostics = diagnostics;
+        },
       });
       if (!baked) {
         recordAquarelleRenderSplitEvent('lift-erase', {
@@ -6156,6 +6171,7 @@ export function PhysicsPaintStudio() {
           stage: 'base-recovery-failed',
           source: 'pre-edit',
           reason: 'bake',
+          diagnostics: recoveryDiagnostics,
         });
         return false;
       }
@@ -6180,6 +6196,7 @@ export function PhysicsPaintStudio() {
           saturatedColorError: recovery.saturatedColorError,
           correlation: recovery.correlation ?? null,
           darkerChannels: recovery.emptyProof?.darkerChannels ?? null,
+          diagnostics: recoveryDiagnostics,
         });
         return false;
       }
@@ -6208,6 +6225,7 @@ export function PhysicsPaintStudio() {
         saturatedColorError: recovery.saturatedColorError,
         correlation: recovery.correlation,
         darkerChannels: recovery.emptyProof.darkerChannels,
+        diagnostics: recoveryDiagnostics,
       });
       return true;
     } catch {
@@ -6387,6 +6405,10 @@ export function PhysicsPaintStudio() {
             willPinBase: false,
             stage: 'base-recovery-start',
           });
+          // 261029-bks: the recovery bake's diagnostics — declared before both
+          // closures so every lift-erase record of this flow can carry it
+          // (null on the no-visible-payload path, where no bake ran).
+          let recoveryDiagnostics: AquarelleApplyDiagnostics | null = null;
           // D4 / T-k03c-02 fail-closed: a base is adopted ONLY after the
           // pigment-alpha recomposition validates at ≤3/255. Nothing may
           // survive a failed recovery — not the event just recorded, not the
@@ -6411,6 +6433,7 @@ export function PhysicsPaintStudio() {
               clampRatio: clampRatio ?? null,
               saturatedColorError: saturatedColorError ?? null,
               correlation: correlation ?? null,
+              diagnostics: recoveryDiagnostics,
             });
             if (mutationId !== undefined && deleteAquarelleStrokesFromScript([mutationId]) > 0) {
               studioScriptSnapshot.markDirty();
@@ -6451,6 +6474,7 @@ export function PhysicsPaintStudio() {
               stage: 'base-recovery-ok',
               reason,
               baseInk: 0,
+              diagnostics: recoveryDiagnostics,
               ...extra,
             });
           };
@@ -6473,6 +6497,9 @@ export function PhysicsPaintStudio() {
               events,
               size,
               paper: aquarelleLiftPaperRef.current,
+              onDiagnostics: (diagnostics) => {
+                recoveryDiagnostics = diagnostics;
+              },
             });
             if (abandonIfDrifted('recovery-bake')) return;
             if (!baked) {
@@ -6523,6 +6550,7 @@ export function PhysicsPaintStudio() {
                 clampRatio: recovery.clampRatio,
                 saturatedColorError: recovery.saturatedColorError,
                 correlation: recovery.correlation,
+                diagnostics: recoveryDiagnostics,
               });
               // (d) Adopt the validated base for THIS session. A recovered base
               // is never written to the snapshot (k03i): it would outlive the

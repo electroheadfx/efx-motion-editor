@@ -4652,6 +4652,46 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const moveProvenance = readFileSync(fileURLToPath(new URL('./performance/moveProvenanceCapture.ts', import.meta.url)), 'utf8');
     expect(moveProvenance).toContain("MOVE_PROVENANCE_BUILD = 'quick-261027-klx-diag-11-watercolor-only';");
   });
+
+  it('261029-bks threads the bake diagnostics into script-bake and lift-erase', () => {
+    // Apply: the helper's record (fired before it returns) reaches the existing
+    // render-split event from the publish closure.
+    const applyPort = between(
+      studio,
+      'applyAquarelleEvents: async ({ events, target, onProgress }) => {',
+      'publish: async (frame) => {',
+    );
+    expect(applyPort).toContain('let bakeDiagnostics: AquarelleApplyDiagnostics | null = null;');
+    expect(applyPort).toContain('onDiagnostics:');
+    const scriptBake = between(
+      studio,
+      "recordAquarelleRenderSplitEvent('script-bake', {",
+      '}, { bakeInk: frame.bytes, publishInk: publishBytes });',
+    );
+    expect(scriptBake).toContain('diagnostics: bakeDiagnostics,');
+
+    // Pre-edit Lift base recovery: the bake forwards its record and every
+    // lift-erase record of the flow carries it (null where no bake ran).
+    const ensureBase = between(
+      studio,
+      'ensureAquarelleDurableBaseRef.current = async (appFrame) => {',
+      'const runAquarelleLiftErase = useCallback(',
+    );
+    const ensureBake = between(ensureBase, 'bakeAquarelleEventsToFrame({', '});');
+    expect(ensureBake).toContain('onDiagnostics:');
+    expect(ensureBase).toContain('diagnostics: null,');
+    expect(countOccurrences(ensureBase, 'diagnostics: recoveryDiagnostics,')).toBe(3);
+
+    // Transaction Lift recovery: same seam, same records.
+    const erase = between(
+      studio,
+      'const runAquarelleLiftErase = useCallback(',
+      'const handleAquarelleStrokeEnd = useCallback(',
+    );
+    const eraseBake = between(erase, 'bakeAquarelleEventsToFrame({', '});');
+    expect(eraseBake).toContain('onDiagnostics:');
+    expect(countOccurrences(erase, 'diagnostics: recoveryDiagnostics,')).toBe(3);
+  });
 });
 
 describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', () => {
