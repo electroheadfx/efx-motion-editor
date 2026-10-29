@@ -2808,7 +2808,7 @@ describe('physicPaintBridge', async () => {
     });
 
     expect(replay.ok).toBe(false);
-    expect(replay.ok ? null : replay.error).toBe('Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Roto physical replay target snapshot does not match the original accepted command.');
+    expect(replay.ok ? null : replay.error).toContain('Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Roto physical replay target snapshot does not match the original accepted command.');
     const afterReplay = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
     expect(afterReplay).toEqual(beforeReplay);
     expect(afterReplay && {

@@ -1177,13 +1177,19 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         };
       }
       const selectedKeyId = lastAcceptedSelectionRef.current.selectedKeyId;
-      // The cursor (unlike the selection) is read from the live selection port so
-      // a click/navigation that moved the cursor BEFORE this operation is
-      // reflected — the parent records original.before from the live document
-      // cursor, so a stale commit-anchored cursor here would diverge and reject
-      // the replay. Key-rail ops are unaffected: they never read a stale cursor
-      // and the selectedKeyId above remains commit-anchored.
-      const currentAppFrame = portsRef.current.selection.getCurrentAppFrame()
+      // The cursor follows the SELECTED KEY whenever a key is selected — the
+      // same rule the parent document applies (`selectedRecord?.appFrame ??
+      // liveCursor`). Reading the raw live cursor while a cross-frame key stayed
+      // selected made the capture record a pair the document model cannot
+      // express, and the parent's recorded `before` (built from its document)
+      // then disagreed with the replay target (261029-lsr UAT row 4). With no
+      // selection the live cursor is authoritative: a navigation that moved the
+      // cursor BEFORE this operation must be reflected.
+      const selectedRecord = selectedKeyId === null
+        ? null
+        : records.find((entry) => entry.keyId === selectedKeyId) ?? null;
+      const currentAppFrame = selectedRecord?.appFrame
+        ?? portsRef.current.selection.getCurrentAppFrame()
         ?? lastAcceptedSelectionRef.current.cursorAppFrame;
       const buffer = portsRef.current.buffer;
       const reference = portsRef.current.reference.getCachedReference();

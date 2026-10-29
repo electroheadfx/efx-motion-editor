@@ -4478,7 +4478,7 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
 
   it('pins the refreshed probe build marker and the script-bake-composite event', () => {
     const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
-    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-6'");
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-7'");
   });
 });
 
@@ -4889,7 +4889,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
     // Every entry point (event, alpha proof, install, PNG dump) checks this.
     expect(capture).toContain('return import.meta.env.DEV === true;');
-    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-6'");
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-7'");
     // The Studio display sampler is DEV-gated; the Move provenance build
     // marker names this diagnostic revision so a stale window is detectable.
     expect(studio).toContain('if (!import.meta.env.DEV) return;');

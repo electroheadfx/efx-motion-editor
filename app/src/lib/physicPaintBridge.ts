@@ -400,11 +400,10 @@ export function setDebugReplayDiff(enabled: boolean): void {
   debugReplayDiff = enabled;
 }
 
-function debugReplaySnapshotDiff(
+function describeReplaySnapshotDiff(
   proposed: AcceptedPhysicalCommandSnapshot,
   expected: AcceptedPhysicalCommandSnapshot,
-): void {
-  if (!debugReplayDiff) return;
+): string[] {
   const failures: string[] = [];
   if (proposed.capacity !== expected.capacity) failures.push(`capacity ${proposed.capacity} != ${expected.capacity}`);
   if (proposed.revision !== expected.revision) failures.push(`revision ${proposed.revision} != ${expected.revision}`);
@@ -445,7 +444,26 @@ function debugReplaySnapshotDiff(
       }
     }
   }
+  return failures;
+}
+
+function debugReplaySnapshotDiff(
+  proposed: AcceptedPhysicalCommandSnapshot,
+  expected: AcceptedPhysicalCommandSnapshot,
+): void {
+  if (!debugReplayDiff) return;
+  const failures = describeReplaySnapshotDiff(proposed, expected);
   console.warn(`[replay-diff] replay target mismatch: ${failures.join(' | ') || 'unknown-field'}`);
+}
+
+// 261029-lsr: the parent owns the replay-target authority, but the Studio owns
+// the console the operator reads. DEV builds append the field-level diff to the
+// rejection so a failing replay names its own divergence without a main-window
+// console round trip.
+function replayDiffSuffix(proposed: AcceptedPhysicalCommandSnapshot, expected: AcceptedPhysicalCommandSnapshot): string {
+  if (import.meta.env.DEV !== true) return '';
+  const failures = describeReplaySnapshotDiff(proposed, expected);
+  return failures.length === 0 ? '' : ` [${failures.join(' | ')}]`;
 }
 
 /**
@@ -1749,7 +1767,7 @@ async function applyPhysicPaintRotoPhysicalMap(
       : replayEntry.before;
     if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
       debugReplaySnapshotDiff(liveSourceSnapshot, expectedSourceSnapshot);
-      return reject('Roto physical replay source snapshot does not match the original accepted command.');
+      return reject(`Roto physical replay source snapshot does not match the original accepted command.${replayDiffSuffix(liveSourceSnapshot, expectedSourceSnapshot)}`);
     }
   }
   if (currentRevision !== payload.expectedRevision) {
@@ -1936,7 +1954,10 @@ async function applyPhysicPaintRotoPhysicalMap(
     });
     if (!sameAcceptedPhysicalCommandSnapshot(proposedTargetSnapshot, expectedTargetSnapshot)) {
       debugReplaySnapshotDiff(proposedTargetSnapshot, expectedTargetSnapshot);
-      return reject('Roto physical replay target snapshot does not match the original accepted command.', stagedRevision);
+      return reject(
+        `Roto physical replay target snapshot does not match the original accepted command.${replayDiffSuffix(proposedTargetSnapshot, expectedTargetSnapshot)}`,
+        stagedRevision,
+      );
     }
     if (currentRevision !== provenance.sourceRevision) return reject('Roto physical replay source revision does not match the current state.', stagedRevision);
     if (stagedRevision !== provenance.targetRevision) return reject('Roto physical replay target revision does not match the original command.', stagedRevision);

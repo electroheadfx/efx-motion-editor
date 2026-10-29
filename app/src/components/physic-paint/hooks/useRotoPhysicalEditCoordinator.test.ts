@@ -4342,3 +4342,35 @@ describe('261029-lsr replay target selection normalization', () => {
     expect(test.getPayload()?.cursorAppFrame).toBe(6);
   });
 });
+
+describe('261029-lsr capture cursor authority', () => {
+  it('captures the before cursor at the selected key when the playhead moved elsewhere', async () => {
+    const test = harness({ launchRotoPhysical: { selectedKeyId: 'B', cursorAppFrame: 1 } });
+    // Key B is selected at frame 1 while the operator has navigated to frame 4.
+    // The parent's document derives its cursor from the selection (1), so the
+    // captured before must do the same or every undo target disagrees with the
+    // recorded command.
+    test.setStudioSelection('B', 4);
+    expect(await test.executePasteKey(4)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted paste command.');
+    expect(accepted.before.selectedKeyId).toBe('B');
+    expect(accepted.before.currentAppFrame).toBe(1);
+    expect(accepted.before.selectedAppFrame).toBe(1);
+    expect(accepted.after.currentAppFrame).toBe(4);
+  });
+
+  it('keeps the live cursor authoritative when nothing is selected', async () => {
+    const test = harness();
+    test.setStudioSelection(null, 4);
+    expect(await test.executePasteKey(4)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected accepted paste command.');
+    expect(accepted.before.selectedKeyId).toBeNull();
+    expect(accepted.before.currentAppFrame).toBe(4);
+  });
+});
