@@ -18,7 +18,7 @@
 import type { PhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 
 export const AQUARELLE_RENDER_SPLIT_PATH = '/tmp/efx-aquarelle-render-split.json';
-export const AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-4';
+export const AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-5';
 
 const MAX_EVENTS = 240;
 const INK_CACHE_LIMIT = 96;
