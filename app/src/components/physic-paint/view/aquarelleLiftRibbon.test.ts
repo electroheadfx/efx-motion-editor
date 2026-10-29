@@ -17,6 +17,7 @@ import {
   collectLiftDabs,
   liftEngineSize,
   liftRadiusDoc,
+  liftShapeForStroke,
 } from '../roto/aquarelleLiftErase';
 import {
   LIFT_ROUNDED_ASPECT,
@@ -45,8 +46,18 @@ function point(x: number, y: number, pressure = 0.5, tiltX = 0, tiltY = 0) {
 function stroke(
   points: ReturnType<typeof point>[],
   overrides: typeof NEUTRAL_TOOL_OVERRIDES | undefined = ROUND,
+  brushId = 'round',
 ) {
-  return { brushId: 'round', toolOverrides: overrides, params: CANONICAL, points };
+  return { brushId, toolOverrides: overrides, params: CANONICAL, points };
+}
+
+/** The module's documented support law, reproduced for the cap pin (CR-01). */
+function supportHalfWidthAt(aspect: number, delta: number, radius: number): number {
+  const cos = Math.cos(delta);
+  const sin = Math.sin(delta);
+  return aspect >= LIFT_ROUNDED_ASPECT
+    ? radius * Math.sqrt(cos * cos + aspect * aspect * sin * sin)
+    : radius * (Math.abs(cos) + aspect * Math.abs(sin));
 }
 
 /** Even-odd ray casting over the implicit closing edge. */
@@ -102,6 +113,59 @@ describe('261029-eur lift ribbon — one footprint law', () => {
     expect(hitRadiusPx).toBeCloseTo(Math.max(MIN_STROKE_PAD_PX, radiusPx), 6);
   });
 
+  it('sweeps every cap vertex through the end station’s own support law (no flare, no notch)', () => {
+    const radiusPx = liftRadiusDoc(0.5, liftEngineSize(CANONICAL)) * SIZE.height;
+    const points = [point(0.25, 0.5), point(0.75, 0.5)];
+    const cases = [
+      // Follow rotation, aspect 0.2 (the hake preset with its 90° angle
+      // doubled to 180°): the band is 0.2 R wide, so a constant-R cap flares
+      // ~4.6x out of it at the junction (CR-01).
+      stroke(points, { ...NEUTRAL_TOOL_OVERRIDES, rotation: 2 }, 'hake'),
+      // Follow rotation, aspect 2 (the chalk preset widened 2.5x): the band is
+      // 2 R wide, so the same constant-R cap cuts an inward notch instead.
+      stroke(points, { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2.5 }, 'chalk'),
+    ];
+    for (const recorded of cases) {
+      const shape = liftShapeForStroke(recorded);
+      // A horizontal left → right stroke: segmentAngle 0, so a 'follow' tip
+      // points along the preset angle.
+      const theta = shape.angle;
+      const { polygonPx, hitRadiusPx } = buildLiftRibbon(recorded, SIZE);
+      const firstX = 0.25 * SIZE.width;
+      const lastX = 0.75 * SIZE.width;
+      const endY = 0.5 * SIZE.height;
+      const forwardCap = polygonPx.filter((vertex) => vertex.x > lastX + 1e-6);
+      const backwardCap = polygonPx.filter((vertex) => vertex.x < firstX - 1e-6);
+      // CAP_SEGMENTS - 1 vertices per cap: angle 0 and π ARE the band
+      // junctions already emitted, so the sweep skips them.
+      expect(forwardCap).toHaveLength(7);
+      expect(backwardCap).toHaveLength(7);
+      for (const [vertices, stationX] of [
+        [forwardCap, lastX],
+        [backwardCap, firstX],
+      ] as const) {
+        for (const vertex of vertices) {
+          // Canvas y is flipped: recover the doc-frame radial direction.
+          const dx = vertex.x - stationX;
+          const dyUp = endY - vertex.y;
+          const delta = Math.atan2(dyUp, dx) - theta;
+          // The junction sits on this same curve at delta = ±π/2; a
+          // constant-radius cap leaves it in both directions (flare below
+          // aspect 1, notch above), so this equality is the continuity pin.
+          expect(Math.hypot(dx, dyUp)).toBeCloseTo(
+            supportHalfWidthAt(shape.aspect, delta, radiusPx),
+            6,
+          );
+          // And no cap vertex ever escapes the click target.
+          expect(Math.hypot(dx, dyUp)).toBeLessThanOrEqual(
+            liftSupportFactor(shape.aspect) * radiusPx + 1e-6,
+          );
+        }
+      }
+      expect(hitRadiusPx).toBeCloseTo(liftSupportFactor(shape.aspect) * radiusPx, 6);
+    }
+  });
+
   it('reaches past the bare footprint radius for an aspect > 1 tip, and shrinks below it for a flat one', () => {
     const wide = stroke(
       [point(0.25, 0.5), point(0.75, 0.5)],
@@ -141,9 +205,13 @@ describe('261029-eur lift ribbon — one footprint law', () => {
       { ...NEUTRAL_TOOL_OVERRIDES, aspect: 0.5 },
     );
     const { polygonPx } = buildLiftRibbon(recorded, size);
+    // WR-04: the punch oracle must use the REAL tip shape, not the zero-angle
+    // radial fallback — otherwise the dab angles differ from the drawn band
+    // and this containment pin cannot see a footprint drift.
     const dabs = collectLiftDabs(
       { points: recorded.points, params: CANONICAL },
       size,
+      liftShapeForStroke(recorded),
     );
     expect(dabs.length).toBeGreaterThan(2);
     for (const dab of dabs) {
