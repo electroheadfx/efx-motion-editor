@@ -4695,24 +4695,32 @@ export function PhysicsPaintStudio() {
   // would carry a stale `after.revision`). The guard block runs BEFORE the
   // playback stop: a refused Cmd+Z must neither kill a queued capture nor stop
   // playback (D-07).
-  // TEMP EXPERIMENT (261029-lsr UAT, user request): undo without the frame
-  // re-bake. The script still mutates through the same edit swap, but the
-  // pixels come from the engine's own tile undo and the sheet is never reset —
-  // no full re-render, no flash. Flip to false to restore the
-  // script-authoritative re-bake. Test on a FRESH Studio session with paints
-  // only: once a delete/move has re-baked, the engine history is a re-bake
-  // history and tile undo is no longer the pre-stroke sheet.
-  const AQUARELLE_UNDO_WITHOUT_REBAKE = true;
+  // TEMP EXPERIMENT (261029-lsr UAT, user request): a RECORDED STROKE's undo
+  // and redo take their pixels from the watercolor engine's own tile
+  // undo/redo — the same mechanism a brush stroke already uses — instead of
+  // resetting the sheet and re-rendering the whole frame. The script still
+  // mutates through the identical edit swap, so display and script stay in
+  // step. Scoped to the stroke route only: `aquarelle-script` edits
+  // (delete/move/appearance/transform) still re-bake, because their script
+  // mutation has no one-step engine history to pair with.
+  // Flip to false to restore the script-authoritative re-bake.
+  // Test on a FRESH Studio session with paints only: once a delete/move has
+  // re-baked, the engine history is a re-bake history and tile undo is no
+  // longer the pre-stroke sheet.
+  const AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE = true;
   const runScriptReplay = useCallback(async ({
     direction,
     editId,
     prepare,
     onStep,
+    tileHistory = false,
   }: {
     direction: AquarelleReplayDirection;
     editId?: number;
     prepare?: () => number | null;
     onStep?: (step: AquarelleReplayStep) => void;
+    /** TEMP: drive the pixels from the engine's own undo/redo tiles. */
+    tileHistory?: boolean;
   }): Promise<boolean> => {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     if (isPhysicalMutationLocked()) return false;
@@ -4737,15 +4745,15 @@ export function PhysicsPaintStudio() {
           prepare,
           restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
           resetSheet: () => {
-            // TEMP: an undo keeps the live sheet — no reset, so nothing flashes.
-            if (AQUARELLE_UNDO_WITHOUT_REBAKE && direction === 'undo') return;
+            // TEMP: the tile path keeps the live sheet — no reset, no flash.
+            if (tileHistory) return;
             aquarelleResetSheetRef.current?.();
           },
           rebake: () => {
-            // TEMP: the engine's tile undo IS the pixel side of this undo. It
-            // restores the exact pre-stroke sheet without re-rendering anything.
-            if (AQUARELLE_UNDO_WITHOUT_REBAKE && direction === 'undo') {
-              return Promise.resolve(rotoFrameEditing.undo());
+            // TEMP: the engine's tile undo/redo IS the pixel side of this
+            // command. It restores the exact sheet step without re-rendering.
+            if (tileHistory) {
+              return Promise.resolve(direction === 'undo' ? rotoFrameEditing.undo() : rotoFrameEditing.redo());
             }
             return rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
           },
@@ -4864,13 +4872,17 @@ export function PhysicsPaintStudio() {
           if (step === 'rebake') reachedRebake = true;
         };
         const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
+        // TEMP: the stroke route — and ONLY it — takes the engine's tile
+        // history instead of a frame re-bake.
+        const tileHistory = AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE;
         const ok = cached !== undefined
-          ? await runScriptReplay({ direction, editId: cached, onStep })
+          ? await runScriptReplay({ direction, editId: cached, onStep, tileHistory })
           : direction === 'redo'
             ? false
             : await runScriptReplay({
               direction,
               onStep,
+              tileHistory,
               prepare: () => {
                 // `runScriptReplay` already holds the in-flight gate for this
                 // replay, so the build passes `ownedInFlight` — otherwise the
