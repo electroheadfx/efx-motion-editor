@@ -222,6 +222,116 @@ describe('Roto live pixel cache transactions', () => {
   });
 });
 
+// 261029-lsr (D-03): the script epoch — `aquarelleStrokesRevision` — is the
+// identity no script edit moves (`contentRevision` does not change on a script
+// swap). A capture queued before an undo must never publish its pre-undo
+// pixels: the epoch is compared at produce and again at commit.
+// Runs before the gesture-idle rows: those leave the shared finalization
+// machine parked on a fake-timer idle window, which would stall a later
+// capture's quiescence gate.
+describe('261029-lsr script epoch gate', () => {
+  const identity = {
+    launchId: 'launch-epoch',
+    layerId: 'layer-epoch',
+    keyId: 'key-epoch',
+    contentRevision: 'rev-epoch',
+    appFrame: 12,
+  };
+
+  it('rejects a capture whose epoch moved before the producer starts', async () => {
+    const produce = vi.fn(async () => 'pre-undo-pixels');
+    const commit = vi.fn();
+    const samples: Array<{ stage: string; outcome?: string }> = [];
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({
+      identity,
+      resolveCurrent: () => identity,
+      isStillCurrent: () => false,
+      produce,
+      commit,
+      recordPerformance: (sample) => samples.push(sample),
+    });
+
+    // The gate asks `isStillWanted('before-produce')` BEFORE its quiet window,
+    // so the rejection lands without touching the interaction clock.
+    await expect(work).resolves.toBe(false);
+    expect(produce).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'cache-revision-check', outcome: 'stale-before-produce' }),
+    ]));
+  });
+
+  it('rejects at commit when the epoch moved only after the producer settled', async () => {
+    const produced = deferred<string>();
+    const epoch = { current: 7 };
+    let producerStarted = false;
+    const commit = vi.fn();
+    const samples: Array<{ stage: string; outcome?: string }> = [];
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({
+      identity,
+      resolveCurrent: () => identity,
+      isStillCurrent: () => epoch.current === 7,
+      produce: () => {
+        producerStarted = true;
+        return produced.promise;
+      },
+      commit,
+      recordPerformance: (sample) => samples.push(sample),
+    });
+
+    // The produce started under the pre-undo epoch, then an undo moved it. The
+    // flush path opens the gate immediately (save/export/navigation).
+    const flush = transactions.flush(identity);
+    await vi.waitFor(() => expect(producerStarted).toBe(true));
+    epoch.current = 8;
+    produced.resolve('pre-undo-pixels');
+
+    await expect(work).resolves.toBe(false);
+    await flush;
+    expect(commit).not.toHaveBeenCalled();
+    expect(samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: 'cache-revision-check', outcome: 'stale-before-commit' }),
+    ]));
+  });
+
+  it('accepts a capture whose epoch stays current', async () => {
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({
+      identity,
+      resolveCurrent: () => identity,
+      isStillCurrent: () => true,
+      produce: async () => 'post-undo-pixels',
+      commit,
+    });
+
+    await transactions.flush(identity);
+    await expect(work).resolves.toBe(true);
+    expect(commit).toHaveBeenCalledWith('post-undo-pixels', identity);
+  });
+
+  it('keeps the legacy behaviour when no epoch port is supplied', async () => {
+    const commit = vi.fn();
+    const transactions = createRotoLivePixelCacheTransactions();
+
+    const work = transactions.capture({
+      identity,
+      resolveCurrent: () => identity,
+      produce: async () => 'unepoch-pixels',
+      commit,
+    });
+
+    await transactions.flush(identity);
+    await expect(work).resolves.toBe(true);
+    expect(commit).toHaveBeenCalledWith('unepoch-pixels', identity);
+  });
+});
+
 describe('Roto live pixel cache transactions — bounded turns and interruption (52.2-14)', () => {
   /** Real-timer helper: each round flushes every pending macrotask and microtask. */
   const settle = async (rounds = 4): Promise<void> => {

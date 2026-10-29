@@ -40,6 +40,13 @@ export interface RotoLivePixelCapture<T> {
   recordPerformance?: (sample: { stage: string; category: 'sync-cpu' | 'scheduled-wait' | 'async-elapsed'; durationMs: number; timestamp: number; mutationId?: number; sourceFrame: number; outcome?: string }) => void;
   /** Diagnostics: the queue's terminal outcome, including the stale gate. */
   onSettle?: (outcome: FinalizationTurnOutcome) => void;
+  /**
+   * 261029-lsr: commit-time identity beyond the per-key revision (the script
+   * epoch). A stroke undo swaps the script and re-bakes WITHOUT moving
+   * `contentRevision`, so the per-key revision alone cannot kill a capture
+   * queued before that undo. Absent = no extra gate.
+   */
+  isStillCurrent?: () => boolean;
 }
 
 interface RotoLegacyLivePixelCapture<T> {
@@ -163,6 +170,13 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
           // (save/export/navigation/close) open both immediately.
           quiescenceMs: CAPTURE_PRODUCE_QUIET_MS,
           isStillWanted: (stage) => {
+            // 261029-lsr: the script epoch gates BEFORE the per-key revision —
+            // the `!== undefined` term is load-bearing (a bare optional call
+            // would reject every legacy capture).
+            if (input.isStillCurrent !== undefined && !input.isStillCurrent()) {
+              reject(stage === 'before-produce' ? 'stale-before-produce' : 'stale-before-commit');
+              return false;
+            }
             if (revisions.get(key) === pixelRevision && matchesIdentity(input.identity, input.resolveCurrent())) return true;
             reject(stage === 'before-produce' ? 'stale-before-produce' : 'stale-before-commit');
             return false;
@@ -182,6 +196,9 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
             return value;
           },
           commit: async (value) => {
+            // 261029-lsr: the epoch is re-checked at commit — an undo that lands
+            // while the encode runs must drop the pre-undo pixels.
+            if (input.isStillCurrent !== undefined && !input.isStillCurrent()) return reject('stale-before-commit');
             const current = input.resolveCurrent();
             if (revisions.get(key) !== pixelRevision || !matchesIdentity(input.identity, current)) return reject('stale-before-commit');
             const commitStartedAt = input.recordPerformance ? performance.now() : 0;

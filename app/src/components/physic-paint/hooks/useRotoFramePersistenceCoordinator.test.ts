@@ -565,3 +565,29 @@ describe('52.2-15 delivery retry scheduler (D-16, sensitivity-map row 4)', () =>
     expect(coordinatorSource).toContain('livePixelTransactionsRef.current.interrupt();');
   });
 });
+
+// 261029-lsr (D-03): the script epoch is stamped SYNCHRONOUSLY at
+// `captureLivePixels` entry and re-read from the SAME port at produce and at
+// commit. The hook cannot be mounted (no preact test renderer), so the shape is
+// pinned by source contract — a stamp taken at commit time, or after the
+// capture call, fails here.
+describe('261029-lsr script epoch stamp and compare (D-03)', () => {
+  const captureLivePixelsSource = (() => {
+    const start = coordinatorSource.indexOf('const captureLivePixels = useCallback(');
+    return start === -1 ? '' : coordinatorSource.slice(start, coordinatorSource.indexOf('const resolveFrameIdentityInput = useCallback(', start));
+  })();
+
+  it('stamps the script epoch before the transaction capture', () => {
+    expect(captureLivePixelsSource.length).toBeGreaterThan(0);
+    expect(captureLivePixelsSource).toContain('const scriptEpoch = inputRef.current.getScriptEpoch?.();');
+    expect(captureLivePixelsSource.indexOf('const scriptEpoch = inputRef.current.getScriptEpoch?.();'))
+      .toBeLessThan(captureLivePixelsSource.indexOf('livePixelTransactionsRef.current.capture('));
+  });
+
+  it('compares a fresh read of the same port against the stamped epoch', () => {
+    const captureCall = captureLivePixelsSource.indexOf('livePixelTransactionsRef.current.capture(');
+    const compare = captureLivePixelsSource.indexOf('isStillCurrent: scriptEpoch === undefined');
+    expect(compare).toBeGreaterThan(captureCall);
+    expect(captureLivePixelsSource).toContain('() => (inputRef.current.getScriptEpoch?.() ?? null) === scriptEpoch');
+  });
+});

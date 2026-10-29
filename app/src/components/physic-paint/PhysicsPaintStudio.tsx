@@ -1415,6 +1415,9 @@ export function PhysicsPaintStudio() {
     ),
     executePhysicalEdit: (executeInput) => groupFramePaintExecuteRef.current(executeInput),
     setApplyMessage,
+    // 261029-lsr (D-03): the capture gate's epoch is the live script revision —
+    // a `peek` read inside a callback (no subscription, no render-body read).
+    getScriptEpoch: () => aquarelleStrokesRevision.peek(),
   });
   const rotoEditBuffer = rotoPersistence.editBuffer;
   const rotoEditableFramesRef = useRef<number[]>(rotoEditBuffer.editableFrames);

@@ -242,6 +242,13 @@ export interface UseRotoFramePersistenceCoordinatorInput {
   executePhysicalEdit: (input: RotoGroupFramePaintExecuteInput) => Promise<boolean>;
   createOverrideKeyId?: () => string;
   setApplyMessage: (message: string) => void;
+  /**
+   * 261029-lsr (D-03): the monotonic script epoch (`aquarelleStrokesRevision`).
+   * A capture refuses to commit when it moved — a stroke undo swaps the script
+   * without touching `contentRevision`, so the per-key revision alone cannot
+   * kill a capture queued before that undo.
+   */
+  getScriptEpoch?: () => number;
 }
 
 /**
@@ -618,6 +625,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     operationId?: string;
     background?: PhysicPaintRotoBackgroundMetadata;
   }) => {
+    // 261029-lsr (D-03): stamp the script epoch SYNCHRONOUSLY, before anything
+    // awaits — a capture queued before an undo must carry the pre-undo epoch so
+    // the produce/commit gates can reject it.
+    const scriptEpoch = inputRef.current.getScriptEpoch?.();
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
     if (!launchId) {
@@ -667,6 +678,11 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     return livePixelTransactionsRef.current.capture({
       identity,
       mutationId: capture.mutationId,
+      // 261029-lsr: a fresh read of the SAME port against the stamped epoch —
+      // never a captured constant (that would forgive every later undo).
+      isStillCurrent: scriptEpoch === undefined
+        ? undefined
+        : () => (inputRef.current.getScriptEpoch?.() ?? null) === scriptEpoch,
       resolveCurrent: () => {
         const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
         const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);

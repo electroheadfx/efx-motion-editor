@@ -41,6 +41,8 @@ const aquarelleCanvasLayer = readFileSync(fileURLToPath(new URL('./engine/Aquare
 const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/AquarelleStrokeOverlay.tsx', import.meta.url)), 'utf8');
 // 261029-lsr: the ONE script-replay orchestration the Studio's route delegates to.
 const aquarelleScriptReplay = readFileSync(fileURLToPath(new URL('./roto/aquarelleScriptReplay.ts', import.meta.url)), 'utf8');
+// 261029-lsr: the transaction-level capture gate (Layer B, the script epoch).
+const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLivePixelCacheTransactions.ts', import.meta.url)), 'utf8');
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
@@ -3254,6 +3256,23 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // The two fail-closed literals the route used to carry now live in the module.
     expect(aquarelleScriptReplay).toContain('if (revert === null) return false;');
     expect(aquarelleScriptReplay).toContain('ports.rollback(revert);');
+  });
+
+  it('stamps the script epoch and keeps the replay order', () => {
+    // 261029-lsr (D-03): the capture gate's epoch is the live script revision —
+    // a `peek` read inside a callback (no subscription, no render-body read).
+    expect(studio).toContain('getScriptEpoch: () => aquarelleStrokesRevision.peek(),');
+    // The port CALL order, not the type union or the onStep labels.
+    expect(aquarelleScriptReplay.indexOf('ports.invalidate();'))
+      .toBeLessThan(aquarelleScriptReplay.indexOf('ports.restore('));
+    expect(aquarelleScriptReplay.indexOf('ports.restore('))
+      .toBeLessThan(aquarelleScriptReplay.indexOf('ports.resetSheet();'));
+    expect(aquarelleScriptReplay.indexOf('ports.resetSheet();'))
+      .toBeLessThan(aquarelleScriptReplay.indexOf('ports.rebake();'));
+    expect(aquarelleScriptReplay.indexOf('ports.ensureBase()'))
+      .toBeLessThan(aquarelleScriptReplay.indexOf('ports.prepare'));
+    // Exactly the two gates: before-produce and before-commit.
+    expect(livePixelTransactions.split('input.isStillCurrent !== undefined && !input.isStillCurrent()').length - 1).toBe(2);
   });
 
   it('wires the Delete/Backspace action and the A tool cycle (watercolor only)', () => {
