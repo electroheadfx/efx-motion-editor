@@ -4972,6 +4972,9 @@ export function PhysicsPaintStudio() {
     // refresh afterwards.
     undoPaint: () => rotoFrameEditing.undo(),
     redoPaint: () => rotoFrameEditing.redo(),
+    // 261029-lsr UAT row 5: every entry kind (physical, script, stroke, paint)
+    // leaves playback before the command runs, not just the script replays.
+    stopPlayback: rotoCachedPlayback.stop,
   });
 
   // 38-11: the history hook returns a fresh wrapper object per render, but

@@ -2796,6 +2796,9 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
       events.push('redoPaint');
       return options.redoPaintResult ?? true;
     });
+    const stopPlayback = vi.fn(() => {
+      events.push('stopPlayback');
+    });
     const history = useRotoPhysicalEditHistory({
       identity: {
         trackId: 'track-a',
@@ -2822,10 +2825,11 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
         replaceRecords: () => ({ ok: true }),
       },
       getLiveSourceSnapshot: () => state.current,
+      stopPlayback,
       undoPaint,
       redoPaint,
     });
-    return { acceptedOutput, pendingOperationId, availability, events, executePhysicalEdit, undoPaint, redoPaint, history, state };
+    return { acceptedOutput, pendingOperationId, availability, events, executePhysicalEdit, undoPaint, redoPaint, stopPlayback, history, state };
   }
 
   function acceptPasteKey(
@@ -2859,8 +2863,8 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
 
     expect(await harness.history.undo()).toBe(true);
-    // Stroke removal happens BEFORE the key replay.
-    expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    // Playback ends first, then stroke removal BEFORE the key replay.
+    expect(harness.events).toEqual(['stopPlayback', 'undoPaint', 'replay-undo']);
     expect(harness.executePhysicalEdit).toHaveBeenCalledTimes(1);
     const undoInput = harness.executePhysicalEdit.mock.calls[0][0];
     expect(undoInput.operationKind).toBe('undo');
@@ -2869,8 +2873,8 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
 
     expect(await harness.history.redo()).toBe(true);
-    // Key replay happens BEFORE redoPaint.
-    expect(harness.events).toEqual(['undoPaint', 'replay-undo', 'replay-redo', 'redoPaint']);
+    // Key replay happens BEFORE redoPaint; the redo also ends playback first.
+    expect(harness.events).toEqual(['stopPlayback', 'undoPaint', 'replay-undo', 'stopPlayback', 'replay-redo', 'redoPaint']);
     const redoInput = harness.executePhysicalEdit.mock.calls[1][0];
     expect(redoInput.historyProvenance?.historyCommandId).toBe('coordinator-minted-op-77');
     expect(harness.state.current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
@@ -2893,7 +2897,7 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
 
     expect(await harness.history.undo()).toBe(true);
-    expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    expect(harness.events).toEqual(['stopPlayback', 'undoPaint', 'replay-undo']);
     expect(harness.executePhysicalEdit.mock.calls[0][0].historyProvenance?.historyCommandId)
       .toBe('coordinator-minted-op-88');
   });
@@ -2911,7 +2915,7 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     // acceptance as a plain physical command — no paint half to remove.
     expect(await harness.history.undo()).toBe(true);
     expect(harness.undoPaint).not.toHaveBeenCalled();
-    expect(harness.events).toEqual(['replay-undo']);
+    expect(harness.events).toEqual(['stopPlayback', 'replay-undo']);
     expect(harness.state.current.records.map(({ keyId }) => keyId)).toEqual(['A']);
     expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
   });
@@ -2941,7 +2945,7 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
 
     expect(await harness.history.undo()).toBe(false);
-    expect(harness.events).toEqual(['undoPaint', 'replay-undo', 'redoPaint']);
+    expect(harness.events).toEqual(['stopPlayback', 'undoPaint', 'replay-undo', 'redoPaint']);
     expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
     expect(harness.state.current).toBe(after);
   });
@@ -3007,6 +3011,61 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(HISTORY_SOURCE).not.toContain('input.identity?.capacity');
     expect(HISTORY_SOURCE).toContain('const beginAutoKeyPaintGroup = useCallback(() => {');
     expect(HISTORY_SOURCE).toContain('const cancelAutoKeyPaintGroup = useCallback(() => {');
+  });
+
+  // 261029-lsr UAT row 4: the promotion's key is owned by the live capture
+  // pipeline. The first stroke's settle capture commits the painted pixels
+  // onto its record BEFORE the user can press undo, so a payload-bytes
+  // comparison made the composite Cmd+Z a silent no-op.
+  it('undoes the auto-key composite after the live capture advanced the key payload bytes', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const capturedLive = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    expect(capturedLive.records[1].payload.bytes).not.toBe(after.records[1].payload.bytes);
+    const harness = createAutoKeyHarness({ current: capturedLive });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(14, 'paint');
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.events).toEqual(['stopPlayback', 'undoPaint', 'replay-undo']);
+    expect(harness.state.current.records.map(({ keyId }) => keyId)).toEqual(['A']);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('still fails the auto-key undo closed when the live key set no longer matches', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const competing = snapshotWithCapacity([record('A', 0), record('other', 2)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: competing });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(15, 'paint');
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.events).toEqual(['stopPlayback']);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  // 261029-lsr UAT row 5: every entry kind leaves playback before it runs —
+  // an empty stack (a refused Cmd+Z) must not kill a running session.
+  it('stops playback when an undoable entry exists and leaves it alone on an empty stack', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after });
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.stopPlayback).not.toHaveBeenCalled();
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(16, 'paint');
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.stopPlayback).toHaveBeenCalledTimes(1);
+    expect(harness.events[0]).toBe('stopPlayback');
   });
 });
 

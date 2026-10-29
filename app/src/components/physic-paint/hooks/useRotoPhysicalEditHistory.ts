@@ -295,6 +295,13 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   referencedActionHistory?: ReferencedActionHistoryRoute;
   /** 261022-pim: revision-authoritative watercolor script replay. */
   aquarelleScriptHistory?: AquarelleScriptHistoryRoute;
+  /**
+   * 261029-lsr UAT row 5: any undoable entry leaves playback first. The old
+   * engine undo stopped playback inside the frame-editing controller; the
+   * unified ledger owns every entry kind now, so the stop lives here — after
+   * the busy/empty-stack refusals (a refused Cmd+Z never kills a session).
+   */
+  stopPlayback?: () => void;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
 }
@@ -302,6 +309,13 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
 interface PendingReplay<EngineState> {
   readonly direction: 'undo' | 'redo';
   readonly command: RotoPhysicalEditCommand<EngineState>;
+  /**
+   * 261029-lsr UAT row 4: the auto-key composite's source side is owned by the
+   * live capture pipeline (the first stroke commits painted pixels onto the
+   * created key), so its source snapshot legitimately carries different bytes
+   * than the recorded `after`. The TARGET side stays strict.
+   */
+  readonly ignoreSourcePayloadBytes?: boolean;
 }
 
 function isOrdinaryOperationKind(
@@ -465,6 +479,7 @@ function withoutRasterBytes<EngineState>(
 function snapshotCanonicalContentEqual(
   left: RotoPhysicalEditReplaySourceSnapshot,
   right: RotoPhysicalEditReplaySourceSnapshot,
+  ignorePayloadBytes = false,
 ): boolean {
   if (left.records.length !== right.records.length
     || left.groupOverrideRecords.length !== right.groupOverrideRecords.length
@@ -476,7 +491,7 @@ function snapshotCanonicalContentEqual(
     const l = left.records[index];
     const r = right.records[index];
     if (l.keyId !== r.keyId || l.appFrame !== r.appFrame) return false;
-    if (l.payload.bytes !== r.payload.bytes
+    if ((!ignorePayloadBytes && l.payload.bytes !== r.payload.bytes)
       || l.payload.frameIndex !== r.payload.frameIndex
       || l.payload.appFrame !== r.payload.appFrame
       || l.payload.width !== r.payload.width
@@ -535,12 +550,13 @@ function snapshotCanonicalContentEqual(
 function snapshotReplayAuthorityEqual(
   actual: RotoPhysicalEditReplaySourceSnapshot,
   expected: RotoPhysicalEditReplaySourceSnapshot,
+  ignorePayloadBytes = false,
 ): boolean {
   return actual.launchOperationId === expected.launchOperationId
     && actual.layerId === expected.layerId
     && actual.projectContextId === expected.projectContextId
     && actual.capacity === expected.capacity
-    && snapshotCanonicalContentEqual(actual, expected);
+    && snapshotCanonicalContentEqual(actual, expected, ignorePayloadBytes);
 }
 
 function replayAcceptanceMatchesPending<EngineState>(
@@ -566,7 +582,7 @@ function replayAcceptanceMatchesPending<EngineState>(
     && snapshotRevision(accepted.before) === sourceRevision
     && snapshotRevision(accepted.after) === targetRevision
     && accepted.acceptedRevision === targetRevision
-    && snapshotReplayAuthorityEqual(accepted.before, source)
+    && snapshotReplayAuthorityEqual(accepted.before, source, pending.ignoreSourcePayloadBytes === true)
     && snapshotReplayAuthorityEqual(accepted.after, target);
 }
 
@@ -948,6 +964,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
+    // UAT row 5: an undoable entry ends playback before any entry branch runs
+    // (the script route stops it again inside `runScriptReplay`, harmlessly).
+    inputRef.current.stopPlayback?.();
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: the replay port swaps the script snapshot, resets the live
       // sheet and awaits the shared Apply. Stacks move ONLY on true — a stale
@@ -1044,15 +1063,38 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       const route = inputRef.current.aquarelleScriptHistory;
       const recordedStroke = route !== undefined && route.hasRecordedStroke(entry.mutationId);
       const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
-      if (typeof autoKeyLiveSnapshot !== 'function'
-        || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.after)) return false;
+      // 261029-lsr UAT row 4: the live-authority gate ignores record PAYLOAD
+      // bytes for this composite. The key this command created is owned by the
+      // live capture pipeline — the first stroke's settle capture legitimately
+      // replaces its payload with the painted pixels before the user can press
+      // undo, and the command deletes that whole key anyway. Bytes were
+      // compared by reference, so the gate always failed and the Cmd+Z was a
+      // silent no-op. Structural identity (record set/order/frames, capacity,
+      // launching realm, loops) is still strict, so a real competing edit
+      // fails closed.
+      const autoKeyLive = typeof autoKeyLiveSnapshot === 'function' ? autoKeyLiveSnapshot() : null;
+      if (!autoKeyLive || !snapshotReplayAuthorityEqual(autoKeyLive, command.after, true)) return false;
       if (recordedStroke && route !== undefined) {
         if (!await route.replayStroke(entry.mutationId, 'undo')) return false;
       } else if (!inputRef.current.undoPaint()) return false;
       if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
-      pendingReplayRef.current = { direction: 'undo', command };
+      // The recorded `acceptedRevision` predates every capture that committed
+      // the first stroke's pixels onto the created key, so the coordinator's
+      // replay provenance (which must equal the CURRENT revision) has to read
+      // the live revision — the same one the structural gate just accepted.
+      // Re-read AFTER the stroke half: its settle capture may have committed in
+      // between, and the provenance must match the revision at dispatch.
+      const autoKeyDispatchLive = typeof autoKeyLiveSnapshot === 'function' ? autoKeyLiveSnapshot() : null;
+      if (!autoKeyDispatchLive || !snapshotReplayAuthorityEqual(autoKeyDispatchLive, command.after, true)) {
+        if (recordedStroke && route !== undefined) await route.replayStroke(entry.mutationId, 'redo');
+        else inputRef.current.redoPaint();
+        publishAvailability();
+        return false;
+      }
+      pendingReplayRef.current = { direction: 'undo', command, ignoreSourcePayloadBytes: true };
       const autoKeyProposal = buildReplayProposal(command.before);
       const autoKeyBeforeRevision = snapshotRevision(command.before);
+      const autoKeyLiveRevision = snapshotRevision(autoKeyDispatchLive);
       const autoKeyAccepted = await coordinator.executePhysicalEdit({
         proposal: autoKeyProposal,
         expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
@@ -1063,7 +1105,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         historyProvenance: {
           historyCommandId: command.operationId,
           historyDirection: 'undo',
-          sourceRevision: command.acceptedRevision,
+          sourceRevision: autoKeyLiveRevision,
           targetRevision: autoKeyBeforeRevision,
         },
       });
@@ -1137,6 +1179,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = redoRef.current[redoRef.current.length - 1];
     if (!entry) return false;
+    inputRef.current.stopPlayback?.();
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: symmetric with undo — replay 'redo' and move the stacks
       // only when the script swap + re-bake report success.
@@ -1217,8 +1260,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       const route = inputRef.current.aquarelleScriptHistory;
       const recordedStroke = route !== undefined && route.hasRecordedStroke(entry.mutationId);
       const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
+      // Symmetric with the undo above: payload bytes drift with every live
+      // capture, so only the structural identity gates the redo.
       if (typeof autoKeyLiveSnapshot !== 'function'
-        || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.before)) return false;
+        || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.before, true)) return false;
       if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
       pendingReplayRef.current = { direction: 'redo', command };
       const autoKeyProposal = buildReplayProposal(command.after);

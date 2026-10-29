@@ -3268,6 +3268,22 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(aquarelleScriptReplay).toContain('ports.rollback(revert);');
   });
 
+  it('stops cached playback for every undoable ledger entry (UAT row 5)', () => {
+    const ledgerStart = studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory');
+    expect(ledgerStart).toBeGreaterThan(-1);
+    const ledgerCall = studio.slice(
+      ledgerStart,
+      studio.indexOf('const rotoMoveHistoryUndo = rotoMoveHistory.undo;', ledgerStart),
+    );
+    // The unified ledger owns playback exit now, not just the script replays:
+    // a physical/background/paint undo pressed mid-playback must end the
+    // session before the command runs.
+    expect(ledgerCall).toContain('stopPlayback: rotoCachedPlayback.stop,');
+    expect(historyHook).toContain('inputRef.current.stopPlayback?.();');
+    expect(historyHook.indexOf('inputRef.current.stopPlayback?.();'))
+      .toBeLessThan(historyHook.indexOf("if (entry.kind === 'aquarelle-script') {"));
+  });
+
   it('re-anchors a FAILED REDO the same way and keeps the dead-id drop undo-only (IN-04)', () => {
     const replayStart = studio.indexOf('aquarelleScriptHistory: {');
     const replayEnd = studio.indexOf('undoPaint:', replayStart);
