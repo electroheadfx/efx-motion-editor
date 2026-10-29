@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T21:01:15.963Z"
+last_updated: "2026-10-29T21:15:45.295Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: fb178cf92aca4d40d59b55f812126151832175c6
+state_head: 4007f1442b04fbcf92d3b6d5a5f8f4cb167a9bdc
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-29 - Quick 261029-lsr verification human_needed (7/7 must-haves verified; native UAT pending). Script-authoritative aquarelle undo: a recorded stroke's Cmd+Z routes through one replay — per-key capture invalidation, durable-base recovery, a synthetic single-stroke undo edit, sheet reset, shared Apply re-bake — so the frame can never drift from its script; unrecorded strokes keep the engine-only path, auto-key composites are included, and undo stops playback first. A capture stamped with the pre-undo aquarelleStrokesRevision can no longer commit. Deterministic orchestration pin proves display digest == bake digest (negative control bites). Commits 97dc79fd, c179ce82, 162bd902, a6309441, dfc360c0, 1441ddfc, ac6b3af4. Gates: 6 targeted suites 458 passed; full app suite 355 files / 6,349 passed / 1 skipped; typecheck clean. Code review: 2 blockers (redo never re-anchored; cross-frame undo consumed history) + 2 warnings fixed; WR-03/WR-04 declared residuals.
-Previous: 2026-10-29 - Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows). Water tool greyed while the live sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes. Engine getter `hasStandingWater` + pure `isSheetWet` (WET_THRESHOLD), published from the live rAF tick while no stroke is in flight. Commits 76e896f8, efd71f81, 5a35055c; docs 535d2543. Gates: package 159 passed / 4 skipped, app 360 files / 6,316 passed; typecheck clean.
+Last activity: 2026-10-29 - Quick 261029-uoz complete (native UAT pending). Brush-preview regression: blitStrokeThumb copied the DPR-scaled thumb cache (300x88 at dpr 2) 1:1 into the 150x44 visible canvas, so every surface showed only the top-left quarter — top-bar trigger, dropdown brush/lift rows, floating catalog, right-panel Brush tab. The blit now matches the visible bitmap to the cache before the 1:1 copy; no component/CSS/JSX change. Commits 741936eb, 4007f144. Gates: focused suite 15 passed; typecheck clean; full app suite 355 files / 6,368 passed. UAT-1..UAT-5 pending Retina confirmation.
+Previous: 2026-10-29 - Quick 261029-lsr verification human_needed (7/7 must-haves verified; native UAT pending). Script-authoritative aquarelle undo: a recorded stroke's Cmd+Z routes through one replay — per-key capture invalidation, durable-base recovery, a synthetic single-stroke undo edit, sheet reset, shared Apply re-bake — so the frame can never drift from its script; unrecorded strokes keep the engine-only path, auto-key composites are included, and undo stops playback first. A capture stamped with the pre-undo aquarelleStrokesRevision can no longer commit. Deterministic orchestration pin proves display digest == bake digest (negative control bites). Commits 97dc79fd, c179ce82, 162bd902, a6309441, dfc360c0, 1441ddfc, ac6b3af4. Gates: 6 targeted suites 458 passed; full app suite 355 files / 6,349 passed / 1 skipped; typecheck clean. Code review: 2 blockers (redo never re-anchored; cross-frame undo consumed history) + 2 warnings fixed; WR-03/WR-04 declared residuals.
 
 Progress: [██████████] 100%
 
@@ -615,6 +615,7 @@ None yet.
 | 261029-lel | Grey out the Water tool while the sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes | 2026-10-29 | 5a35055c | [261029-lel-grey-out-the-water-aquarelle-tool-whenev](./quick/261029-lel-grey-out-the-water-aquarelle-tool-whenev/) |
 | 261029-lsr | UNDO — script-authoritative undo for aquarelle strokes: recorded strokes swap the script edit and use the engine tile history with a script re-bake fallback; replay sources compare structurally; auto-key composites undo/redo as one command — CLOSED, native UAT rows 1-8 approved 2026-10-29 | 2026-10-29 | 093970b2 | [261029-lsr-undo-script-authoritative-undo-for-aquar](./quick/261029-lsr-undo-script-authoritative-undo-for-aquar/) |
 | 69 | Center the brush-tab Settings button (icon+label on one row, 30px) and add 15px bottom padding to the brush tab; commit fb178cf9 | 2026-10-29 | fb178cf9 | — |
+| 261029-uoz | DPR regression: every brush preview thumb cropped to its top-left quarter on all surfaces; blit now matches the visible bitmap to the DPR cache | 2026-10-29 | 4007f144 | [261029-uoz-big-ui-regression-all-the-brush-image-ty](./quick/261029-uoz-big-ui-regression-all-the-brush-image-ty/) |
 
 ### Roadmap Evolution
 
