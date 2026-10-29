@@ -8,7 +8,7 @@ stopped_at: Completed 261024-mz5-PLAN.md
 last_updated: "2026-10-29T13:49:53.749Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick task 261027-klx closed — engine-1 Brush module removed; native UAT approved 2026-10-27
-state_head: f5b0e187fc90571ca26d417818c3209eefe870ae
+state_head: 95a6929a6cd8cdcd2a4572f6d1a7c34dad549219
 progress:
   total_phases: 3
   completed_phases: 3
@@ -611,7 +611,7 @@ None yet.
 | 261029-hy2 | UI enhancements: right-pinned top-bar settings, Settings tab into a floating sheet, slimmer Brush tab with Settings button, unified Brush/Eraser tool pill and popover, brush-modal Close fix, click-to-front sheet stacking | 2026-10-29 | 690e7b14 | [261029-hy2-ui-enhancements-move-all-time-top-bar-se](./quick/261029-hy2-ui-enhancements-move-all-time-top-bar-se/) |
 | 64 | Studio tool rail: blue hover, orange selected tool | 2026-10-29 | 5b748234 | — |
 | 65 | Palette: bright white ring + glow on the selected swatch | 2026-10-29 | c6be81d6 | — |
-| 66 | Studio tool shortcuts: B/W/E/P pick tools, A enters Select, cycles Paint/Eraser/All, then leaves Select for Brush; F dry, C clear, D resets fg/bg swatch to black/white; Cmd/Ctrl arms retired; tooltips name the keys | 2026-10-29 | f5b0e187 | — |
+| 66 | Studio tool shortcuts: B/W/E/P pick tools, A enters Select, cycles Paint/Eraser/All, then leaves Select for Brush; F dry, C clear (confirm modal), D resets fg/bg swatch to black/white; Cmd/Ctrl arms retired; tooltips name the keys | 2026-10-29 | 95a6929a | — |
 
 ### Roadmap Evolution
 
