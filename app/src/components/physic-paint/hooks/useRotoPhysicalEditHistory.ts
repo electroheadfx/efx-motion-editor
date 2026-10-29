@@ -60,8 +60,6 @@
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { effect, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { CompletedPaintMutation, PaintHistoryAvailability } from '../types/paintCore';
-// TEMP UAT probe (261029-lsr) — remove with the history-debug events.
-import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 import type {
   PhysicPaintActionHistoryReleaseReason,
   PhysicPaintActionRetainedArtifactReference,
@@ -943,14 +941,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   useEffect(() => () => clear(), [clear]);
 
   const undo = useCallback(async (): Promise<boolean> => {
-    // TEMP UAT probe: applied/redo depth + the entry the press will consume.
-    recordAquarelleRenderSplitEvent('history-debug', {
-      stage: 'undo-call',
-      applied: appliedRef.current.length,
-      redo: redoRef.current.length,
-      topKind: appliedRef.current[appliedRef.current.length - 1]?.kind ?? null,
-      topMutationId: (appliedRef.current[appliedRef.current.length - 1] as { mutationId?: number } | undefined)?.mutationId ?? null,
-    });
     const coordinator = inputRef.current.coordinator;
     if (coordinator.pendingOperationId.value !== null) return false;
     // A Create-key acceptance with no stroke degrades to one plain command so
@@ -1142,14 +1132,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   }, [flushPendingAutoKeyGroup, publishAvailability]);
 
   const redo = useCallback(async (): Promise<boolean> => {
-    // TEMP UAT probe: applied/redo depth + the entry the press will consume.
-    recordAquarelleRenderSplitEvent('history-debug', {
-      stage: 'redo-call',
-      applied: appliedRef.current.length,
-      redo: redoRef.current.length,
-      topKind: redoRef.current[redoRef.current.length - 1]?.kind ?? null,
-      topMutationId: (redoRef.current[redoRef.current.length - 1] as { mutationId?: number } | undefined)?.mutationId ?? null,
-    });
     const coordinator = inputRef.current.coordinator;
     if (coordinator.pendingOperationId.value !== null) return false;
     flushPendingAutoKeyGroup();
