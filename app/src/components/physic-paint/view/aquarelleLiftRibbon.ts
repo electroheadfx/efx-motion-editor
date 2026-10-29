@@ -6,11 +6,11 @@
 //  tip-shaped disc. The select surface therefore outlines it as a
 //  RIBBON — the normal-offset band of the stroke, with a support
 //  half-width that mirrors the tip (an ellipse above
-//  LIFT_ROUNDED_ASPECT, a rounded rectangle below), plus round
-//  caps at both ends. The band's radius comes from
-//  `liftRadiusDoc` — the SAME helper the punch stamps with — so
-//  the drawn border and the erased pixels share one footprint law
-//  by construction.
+//  LIFT_ROUNDED_ASPECT, a rounded rectangle below), plus caps
+//  that sweep that SAME support function at both ends. The band's
+//  radius comes from `liftRadiusDoc` — the SAME helper the punch
+//  stamps with — so the drawn border and the erased pixels share
+//  one footprint law by construction.
 //
 //  This module is pure: no Preact, no signals, no DOM, no
 //  stateful engine import (the engine's footprint helper writes
@@ -49,10 +49,10 @@ import {
  */
 export const LIFT_ROUNDED_ASPECT = 0.6;
 
-/** Semicircle approximation at each end of the band. */
+/** Cap sweep resolution at each end of the band. */
 const CAP_SEGMENTS = 8;
 
-/** A single-point lift draws as a circle this many segments around. */
+/** A single-point lift sweeps its support law this many directions around. */
 const POINT_CIRCLE_SEGMENTS = 16;
 
 /**
@@ -156,20 +156,27 @@ function stationTangent(
   return { x: dx / length, y: dyUp / length };
 }
 
-/** The band's support half-width along a unit normal (doc frame). */
+/**
+ * The band's support half-width along an arbitrary unit direction (doc frame).
+ * The band edges pass the local normal; the caps sweep this same law, so every
+ * cap vertex joins the band on the same support curve (CR-01).
+ */
 function supportHalfWidth(
   station: BandStation,
-  normalX: number,
-  normalYUp: number,
+  dirX: number,
+  dirYUp: number,
   aspect: number,
 ): number {
-  const delta = Math.atan2(normalYUp, normalX) - station.theta;
+  // Same finite/positive default as `liftSupportFactor` (T-261029-eur-01): a
+  // non-finite aspect must never emit NaN into a path `d`.
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const delta = Math.atan2(dirYUp, dirX) - station.theta;
   const cos = Math.cos(delta);
   const sin = Math.sin(delta);
-  if (aspect >= LIFT_ROUNDED_ASPECT) {
-    return station.radius * Math.sqrt(cos * cos + aspect * aspect * sin * sin);
+  if (a >= LIFT_ROUNDED_ASPECT) {
+    return station.radius * Math.sqrt(cos * cos + a * a * sin * sin);
   }
-  return station.radius * (Math.abs(cos) + aspect * Math.abs(sin));
+  return station.radius * (Math.abs(cos) + a * Math.abs(sin));
 }
 
 function toCanvas(point: CanvasPoint, height: number): CanvasPoint {
@@ -204,7 +211,7 @@ export interface LiftRibbonGeometry {
 
 /**
  * The drawn ribbon of one recorded lift stroke: a normal-offset band with
- * round caps. Pure — same input, same output; fresh arrays every call.
+ * support-function caps. Pure — same input, same output; fresh arrays every call.
  */
 export function buildLiftRibbon(
   stroke: LiftStrokeSource,
@@ -224,17 +231,19 @@ export function buildLiftRibbon(
   if (stations.length === 0) return { polygonPx: [], hitRadiusPx };
   const aspect = shape.aspect;
 
-  // Single sample: a closed circle of radius R (declared approximation).
+  // Single sample: sweep the station's own support law all the way around, so
+  // the drawn silhouette and the hit radius share one law (IN-02). A round tip
+  // (aspect 1) is still the same circle; a wide tip draws its own ellipse.
   if (stations.length === 1) {
     const only = stations[0]!;
     const polygonPx: CanvasPoint[] = [];
     for (let index = 0; index < POINT_CIRCLE_SEGMENTS; index += 1) {
       const angle = (index / POINT_CIRCLE_SEGMENTS) * Math.PI * 2;
+      const dirX = Math.cos(angle);
+      const dirYUp = Math.sin(angle);
+      const half = supportHalfWidth(only, dirX, dirYUp, aspect);
       polygonPx.push(
-        toCanvas(
-          { x: only.px + Math.cos(angle) * only.radius, y: only.pyUp + Math.sin(angle) * only.radius },
-          size.height,
-        ),
+        toCanvas({ x: only.px + dirX * half, y: only.pyUp + dirYUp * half }, size.height),
       );
     }
     return { polygonPx, hitRadiusPx };
@@ -258,7 +267,11 @@ export function buildLiftRibbon(
   }
 
   const docPolygon: CanvasPoint[] = [...left];
-  // Forward cap about the last station, sweeping +n → -n through +t.
+  // Forward cap about the last station, sweeping +n → -n through +t. Every cap
+  // vertex takes the station's OWN support half-width along its radial
+  // direction: angle 0 and π are the band junctions already emitted above, so
+  // the cap meets the band exactly on the same support curve. A constant-radius
+  // cap would flare out of a narrow band and notch into a wide one (CR-01).
   const last = stations[stations.length - 1]!;
   const lastTangent = tangents[tangents.length - 1]!;
   const lastNormal = { x: -lastTangent.y, y: lastTangent.x };
@@ -266,15 +279,16 @@ export function buildLiftRibbon(
     const angle = (index / CAP_SEGMENTS) * Math.PI;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    docPolygon.push({
-      x: last.px + last.radius * (cos * lastNormal.x + sin * lastTangent.x),
-      y: last.pyUp + last.radius * (cos * lastNormal.y + sin * lastTangent.y),
-    });
+    const dirX = cos * lastNormal.x + sin * lastTangent.x;
+    const dirYUp = cos * lastNormal.y + sin * lastTangent.y;
+    const half = supportHalfWidth(last, dirX, dirYUp, aspect);
+    docPolygon.push({ x: last.px + dirX * half, y: last.pyUp + dirYUp * half });
   }
   for (let index = stations.length - 1; index >= 0; index -= 1) {
     docPolygon.push(right[index]!);
   }
-  // Backward cap about the first station, sweeping -n → +n through -t.
+  // Backward cap about the first station, sweeping -n → +n through -t — the
+  // same support law, mirrored.
   const first = stations[0]!;
   const firstTangent = tangents[0]!;
   const firstNormal = { x: -firstTangent.y, y: firstTangent.x };
@@ -282,10 +296,10 @@ export function buildLiftRibbon(
     const angle = (index / CAP_SEGMENTS) * Math.PI;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
-    docPolygon.push({
-      x: first.px - first.radius * (cos * firstNormal.x + sin * firstTangent.x),
-      y: first.pyUp - first.radius * (cos * firstNormal.y + sin * firstTangent.y),
-    });
+    const dirX = -(cos * firstNormal.x + sin * firstTangent.x);
+    const dirYUp = -(cos * firstNormal.y + sin * firstTangent.y);
+    const half = supportHalfWidth(first, dirX, dirYUp, aspect);
+    docPolygon.push({ x: first.px + dirX * half, y: first.pyUp + dirYUp * half });
   }
 
   return { polygonPx: docPolygon.map((point) => toCanvas(point, size.height)), hitRadiusPx };
