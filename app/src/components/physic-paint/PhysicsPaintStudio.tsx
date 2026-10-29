@@ -4814,12 +4814,16 @@ export function PhysicsPaintStudio() {
       // NOT consume the recorded edit. `reachedRebake` true is the only proof
       // the restore succeeded and `restoreAquarelleSnapshotRaw` therefore ran,
       // so the re-anchor is confined to that self-inflicted revision drift and
-      // never forgives a foreign script mutation. `enteredReplay &&
+      // never forgives a foreign script mutation. The re-anchor runs for BOTH
+      // directions — it is symmetric (undo re-seats `after`, redo re-seats
+      // `before`), and a redo that never re-anchors would fail the same guard
+      // forever. Only the dead-id DROP is undo-specific: `enteredReplay &&
       // !reachedRebake` is a CACHED id the ledger can no longer serve (most
       // commonly a 10-entry eviction) — dropping it lets the next Cmd+Z rebuild
-      // the edit from live state instead of replaying a dead id forever. Redo
-      // needs a live cached edit by construction, so a failed redo simply
-      // retries the same id and never drops.
+      // the edit from live state instead of replaying a dead id forever. A redo
+      // needs its live cached edit to retry and could never reconstruct the
+      // WITHOUT side without it, so a failed redo re-anchors the same way and
+      // never drops.
       replayStroke: async (mutationId, direction) => {
         let enteredReplay = false;
         let reachedRebake = false;
@@ -4842,10 +4846,11 @@ export function PhysicsPaintStudio() {
               },
             });
         if (ok) return true;
-        if (direction === 'undo' && enteredReplay) {
+        if (enteredReplay) {
           const editId = aquarelleStrokeEditIdsRef.current.get(mutationId);
           const reanchored = reachedRebake && editId !== undefined && reanchorAquarelleEditRevision(editId, direction);
-          if (!reanchored) aquarelleStrokeEditIdsRef.current.delete(mutationId);
+          // Only an UNDO drops the cached id: a redo needs its edit to retry.
+          if (!reanchored && direction === 'undo') aquarelleStrokeEditIdsRef.current.delete(mutationId);
         }
         return false;
       },

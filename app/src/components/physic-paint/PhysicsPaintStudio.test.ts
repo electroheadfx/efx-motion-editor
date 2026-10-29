@@ -3224,9 +3224,10 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).toContain('hasRecordedStroke: (mutationId) =>');
     expect(replayPort).toContain('replayStroke: async (mutationId, direction) =>');
     // The onStep stream classifies a failed replay: a post-rebake failure
-    // re-anchors the cached edit, a cached id the ledger can no longer serve
-    // is dropped so the next Cmd+Z rebuilds it.
-    expect(replayPort).toContain("if (direction === 'undo' && enteredReplay)");
+    // re-anchors the cached edit for BOTH directions, and an undo drops a
+    // cached id the ledger can no longer serve so the next Cmd+Z rebuilds it.
+    expect(replayPort).toContain('if (enteredReplay) {');
+    expect(replayPort).not.toContain("if (direction === 'undo' && enteredReplay)");
     expect(replayPort).toContain("if (step === 'invalidate') enteredReplay = true;");
     expect(replayPort).toContain('reanchorAquarelleEditRevision(editId, direction)');
     expect(replayPort).toContain('aquarelleStrokeEditIdsRef.current.delete(mutationId)');
@@ -3256,6 +3257,21 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // The two fail-closed literals the route used to carry now live in the module.
     expect(aquarelleScriptReplay).toContain('if (revert === null) return false;');
     expect(aquarelleScriptReplay).toContain('ports.rollback(revert);');
+  });
+
+  it('re-anchors a FAILED REDO the same way and keeps the dead-id drop undo-only (IN-04)', () => {
+    const replayStart = studio.indexOf('aquarelleScriptHistory: {');
+    const replayEnd = studio.indexOf('undoPaint:', replayStart);
+    const replayPort = studio.slice(replayStart, replayEnd);
+
+    // CR-01: the recovery block is not undo-gated, so a redo whose re-bake
+    // fails re-seats `edit.before` and the next Cmd+Shift+Z can retry.
+    expect(replayPort).not.toContain("if (direction === 'undo' && enteredReplay)");
+    expect(replayPort).toContain('if (enteredReplay) {');
+    expect(replayPort).toContain('reanchorAquarelleEditRevision(editId, direction)');
+    // The DROP stays undo-only: a redo needs its cached edit to retry, and a
+    // redo with no cached edit can never reconstruct the WITHOUT side.
+    expect(replayPort).toContain("if (!reanchored && direction === 'undo') aquarelleStrokeEditIdsRef.current.delete(mutationId);");
   });
 
   it('stamps the script epoch and keeps the replay order', () => {
