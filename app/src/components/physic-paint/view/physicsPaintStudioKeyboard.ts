@@ -37,6 +37,12 @@ export interface PhysicsPaintStudioKeyboardActions {
   pasteRotoKey?: () => void;
   /** quick-261004-hwa: Photoshop X — swap foreground/background swatch. */
   swapFgBg?: () => void;
+  /** Bare B / W / E: pick Brush / Water / Eraser and leave Select mode. */
+  selectAquarelleTool?: (tool: 'brush' | 'water' | 'lift') => void;
+  /** Bare A: Select → Eraser → Select all → Brush. */
+  cycleAquarelleSelect?: () => void;
+  /** Bare D: reset the swatch to a black foreground and white background. */
+  resetFgBg?: () => void;
   deleteRotoKey?: () => void;
   /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
   deleteBackgroundClip?: () => void;
@@ -82,32 +88,6 @@ export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolea
   if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return false;
   if (target.isContentEditable) return false;
   return !Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
-}
-
-/**
- * 261028-k03d: the temporary-Move arm (and its Cmd tap) gates on TEXT ENTRY
- * only. A select or a range control keeps focus after a change, so the
- * text-entry gate above left Cmd inert until the canvas was clicked — the
- * "sometimes holding Cmd does not switch to Move" report. Non-text controls
- * carry no Cmd chord of their own, so they stay eligible.
- */
-export function isPhysicsPaintMoveShortcutTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return true;
-  if (target.isContentEditable) return false;
-  const tagName = target.tagName.toLowerCase();
-  if (tagName === 'textarea') return false;
-  if (tagName === 'input') {
-    const rawType = (target as HTMLInputElement).type;
-    const type = typeof rawType === 'string' ? rawType.toLowerCase() : 'text';
-    return type !== 'text'
-      && type !== 'search'
-      && type !== 'number'
-      && type !== 'email'
-      && type !== 'password'
-      && type !== 'url'
-      && type !== 'tel';
-  }
-  return !target.closest('textarea, [contenteditable="true"], input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="password"], input[type="url"], input[type="tel"]');
 }
 
 function isPhysicsPaintRotoDeleteTarget(target: EventTarget | null): boolean {
@@ -329,6 +309,27 @@ export function dispatchPhysicsPaintStudioKeyDown(
     return;
   }
 
+    // Bare tool keys: B / W / E pick a painting tool and leave Select mode,
+    // A cycles Select → Eraser → Select all → Brush, D resets the swatch.
+    // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
+    // owned by the branches above, so these fire only on a bare keypress.
+    if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
+      if ((key === 'b' || key === 'w' || key === 'e') && actions.selectAquarelleTool) {
+        event.preventDefault();
+        actions.selectAquarelleTool(key === 'b' ? 'brush' : key === 'w' ? 'water' : 'lift');
+        return;
+      }
+      if (key === 'a' && actions.cycleAquarelleSelect) {
+        event.preventDefault();
+        actions.cycleAquarelleSelect();
+        return;
+      }
+      if (key === 'd' && actions.resetFgBg) {
+        event.preventDefault();
+        actions.resetFgBg();
+        return;
+      }
+    }
     if (event.key === ' ') {
       event.preventDefault();
       actions.toggleRotoPlayback();

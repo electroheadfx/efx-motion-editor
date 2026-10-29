@@ -561,8 +561,8 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
       expect(code, name).not.toContain('Select lifts');
     }
     // The recorded tool id and every internal identifier stay untouched.
-    expect(toolRailUi).toContain("{ id: 'lift', label: 'Eraser', Icon: Eraser }");
-    expect(toolRowUi).toContain("{ id: 'lift', label: 'Eraser', Icon: Eraser }");
+    expect(toolRailUi).toContain("{ id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser }");
+    expect(toolRowUi).toContain("{ id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser }");
     expect(brushMenuUi).toContain('setAquarelleLiftTipId');
     expect(topBarUi).toContain('Choose an eraser shape');
     expect(topBarUi).toContain('physics-paint-topbar-lift');

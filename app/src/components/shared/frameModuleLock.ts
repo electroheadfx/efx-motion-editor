@@ -36,8 +36,8 @@ export function clearFrameScriptOwner(): void {
  * Move translates a Water color stroke script. A scriptless key
  * (Motion/Static/Reveal rails bake pixels only) has nothing to move, so the
  * gate tracks the frame's single-engine owner. Derived from frameScriptOwner
- * so a Cmd tap, the held-Cmd arm and every programmatic activation read the
- * same truth.
+ * so the rail Select toggle, the A tool cycle and every programmatic
+ * activation read the same truth.
  */
 export const brushMoveAvailable = computed(
   () => frameScriptOwner.value === 'watercolor',

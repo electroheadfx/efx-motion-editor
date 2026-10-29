@@ -2738,7 +2738,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
 
   it('gates promotion on the effective paint-producing tool and a non-transform target', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
-    expect(beginBlock).toContain("resolveEffectiveTool(settings.tool) === 'paint'");
+    expect(beginBlock).toContain("settings.tool === 'paint'");
     expect(beginBlock).toContain("aquarelleActiveTool.value === 'brush'");
     expect(beginBlock).toContain("aquarelleActiveTool.value === 'water'");
     expect(beginBlock).toContain("aquarelleActiveTool.value === 'pen'");
@@ -3043,23 +3043,23 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('data-testid="aquarelle-select-toggle"');
     expect(watercolorRail).toContain('onClick={() => toggleAquarelleSelectMode()}');
     expect(watercolorRail).toContain('aria-pressed={selectActive}');
-    expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value || temporaryMove.value;');
+    expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value;');
     // Select/Move owns the active state: the paint tool is deselected.
     expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
-    // Better hover text: the shortcut, the drag, the Backspace delete and the
+    // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(watercolorRail).toContain('Select (A) — click toggles Select on/off · A cycles Select → Eraser → Select all → Brush · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
-    expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {');
+    expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {');
   });
 
-  it('greys Select and makes Cmd inert when there is no live script', () => {
+  it('greys Select and makes the A cycle inert when there is no live script', () => {
     // 261027-klx: Water color is the only module — the Brush Move arm left with
     // engine 1; the frame-scoped watercolor gate is the only availability law.
-    expect(studio).toContain('isMoveAvailable: () => watercolorMoveAvailable.peek(),');
+    expect(studio).toContain('if (!watercolorMoveAvailable.peek()) return;');
     expect(studio).not.toContain('if (moveAvailable.peek())');
     // Deleting the last selectable stroke leaves select mode.
     const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
@@ -3115,11 +3115,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).not.toContain('scriptSelectMode.value');
     expect(studio).not.toContain('scriptSelectedStrokeId.value');
     expect(studio).not.toContain('scriptStrokeDrag');
-    expect(studio).not.toContain('temporaryMove.value');
-    // The held-Cmd / select reads live in the brush-cursor leaf, never the layer body.
-    expect(aquarelleCanvasLayer.indexOf('temporaryMove.value')).toBeGreaterThan(
-      aquarelleCanvasLayer.indexOf('function AquarelleBrushCursor'),
-    );
+    // The select read lives in the brush-cursor leaf, never the layer body.
     expect(aquarelleCanvasLayer.indexOf('aquarelleSelectMode.value')).toBeGreaterThan(
       aquarelleCanvasLayer.indexOf('function AquarelleBrushCursor'),
     );
@@ -3228,7 +3224,7 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).not.toContain('physicalEditCoordinator');
   });
 
-  it('wires the Delete/Backspace action and the Cmd tap toggle (watercolor only)', () => {
+  it('wires the Delete/Backspace action and the A tool cycle (watercolor only)', () => {
     // 261023-g4p: the Studio delegates; the ONE consume law (active port +
     // selected id, peek-only) lives in the shared edition module.
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
@@ -3240,10 +3236,9 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
-    // A Cmd tap toggles the persistent select mode (Water color is the only
-    // module, so no mode branch remains).
-    expect(studio).toContain('onMetaTap: () => {');
-    expect(studio).toContain('toggleAquarelleSelectMode();');
+    // A cycles Select → Eraser → Select all → Brush; B / W / E pick a tool.
+    expect(studio).toContain('cycleAquarelleSelect: handleCycleAquarelleSelect,');
+    expect(studio).toContain('selectAquarelleTool: handleSelectAquarelleTool,');
     // 261027-klx: the Brush-mode Cmd→Move toggle left with engine 1's tool set.
     expect(studio).not.toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
     expect(studio).not.toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');

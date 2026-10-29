@@ -75,14 +75,8 @@ import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRej
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
-import { findAdjacentRealKeyFrame, isPhysicsPaintMoveShortcutTarget } from './view/physicsPaintStudioKeyboard';
-import {
-  mountPhysicsPaintTemporaryErase,
-  resolveEffectiveTool,
-  type TemporaryEraseEngine,
-  type TemporaryEraseDeps,
-} from './view/physicsPaintTemporaryErase';
-import { aquarelleActiveTool } from './view/aquarelleRecordState';
+import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
+import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -219,6 +213,7 @@ import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
+  aquarelleStrokeTypeFilter,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
@@ -235,6 +230,7 @@ import {
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
+  setAquarelleStrokeSelection,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
@@ -2135,48 +2131,6 @@ export function PhysicsPaintStudio() {
   useEffect(() => () => {
     clearFrameScriptOwner();
   }, []);
-  // quick-261003-vos: the held-Cmd arm plus the Cmd TAP toggle live in ONE
-  // module with gated window listeners (physicsPaintTemporaryErase). The deps
-  // sit behind a render-body ref so the once-installed listeners always read
-  // the LATEST mutation lock, shortcut target and Move gate — never the first
-  // render's closures.
-  //
-  // 261027-klx: no engine-1 tool exists to switch, so `getEngine` hands the
-  // module a stable no-op — the gate only checks non-null, and the tap is the
-  // ONE behaviour left (Water color Select). `getSelectedTool` is always
-  // 'paint' (the aquarelle tool row is separate), so a held Cmd only drives
-  // the rail's visual arm.
-  const noopTemporaryEraseEngineRef = useRef<TemporaryEraseEngine>({ setTool: () => {} });
-  const temporaryEraseDepsRef = useRef<TemporaryEraseDeps>({
-    getSelectedTool: () => 'paint',
-    getEngine: () => null,
-    isMutationLocked: () => true,
-    isShortcutTarget: () => false,
-  });
-  temporaryEraseDepsRef.current = {
-    getSelectedTool: () => 'paint',
-    getEngine: () => noopTemporaryEraseEngineRef.current,
-    isMutationLocked: isPhysicalMutationLocked,
-    // 261028-k03d: the Move arm ignores text entry only — a focused select or
-    // range control must not leave Cmd inert.
-    isShortcutTarget: isPhysicsPaintMoveShortcutTarget,
-    // 261022-pim: a Cmd TAP (no chord) toggles the persistent Water color
-    // select overlay. The held arm stays the rail's visual state only.
-    onMetaTap: () => {
-      toggleAquarelleSelectMode();
-    },
-    // 261022-pim: no live script (cooked/baked sheet, or a fresh session) →
-    // Select is greyed in the rail and Cmd is inert.
-    isMoveAvailable: () => watercolorMoveAvailable.peek(),
-  };
-  // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
-  // getter reads the ref at event time (ref-read deps). Window-level because
-  // the dispatcher is element-level and the keydown target can be `body` when
-  // the canvas has focus.
-  useEffect(
-    () => mountPhysicsPaintTemporaryErase({ window, document }, () => temporaryEraseDepsRef.current),
-    [],
-  );
   // quick-261025-awl (D-01/D-02): the ONE explicit-selection ownership funnel.
   // Resolves the frame's single script owner from both session stores (plus an
   // optional live Brush ledger sample) and switches the active module only for
@@ -2357,6 +2311,39 @@ export function PhysicsPaintStudio() {
   const handleActiveColorChanged = useCallback((color: string) => {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
+  // 261029: the Studio tool shortcuts. B / W / E pick a painting tool and leave
+  // Select mode; A cycles Select → Eraser → Select all → Brush. Every read is
+  // `.peek()` — the Studio render body never subscribes a selection signal.
+  const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'lift') => {
+    setAquarelleSelectMode(false);
+    setAquarelleTool(tool);
+  }, []);
+  const handleCycleAquarelleSelect = useCallback(() => {
+    const frame = launchContextRef.current?.startFrame ?? 0;
+    const size = { width: canvasWidth, height: canvasHeight };
+    if (aquarelleSelectMode.peek()) {
+      // Select with every listed stroke highlighted is the cycle's LAST stop —
+      // the next press returns to Brush; any other Select state hands over to
+      // the Eraser.
+      const listed = listSelectableAquarelleStrokes(frame, size, aquarelleStrokeTypeFilter.peek());
+      const selected = scriptSelectedStrokeIds.peek();
+      const allSelected = listed.length > 0
+        && listed.every((stroke) => selected.has(stroke.mutationId));
+      setAquarelleSelectMode(false);
+      setAquarelleTool(allSelected ? 'brush' : 'lift');
+      return;
+    }
+    if (aquarelleActiveTool.peek() === 'lift') {
+      setAquarelleSelectMode(true, 'all');
+      setAquarelleStrokeSelection(
+        listSelectableAquarelleStrokes(frame, size, 'all').map((stroke) => stroke.mutationId),
+      );
+      return;
+    }
+    // A scriptless key has nothing to select — the rail gate stays authoritative.
+    if (!watercolorMoveAvailable.peek()) return;
+    setAquarelleSelectMode(true);
+  }, [canvasHeight, canvasWidth]);
   // The Water color half of the same law: Select cannot stay armed on a key
   // with no script. Painting the first stroke creates the script and re-arms;
   // navigating to a scriptless key disarms. Same effect() precedent — no
@@ -4185,9 +4172,8 @@ export function PhysicsPaintStudio() {
           || aquarelleActiveTool.value === 'pen'
         )) return;
       } else {
-        // Cmd-move / Alt-erase resolve away from paint; a selected move tool
-        // never promotes either.
-        const effectiveToolIsPaint = resolveEffectiveTool(settings.tool) === 'paint';
+        // A selected move tool never promotes a blank cell.
+        const effectiveToolIsPaint = settings.tool === 'paint';
         if (!effectiveToolIsPaint) return;
       }
     }
@@ -5175,6 +5161,12 @@ export function PhysicsPaintStudio() {
       pasteRotoKey: pasteRotoFrame,
       swapFgBg: () => {
         paintStore.swapFgBg();
+        handleActiveColorChanged(paintStore.foregroundColor.peek());
+      },
+      selectAquarelleTool: handleSelectAquarelleTool,
+      cycleAquarelleSelect: handleCycleAquarelleSelect,
+      resetFgBg: () => {
+        paintStore.resetFgBg();
         handleActiveColorChanged(paintStore.foregroundColor.peek());
       },
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,

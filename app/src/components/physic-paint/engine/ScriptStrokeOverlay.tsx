@@ -122,8 +122,8 @@ export function ScriptStrokeOverlay(props: {
   // Gesture state lives in a ref — no component state, no effect.
   const gestureRef = useRef<ScriptOverlayGesture | null>(null);
   const { selectMode, moveArmed } = props;
-  // Narrow reads (this leaf only). They also keep the surface mounted when a
-  // held Cmd is released, or a transform preview is in flight, mid-gesture.
+  // Narrow reads (this leaf only). They also keep the surface mounted when
+  // select mode is exited, or a transform preview is in flight, mid-gesture.
   const drag = scriptStrokeDrag.value;
   const transformPreview = scriptStrokeTransform.value;
   if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;

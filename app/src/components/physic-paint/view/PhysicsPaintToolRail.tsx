@@ -8,7 +8,6 @@ import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { temporaryMove } from './physicsPaintTemporaryErase';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import {
   aquarelleSelectMode,
@@ -41,11 +40,16 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
 ];
 
 /** UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift | Dry. */
-const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{ id: AquarelleTool; label: string; Icon: (props: { size?: number }) => ComponentChildren }> = Object.freeze([
-  { id: 'brush', label: 'Brush', Icon: Paintbrush },
-  { id: 'water', label: 'Water', Icon: Droplet },
+const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
+  id: AquarelleTool;
+  label: string;
+  shortcut?: string;
+  Icon: (props: { size?: number }) => ComponentChildren;
+}> = Object.freeze([
+  { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', Icon: Pen },
-  { id: 'lift', label: 'Eraser', Icon: Eraser },
+  { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
 function WatercolorRail({
@@ -67,16 +71,15 @@ function WatercolorRail({
   onActiveColorChanged?: (color: string) => void;
 }) {
   const active = aquarelleActiveTool.value;
-  // 261022-pim: Select/Move is the ONLY active tool while select mode is on
-  // (persistent Cmd toggle or held Cmd). The previous paint tool is shown
-  // deselected, exactly like Brush mode's Move selection.
-  const selectActive = aquarelleSelectMode.value || temporaryMove.value;
+  // Select/Move is the ONLY active tool while select mode is on; the previous
+  // paint tool is shown deselected.
+  const selectActive = aquarelleSelectMode.value;
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
-      {WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {
+      {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
         const isActive = !selectActive && active === id;
         return (
           <button
@@ -84,7 +87,7 @@ function WatercolorRail({
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
             disabled={disabled}
-            title={label}
+            title={shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => {
@@ -103,7 +106,7 @@ function WatercolorRail({
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
         disabled={disabled || !selectAvailable.value}
-        title="Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
+        title="Select (A) — click toggles Select on/off · A cycles Select → Eraser → Select all → Brush · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}

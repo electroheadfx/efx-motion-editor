@@ -87,10 +87,19 @@ describe('paintStore fg/bg swatch (quick-261004-hwa)', () => {
     expect(paintStore.brushColor.value).not.toBe('#123456');
   });
 
+  it('resetFgBg restores Photoshop defaults — black foreground, white background', () => {
+    paintStore.setForeground('#ff0000');
+    paintStore.resetFgBg();
+    expect(paintStore.foregroundColor.value).toBe('#000000');
+    expect(paintStore.backgroundColorSwatch.value).toBe('#ffffff');
+    expect(paintStore.brushColor.value).toBe('#000000');
+  });
+
   it('swatch actions never persist; only setBrushColor writes brushColor preferences', () => {
     paintStore.setForeground('#ff0000');
     paintStore.swapFgBg();
     paintStore.setActiveFromBackground();
+    paintStore.resetFgBg();
     expect(saveBrushColor).not.toHaveBeenCalled();
 
     paintStore.setBrushColor('#00ff00');

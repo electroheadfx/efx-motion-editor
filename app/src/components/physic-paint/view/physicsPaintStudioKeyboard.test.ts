@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   dispatchPhysicsPaintStudioKeyDown,
   findAdjacentRealKeyFrame,
-  isPhysicsPaintMoveShortcutTarget,
   isPhysicsPaintShortcutTarget,
   type PhysicsPaintStudioKeyboardState,
 } from './physicsPaintStudioKeyboard';
@@ -71,6 +70,9 @@ function actions() {
     disarmSolo: vi.fn(),
     addTrack: vi.fn(),
     duplicateTrack: vi.fn(),
+    selectAquarelleTool: vi.fn(),
+    cycleAquarelleSelect: vi.fn(),
+    resetFgBg: vi.fn(),
   };
 }
 
@@ -679,23 +681,51 @@ describe('isPhysicsPaintShortcutTarget', () => {
   });
 });
 
-describe('isPhysicsPaintMoveShortcutTarget (261028-k03d)', () => {
-  it('keeps non-text controls eligible so Cmd still arms Move after a select/range change', () => {
-    // A <select> or a range keeps focus after a change; the old text-entry gate
-    // made Cmd inert until the canvas was clicked again.
-    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('select') as unknown as EventTarget)).toBe(true);
-    const range = new TestHTMLElement('input');
-    (range as unknown as { type: string }).type = 'range';
-    expect(isPhysicsPaintMoveShortcutTarget(range as unknown as EventTarget)).toBe(true);
-    const checkbox = new TestHTMLElement('input');
-    (checkbox as unknown as { type: string }).type = 'checkbox';
-    expect(isPhysicsPaintMoveShortcutTarget(checkbox as unknown as EventTarget)).toBe(true);
+describe('Studio tool shortcuts (B / W / E / A / D)', () => {
+  it.each([
+    ['b', 'brush'],
+    ['w', 'water'],
+    ['e', 'lift'],
+  ] as const)('picks the tool on a bare %s key', (key, tool) => {
+    const { handlers, preventDefault } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledOnce();
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledWith(tool);
+    expect(preventDefault).toHaveBeenCalledOnce();
   });
 
-  it('still blocks real text entry', () => {
-    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('input') as unknown as EventTarget)).toBe(false);
-    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('textarea') as unknown as EventTarget)).toBe(false);
-    expect(isPhysicsPaintMoveShortcutTarget(new TestHTMLElement('div', { contentEditable: true }) as unknown as EventTarget)).toBe(false);
+  it('cycles Select on a bare A key', () => {
+    const { handlers, preventDefault } = dispatch('a', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.cycleAquarelleSelect).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('resets the swatch on a bare D key', () => {
+    const { handlers, preventDefault } = dispatch('d', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.resetFgBg).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('ignores modified, shifted and repeated tool keys', () => {
+    for (const key of ['b', 'w', 'e', 'a', 'd']) {
+      for (const overrides of [
+        { metaKey: true },
+        { ctrlKey: true },
+        { altKey: true },
+        { shiftKey: true },
+        { repeat: true },
+      ]) {
+        const { handlers } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+        expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
+        expect(handlers.cycleAquarelleSelect).not.toHaveBeenCalled();
+        expect(handlers.resetFgBg).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it('ignores tool keys typed into a text field', () => {
+    const { handlers, preventDefault } = dispatch('b', new TestHTMLElement('input') as unknown as EventTarget);
+    expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });
 
@@ -736,9 +766,10 @@ describe('Physics Paint guarded track CRUD shortcuts (47-03, TML-02/Pitfall m4)'
     expect(bare.handlers.addTrack).not.toHaveBeenCalled();
     expect(bare.preventDefault).not.toHaveBeenCalled();
 
+    // Bare D belongs to the swatch reset, never to track duplication.
     const bareDuplicate = dispatch('d');
     expect(bareDuplicate.handlers.duplicateTrack).not.toHaveBeenCalled();
-    expect(bareDuplicate.preventDefault).not.toHaveBeenCalled();
+    expect(bareDuplicate.handlers.resetFgBg).toHaveBeenCalledOnce();
 
     const ctrlAdd = dispatch('n', null, { ctrlKey: true, shiftKey: true });
     expect(ctrlAdd.handlers.addTrack).toHaveBeenCalledOnce();

@@ -43,7 +43,6 @@ import {
 } from '../view/aquarelleRecordState';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
-import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
 import { createAquarelleEnginePort, type AquarelleEnginePort } from './aquarelleEnginePort';
 import {
@@ -109,9 +108,9 @@ let lastPointerPressure = 0;
 const aquarelleLivePaint = signal(false);
 
 function AquarelleBrushCursor(): JSX.Element | null {
-  // 261022-pim: select mode (rail toggle) or a held Cmd hides the paint-size
-  // ring — the stroke overlay owns the pointer in both. Narrow leaf read.
-  if (aquarelleSelectMode.value || temporaryMove.value) return null;
+  // Select mode hides the paint-size ring — the stroke overlay owns the
+  // pointer. Narrow leaf read.
+  if (aquarelleSelectMode.value) return null;
   const x = cursorX.value;
   const y = cursorY.value;
   const visible = cursorVisible.value;

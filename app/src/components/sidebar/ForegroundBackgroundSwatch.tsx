@@ -36,7 +36,7 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
           border: '1px solid #aaa',
           zIndex: 1,
         }}
-        title="Background color"
+        title="Background color — press D to reset foreground to black and background to white"
         onClick={() => {
           paintStore.setActiveFromBackground();
           onActiveColorChanged?.(paintStore.foregroundColor.peek());
@@ -54,7 +54,7 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
           border: '2px solid #fff',
           zIndex: 2,
         }}
-        title="Foreground color"
+        title="Foreground color — press D to reset (black foreground, white background)"
         onClick={() => onActiveColorChanged?.(paintStore.foregroundColor.peek())}
       />
     </div>

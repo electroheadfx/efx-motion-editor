@@ -4,14 +4,13 @@
 //  multi-select 261024-mz5).
 //
 //  The gesture implementation moved to ScriptStrokeOverlay; this
-//  file only binds the watercolor selection port, the select /
-//  held-Cmd mode, the batch callbacks and the watercolor test
-//  ids. No gesture logic lives here — the shared file is the only
+//  file only binds the watercolor selection port, the select
+//  mode, the batch callbacks and the watercolor test ids. No
+//  gesture logic lives here — the shared file is the only
 //  implementation.
 // ============================================================
 
 import type { JSX } from 'preact';
-import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
@@ -45,7 +44,7 @@ export function AquarelleStrokeOverlay(props: {
       getPlayFrame={props.getPlayFrame}
       port={port}
       selectMode={aquarelleSelectMode.value}
-      moveArmed={temporaryMove.value}
+      moveArmed={false}
       onDeleteStrokes={props.onDeleteStrokes}
       onMoveStrokes={props.onMoveStrokes}
       onTransformStrokes={props.onTransformStrokes}

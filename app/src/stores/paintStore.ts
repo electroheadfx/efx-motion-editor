@@ -598,6 +598,19 @@ export const paintStore = {
     _refreshFxForActiveFrame();
   },
 
+  /** Photoshop D: default colours — black foreground, white background. */
+  resetFgBg(): void {
+    if (
+      foregroundColor.peek() === '#000000'
+      && backgroundColorSwatch.peek() === '#ffffff'
+      && brushColor.peek() === '#000000'
+    ) return;
+    foregroundColor.value = '#000000';
+    backgroundColorSwatch.value = '#ffffff';
+    brushColor.value = '#000000';
+    _refreshFxForActiveFrame();
+  },
+
   /** Back-swatch click: promote background to front (old foreground becomes the background). */
   setActiveFromBackground(): void {
     const fg = foregroundColor.peek();

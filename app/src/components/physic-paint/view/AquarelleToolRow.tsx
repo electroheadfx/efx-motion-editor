@@ -13,25 +13,25 @@ import {
   setAquarelleTool,
 } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
-import { temporaryMove } from './physicsPaintTemporaryErase';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 const TOOLS: ReadonlyArray<{
   id: AquarelleTool;
   label: string;
+  shortcut?: string;
   Icon: (props: { size?: number }) => ComponentChildren;
 }> = Object.freeze([
-  { id: 'brush', label: 'Brush', Icon: Paintbrush },
-  { id: 'water', label: 'Water', Icon: Droplet },
+  { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
+  { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
   { id: 'pen', label: 'Pen', Icon: Pen },
-  { id: 'lift', label: 'Eraser', Icon: Eraser },
+  { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
 export function AquarelleToolRow() {
   const active = aquarelleActiveTool.value;
-  // 261022-pim: Select/Move owns the active state while select mode is on
-  // (persistent Cmd toggle or held Cmd) — the paint tool shows deselected.
-  const selectActive = aquarelleSelectMode.value || temporaryMove.value;
+  // Select/Move owns the active state while select mode is on — the paint tool
+  // shows deselected.
+  const selectActive = aquarelleSelectMode.value;
 
   return (
     <div
@@ -45,7 +45,7 @@ export function AquarelleToolRow() {
         gap: '4px',
       }}
     >
-      {TOOLS.map(({ id, label, Icon }) => {
+      {TOOLS.map(({ id, label, shortcut, Icon }) => {
         const isActive = !selectActive && active === id;
         return (
           <button
@@ -54,7 +54,7 @@ export function AquarelleToolRow() {
             data-testid={`aquarelle-tool-${id}`}
             class={`physics-paint-segmented-button${isActive ? ' active' : ''}`}
             aria-pressed={isActive}
-            title={label}
+            title={shortcut ? `${label} (${shortcut})` : label}
             onClick={() => {
               // 261022-pim: picking a paint tool returns the sheet to painting.
               setAquarelleSelectMode(false);

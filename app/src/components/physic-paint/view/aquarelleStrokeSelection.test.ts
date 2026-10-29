@@ -538,7 +538,7 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
     }
   });
 
-  it('a plain entry (rail Select / Cmd tap) starts on the Paint filter', () => {
+  it('a plain entry (rail Select / A cycle) starts on the Paint filter', () => {
     recordAquarelleStroke(10013, stroke({ points: [point(0.2, 0.5)], playFrame: 806 }));
     recordAquarelleStroke(10014, liftStroke({ points: [point(0.4, 0.5)], playFrame: 806 }));
     setAquarelleStrokeTypeFilter('all');

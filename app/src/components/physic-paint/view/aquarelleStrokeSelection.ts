@@ -2,12 +2,11 @@
 //  aquarelleStrokeSelection — Water color stroke select mode
 //  (quick 261022-pim Task 1).
 //
-//  Select mode is the rail Move/Select toggle OR a held Cmd/Meta
-//  (temporaryMove). While active the overlay above the vendor
-//  canvas outlines every recorded stroke of the CURRENT edit
-//  frame, and a click selects the newest stroke under the
-//  pointer. Selection is written in the pointer handler — never
-//  an effect (efx-preact-reactivity).
+//  Select mode is the rail Move/Select toggle or the A tool cycle.
+//  While active the overlay above the vendor canvas outlines every
+//  recorded stroke of the CURRENT edit frame, and a click selects
+//  the newest stroke under the pointer. Selection is written in the
+//  pointer handler — never an effect (efx-preact-reactivity).
 //
 //  Coordinates cross from document UV to canvas pixels through
 //  aquarelleUvToEnginePixel (the ONE bridge) so an outlined
@@ -102,9 +101,9 @@ export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
 export type AquarelleStrokeTypeFilter = 'all' | 'paint' | 'lift';
 
 /**
- * 261029-eur UAT: every PLAIN select-mode entry (rail Select, Cmd tap) starts
- * on Paint — the everyday editing surface — and an exit returns to it. Only
- * the Eraser tool's Edit switch asks for 'lift'.
+ * 261029-eur UAT: every PLAIN select-mode entry (rail Select, A tool cycle)
+ * starts on Paint — the everyday editing surface — and an exit returns to it.
+ * Only the Eraser tool's Edit switch asks for 'lift'.
  */
 export const AQUARELLE_STROKE_FILTER_DEFAULT: AquarelleStrokeTypeFilter = 'paint';
 
