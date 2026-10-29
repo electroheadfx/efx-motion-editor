@@ -173,7 +173,17 @@ export function getStrokeThumb(presetId: string): HTMLCanvasElement {
   return canvas;
 }
 
-/** Blit a cached thumb onto a visible card canvas. */
+/**
+ * Blit a cached thumb onto a visible card canvas.
+ *
+ * The cache is DPR-scaled by `prepare()` — 300x88 at dpr 2, 150x44 at dpr 1.
+ * A 1:1 copy into a smaller bitmap keeps only the top-left quarter
+ * (261029-uoz): every surface showed a white box with a faint smear at the
+ * bottom edge on Retina. Matching the visible bitmap to the cache before the
+ * copy restores the whole stroke; each caller's CSS class pins the display
+ * box and the aspect ratio is unchanged, so the extra bitmap resolution is
+ * Retina crispness, not layout.
+ */
 export function blitStrokeThumb(
   target: HTMLCanvasElement,
   presetId: string,
@@ -181,7 +191,12 @@ export function blitStrokeThumb(
   const thumb = getStrokeThumb(presetId);
   const ctx = target.getContext('2d');
   if (!ctx) return;
-  ctx.clearRect(0, 0, STROKE_THUMB_WIDTH, STROKE_THUMB_HEIGHT);
+  // Resizing a canvas resets its context state but keeps the context valid,
+  // so sizing after getContext is safe — and the `!==` guard means a re-blit
+  // of an already-matched canvas never resets it.
+  if (target.width !== thumb.width) target.width = thumb.width;
+  if (target.height !== thumb.height) target.height = thumb.height;
+  ctx.clearRect(0, 0, target.width, target.height);
   ctx.drawImage(thumb, 0, 0);
 }
 
