@@ -1588,15 +1588,31 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         || settledLeaseRef.current
         || recoveryLeaseSignal.peek()
       ) {
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'coord-serialize',
+          kind: input.operationKind,
+          inFlight: inFlightRef.current,
+          pending: pendingRef.current !== null,
+          settledLease: settledLeaseRef.current !== null,
+          recoveryLease: recoveryLeaseSignal.peek() !== null,
+        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== input.expectedLaunch.layerId || launch.operationId !== input.expectedLaunch.operationId) {
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'coord-launch',
+          kind: input.operationKind,
+          hasLaunch: launch !== null,
+          layerMatches: launch?.layerId === input.expectedLaunch.layerId,
+          operationMatches: launch?.operationId === input.expectedLaunch.operationId,
+        });
         return false;
       }
       const bridgeMode = portsRef.current.bridge.getBridgeMode();
       if (bridgeMode === 'Unavailable') {
+        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-bridge', kind: input.operationKind });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
@@ -1784,10 +1800,24 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
       }
       if (!isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete && !isRailSetPaste
         && (proposal?.selectedKeyId !== requestedSelectedKeyId || proposal?.selectedAppFrame !== requestedSelectedAppFrame)) {
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'coord-selection',
+          kind: input.operationKind,
+          proposalKey: proposal?.selectedKeyId ?? null,
+          requestedKey: requestedSelectedKeyId ?? null,
+          proposalFrame: proposal?.selectedAppFrame ?? null,
+          requestedFrame: requestedSelectedAppFrame ?? null,
+        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
       if (isReplay && (!proposal || !replayTarget || !replayProposalMatchesTarget(proposal, replayTarget))) {
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'coord-replay-target',
+          kind: input.operationKind,
+          hasProposal: proposal !== null,
+          hasTarget: replayTarget !== undefined,
+        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
@@ -1824,6 +1854,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         }
         const leaseToken = portsRef.current.lease.acquire(projectContextId, launch.layerId);
         if (!leaseToken) {
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-lease', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2170,6 +2201,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
                   ? buildStagedRecords(currentRecords, proposal, capacity)
                   : null;
         if (stagedRecords === null) {
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-staged-records', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2305,12 +2337,24 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           || historyProvenance.sourceRevision !== expectedRevision
           || historyProvenance.targetRevision !== stagedRevision
         )) {
+          recordAquarelleRenderSplitEvent('undo-probe', {
+            stage: 'coord-replay-provenance',
+            kind: input.operationKind,
+            hasProvenance: historyProvenance !== undefined,
+            sourceMatches: historyProvenance?.sourceRevision === expectedRevision,
+            targetMatches: historyProvenance?.targetRevision === stagedRevision,
+            sourceRevision: historyProvenance?.sourceRevision ?? null,
+            expectedRevision,
+            targetRevision: historyProvenance?.targetRevision ?? null,
+            stagedRevision,
+          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
         }
         const before = captureSnapshot(expectedRevision, stagedRevision);
         if (!before) {
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-capture-snapshot', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
