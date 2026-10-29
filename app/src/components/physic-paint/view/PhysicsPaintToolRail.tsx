@@ -142,7 +142,7 @@ function WatercolorRail({
         type="button"
         class="physics-paint-icon-button"
         disabled={disabled}
-        title={`${clearItem.label} (C)`}
+        title={`${clearItem.label} (C — asks to confirm)`}
         aria-label="Trash"
         onClick={onClearFrame}
       >

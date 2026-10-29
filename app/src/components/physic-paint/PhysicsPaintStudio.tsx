@@ -795,6 +795,12 @@ export function PhysicsPaintStudio() {
   const soleOccurrenceDeleteCancelRef = useRef<HTMLButtonElement>(null);
   const soleOccurrenceDeleteDialogRef = useRef<HTMLDivElement>(null);
   const soleOccurrenceDeleteReturnFocusRef = useRef<HTMLElement | null>(null);
+  // 261029: the C shortcut confirms before clearing — Trash itself stays
+  // one-click, but the keyboard path can no longer destroy a frame silently.
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const clearConfirmCancelRef = useRef<HTMLButtonElement>(null);
+  const clearConfirmDialogRef = useRef<HTMLDivElement>(null);
+  const clearConfirmReturnFocusRef = useRef<HTMLElement | null>(null);
   const groupLifecycleDeleteExecuteRef = useRef<(target: GroupLifecycleDeleteTarget) => Promise<boolean>>(async () => false);
   const railSetDeleteExecuteRef = useRef<(target: Readonly<{
     operationKind: 'delete-rails';
@@ -956,6 +962,39 @@ export function PhysicsPaintStudio() {
     event.preventDefault();
     focusables[nextIndex]?.focus();
   }, [closeSoleOccurrenceDeleteDialog]);
+  const openClearConfirm = useCallback(() => {
+    clearConfirmReturnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    setClearConfirmOpen(true);
+    queueMicrotask(() => { clearConfirmCancelRef.current?.focus(); });
+  }, []);
+  const closeClearConfirm = useCallback(() => {
+    setClearConfirmOpen(false);
+    queueMicrotask(() => {
+      clearConfirmReturnFocusRef.current?.focus();
+      clearConfirmReturnFocusRef.current = null;
+    });
+  }, []);
+  const handleClearConfirmDialogKeyDown = useCallback((event: KeyboardEvent) => {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeClearConfirm();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = Array.from(
+      clearConfirmDialogRef.current?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+    );
+    if (focusables.length === 0) return;
+    const currentIndex = focusables.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.shiftKey
+      ? (currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1)
+      : (currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1);
+    event.preventDefault();
+    focusables[nextIndex]?.focus();
+  }, [closeClearConfirm]);
   const handleConfirmSoleOccurrenceDelete = useCallback(async () => {
     if (soleOccurrenceDeleteTarget === null) return;
     setSoleOccurrenceDeleteError(null);
@@ -4322,6 +4361,12 @@ export function PhysicsPaintStudio() {
     applyFrameModuleState(currentFrame);
     rotoScript.notifySourceRevision();
   }, [applyFrameModuleState, canvasHeight, canvasWidth, currentFrame, previewBasePort, resolveStudioScriptCell, rotoScript]);
+  // 261029: the C shortcut's confirmed clear — close first so the modal guard
+  // is gone before the mutation, then run the exact Trash action.
+  const handleConfirmClearShortcut = useCallback(() => {
+    closeClearConfirm();
+    clearActiveSource();
+  }, [clearActiveSource, closeClearConfirm]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -5163,7 +5208,7 @@ export function PhysicsPaintStudio() {
       },
       clearAquarelleFrame: () => {
         if (staticControlsLocked) return;
-        clearActiveSource();
+        openClearConfirm();
       },
       resetFgBg: () => {
         paintStore.resetFgBg();
@@ -9459,6 +9504,28 @@ export function PhysicsPaintStudio() {
             <footer class="physics-paint-group-delete-footer">
               <button ref={soleOccurrenceDeleteCancelRef} type="button" onClick={closeSoleOccurrenceDeleteDialog}>Cancel</button>
               <button type="button" class="destructive" onClick={() => { void handleConfirmSoleOccurrenceDelete(); }}>Delete Frame</button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
+      {clearConfirmOpen ? (
+        <div class="physics-paint-group-delete-overlay">
+          <div
+            ref={clearConfirmDialogRef}
+            class="physics-paint-group-delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="physics-paint-clear-confirm-title"
+            data-testid="clear-confirm-dialog"
+            onKeyDown={handleClearConfirmDialogKeyDown}
+          >
+            <header class="physics-paint-group-delete-header">
+              <h2 id="physics-paint-clear-confirm-title">Clear the current Roto frame?</h2>
+              <p>This removes the frame’s paint and script. It cannot be undone.</p>
+            </header>
+            <footer class="physics-paint-group-delete-footer">
+              <button ref={clearConfirmCancelRef} type="button" data-testid="clear-confirm-cancel" onClick={closeClearConfirm}>Cancel</button>
+              <button type="button" class="destructive" data-testid="clear-confirm-accept" onClick={handleConfirmClearShortcut}>Clear Frame</button>
             </footer>
           </div>
         </div>

@@ -3247,6 +3247,18 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).not.toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
   });
 
+  it('gates the C shortcut behind a confirm dialog while Trash stays one-click', () => {
+    // The shortcut opens the modal; the Trash rail button keeps its direct path.
+    expect(studio).toContain('openClearConfirm();');
+    expect(studio).toContain('data-testid="clear-confirm-dialog"');
+    expect(studio).toContain('data-testid="clear-confirm-accept"');
+    expect(studio).toContain('data-testid="clear-confirm-cancel"');
+    expect(studio).toContain('aria-modal="true"');
+    expect(studio).toContain('Clear the current Roto frame?');
+    expect(studio).toContain('onClick={handleConfirmClearShortcut}');
+    expect(toolRail).toContain('onClick={onClearFrame}');
+  });
+
   it('declares the aquarelle ledger entry and replay port in the history hook', () => {
     expect(historyHook).toContain("readonly kind: 'aquarelle-script';");
     expect(historyHook).toContain('readonly editId: number;');
