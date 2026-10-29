@@ -68,6 +68,7 @@ import type {
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
 import {
+  snapshotRevision,
   useRotoPhysicalEditHistory,
   type ReferencedActionHistoryCommand,
 } from './useRotoPhysicalEditHistory';
@@ -2828,6 +2829,15 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     return { acceptedOutput, pendingOperationId, availability, events, executePhysicalEdit, undoPaint, redoPaint, history, state };
   }
 
+  function recordWithPayload(keyId: string, appFrame: number, seed: string): PhysicPaintRotoRealKeyRecord {
+    return {
+      kind: 'real-key',
+      keyId,
+      appFrame,
+      payload: { frameIndex: 0, appFrame, bytes: testWebpBytes(seed) },
+    };
+  }
+
   function acceptPasteKey(
     harness: ReturnType<typeof createAutoKeyHarness>,
     before: RotoPhysicalEditSnapshot<null>,
@@ -3026,6 +3036,31 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
 
     expect(await harness.history.undo()).toBe(true);
     expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    expect(harness.state.current.records.map(({ keyId }) => keyId)).toEqual(['A']);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('settles the auto-key undo against the live revision it dispatched with, not the creation revision', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    // The first stroke's settle capture commits painted pixels onto the created
+    // key, so the live CONTENT revision differs from `command.acceptedRevision`.
+    const capturedLive = snapshotWithCapacity(
+      [record('A', 0), recordWithPayload('auto-key', 1, 'settled-stroke')],
+      'auto-key',
+      1,
+      10,
+    );
+    expect(snapshotRevision(capturedLive)).not.toBe(after.stagedRevision);
+    const harness = createAutoKeyHarness({ current: capturedLive });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(16, 'paint');
+
+    expect(await harness.history.undo()).toBe(true);
+    const undoInput = harness.executePhysicalEdit.mock.calls[0][0];
+    expect(undoInput.historyProvenance?.sourceRevision).toBe(snapshotRevision(capturedLive));
     expect(harness.state.current.records.map(({ keyId }) => keyId)).toEqual(['A']);
     expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
   });

@@ -320,6 +320,14 @@ interface PendingReplay<EngineState> {
    * than the recorded `after`. The TARGET side stays strict.
    */
   readonly ignoreSourcePayloadBytes?: boolean;
+  /**
+   * 261029-lsr UAT row 4: the live capture pipeline may commit the first
+   * stroke's pixels onto the created key, so the auto-key undo dispatches with
+   * the LIVE revision — never the creation-time `acceptedRevision`. The
+   * coordinator echoes that revision back; the acceptance must compare against
+   * it or the whole undo silently drops while the document already replayed.
+   */
+  readonly sourceRevisionOverride?: string;
 }
 
 function isOrdinaryOperationKind(
@@ -570,9 +578,9 @@ function replayAcceptanceMatchesPending<EngineState>(
   const beforeRevision = snapshotRevision(pending.command.before);
   const source = pending.direction === 'undo' ? pending.command.after : pending.command.before;
   const target = pending.direction === 'undo' ? pending.command.before : pending.command.after;
-  const sourceRevision = pending.direction === 'undo'
+  const sourceRevision = pending.sourceRevisionOverride ?? (pending.direction === 'undo'
     ? pending.command.acceptedRevision
-    : beforeRevision;
+    : beforeRevision);
   const targetRevision = pending.direction === 'undo'
     ? beforeRevision
     : pending.command.acceptedRevision;
@@ -1131,10 +1139,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         publishAvailability();
         return false;
       }
-      pendingReplayRef.current = { direction: 'undo', command, ignoreSourcePayloadBytes: true };
       const autoKeyProposal = buildReplayProposal(command.before);
       const autoKeyBeforeRevision = snapshotRevision(command.before);
       const autoKeyLiveRevision = snapshotRevision(autoKeyDispatchLive);
+      pendingReplayRef.current = {
+        direction: 'undo',
+        command,
+        ignoreSourcePayloadBytes: true,
+        sourceRevisionOverride: autoKeyLiveRevision,
+      };
       const autoKeyAccepted = await coordinator.executePhysicalEdit({
         proposal: autoKeyProposal,
         expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
