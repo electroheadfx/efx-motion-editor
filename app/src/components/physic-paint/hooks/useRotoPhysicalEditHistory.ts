@@ -297,13 +297,6 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   referencedActionHistory?: ReferencedActionHistoryRoute;
   /** 261022-pim: revision-authoritative watercolor script replay. */
   aquarelleScriptHistory?: AquarelleScriptHistoryRoute;
-  /**
-   * 261029-lsr UAT row 5: any undoable entry leaves playback first. The old
-   * engine undo stopped playback inside the frame-editing controller; the
-   * unified ledger owns every entry kind now, so the stop lives here — after
-   * the busy/empty-stack refusals (a refused Cmd+Z never kills a session).
-   */
-  stopPlayback?: () => void;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
 }
@@ -966,9 +959,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
-    // UAT row 5: an undoable entry ends playback before any entry branch runs
-    // (the script route stops it again inside `runScriptReplay`, harmlessly).
-    inputRef.current.stopPlayback?.();
     recordAquarelleRenderSplitEvent('undo-probe', {
       stage: 'entry',
       direction: 'undo',
@@ -1221,7 +1211,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = redoRef.current[redoRef.current.length - 1];
     if (!entry) return false;
-    inputRef.current.stopPlayback?.();
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: symmetric with undo — replay 'redo' and move the stacks
       // only when the script swap + re-bake report success.

@@ -3268,20 +3268,21 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(aquarelleScriptReplay).toContain('ports.rollback(revert);');
   });
 
-  it('stops cached playback for every undoable ledger entry (UAT row 5)', () => {
-    const ledgerStart = studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory');
-    expect(ledgerStart).toBeGreaterThan(-1);
-    const ledgerCall = studio.slice(
-      ledgerStart,
-      studio.indexOf('const rotoMoveHistoryUndo = rotoMoveHistory.undo;', ledgerStart),
-    );
-    // The unified ledger owns playback exit now, not just the script replays:
-    // a physical/background/paint undo pressed mid-playback must end the
-    // session before the command runs.
-    expect(ledgerCall).toContain('stopPlayback: rotoCachedPlayback.stop,');
-    expect(historyHook).toContain('inputRef.current.stopPlayback?.();');
-    expect(historyHook.indexOf('inputRef.current.stopPlayback?.();'))
-      .toBeLessThan(historyHook.indexOf("if (entry.kind === 'aquarelle-script') {"));
+  it('makes undo/redo inert while cached playback is running (UAT row 5)', () => {
+    // User decision 2026-10-29: undoing mid-playback is not a real workflow, so
+    // both wrappers refuse instead of stopping playback or editing under it.
+    const undoStart = studio.indexOf('const undo = useCallback(async () => {');
+    expect(undoStart).toBeGreaterThan(-1);
+    const undoBlock = studio.slice(undoStart, studio.indexOf('const redo = useCallback', undoStart));
+    expect(undoBlock).toContain('if (isPlaying) return false;');
+    expect(undoBlock).toContain('}, [rotoMoveHistoryUndo, rotoScript, isPlaying]);');
+    const redoStart = studio.indexOf('const redo = useCallback(async () => {');
+    expect(redoStart).toBeGreaterThan(-1);
+    const redoBlock = studio.slice(redoStart, studio.indexOf('// 52.1 (undo/redo shortcut)', redoStart));
+    expect(redoBlock).toContain('if (isPlaying) return false;');
+    expect(redoBlock).toContain('}, [rotoMoveHistoryRedo, rotoScript, isPlaying]);');
+    // The ledger itself stays playback-agnostic.
+    expect(historyHook).not.toContain('stopPlayback');
   });
 
   it('re-anchors a FAILED REDO the same way and keeps the dead-id drop undo-only (IN-04)', () => {

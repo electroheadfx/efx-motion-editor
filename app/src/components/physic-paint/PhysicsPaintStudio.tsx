@@ -5004,9 +5004,6 @@ export function PhysicsPaintStudio() {
     // refresh afterwards.
     undoPaint: () => rotoFrameEditing.undo(),
     redoPaint: () => rotoFrameEditing.redo(),
-    // 261029-lsr UAT row 5: every entry kind (physical, script, stroke, paint)
-    // leaves playback before the command runs, not just the script replays.
-    stopPlayback: rotoCachedPlayback.stop,
   });
 
   // 38-11: the history hook returns a fresh wrapper object per render, but
@@ -5016,16 +5013,21 @@ export function PhysicsPaintStudio() {
   // is byte-identical.
   const rotoMoveHistoryUndo = rotoMoveHistory.undo;
   const rotoMoveHistoryRedo = rotoMoveHistory.redo;
+  // 261029-lsr UAT row 5 (user decision): cached playback is a read-only
+  // preview — undo/redo are inert until it stops. Pressing Cmd+Z while playing
+  // is a no-op, never a hidden document edit under the playing frames.
   const undo = useCallback(async () => {
+    if (isPlaying) return false;
     const changed = await rotoMoveHistoryUndo();
     if (changed) rotoScript.notifySourceRevision();
     return changed;
-  }, [rotoMoveHistoryUndo, rotoScript]);
+  }, [rotoMoveHistoryUndo, rotoScript, isPlaying]);
   const redo = useCallback(async () => {
+    if (isPlaying) return false;
     const changed = await rotoMoveHistoryRedo();
     if (changed) rotoScript.notifySourceRevision();
     return changed;
-  }, [rotoMoveHistoryRedo, rotoScript]);
+  }, [rotoMoveHistoryRedo, rotoScript, isPlaying]);
 
   // 52.1 (undo/redo shortcut): Cmd+Z / Cmd+Shift+Z are intercepted by the native
   // macOS menu at the Cocoa layer and emitted as menu:undo / menu:redo events —
