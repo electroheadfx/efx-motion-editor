@@ -9,6 +9,7 @@ import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
+import { aquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import {
   aquarelleSelectMode,
   setAquarelleSelectMode,
@@ -71,6 +72,9 @@ function WatercolorRail({
   onActiveColorChanged?: (color: string) => void;
 }) {
   const active = aquarelleActiveTool.value;
+  // 261029-lel: Water only acts on live standing water — grey it while the
+  // sheet is dry (a body read here is the sanctioned leaf subscription).
+  const wetAvailable = aquarelleHasWetPaint.value;
   // Select/Move is the ONLY active tool while select mode is on; the previous
   // paint tool is shown deselected.
   const selectActive = aquarelleSelectMode.value;
@@ -81,16 +85,20 @@ function WatercolorRail({
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
         const isActive = !selectActive && active === id;
+        const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
             key={id}
             type="button"
             class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
-            disabled={disabled}
-            title={shortcut ? `${label} (${shortcut})` : label}
+            disabled={disabled || (id === 'water' && !wetAvailable)}
+            title={waterGated ? 'Water (W) — needs standing water' : shortcut ? `${label} (${shortcut})` : label}
             aria-label={label}
             aria-pressed={isActive}
             onClick={() => {
+              // Defense in depth: a programmatic click must not select Water
+              // while the sheet is dry (261029-lel).
+              if (id === 'water' && !aquarelleHasWetPaint.peek()) return;
               setAquarelleSelectMode(false);
               setAquarelleTool(id);
             }}

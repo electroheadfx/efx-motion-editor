@@ -42,6 +42,7 @@ import {
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
+import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from '../view/aquarelleWetPaintGate';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
 import { createAquarelleEnginePort, type AquarelleEnginePort } from './aquarelleEnginePort';
@@ -833,6 +834,11 @@ export function AquarelleCanvasLayer(props: {
       // in the same tick (opacity keeps the canvas interactive).
       const painted = engine.hasPaint;
       if (aquarelleLivePaint.value !== painted) aquarelleLivePaint.value = painted;
+      // WATER GATE (261029-lel): publish the standing-water truth from the ONE
+      // place that holds the live engine. The `!painting` guard is the "never
+      // flip mid-stroke" law — a stroke in flight is never sampled, and the
+      // stroke end publishes on the very next frame (the tick always re-schedules).
+      if (!painting) setAquarelleHasWetPaint(engine.hasStandingWater);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -861,6 +867,7 @@ export function AquarelleCanvasLayer(props: {
       engineRef.current = null;
       // The next mount starts on a blank sheet — never inherit painted state.
       aquarelleLivePaint.value = false;
+      clearAquarelleWetPaint();
     };
   }, []);
 
