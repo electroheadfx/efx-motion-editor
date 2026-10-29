@@ -163,6 +163,41 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     expect(after.documentRevision).toBe(preCreate.documentRevision + 1);
   });
 
+  it('261029-vbp: creation threads the colorize pair into the bake and writes it on the clip', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      colorize: true,
+      colorizeMix: 40,
+    });
+    expect(result.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({ colorize: true, colorizeMix: 40 }));
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect(clip.colorize).toBe(true);
+    expect(clip.colorizeMix).toBe(40);
+  });
+
+  it('261029-vbp: a default creation writes no colorize keys and never asks the bake for a tint', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    await createRail(layerId);
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect('colorize' in clip).toBe(false);
+    expect('colorizeMix' in clip).toBe(false);
+    expect(harness.renderReveal).not.toHaveBeenCalledWith(expect.objectContaining({ colorize: true }));
+  });
+
   it('an aborted bake commits no keys, writes no rail, and does not bump the document revision (D-11 abort-mid-bake)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

@@ -1987,6 +1987,10 @@ export interface RevealBakeInput {
   canonicalStart: number;
   motion: Readonly<{ deformation: number; position: number }>;
   mode: 'progressive' | 'static';
+  /** 261029-vbp: tint the revealed photo with the wash pigment (absent/false = off). */
+  colorize?: boolean;
+  /** 261029-vbp: tint strength as an integer percent 0-100. */
+  colorizeMix?: number;
   /**
    * The PROJECT canvas dims the reference transform and the Studio canvas are
    * authored against. Carried explicitly: Reveal creation runs in the Studio
@@ -2052,6 +2056,8 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       canonicalStart: input.canonicalStart,
       motion: input.motion,
       mode: input.mode,
+      colorize: input.colorize,
+      colorizeMix: input.colorizeMix,
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,

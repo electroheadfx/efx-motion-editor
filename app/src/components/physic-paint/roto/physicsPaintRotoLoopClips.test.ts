@@ -504,6 +504,48 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
+  // 261029-vbp: the reveal colorize pair is persisted both-or-neither and only
+  // when enabled; a rail without it stays byte-identical to a pre-quick rail.
+  describe('261029-vbp reveal colorize pair', () => {
+    const colorized = { ...baseLoop(), colorize: true, colorizeMix: 40 };
+
+    it('accepts and round-trips the pair', () => {
+      expect(isPhysicPaintRotoLoopClip(colorized)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips([colorized]);
+      expect(parsed[0].colorize).toBe(true);
+      expect(parsed[0].colorizeMix).toBe(40);
+    });
+
+    it('adds no keys when the pair is absent', () => {
+      const parsed = parsePhysicPaintRotoLoopClips([baseLoop()]);
+      expect('colorize' in parsed[0]).toBe(false);
+      expect('colorizeMix' in parsed[0]).toBe(false);
+    });
+
+    it.each([
+      ['colorize only', { colorize: true }],
+      ['colorizeMix only', { colorizeMix: 40 }],
+    ])('rejects a half pair (%s) fail-closed', (_label, half) => {
+      const record = { ...baseLoop(), ...half };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it.each([101, -1, 40.5, '40'])('rejects the out-of-contract mix %j', (mix) => {
+      const record = { ...baseLoop(), colorize: true, colorizeMix: mix };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('accepts colorize false with an in-range mix', () => {
+      const record = { ...baseLoop(), colorize: false, colorizeMix: 0 };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips([record]);
+      expect(parsed[0].colorize).toBe(false);
+      expect(parsed[0].colorizeMix).toBe(0);
+    });
+  });
+
   describe('Phase 43.2 Group lifecycle and source-phase Paint tracer', () => {
     const lifecycleFixtures = [
       { name: 'synchronized Group', record: proposedGroup() },
@@ -970,6 +1012,19 @@ describe('v1.0 document persistence loopClips save/reopen', () => {
       visibleRanges: [{ start: 0, endExclusive: 10 }],
       frameOverrides: [],
     }]);
+  });
+
+  it('preserves the reveal colorize pair through save and reopen (261029-vbp)', async () => {
+    const colorized = { ...baseLoop(), colorize: true, colorizeMix: 40 };
+    const persisted = await saveDocuments('/project', runtimeOutput(baseDocument([colorized])));
+    const persistedDocument = (persisted['physic-layer-1'] as { tracks: Array<{ rotoPhysical: { loopClips?: unknown } }> }).tracks[0].rotoPhysical;
+    expect(persistedDocument.loopClips).toEqual([{ ...proposedGroup(), colorize: true, colorizeMix: 40 }]);
+
+    const hydrated = await loadPersistedLayer('/project', 'physic-layer-1');
+    expect(hydrated.get('physic-layer-1')?.document.tracks[0].rotoPhysical?.loopClips[0]).toMatchObject({
+      colorize: true,
+      colorizeMix: 40,
+    });
   });
 
   it('round-trips the infinity repeat state as the explicit string', async () => {

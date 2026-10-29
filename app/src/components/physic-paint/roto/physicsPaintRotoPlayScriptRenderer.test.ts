@@ -45,8 +45,26 @@ describe('renderRotoRevealFrames dispatch (watercolor-only, 261027-klx)', () => 
     // MODE.transparent capture is opaque transmittance; the mask needs pigment
     // alpha (1 − min(r,g,b)), or the whole photo is revealed.
     expect(renderer).toContain('const converted = transmittanceToAlpha(washCanvas);');
-    expect(renderer).toContain('compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom)');
+    expect(renderer).toContain('compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom, colorizeMix)');
     expect(renderer).toContain("context.globalCompositeOperation = 'destination-in';");
+  });
+
+  it('261029-vbp: tints a scratch copy and transfers it with source-atop BEFORE the destination-in mask', () => {
+    // The tint must never land on the output directly: outside the placed photo
+    // a 'color' draw deposits alpha, and the final mask would square it instead
+    // of leaving 0. The scratch + 'source-atop' transfer is alpha-preserving.
+    expect(renderer).toContain('const colorizeMix = resolveRevealColorizeMix(input);');
+    expect(renderer).toContain("context.globalCompositeOperation = 'color';");
+    expect(renderer).toContain("context.globalCompositeOperation = 'source-atop';");
+    expect(renderer).toContain('colorizeMix / 100');
+    // The mask remains the LAST op at full alpha — the transfer can never
+    // grow the reveal silhouette.
+    const transferAt = renderer.indexOf("context.globalCompositeOperation = 'source-atop';");
+    const maskAt = renderer.lastIndexOf("context.globalCompositeOperation = 'destination-in';");
+    expect(transferAt).toBeGreaterThan(-1);
+    expect(maskAt).toBeGreaterThan(transferAt);
+    expect(renderer).toContain('const tint = buildRevealTint(referenceImage, coverageAlpha, size, transform, zoom, colorizeMix);');
+    expect(renderer).not.toContain('overrideColor');
   });
 
   it('poses the flattened wash per OUTPUT frame instead of freezing motion per deposit', () => {

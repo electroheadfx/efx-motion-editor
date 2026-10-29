@@ -24,6 +24,15 @@ export interface RotoRevealRenderInput {
   frameCount: number;
   canonicalStart: number;
   motion: Readonly<{ deformation: number; position: number }>;
+  /**
+   * 261029-vbp: tint the revealed photo with the wash pigment. Absent/false
+   * means today's output (the photo's own colours, masked by the wash alpha);
+   * `colorizeMix` 100 replaces the photo's hue+saturation with the wash
+   * pigment's while the photo keeps its luminosity (canvas `'color'`
+   * composite). The wash alpha still defines the silhouette at every mix.
+   */
+  colorize?: boolean;
+  colorizeMix?: number;
   mode?: RotoPlayScriptRenderMode;
   size: Readonly<{ width: number; height: number }>;
   /**
@@ -112,6 +121,8 @@ async function renderRotoRevealFramesAquarelle(
     paperStrength: paper?.grainStrength,
   });
   const isStatic = (input.mode ?? 'progressive') === 'static';
+  // 261029-vbp: one resolution for the whole span — 0 is today's op ledger.
+  const colorizeMix = resolveRevealColorizeMix(input);
   // The fluid bake reports committed frames as it goes; the composite turn
   // reports the rest. Monotonic, so the dialog bar never walks backwards.
   let reportedProgress = 0;
@@ -193,7 +204,7 @@ async function renderRotoRevealFramesAquarelle(
       }
       throwIfAborted(input.signal);
       const posedCoverage = poseRevealCoverage(coverage, destination, input.motion);
-      const masked = compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom);
+      const masked = compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom, colorizeMix);
       const encoded = await encodeRotoFrameFromCanvas(masked, destination, input.size);
       throwIfAborted(input.signal);
       staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
@@ -225,6 +236,19 @@ async function renderRotoRevealFramesAquarelle(
  * exactly, so baked keys overlay the ghost pixel-perfectly: image and
  * transform translation are scaled by `zoom` (the project→working scale,
  * G-52-2a) while the bake canvas and coverage alpha live at working size.
+ *
+ * 261029-vbp colorize: a `'color'` composite tints the placed photo with the
+ * wash pigment — hue+saturation come from the wash, luminosity stays the
+ * photo's. The tint is built on a SCRATCH canvas pre-loaded with the SAME
+ * `drawPlacedReference` footprint and reaches the output through ONE
+ * `'source-atop'` transfer: that is Porter-Duff alpha-preserving
+ * (alpha_o = alpha_b), so the reveal silhouette never grows and no tint pixel
+ * can land outside the photo. The `destination-in` mask still runs LAST at
+ * globalAlpha 1, leaving final alpha = referenceAlpha × coverage exactly as
+ * the uncolorized bake. Never tint the output directly (outside the photo the
+ * backdrop alpha is 0, so a `'color'` draw there would deposit coverage that
+ * the final mask then squares instead of leaving 0) and never move the mask
+ * before the tint transfer.
  */
 function compositeRevealMask(
   referenceImage: HTMLImageElement,
@@ -232,6 +256,7 @@ function compositeRevealMask(
   size: Readonly<{ width: number; height: number }>,
   transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
   zoom: number,
+  colorizeMix: number,
 ): HTMLCanvasElement {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -240,6 +265,36 @@ function compositeRevealMask(
   if (!context) throw new Error('Could not composite reveal mask: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);
+  drawPlacedReference(context, referenceImage, size, transform, zoom);
+
+  if (colorizeMix > 0) {
+    const tint = buildRevealTint(referenceImage, coverageAlpha, size, transform, zoom, colorizeMix);
+    // 'source-atop' keeps the output's own alpha (alpha_o = alpha_b) while
+    // taking the tint's colour, so coverage is still exactly the reference's.
+    context.globalCompositeOperation = 'source-atop';
+    context.globalAlpha = 1;
+    context.drawImage(tint, 0, 0, size.width, size.height);
+  }
+
+  context.globalCompositeOperation = 'destination-in';
+  context.globalAlpha = 1;
+  context.drawImage(coverageAlpha, 0, 0, size.width, size.height);
+  return output;
+}
+
+/**
+ * Draw the reference image AS PLACED — the ONE footprint used by the mask
+ * canvas and by the colorize scratch, so the tint can never cover a pixel the
+ * photo does not. Reproduces the Phase 50 ghost math exactly (`zoom` scales
+ * both the image and the transform translation).
+ */
+function drawPlacedReference(
+  context: CanvasRenderingContext2D,
+  referenceImage: HTMLImageElement,
+  size: Readonly<{ width: number; height: number }>,
+  transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
+  zoom: number,
+): void {
   const w = referenceImage.width * zoom;
   const h = referenceImage.height * zoom;
   context.save();
@@ -249,10 +304,35 @@ function compositeRevealMask(
   context.scale(transform.scaleX, transform.scaleY);
   context.drawImage(referenceImage, -w / 2, -h / 2, w, h);
   context.restore();
+}
 
-  context.globalCompositeOperation = 'destination-in';
+/**
+ * 261029-vbp: the tinted copy of the placed reference. `'color'` takes hue and
+ * saturation from the wash pigment raster and luminosity from the photo, so
+ * wave/texture detail survives; `globalAlpha = mix / 100` interpolates the
+ * tint strength linearly over the opaque photo backdrop.
+ */
+function buildRevealTint(
+  referenceImage: HTMLImageElement,
+  coverageAlpha: CanvasImageSource,
+  size: Readonly<{ width: number; height: number }>,
+  transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
+  zoom: number,
+  colorizeMix: number,
+): HTMLCanvasElement {
+  const tint = document.createElement('canvas');
+  tint.width = size.width;
+  tint.height = size.height;
+  const context = tint.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Could not composite reveal tint: 2D context unavailable.');
+  context.clearRect(0, 0, size.width, size.height);
+  drawPlacedReference(context, referenceImage, size, transform, zoom);
+  context.save();
+  context.globalCompositeOperation = 'color';
+  context.globalAlpha = colorizeMix / 100;
   context.drawImage(coverageAlpha, 0, 0, size.width, size.height);
-  return output;
+  context.restore();
+  return tint;
 }
 
 /** Per-output-frame pose for the flattened aquarelle coverage (see aquarelleFramePose). */
@@ -281,6 +361,17 @@ function loadRevealWebpImage(bytes: Uint8Array): Promise<HTMLImageElement> {
     };
     image.src = blobUrl;
   });
+}
+
+/**
+ * 261029-vbp: the renderer's own re-clamp of the tint strength. Off
+ * (absent/false) resolves to 0 — today's op ledger — and a non-finite mix on an
+ * enabled colorize defaults to the full 100 the controller writes on enable.
+ */
+function resolveRevealColorizeMix(input: Pick<RotoRevealRenderInput, 'colorize' | 'colorizeMix'>): number {
+  if (input.colorize !== true) return 0;
+  if (input.colorizeMix === undefined || !Number.isFinite(input.colorizeMix)) return 100;
+  return Math.min(100, Math.max(0, Math.round(input.colorizeMix)));
 }
 
 function validateRenderInput(input: Pick<RotoRevealRenderInput, 'frameCount' | 'canonicalStart' | 'size'>): void {

@@ -63,6 +63,13 @@ export interface RotoRevealRailCreateInput {
   readonly repeat: number | 'infinity';
   /** The creation-time motion wiggle feeding the bake (D-09 — both variants). */
   readonly motion: Readonly<{ deformation: number; position: number }>;
+  /**
+   * 261029-vbp: tint the revealed photo with the wash pigment. The mix is
+   * always an integer 0-100 and 100 whenever colorize is on; creation writes
+   * the pair on the rail ONLY when colorize is true.
+   */
+  readonly colorize: boolean;
+  readonly colorizeMix: number;
   readonly signal: AbortSignal;
   readonly onProgress?: (completed: number, total: number) => void;
 }
@@ -328,6 +335,15 @@ export interface RotoPlayScriptController {
   revealReferencePlaced: ReadonlySignal<boolean>;
   /** Switch the creation tab; switching to Reveal re-defaults the span from the script. */
   setRailTab: (tab: RotoPlayScriptRailTab) => void;
+  /* ---- 261029-vbp: the Reveal tab colorize pair ---- */
+  /** Tint the revealed photo with the script's wash pigment (off by default). */
+  colorize: Signal<boolean>;
+  /** Tint strength as an integer percent; 100 when colorize is enabled. */
+  colorizeMix: Signal<number>;
+  /** Write the flag; enabling writes the locked default mix 100. */
+  setColorize: (enabled: boolean) => void;
+  /** Clamp every write to an integer 0-100. */
+  setColorizeMix: (value: number) => void;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
   requestPhotoReference: () => void;
   openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
@@ -374,6 +390,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
      and motion wiggle ride the SAME signals as the Paint tab (one mutation law). */
   const railTab = signal<RotoPlayScriptRailTab>('paint');
   const revealCountText = signal(String(DEFAULT_REVEAL_FRAME_COUNT));
+  // 261029-vbp: colorize defaults OFF (today's reveal exactly); enabling writes
+  // the locked 100 mix, and every apply-mode open resets both.
+  const colorize = signal(false);
+  const colorizeMix = signal(100);
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -602,6 +622,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   }
 
+  /** 261029-vbp: write the flag; enabling sets the locked default mix 100,
+   *  disabling keeps the stored mix so a re-check restores the last strength. */
+  function setColorize(enabled: boolean): void {
+    colorize.value = enabled;
+    if (enabled) colorizeMix.value = 100;
+  }
+
+  /** 261029-vbp: the port input is always an integer 0-100 (T-quick-261029-vbp-03). */
+  function setColorizeMix(value: number): void {
+    colorizeMix.value = Math.min(100, Math.max(0, Math.round(Number.isFinite(value) ? value : 100)));
+  }
+
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
     dialogMotion.value = { ...ports.getMotion() };
@@ -666,6 +698,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       railTab.value = options?.railTab ?? 'paint';
       const selectedScriptId = ports.library.selectedId.peek();
       revealCountText.value = String((selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
+      // 261029-vbp: colorize is an apply-mode creation setting — reset it with
+      // the rest of the apply-mode state on every open (never sticky).
+      colorize.value = false;
+      colorizeMix.value = 100;
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -1391,6 +1427,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         frameCount: count,
         repeat: repeatDraft,
         motion: { ...dialogMotion.peek() },
+        colorize: colorize.peek(),
+        colorizeMix: colorizeMix.peek(),
         signal: bakeSignal,
         onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
       });
@@ -1808,6 +1846,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
+    colorize, colorizeMix, setColorize, setColorizeMix,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;

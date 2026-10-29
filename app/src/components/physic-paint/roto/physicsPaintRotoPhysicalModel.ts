@@ -311,6 +311,13 @@ export interface PhysicPaintRotoLoopClip {
   readonly scriptId?: string;
   readonly motion?: PhysicPaintRotoScriptMotionSettings;
   readonly overrideColor?: string | null;
+  /**
+   * 261029-vbp: reveal colorize settings. Persisted both-or-neither and ONLY
+   * when enabled, so a rail without the pair is byte-identical to a
+   * pre-261029-vbp rail; absent means off (today's reveal).
+   */
+  readonly colorize?: boolean;
+  readonly colorizeMix?: number;
   /** Durable Group lifecycle facts. Canonical finite Groups always carry all six members. */
   readonly syncState?: 'synchronized' | 'modified';
   readonly provenanceState?: 'attached' | 'detached';
@@ -436,6 +443,9 @@ const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   'scriptId',
   'motion',
   'overrideColor',
+  // 261029-vbp: the reveal colorize pair — fail-closed allowlist entries.
+  'colorize',
+  'colorizeMix',
   'syncState',
   'provenanceState',
   'phaseOrigin',
@@ -811,6 +821,16 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
     if (value.overrideColor !== null
       && !(typeof value.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.overrideColor))) return false;
   }
+  // 261029-vbp: the reveal colorize pair is both-or-neither — a lone half is a
+  // malformed record, never repaired — and when present it must be a boolean
+  // flag plus an integer percent in [0, 100] (T-quick-261029-vbp-01).
+  const hasColorize = value.colorize !== undefined;
+  const hasColorizeMix = value.colorizeMix !== undefined;
+  if (hasColorize !== hasColorizeMix) return false;
+  if (hasColorize) {
+    if (typeof value.colorize !== 'boolean') return false;
+    if (!isPercentInteger(value.colorizeMix)) return false;
+  }
   return hasValidPhysicPaintRotoGroupLifecycle(value);
 }
 
@@ -949,6 +969,9 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
             overrideColor: entry.overrideColor ?? null,
           }
         : {}),
+      // 261029-vbp: the reveal colorize pair copies verbatim (both-or-neither,
+      // already validated above) — never derived from any other member.
+      ...(entry.colorize !== undefined ? { colorize: entry.colorize, colorizeMix: entry.colorizeMix! } : {}),
       ...(entry.syncState !== undefined
         ? {
             syncState: entry.syncState,

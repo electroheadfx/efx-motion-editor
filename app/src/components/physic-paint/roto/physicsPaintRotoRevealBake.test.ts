@@ -568,6 +568,142 @@ describe('renderRotoRevealFrames frame-aligned reference (WR-02, 260920-kov)', (
   });
 });
 
+describe('renderRotoRevealFrames colorize (261029-vbp)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  type DrawOp = Extract<MaskOp, { type: 'drawImage' }>;
+
+  function allOps(): MaskOp[] {
+    return harness.canvases.flatMap((canvas) => canvas.ops);
+  }
+
+  function opsWithComposite(composite: string): DrawOp[] {
+    return allOps().filter((op): op is DrawOp => op.type === 'drawImage' && op.composite === composite);
+  }
+
+  function maskDrawOps(): DrawOp[] {
+    const maskId = maskCanvasIndices()[0]!;
+    return harness.canvases[maskId]!.ops.filter((op): op is DrawOp => op.type === 'drawImage');
+  }
+
+  /** The single 'source-atop' transfer identifies the scratch tint canvas. */
+  function tintTransfer(): DrawOp {
+    const transfers = opsWithComposite('source-atop');
+    expect(transfers).toHaveLength(1);
+    return transfers[0]!;
+  }
+
+  function scratchCanvas(): { ops: MaskOp[] } {
+    const index = tintTransfer().sourceCanvas;
+    expect(index).not.toBeNull();
+    return harness.canvases[index!]!;
+  }
+
+  function scratchColorDraw(): DrawOp {
+    const colors = scratchCanvas().ops.filter(
+      (op): op is DrawOp => op.type === 'drawImage' && op.composite === 'color',
+    );
+    expect(colors).toHaveLength(1);
+    return colors[0]!;
+  }
+
+  it('off, explicit false, and mix 0 record exactly today op ledger and add no scratch canvas', async () => {
+    for (const extra of [{}, { colorize: false }, { colorize: true, colorizeMix: 0 }]) {
+      harness.canvases.length = 0;
+      await renderRotoRevealFrames(input(extra));
+      expect(opsWithComposite('color')).toHaveLength(0);
+      expect(opsWithComposite('source-atop')).toHaveLength(0);
+      // wash canvas + pigment-alpha canvas + mask canvas — the pre-quick set.
+      expect(harness.canvases).toHaveLength(3);
+      expect(maskCanvasIndices()).toHaveLength(1);
+    }
+  });
+
+  it('tints on a SCRATCH canvas and transfers it with source-atop before the last destination-in mask', async () => {
+    await renderRotoRevealFrames(input({ colorize: true }));
+    expect(harness.canvases).toHaveLength(4);
+    const maskId = maskCanvasIndices()[0]!;
+    const transfer = tintTransfer();
+    expect(transfer.canvas).toBe(maskId);
+    expect(transfer.globalAlpha).toBe(1);
+    expect(transfer.args).toEqual([0, 0, 10, 10]);
+
+    const maskDraws = maskDrawOps();
+    const referenceIndex = maskDraws.findIndex((op) => op.source === 'blob:ref');
+    const transferIndex = maskDraws.findIndex((op) => op.composite === 'source-atop');
+    const maskIndex = maskDraws.findIndex((op) => op.composite === 'destination-in');
+    expect(transferIndex).toBeGreaterThan(referenceIndex);
+    expect(maskIndex).toBeGreaterThan(transferIndex);
+    // The mask is the LAST recorded op on the output canvas, at full alpha.
+    expect(maskIndex).toBe(maskDraws.length - 1);
+    expect(maskDraws[maskIndex]!.globalAlpha).toBe(1);
+    // The mask canvas itself never receives the 'color' tint.
+    expect(maskDraws.some((op) => op.composite === 'color')).toBe(false);
+  });
+
+  it('the scratch mirrors the placed-reference footprint and tints the SAME posed coverage raster', async () => {
+    await renderRotoRevealFrames(input({
+      colorize: true,
+      reference: { bytesByAppFrame: new Map([[4, testWebpBytes('ref')]]), transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
+    }));
+    const maskId = maskCanvasIndices()[0]!;
+    const maskOpsList = harness.canvases[maskId]!.ops;
+    const scratchOps = scratchCanvas().ops;
+
+    // A scratch canvas NEVER receives the mask draw, so the existing
+    // maskOps/maskCanvasIndices helpers keep resolving to the output only.
+    expect(scratchOps.some((op) => op.type === 'drawImage' && op.composite === 'destination-in')).toBe(false);
+
+    // The scratch's placed-reference draw is identical to the output's — same
+    // transforms and the same draw args, source-over at full alpha.
+    const maskReference = maskOpsList.find((op): op is DrawOp => op.type === 'drawImage' && op.source === 'blob:ref')!;
+    const scratchReference = scratchOps.find((op): op is DrawOp => op.type === 'drawImage' && op.source === 'blob:ref')!;
+    expect(scratchReference.args).toEqual(maskReference.args);
+    expect(scratchReference.globalAlpha).toBe(1);
+    expect(scratchReference.composite).toBe('source-over');
+    const maskTranslate = maskOpsList.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
+    const scratchTranslate = scratchOps.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
+    expect({ x: scratchTranslate.x, y: scratchTranslate.y }).toEqual({ x: maskTranslate.x, y: maskTranslate.y });
+    const maskRotate = maskOpsList.find((op) => op.type === 'rotate') as Extract<MaskOp, { type: 'rotate' }>;
+    const scratchRotate = scratchOps.find((op) => op.type === 'rotate') as Extract<MaskOp, { type: 'rotate' }>;
+    expect(scratchRotate.radians).toBeCloseTo(maskRotate.radians);
+    const maskScale = maskOpsList.find((op) => op.type === 'scale') as Extract<MaskOp, { type: 'scale' }>;
+    const scratchScale = scratchOps.find((op) => op.type === 'scale') as Extract<MaskOp, { type: 'scale' }>;
+    expect({ x: scratchScale.x, y: scratchScale.y }).toEqual({ x: maskScale.x, y: maskScale.y });
+
+    // The tint draws the SAME posed coverage closure the mask uses.
+    const maskDraw = maskOpsList.find((op): op is DrawOp => op.type === 'drawImage' && op.composite === 'destination-in')!;
+    const colorDraw = scratchColorDraw();
+    expect(colorDraw.sourceCanvas).toBe(maskDraw.sourceCanvas);
+    expect(colorDraw.args).toEqual([0, 0, 10, 10]);
+    expect(colorDraw.globalAlpha).toBe(1);
+  });
+
+  it('mix 40 tints at 0.4 on the scratch; mix 150 clamps to full strength', async () => {
+    await renderRotoRevealFrames(input({ colorize: true, colorizeMix: 40 }));
+    expect(scratchColorDraw().globalAlpha).toBe(0.4);
+    expect(tintTransfer().globalAlpha).toBe(1);
+
+    harness.canvases.length = 0;
+    await renderRotoRevealFrames(input({ colorize: true, colorizeMix: 150 }));
+    expect(scratchColorDraw().globalAlpha).toBe(1);
+  });
+
+  it('mix -5 records no tint at all; a non-finite mix defaults to full strength', async () => {
+    await renderRotoRevealFrames(input({ colorize: true, colorizeMix: -5 }));
+    expect(opsWithComposite('color')).toHaveLength(0);
+    expect(opsWithComposite('source-atop')).toHaveLength(0);
+    expect(harness.canvases).toHaveLength(3);
+
+    harness.canvases.length = 0;
+    await renderRotoRevealFrames(input({ colorize: true, colorizeMix: Number.NaN }));
+    expect(scratchColorDraw().globalAlpha).toBe(1);
+  });
+});
+
 describe('renderRotoRevealFrames abort and failure disposal (52-01 D-11)', () => {
   beforeEach(() => {
     setupDom();

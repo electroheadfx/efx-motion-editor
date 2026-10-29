@@ -137,6 +137,9 @@ interface FakeControllerSeed {
   revealValidationError?: string | null;
   revealReferencePlaced?: boolean;
   canonicalStart?: number | null;
+  // 261029-vbp: the Reveal tab colorize pair
+  colorize?: boolean;
+  colorizeMix?: number;
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -186,6 +189,8 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     parsedRevealCount: sig<{ count: number | null; error: string | null }>({ count: 3, error: null }),
     revealValidationError: sig<string | null>(seed.revealValidationError ?? null),
     revealReferencePlaced: sig(seed.revealReferencePlaced ?? true),
+    colorize: sig(seed.colorize ?? false),
+    colorizeMix: sig(seed.colorizeMix ?? 100),
   };
   const controller = {
     ...signals,
@@ -211,6 +216,8 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     findIdenticalSourceCycle: vi.fn(() => null),
     setRailTab: vi.fn(),
     requestPhotoReference: vi.fn(),
+    setColorize: vi.fn(),
+    setColorizeMix: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1260,6 +1267,49 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
     // Motion wiggle sliders stay (they feed the bake for BOTH variants — D-09).
     expect(findOne(tree, byClass('physics-paint-play-script-card-motion'))).toBeDefined();
+  });
+
+  it('261029-vbp: renders the Colorize card in the Reveal tab only, unchecked with a disabled Mix at 100', () => {
+    const { controller, signals } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-colorize'));
+    expect(textOf(card)).toContain('Colorize');
+
+    const checkbox = findOne(card, byId('physics-play-script-colorize')) as TestVNode;
+    expect(checkbox.props.type).toBe('checkbox');
+    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.disabled).toBe(false);
+    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setColorize).toHaveBeenCalledWith(true);
+
+    const mix = findOne(card, byId('physics-play-script-colorize-mix')) as TestVNode;
+    expect(mix.props.type).toBe('range');
+    expect(mix.props.min).toBe(0);
+    expect(mix.props.max).toBe(100);
+    expect(mix.props.value).toBe(100);
+    expect(mix.props.disabled).toBe(true); // disabled while unchecked
+    handler(mix, 'onInput')({ currentTarget: { value: '30' } });
+    expect(controller.setColorizeMix).toHaveBeenCalledWith(30);
+    expect(signals.colorize.value).toBe(false);
+
+    // The Paint tab renders no Colorize card.
+    const paintTree = renderDialog(createFakeController().controller);
+    expect(findAll(paintTree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(0);
+    // The negative-gate assertion stays green: the card is NOT named -card-color.
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+  });
+
+  it('261029-vbp: a seeded colorize enable renders the Mix slider enabled and routes its input', () => {
+    const { controller } = createFakeController({ railTab: 'reveal', colorize: true, colorizeMix: 40 });
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-colorize'));
+    const checkbox = findOne(card, byId('physics-play-script-colorize')) as TestVNode;
+    expect(checkbox.props.checked).toBe(true);
+    const mix = findOne(card, byId('physics-play-script-colorize-mix')) as TestVNode;
+    expect(mix.props.value).toBe(40);
+    expect(mix.props.disabled).toBe(false);
+    handler(mix, 'onInput')({ currentTarget: { value: '30' } });
+    expect(controller.setColorizeMix).toHaveBeenCalledWith(30);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {

@@ -1497,6 +1497,18 @@ export type RevealRailMutationResult =
   | { readonly ok: false; readonly reason: RevealRailMutationRejectionReason };
 
 /**
+ * 261029-vbp: clamp the reveal colorize mix to the persisted integer 0-100; a
+ * non-number/non-finite value defaults to the locked full strength. Kept local
+ * on purpose — the reveal test mocks the renderer module with only
+ * `renderRotoRevealFrames`, so importing a helper from it would resolve to
+ * undefined here.
+ */
+function normalizeRevealColorizeMix(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 100;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+/**
  * Create a reveal rail on one track AND bake it in one action (D-11). Fail-closes
  * when the document, the photo reference, or the target track is absent (D-12
  * creation guard), when the variant is outside the locked union, when the span is
@@ -1519,6 +1531,10 @@ export async function createRevealRail(
     repeat?: number | 'infinity';
     /** G-52-3 (D-09): the creation-time motion wiggle feeding the bake (both variants). */
     motion?: Readonly<{ deformation: number; position: number }>;
+    /** 261029-vbp: tint the revealed photo with the wash pigment (default off). */
+    colorize?: boolean;
+    /** 261029-vbp: tint strength as an integer percent 0-100 (default 100). */
+    colorizeMix?: number;
     /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
     projectSize: Readonly<{ width: number; height: number }>;
     /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
@@ -1543,6 +1559,10 @@ export async function createRevealRail(
   // via `_resolveReferenceSourceImage` (frame-aligned, null-on-missing → fail-closed)
   // and commits the baked records through the acknowledged physical-edit transaction.
   const bakeMotion = input.motion ?? { deformation: 0, position: 0 };
+  // 261029-vbp: the tint pair is resolved ONCE so the bake and the persisted
+  // clip can never disagree about the strength.
+  const revealColorize = input.colorize === true;
+  const revealColorizeMix = normalizeRevealColorizeMix(input.colorizeMix);
   const bakeResult = await commitRevealBake({
     layerId,
     trackId: input.trackId,
@@ -1551,6 +1571,8 @@ export async function createRevealRail(
     canonicalStart: input.startFrame,
     motion: bakeMotion,
     mode: input.variant,
+    colorize: revealColorize,
+    colorizeMix: revealColorizeMix,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,
@@ -1587,6 +1609,9 @@ export async function createRevealRail(
     // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
     motion: { ...bakeMotion },
     overrideColor: null,
+    // 261029-vbp: written only when enabled, both keys together, so a
+    // non-colorized reveal rail stays byte-identical to a pre-quick rail.
+    ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
     syncState: 'synchronized',
     provenanceState: 'attached',
     phaseOrigin: input.startFrame,

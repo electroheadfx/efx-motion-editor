@@ -275,6 +275,42 @@ export function PhysicsPaintPlayScriptDialog({
     </div>
   );
 
+  // 261029-vbp: the Reveal tab's colorize card — the script's wash pigment tints
+  // the revealed photo (hue+saturation from the wash, luminosity from the
+  // photo) at the chosen mix. Off by default; the mix defaults to 100 on enable.
+  // The class is deliberately `-card-colorize`: the Paint tab still owns the
+  // `-card-color` token and its zero assertion must stay green.
+  const colorizeCard = (
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-colorize">
+      <div class="physics-paint-play-script-card-heading">
+        <span class="physics-paint-play-script-card-title">Colorize</span>
+      </div>
+      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-colorize">
+        <input
+          id="physics-play-script-colorize"
+          type="checkbox"
+          checked={playScript.colorize.value}
+          disabled={busy}
+          onChange={(event) => playScript.setColorize((event.currentTarget as HTMLInputElement).checked)}
+        />
+        Colorize with wash color
+      </label>
+      <label class="physics-paint-play-script-slider-row" for="physics-play-script-colorize-mix">
+        <span>Mix</span>
+        <input
+          id="physics-play-script-colorize-mix"
+          type="range"
+          min={0}
+          max={100}
+          value={playScript.colorizeMix.value}
+          disabled={busy || !playScript.colorize.value}
+          onInput={(event) => playScript.setColorizeMix(Number((event.currentTarget as HTMLInputElement).value))}
+        />
+        <output>{playScript.colorizeMix.value}</output>
+      </label>
+    </div>
+  );
+
   return (
     <div
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
@@ -529,6 +565,7 @@ export function PhysicsPaintPlayScriptDialog({
           <>
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
+            {colorizeCard}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
               error. The action opens the Photo Reference modal so the user places

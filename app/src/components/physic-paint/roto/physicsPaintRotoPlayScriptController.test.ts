@@ -3397,6 +3397,8 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
       frameCount: 3,
       repeat: 2,
       motion: { deformation: 10, position: 20 },
+      colorize: false,
+      colorizeMix: 100,
     });
     expect(test.controller.confirmationOpen.value).toBe(false);
     expect(test.controller.status.value).toBe('Reveal Rail complete · 3 frames');
@@ -3409,6 +3411,55 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     test.controller.setInfinity(true);
     expect(await test.controller.confirm()).toBe(true);
     expect(createReveal.mock.calls[0]![0].repeat).toBe('infinity');
+  });
+
+  it('261029-vbp: the Reveal tab defaults to colorize off with mix 100 and resets on every apply-mode open', async () => {
+    const test = harness({ hasPhotoReference: () => true, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.colorize.value).toBe(false);
+    expect(test.controller.colorizeMix.value).toBe(100);
+
+    test.controller.setColorize(true);
+    test.controller.setColorizeMix(30);
+    expect(test.controller.colorize.value).toBe(true);
+    expect(test.controller.colorizeMix.value).toBe(30);
+
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.colorize.value).toBe(false);
+    expect(test.controller.colorizeMix.value).toBe(100);
+  });
+
+  it('261029-vbp: enabling colorize writes the locked mix 100; disabling keeps the stored mix', async () => {
+    const test = harness({ hasPhotoReference: () => true });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.setColorizeMix(37);
+    test.controller.setColorize(true);
+    expect(test.controller.colorizeMix.value).toBe(100);
+    test.controller.setColorizeMix(37);
+    test.controller.setColorize(false);
+    expect(test.controller.colorize.value).toBe(false);
+    expect(test.controller.colorizeMix.value).toBe(37);
+  });
+
+  it('261029-vbp: setColorizeMix clamps every write to an integer 0-100', () => {
+    const test = harness({ hasPhotoReference: () => true });
+    test.controller.setColorizeMix(37.6);
+    expect(test.controller.colorizeMix.value).toBe(38);
+    test.controller.setColorizeMix(-5);
+    expect(test.controller.colorizeMix.value).toBe(0);
+    test.controller.setColorizeMix(150);
+    expect(test.controller.colorizeMix.value).toBe(100);
+  });
+
+  it('261029-vbp: confirmReveal carries the colorize pair in the create-reveal port object', async () => {
+    const createReveal = vi.fn(async (_input: { colorize?: boolean; colorizeMix?: number }) => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    test.controller.setColorize(true);
+    test.controller.setColorizeMix(40);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).toHaveBeenCalledTimes(1);
+    expect(createReveal.mock.calls[0]![0]).toMatchObject({ colorize: true, colorizeMix: 40 });
   });
 
   it('confirmReveal without a reference opens the Photo Reference modal and never creates (D-12 guard)', async () => {
