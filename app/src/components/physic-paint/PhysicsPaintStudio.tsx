@@ -2312,8 +2312,8 @@ export function PhysicsPaintStudio() {
   }, [setSettings]);
   // 261029: the Studio tool shortcuts. B / W / E pick a painting tool and leave
   // Select mode; A enters Select, then cycles the stroke-type filter
-  // Paint → Eraser → All. Every read is `.peek()` — the Studio render body
-  // never subscribes a selection signal.
+  // Paint → Eraser → All → Paint. Every read is `.peek()` — the Studio render
+  // body never subscribes a selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'lift') => {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
