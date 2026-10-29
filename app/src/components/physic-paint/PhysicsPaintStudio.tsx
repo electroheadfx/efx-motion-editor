@@ -4872,6 +4872,16 @@ export function PhysicsPaintStudio() {
           if (step === 'rebake') reachedRebake = true;
         };
         const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
+        // 261029-lsr UAT: a STACKED redo. Every earlier undo moved the global
+        // `aquarelleStrokesRevision`, so this edit's live side (registered at
+        // its own undo, or built then) no longer matches — without re-seating
+        // it, only the single most-recent stroke could ever be redone. Safe by
+        // the ledger's linear discipline: any NEW edit discards the redo stack,
+        // so the only mutations between this entry's undo and this redo are the
+        // sibling undos of the same stack.
+        if (direction === 'redo' && cached !== undefined) {
+          reanchorAquarelleEditRevision(cached, 'redo');
+        }
         // TEMP: the stroke route — and ONLY it — takes the engine's tile
         // history instead of a frame re-bake.
         const tileHistory = AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE;

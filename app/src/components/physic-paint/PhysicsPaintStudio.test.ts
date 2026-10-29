@@ -3310,6 +3310,19 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).not.toContain('beginAquarelleStrokeUndoEdit(mutationId);');
   });
 
+  it('re-seats a stacked redo before replaying it (UAT)', () => {
+    // Every undo moves `aquarelleStrokesRevision`, so a cached redo edit's live
+    // side is stale by the time a SECOND stroke is redone — without this the
+    // redo stack only ever yields one stroke.
+    const replayStart = studio.indexOf('aquarelleScriptHistory: {');
+    const replayEnd = studio.indexOf('undoPaint:', replayStart);
+    const replayPort = studio.slice(replayStart, replayEnd);
+    expect(replayPort).toContain("if (direction === 'redo' && cached !== undefined) {");
+    expect(replayPort).toContain("reanchorAquarelleEditRevision(cached, 'redo');");
+    expect(replayPort.indexOf("reanchorAquarelleEditRevision(cached, 'redo');"))
+      .toBeLessThan(replayPort.indexOf('const ok = cached !== undefined'));
+  });
+
   it('stamps the script epoch and keeps the replay order', () => {
     // 261029-lsr (D-03): the capture gate's epoch is the live script revision —
     // a `peek` read inside a callback (no subscription, no render-body read).
