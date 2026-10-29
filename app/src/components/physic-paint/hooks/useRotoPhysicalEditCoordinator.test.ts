@@ -50,13 +50,16 @@ import { resolvePostAcceptanceRotoStudioSelection } from '../roto/physicsPaintRo
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import { buildRotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
-import type { RotoPhysicalEditCoordinatorPorts } from '../roto/rotoCoordinatorPorts';
+import type {
+  RotoPhysicalEditCoordinatorPorts,
+  RotoPhysicalEditSnapshot,
+} from '../roto/rotoCoordinatorPorts';
 import {
   executePhysicPaintRotoGroupFramePaintTransaction,
   normalizeLoopClipForPayload,
   useRotoPhysicalEditCoordinator,
 } from './useRotoPhysicalEditCoordinator';
-import { useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
+import { buildReplayProposal, useRotoPhysicalEditHistory } from './useRotoPhysicalEditHistory';
 import { useRotoTimelineActions } from './useRotoTimelineActions';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
@@ -4216,5 +4219,126 @@ describe('normalizeLoopClipForPayload — 46 UAT R5 (every shipped clip is lifec
       frameOverrides: [],
     };
     expect(normalizeLoopClipForPayload(clip)).toBe(clip);
+  });
+});
+
+// 261029-lsr UAT row 4: a replay target is a PRE-EDIT snapshot, and the live
+// editor can hold a key selected on the rail while the playhead has moved to a
+// different frame. `captureSnapshot` records exactly that pair (commit-anchored
+// selection + live cursor), but the document model cannot express it — the
+// replay target failed to parse and the whole undo refused with
+// "selected identity and cursorAppFrame disagree". The replay keeps the cursor
+// (where the user is looking and where the edit disappears) and drops only the
+// stale cross-frame selection.
+describe('261029-lsr replay target selection normalization', () => {
+  function revisionOf(
+    test: ReturnType<typeof harness>,
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+  ): string {
+    return buildPhysicPaintRotoPhysicalRevision(
+      records,
+      INTERPOLATION,
+      test.getLoopClips(),
+      test.getIncomingInterpolationBreakKeyIds(),
+      test.getGroupOverrideRecords(),
+    );
+  }
+
+  function snapshotFor(
+    test: ReturnType<typeof harness>,
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    selection: { selectedKeyId: string | null; selectedAppFrame: number | null; currentAppFrame: number },
+  ): RotoPhysicalEditSnapshot<null> {
+    const revision = revisionOf(test, records);
+    return {
+      launchOperationId: 'launch-1',
+      layerId: 'layer-1',
+      projectContextId: 'project-1',
+      records,
+      groupOverrideRecords: test.getGroupOverrideRecords(),
+      interpolation: INTERPOLATION,
+      loopClips: test.getLoopClips(),
+      incomingInterpolationBreakKeyIds: test.getIncomingInterpolationBreakKeyIds(),
+      capacity: test.getCapacity(),
+      expectedRevision: revision,
+      stagedRevision: revision,
+      selectedKeyId: selection.selectedKeyId,
+      selectedAppFrame: selection.selectedAppFrame,
+      currentAppFrame: selection.currentAppFrame,
+      dirtyFrames: new Set<number>(),
+      editableFrames: records.map(({ appFrame }) => appFrame),
+      liveOverlayActionCounts: new Map<number, number>(),
+      frameStates: new Map<number, unknown>(),
+      previewFrames: new Map<number, unknown>(),
+      capturedFrames: new Map<number, unknown>(),
+      confirmedFrames: new Map<number, unknown>(),
+      cachedReference: { url: null, cachedRepaintBase: null },
+      engineState: null,
+    };
+  }
+
+  it('drops a stale cross-frame selection instead of refusing the undo replay', async () => {
+    const test = harness();
+    const source = test.getRecords();
+    const targetRecords = source.filter(({ keyId }) => keyId !== 'Y');
+    // Key B lives at frame 1 while the playhead sits at frame 7 — the exact
+    // pre-edit pair the live capture records.
+    const target = snapshotFor(test, targetRecords, {
+      selectedKeyId: 'B',
+      selectedAppFrame: 7,
+      currentAppFrame: 7,
+    });
+
+    const accepted = await test.coordinator.executePhysicalEdit({
+      proposal: buildReplayProposal(target),
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'undo',
+      selectedKeyId: 'B',
+      selectedAppFrame: 7,
+      replayTargetSnapshot: target,
+      historyProvenance: {
+        historyCommandId: 'op-cross-frame',
+        historyDirection: 'undo',
+        sourceRevision: revisionOf(test, source),
+        targetRevision: target.stagedRevision,
+      },
+    } as never);
+
+    expect(accepted).toBe(true);
+    expect(test.getPayload()?.records.map(({ keyId }) => keyId)).toEqual(['A', 'B', 'C', 'X']);
+    expect(test.getPayload()?.selectedKeyId).toBeNull();
+    expect(test.getPayload()?.selectedAppFrame).toBeNull();
+    expect(test.getPayload()?.cursorAppFrame).toBe(7);
+  });
+
+  it('keeps a selection that already sits on the cursor', async () => {
+    const test = harness();
+    const source = test.getRecords();
+    const targetRecords = source.filter(({ keyId }) => keyId !== 'Y');
+    const target = snapshotFor(test, targetRecords, {
+      selectedKeyId: 'X',
+      selectedAppFrame: 6,
+      currentAppFrame: 6,
+    });
+
+    const accepted = await test.coordinator.executePhysicalEdit({
+      proposal: buildReplayProposal(target),
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'undo',
+      selectedKeyId: 'X',
+      selectedAppFrame: 6,
+      replayTargetSnapshot: target,
+      historyProvenance: {
+        historyCommandId: 'op-selected',
+        historyDirection: 'undo',
+        sourceRevision: revisionOf(test, source),
+        targetRevision: target.stagedRevision,
+      },
+    } as never);
+
+    expect(accepted).toBe(true);
+    expect(test.getPayload()?.selectedKeyId).toBe('X');
+    expect(test.getPayload()?.selectedAppFrame).toBe(6);
+    expect(test.getPayload()?.cursorAppFrame).toBe(6);
   });
 });

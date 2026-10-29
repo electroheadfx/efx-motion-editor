@@ -2304,6 +2304,29 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           clearPendingOnce();
           return false;
         }
+        // 261029-lsr UAT row 4: a replay target is a PRE-EDIT live snapshot, and
+        // the live editor can hold a key selected on the rail while the playhead
+        // sits on a different frame. The document model cannot express that pair
+        // (selected identity must sit at cursorAppFrame), so the target document
+        // failed to parse and the whole undo refused. Keep the cursor — it is
+        // where the user is looking and where the edit is about to disappear —
+        // and drop only the stale cross-frame selection. A selection whose key
+        // is missing from the target still fails closed in the parse below.
+        if (isReplay && targetSelectedKeyId !== null) {
+          const selectedRecord = validatedStagedRecords.find(
+            (record) => record.keyId === targetSelectedKeyId,
+          ) ?? null;
+          if (selectedRecord !== null && selectedRecord.appFrame !== targetCursorAppFrame) {
+            recordAquarelleRenderSplitEvent('undo-probe', {
+              stage: 'coord-replay-selection-dropped',
+              kind: input.operationKind,
+              selectedAppFrame: selectedRecord.appFrame,
+              cursorAppFrame: targetCursorAppFrame,
+            });
+            targetSelectedKeyId = null;
+            targetSelectedAppFrame = null;
+          }
+        }
         // Staged Loop Clips (Phase 43, Q1): replay stages the immutable
         // replay target's collection so Undo/Redo restores loop state; a
         // 43-06 play-script op carrying loopClips (apply-time loop creation,
