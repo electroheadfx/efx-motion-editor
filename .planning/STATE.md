@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T21:24:43.188Z"
+last_updated: "2026-10-29T22:33:59.413Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: 34a3a57dfbc3df485c55ca490e8ff71a7f07752b
+state_head: 18da7276b79c31af1b5b4ec235a47c568c478e79
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,8 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-29 - Quick 261029-uoz complete (native UAT pending). Brush-preview regression: blitStrokeThumb copied the DPR-scaled thumb cache (300x88 at dpr 2) 1:1 into the 150x44 visible canvas, so every surface showed only the top-left quarter — top-bar trigger, dropdown brush/lift rows, floating catalog, right-panel Brush tab. The blit now matches the visible bitmap to the cache before the 1:1 copy; no component/CSS/JSX change. Commits 741936eb, 4007f144. Gates: focused suite 15 passed; typecheck clean; full app suite 355 files / 6,368 passed. UAT-1..UAT-5 pending Retina confirmation.
+Last activity: 2026-10-29 - Quick 261029-vbp complete (verification human_needed; 8 native UAT rows pending). Reveal Colorize: a Reveal-tab checkbox + 0-100 mix slider tints the revealed photo with the script's per-stroke wash pigment via a luminance-preserving 'color' composite. The tint is built on a scratch canvas carrying the same placed reference and transferred with 'source-atop', so the reveal alpha stays referenceAlpha x coverage even where the photo does not reach; the coverage destination-in mask still runs LAST. colorize/colorizeMix persist on the reveal rail (both-or-neither, written only when enabled) and replay reads them. Commits b0ecf38e, 18da7276. Gates: focused suites 367 + 380 passed; typecheck clean; full app suite 355 files / 6,398 passed. Plan checking caught and fixed a silhouette-growth blocker before execution. UAT pending: tab scoping, parity off, 100/30/0 mix, per-stroke variety, partial-footprint alpha, reopen/undo, duplicate/paste.
+Previous: 2026-10-29 - Quick 261029-uoz complete (native UAT pending). Brush-preview regression: blitStrokeThumb copied the DPR-scaled thumb cache (300x88 at dpr 2) 1:1 into the 150x44 visible canvas, so every surface showed only the top-left quarter — top-bar trigger, dropdown brush/lift rows, floating catalog, right-panel Brush tab. The blit now matches the visible bitmap to the cache before the 1:1 copy; no component/CSS/JSX change. Commits 741936eb, 4007f144. Gates: focused suite 15 passed; typecheck clean; full app suite 355 files / 6,368 passed. UAT-1..UAT-5 pending Retina confirmation.
 Previous: 2026-10-29 - Quick 261029-lsr verification human_needed (7/7 must-haves verified; native UAT pending). Script-authoritative aquarelle undo: a recorded stroke's Cmd+Z routes through one replay — per-key capture invalidation, durable-base recovery, a synthetic single-stroke undo edit, sheet reset, shared Apply re-bake — so the frame can never drift from its script; unrecorded strokes keep the engine-only path, auto-key composites are included, and undo stops playback first. A capture stamped with the pre-undo aquarelleStrokesRevision can no longer commit. Deterministic orchestration pin proves display digest == bake digest (negative control bites). Commits 97dc79fd, c179ce82, 162bd902, a6309441, dfc360c0, 1441ddfc, ac6b3af4. Gates: 6 targeted suites 458 passed; full app suite 355 files / 6,349 passed / 1 skipped; typecheck clean. Code review: 2 blockers (redo never re-anchored; cross-frame undo consumed history) + 2 warnings fixed; WR-03/WR-04 declared residuals.
 
 Progress: [██████████] 100%
@@ -617,6 +618,7 @@ None yet.
 | 69 | Center the brush-tab Settings button (icon+label on one row, 30px) and add 15px bottom padding to the brush tab; commit fb178cf9 | 2026-10-29 | fb178cf9 | — |
 | 261029-uoz | DPR regression: every brush preview thumb cropped to its top-left quarter on all surfaces; blit now matches the visible bitmap to the DPR cache | 2026-10-29 | 4007f144 | [261029-uoz-big-ui-regression-all-the-brush-image-ty](./quick/261029-uoz-big-ui-regression-all-the-brush-image-ty/) |
 | 71 | Remove uppercase labels in Studio top bar, brush dropdown/modal, sidebar Brush tab; fixed-width dropdown thumbs at the sidebar 150:44 ratio | 2026-10-29 | 34a3a57d | — |
+| 261029-vbp | Add an option in reveal for colorize the photo with the stroke with a percent mix: default 100% mix when checked, lens-preserving wash-pigment tint per stroke, persisted on the reveal rail | 2026-10-29 | 18da7276 | [261029-vbp-add-an-option-in-reveal-for-colorize-the](./quick/261029-vbp-add-an-option-in-reveal-for-colorize-the/) |
 
 ### Roadmap Evolution
 
