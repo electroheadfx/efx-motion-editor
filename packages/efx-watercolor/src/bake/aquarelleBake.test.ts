@@ -807,3 +807,466 @@ describe('261019 recorded-timeline progressive replay', () => {
     expect(posed).toHaveLength(4)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 261029-bks idle-gap clock skip — `skipTicks` (clock-only) behind a
+// provably-asleep probe. The recorded timeline keeps the artist's wall-clock
+// pauses; a long pause used to step tens of thousands of engine ticks whose
+// only observable effect was the virtual clock. Skipping requires BOTH the
+// `skipTicks` seam and `isAwake`; without the seam the gap walker probes
+// nothing and steps every tick (older adapters and doubles keep their law).
+// ---------------------------------------------------------------------------
+
+/** Host tick grid — mirrors aquarelleBake's HOST_TICK_MS. */
+const SKIP_TICK_MS = 1000 / 60
+
+type SkipLogEntry =
+  | { readonly kind: 'step'; readonly tick: number }
+  | { readonly kind: 'skip'; readonly from: number; readonly to: number }
+  | { readonly kind: 'feed'; readonly pointCounts: readonly number[] }
+  | { readonly kind: 'dry'; readonly tick: number }
+  | { readonly kind: 'capture' }
+
+interface SkippingAdapterLog {
+  readonly events: SkipLogEntry[]
+  readonly steps: number[]
+  readonly skips: { from: number; to: number }[]
+  readonly feeds: number[][]
+  captures: number
+  fixes: number
+}
+
+/** Local mirror of the package diagnostics contract — the double's own type. */
+interface BakeDiagnostics {
+  readonly path: 'timed' | 'fallback' | 'legacy'
+  readonly timelineTicks: number
+  readonly simulatedTicks: number
+  readonly skippedGapTicks: number
+  readonly gapCount: number
+  readonly settleTicks: number
+  readonly bakeMs: number
+  readonly encodeMs: number
+}
+
+type SkippingAdapter = EngineAdapter<AquarelleStrokePayload> & {
+  isAwake: () => boolean
+  skipTicks: (fromTick: number, toTick: number) => void
+  fix?: () => void
+  clock: () => number
+}
+
+/**
+ * The 261029 recording double. `renderPartialStrokes` (a fed sample) refills a
+ * wet budget; every `stepTick` drains it and mutates the mock canvas ONLY while
+ * awake — a tick taken while asleep is a true no-op, exactly like `Engine.tick`
+ * where `render()` early-returns and `sleep()` is gated on `active`.
+ * `skipTicks` records and advances the virtual clock only.
+ */
+function makeSkippingAdapter(
+  awakePerFeed: number,
+  options: { withFix?: boolean } = {},
+): { adapter: SkippingAdapter; log: SkippingAdapterLog } {
+  const { canvas } = makeMockCanvas(8, 8)
+  let awakeBudget = 0
+  let virtualNow = 0
+  const log: SkippingAdapterLog = { events: [], steps: [], skips: [], feeds: [], captures: 0, fixes: 0 }
+  const adapter: SkippingAdapter = {
+    engineId: 'efx-watercolor',
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries) => {
+      awakeBudget = awakePerFeed
+      const pointCounts = entries.map((entry) => entry.pointCount)
+      log.feeds.push(pointCounts)
+      log.events.push({ kind: 'feed', pointCounts })
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => canvas,
+    applyStroke: (stroke) => {
+      if (!isAquarelleDryEvent(stroke)) return
+      log.events.push({ kind: 'dry', tick: stroke.tick })
+    },
+    stepTick: (tick) => {
+      virtualNow += SKIP_TICK_MS
+      log.steps.push(tick)
+      log.events.push({ kind: 'step', tick })
+      if (awakeBudget <= 0) return
+      awakeBudget -= 1
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      if (ctx && typeof ctx.fillRect === 'function') ctx.fillRect(1, 1, 2, 2)
+    },
+    skipTicks: (fromTick, toTick) => {
+      log.skips.push({ from: fromTick, to: toTick })
+      log.events.push({ kind: 'skip', from: fromTick, to: toTick })
+      for (let tick = fromTick; tick < toTick; tick += 1) virtualNow += SKIP_TICK_MS
+    },
+    captureFrame: () => {
+      log.captures += 1
+      log.events.push({ kind: 'capture' })
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    isAwake: () => awakeBudget > 0,
+    ...(options.withFix ? { fix: () => { log.fixes += 1 } } : {}),
+    clock: () => virtualNow,
+  }
+  return { adapter, log }
+}
+
+/** The same double minus its `skipTicks` seam — an older adapter / any double. */
+function withoutSkipSeam(
+  adapter: SkippingAdapter,
+): EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void } {
+  const { skipTicks: _skipTicks, ...rest } = adapter
+  return rest
+}
+
+// buildRecordedTimeline anchors stroke A's 80 samples on ticks 0..79. Stroke B
+// starts after the artist's pause: tick 257 (long gap, 177 ticks) or tick 125
+// (short gap, 45 ticks).
+const LONG_GAP_BEGIN = 257
+const SHORT_GAP_BEGIN = 125
+const LONG_GAP_WINDOW_END = 424
+
+/** An 80-sample stroke, a real pause, then a 3-sample stroke. */
+function gapScript(lastCuisson = 0): AquarellePayloadEvent[] {
+  return [timedStroke(80, 1000, null), timedStroke(3, 4000, null, lastCuisson)]
+}
+
+function shortGapScript(): AquarellePayloadEvent[] {
+  return [timedStroke(80, 1000, null), timedStroke(3, 1800, null)]
+}
+
+async function runGapBake(input: {
+  events: readonly AquarellePayloadEvent[]
+  awakePerFeed: number
+  seam: boolean
+  frameCount?: number
+  withFix?: boolean
+  encodeWebp?: (frame: CanvasImageSource) => Uint8Array | Promise<Uint8Array>
+}): Promise<{
+  result: AquarelleBakeResult
+  log: SkippingAdapterLog
+  clock: number
+  diagnostics: BakeDiagnostics[]
+}> {
+  const { adapter, log } = makeSkippingAdapter(input.awakePerFeed, { withFix: input.withFix })
+  const target = input.seam ? adapter : withoutSkipSeam(adapter)
+  const diagnostics: BakeDiagnostics[] = []
+  const bake = createAquarelleBake(target, {
+    encodeWebp: input.encodeWebp ?? pixelEncoder,
+    width: 8,
+    height: 8,
+    ...(input.frameCount === undefined ? {} : { frameCount: input.frameCount }),
+    onDiagnostics: (record: BakeDiagnostics) => {
+      diagnostics.push(record)
+    },
+  })
+  const result = await bake.bake(input.events)
+  return { result, log, clock: adapter.clock(), diagnostics }
+}
+
+describe('261029-bks idle-gap clock skip', () => {
+  it('(a) parity baseline: two skip-OFF bakes of one timed fixture are byte-identical', async () => {
+    const once = async (): Promise<number[]> => {
+      const { result } = await runGapBake({
+        events: gapScript(),
+        awakePerFeed: 1000,
+        seam: false,
+        frameCount: 1,
+      })
+      expect(result.ok).toBe(true)
+      if (!result.ok) return []
+      expect(result.frames).toHaveLength(1)
+      return Array.from(result.frames[0]!.bytes)
+    }
+    expect(await once()).toEqual(await once())
+  })
+
+  it('(b) skip-ON bytes equal skip-OFF bytes on a fixture whose engine sleeps across the gap', async () => {
+    const off = await runGapBake({ events: gapScript(), awakePerFeed: 2, seam: false, frameCount: 1 })
+    const on = await runGapBake({ events: gapScript(), awakePerFeed: 2, seam: true, frameCount: 1 })
+    expect(off.result.ok).toBe(true)
+    expect(on.result.ok).toBe(true)
+    expect(off.log.skips).toHaveLength(0)
+    expect(on.log.skips.length).toBeGreaterThan(0)
+    if (!off.result.ok || !on.result.ok) return
+    expect(Array.from(on.result.frames[0]!.bytes)).toEqual(Array.from(off.result.frames[0]!.bytes))
+  })
+
+  it('(c) per-gap law: stepped + skipped === the gap length, boundary tick included', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips.length).toBeGreaterThan(0)
+    for (const skip of log.skips) {
+      expect(skip.to - skip.from).toBeGreaterThan(0)
+      // The mandatory boundary tick sits immediately before the skip.
+      const boundary = log.steps.indexOf(skip.from - 1)
+      expect(boundary, `missing boundary tick at ${skip.from - 1}`).toBeGreaterThan(-1)
+      // No step index lies inside the skipped range.
+      expect(log.steps.some((tick) => tick >= skip.from && tick < skip.to)).toBe(false)
+      // Walk back the contiguous stepped run ending at the boundary: that run
+      // is this gap's stepped prefix.
+      let start = log.steps[boundary]!
+      let cursor = boundary - 1
+      while (cursor >= 0 && log.steps[cursor] === start - 1) {
+        start -= 1
+        cursor -= 1
+      }
+      const stepped = boundary - cursor
+      expect(stepped + (skip.to - skip.from)).toBe(skip.to - start)
+    }
+  })
+
+  it('(d) the final virtual clock is bit-identical (strict toBe) with and without the skip', async () => {
+    const off = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: false,
+      withFix: true,
+      frameCount: 1,
+    })
+    const on = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(on.clock).toBeGreaterThan(0)
+    expect(on.clock).toBe(off.clock)
+  })
+
+  it('(e1) awake throughout: every gap tick steps, nothing is skipped', async () => {
+    const { log } = await runGapBake({
+      events: shortGapScript(),
+      awakePerFeed: 1000,
+      seam: true,
+      // The fix bake keeps the settle steps off the gap's tick range, so the
+      // filter below sees gap steps only.
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips).toEqual([])
+    const gapSteps = log.steps.filter((tick) => tick >= 80 && tick < SHORT_GAP_BEGIN)
+    expect(gapSteps).toEqual(Array.from({ length: SHORT_GAP_BEGIN - 80 }, (_, index) => 80 + index))
+  })
+
+  it('(e2) awake -> asleep: steps stop at s, one boundary tick runs, the rest skips', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 40,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips[0]).toEqual({ from: 121, to: LONG_GAP_BEGIN })
+    const gapSteps = log.steps.filter((tick) => tick >= 80 && tick < LONG_GAP_BEGIN)
+    expect(gapSteps).toEqual(Array.from({ length: 41 }, (_, index) => 80 + index))
+  })
+
+  it('(e3) asleep throughout: one boundary tick, then the rest is clock-only', async () => {
+    const { log } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 0,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(log.skips[0]).toEqual({ from: 81, to: LONG_GAP_BEGIN })
+    expect(log.steps.filter((tick) => tick >= 80 && tick < LONG_GAP_BEGIN)).toEqual([80])
+  })
+
+  it('(f) a trailing Dry fires after the clock reaches windowEnd, before the capture', async () => {
+    const events = [...gapScript(1000), createDryEvent(3, 4100)]
+    const on = await runGapBake({
+      events,
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    const off = await runGapBake({
+      events,
+      awakePerFeed: 1000,
+      seam: false,
+      withFix: true,
+      frameCount: 1,
+    })
+    const dryIndex = on.log.events.findIndex((entry) => entry.kind === 'dry')
+    expect(dryIndex).toBeGreaterThan(-1)
+    // The Dry fires only after the gap walk reached the window end.
+    expect(on.log.events[dryIndex - 1]).toEqual({ kind: 'step', tick: LONG_GAP_WINDOW_END - 1 })
+    const captureIndex = on.log.events.findIndex((entry) => entry.kind === 'capture')
+    expect(captureIndex).toBeGreaterThan(dryIndex)
+    expect(on.log.captures).toBe(1)
+    expect(on.log.feeds).toEqual(off.log.feeds)
+    expect(on.result.ok).toBe(true)
+    expect(off.result.ok).toBe(true)
+    if (!on.result.ok || !off.result.ok) return
+    expect(Array.from(on.result.frames[0]!.bytes)).toEqual(Array.from(off.result.frames[0]!.bytes))
+  })
+
+  it('(g1) emits exactly one timed record with the counter law', async () => {
+    const { log, diagnostics } = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('timed')
+    expect(record.timelineTicks).toBe(LONG_GAP_WINDOW_END)
+    expect(record.skippedGapTicks).toBe(log.skips.reduce((total, skip) => total + (skip.to - skip.from), 0))
+    expect(record.gapCount).toBe(2)
+    expect(record.settleTicks).toBe(72)
+    expect(record.simulatedTicks).toBe(log.steps.length)
+    expect(Number.isFinite(record.bakeMs)).toBe(true)
+    expect(record.bakeMs).toBeGreaterThanOrEqual(0)
+    expect(Number.isFinite(record.encodeMs)).toBe(true)
+    expect(record.encodeMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('(g2) counts only gap ranges with length > 0', async () => {
+    const long = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(long.diagnostics[0]!.gapCount).toBe(2)
+    const immediate = await runGapBake({
+      events: [timedStroke(5, 1000, null), timedStroke(3, 1000, null)],
+      awakePerFeed: 1000,
+      seam: true,
+      withFix: true,
+      frameCount: 1,
+    })
+    expect(immediate.diagnostics[0]!.gapCount).toBe(1)
+  })
+
+  it('(g3) reports the fallback path when the recorded timing is unusable', async () => {
+    const { diagnostics } = await runGapBake({
+      events: [timedStroke(3, 0, null)],
+      awakePerFeed: 0,
+      seam: true,
+      frameCount: 1,
+    })
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('fallback')
+    expect(record.skippedGapTicks).toBe(0)
+    expect(record.gapCount).toBe(0)
+  })
+
+  it('(g4) reports the legacy path without frameCount', async () => {
+    const { adapter, log } = makeSkippingAdapter(1000)
+    const diagnostics: BakeDiagnostics[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      onDiagnostics: (record: BakeDiagnostics) => {
+        diagnostics.push(record)
+      },
+    })
+    const result = await bake.bake([makeStroke({ diffusionFrames: 3 })])
+    expect(result.ok).toBe(true)
+    expect(diagnostics).toHaveLength(1)
+    const record = diagnostics[0]!
+    expect(record.path).toBe('legacy')
+    expect(record.timelineTicks).toBe(3)
+    expect(record.simulatedTicks).toBe(3)
+    expect(record.settleTicks).toBe(0)
+    expect(record.skippedGapTicks).toBe(0)
+    expect(record.gapCount).toBe(0)
+    expect(log.steps).toEqual([0, 1, 2])
+  })
+
+  it('(g5) a throwing diagnostics consumer never fails the bake', async () => {
+    const { adapter } = makeSkippingAdapter(1000)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onDiagnostics: () => {
+        throw new Error('consumer exploded')
+      },
+    })
+    const result = await bake.bake(gapScript(1000))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+  })
+
+  it('(g6) a cancelled bake still emits exactly one record', async () => {
+    const { adapter } = makeSkippingAdapter(1000)
+    const gate = deferred<void>()
+    const diagnostics: BakeDiagnostics[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: async () => {
+        await gate.promise
+        return new Uint8Array([1])
+      },
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onDiagnostics: (record: BakeDiagnostics) => {
+        diagnostics.push(record)
+      },
+    })
+    const pending = bake.bake(gapScript(1000))
+
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    bake.interrupt()
+    gate.resolve()
+
+    const result = await pending
+    expect(result.ok).toBe(false)
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.path).toBe('timed')
+  })
+
+  it('(h) capture count, windows and point counts are unchanged by the skip', async () => {
+    const off = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: false,
+      withFix: true,
+      frameCount: 3,
+    })
+    const on = await runGapBake({
+      events: gapScript(1000),
+      awakePerFeed: 2,
+      seam: true,
+      withFix: true,
+      frameCount: 3,
+    })
+    expect(on.result.ok).toBe(true)
+    expect(off.result.ok).toBe(true)
+    expect(on.log.skips.length).toBeGreaterThan(0)
+    expect(on.log.captures).toBe(3)
+    expect(on.log.captures).toBe(off.log.captures)
+    expect(on.log.feeds).toEqual(off.log.feeds)
+    if (!on.result.ok || !off.result.ok) return
+    expect(on.result.frames).toHaveLength(3)
+    expect(on.result.frames.map((frame) => Array.from(frame.bytes)))
+      .toEqual(off.result.frames.map((frame) => Array.from(frame.bytes)))
+  })
+})

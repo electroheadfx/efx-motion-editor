@@ -80,6 +80,61 @@ export function aquarellePaperCacheFingerprint(paper: AquarelleBakePaper): strin
   return `paper:${paper.paperId}|str:${paper.grainStrength}|scl:${paper.grainScale}`
 }
 
+/** 261029-bks: which replay law a bake took. */
+export type AquarelleBakePath = 'timed' | 'fallback' | 'legacy'
+
+/**
+ * 261029-bks: one diagnostics record per `bake()`, emitted exactly once on
+ * every path (timed / fallback / legacy, a cancelled or failed bake included).
+ * Carries SCALAR counters and timings only — never pixels, canvases, data URLs
+ * or script content (T-bks-01).
+ *
+ * Counter law (one reading — do not invent a second):
+ *
+ * - `timelineTicks`: the timed path sums each window's tick span (`tickBudget`
+ *   per frame); the fallback path sums `tickBudget`; the legacy path sums the
+ *   clamped cuisson per stroke.
+ * - `simulatedTicks`: ACTUAL `stepTick` invocations made by the bake on the
+ *   adapter — gap-walk steps, the fallback diffusion steps, the legacy cuisson
+ *   steps and the end-frame settle steps. It EXCLUDES the sample ticks (they
+ *   run inside the adapter's `renderPartialStrokes`/`feedDueSample`, never
+ *   through `stepTick`) and the adapter-internal Dry drain (30 clock+tick pairs
+ *   inside `applyDry`). This is the CONTEXT-locked definition; `settleTicks`
+ *   is the subset of these calls owned by the settle law.
+ * - `skippedGapTicks`: clock-only ticks advanced by `skipTicks`.
+ * - `settleTicks`: end-frame settle `stepTick` calls (`FIX_SETTLE_TICKS` on the
+ *   fix bake, the guard count on the cook-to-sleep). Subset of
+ *   `simulatedTicks`.
+ * - `gapCount`: gap ranges with `toTick > fromTick` walked by `stepGap`.
+ * - Invariant the tests pin (per gap, not global): for every gap `[a,b)`,
+ *   `stepTick` calls with an index inside `[a,b)` plus `skippedGapTicks` for
+ *   that gap equals `b − a`, and the virtual clock is strictly equal to the
+ *   no-skip run. There is NO global `timelineTicks === simulatedTicks +
+ *   skippedGapTicks` identity: sample ticks run inside the adapter (never
+ *   through `stepTick`), `buildRecordedTimeline` clamps `beginTick` to
+ *   `previousEnd` so clamp-adjacent strokes can feed more samples than the
+ *   window span, and the settle steps sit outside every window span.
+ *   `skippedGapTicks === 0` on the fallback and legacy paths.
+ * - `bakeMs`: wall time from `bake()` entry to its return; `encodeMs`:
+ *   accumulated `encodeWebp` wall time (cumulative across frames; overlapping
+ *   encodes may double-count — document it, do not "fix" it).
+ */
+export interface AquarelleBakeDiagnostics {
+  readonly path: AquarelleBakePath
+  readonly timelineTicks: number
+  readonly simulatedTicks: number
+  readonly skippedGapTicks: number
+  readonly gapCount: number
+  readonly settleTicks: number
+  readonly bakeMs: number
+  readonly encodeMs: number
+}
+
+/** Non-exported mutable working copy — the per-call accumulator. */
+type MutableBakeDiagnostics = {
+  -readonly [K in keyof AquarelleBakeDiagnostics]: AquarelleBakeDiagnostics[K]
+}
+
 export interface AquarelleBakeOptions {
   /** WebP encoder. Defaults to canvas.toDataURL when available. */
   encodeWebp?: AquarelleBakeEncoder
@@ -116,6 +171,13 @@ export interface AquarelleBakeOptions {
    * image and the stepped tick sequence are identical to a run without it.
    */
   onStrokeFed?: (completed: number, total: number) => void
+  /**
+   * 261029-bks: exactly once per `bake()` — every path (timed / fallback /
+   * legacy), cancelled and failed bakes included. It can never throw into the
+   * bake: a throwing consumer is swallowed (T-bks-02), so the consumer must
+   * not rely on its own errors surfacing.
+   */
+  onDiagnostics?: (d: AquarelleBakeDiagnostics) => void
 }
 
 export type AquarelleBakeResult =
@@ -199,6 +261,16 @@ function yieldToHost(): Promise<void> {
   })
 }
 
+/**
+ * 261029-bks: wall clock for diagnostics. `performance.now()` where available
+ * (monotonic, sub-ms), `Date.now()` otherwise.
+ */
+function readNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now()
+}
+
 /** DOM fallback encoder — the app injects the Rust-backed one (R4.2). */
 async function defaultEncodeWebp(frame: CanvasImageSource): Promise<Uint8Array> {
   const carrier = frame as { toDataURL?: (type?: string) => string }
@@ -223,6 +295,31 @@ export function createAquarelleBake(
   })
   const encodeWebp = options.encodeWebp ?? ((frame) => defaultEncodeWebp(frame))
   const onCommit = options.onCommit
+
+  /**
+   * 261029-bks: the ONE counting wrapper. Every bulk `stepTick` site binds a
+   * `stepTimeline` from this factory, so `simulatedTicks` counts every step
+   * the bake drives on the adapter and nothing else.
+   */
+  const countedStep = (d: MutableBakeDiagnostics) => (tick: number): void => {
+    d.simulatedTicks += 1
+    adapter.stepTick(tick)
+  }
+
+  /**
+   * 261029-bks: emit the per-bake record exactly once. A throwing consumer is
+   * swallowed — it must never fail, cancel or corrupt a bake (T-bks-02).
+   */
+  const emitDiagnostics = (d: MutableBakeDiagnostics, startedAt: number): void => {
+    d.bakeMs = readNow() - startedAt
+    const consumer = options.onDiagnostics
+    if (!consumer) return
+    try {
+      consumer(d)
+    } catch {
+      /* T-bks-02: a throwing diagnostics consumer is swallowed. */
+    }
+  }
 
   // Adapter mutations are serialized: applyStroke / stepTick / captureFrame
   // never interleave mid-capture ("a third turn waits, never interleaves
@@ -284,12 +381,20 @@ export function createAquarelleBake(
   const bakeProgressive = async (
     events: readonly AquarellePayloadEvent[],
     frameCount: number,
+    diagnostics: MutableBakeDiagnostics,
   ): Promise<AquarelleBakeResult> => {
     const frames: AquarelleBakeFrame[] = []
     const outcomes: Promise<BakeTurnOutcome>[] = []
     let commitBarrier: Promise<void> = Promise.resolve()
     const frameSpan = Math.max(1, Math.trunc(frameCount))
-    const awakeProbe = adapter as EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }
+    // 261029-bks: the optional adapter seams. `skipTicks` is an optional
+    // EXTENSION of the host EngineAdapter (detected by cast) — the host
+    // interface itself is unchanged.
+    const seams = adapter as EngineAdapter<AquarelleStrokePayload> & {
+      isAwake?: () => boolean
+      fix?: () => void
+      skipTicks?: (fromTick: number, toTick: number) => void
+    }
 
     if (options.paper) {
       const paper = options.paper
@@ -306,7 +411,45 @@ export function createAquarelleBake(
       if (!isAquarelleDryEvent(event)) strokes.push(event as StudioStroke<AquarelleStrokePayload>)
     }
     const timedBase = buildRecordedTimeline(strokes)
+    diagnostics.path = timedBase ? 'timed' : 'fallback'
     const schedule = timedBase ? [] : buildProgressiveStrokeSchedule(strokes, frameSpan)
+
+    // 261029-bks: skip only when BOTH seams exist — an older adapter (or any
+    // test double) keeps its exact tick law and receives NO probes.
+    const canSkip = typeof seams.skipTicks === 'function' && typeof seams.isAwake === 'function'
+    const stepTimeline = countedStep(diagnostics)
+
+    /**
+     * 261029-bks: walk one idle gap `[fromTick, toTick)` on the recorded
+     * timeline. Probe BEFORE each step: while awake the tick runs on the
+     * engine; the tick that first observes sleep still runs (mandatory
+     * boundary tick — its `sleep()`/`render()` flush must not be lost), is
+     * re-checked once, and only then is the remainder advanced clock-only.
+     * Never reads or mutates any walker's cursor; never crosses a Dry, a
+     * window bound or the settle law (the caller owns the bounds).
+     */
+    function stepGap(fromTick: number, toTick: number): void {
+      if (toTick <= fromTick) return
+      diagnostics.gapCount += 1
+      let tick = fromTick
+      while (tick < toTick) {
+        if (canSkip && !seams.isAwake!()) {
+          // Mandatory boundary tick: the tick that first observes sleep.
+          stepTimeline(tick)
+          tick += 1
+          if (tick >= toTick) return
+          if (!seams.isAwake!()) {
+            const skipFrom = tick
+            seams.skipTicks!(skipFrom, toTick)
+            diagnostics.skippedGapTicks += toTick - skipFrom
+            tick = toTick
+          }
+          continue
+        }
+        stepTimeline(tick)
+        tick += 1
+      }
+    }
 
     // 261022 Apply parity: one cumulative progress step per fully fed stroke.
     // Keyed by stroke identity because a stroke can be re-fed in larger
@@ -460,6 +603,7 @@ export function createAquarelleBake(
         }
         tickBudget = Math.max(0, windowEnd - previousWindowEnd)
         previousWindowEnd = windowEnd
+        diagnostics.timelineTicks += tickBudget
       } else {
         for (const dry of drysByFrame.get(frameIndex) ?? []) {
           void scheduleAdapter(() => {
@@ -470,6 +614,7 @@ export function createAquarelleBake(
         tickBudget = isFinalFrame
           ? diffusionPerFrame + lastStrokeCatchUp
           : diffusionPerFrame
+        diagnostics.timelineTicks += tickBudget
       }
 
       const framePromise = scheduleAdapter(async () => {
@@ -494,7 +639,7 @@ export function createAquarelleBake(
             const fed = fedCounts.get(entry.stroke) ?? 0
             if (pointCount <= fed) continue
             const firstTick = entry.beginTick + fed
-            for (let tick = cursor; tick < firstTick; tick += 1) adapter.stepTick(tick)
+            stepGap(cursor, firstTick)
             if (fed === 0) {
               for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
                 adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
@@ -508,20 +653,22 @@ export function createAquarelleBake(
           }
           // A user Dry after the last stroke settles at the end of the span.
           if (isFinalFrame && trailingDrys.length > 0) {
-            for (let tick = cursor; tick < windowEnd; tick += 1) adapter.stepTick(tick)
+            // The Dry fires AFTER the clock reaches windowEnd (its fix + 30
+            // ticks unchanged) — the gap may skip, the Dry never moves.
+            stepGap(cursor, windowEnd)
             cursor = windowEnd
             for (const dry of trailingDrys) {
               adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
             }
           }
-          for (let tick = cursor; tick < windowEnd; tick += 1) adapter.stepTick(tick)
+          stepGap(cursor, windowEnd)
         } else {
           adapter.renderPartialStrokes(frameStrokes)
           for (const entry of frameStrokes) {
             if (entry.pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke)
           }
           for (let tick = 0; tick < tickBudget; tick += 1) {
-            adapter.stepTick(tick)
+            stepTimeline(tick)
           }
         }
         // End-frame law: force-dry at the visible settle cap — the same fix()
@@ -529,13 +676,19 @@ export function createAquarelleBake(
         // resulting state is the live cache's denser capture. Adapters without
         // the seam (older / test doubles) keep the cook-to-sleep fallback.
         if (isFinalFrame) {
-          const fixSeam = (adapter as EngineAdapter<AquarelleStrokePayload> & { fix?: () => void }).fix
+          // The settle law is NEVER skipped (truth table row 5).
+          const fixSeam = seams.fix
           if (settleCapped && typeof fixSeam === 'function') {
             fixSeam.call(adapter)
-            for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
-          } else if (typeof awakeProbe.isAwake === 'function') {
-            for (let guard = 0; guard < SETTLE_MAX_TICKS && awakeProbe.isAwake(); guard += 1) {
-              adapter.stepTick(guard)
+            for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) {
+              stepTimeline(tick)
+              diagnostics.settleTicks += 1
+            }
+          } else if (typeof seams.isAwake === 'function') {
+            const awake = seams.isAwake
+            for (let guard = 0; guard < SETTLE_MAX_TICKS && awake(); guard += 1) {
+              stepTimeline(guard)
+              diagnostics.settleTicks += 1
             }
           }
         }
@@ -556,7 +709,9 @@ export function createAquarelleBake(
           const fallback = readSize(frame)
           const width = options.width ?? fallback.width
           const height = options.height ?? fallback.height
+          const encodeStartedAt = readNow()
           const bytes = await encodeWebp(frame, width, height)
+          diagnostics.encodeMs += readNow() - encodeStartedAt
           return {
             eventIndex: frameIndex,
             strokeIndex: frameIndex,
@@ -609,117 +764,140 @@ export function createAquarelleBake(
   }
 
   const bake = async (events: readonly AquarellePayloadEvent[]): Promise<AquarelleBakeResult> => {
-    if (options.frameCount && options.frameCount > 0) {
-      return bakeProgressive(events, Math.floor(options.frameCount))
+    const startedAt = readNow()
+    // 261029-bks: one accumulator per bake() — a shared one would let
+    // overlapping bakes read each other's counters.
+    const diagnostics: MutableBakeDiagnostics = {
+      path: 'legacy',
+      timelineTicks: 0,
+      simulatedTicks: 0,
+      skippedGapTicks: 0,
+      gapCount: 0,
+      settleTicks: 0,
+      bakeMs: 0,
+      encodeMs: 0,
     }
-    const frames: AquarelleBakeFrame[] = []
-    const outcomes: Promise<BakeTurnOutcome>[] = []
-    // FIFO commit barrier: a later stroke never commits before an earlier one,
-    // even when its encode finishes first. Released when each turn settles
-    // (committed OR cancelled) so a cancelled head never wedges the tail.
-    let commitBarrier: Promise<void> = Promise.resolve()
-    let strokeIndex = 0
+    // The legacy branch's counted step site lives in this scope.
+    const stepTimeline = countedStep(diagnostics)
+    try {
+      if (options.frameCount && options.frameCount > 0) {
+        return await bakeProgressive(events, Math.floor(options.frameCount), diagnostics)
+      }
+      const frames: AquarelleBakeFrame[] = []
+      const outcomes: Promise<BakeTurnOutcome>[] = []
+      // FIFO commit barrier: a later stroke never commits before an earlier one,
+      // even when its encode finishes first. Released when each turn settles
+      // (committed OR cancelled) so a cancelled head never wedges the tail.
+      let commitBarrier: Promise<void> = Promise.resolve()
+      let strokeIndex = 0
 
-    // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
-    // replayed deposit carries the Studio paper's tooth / granulation. The
-    // adapter's optional setPaper seam keeps EngineAdapter unchanged.
-    if (options.paper) {
-      const paper = options.paper
-      void scheduleAdapter(() => {
-        const seam = adapter as EngineAdapter<AquarelleStrokePayload> & {
-          setPaper?: (p: AquarelleBakePaper) => void
-        }
-        seam.setPaper?.(paper)
-      })
-    }
-
-    for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
-      const event = events[eventIndex]
-      if (!event) continue
-
-      if (isAquarelleDryEvent(event)) {
-        // D-15: Dry fires in recorded order BETWEEN stroke turns — same
-        // adapter chain, so it lands after earlier produce and before later.
-        // applyStroke is the adapter's one Dry seam (D-16 one-payload-union).
+      // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
+      // replayed deposit carries the Studio paper's tooth / granulation. The
+      // adapter's optional setPaper seam keeps EngineAdapter unchanged.
+      if (options.paper) {
+        const paper = options.paper
         void scheduleAdapter(() => {
-          adapter.applyStroke(event as unknown as StudioStroke<AquarelleStrokePayload>)
+          const seam = adapter as EngineAdapter<AquarelleStrokePayload> & {
+            setPaper?: (p: AquarelleBakePaper) => void
+          }
+          seam.setPaper?.(paper)
         })
-        continue
       }
 
-      const stroke = event as StudioStroke<AquarelleStrokePayload>
-      const myStrokeIndex = strokeIndex
-      strokeIndex += 1
-      // `||` not `??`: a stroke projected with cuisson 0 still falls back to
-      // the engine slot's diffusionFrames, so the fluid sim runs its window.
-      const cuisson = clampCuisson(
-        stroke.cuisson || (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
-      )
+      for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+        const event = events[eventIndex]
+        if (!event) continue
 
-      // Reserve the adapter slot NOW so chain order is walk order, not
-      // produce-start order (the host defers produce behind the slot take).
-      const framePromise = scheduleAdapter(() => {
-        adapter.applyStroke(stroke)
-        // Bake-window law: stepTick across the stroke's own cuisson only.
-        // Frame indices never force-dry (P4 / D-28).
-        for (let tick = 0; tick < cuisson; tick += 1) {
-          adapter.stepTick(tick)
+        if (isAquarelleDryEvent(event)) {
+          // D-15: Dry fires in recorded order BETWEEN stroke turns — same
+          // adapter chain, so it lands after earlier produce and before later.
+          // applyStroke is the adapter's one Dry seam (D-16 one-payload-union).
+          void scheduleAdapter(() => {
+            adapter.applyStroke(event as unknown as StudioStroke<AquarelleStrokePayload>)
+          })
+          continue
         }
-        return adapter.captureFrame()
-      })
 
-      const myBarrier = commitBarrier
-      let releaseBarrier!: () => void
-      commitBarrier = new Promise<void>((resolve) => {
-        releaseBarrier = resolve
-      })
+        const stroke = event as StudioStroke<AquarelleStrokePayload>
+        const myStrokeIndex = strokeIndex
+        strokeIndex += 1
+        // `||` not `??`: a stroke projected with cuisson 0 still falls back to
+        // the engine slot's diffusionFrames, so the fluid sim runs its window.
+        const cuisson = clampCuisson(
+          stroke.cuisson || (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+        )
 
-      const outcome = host.submit<AquarelleBakeFrame>({
-        // AQUA-07 / D-21: long cuisson survives navigation and dispose().
-        mode: 'flush-survives-navigation',
-        produce: async () => {
-          const frame = await framePromise
-          const fallback = readSize(frame)
-          const width = options.width ?? fallback.width
-          const height = options.height ?? fallback.height
-          const bytes = await encodeWebp(frame, width, height)
-          return {
-            eventIndex,
-            strokeIndex: myStrokeIndex,
-            tick: cuisson,
-            bytes,
-            width,
-            height,
+        // Reserve the adapter slot NOW so chain order is walk order, not
+        // produce-start order (the host defers produce behind the slot take).
+        const framePromise = scheduleAdapter(() => {
+          adapter.applyStroke(stroke)
+          // Bake-window law: stepTick across the stroke's own cuisson only.
+          // Frame indices never force-dry (P4 / D-28).
+          diagnostics.timelineTicks += cuisson
+          for (let tick = 0; tick < cuisson; tick += 1) {
+            stepTimeline(tick)
           }
-        },
-        // Publish IS the commit body — the host's generation-stale guard is
-        // what keeps a cancelled/interrupted turn from reaching here (T-56-24).
-        commit: (value) =>
-          myBarrier.then(() => {
-            frames.push(value)
-            onCommit?.(value)
-            return true
-          }),
-      })
-      // Always advance the FIFO barrier once the turn settles, committed or not.
-      void outcome.then(
-        () => releaseBarrier(),
-        () => releaseBarrier(),
-      )
-      outcomes.push(outcome)
-    }
+          return adapter.captureFrame()
+        })
 
-    const settled = await Promise.all(outcomes)
-    // Dry events after the last stroke are not awaited by any turn.
-    await adapterChain
+        const myBarrier = commitBarrier
+        let releaseBarrier!: () => void
+        commitBarrier = new Promise<void>((resolve) => {
+          releaseBarrier = resolve
+        })
 
-    if (settled.some((o) => o === 'cancelled' || o === 'stale')) {
-      return { ok: false, reason: 'cancelled' }
+        const outcome = host.submit<AquarelleBakeFrame>({
+          // AQUA-07 / D-21: long cuisson survives navigation and dispose().
+          mode: 'flush-survives-navigation',
+          produce: async () => {
+            const frame = await framePromise
+            const fallback = readSize(frame)
+            const width = options.width ?? fallback.width
+            const height = options.height ?? fallback.height
+            const encodeStartedAt = readNow()
+            const bytes = await encodeWebp(frame, width, height)
+            diagnostics.encodeMs += readNow() - encodeStartedAt
+            return {
+              eventIndex,
+              strokeIndex: myStrokeIndex,
+              tick: cuisson,
+              bytes,
+              width,
+              height,
+            }
+          },
+          // Publish IS the commit body — the host's generation-stale guard is
+          // what keeps a cancelled/interrupted turn from reaching here (T-56-24).
+          commit: (value) =>
+            myBarrier.then(() => {
+              frames.push(value)
+              onCommit?.(value)
+              return true
+            }),
+        })
+        // Always advance the FIFO barrier once the turn settles, committed or not.
+        void outcome.then(
+          () => releaseBarrier(),
+          () => releaseBarrier(),
+        )
+        outcomes.push(outcome)
+      }
+
+      const settled = await Promise.all(outcomes)
+      // Dry events after the last stroke are not awaited by any turn.
+      await adapterChain
+
+      if (settled.some((o) => o === 'cancelled' || o === 'stale')) {
+        return { ok: false, reason: 'cancelled' }
+      }
+      if (settled.some((o) => o === 'failed' || o === 'rejected')) {
+        return { ok: false, reason: 'failed' }
+      }
+      return { ok: true, frames }
+    } finally {
+      // Exactly once per bake() — a cancelled or failed bake reports too.
+      emitDiagnostics(diagnostics, startedAt)
     }
-    if (settled.some((o) => o === 'failed' || o === 'rejected')) {
-      return { ok: false, reason: 'failed' }
-    }
-    return { ok: true, frames }
   }
 
   return {

@@ -351,3 +351,22 @@ describe.skipIf(!gpu)('EngineAdapter GPU (WebGL2 required)', () => {
     adapter.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// 5. 261029-bks — the clock-only idle-gap seam.
+//    `skipTicks` mirrors `stepTick`'s guard: a disposed adapter (or one with
+//    no engine) returns BEFORE any clock add, so the virtual clock can never
+//    diverge from a no-skip run.
+// ---------------------------------------------------------------------------
+
+describe('skipTicks (261029-bks)', () => {
+  it('exposes the seam and never throws — including after dispose', () => {
+    const adapter = createAquarelleEngineAdapter()
+
+    expect(typeof adapter.skipTicks).toBe('function')
+    expect(() => adapter.skipTicks(0, 10)).not.toThrow()
+
+    adapter.dispose()
+    expect(() => adapter.skipTicks(0, 10)).not.toThrow()
+  })
+})

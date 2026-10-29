@@ -120,6 +120,12 @@ export function createAquarelleEngineAdapter(
   isAwake(): boolean
   /** 261019c: force-dry at the visible settle cap (the live sheet's cap). */
   fix(): void
+  /**
+   * 261029-bks: clock-only advance for an idle gap the bake proved asleep.
+   * Never calls engine.tick or render; one `advanceClock(1000 * HOST_DT)` per
+   * tick so the virtual clock stays bit-identical to per-tick stepping.
+   */
+  skipTicks(fromTick: number, toTick: number): void
 } {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
@@ -257,6 +263,20 @@ export function createAquarelleEngineAdapter(
     // runs the same fix so the end key keeps the artist's denser look.
     fix(): void {
       engine?.fix()
+    },
+    // 261029-bks: clock-only advance for an idle gap the bake proved asleep.
+    // The guard is the exact `stepTick` law — it must precede every clock add,
+    // so a disposed adapter's clock can never drift from a no-skip run. One
+    // `advanceClock` per tick (never a single multiply) keeps the virtual clock
+    // bit-identical to per-tick stepping.
+    skipTicks(fromTick: number, toTick: number): void {
+      if (disposed || !engine) return
+      if (!(toTick > fromTick)) return
+      let remaining = toTick - fromTick
+      while (remaining > 0) {
+        advanceClock(1000 * HOST_DT)
+        remaining -= 1
+      }
     },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host
