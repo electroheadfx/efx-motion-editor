@@ -3114,6 +3114,21 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
     expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
   });
 
+  it('keeps a fresh paint barrier with no engine availability seed (UAT row 1)', async () => {
+    // The engine-1 `setHistoryAvailabilityListener` seed left with the Brush
+    // module (261027-klx), so `paintAvailabilityRef` is 0 for a whole session.
+    // The barrier must survive on the hard 10-cap: this row deliberately does
+    // NOT call `reconcilePaintBarriers`, which is what masked the live bug.
+    const harness = createAquarelleHarness();
+    harness.history.observePaintMutation(78, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // An unrecorded stroke still takes the engine path, and the entry is there.
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.undoPaint).toHaveBeenCalledTimes(1);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
   it('a paint barrier above an aquarelle command is consumed first', async () => {
     const harness = createAquarelleHarness();
     harness.history.reconcilePaintBarriers({ undo: 1, redo: 0 });

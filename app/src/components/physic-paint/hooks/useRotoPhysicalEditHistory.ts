@@ -743,7 +743,16 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     appliedRef.current.push({ kind: 'paint', mutationId });
     let paintCount = appliedRef.current.filter((entry) => entry.kind === 'paint').length;
-    const maximum = Math.min(10, paintAvailabilityRef.current.undo);
+    // 261029-lsr UAT row 1: the cap is the hard 10, NOT the engine's live undo
+    // count. `paintAvailabilityRef` could only ever be seeded by
+    // `reconcilePaintBarriers`, whose single caller was engine-1's
+    // `setHistoryAvailabilityListener` — removed with the Brush module
+    // (261027-klx). The ref therefore stayed at `{ undo: 0 }`, `maximum` was 0,
+    // and the barrier pushed on the line above was trimmed away again in the
+    // same call: fresh paint never reached the ledger, so Undo stayed disabled
+    // and Cmd+Z was a no-op. Script edits (`aquarelle-script`) never went
+    // through this cap, which is why delete/move undo kept working.
+    const maximum = 10;
     if (paintCount > maximum) {
       appliedRef.current = appliedRef.current.filter((entry) => {
         if (entry.kind !== 'paint' || paintCount <= maximum) return true;
