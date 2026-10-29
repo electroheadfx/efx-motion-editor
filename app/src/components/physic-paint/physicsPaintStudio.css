@@ -1323,9 +1323,17 @@ button.destructive {
   cursor: pointer;
 }
 
+/* 261029: the selected swatch reads at a glance — a bright white ring framed
+   by an accent glow, legible over any swatch color and the grey ground. */
 .physics-paint-swatch[aria-pressed="true"] {
-  outline: 2px solid var(--color-accent, #2d5be3);
-  outline-offset: 1px;
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(45, 91, 227, 0.95), 0 0 14px 4px rgba(111, 144, 255, 0.85);
+}
+
+.physics-paint-swatch[aria-pressed="true"]:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 /* SPECS/slider-stepper: the blended field stacks label+value over the bar, so

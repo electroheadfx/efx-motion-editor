@@ -154,8 +154,9 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-swatch-cell')).toMatch(/height:\s*32px/);
     // 261025-co0: the per-swatch removal control and its CSS rules are gone.
     expect(css).not.toContain('.physics-paint-swatch-remove');
-    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline:\s*2px solid var\(--color-accent, #2d5be3\)/);
-    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline-offset:\s*1px/);
+    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline:\s*2px solid #ffffff/);
+    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline-offset:\s*2px/);
+    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toContain('rgba(111, 144, 255, 0.85)');
   });
 
   it('places a Lucide-grip 32px grab handle between each section pair with keyboard and pointer resize clamped to 15% minimum sections', () => {
