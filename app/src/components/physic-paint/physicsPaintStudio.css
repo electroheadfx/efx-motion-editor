@@ -534,10 +534,14 @@ button.destructive {
   color: #9aa5b1;
 }
 
-/* I-11 follow-up: hide the last optional watercolor knobs as the settings
-   area narrows. Order: Grain → Edges; Water and the primary Pigment control
-   stay. Thresholds follow the control widths (140px + 10px gap at wide
-   viewports, 115px + 8px below 1180px): 5/4/3 visible = 740/590 and 607/484.
+/* I-11 follow-up / 261029-hy2 CR-02: hide the last optional watercolor knobs
+   as the settings area narrows. Order: Grain → Edges → Water; the primary
+   Pigment control (and Brush size) always stay. Thresholds follow the control
+   widths (140px + 10px gap at wide viewports, 115px + 8px below 1180px):
+   5 controls = 5 × 140 + 4 × 10 = 740 and 5 × 115 + 4 × 8 = 607;
+   4 = 590 / 484; 3 = 440 / 361. The right-pinned cluster overflows off the
+   unscrollable START edge, so the Water tier is what keeps the leading Brush
+   size control reachable below ~780px.
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
@@ -547,6 +551,9 @@ button.destructive {
   @container (max-width: 589px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
   }
+  @container (max-width: 439px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
+  }
 }
 
 @media (max-width: 1180px) {
@@ -555,6 +562,9 @@ button.destructive {
   }
   @container (max-width: 483px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
+  }
+  @container (max-width: 360px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-water { display: none; }
   }
 }
 
@@ -7222,6 +7232,22 @@ button.destructive {
 
   .physics-paint-topbar-slider {
     min-width: 115px;
+  }
+
+  /* 261029-hy2 CR-02: the Eraser cluster has NO optional knobs to hide, so it
+     must fold instead of overflowing. Size 115 + gap 10 + Strength 140 +
+     gap 10 + Edit ≈ 90 = 365px: below that the Edit switch wraps onto a
+     second row, keeping the leading Size control on-screen. The tightened
+     strength minimum (180 → 140, gap 7 → 4) leaves room for the icon + bar. */
+  .physics-paint-topbar-lift {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .physics-paint-topbar-lift-strength {
+    min-width: 140px;
+    gap: 4px;
   }
 
   .physics-paint-segmented-button:not(.physics-paint-swatch-button) {

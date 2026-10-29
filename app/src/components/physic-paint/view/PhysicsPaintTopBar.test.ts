@@ -139,6 +139,51 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(hideAt, 'hide rule must exist').toBeGreaterThan(-1);
     expect(hideAt, 'hide rule must follow the control display rule').toBeGreaterThan(controlAt);
   });
+
+  it('hides Water at the deepest threshold, inside the existing media blocks (261029-hy2 CR-02)', () => {
+    const styles = css();
+    const wideStart = styles.indexOf('@media (min-width: 1181px) {\n  @container (max-width: 739px)');
+    const narrowStart = styles.indexOf('@media (max-width: 1180px) {\n  @container (max-width: 606px)');
+    const chainEnd = styles.indexOf('.physics-paint-segmented-row {');
+    expect(wideStart, 'the wide hide-chain block exists').toBeGreaterThan(-1);
+    expect(narrowStart, 'the narrow hide-chain block exists').toBeGreaterThan(wideStart);
+    expect(chainEnd, 'the hide chain is followed by the next base rule').toBeGreaterThan(narrowStart);
+    const wide = styles.slice(wideStart, narrowStart);
+    const narrow = styles.slice(narrowStart, chainEnd);
+    // 3 visible controls = 3 × 140 + 2 × 10 = 440 / 3 × 115 + 2 × 8 = 361.
+    expect(wide).toContain('@container (max-width: 439px)');
+    expect(narrow).toContain('@container (max-width: 360px)');
+    const waterSelector = '.physics-paint-topbar-primary .physics-paint-topbar-optional-water';
+    expect(wide, 'the Water tier lives in the wide block').toContain(waterSelector);
+    expect(narrow, 'the Water tier lives in the narrow block').toContain(waterSelector);
+    // No new base @media above the first one: the tier follows the Edges tier.
+    expect(wide.indexOf(waterSelector)).toBeGreaterThan(wide.indexOf('@container (max-width: 589px)'));
+    expect(narrow.indexOf(waterSelector)).toBeGreaterThan(narrow.indexOf('@container (max-width: 483px)'));
+    // Out-ranks .physics-paint-topbar-control's display:flex (source order).
+    const controlAt = styles.indexOf('.physics-paint-topbar-control {');
+    expect(styles.indexOf(waterSelector)).toBeGreaterThan(controlAt);
+  });
+
+  it('folds the Eraser cluster instead of clipping it at narrow widths (261029-hy2 CR-02)', () => {
+    const styles = css();
+    const responsiveStart = styles.indexOf('@media (max-width: 1180px) {\n  .physics-paint-studio {');
+    const responsiveEnd = styles.indexOf('@media (max-width: 860px) {');
+    expect(responsiveStart, 'the responsive block exists').toBeGreaterThan(-1);
+    expect(responsiveEnd).toBeGreaterThan(responsiveStart);
+    const responsive = styles.slice(responsiveStart, responsiveEnd);
+    expect(responsive).toContain('.physics-paint-topbar-lift {');
+    expect(responsive).toContain('flex-wrap: wrap');
+    const strengthAt = responsive.indexOf('.physics-paint-topbar-lift-strength {');
+    expect(strengthAt, 'the strength minimum shrinks below 1180').toBeGreaterThan(-1);
+    const strength = responsive.slice(strengthAt, responsive.indexOf('}', strengthAt) + 1);
+    expect(strength).toContain('min-width: 140px');
+    expect(strength).toContain('gap: 4px');
+    // Wide seats keep the roomier 180px minimum.
+    const base = styles.slice(0, styles.indexOf('@media'));
+    const baseStrengthAt = base.indexOf('.physics-paint-topbar-lift-strength {');
+    expect(baseStrengthAt).toBeGreaterThan(-1);
+    expect(base.slice(baseStrengthAt, base.indexOf('}', baseStrengthAt) + 1)).toContain('min-width: 180px');
+  });
 });
 
 // 261027-gh9g: the module switcher is gone from the Studio top bar. The
