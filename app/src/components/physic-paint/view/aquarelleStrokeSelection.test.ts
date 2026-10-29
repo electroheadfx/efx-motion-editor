@@ -10,12 +10,14 @@
 
 import { describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
+import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   isAquarelleDryEvent,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
+import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
 import {
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
@@ -48,9 +50,12 @@ import {
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 import {
+  MIN_STROKE_PAD_PX,
   clearScriptStrokeSelection,
+  distanceToSegmentPx,
   scriptSelectedStrokeIds,
   setScriptStrokeSelection,
+  type CanvasPoint,
 } from './scriptStrokeEdition';
 
 const SHEET = { width: 400, height: 200 };
@@ -661,5 +666,115 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
       setAquarelleSelectMode(false);
       clearScriptStrokeSelection();
     }
+  });
+});
+
+describe('261029-eur lift ribbon listing (LIFT-RIBBON)', () => {
+  /** An aspect-2 (wide) lift: the wide side reaches 2R, past the bare radius. */
+  function wideLift(options: Parameters<typeof stroke>[0]): AquarelleStroke {
+    return {
+      ...stroke(options),
+      tool: 'lift',
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 },
+    };
+  }
+
+  function distanceToPolyline(point: CanvasPoint, polyline: readonly CanvasPoint[]): number {
+    if (polyline.length === 1) {
+      return Math.hypot(point.x - polyline[0]!.x, point.y - polyline[0]!.y);
+    }
+    let best = Infinity;
+    for (let index = 1; index < polyline.length; index += 1) {
+      best = Math.min(
+        best,
+        distanceToSegmentPx(point.x, point.y, polyline[index - 1]!, polyline[index]!),
+      );
+    }
+    return best;
+  }
+
+  it('fills a polygon ribbon, the maximum-support hit radius and polygon bounds on a lift', () => {
+    const recorded = wideLift({
+      points: [point(0.2, 0.5), point(0.5, 0.5), point(0.8, 0.5)],
+      playFrame: 806,
+      size: 40,
+    });
+    recordAquarelleStroke(10051, recorded);
+    const entry = listSelectableAquarelleStrokes(806, SHEET).find(
+      (candidate) => candidate.mutationId === 10051,
+    );
+    expect(entry).toBeDefined();
+    expect(entry!.kind).toBe('lift');
+    expect(entry!.ribbonPx).toBeDefined();
+    expect(entry!.ribbonPx!.length).toBeGreaterThan(2);
+    expect(entry!.hitRadiusPx).toBeGreaterThanOrEqual(MIN_STROKE_PAD_PX);
+
+    // No drawn vertex escapes the click target: every edge/cap point sits at
+    // most `hitRadiusPx` off the centerline (caps included).
+    const centerline = aquarelleStrokePointsPx(recorded, SHEET);
+    for (const vertex of entry!.ribbonPx!) {
+      expect(distanceToPolyline(vertex, centerline)).toBeLessThanOrEqual(
+        entry!.hitRadiusPx! + 1e-6,
+      );
+    }
+
+    // An aspect > 1 tip reaches aspect * R on its wide side.
+    const radiusPx = liftRadiusDoc(1, liftEngineSize(recorded.params)) * SHEET.height;
+    expect(entry!.hitRadiusPx).toBeCloseTo(radiusPx * 2, 6);
+
+    // Bounds = the polygon's EXACT bbox + the shared 6px grab margin.
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const vertex of entry!.ribbonPx!) {
+      minX = Math.min(minX, vertex.x);
+      minY = Math.min(minY, vertex.y);
+      maxX = Math.max(maxX, vertex.x);
+      maxY = Math.max(maxY, vertex.y);
+    }
+    expect(entry!.bounds.x).toBeCloseTo(minX - MIN_STROKE_PAD_PX, 9);
+    expect(entry!.bounds.y).toBeCloseTo(minY - MIN_STROKE_PAD_PX, 9);
+    expect(entry!.bounds.width).toBeCloseTo(maxX - minX + MIN_STROKE_PAD_PX * 2, 9);
+    expect(entry!.bounds.height).toBeCloseTo(maxY - minY + MIN_STROKE_PAD_PX * 2, 9);
+  });
+
+  it('leaves paint entries on the legacy bounds with no ribbon fields', () => {
+    const recorded = stroke({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 807,
+      size: 40,
+    });
+    recordAquarelleStroke(10052, recorded);
+    const entry = listSelectableAquarelleStrokes(807, SHEET).find(
+      (candidate) => candidate.mutationId === 10052,
+    );
+    expect(entry).toBeDefined();
+    expect(entry!.kind).toBe('paint');
+    expect(entry!.ribbonPx).toBeUndefined();
+    expect(entry!.hitRadiusPx).toBeUndefined();
+    expect(entry!.bounds).toEqual(
+      aquarelleStrokeBoundsPx(aquarelleStrokePointsPx(recorded, SHEET), 40),
+    );
+  });
+
+  it('hit-tests a lift through the band maximum support, not the declared half-size', () => {
+    const recorded = wideLift({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 808,
+      size: 40,
+    });
+    recordAquarelleStroke(10053, recorded);
+    const radiusPx = liftRadiusDoc(1, liftEngineSize(recorded.params)) * SHEET.height;
+    const declaredHalfSize = 20;
+    // 40 px off a 40 px stroke: outside today's paint law, inside the wide side.
+    const wideProbe = { x: 200, y: 100 + declaredHalfSize + 20 };
+    expect(wideProbe.y - 100).toBeGreaterThan(declaredHalfSize);
+    expect(wideProbe.y - 100).toBeLessThan(radiusPx * 2);
+    expect(hitTestAquarelleStroke(wideProbe, 808, SHEET, 'lift')).toBe(10053);
+    // One pixel past the band's maximum support misses.
+    expect(
+      hitTestAquarelleStroke({ x: 200, y: 100 + radiusPx * 2 + 1 }, 808, SHEET, 'lift'),
+    ).toBeNull();
   });
 });

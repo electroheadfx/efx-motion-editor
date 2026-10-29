@@ -3011,6 +3011,27 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(scriptStrokeOverlay).not.toContain('useSignal');
   });
 
+  it('draws a lift as one red ribbon while paint keeps its dual outline', () => {
+    expect(scriptStrokeOverlay).toContain("const LIFT_RIBBON_COLOR = '#ef4444';");
+    expect(scriptStrokeOverlay).toContain("entry.kind === 'lift'");
+    expect(scriptStrokeOverlay).toContain('fillRule="nonzero"');
+    expect(scriptStrokeOverlay).toContain('fillOpacity={0.14}');
+    expect(scriptStrokeOverlay).toContain("const SELECTED_STROKE_COLOR = '#38bdf8';");
+    expect(scriptStrokeOverlay).toContain("const OUTLINE_DARK = '#111111';");
+    expect(scriptStrokeOverlay).toContain("const OUTLINE_LIGHT = '#ffffff';");
+    // The lift-branch region must map EVERY polygon vertex through the same
+    // transform and drag offset as the centerline. A branch-exists-only pin
+    // cannot catch a preview that stops following the ribbon (UAT row 6).
+    const liftStart = scriptStrokeOverlay.indexOf("entry.kind === 'lift'");
+    const paintStart = scriptStrokeOverlay.indexOf('// Paint branch:');
+    expect(liftStart).toBeGreaterThan(-1);
+    expect(paintStart).toBeGreaterThan(liftStart);
+    const liftRegion = scriptStrokeOverlay.slice(liftStart, paintStart);
+    expect(liftRegion).toContain('applyScriptStrokeTransform');
+    expect(liftRegion).toContain('offsetX');
+    expect(liftRegion).toContain('offsetY');
+  });
+
   it('renders the select/Move toggle in the watercolor rail bound to the select signal', () => {
     const watercolorRail = toolRail.slice(
       toolRail.indexOf('function WatercolorRail'),

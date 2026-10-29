@@ -61,6 +61,8 @@ const SELECTED_STROKE_COLOR = '#38bdf8';
 const OUTLINE_DARK = '#111111';
 const OUTLINE_LIGHT = '#ffffff';
 const TRANSFORM_HANDLE_COLOR = '#f59e0b';
+/** 261029-eur: the Eraser ribbon's one red — fill, edge and badge tint. */
+const LIFT_RIBBON_COLOR = '#ef4444';
 
 /** Canvas pixels the pointer must travel before the press becomes a move. */
 const DRAG_THRESHOLD_PX = 3;
@@ -358,6 +360,20 @@ export function ScriptStrokeOverlay(props: {
           // still no script mutation and no engine call.
           const transformed = transformPreview !== null
             && transformPreview.ids.includes(entry.mutationId);
+          // 261029-eur: a lift draws as ONE ribbon polygon — every vertex goes
+          // through the same transform and drag offset as its centerline.
+          const liftPath =
+            entry.kind === 'lift' && entry.ribbonPx !== undefined && entry.ribbonPx.length > 0
+              ? `M${entry.ribbonPx
+                  .map((p) => {
+                    const moved = transformed
+                      ? applyScriptStrokeTransform(p, transformPreview!)
+                      : p;
+                    return `${moved.x + offsetX},${moved.y + offsetY}`;
+                  })
+                  .join(' L')} Z`
+              : null;
+          // Paint branch: the dual outline polylines and the bbox stay as-is.
           const points = entry.pointsPx
             .map((p) => {
               const moved = transformed
@@ -366,6 +382,9 @@ export function ScriptStrokeOverlay(props: {
               return `${moved.x + offsetX},${moved.y + offsetY}`;
             })
             .join(' ');
+          // A selected lift badges in the ribbon colour (its own recorded
+          // stroke colour may be any paint tint).
+          const badgeAccent = entry.kind === 'lift' ? LIFT_RIBBON_COLOR : entry.color;
           const label = `#${entry.serial} · ${entry.stackPosition}/${entry.stackTotal}`;
           const badgeX = Math.max(4, entry.bounds.x + offsetX);
           const badgeY = Math.max(14, entry.bounds.y + offsetY - 7);
@@ -377,7 +396,21 @@ export function ScriptStrokeOverlay(props: {
               data-stroke-id={entry.mutationId}
               data-testid={dragged ? props.ghostTestId : undefined}
             >
-              {isSelected ? (
+              {entry.kind === 'lift' ? (
+                liftPath !== null ? (
+                  <path
+                    data-testid="stroke-lift-ribbon"
+                    d={liftPath}
+                    fill={LIFT_RIBBON_COLOR}
+                    fillOpacity={0.14}
+                    fillRule="nonzero"
+                    stroke={LIFT_RIBBON_COLOR}
+                    strokeWidth={isSelected ? 3.5 : 2.5}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : null
+              ) : isSelected ? (
                 <polyline
                   points={points}
                   fill="none"
@@ -406,19 +439,22 @@ export function ScriptStrokeOverlay(props: {
                 </>
               )}
               {/* Selected: a solid box in the stroke's own colour. Unselected:
-                  the quiet dashed reference frame. */}
-              <rect
-                x={entry.bounds.x + offsetX}
-                y={entry.bounds.y + offsetY}
-                width={entry.bounds.width}
-                height={entry.bounds.height}
-                fill="none"
-                stroke={isSelected ? entry.color : OUTLINE_DARK}
-                strokeWidth={isSelected ? 2.5 : 1}
-                strokeDasharray={isSelected ? undefined : '4 3'}
-                opacity={isSelected ? 1 : 0.45}
-                vectorEffect="non-scaling-stroke"
-              />
+                  the quiet dashed reference frame. A lift has no box — its
+                  ribbon is the shape and the bounds only drive the union box. */}
+              {entry.kind === 'lift' ? null : (
+                <rect
+                  x={entry.bounds.x + offsetX}
+                  y={entry.bounds.y + offsetY}
+                  width={entry.bounds.width}
+                  height={entry.bounds.height}
+                  fill="none"
+                  stroke={isSelected ? entry.color : OUTLINE_DARK}
+                  strokeWidth={isSelected ? 2.5 : 1}
+                  strokeDasharray={isSelected ? undefined : '4 3'}
+                  opacity={isSelected ? 1 : 0.45}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
               {/* 261022-ujp: creation-order id · position from the top of the
                   stack. Overlay only — never part of the baked pixels. The chip
                   keeps the text readable over any wash. */}
@@ -430,7 +466,7 @@ export function ScriptStrokeOverlay(props: {
                 rx={3}
                 fill="#ffffff"
                 fillOpacity={0.82}
-                stroke={isSelected ? entry.color : '#111827'}
+                stroke={isSelected ? badgeAccent : '#111827'}
                 strokeOpacity={isSelected ? 1 : 0.22}
                 strokeWidth={isSelected ? 1.25 : 1}
                 opacity={isSelected ? 1 : 0.75}
@@ -445,7 +481,7 @@ export function ScriptStrokeOverlay(props: {
                 fontSize={13}
                 fontWeight={isSelected ? 700 : 600}
                 fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                fill={isSelected ? entry.color : '#111827'}
+                fill={isSelected ? badgeAccent : '#111827'}
                 stroke="#ffffff"
                 strokeWidth={4}
                 strokeLinejoin="round"

@@ -45,6 +45,12 @@ import {
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
 import {
+  buildLiftRibbonCached,
+  liftRibbonBoundsPx,
+  liftStrokeRadiusPx,
+  trimLiftRibbonCache,
+} from './aquarelleLiftRibbon';
+import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
@@ -303,7 +309,14 @@ export function hitTestAquarelleStroke(
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     if (!matchesAquarelleStrokeFilter(stroke, filter)) continue;
     const pointsPx = aquarelleStrokePointsPx(stroke, size);
-    if (hitsScriptStroke(pointPx, pointsPx, strokeRadiusPx(stroke))) return mutationId;
+    // 261029-eur: a lift's click target is the drawn ribbon's maximum support
+    // (an aspect > 1 tip reaches past the bare footprint radius on its wide
+    // side); paints keep the declared half-size law.
+    const radius =
+      stroke.tool === 'lift'
+        ? liftStrokeRadiusPx(stroke, size)
+        : strokeRadiusPx(stroke);
+    if (hitsScriptStroke(pointPx, pointsPx, radius)) return mutationId;
   }
   return null;
 }
@@ -351,8 +364,20 @@ export function listSelectableAquarelleStrokes(
     if (mutationId !== undefined) stackOrder.push(mutationId);
   }
   const stackTotal = stackOrder.length;
+  const entries = getRecordedAquarelleStrokeEntries();
+  // 261029-eur: trim the ribbon cache against the FULL frame's lift ids —
+  // filter-independent, so narrowing the filter never orphans a cached
+  // polygon and frame navigation cannot grow the cache.
+  const liveLiftIds: number[] = [];
+  for (const [mutationId, stroke] of entries) {
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    if (stroke.tool === 'lift') liveLiftIds.push(mutationId);
+  }
+  trimLiftRibbonCache(liveLiftIds);
+
   const out: SelectableAquarelleStroke[] = [];
-  for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
+  for (const [mutationId, stroke] of entries) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     const kind = stroke.tool === 'lift' ? 'lift' : 'paint';
@@ -362,15 +387,41 @@ export function listSelectableAquarelleStrokes(
     const serial = aquarelleStrokeSerial(mutationId, playFrame);
     const pointsPx = aquarelleStrokePointsPx(stroke, size);
     const stackIndex = stackOrder.indexOf(mutationId);
+    const stackPosition = stackIndex < 0 ? stackTotal : stackTotal - stackIndex;
+    const color = typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : '#111827';
+    if (kind === 'lift') {
+      // The polygon IS the drawn border: bounds = its exact bbox plus the
+      // shared 6px grab margin (padding by the hit radius would float the
+      // handles far off the ribbon).
+      const ribbon = buildLiftRibbonCached(
+        stroke,
+        mutationId,
+        size,
+        aquarelleStrokesRevision.value,
+      );
+      out.push({
+        mutationId,
+        pointsPx: decimateScriptPoints(pointsPx),
+        bounds: liftRibbonBoundsPx(ribbon.polygonPx, MIN_STROKE_PAD_PX),
+        serial,
+        stackPosition,
+        stackTotal,
+        color,
+        kind,
+        ribbonPx: ribbon.polygonPx,
+        hitRadiusPx: ribbon.hitRadiusPx,
+      });
+      continue;
+    }
     out.push({
       mutationId,
       pointsPx: decimateScriptPoints(pointsPx),
       // Bounds use every point — decimation must never clip the box ends.
       bounds: scriptStrokeBoundsPx(pointsPx, Number(stroke.params['size'])),
       serial,
-      stackPosition: stackIndex < 0 ? stackTotal : stackTotal - stackIndex,
+      stackPosition,
       stackTotal,
-      color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : '#111827',
+      color,
       kind,
     });
   }

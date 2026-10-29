@@ -159,6 +159,29 @@ function normalizePressure(p: number | undefined): number {
 }
 
 /**
+ * 261029-eur: the engine size the lift footprint law consumes, with the
+ * adapter's 0.375 default when the recorded params carry no usable size.
+ * Exported so the display ribbon derives its radius through the SAME law as
+ * the punch (one footprint by construction, not by copy).
+ */
+export function liftEngineSize(params: AquarelleStroke['params'] | undefined): number {
+  const engine = toEngineParams(params);
+  return typeof engine.size === 'number' && Number.isFinite(engine.size) ? engine.size : 0.375;
+}
+
+/**
+ * 261029-eur: the vendor lift footprint radius in document heights —
+ * Engine.ts:1526, the law `collectLiftDabs` stamps with and the display
+ * ribbon draws. `pressure` may be the recorded value or the < 0 sentinel.
+ */
+export function liftRadiusDoc(pressure: number | undefined, engineSize: number): number {
+  return (
+    (LIFT_SIZE_BASE + LIFT_SIZE_PRESSURE * normalizePressure(pressure)) *
+    Math.pow(3, (engineSize - 0.5) * 2)
+  );
+}
+
+/**
  * The stroke's recorded tick-grid dabs, in UV (y up), radius in document
  * heights. This mirrors the engine's own stamp law for tool 'lift': a dab
  * per 0.5 * r of aspect-corrected arc length with linearly interpolated
@@ -173,9 +196,7 @@ export function collectLiftDabs(
   if (points.length === 0) return [];
 
   const engine = toEngineParams(stroke.params);
-  const engineSize =
-    typeof engine.size === 'number' && Number.isFinite(engine.size) ? engine.size : 0.375;
-  const sizeMult = Math.pow(3, (engineSize - 0.5) * 2);
+  const engineSize = liftEngineSize(stroke.params);
   const aspect = size.width > 0 && size.height > 0 ? size.width / size.height : 1;
   // 261028-k03b: the same strength the engine and the bake use. A stroke
   // recorded before the setting has no key → 0.22, its exact old erase.
@@ -185,8 +206,7 @@ export function collectLiftDabs(
   );
   const dwellAmount = Math.min(LIFT_MAX_AMOUNT, movingAmount * 8 * HOST_DT_SECONDS);
 
-  const radiusAt = (pressure: number | undefined): number =>
-    (LIFT_SIZE_BASE + LIFT_SIZE_PRESSURE * normalizePressure(pressure)) * sizeMult;
+  const radiusAt = (pressure: number | undefined): number => liftRadiusDoc(pressure, engineSize);
 
   // 261028-k03c: mirror Engine.brushAngle for every dab. Stroke.azimuth is
   // STICKY in the engine and is scanned in processInput BEFORE the point's

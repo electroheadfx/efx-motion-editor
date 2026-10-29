@@ -16,6 +16,8 @@ import {
   LIFT_TIP_ROUND,
   buildLiftCoverage,
   collectLiftDabs,
+  liftEngineSize,
+  liftRadiusDoc,
   liftShapeForStroke,
   punchTransmittanceBytes,
   punchTransmittanceCanvas,
@@ -246,6 +248,27 @@ describe('collectLiftDabs — the engine footprint law', () => {
 
   it('returns nothing for an empty stroke', () => {
     expect(collectLiftDabs({ points: [], params: CANONICAL }, SIZE)).toEqual([]);
+  });
+
+  // 261029-eur: the ONE footprint law. The drawn ribbon derives its radius
+  // through `liftRadiusDoc`; this pins that the punch stamps with the very
+  // same exported helper, so the two can never drift.
+  it('stamps r through the exported liftRadiusDoc law', () => {
+    const cases: Array<{ params: Record<string, number>; pressure: number }> = [
+      { params: CANONICAL, pressure: 0.5 },
+      { params: CANONICAL, pressure: 0 },
+      { params: { size: 120 }, pressure: 1 },
+    ];
+    for (const { params, pressure } of cases) {
+      const dabs = collectLiftDabs(
+        { points: [{ ...point(0.5, 0.5), p: pressure }], params },
+        SIZE,
+      );
+      expect(dabs[0]!.r).toBeCloseTo(
+        liftRadiusDoc(pressure, liftEngineSize(params)),
+        12,
+      );
+    }
   });
 });
 
