@@ -827,8 +827,7 @@ button.destructive {
 .physics-paint-brush-trigger-name {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 }
 
@@ -860,6 +859,8 @@ button.destructive {
   cursor: pointer;
   flex: 0 0 auto;
   box-sizing: border-box;
+  /* Opt out of the global button caps — Script / Edit read mixed case. */
+  text-transform: none;
 }
 
 /* 261027-k6j follow-up: the global button:hover paints a blue block behind
@@ -954,6 +955,8 @@ button.destructive {
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  /* Opt out of the global button caps — "Open modal" reads mixed case. */
+  text-transform: none;
 }
 
 .physics-paint-brush-menu-open-modal:hover {
@@ -1005,26 +1008,24 @@ button.destructive {
   color: #fff;
 }
 
-/* The thumb stretches across the row's remaining width, mirroring the
-   top-bar trigger (big painted preview + name on the side). */
+/* A fixed-width thumb keeps the whole column aligned; its 150:44 ratio
+   matches the sidebar Brush-tab card thumbs (scaled down to the row). */
 .physics-paint-brush-menu-thumb {
   display: block;
-  flex: 1 1 auto;
-  width: auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: 116px;
   height: 34px;
   border-radius: 4px;
   background: #fff;
 }
 
 .physics-paint-brush-menu-name {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-width: 58px;
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.01em;
   text-align: right;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -1514,6 +1515,8 @@ button.destructive {
   height: 30px;
   padding: 0 10px;
   line-height: 1;
+  /* Mixed-case label — never the global button caps. */
+  text-transform: none;
 }
 
 /* quick-261023-ors: Memory tab (read-only script-memory gauge + confirmed
@@ -1753,8 +1756,7 @@ button.destructive {
   font-size: 10px;
   font-weight: 600;
   color: var(--sidebar-text, #e6edf5);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.01em;
   text-align: center;
 }
 

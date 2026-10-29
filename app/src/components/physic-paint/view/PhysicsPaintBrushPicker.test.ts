@@ -218,7 +218,7 @@ describe('261027-gh9g top-bar brush dropdown', () => {
     expect(MENU_SOURCE).toContain('const measured = Math.ceil(chrome + list.offsetHeight);');
   });
 
-  it('uses the app scrollbar and gives the thumb the row width', () => {
+  it('uses the app scrollbar and sizes the thumb to the sidebar-card ratio', () => {
     // The OS scrollbar is never used in the Studio — same SidebarScrollArea
     // thumb as the sidebar.
     expect(MENU_SOURCE).toContain('<SidebarScrollArea');
@@ -227,8 +227,16 @@ describe('261027-gh9g top-bar brush dropdown', () => {
       CSS_SOURCE.indexOf('.physics-paint-brush-menu-thumb {'),
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-thumb {')),
     );
-    expect(thumbRule).toContain('flex: 1 1 auto');
+    // Fixed width (never flex-grown) so every row's thumb aligns in one
+    // column; 116:34 matches the sidebar cards' 150:44 ratio.
+    expect(thumbRule).toContain('flex: 0 0 auto');
+    expect(thumbRule).toContain('width: 116px');
     expect(thumbRule).toContain('height: 34px');
+    const nameRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-name {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-name {')),
+    );
+    expect(nameRule).not.toContain('text-transform: uppercase');
     const listRule = CSS_SOURCE.slice(
       CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {'),
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {')),

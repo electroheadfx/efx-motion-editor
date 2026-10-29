@@ -3,7 +3,7 @@
  *
  * Laws pinned here:
  *   15 cards, one per BRUSH_PRESETS entry, in catalog order, 2-column grid
- *   each card = 150x44 stroke thumb canvas + uppercase name + title tooltip
+ *   each card = 150x44 stroke thumb canvas + mixed-case name + title tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id}
  *   no category filter / search / import affordance / wc/ size-variant rows
  *   card pick -> selectAquarelleTip(presetId) -> selection + Brush tool
@@ -347,7 +347,7 @@ describe('WatercolorBrushLibrary 15-card grid (I-03, 261027-gh9)', () => {
     const thumbRule = cssRuleBody(css, '.watercolor-brush-thumb');
     expect(thumbRule, 'card canvas background is white').toContain('background: #fff');
     const nameRule = cssRuleBody(css, '.watercolor-brush-name');
-    expect(nameRule, 'name is uppercase like the oracle label').toContain('text-transform: uppercase');
+    expect(nameRule, 'name reads mixed case (261029)').not.toContain('text-transform: uppercase');
   });
 
   it('every card border is #777777; the selected card is orange (261027-gh9f)', () => {
