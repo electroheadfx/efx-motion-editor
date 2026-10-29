@@ -77,6 +77,7 @@ import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintPr
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
+import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
 import { getRotoPort } from './roto/paintMutationRotoPort';
@@ -5165,6 +5166,9 @@ export function PhysicsPaintStudio() {
       // branch (Bg wins when both are selected) — safe: the signal declaration
       // sits above this hook call (TDZ law).
       hasSelectedSoundClip: selectedSoundId.value !== null,
+      // 261029-lel: a stable probe, evaluated at keypress — never a peeked
+      // boolean (this literal is rebuilt on every Studio render).
+      canSelectWater: aquarelleWaterAvailable,
     },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {

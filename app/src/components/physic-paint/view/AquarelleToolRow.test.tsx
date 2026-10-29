@@ -11,11 +11,12 @@
  * Assertion style: scalar predicates. Render tests materialize the
  * vnode tree (no DOM environment).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { aquarelleActiveTool, onAquarelleDry, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
+import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from './aquarelleWetPaintGate';
 import { AquarelleToolRow } from './AquarelleToolRow';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 
@@ -158,24 +159,32 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
 
   it('selecting a tool sets exactly one active', () => {
     setAquarelleTool('brush');
-    const tree = renderToolRow();
-    const buttons = findButtons(tree);
-    const water = buttons.find((b) => textContent(b).includes('Water'));
-    expect(water, 'no Water button').toBeTruthy();
-    clickButton(water!);
-    expect(aquarelleActiveTool.value).toBe('water');
+    // 261029-lel: the Water entry is gated on live standing water — open the
+    // gate for this case, which is about selection, not about the gate.
+    setAquarelleHasWetPaint(true);
+    try {
+      const tree = renderToolRow();
+      const buttons = findButtons(tree);
+      const water = buttons.find((b) => textContent(b).includes('Water'));
+      expect(water, 'no Water button').toBeTruthy();
+      clickButton(water!);
+      expect(aquarelleActiveTool.value).toBe('water');
 
-    // Exactly one button carries the active treatment after the click.
-    const active = buttons.filter((b) => String(b.props?.class ?? '').includes('active'));
-    // Re-render after state change to observe the active class.
-    const after = renderToolRow();
-    const activeAfter = findButtons(after).filter((b) =>
-      String(b.props?.class ?? '').includes('active'),
-    );
-    expect(activeAfter.length).toBe(1);
-    expect(textContent(activeAfter[0]!).trim()).toContain('Water');
-    // silence unused
-    expect(active.length >= 0).toBe(true);
+      // Exactly one button carries the active treatment after the click.
+      const active = buttons.filter((b) => String(b.props?.class ?? '').includes('active'));
+      // Re-render after state change to observe the active class.
+      const after = renderToolRow();
+      const activeAfter = findButtons(after).filter((b) =>
+        String(b.props?.class ?? '').includes('active'),
+      );
+      expect(activeAfter.length).toBe(1);
+      expect(textContent(activeAfter[0]!).trim()).toContain('Water');
+      // silence unused
+      expect(active.length >= 0).toBe(true);
+    } finally {
+      setAquarelleTool('brush');
+      setAquarelleHasWetPaint(false);
+    }
   });
 
   it('is one active tool at a time (AQUA-02 concurrency)', () => {
@@ -209,6 +218,47 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
     );
     expect(activeInPaint).toHaveLength(1);
     expect(textContent(activeInPaint[0]!).trim()).toContain('Brush');
+  });
+});
+
+describe('Water gate (261029-lel)', () => {
+  const toolButton = (tree: TestVNode, id: string) =>
+    findButtons(tree).find((b) => b.props?.['data-testid'] === `aquarelle-tool-${id}`);
+
+  afterEach(() => {
+    clearAquarelleWetPaint();
+    setAquarelleTool('brush');
+  });
+
+  it('greys Water and refuses its click while the sheet is dry', () => {
+    clearAquarelleWetPaint();
+    setAquarelleTool('brush');
+    const tree = renderToolRow();
+    const water = toolButton(tree, 'water');
+    expect(water, 'no Water button').toBeTruthy();
+    expect(water!.props.disabled).toBe(true);
+    expect(water!.props.title).toBe('Water (W) — needs standing water');
+
+    clickButton(water!);
+    expect(aquarelleActiveTool.value).toBe('brush');
+
+    // Brush / Pen / Eraser never read the gate.
+    for (const id of ['brush', 'pen', 'lift']) {
+      expect(toolButton(tree, id)!.props.disabled, `${id} must stay ungated`).toBeFalsy();
+    }
+  });
+
+  it('enables Water and lets the click select it while the sheet is wet', () => {
+    setAquarelleHasWetPaint(true);
+    setAquarelleTool('brush');
+    const tree = renderToolRow();
+    const water = toolButton(tree, 'water')!;
+    expect(water.props.disabled).toBeFalsy();
+    // The gate-closed tooltip is absent on a wet sheet.
+    expect(water.props.title).toBe('Water (W)');
+
+    clickButton(water);
+    expect(aquarelleActiveTool.value).toBe('water');
   });
 });
 

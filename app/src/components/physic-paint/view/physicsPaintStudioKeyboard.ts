@@ -17,6 +17,12 @@ export interface PhysicsPaintStudioKeyboardState {
   hasSelectedSoundClip?: boolean;
   /** True while the toolbox popover is open (role="dialog" aria-modal="false"). */
   toolboxPopoverOpen?: boolean;
+  /**
+   * Evaluated at keypress time — the live sheet must hold standing water for
+   * the W tool (261029-lel). A function, never a captured boolean: the state
+   * literal is rebuilt per Studio render and a peeked value would be stale.
+   */
+  canSelectWater?: () => boolean;
 }
 
 export interface PhysicsPaintStudioKeyboardActions {
@@ -322,6 +328,9 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
       if ((key === 'b' || key === 'w' || key === 'e' || key === 'p') && actions.selectAquarelleTool) {
         event.preventDefault();
+        // 261029-lel: W is a silent no-op while the live sheet is dry (the key
+        // is still consumed). B / E / P never consult the gate.
+        if (key === 'w' && state.canSelectWater && !state.canSelectWater()) return;
         actions.selectAquarelleTool(
           key === 'b' ? 'brush' : key === 'w' ? 'water' : key === 'p' ? 'pen' : 'lift',
         );

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   dispatchPhysicsPaintStudioKeyDown,
   findAdjacentRealKeyFrame,
@@ -696,6 +698,47 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  // 261029-lel: Water only acts on live standing water — W is a silent no-op
+  // while the gate is closed (the key is still consumed).
+  it('refuses Water while the gate is closed, consuming the key', () => {
+    const { handlers, preventDefault } = dispatch(
+      'w',
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      {},
+      { canSelectWater: () => false },
+    );
+    expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('selects Water while the gate is open', () => {
+    const { handlers } = dispatch(
+      'w',
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      {},
+      { canSelectWater: () => true },
+    );
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledOnce();
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledWith('water');
+  });
+
+  it.each([
+    ['b', 'brush'],
+    ['e', 'lift'],
+    ['p', 'pen'],
+  ] as const)('never consults the gate for a bare %s key', (key, tool) => {
+    const canSelectWater = vi.fn(() => false);
+    const { handlers } = dispatch(
+      key,
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      {},
+      { canSelectWater },
+    );
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledOnce();
+    expect(handlers.selectAquarelleTool).toHaveBeenCalledWith(tool);
+    expect(canSelectWater).not.toHaveBeenCalled();
+  });
+
   it('cycles the Select filter on a bare A key', () => {
     const { handlers, preventDefault } = dispatch('a', new TestHTMLElement('canvas') as unknown as EventTarget);
     expect(handlers.cycleAquarelleSelect).toHaveBeenCalledOnce();
@@ -743,6 +786,12 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     const { handlers, preventDefault } = dispatch('b', new TestHTMLElement('input') as unknown as EventTarget);
     expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('the Studio wires the gate probe into the keyboard state (261029-lel)', () => {
+    const src = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
+    expect(src).toContain("import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';");
+    expect(src).toContain('canSelectWater: aquarelleWaterAvailable,');
   });
 });
 
