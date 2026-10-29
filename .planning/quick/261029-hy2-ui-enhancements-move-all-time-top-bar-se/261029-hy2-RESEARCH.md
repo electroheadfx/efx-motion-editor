@@ -305,23 +305,26 @@ None — code/CSS-only changes, no external tools beyond the existing pnpm/vites
 
 No authentication, session, access-control, crypto, or new input surfaces (all controls are existing local UI). ASVS V2-V6: not applicable. V5: no user-supplied data is parsed; dropdown values are validated by `findTip` / `BRUSH_PRESETS` inside the existing setters (`aquarelleRecordState.ts:192-241`), which normalize unknown ids to `null` — continue routing picks through those setters rather than writing signals directly.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the pill disappear for Water/Pen, or only the settings cluster?**
    - What we know: CONTEXT mandates the cluster removal; the pill represents a shape selection that Water/Pen don't have, and the codebase's own comment says the eraser "never shows brush chrome".
    - Recommendation: hide the pill for Water/Pen as well; confirm against the supplied screenshot during UAT.
+   - **RESOLVED:** Water and Pen KEEP the left brush pill; only the right-side settings cluster is removed (CONTEXT.md, "Water / Pen").
 
 2. **Does the eraser dropdown need the "Open modal" action?**
    - What we know: CONTEXT lists only the 15 shapes; the modal's picks flip the tool to Brush.
    - Recommendation: omit it in lift mode.
+   - **RESOLVED:** the eraser popover has NO "Open modal" entry (CONTEXT.md, "Eraser dropdown").
 
 3. **Right-pin overflow at narrow widths** — verify live; add a Water-hide container rule only if the leading Brush size control clips.
+   - **RESOLVED:** not a design question — carried as native UAT row 2 in `261029-hy2-PLAN.md`'s verification; extend the hide chain only if the live check shows clipping.
 
 ## Assumptions Log
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | Water/Pen should also lose the trigger pill | Finding 1 / Open Q1 | Extra UI change beyond CONTEXT wording; user may want the pill retained |
+| A1 | Water/Pen KEEP the trigger pill (RESOLVED: only the settings cluster is removed) | Finding 1 / Open Q1 | None — settled by CONTEXT.md |
 | A2 | The eraser menu omits "Open modal" | Finding 4 / Open Q2 | Users lose a direct path to the full catalog from the eraser |
 | A3 | Keeping `RightPanelSettingsTab.tsx` (mounted in the modal) is preferred over deleting it | Findings 2/3 | More test churn and a dead-looking file if the planner chooses deletion |
 | A4 | Settings modal dimensions mirror the brush modal (~372 px wide) | Finding 5 | Cosmetic only |
