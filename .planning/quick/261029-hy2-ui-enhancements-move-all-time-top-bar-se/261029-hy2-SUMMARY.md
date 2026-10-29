@@ -246,9 +246,10 @@ None — the plan's threat register records no new trust boundaries; all changes
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- All three tasks are committed and the full suite is green: 354 test files passed (2 skipped), 6,313 tests passed, 1 skipped, 96 todo, zero failures; `tsc --noEmit` clean after every task.
-- Automated-ready only: the live UAT rows (top bar at ~1440/1180/861/720 px, eraser pill behaviour, Water/Pen cluster absence, Brush tab layout, Settings sheet interaction, WKWebView Close-button click, click-to-front on the three sheets) remain user-run and were not claimed here.
-- The plan's two advisory PLAN.md corrections remain uncommitted, as dispatched.
+- UAT APPROVED (2026-10-29, native live Studio). All 7 rows passed — top bar at 1440/1180/861/720 px, WKWebView Close click, Eraser pill/popover, Water/Pen, Brush tab, Settings sheet mechanics, click-to-front + Escape. No follow-ups were requested during the pass.
+- Code review fixes landed before the pass: 2 blockers (raise-on-open, Water hide tier) + 3 warnings (cascaded seats, editable-input Escape guard, front-only Escape) fixed; IN-01 (shared `useFloatingSheet` extraction) deferred.
+- Final gates: full app suite 354 files / 6,327 tests passed (2 files skipped, 1 test skipped, 96 todo), `tsc --noEmit` clean.
+- No push was performed; the user owns remote operations.
 
 ---
 *Phase: 261029-hy2*
