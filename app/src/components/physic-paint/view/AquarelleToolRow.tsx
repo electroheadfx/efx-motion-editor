@@ -23,7 +23,7 @@ const TOOLS: ReadonlyArray<{
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
-  { id: 'pen', label: 'Pen', Icon: Pen },
+  { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 

@@ -37,10 +37,14 @@ export interface PhysicsPaintStudioKeyboardActions {
   pasteRotoKey?: () => void;
   /** quick-261004-hwa: Photoshop X — swap foreground/background swatch. */
   swapFgBg?: () => void;
-  /** Bare B / W / E: pick Brush / Water / Eraser and leave Select mode. */
-  selectAquarelleTool?: (tool: 'brush' | 'water' | 'lift') => void;
+  /** Bare B / W / E / P: pick a painting tool and leave Select mode. */
+  selectAquarelleTool?: (tool: 'brush' | 'water' | 'pen' | 'lift') => void;
   /** Bare A: enter Select (Paint), cycle Paint → Eraser → All, then leave for Brush. */
   cycleAquarelleSelect?: () => void;
+  /** Bare F: flash-dry the sheet (the rail's Dry action). */
+  dryAquarelleSheet?: () => void;
+  /** Bare C: clear the current Roto frame (the rail's Trash action). */
+  clearAquarelleFrame?: () => void;
   /** Bare D: reset the swatch to a black foreground and white background. */
   resetFgBg?: () => void;
   deleteRotoKey?: () => void;
@@ -309,20 +313,33 @@ export function dispatchPhysicsPaintStudioKeyDown(
     return;
   }
 
-    // Bare tool keys: B / W / E pick a painting tool and leave Select mode,
+    // Bare tool keys: B / W / E / P pick a painting tool and leave Select mode,
     // A enters Select, cycles its stroke filter Paint → Eraser → All, then
-    // leaves Select for Brush; D resets the swatch.
+    // leaves Select for Brush; F flash-dries, C clears the frame, D resets the
+    // swatch.
     // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
     // owned by the branches above, so these fire only on a bare keypress.
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
-      if ((key === 'b' || key === 'w' || key === 'e') && actions.selectAquarelleTool) {
+      if ((key === 'b' || key === 'w' || key === 'e' || key === 'p') && actions.selectAquarelleTool) {
         event.preventDefault();
-        actions.selectAquarelleTool(key === 'b' ? 'brush' : key === 'w' ? 'water' : 'lift');
+        actions.selectAquarelleTool(
+          key === 'b' ? 'brush' : key === 'w' ? 'water' : key === 'p' ? 'pen' : 'lift',
+        );
         return;
       }
       if (key === 'a' && actions.cycleAquarelleSelect) {
         event.preventDefault();
         actions.cycleAquarelleSelect();
+        return;
+      }
+      if (key === 'f' && actions.dryAquarelleSheet) {
+        event.preventDefault();
+        actions.dryAquarelleSheet();
+        return;
+      }
+      if (key === 'c' && actions.clearAquarelleFrame) {
+        event.preventDefault();
+        actions.clearAquarelleFrame();
         return;
       }
       if (key === 'd' && actions.resetFgBg) {

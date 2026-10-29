@@ -48,7 +48,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
 }> = Object.freeze([
   { id: 'brush', label: 'Brush', shortcut: 'B', Icon: Paintbrush },
   { id: 'water', label: 'Water', shortcut: 'W', Icon: Droplet },
-  { id: 'pen', label: 'Pen', Icon: Pen },
+  { id: 'pen', label: 'Pen', shortcut: 'P', Icon: Pen },
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
@@ -118,7 +118,7 @@ function WatercolorRail({
         class="physics-paint-icon-button"
         data-testid="aquarelle-dry"
         disabled={disabled}
-        title="Flash-dry the sheet. Recorded in the script."
+        title="Flash-dry the sheet (F). Recorded in the script."
         aria-label="Dry"
         onClick={() => emitAquarelleDry(aquarelleRecordClock())}
       >
@@ -142,7 +142,7 @@ function WatercolorRail({
         type="button"
         class="physics-paint-icon-button"
         disabled={disabled}
-        title={clearItem.label}
+        title={`${clearItem.label} (C)`}
         aria-label="Trash"
         onClick={onClearFrame}
       >

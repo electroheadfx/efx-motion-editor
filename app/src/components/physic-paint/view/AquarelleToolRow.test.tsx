@@ -5,7 +5,7 @@
  * Laws pinned here:
  *   D-13   4-button row brush|water|pen|lift, one active, 32×32, never wraps
  *   D-15   Dry is an ACTION button (not a 5th tool), label 'Dry',
- *          tooltip 'Flash-dry the sheet. Recorded in the script.'
+ *          tooltip 'Flash-dry the sheet (F). Recorded in the script.'
  *   AQUA-02 concurrency: clicking another tool replaces the active one
  *
  * Assertion style: scalar predicates. Render tests materialize the
@@ -142,7 +142,7 @@ function renderModule(): TestVNode {
 }
 
 const TOOLS = ['Brush', 'Water', 'Pen', 'Eraser'] as const;
-const DRY_TOOLTIP = 'Flash-dry the sheet. Recorded in the script.';
+const DRY_TOOLTIP = 'Flash-dry the sheet (F). Recorded in the script.';
 
 describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
   it('renders exactly 4 tools with labels Brush, Water, Pen, Eraser', () => {

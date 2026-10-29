@@ -194,6 +194,8 @@ import {
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
   deleteAquarelleStrokesFromScript,
+  aquarelleRecordClock,
+  emitAquarelleDry,
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
@@ -2311,11 +2313,11 @@ export function PhysicsPaintStudio() {
   const handleActiveColorChanged = useCallback((color: string) => {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
-  // 261029: the Studio tool shortcuts. B / W / E pick a painting tool and leave
-  // Select mode; A enters Select, cycles the stroke-type filter
+  // 261029: the Studio tool shortcuts. B / W / E / P pick a painting tool and
+  // leave Select mode; A enters Select, cycles the stroke-type filter
   // Paint → Eraser → All, then leaves Select for the Brush tool. Every read is
   // `.peek()` — the Studio render body never subscribes a selection signal.
-  const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'lift') => {
+  const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
@@ -5155,6 +5157,14 @@ export function PhysicsPaintStudio() {
       },
       selectAquarelleTool: handleSelectAquarelleTool,
       cycleAquarelleSelect: handleCycleAquarelleSelect,
+      dryAquarelleSheet: () => {
+        if (staticControlsLocked) return;
+        emitAquarelleDry(aquarelleRecordClock());
+      },
+      clearAquarelleFrame: () => {
+        if (staticControlsLocked) return;
+        clearActiveSource();
+      },
       resetFgBg: () => {
         paintStore.resetFgBg();
         handleActiveColorChanged(paintStore.foregroundColor.peek());

@@ -72,6 +72,8 @@ function actions() {
     duplicateTrack: vi.fn(),
     selectAquarelleTool: vi.fn(),
     cycleAquarelleSelect: vi.fn(),
+    dryAquarelleSheet: vi.fn(),
+    clearAquarelleFrame: vi.fn(),
     resetFgBg: vi.fn(),
   };
 }
@@ -685,6 +687,7 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
   it.each([
     ['b', 'brush'],
     ['w', 'water'],
+    ['p', 'pen'],
     ['e', 'lift'],
   ] as const)('picks the tool on a bare %s key', (key, tool) => {
     const { handlers, preventDefault } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget);
@@ -699,6 +702,18 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  it('flash-dries on a bare F key', () => {
+    const { handlers, preventDefault } = dispatch('f', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.dryAquarelleSheet).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('clears the frame on a bare C key', () => {
+    const { handlers, preventDefault } = dispatch('c', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.clearAquarelleFrame).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
   it('resets the swatch on a bare D key', () => {
     const { handlers, preventDefault } = dispatch('d', new TestHTMLElement('canvas') as unknown as EventTarget);
     expect(handlers.resetFgBg).toHaveBeenCalledOnce();
@@ -706,7 +721,7 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
   });
 
   it('ignores modified, shifted and repeated tool keys', () => {
-    for (const key of ['b', 'w', 'e', 'a', 'd']) {
+    for (const key of ['b', 'w', 'e', 'p', 'a', 'f', 'c', 'd']) {
       for (const overrides of [
         { metaKey: true },
         { ctrlKey: true },
@@ -717,6 +732,8 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
         const { handlers } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
         expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
         expect(handlers.cycleAquarelleSelect).not.toHaveBeenCalled();
+        expect(handlers.dryAquarelleSheet).not.toHaveBeenCalled();
+        expect(handlers.clearAquarelleFrame).not.toHaveBeenCalled();
         expect(handlers.resetFgBg).not.toHaveBeenCalled();
       }
     }
