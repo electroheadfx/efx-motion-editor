@@ -411,10 +411,12 @@ aquarelleScriptHistory: {
 | A2 | The `paint` barrier is pushed for every recorded stroke, including auto-key composites | Q1, Q6 P2 | If composites push only `auto-key-paint`, P2 needs no change and Q1's predicate is sufficient |
 | A3 | A "display digest" in a unit test may be modelled as "the last published payload", since the real display is served from the bake cache | Q5 | If the user expects a live GPU pin, that row is native UAT and the automated pin stops at the orchestration contract |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Auto-key-paint composites (P2).** Include their stroke half in this quick task, or record them as a known divergence? Recommendation: include — the fix is the same `hasRecordedStroke` predicate applied before `undoPaint()` at 1003/1170, but it changes an interaction the user may want to UAT separately.
-2. **Stroke undo vs Move/Lift after undo.** Undo now removes a stroke from the script; `hasAquarellePaintScriptForFrame` may flip the frame's module owner. Recommendation: leave `applyFrameModuleState` as the single owner resolver and add a UAT row rather than a new gate.
+Both questions were settled before planning; no open decision remains.
+
+1. **(RESOLVED — include, per CONTEXT.md "Auto-key-paint composites")** **Auto-key-paint composites (P2).** Include their stroke half in this quick task, or record them as a known divergence? Decision: include — the locked decision requires it, so the same `hasRecordedStroke` predicate is applied before `undoPaint()`/`redoPaint()` at 1003/1170. Plan coverage: Task 2 behavior rows for auto-key undo/redo plus native UAT row 4.
+2. **(RESOLVED — no new gate, UAT row only)** **Stroke undo vs Move/Lift after undo.** Undo now removes a stroke from the script; `hasAquarellePaintScriptForFrame` may flip the frame's module owner. Decision: leave `applyFrameModuleState` as the single owner resolver and observe the surface in native UAT (row 6) rather than adding a gate. Plan coverage: Task 2 keeps `applyFrameModuleState` as the only owner resolver.
 
 ## Environment Availability
 

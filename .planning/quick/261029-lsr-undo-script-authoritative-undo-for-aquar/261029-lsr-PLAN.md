@@ -29,14 +29,14 @@ user_setup: []
 estimate:
   # Per-task projection at execution-turn boundaries (each task ends with its own
   # commit; the next task re-reads only its own files):
-  #   Task 1 (stroke edit builder + pure replay orchestrator + pins):  18000
-  #   Task 2 (ledger routing + Studio route wiring):                   20000
-  #   Task 3 (capture epoch + source contract):                        14000
-  #   Sum: 52000 < smart-zone budget. PhysicsPaintStudio.tsx (9.7k lines) is
+  #   Task 1 (stroke edit builder + re-anchor + replay orchestrator + pins): 20000
+  #   Task 2 (ledger routing + Studio route wiring + contract migration):    24000
+  #   Task 3 (capture epoch + source contract):                              14000
+  #   Sum: 58000 < smart-zone budget. PhysicsPaintStudio.tsx (9.7k lines) is
   #   edited at named anchors only — never read whole.
   # estimate-calibration: factor 1, applied false, sample_count 0 -> confidence low.
-  tokens: 52000
-  raw_tokens: 52000
+  tokens: 58000
+  raw_tokens: 58000
   tasks: 3
   confidence: low
 
@@ -46,7 +46,7 @@ must_haves:
     - "Undoing a stroke that was never recorded (Script switch off / raster Lift that pins nothing) stays engine-only: no script mutation, no sheet reset, no re-bake — `undoPaint()` exactly as today."
     - "Redo re-installs the same stroke from the SAME stored edit id (one script edit per stroke; the 10-entry edit ledger and the 10-entry paint ledger both hold), and a second undo/redo cycle on that stroke still uses that one id."
     - "A live-pixel capture started before an undo can never commit its pre-undo sheet pixels after the undo: rejected before produce and again at commit, at both layers (per-key `invalidateLivePixels` and the `aquarelleStrokesRevision` epoch)."
-    - "After undo the replay fails closed (returns false, never throws) on a stale snapshot revision, a locked mutation, or a failed bake — and the ledger stacks stay untouched, so the entry is retryable."
+    - "After undo the replay fails closed (returns false, never throws) on a stale snapshot revision, a locked mutation, or a failed bake — the ledger stacks stay untouched, and a bake failure re-anchors the cached edit id so the next Cmd+Z retries the same stroke instead of failing the revision guard forever."
     - "Auto-key-paint composites route their stroke half through the script route too; the stroke rollback after a rejected key replay uses the inverse script replay and never `redoPaint()` once a reset has run."
     - "A script-authoritative undo pressed during playback stops playback first and bakes the frame captured at replay entry (one playFrame per replay), never a frame that moved mid-replay."
   artifacts:
@@ -64,6 +64,8 @@ must_haves:
     - "runAquarelleScriptReplay -> ensureAquarelleDurableBase(playFrame) BEFORE prepare/build (base recovery bumps aquarelleStrokesRevision) -> beginAquarelleStrokeUndoEdit -> storeAquarelleEdit (shared 10-cap) -> restoreAquarelleEditSnapshot"
     - "restore -> aquarelleResetSheetRef (engine.clear) -> applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)) -> upsertCachedFrame publish -> applyFrameModuleState owner resolve"
     - "captureLivePixels stamps getScriptEpoch() -> RotoLivePixelCapture.isStillCurrent -> transaction isStillWanted + commit reject 'stale-before-commit'"
+    - "replayStroke false after the replay reached 'rebake' -> reanchorAquarelleEditRevision(editId, direction) -> the next Cmd+Z passes the revision guard (retryable); an evicted edit id drops the cache entry so the next undo rebuilds it"
+    - "existing 261022-pim route-contract rows (PhysicsPaintStudio.test.ts:3211-3225, 4107-4112) -> migrated onto the runScriptReplay slice + aquarelleScriptReplay.ts, so the full suite stays green"
 ---
 
 <objective>
@@ -111,9 +113,22 @@ them as D-01..D-08 (stable aliases, in CONTEXT order) so coverage is traceable:
   calls `bumpAquarelleStrokesRevision()` on its no-payload path
   (`PhysicsPaintStudio.tsx:6161`). Therefore a stroke undo edit must be BUILT after
   `ensureBase` resolves, never before it — otherwise its `after.revision` is stale and
-  `restoreAquarelleEditSnapshot` fails closed on every undo. The existing delete/move
-  handlers are safe because they call `ensureBase` BEFORE `beginAquarelle*Edit`, and the
-  route's later `ensureBase` call short-circuits on the now-pinned base without bumping.
+  `restoreAquarelleEditSnapshot` fails closed on every undo. Callers that already follow
+  that order: move (`:7212`/`:7213`), appearance (`:7283`/`:7286`) and transform
+  (`:7365`/`:7368`). Delete does NOT: it calls `beginAquarelleDeleteEdit` at `:7117` and
+  only reaches `ensureAquarelleDurableBaseRef` at `:7127`, so on a key whose base had to
+  be recovered its failure-path restore can miss the guard — that staleness is
+  PRE-EXISTING and explicitly out of scope here (do not "fix" delete in this task).
+  Reorder (`:7430`) and place (`:7482`) run no `ensureBase` at all. The derived rule is
+  unchanged and applies to the new stroke builder: build the stroke undo edit AFTER
+  `ensureBase`, which the replay module's step order does.
+- **R-1b — a failed re-bake leaves the edit's live side stale.** `restoreAquarelleSnapshotRaw`
+  applies content through `applySnapshotContent`, which bumps `aquarelleStrokesRevision`
+  (`aquarelleStrokeSelection.ts:559`) without writing the fresh revision back into the
+  edit. So after `restore(editId,'undo')` (R -> R+1) plus the raw rollback (R+1 -> R+2),
+  the cached edit's `after.revision` is still R and every retry fails the guard at
+  `:738`. The fix is `reanchorAquarelleEditRevision(editId, direction)` (Task 1) called
+  from `replayStroke` when the replay returns false after reaching `rebake` (Task 2).
 - **R-2 — the routing predicate must NOT exclude tombstones.** RESEARCH's predicate was
   `getRecordedAquarelleStroke(m) !== undefined && !isAquarelleStrokeDeleted(m)`. After an
   undo the stroke is tombstoned, so that predicate would send the REDO of the same paint
@@ -197,6 +212,8 @@ No deferred ideas exist in CONTEXT.md. No item is MISSING.
     - Orchestrator order on success: `invalidate` is the first step and happens before any await; then `ensure-base`; then `prepare`; then `restore`; then `reset`; then `rebake`; then `notify` and `publish-owner`.
     - Digest equality: after the orchestrator runs, `digestRenderedFrameBytes(displayBytes) === digestRenderedFrameBytes(publishedBakeBytes)` where the fake display prefers live-sheet pixels when the sheet still holds any.
     - Fail closed: `restore` null -> false, no reset/rebake/owner publish; `rebake` false or a rejecting `rebake` -> rollback called, false returned, no throw; `prepare` null -> false; `ensure-base` rejection is swallowed and the replay continues (the bake refuses on its own).
+    - Retryability (`reanchorAquarelleEditRevision`): build, undo (revision R -> R+1), then a raw rollback (`restoreAquarelleSnapshotRaw(revert)`, revision R+1 -> R+2) leaves the edit's `after.revision` at R — the immediate retry of `restoreAquarelleEditSnapshot(id,'undo')` returns null (this is the strand). `reanchorAquarelleEditRevision(id,'undo')` returns true, does NOT bump the revision and does NOT change content; the retry then returns non-null and installs the WITHOUT side.
+    - Re-anchoring forgives ONLY the attempted direction: after `reanchorAquarelleEditRevision(id,'undo')` a `redo` on the same edit still returns null (its live side keeps the stale revision). An unknown/evicted edit id returns false.
   </behavior>
   <action>
 Write the failing pins first, then implement.
@@ -207,8 +224,9 @@ Write the failing pins first, then implement.
 - Build `before` as `{ timeline, deleted: [...after.deleted, mutationId], registry: after.registry, revision: after.revision }` (registry shared by reference so the redo side keeps the same stroke objects) and return `storeAquarelleEdit({ before, after })`.
 - Do NOT call `deleteAquarelleStrokesFromScript` (it mutates live state and bumps the revision, invalidating the guard on the next line). Do NOT reorder or relabel revisions — the guard must pass on the immediate undo (D-02, RESEARCH Q2).
 - Doc comment must state the direction contract: `after` = WITH the stroke, `before` = WITHOUT; `undo` installs WITHOUT; the revision on `before` is R only until the install writes R+1 back (that is what redo validates against).
+- Add `export function reanchorAquarelleEditRevision(editId: number, direction: 'undo' | 'redo'): boolean` immediately AFTER `restoreAquarelleSnapshotRaw`: look the edit up (`aquarelleEdits.get(editId)`), return false when absent; take `const liveSide = direction === 'undo' ? edit.after : edit.before;`, assign `liveSide.revision = aquarelleStrokesRevision.value;`, return true. It must NOT bump the revision, NOT reinstall content, NOT touch the opposite side, and NOT prune the edit. Doc comment: the failed-bake rollback bumps the revision without writing it back into the edit, so a retry would fail the guard forever; re-seating the attempted side keeps that one retry alive without forgiving a foreign mutation (the opposite side and every other edit stay fail-closed).
 
-(B) `aquarelleStrokeSelection.test.ts` — add a `describe('261029-lsr script-authoritative stroke undo edit', ...)` in the house style (seed with `recordAquarelleStroke(<unique id>, stroke({ points: [...], playFrame }))`, unique id blocks around 9700-9799). Cover every `<behavior>` row above, including the Dry-survival row (record a Dry via `emitAquarelleDry` — import it from `./aquarelleRecordState` — if its signature allows a standalone dry; otherwise seed a dry event through the same helper the existing dry tests use) and the in-flight refusal (set `setAquarelleScriptEditInFlight(true)` / reset in a `finally`).
+(B) `aquarelleStrokeSelection.test.ts` — add a `describe('261029-lsr script-authoritative stroke undo edit', ...)` in the house style (seed with `recordAquarelleStroke(<unique id>, stroke({ points: [...], playFrame }))`, unique id blocks around 9700-9799). Cover every `<behavior>` row above, including the Dry-survival row (record a Dry via `emitAquarelleDry` — import it from `./aquarelleRecordState` — if its signature allows a standalone dry; otherwise seed a dry event through the same helper the existing dry tests use), the in-flight refusal (set `setAquarelleScriptEditInFlight(true)` / reset in a `finally`), and the two retryability rows: build -> `restoreAquarelleEditSnapshot(id,'undo')` -> `restoreAquarelleSnapshotRaw(revert)` -> `restoreAquarelleEditSnapshot(id,'undo')` returns null -> `reanchorAquarelleEditRevision(id,'undo')` -> the same restore returns non-null; plus the redo-still-null and unknown-id cases.
 
 (C) NEW `app/src/components/physic-paint/roto/aquarelleScriptReplay.ts` — the ONE replay orchestration, pure and injectable (no signals, no DOM, no imports beyond types):
 - `export type AquarelleReplayDirection = 'undo' | 'redo';`
@@ -231,7 +249,7 @@ Use `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint
   <verify>
     <automated>pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/view/aquarelleStrokeSelection.test.ts src/components/physic-paint/roto/aquarelleScriptReplay.test.ts && pnpm --filter efx-motion-editor typecheck</automated>
   </verify>
-  <done>`beginAquarelleStrokeUndoEdit` builds a WITH/AFTER, WITHOUT/BEFORE edit at one revision and installs WITHOUT on the immediate undo; the replay orchestrator enforces invalidate -> ensure-base -> prepare -> restore -> reset -> rebake, returns false on every failure without throwing, and its pin proves display digest == bake digest plus a negative control; both target suites and the app typecheck are green (aquarelleStrokeSelection grows from 34 tests).</done>
+  <done>`beginAquarelleStrokeUndoEdit` builds a WITH/AFTER, WITHOUT/BEFORE edit at one revision and installs WITHOUT on the immediate undo; `reanchorAquarelleEditRevision` re-seats only the attempted side so a post-rollback retry passes the guard while the opposite direction stays fail-closed; the replay orchestrator enforces invalidate -> ensure-base -> prepare -> restore -> reset -> rebake, returns false on every failure without throwing, and its pin proves display digest == bake digest plus a negative control; both target suites and the app typecheck are green (aquarelleStrokeSelection grows from 34 tests).</done>
 </task>
 
 <task type="tdd" tdd="true">
@@ -239,7 +257,8 @@ Use `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint
   <files>
     app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts,
     app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts,
-    app/src/components/physic-paint/PhysicsPaintStudio.tsx
+    app/src/components/physic-paint/PhysicsPaintStudio.tsx,
+    app/src/components/physic-paint/PhysicsPaintStudio.test.ts
   </files>
   <behavior>
     - `paint` undo with `hasRecordedStroke(m) === true`: `replayStroke(m,'undo')` is called, `undoPaint()` is NOT, the stacks move only when the replay resolves true, and a false replay leaves `{undo, redo}` availability unchanged.
@@ -248,6 +267,8 @@ Use `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint
     - `auto-key-paint` undo with a recorded stroke: `replayStroke(m,'undo')` runs FIRST (no `undoPaint()`); when the key replay is rejected the rollback calls `replayStroke(m,'redo')` (never `redoPaint()`) and both stacks stay untouched.
     - `auto-key-paint` undo with an unrecorded stroke keeps the current `undoPaint()` / `redoPaint()` calls.
     - `auto-key-paint` redo with a recorded stroke: the key replay runs first, then `replayStroke(m,'redo')`; a false stroke redo returns false without moving the stacks.
+    - `replayStroke` retryability: a replay that returned false after its `onStep` reported `rebake` calls `reanchorAquarelleEditRevision(editId, direction)` and keeps the cache entry; a false replay that never reached `rebake` leaves the cache exactly as it was.
+    - Migrated source contract: the 261022-pim route row still proves restore -> reset -> shared apply -> raw rollback -> notify -> owner publish (now sliced from `runScriptReplay` + `aquarelleScriptReplay.ts`), and the owner-publish ordering row still proves `notifySourceRevision` before `applyFrameModuleState`.
   </behavior>
   <action>
 Write the failing hook rows first, then implement.
@@ -265,17 +286,24 @@ Write the failing hook rows first, then implement.
 (C) `PhysicsPaintStudio.tsx`:
 - Declare `const aquarelleStrokeEditIdsRef = useRef<Map<number, number>>(new Map());` next to `aquarelleDurableBaseByKeyRef` (`:1490`) with a doc note: mutationId -> the ONE script edit id that undoes this stroke (P3: a stroke undone twice reuses this id).
 - Add `getRecordedAquarelleStroke` and `isAquarelleStrokeDeleted` to the existing `./view/aquarelleRecordState` import block; add `beginAquarelleStrokeUndoEdit` to the existing `./view/aquarelleStrokeSelection` block; import `{ runAquarelleScriptReplay }` (and its types if needed) from `./roto/aquarelleScriptReplay`.
-- Define ONE local `runScriptReplay` immediately BEFORE the `useRotoPhysicalEditHistory` call: it takes `{ direction, editId?, prepare? }`, captures `const playFrame = launchContextRef.current?.startFrame ?? 0;` ONCE (never re-read after an await — P7), applies the shared guards in this order — `rotoCachedPlayback.stop();` (D-07), `if (isPhysicalMutationLocked()) return false;`, `if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;`, `if (isAquarelleScriptEditInFlight()) return false;` — and then returns `runAquarelleScriptReplay({ direction, editId, ports: { invalidate: () => { rotoPersistence.invalidateLivePixels(playFrame); }, ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame), prepare, restore: (id, dir) => restoreAquarelleEditSnapshot(id, dir), resetSheet: () => { aquarelleResetSheetRef.current?.(); }, rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)), rollback: (revert) => restoreAquarelleSnapshotRaw(revert), notify: () => rotoScript.notifySourceRevision(), publishOwner: () => applyFrameModuleState(playFrame) }, onStep: undefined })`. Guards run before the module, so a refused replay never invalidates a live capture.
-- Replace the route object (`:4737-4754`) with: `replay: (editId, direction) => runScriptReplay({ direction, editId }),` plus `hasRecordedStroke: (mutationId) => getRecordedAquarelleStroke(mutationId) !== undefined,` (R-2: no tombstone term) and `replayStroke: (mutationId, direction) => { const existing = aquarelleStrokeEditIdsRef.current.get(mutationId); if (existing !== undefined) return runScriptReplay({ direction, editId: existing }); if (direction === 'redo') return Promise.resolve(false); return runScriptReplay({ direction, prepare: () => { const created = beginAquarelleStrokeUndoEdit(mutationId); if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created); return created; } }); }`.
-- Keep the `aquarelle-script` semantics intact: the `replay` path still restores first (inside the module, after the invalidate + durable-base recovery), resets the sheet, awaits the shared Apply, rolls the script back raw on failure, then notifies and republishes the owner. The delete/move/place/transform handlers are NOT edited (their own guards and `ensureBase` calls stay; the route's `ensureBase` short-circuits on an already-pinned base without bumping — R-1).
+- Add `reanchorAquarelleEditRevision` to the existing `./view/aquarelleStrokeSelection` import block and import `type AquarelleReplayStep` alongside `runAquarelleScriptReplay` from `./roto/aquarelleScriptReplay`.
+- Define ONE local `runScriptReplay` (a `useCallback`) immediately BEFORE `const rotoMoveHistory = useRotoPhysicalEditHistory<RotoEditableState>(` (`:4671`) — the migrated test slices exactly that range, so nothing may sit between the helper and the hook call. Signature `({ direction, editId, prepare, onStep })` with `direction: 'undo' | 'redo'`, `editId?: number`, `prepare?: () => number | null`, `onStep?: (step: AquarelleReplayStep) => void`. Body, exactly in this order: capture `const playFrame = launchContextRef.current?.startFrame ?? 0;` ONCE (never re-read after an await — P7); then the GUARD BLOCK BEFORE ANY SIDE EFFECT — `if (isPhysicalMutationLocked()) return false;`, then `if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;`, then `if (isAquarelleScriptEditInFlight()) return false;`, and ONLY THEN `rotoCachedPlayback.stop();` (D-07 by way of the engine undo order at `useRotoFrameEditingController.ts:122-124`: a refused Cmd+Z must not stop playback); then `return runAquarelleScriptReplay({ direction, editId, onStep, ports: {...} })` with these EXACT literals (the migrated source contract asserts them verbatim): `invalidate: () => { rotoPersistence.invalidateLivePixels(playFrame); }`, `ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame)`, `prepare,`, `restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir)`, `resetSheet: () => { aquarelleResetSheetRef.current?.(); }`, `rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))`, `rollback: (revert) => { restoreAquarelleSnapshotRaw(revert); }`, `notify: () => { rotoScript.notifySourceRevision(); }`, `publishOwner: () => { applyFrameModuleState(playFrame); }`. Deps `[isPhysicalMutationLocked, rotoScript, rotoPersistence]`. Guards run before the module, so a refused replay never invalidates a live capture and never stops playback.
+- Replace the route object (`:4737-4754`) with these three members, EXACT literals: `replay: (editId, direction) => runScriptReplay({ direction, editId }),`; `hasRecordedStroke: (mutationId) => getRecordedAquarelleStroke(mutationId) !== undefined,` (R-2: no tombstone term); and `replayStroke: async (mutationId, direction) => { ... }` whose body is, in order: (1) `let reachedRebake = false;` plus `const onStep = (step: AquarelleReplayStep) => { if (step === 'rebake') reachedRebake = true; };` (2) `const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);` (3) `const ok = cached !== undefined ? await runScriptReplay({ direction, editId: cached, onStep }) : direction === 'redo' ? false : await runScriptReplay({ direction, onStep, prepare: () => { const created = beginAquarelleStrokeUndoEdit(mutationId); if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created); return created; } });` (4) `if (!ok && reachedRebake) { const editId = aquarelleStrokeEditIdsRef.current.get(mutationId); if (editId !== undefined && !reanchorAquarelleEditRevision(editId, direction)) aquarelleStrokeEditIdsRef.current.delete(mutationId); }` (5) `return ok;`. State the rationale in a doc comment: `reachedRebake` is the only proof that the restore succeeded and the raw rollback thus ran (the module returns false before `rebake` when `restore` is null), so the re-anchor is confined to the self-inflicted revision drift and never forgives a foreign script mutation; the cache delete covers a 10-cap-evicted edit, after which the next undo rebuilds it from live state.
+- Keep the `aquarelle-script` semantics intact: the `replay` path still restores first (inside the module, after the invalidate + durable-base recovery), resets the sheet, awaits the shared Apply, rolls the script back raw on failure, then notifies and republishes the owner. The delete/move/place/transform/reorder handlers are NOT edited (their own guards stay; `ensureBase` exists only where it exists today — R-1, including the pre-existing delete/reorder/place ordering gap that is out of scope).
 - Leave `applyFrameModuleState` as the single owner resolver (P8). No new owner gate.
 
-Run the hook suite with `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts` while iterating.
+(D) `PhysicsPaintStudio.test.ts` — migrate the TWO existing rows whose asserted text this plan replaces, in the same commit as the route rewrite (test-first: rewrite the assertions, watch them fail, then implement):
+- In `it('the replay port restores the snapshot, resets the sheet, and awaits the shared apply')` (`:3211-3225`): keep the route slice (`studio.indexOf('aquarelleScriptHistory: {')` up to `studio.indexOf('undoPaint:', replayStart)`) and assert it contains `replay: (editId, direction) => runScriptReplay({ direction, editId }),`, `hasRecordedStroke: (mutationId) =>` and `replayStroke: async (mutationId, direction) =>`. Then slice the helper with `const runReplayStart = studio.indexOf('const runScriptReplay = useCallback(');` and `const runReplay = studio.slice(runReplayStart, studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', runReplayStart));` (the generic `useRotoPhysicalEditHistory<RotoEditableState>(` is the real call — search without the paren, and expect exactly one match) and assert it contains `restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir)`, `aquarelleResetSheetRef.current?.();`, `rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))`, `restoreAquarelleSnapshotRaw(revert)`, `rotoScript.notifySourceRevision()`, that `rotoPersistence.invalidateLivePixels(playFrame)` indexes BEFORE `aquarelleResetSheetRef.current?.();`, and that `isPhysicalMutationLocked()` indexes BEFORE `rotoCachedPlayback.stop();`. Keep the region-scoped negatives `not.toContain('applyCurrentScript')` and `not.toContain('physicalEditCoordinator')` ON the runReplay slice — never on the wider hook-input region, which legitimately contains `physicalEditCoordinator` at `:4680-4684`.
+- In `it('republishes on the aquarelle stroke-end, delete and history seams')` (`:4092-4113`): replace only the third block (the `replay: async (editId, direction) => {` slice at `:4107-4112`) with the same `runReplay` slice and assert it contains `notify: () => { rotoScript.notifySourceRevision(); }` and `publishOwner: () => { applyFrameModuleState(playFrame); }`; the notify-before-owner-publish ordering now lives in the module, so additionally assert `aquarelleScriptReplay.indexOf('ports.notify();')` is less than `aquarelleScriptReplay.indexOf('ports.publishOwner();')`.
+- Add ONE source read near the existing reads: `const aquarelleScriptReplay = readFileSync(fileURLToPath(new URL('./roto/aquarelleScriptReplay.ts', import.meta.url)), 'utf8');` and assert on it the two literals that MOVED into the module — `if (revert === null) return false;` and `ports.rollback(revert)`. Task 3 reuses this binding; do not declare it twice.
+- Do not touch the delete-handler row (`:3190-3209`) or any move/appearance/transform/place/reorder row — those handlers are unchanged.
+
+Run the hook suite and the source contract while iterating: `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts`.
   </action>
   <verify>
-    <automated>pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts src/components/physic-paint/roto/aquarelleScriptReplay.test.ts && pnpm --filter efx-motion-editor typecheck</automated>
+    <automated>pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts src/components/physic-paint/roto/aquarelleScriptReplay.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts && pnpm --filter efx-motion-editor typecheck</automated>
   </verify>
-  <done>Every recorded-stroke ledger branch (paint and auto-key-paint, undo and redo) calls `replayStroke` and never `undoPaint()`/`redoPaint()`; unrecorded entries keep the engine path byte-for-byte; the Studio route exposes `hasRecordedStroke` / `replayStroke` and its shared `replay` runs invalidate -> durable base -> prepare -> restore -> reset -> rebake with the guards and playback stop in front; hook suite and typecheck green (58 -> more tests).</done>
+  <done>Every recorded-stroke ledger branch (paint and auto-key-paint, undo and redo) calls `replayStroke` and never `undoPaint()`/`redoPaint()`; unrecorded entries keep the engine path byte-for-byte; the Studio route exposes `hasRecordedStroke` / `replayStroke` and its shared `replay` runs invalidate -> durable base -> prepare -> restore -> reset -> rebake with the guard block BEFORE the playback stop; a false replay after `rebake` re-anchors (or drops) the cached edit id so the stroke stays retryable; both former route-contract rows are migrated onto `runScriptReplay` + `aquarelleScriptReplay.ts`; hook suite, source contract, replay pin and typecheck green (58 -> more hook tests; PhysicsPaintStudio.test.ts stays 288 + the new rows).</done>
 </task>
 
 <task type="tdd" tdd="true">
@@ -305,9 +333,9 @@ Write the failing transaction rows first, then implement.
 
 (D) `PhysicsPaintStudio.tsx` — pass `getScriptEpoch: () => aquarelleStrokesRevision.peek(),` in the `useRotoFramePersistenceCoordinator({ ... })` input object at `:1378` (a `peek` read inside a callback: no subscription, no render-body read). `aquarelleStrokesRevision` is already imported at `:195`. No other change.
 
-(E) `PhysicsPaintStudio.test.ts` — add the source-contract rows in the house `toContain` / index style. Read the two new/changed sources by adding `const aquarelleScriptReplay = readFileSync(fileURLToPath(new URL('./roto/aquarelleScriptReplay.ts', import.meta.url)), 'utf8');`, `const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLivePixelCacheTransactions.ts', import.meta.url)), 'utf8');`, and `const persistenceCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoFramePersistenceCoordinator.ts', import.meta.url)), 'utf8');`. Assert:
-- `studio` contains `hasRecordedStroke: (mutationId) =>` and `replayStroke: (mutationId, direction) =>` and `getScriptEpoch: () => aquarelleStrokesRevision.peek(),`.
-- `aquarelleScriptReplay` step order by index: `invalidate` < `restore` < `resetSheet` < `rebake`, and the file contains `ports.ensureBase()` before `ports.prepare`.
+(E) `PhysicsPaintStudio.test.ts` — add the source-contract rows in the house `toContain` / index style. Reuse the `aquarelleScriptReplay` source binding Task 2 already added (do NOT declare it twice) and add two more reads: `const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLivePixelCacheTransactions.ts', import.meta.url)), 'utf8');` and `const persistenceCoordinator = readFileSync(fileURLToPath(new URL('./hooks/useRotoFramePersistenceCoordinator.ts', import.meta.url)), 'utf8');`. Assert:
+- `studio` contains `hasRecordedStroke: (mutationId) =>` and `replayStroke: async (mutationId, direction) =>` (the authored form — the helper is async) and `getScriptEpoch: () => aquarelleStrokesRevision.peek(),`.
+- `aquarelleScriptReplay` step order by index on the port CALLS (not the type union or `onStep` labels): `ports.invalidate()` < `ports.restore(` < `ports.resetSheet()` < `ports.rebake()`, and `ports.ensureBase()` before `ports.prepare`.
 - `livePixelTransactions` contains the guard literal exactly twice (`livePixelTransactions.split('input.isStillCurrent !== undefined && !input.isStillCurrent()').length - 1 === 2`).
 - `persistenceCoordinator` contains `getScriptEpoch` and `isStillCurrent`.
 Use positive assertions only — no negative substring gates (comment-text discipline).
@@ -338,7 +366,7 @@ Run the targeted files while iterating:
 | T-261029-01 | Tampering | `beginAquarelleStrokeUndoEdit` / `restoreAquarelleEditSnapshot` | medium | mitigate | Finite-only ids, refusal for unknown/already-tombstoned ids, and the existing `aquarelleStrokesRevision` guard fail closed (null -> replay false, stacks untouched) |
 | T-261029-02 | Tampering | `rotoLivePixelCacheTransactions.commit` | high | mitigate | Two-layer commit-time gate: per-key revision (`stale-before-commit`) plus the `aquarelleStrokesRevision` epoch via `isStillCurrent`; late acks are dropped, never baked |
 | T-261029-03 | Tampering | replay route ordering | medium | mitigate | `invalidateLivePixels` is the first synchronous step, before the snapshot swap and before `applyAquarelleTimeline`'s force-flush; pinned by the orchestration test and the source contract |
-| T-261029-04 | Denial of service (data loss) | failed replay / failed bake | low | accept | Fail closed returns false with the script rolled back (`restoreAquarelleSnapshotRaw`); the ledger stays untouched so the undo is retryable — no throw reaches the shortcut handler |
+| T-261029-04 | Denial of service (data loss) | failed replay / failed bake | low | accept | Fail closed returns false with the script rolled back (`restoreAquarelleSnapshotRaw`); the ledger stays untouched and `reanchorAquarelleEditRevision` re-seats the attempted side, so the undo is retryable — no throw reaches the shortcut handler |
 | T-261029-SC | Tampering | npm/pip/cargo installs | high | mitigate | No package installs in this plan; no dependency, manifest or lockfile change is authorized |
 
 ASVS V5 note: no new input surface. Ids come from the app-owned mutation ledger, not from user text; the finite/integer guards already in `aquarelleRecordState` (`normalizeAquarelleMutationIds` style) are reused.
@@ -359,6 +387,27 @@ After a recorded-stroke undo the displayed frame and the published bake are the 
 using the existing FNV-1a helper in `performance/aquarelleRenderSplitCapture.ts` — not merely
 "a re-bake was requested". The negative control in `aquarelleScriptReplay.test.ts` (no reset ->
 digests differ) is what keeps the pin honest.
+
+## Migrated source-contract rows (coverage is moved, never dropped)
+
+`PhysicsPaintStudio.test.ts:3211-3225` (the 261022-pim replay-port body) and `:4107-4112`
+(the notify -> owner-publish ordering) assert Studio text this plan removes. Task 2
+migrates both onto the `runScriptReplay` slice and `roto/aquarelleScriptReplay.ts`, so the
+rows still prove restore -> reset -> shared apply -> raw rollback -> notify -> owner
+publish, invalidate-before-reset, and guards-before-playback-stop. Those two rows are the
+reason Task 2's `<verify>` runs `PhysicsPaintStudio.test.ts` — the plan's "full suite green"
+criterion is only satisfiable once they are owned by a task.
+
+## Retryability after a failed bake (must_haves truth 5)
+
+A false replay that reached `rebake` means the restore succeeded and `restoreAquarelleSnapshotRaw`
+ran, bumping the revision without writing it back into the edit — so Task 2 re-anchors the
+cached edit id (`reanchorAquarelleEditRevision`, Task 1) before returning false. A false
+replay that never reached `rebake` (missing request, refused prepare, stale-authority
+`restore` null) is a genuine fail-closed and is NOT re-anchored: a foreign script mutation
+must keep failing the guard. Residual, out of scope: if the 10-entry edit cap evicted the
+record before the failure, there is nothing to re-anchor; the cache entry is dropped and
+that particular redo cannot be replayed (it could not be before this plan either).
 
 ## Native UAT rows (the user's — real GPU pixels are out of reach under `vitest run`)
 
@@ -382,12 +431,14 @@ never falls back to it. Do not widen the aquarelle engine port (`aquarelleEngine
 
 <success_criteria>
 - [ ] `beginAquarelleStrokeUndoEdit` builds `after` = WITH, `before` = WITHOUT (tombstone + timeline removal), both at the live revision, and the immediate undo passes the guard.
+- [ ] `reanchorAquarelleEditRevision` re-seats only the attempted side after a failed re-bake, so the next Cmd+Z retries the same stroke; the opposite direction stays fail-closed and nothing else is forgiven.
+- [ ] The two existing route-contract rows (`PhysicsPaintStudio.test.ts:3211-3225`, `4107-4112`) are migrated onto the new slices by the task that replaces their text, and that task's verify runs `PhysicsPaintStudio.test.ts`.
 - [ ] `runAquarelleScriptReplay` enforces invalidate -> ensure-base -> prepare -> restore -> reset -> rebake, returns false on every failure path, and never throws.
 - [ ] The orchestration pin asserts step order, display-digest == bake-digest, the negative control, and the rejected pre-undo capture.
 - [ ] `paint` and `auto-key-paint` undo/redo route recorded strokes through `replayStroke` and unrecorded strokes through `undoPaint()` / `redoPaint()`; no fallback after a false replay.
-- [ ] The Studio route exposes `hasRecordedStroke` / `replayStroke`, wraps both through one `runScriptReplay` with the playback stop and mutation guards in front, and keeps `applyFrameModuleState` as the only owner resolver.
+- [ ] The Studio route exposes `hasRecordedStroke` / `replayStroke`, wraps both through one `runScriptReplay` whose mutation guards run BEFORE `rotoCachedPlayback.stop()` (a refused replay stops nothing), and keeps `applyFrameModuleState` as the only owner resolver.
 - [ ] A capture stamped before a script mutation is rejected before produce and at commit; the epoch is threaded from `aquarelleStrokesRevision` through the coordinator into the transaction.
-- [ ] No new dependency, no new vitest config, no daemon/flag shim; the four target suites, the source contract, the full app suite and typecheck are green.
+- [ ] No new dependency, no new vitest config, no daemon/flag shim; the five target suites (including `PhysicsPaintStudio.test.ts`), the full app suite and typecheck are green.
 </success_criteria>
 
 <output>
