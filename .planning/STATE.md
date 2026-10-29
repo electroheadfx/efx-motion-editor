@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T21:15:45.295Z"
+last_updated: "2026-10-29T21:24:43.188Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: 4007f1442b04fbcf92d3b6d5a5f8f4cb167a9bdc
+state_head: 34a3a57dfbc3df485c55ca490e8ff71a7f07752b
 progress:
   total_phases: 3
   completed_phases: 3
@@ -616,6 +616,7 @@ None yet.
 | 261029-lsr | UNDO — script-authoritative undo for aquarelle strokes: recorded strokes swap the script edit and use the engine tile history with a script re-bake fallback; replay sources compare structurally; auto-key composites undo/redo as one command — CLOSED, native UAT rows 1-8 approved 2026-10-29 | 2026-10-29 | 093970b2 | [261029-lsr-undo-script-authoritative-undo-for-aquar](./quick/261029-lsr-undo-script-authoritative-undo-for-aquar/) |
 | 69 | Center the brush-tab Settings button (icon+label on one row, 30px) and add 15px bottom padding to the brush tab; commit fb178cf9 | 2026-10-29 | fb178cf9 | — |
 | 261029-uoz | DPR regression: every brush preview thumb cropped to its top-left quarter on all surfaces; blit now matches the visible bitmap to the DPR cache | 2026-10-29 | 4007f144 | [261029-uoz-big-ui-regression-all-the-brush-image-ty](./quick/261029-uoz-big-ui-regression-all-the-brush-image-ty/) |
+| 71 | Remove uppercase labels in Studio top bar, brush dropdown/modal, sidebar Brush tab; fixed-width dropdown thumbs at the sidebar 150:44 ratio | 2026-10-29 | 34a3a57d | — |
 
 ### Roadmap Evolution
 
