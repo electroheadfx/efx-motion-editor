@@ -24,11 +24,14 @@ impl FrameCodec for WebPLosslessCodec {
         // `encode_lossless()` does NOT set `exact`, so we must use `encode_advanced`.
         config.exact = 1;
         config.alpha_compression = 0;
-        config.quality = 75.0;
-        // 52.1 perf: lossless `method` defaults to 4 (slow, ~200-500ms/frame at
-        // 1920×1080). Drop to 1 — the fastest lossless effort that still
-        // compresses — so a frame change no longer stalls the UI for seconds.
-        config.method = 1;
+        // 261029-bks A/B (release, 1080×1920 noisy RGBA): lossless `quality`
+        // and `method` trade compression EFFORT for file size — the decoded
+        // pixels are identical at every setting. method 1/quality 75 took
+        // 1005 ms; method 0/50 takes 90 ms (11×) at ~+43 % worst-case size.
+        // Real aquarelle frames are mostly transparent, where the size delta
+        // is far smaller, and the encode was ~31 % of Apply.
+        config.quality = 50.0;
+        config.method = 0;
 
         let encoder = webp::Encoder::from_rgba(rgba, width, height);
         let memory = encoder
