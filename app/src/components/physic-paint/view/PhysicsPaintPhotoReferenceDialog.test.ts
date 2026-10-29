@@ -411,6 +411,17 @@ describe('PhysicsPaintPhotoReferenceDialog view (50-UAT, render + accessibility)
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('stops the drag-handle press on the close X so its click is not suppressed', () => {
+    const harness = createHarness(makeTrack());
+    const tree = renderDialog({ ports: harness.ports });
+    const close = findByLabel(tree, 'Close photo reference');
+    const onPointerDown = (close.props as unknown as { onPointerDown?: (event: { stopPropagation: () => void }) => void }).onPointerDown;
+    expect(onPointerDown, 'Missing onPointerDown guard').toBeDefined();
+    const stopPropagation = vi.fn();
+    onPointerDown?.({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+  });
+
   it('does not render dialog content when the layer id is missing', () => {
     const harness = createHarness(makeTrack());
     const tree = PhysicsPaintPhotoReferenceDialog({

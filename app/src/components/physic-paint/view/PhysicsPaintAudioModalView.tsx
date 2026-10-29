@@ -283,6 +283,10 @@ export function PhysicsPaintAudioModalView({
               aria-disabled={controlsDisabled}
               disabled={controlsDisabled}
               data-testid="audio-modal-enabled"
+              // The header is the drag handle: its pointerdown captures the
+              // pointer and calls preventDefault, which suppresses this button's
+              // click. Stop the press here so the toggle stays clickable.
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={toggleEnabled}
             >
               {sound.enabled ? <Volume2 size={12} aria-hidden="true" /> : <VolumeX size={12} aria-hidden="true" />}
@@ -294,6 +298,10 @@ export function PhysicsPaintAudioModalView({
             class="physics-paint-photo-reference-close"
             aria-label="Close"
             title="Close"
+            // The header is the drag handle: its pointerdown captures the
+            // pointer and calls preventDefault, which suppresses this button's
+            // click. Stop the press here so Close stays clickable.
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={handleClose}
           >
             <X size={12} aria-hidden="true" />

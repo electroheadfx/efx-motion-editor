@@ -162,6 +162,10 @@ export function PhysicsPaintPhotoReferenceDialog({
             class="physics-paint-photo-reference-close"
             aria-label="Close photo reference"
             title="Close"
+            // The header is the drag handle: its pointerdown captures the
+            // pointer and calls preventDefault, which suppresses this button's
+            // click. Stop the press here so Close stays clickable.
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={handleClose}
           >
             <X size={12} aria-hidden="true" />
