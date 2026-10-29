@@ -36,6 +36,13 @@ vi.mock('preact/hooks', async (importOriginal) => {
 import { PhysicsPaintSettingsModal, resetSettingsModalLayout } from './PhysicsPaintSettingsModal';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import {
+  SHEET_ID_BRUSHES,
+  SHEET_ID_SETTINGS,
+  bringSheetToFront,
+  resetFloatingSheetStack,
+  sheetZIndex,
+} from './floatingSheetStack';
+import {
   aquarelleSettingsModalOpen,
   setAquarelleSettingsModalOpen,
 } from './aquarelleRecordState';
@@ -70,11 +77,15 @@ const SHEET_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintSettingsModal.
 beforeEach(() => {
   aquarelleSettingsModalOpen.value = false;
   resetSettingsModalLayout();
+  // The stack order is module-global: the z-index math only holds from the
+  // initial bottom-to-top order.
+  resetFloatingSheetStack();
 });
 
 afterEach(() => {
   aquarelleSettingsModalOpen.value = false;
   resetSettingsModalLayout();
+  resetFloatingSheetStack();
 });
 
 describe('261029-hy2 floating Settings sheet', () => {
@@ -171,6 +182,26 @@ describe('261029-hy2 floating Settings sheet', () => {
       String((reopened.props?.style as Record<string, unknown>)?.transform),
       'the session keeps the placed surface',
     ).toBe('translate(30px, 20px)');
+  });
+
+  it('takes its z-index from the shared sheet stack (261029-hy2)', () => {
+    setAquarelleSettingsModalOpen(true);
+    const tree = PhysicsPaintSettingsModal() as TestVNode;
+    const style = tree.props?.style as Record<string, unknown>;
+    expect(style?.zIndex).toBe(sheetZIndex(SHEET_ID_SETTINGS));
+    expect(style?.zIndex).toBe(52);
+    expect(
+      tree.props?.onPointerDownCapture,
+      'the root raises itself on capture-phase pointerdown',
+    ).toBeTypeOf('function');
+  });
+
+  it('a raise of another sheet drops the Settings sheet one level (261029-hy2)', () => {
+    setAquarelleSettingsModalOpen(true);
+    const before = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    const after = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
+    expect(after?.zIndex).toBe((before?.zIndex as number) - 1);
   });
 
   it('Escape closes the sheet — capture-phase keydown, removed symmetrically', () => {

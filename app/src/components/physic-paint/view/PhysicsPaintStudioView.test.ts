@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PhysicsPaintStudioView, type PhysicsPaintStudioViewProps } from './PhysicsPaintStudioView';
+import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
@@ -14,6 +15,9 @@ import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
  * open, NO parent modal (PlayScript, photo reference) is in the
  * returned vnode tree; when the picker closes, every parent that was open is
  * back (their opener booleans are never cleared at this seam).
+ *
+ * 261029-hy2: the floating Settings sheet rides the same step-aside gate — the
+ * pin is on its MOUNT vnode (the sheet self-hides on its own open signal).
  *
  * Node harness: PhysicsPaintStudioView's body has no hooks, so it is invoked
  * as a plain function and the returned vnode tree is walked with the
@@ -117,12 +121,14 @@ function expectNoParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(0);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(0);
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(0);
+  expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(0);
 }
 
 function expectAllParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(1);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(1);
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(1);
+  expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(1);
 }
 
 describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () => {

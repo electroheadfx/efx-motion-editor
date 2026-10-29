@@ -22,6 +22,11 @@ import {
   aquarelleSettingsModalOpen,
   setAquarelleSettingsModalOpen,
 } from './aquarelleRecordState';
+import {
+  SHEET_ID_SETTINGS,
+  bringSheetToFront,
+  sheetZIndex,
+} from './floatingSheetStack';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 
 interface DragOffset {
@@ -60,7 +65,6 @@ const SURFACE_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
-  zIndex: 50,
   boxSizing: 'border-box',
   padding: '0',
   borderRadius: '10px',
@@ -187,8 +191,12 @@ export function PhysicsPaintSettingsModal() {
       data-testid="physics-settings-modal"
       role="dialog"
       aria-label="Settings"
+      // Capture phase: the Close button stops pointerdown propagation, and a
+      // press on it must still raise the sheet.
+      onPointerDownCapture={() => bringSheetToFront(SHEET_ID_SETTINGS)}
       style={{
         ...SURFACE_STYLE,
+        zIndex: sheetZIndex(SHEET_ID_SETTINGS),
         height: resizedHeight === null ? SURFACE_STYLE.height : `${resizedHeight}px`,
         transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,
       }}

@@ -27,6 +27,11 @@ import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 import { clampStackPosition } from './stackOrder';
 import {
+  SHEET_ID_STROKE_SETTINGS,
+  bringSheetToFront,
+  sheetZIndex,
+} from './floatingSheetStack';
+import {
   aquarelleStrokeSettingsDismissed,
   aquarelleStrokeTypeFilter,
   setAquarelleStrokeTypeFilter,
@@ -156,7 +161,6 @@ const SURFACE_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
-  zIndex: 50,
   boxSizing: 'border-box',
   padding: '0',
   borderRadius: '10px',
@@ -581,8 +585,12 @@ export function PhysicsPaintStrokeSettingsDialog({
       data-testid="stroke-settings-dialog"
       role="dialog"
       aria-label="Stroke settings"
+      // Capture phase: the Close button stops pointerdown propagation, and a
+      // press on it must still raise the sheet.
+      onPointerDownCapture={() => bringSheetToFront(SHEET_ID_STROKE_SETTINGS)}
       style={{
         ...SURFACE_STYLE,
+        zIndex: sheetZIndex(SHEET_ID_STROKE_SETTINGS),
         height: resizedHeight === null ? SURFACE_STYLE.height : `${resizedHeight}px`,
         transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,
       }}

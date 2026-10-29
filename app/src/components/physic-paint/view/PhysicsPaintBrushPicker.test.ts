@@ -31,6 +31,12 @@ vi.mock('preact/hooks', async (importOriginal) => {
 
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal, resetBrushModalLayout } from './PhysicsPaintBrushModal';
+import {
+  SHEET_ID_BRUSHES,
+  bringSheetToFront,
+  resetFloatingSheetStack,
+  sheetZIndex,
+} from './floatingSheetStack';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 import {
   aquarelleActiveTool,
@@ -89,6 +95,8 @@ beforeEach(() => {
   aquarelleBrushMenuAnchor.value = { left: 20, top: 70 };
   aquarelleBrushModalOpen.value = false;
   resetBrushModalLayout();
+  // The stack order is module-global: a raise in one case would leak.
+  resetFloatingSheetStack();
 });
 
 afterEach(() => {
@@ -100,6 +108,7 @@ afterEach(() => {
   aquarelleBrushMenuAnchor.value = null;
   aquarelleBrushModalOpen.value = false;
   resetBrushModalLayout();
+  resetFloatingSheetStack();
 });
 
 describe('261027-gh9g top-bar brush dropdown', () => {
@@ -271,5 +280,54 @@ describe('261027-gh9g floating brush catalog', () => {
     const nodes = collect(PhysicsPaintBrushModal());
     click(nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-modal-close')!);
     expect(aquarelleBrushModalOpen.value).toBe(false);
+  });
+
+  it('the close button stops its press before the drag header, then closes (261029-hy2)', () => {
+    setAquarelleBrushModalOpen(true);
+    const nodes = collect(PhysicsPaintBrushModal());
+    const closeButton = nodes.find(
+      (node) => node.props?.['data-testid'] === 'watercolor-brush-modal-close',
+    )!;
+    const stopPropagation = vi.fn();
+    const onPointerDown = closeButton.props?.onPointerDown as
+      | ((event: unknown) => void)
+      | undefined;
+    expect(onPointerDown, 'the close button carries a pointerdown guard').toBeTypeOf('function');
+    onPointerDown!({ stopPropagation });
+    expect(stopPropagation, 'the press never reaches the drag header').toHaveBeenCalledTimes(1);
+    expect(aquarelleBrushModalOpen.value, 'a press alone never closes').toBe(true);
+    click(closeButton);
+    expect(aquarelleBrushModalOpen.value).toBe(false);
+
+    // The drag contract is unchanged: the header still captures the pointer
+    // and calls preventDefault on its pressed path.
+    const header = nodes.find(
+      (node) => node.props?.['data-testid'] === 'watercolor-brush-modal-header',
+    )!;
+    const preventDefault = vi.fn();
+    (header.props?.onPointerDown as (event: unknown) => void)({
+      button: 0,
+      clientX: 10,
+      clientY: 10,
+      pointerId: 1,
+      preventDefault,
+      currentTarget: { setPointerCapture: vi.fn() },
+    });
+    expect(preventDefault, 'header drag capture stays intact').toHaveBeenCalledTimes(1);
+  });
+
+  it('takes its z-index from the shared sheet stack and rises one level (261029-hy2)', () => {
+    setAquarelleBrushModalOpen(true);
+    const before = PhysicsPaintBrushModal() as TestVNode;
+    const beforeStyle = before.props?.style as Record<string, unknown>;
+    expect(beforeStyle?.zIndex).toBe(sheetZIndex(SHEET_ID_BRUSHES));
+    expect(beforeStyle?.zIndex).toBe(51);
+    expect(
+      before.props?.onPointerDownCapture,
+      'the root raises itself on capture-phase pointerdown',
+    ).toBeTypeOf('function');
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    const after = PhysicsPaintBrushModal() as TestVNode;
+    expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(52);
   });
 });
