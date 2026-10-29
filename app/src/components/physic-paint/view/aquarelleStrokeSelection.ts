@@ -322,28 +322,6 @@ export function hitTestAquarelleStroke(
 }
 
 /**
- * Hit-test then update the selection — the pointer handler's ONE selection
- * write. Plain hit replaces, additive hit toggles, plain-empty clears and
- * additive-empty keeps (the shared modifier law).
- */
-export function selectAquarelleStrokeAt(
-  pointPx: CanvasPoint,
-  playFrame: number,
-  size: EnginePixelSize,
-  additive = false,
-): number | null {
-  const hit = hitTestAquarelleStroke(pointPx, playFrame, size);
-  if (hit === null) {
-    if (!additive) selectAquarelleStroke(null);
-  } else if (additive) {
-    toggleAquarelleStrokeSelection(hit);
-  } else {
-    selectAquarelleStroke(hit);
-  }
-  return hit;
-}
-
-/**
  * Every selectable stroke of the frame in recording order. Reads the
  * revision so a narrow leaf re-renders when the stroke set changes.
  * `filter` narrows the LISTING only — stack positions stay global
