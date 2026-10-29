@@ -29,6 +29,7 @@ import {
   updateAquarelleStrokesInScript,
 } from './aquarelleRecordState';
 import {
+  AQUARELLE_STROKE_FILTER_DEFAULT,
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationIds,
@@ -517,7 +518,7 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
     expect(matchesAquarelleStrokeFilter(paint, 'lift')).toBe(false);
   });
 
-  it('setAquarelleSelectMode(true, "lift") enters lift filtering and an exit resets to all', () => {
+  it('setAquarelleSelectMode(true, "lift") enters lift filtering and an exit returns to Paint', () => {
     recordAquarelleStroke(10011, stroke({ points: [point(0.2, 0.5)], playFrame: 802 }));
     recordAquarelleStroke(10012, liftStroke({ points: [point(0.4, 0.5)], playFrame: 802 }));
     setAquarelleSelectMode(false);
@@ -529,11 +530,28 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
 
       setAquarelleSelectMode(false);
       expect(aquarelleSelectMode.value).toBe(false);
-      expect(aquarelleStrokeTypeFilter.value).toBe('all');
-      expect(listedIds(802, aquarelleStrokeTypeFilter.value)).toEqual([10011, 10012]);
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
+      expect(listedIds(802, aquarelleStrokeTypeFilter.value)).toEqual([10011]);
     } finally {
       setAquarelleSelectMode(false);
       clearScriptStrokeSelection();
+    }
+  });
+
+  it('a plain entry (rail Select / Cmd tap) starts on the Paint filter', () => {
+    recordAquarelleStroke(10013, stroke({ points: [point(0.2, 0.5)], playFrame: 806 }));
+    recordAquarelleStroke(10014, liftStroke({ points: [point(0.4, 0.5)], playFrame: 806 }));
+    setAquarelleStrokeTypeFilter('all');
+    setAquarelleSelectMode(false);
+    try {
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeTypeFilter.value).toBe(AQUARELLE_STROKE_FILTER_DEFAULT);
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
+      expect(listedIds(806, aquarelleStrokeTypeFilter.value)).toEqual([10013]);
+    } finally {
+      setAquarelleSelectMode(false);
+      clearScriptStrokeSelection();
+      setAquarelleStrokeTypeFilter('all');
     }
   });
 
@@ -556,7 +574,7 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
     expect(hitTestAquarelleStroke(probe, 803, SHEET, 'lift')).toBe(10022);
   });
 
-  it('a re-entry while already ON with no filter resets to all and keeps select mode', () => {
+  it('a re-entry while already ON with no filter resets to Paint and keeps select mode', () => {
     setAquarelleSelectMode(false);
     try {
       setAquarelleSelectMode(true, 'lift');
@@ -565,7 +583,7 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
       // have happened BEFORE the delegation, or it would be skipped.
       setAquarelleSelectMode(true);
       expect(aquarelleSelectMode.value).toBe(true);
-      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
     } finally {
       setAquarelleSelectMode(false);
       clearScriptStrokeSelection();
@@ -628,6 +646,7 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
     }));
     const probe = { x: 200, y: 100 };
     setAquarelleSelectMode(false);
+    setAquarelleStrokeTypeFilter('all');
     try {
       expect(aquarelleScriptStrokeEditionPort.listStrokes(805, SHEET).map((entry) => entry.kind))
         .toEqual(['paint', 'lift']);

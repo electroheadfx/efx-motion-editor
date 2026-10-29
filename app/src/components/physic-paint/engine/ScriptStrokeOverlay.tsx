@@ -402,10 +402,12 @@ export function ScriptStrokeOverlay(props: {
                     data-testid="stroke-lift-ribbon"
                     d={liftPath}
                     fill={LIFT_RIBBON_COLOR}
-                    fillOpacity={0.14}
+                    // Unselected stays a quiet reference: a thin edge and a
+                    // faint wash. Selecting it brings the full weight back.
+                    fillOpacity={isSelected ? 0.14 : 0.07}
                     fillRule="nonzero"
                     stroke={LIFT_RIBBON_COLOR}
-                    strokeWidth={isSelected ? 3.5 : 2.5}
+                    strokeWidth={isSelected ? 3.5 : 1.5}
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                   />

@@ -275,6 +275,7 @@ function createBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
 function selectableStroke(
   mutationId: number,
   bounds: { x: number; y: number; width: number; height: number },
+  kind: 'paint' | 'lift' = 'paint',
 ): SelectableScriptStroke {
   return {
     mutationId,
@@ -284,7 +285,7 @@ function selectableStroke(
     stackPosition: 1,
     stackTotal: 1,
     color: '#ff0000',
-    kind: 'paint',
+    kind,
   };
 }
 
@@ -1537,19 +1538,19 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     });
   }
 
-  it('renders the All | Eraser | Paint row for water color only', () => {
+  it('renders the Paint | Eraser | All row for water color only, defaulting to Paint', () => {
     const { bundle } = watercolorBundle();
-    setScriptSelectMode(true);
+    setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
 
     const row = findByTestId(tree, 'stroke-settings-filter')!;
     expect(row).toBeDefined();
     expect(row.props.role).toBe('group');
-    const buttons = ['all', 'eraser', 'paint'].map(
+    const buttons = ['paint', 'eraser', 'all'].map(
       (key) => findByTestId(tree, `stroke-settings-filter-${key}`)!,
     );
-    expect(buttons.map((button) => button.props.children)).toEqual(['All', 'Eraser', 'Paint']);
+    expect(buttons.map((button) => button.props.children)).toEqual(['Paint', 'Eraser', 'All']);
     expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, false]);
 
     // Brush keeps its sheet without the filter chrome.
@@ -1583,6 +1584,36 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     expect(findByTestId(allTree, 'stroke-settings-paint')).toBeDefined();
     setAquarelleStrokeTypeFilter('paint');
     expect(findByTestId(renderDialog(bundle), 'stroke-settings-tab-paint')).toBeDefined();
+  });
+
+  it('hides the Paint tab whenever an eraser stroke is selected, even on All', () => {
+    // A paint stroke keeps Paint available on the All filter.
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+    setScriptStrokeSelection([7]);
+    expect(
+      findByTestId(renderDialog(watercolorBundle().bundle), 'stroke-settings-tab-paint'),
+    ).toBeDefined();
+
+    // The same sheet with a LIFT stroke selected drops the tab.
+    const lift = watercolorBundle({
+      listStrokes: () => [selectableStroke(8, { x: 0, y: 0, width: 100, height: 100 }, 'lift')],
+    });
+    setScriptStrokeSelection([8]);
+    const liftTree = renderDialog(lift.bundle);
+    expect(findByTestId(liftTree, 'stroke-settings-tab-paint')).toBeUndefined();
+    expect(findByTestId(liftTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
+  });
+
+  it('the close button swallows the header press so its click still fires', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    const close = findByTestId(renderDialog(bundle), 'stroke-settings-close')!;
+    let stopped = false;
+    (close.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
+      stopPropagation: () => { stopped = true; },
+    });
+    expect(stopped).toBe(true);
   });
 
   it('keeps the sheet open on an empty water color selection', () => {

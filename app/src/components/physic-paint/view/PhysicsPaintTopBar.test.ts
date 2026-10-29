@@ -552,10 +552,11 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
       expect(onTree.props?.['aria-checked']).toBe('true');
       expect(String(onTree.props?.class)).toContain('is-on');
 
-      // On -> off: select mode leaves and the filter resets through the setter.
+      // On -> off: select mode leaves and the filter resets to the plain-entry
+      // default (Paint) through the setter.
       (onTree.props?.onClick as () => void)();
       expect(aquarelleSelectMode.value).toBe(false);
-      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
       // Leaving select mode never re-arms the flag — only the dialog's close
       // handler writes it (an event), so it stays cleared here.
       expect(aquarelleStrokeSettingsDismissed.value).toBe(false);

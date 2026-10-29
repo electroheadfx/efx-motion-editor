@@ -9210,8 +9210,13 @@ export function PhysicsPaintStudio() {
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
-        // 261029-eur: the sheet survives an empty selection — the filter row and
-        // the "Select a stroke to edit." caption are the only editing surface.
+        // 261029-eur UAT: close LEAVES the surface — the same result as
+        // releasing Cmd or toggling the rail Select off, so painting resumes
+        // with the paint tool that was active. `keepOpenOnEmpty` only keeps the
+        // sheet up while the surface IS active (an empty filtered set).
+        closeMoveMode: () => {
+          if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
+        },
         keepOpenOnEmpty: true,
       };
       return bundle;

@@ -3015,7 +3015,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(scriptStrokeOverlay).toContain("const LIFT_RIBBON_COLOR = '#ef4444';");
     expect(scriptStrokeOverlay).toContain("entry.kind === 'lift'");
     expect(scriptStrokeOverlay).toContain('fillRule="nonzero"');
-    expect(scriptStrokeOverlay).toContain('fillOpacity={0.14}');
+    // Unselected ribbons stay quiet (thin edge, faint wash); selecting one
+    // restores the full weight.
+    expect(scriptStrokeOverlay).toContain('fillOpacity={isSelected ? 0.14 : 0.07}');
+    expect(scriptStrokeOverlay).toContain('strokeWidth={isSelected ? 3.5 : 1.5}');
     expect(scriptStrokeOverlay).toContain("const SELECTED_STROKE_COLOR = '#38bdf8';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_DARK = '#111111';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_LIGHT = '#ffffff';");
@@ -3162,8 +3165,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(bundle).not.toContain('aquarelleStrokeTypeFilter');
     // 261029-eur: the sheet survives an empty selection in water color.
     expect(bundle).toContain('keepOpenOnEmpty: true,');
-    // The one-shot close path is gone; closeSurface uses its sticky fallback.
-    expect(bundle).not.toContain('closeMoveMode');
+    // 261029-eur UAT: close leaves the surface (back to the paint tool the
+    // user had), exactly like releasing Cmd or toggling the rail Select off.
+    expect(bundle).toContain('closeMoveMode: () => {');
+    expect(bundle).toContain('toggleAquarelleSelectMode()');
   });
 
   it('wires the delete callback through the canvas mount props and memo deps', () => {

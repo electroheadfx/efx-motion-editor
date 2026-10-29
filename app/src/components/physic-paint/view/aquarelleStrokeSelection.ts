@@ -101,14 +101,24 @@ export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
  */
 export type AquarelleStrokeTypeFilter = 'all' | 'paint' | 'lift';
 
+/**
+ * 261029-eur UAT: every PLAIN select-mode entry (rail Select, Cmd tap) starts
+ * on Paint — the everyday editing surface — and an exit returns to it. Only
+ * the Eraser tool's Edit switch asks for 'lift'.
+ */
+export const AQUARELLE_STROKE_FILTER_DEFAULT: AquarelleStrokeTypeFilter = 'paint';
+
 /** Written only through `setAquarelleStrokeTypeFilter` (compare-then-write). */
-export const aquarelleStrokeTypeFilter = signal<AquarelleStrokeTypeFilter>('all');
+export const aquarelleStrokeTypeFilter = signal<AquarelleStrokeTypeFilter>(
+  AQUARELLE_STROKE_FILTER_DEFAULT,
+);
 
 /**
- * 261029-eur: the Stroke Settings dialog's explicit-close flag. Written ONLY
- * by the dialog's close handler (an event) and cleared ONLY at the
- * `setAquarelleSelectMode` off -> on choke point — never in a render body, so
- * an explicit close wins until select mode fully exits and re-enters.
+ * 261029-eur: the Stroke Settings dialog's sticky-dismissal flag — the FALLBACK
+ * law for a bundle that carries no `closeMoveMode` (the watercolor Studio
+ * supplies one, so closing it leaves the surface instead). Written ONLY by the
+ * dialog's close handler (an event) and cleared ONLY at the
+ * `setAquarelleSelectMode` off -> on choke point — never in a render body.
  */
 export const aquarelleStrokeSettingsDismissed = signal(false);
 
@@ -224,10 +234,10 @@ export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): v
  */
 export function setAquarelleSelectMode(
   on: boolean,
-  filter: AquarelleStrokeTypeFilter = 'all',
+  filter: AquarelleStrokeTypeFilter = AQUARELLE_STROKE_FILTER_DEFAULT,
 ): void {
   const was = scriptSelectMode.peek();
-  setAquarelleStrokeTypeFilter(on ? filter : 'all');
+  setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
     aquarelleStrokeSettingsDismissed.value = false;

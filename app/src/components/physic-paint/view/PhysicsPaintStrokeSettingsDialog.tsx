@@ -119,19 +119,19 @@ const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: strin
  * the row is pure chrome.
  */
 const STROKE_TYPE_FILTERS: ReadonlyArray<{
-  key: 'all' | 'eraser' | 'paint';
+  key: 'paint' | 'eraser' | 'all';
   label: string;
   filter: AquarelleStrokeTypeFilter;
 }> = [
-  { key: 'all', label: 'All', filter: 'all' },
-  { key: 'eraser', label: 'Eraser', filter: 'lift' },
   { key: 'paint', label: 'Paint', filter: 'paint' },
+  { key: 'eraser', label: 'Eraser', filter: 'lift' },
+  { key: 'all', label: 'All', filter: 'all' },
 ];
 
 const FILTER_ROW_STYLE: CSSProperties = {
   display: 'flex',
   gap: '4px',
-  padding: '8px 12px 0',
+  padding: '8px 12px 10px',
 };
 
 export interface PhysicsPaintStrokeSettingsDialogProps {
@@ -397,9 +397,14 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const requestedSettingsTab = settingsTabRef.current.value;
   const stackTabAvailable = Boolean(bundle.reorderStroke);
-  // 261029-eur: Eraser-only editing hides the Paint tab (a lift has no paint
-  // rows); a requested Paint falls back to Geometry while hidden.
-  const paintTabAvailable = strokeTypeFilter !== 'lift';
+  const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
+  // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
+  // either the filter is Eraser, or a lift sits in the selection (a lift has
+  // no paint rows). A requested Paint falls back to Geometry while hidden.
+  const selectionHasLift = strokes.some(
+    (stroke) => selection.has(stroke.mutationId) && stroke.kind === 'lift',
+  );
+  const paintTabAvailable = strokeTypeFilter !== 'lift' && !selectionHasLift;
   const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable
     ? 'geometry'
     : requestedSettingsTab === 'paint' && !paintTabAvailable
@@ -437,7 +442,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   const geometrySession = geometryState && geometryState.selection === selection
     ? geometryState.session
     : FRESH_STROKE_GEOMETRY_SESSION;
-  const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
   const selectionBox = scriptStrokeSelectionBox(
     strokes.filter((stroke) => selection.has(stroke.mutationId)),
   );
@@ -604,6 +608,10 @@ export function PhysicsPaintStrokeSettingsDialog({
           data-testid="stroke-settings-close"
           aria-label="Close"
           title="Close"
+          // The header is the drag handle: its pointerdown captures the
+          // pointer and calls preventDefault, which suppresses this button's
+          // click. Stop the press here so Close stays clickable.
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={closeSurface}
         >
           <X size={12} aria-hidden="true" />
