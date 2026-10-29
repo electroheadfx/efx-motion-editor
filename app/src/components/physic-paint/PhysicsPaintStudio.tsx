@@ -1485,6 +1485,14 @@ export function PhysicsPaintStudio() {
   // timeline/coordinator seam and surface it as the LOG diagnostic.
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  // 261029-lsr: the SAME capture a settled stroke runs. A tile-history undo/redo
+  // leaves the sheet holding exactly the post-command image, so it is snapshotted
+  // into the frame cache instead of being re-derived by a re-bake.
+  const aquarelleCaptureFrameRef = useRef<(
+    playFrame: number,
+    snapshot: () => HTMLCanvasElement | null,
+    captureTrackId?: string,
+  ) => void>(() => {});
   // 261027 UAT round 6: the pin is per (track, frame). Two tracks share frame
   // numbers, so a frame-only pin let track B's sheet merge over track A's base
   // after a switch.
@@ -4733,7 +4741,7 @@ export function PhysicsPaintStudio() {
     // not delete the winner's cached id on its way out.
     setAquarelleScriptEditInFlight(true);
     try {
-      return await runAquarelleScriptReplay({
+      const replayed = await runAquarelleScriptReplay({
         direction,
         editId,
         onStep,
@@ -4764,6 +4772,17 @@ export function PhysicsPaintStudio() {
           publishOwner: () => { applyFrameModuleState(playFrame); },
         },
       });
+      // The sheet now holds exactly the post-command image (the script swapped
+      // and the tile history restored the pixels), so SNAPSHOT it into the
+      // frame cache — a capture, never a re-render. Without this the cache
+      // would keep the pre-undo pixels until some later capture.
+      if (replayed && tileHistory) {
+        aquarelleCaptureFrameRef.current(
+          playFrame,
+          () => aquarelleEnginePortRef.current?.exportCanvas('transparent') ?? null,
+        );
+      }
+      return replayed;
     } finally {
       setAquarelleScriptEditInFlight(false);
     }
@@ -8060,6 +8079,8 @@ export function PhysicsPaintStudio() {
     aquarelleCapturesInFlightRef.current.add(run);
     void run.finally(() => { aquarelleCapturesInFlightRef.current.delete(run); });
   }, [canvasWidth, canvasHeight]);
+  // The replay route (declared far above) snapshots through this ref.
+  aquarelleCaptureFrameRef.current = handleAquarelleCaptureFrame;
 
   // Save/close flush: force the sheet capture NOW (the snapshot is eager, so a
   // later engine.clear() cannot blank it), wait for captures suspended on an
