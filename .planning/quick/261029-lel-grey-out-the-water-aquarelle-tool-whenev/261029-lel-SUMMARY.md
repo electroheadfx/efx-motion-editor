@@ -137,18 +137,18 @@ Making Water work on script keys or raster keys would need one of two capabiliti
 | App types | `pnpm --filter efx-motion-editor run typecheck` | clean |
 | Full app suite | `pnpm --filter efx-motion-editor exec vitest run` | 360 files, 6,316 passed / 1 skipped / 96 todo — exit 0 |
 
-Automated-green is NOT UAT-green: the native rows below stay PENDING until the user confirms them in the packaged app.
+Automated-green is not UAT-green — the native rows below were confirmed live by the user on 2026-10-29.
 
-## Native UAT — PENDING (empty result, not yet executed)
+## Native UAT — APPROVED (2026-10-29, native live Studio)
 
 | # | Row | Result |
 |---|-----|--------|
-| UAT-1 | Brush stroke on a real/blank key → the left rail's Water button is **enabled** within a moment of pointer-up (wet window = the settle cap, `aquarelleVisibleSettleTicks(dry)` ticks ≈ 2.75 s at Dry 50 — check promptly after the stroke) | PENDING |
-| UAT-2 | Press F (Dry) on a wet sheet → Water **greyed** immediately; repeat leaving a stroke untouched until the automatic settle-cap dry → Water greys at that moment (active tool falls back to Brush if it was Water) | PENDING |
-| UAT-3 | Navigate to a key that owns a watercolor script → Water **greyed** (the live sheet was cleared; no wet field survived) | PENDING |
-| UAT-4 | Navigate to a raster-only key → Water **greyed** | PENDING |
-| UAT-5 | With Water greyed, pressing **W does nothing** (active tool unchanged); with Water enabled, W selects it | PENDING |
-| UAT-6 | **B / E / P** behave exactly as today (never gated); greyed styling is the existing 45 % opacity / not-allowed cursor on both button families | PENDING |
+| UAT-1 | Brush stroke on a real/blank key → the left rail's Water button is **enabled** within a moment of pointer-up (wet window = the settle cap, `aquarelleVisibleSettleTicks(dry)` ticks ≈ 2.75 s at Dry 50 — check promptly after the stroke) | PASS |
+| UAT-2 | Press F (Dry) on a wet sheet → Water **greyed** immediately; repeat leaving a stroke untouched until the automatic settle-cap dry → Water greys at that moment (active tool falls back to Brush if it was Water) | PASS |
+| UAT-3 | Navigate to a key that owns a watercolor script → Water **greyed** (the live sheet was cleared; no wet field survived) | PASS |
+| UAT-4 | Navigate to a raster-only key → Water **greyed** | PASS |
+| UAT-5 | With Water greyed, pressing **W does nothing** (active tool unchanged); with Water enabled, W selects it | PASS |
+| UAT-6 | **B / E / P** behave exactly as today (never gated); greyed styling is the existing 45 % opacity / not-allowed cursor on both button families | PASS |
 
 ## Known Stubs
 
@@ -157,6 +157,12 @@ None. The gate is fully wired (engine → store → three surfaces); no placehol
 ## Threat Flags
 
 None — no new network, auth, file or IPC surface. The only new state is an in-process boolean signal fed by private engine arithmetic (threat register dispositions unchanged).
+
+## Next Phase Readiness
+- UAT APPROVED (2026-10-29, native live Studio). All 6 rows passed — brush stroke enables Water; F / auto-dry greys it and falls back to Brush; script and raster keys grey it; W is a no-op while greyed; B / E / P unaffected. No follow-ups were requested during the pass.
+- Water on script/raster/cached pixels remains out of scope: it needs script replay/seek with wet-field seeding or a wetness payload (engine/format work with payload-versioning consequences).
+- Final gates: package 159 passed / 4 skipped, app 360 files / 6,316 passed, typecheck clean.
+- No push was performed; the user owns remote operations.
 
 ## Self-Check: PASSED
 

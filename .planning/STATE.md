@@ -7,7 +7,7 @@ status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
 last_updated: "2026-10-29T14:36:02.000Z"
 last_activity: 2026-10-29
-last_activity_desc: Quick task 261029-lel completed — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback; native UAT pending
+last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
 state_head: 5a35055cd30b9066f9d660c05c4f7b1cde6544e6
 progress:
   total_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-29 - Completed quick task 261029-lel: grey out the Water tool while the live sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes. Engine getter `hasStandingWater` + pure `isSheetWet` (WET_THRESHOLD), published from the live rAF tick while no stroke is in flight. Commits 76e896f8, efd71f81, 5a35055c. Gates: package 159 passed / 4 skipped, app 360 files / 6,316 passed; typecheck clean. Native UAT PENDING (5 rows).
+Last activity: 2026-10-29 - Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows). Water tool greyed while the live sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes. Engine getter `hasStandingWater` + pure `isSheetWet` (WET_THRESHOLD), published from the live rAF tick while no stroke is in flight. Commits 76e896f8, efd71f81, 5a35055c; docs 535d2543. Gates: package 159 passed / 4 skipped, app 360 files / 6,316 passed; typecheck clean.
 Previous: 2026-10-29 - Quick 261029-bks + frame-codec encode tuning. Gap-skip A/B (2-stroke project, 60 s pause, same Moves): OLD 3,922 ms vs NEW 3,908 ms — no gain; skip fires (709 ticks) but asleep ticks cost ~20 us vs ~0.8 ms awake, so it saves ~14 ms. Real cost was the WebP encode: measured 1,205 ms, all in IPC+libwebp (canvas 0 ms, draw 0 ms, read 6 ms, ArrayBuffer result). libwebp benchmark (release, 1080x1920): method1/q75 1,005 ms vs method0/q50 90 ms (lossless, pixels identical, +43 % worst-case size). Applied method 0 / quality 50 (587780af). Re-measured in dev: encodeMs 1,205 -> 166-173 ms; bakeMs 3,850 -> ~2,750 ms; Apply ~3,900 -> ~2,820 ms (-28 %). Remaining is the AWAKE sim (~2.56 s, 93 % of bake — the visual settle law, not skippable). Automated gates: package 154 tests, app 6,247. Commits f574cba5, 27702a84, e9c742a1, 7284263f, 587780af. Real-frame size delta not measured; no Settings knob added (lossless quality is speed/size, not image quality). User UAT 2026-10-29: ACCEPTED — Move is "very fast" after the encoder change; Settings knob declined (followed the recommendation).
 
 Progress: [██████████] 100%
