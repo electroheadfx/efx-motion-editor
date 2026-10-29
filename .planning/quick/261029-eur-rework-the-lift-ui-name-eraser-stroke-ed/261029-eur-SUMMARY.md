@@ -257,8 +257,25 @@ None.
 
 ## Next Phase Readiness
 
-- Automated-ready. The 8 native UAT rows in the plan are user-run in the live Studio (Edit switch placement, filtered outline scope, empty-frame behavior, filter pruning, ribbon previews, footprint parity, copy).
+- UAT APPROVED (2026-10-29, native live Studio). All 8 rows passed, plus two follow-up rounds requested during the pass (see "UAT rounds" below).
 - No push was performed; the user owns remote operations.
+
+## UAT rounds
+
+### Round 1 — polish (5 changes)
+1. **Filter row spacing** — `FILTER_ROW_STYLE` padding `8px 12px 0` → `8px 12px 10px` (10px under the buttons).
+2. **Row order** — Paint first: `Paint | Eraser | All` (the selected pill moved; testids unchanged).
+3. **Paint tab hides on a selected eraser stroke** — availability is now `filter !== 'lift' AND the selection contains no lift` (previously filter-only), with the same Geometry fallback.
+4. **Quieter unselected ribbons** — fill `0.14 → 0.07`, edge `2.5px → 1.5px` when unselected; selecting restores `0.14 / 3.5px`. Paint outlines untouched.
+5. **Close button fixed** — the header is the drag handle and its `pointerdown` captures the pointer plus `preventDefault`, which suppressed the close button's `click`. The button now stops the press (`onPointerDown` → `stopPropagation`) so Close and Escape dismiss again.
+
+### Round 2 — close/entry law (2 changes)
+6. **Closing the sheet leaves the surface** — the Studio bundle supplies `closeMoveMode` again (`toggleAquarelleSelectMode()`), so close (and Escape) exits select mode exactly like releasing Cmd or toggling the rail Select off; painting resumes with the active paint tool. `keepOpenOnEmpty` still only keeps the sheet up while the surface IS active. In Edit mode, closing flips the Edit switch off and lands back on the Eraser tool. The module `aquarelleStrokeSettingsDismissed` flag remains the fallback law for a bundle without `closeMoveMode`.
+7. **Plain entries default to the Paint filter** — new `AQUARELLE_STROKE_FILTER_DEFAULT = 'paint'`; `setAquarelleSelectMode` starts AND returns there. The rail Select icon and the Cmd tap therefore open on Paint (eraser ribbons are not outlined unless Eraser is picked or Edit is on); the Edit switch still forces `'lift'`.
+
+### UAT gates after both rounds
+- Targeted suites 443 tests, full app suite 352 files / 6,288 tests passed, `pnpm --dir app run typecheck` clean, vite build 1,565.56 kB (under the 2 MB ceiling).
+- Test updates: the row test now opens through the real entry path and asserts Paint is pressed; a "plain entry starts on Paint" case was added; exit/re-entry expectations moved from `'all'` to `'paint'`; the Studio pin now asserts `closeMoveMode` is present; a close-button `stopPropagation` case was added; the ribbon pins moved to the selected/unselected expressions.
 
 ## Self-Check: PASSED
 
