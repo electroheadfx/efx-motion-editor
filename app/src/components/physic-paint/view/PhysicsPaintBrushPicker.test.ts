@@ -237,6 +237,21 @@ describe('261027-gh9g top-bar brush dropdown', () => {
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-name {')),
     );
     expect(nameRule).not.toContain('text-transform: uppercase');
+    // Name hugs the thumb on the left; the menu is only as wide as the row.
+    expect(nameRule).toContain('text-align: left');
+    expect(nameRule).toContain('flex: 0 0 auto');
+    const menuRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu {')),
+    );
+    expect(menuRule).toContain('width: 212px');
+    // The row is a <button>: it must opt out of the global caps itself, else
+    // the name span inherits them back.
+    const itemRule = CSS_SOURCE.slice(
+      CSS_SOURCE.indexOf('.physics-paint-brush-menu-item {'),
+      CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-item {')),
+    );
+    expect(itemRule).toContain('text-transform: none');
     const listRule = CSS_SOURCE.slice(
       CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {'),
       CSS_SOURCE.indexOf('}', CSS_SOURCE.indexOf('.physics-paint-brush-menu-list {')),

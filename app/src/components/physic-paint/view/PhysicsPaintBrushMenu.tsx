@@ -92,7 +92,7 @@ export function PhysicsPaintBrushMenu() {
 
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1440;
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
-  const left = Math.max(8, Math.min(anchor.left, viewportWidth - 308));
+  const left = Math.max(8, Math.min(anchor.left, viewportWidth - 220));
   // 261027-gh9h: the menu uses every pixel from the trigger down to the
   // viewport edge. A DEFINITE height is required: the SidebarScrollArea's
   // scroller is absolutely positioned, so with only a max-height the flex

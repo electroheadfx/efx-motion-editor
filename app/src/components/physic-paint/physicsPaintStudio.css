@@ -828,6 +828,7 @@ button.destructive {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -926,10 +927,10 @@ button.destructive {
   z-index: 80;
   display: flex;
   flex-direction: column;
-  /* 261027-gh9h: widened for the full-width brush thumbs. The height is
-     computed inline from the trigger's anchor (all the way to the viewport
-     edge), so the list scrolls only when it truly overflows. */
-  width: 300px;
+  /* 261029: hugs the fixed thumb + the name column — no trailing dead
+     space. The height is computed inline from the trigger's anchor (all the
+     way to the viewport edge), so the list scrolls only when it overflows. */
+  width: 212px;
   min-height: 0;
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -987,7 +988,7 @@ button.destructive {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   height: 46px;
   padding: 5px 7px;
   border: 1px solid transparent;
@@ -996,6 +997,8 @@ button.destructive {
   color: #d7dee8;
   cursor: pointer;
   text-align: left;
+  /* Opt out of the global button caps (inherited by the name span). */
+  text-transform: none;
 }
 
 .physics-paint-brush-menu-item:hover {
@@ -1020,12 +1023,13 @@ button.destructive {
 }
 
 .physics-paint-brush-menu-name {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 58px;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  text-align: right;
+  text-align: left;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -1758,6 +1762,7 @@ button.destructive {
   color: var(--sidebar-text, #e6edf5);
   letter-spacing: 0.01em;
   text-align: center;
+  text-transform: none;
 }
 
 /* No top dead space on the chrome-less brush color section: the shared
