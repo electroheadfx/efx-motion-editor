@@ -9509,24 +9509,22 @@ export function PhysicsPaintStudio() {
         </div>
       ) : null}
       {clearConfirmOpen ? (
-        <div class="physics-paint-group-delete-overlay">
+        <div class="physics-paint-clear-confirm-overlay">
           <div
             ref={clearConfirmDialogRef}
-            class="physics-paint-group-delete-dialog"
+            class="physics-paint-clear-confirm"
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="physics-paint-clear-confirm-title"
             data-testid="clear-confirm-dialog"
             onKeyDown={handleClearConfirmDialogKeyDown}
           >
-            <header class="physics-paint-group-delete-header">
-              <h2 id="physics-paint-clear-confirm-title">Clear the current Roto frame?</h2>
-              <p>This removes the frame’s paint and script. It cannot be undone.</p>
-            </header>
-            <footer class="physics-paint-group-delete-footer">
+            <strong id="physics-paint-clear-confirm-title">Clear the current Roto frame?</strong>
+            <span>This removes the frame’s paint and script. It cannot be undone.</span>
+            <div>
               <button ref={clearConfirmCancelRef} type="button" data-testid="clear-confirm-cancel" onClick={closeClearConfirm}>Cancel</button>
-              <button type="button" class="destructive" data-testid="clear-confirm-accept" onClick={handleConfirmClearShortcut}>Clear Frame</button>
-            </footer>
+              <button type="button" class="danger" data-testid="clear-confirm-accept" onClick={handleConfirmClearShortcut}>Clear Frame</button>
+            </div>
           </div>
         </div>
       ) : null}

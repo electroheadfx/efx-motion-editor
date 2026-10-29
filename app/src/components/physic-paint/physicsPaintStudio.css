@@ -2842,6 +2842,52 @@ button.destructive {
 .physics-paint-script-confirmation > div { display: flex; justify-content: flex-end; gap: 6px; }
 .physics-paint-script-confirmation .danger { color: #fff; background: #a43d3d; }
 
+/* 261029: the C-shortcut clear confirmation — the SAME surface and button
+   language as the Script-delete confirmation. No fixed button height: the
+   base padding centers the label optically. */
+.physics-paint-clear-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 72;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, .24);
+}
+
+.physics-paint-clear-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, calc(100% - 48px));
+  padding: 12px;
+  border: 1px solid #737980;
+  border-radius: 7px;
+  background: #292b2d;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .45);
+  color: #eef1f4;
+  font-size: 11px;
+}
+
+.physics-paint-clear-confirm > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.physics-paint-clear-confirm button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.physics-paint-clear-confirm button.danger {
+  color: #fff;
+  background: #a43d3d;
+}
+
 .physics-paint-onion-toggle-row,
 .physics-paint-onion-toggle-grid label {
   display: inline-flex;
