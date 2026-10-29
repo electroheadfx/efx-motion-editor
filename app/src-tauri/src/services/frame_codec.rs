@@ -15,6 +15,17 @@ pub trait FrameCodec: Send + Sync {
 /// WebP lossless codec using libwebp `config_exact` alpha semantics (D-01).
 pub struct WebPLosslessCodec;
 
+/// Payload-size floor below which the encode took libwebp's trivial
+/// single-colour shortcut.
+///
+/// At `method = 0` a uniform image short-circuits to a ~34-byte VP8L stream.
+/// That stream is spec-valid — libwebp's own decoder reads it back at the
+/// correct dimensions — but Apple's ImageIO/WebKit decoder rejects it, so
+/// every blank Roto key (a fully transparent canvas) failed to decode on the
+/// parent side. Real content never lands this low: the method-1 uniform frame
+/// that replaces it is ~128 bytes at Studio canvas sizes.
+const TRIVIAL_SINGLE_COLOUR_PAYLOAD_FLOOR: usize = 64;
+
 impl FrameCodec for WebPLosslessCodec {
     fn encode_rgba(&self, rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
         let mut config =
@@ -34,10 +45,25 @@ impl FrameCodec for WebPLosslessCodec {
         config.method = 0;
 
         let encoder = webp::Encoder::from_rgba(rgba, width, height);
-        let memory = encoder
-            .encode_advanced(&config)
-            .map_err(|e| format!("WebP encode failed: {e:?}"))?;
-        Ok(memory.to_vec())
+        let encode = |config: &webp::WebPConfig| {
+            encoder
+                .encode_advanced(config)
+                .map(|memory| memory.to_vec())
+                .map_err(|e| format!("WebP encode failed: {e:?}"))
+        };
+
+        let bytes = encode(&config)?;
+
+        // Below the floor is libwebp's method-0 trivial single-colour stream,
+        // which Apple's decoder rejects (see the constant's comment). Re-encode
+        // at method 1, whose uniform frame Apple reads correctly; the encode is
+        // negligible either way, so real content keeps the method-0 perf win.
+        if bytes.len() < TRIVIAL_SINGLE_COLOUR_PAYLOAD_FLOOR {
+            config.method = 1;
+            return encode(&config);
+        }
+
+        Ok(bytes)
     }
 
     fn decode_rgba(&self, bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
@@ -136,6 +162,41 @@ mod tests {
         assert!(!encoded.is_empty());
         assert_eq!(&encoded[0..4], b"RIFF");
         assert_eq!(&encoded[8..12], b"WEBP");
+    }
+
+    #[test]
+    fn uniform_1080x1920_frame_never_emits_the_apple_rejected_trivial_stream() {
+        // Regression for the Roto key-creation window (quick 261029-bks): a
+        // uniform frame encoded with method 0 collapsed to a 34-byte VP8L
+        // stream that libwebp accepts but Apple's decoder rejects, so blank
+        // Roto keys failed to decode on the parent side. This is the exact
+        // content and size `buildBlankRotoFrame` produces.
+        let codec = WebPLosslessCodec;
+        let width = 1080u32;
+        let height = 1920u32;
+        let rgba = vec![0u8; (width * height * 4) as usize];
+
+        let encoded = codec.encode_rgba(&rgba, width, height).unwrap();
+
+        // (a) a well-formed RIFF/WEBP container around a simple-lossless stream.
+        assert_eq!(&encoded[0..4], b"RIFF");
+        assert_eq!(&encoded[8..12], b"WEBP");
+        assert_eq!(&encoded[12..16], b"VP8L");
+        assert_eq!(encoded[20], 0x2f, "VP8L signature byte");
+
+        // (b) never the trivial stream again: at this size method 1 emits
+        // ~128 B for a uniform frame, while the Apple-rejected one is ~34 B.
+        assert!(
+            encoded.len() > 64,
+            "uniform {width}x{height} frame encoded to {} bytes — the method-0 \
+             trivial stream is ~34 B and Apple's decoder rejects it",
+            encoded.len()
+        );
+
+        // (c) the payload still round-trips at full size.
+        let (decoded_width, decoded_height, decoded) = codec.decode_rgba(&encoded).unwrap();
+        assert_eq!((decoded_width, decoded_height), (width, height));
+        assert_eq!(decoded.len(), (width * height * 4) as usize);
     }
 
     #[test]
