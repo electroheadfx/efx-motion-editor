@@ -522,6 +522,9 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
 
   it('renders the Edit switch as a role="switch" driving the real setter', () => {
     setAquarelleSelectMode(false);
+    // IN-04: arm the dismissal flag first, so the off -> on assertion below
+    // exercises the real reset path instead of passing trivially.
+    aquarelleStrokeSettingsDismissed.value = true;
     try {
       const moveAvailable = signal(true);
       const offTree = LiftEditSwitch({ moveAvailable }) as AnyVNode;
@@ -537,10 +540,13 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
       ) as AnyVNode | undefined;
       expect(label?.props?.children).toBe('Edit');
 
-      // Off -> on: one call sets select mode AND the lift filter.
+      // Off -> on: one call sets select mode AND the lift filter, and clears
+      // an explicit close left over from an earlier session (the choke point
+      // is the flag's only reset site).
       (offTree.props?.onClick as () => void)();
       expect(aquarelleSelectMode.value).toBe(true);
       expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+      expect(aquarelleStrokeSettingsDismissed.value, 'off -> on re-arms the dialog').toBe(false);
 
       const onTree = LiftEditSwitch({ moveAvailable }) as AnyVNode;
       expect(onTree.props?.['aria-checked']).toBe('true');
@@ -550,8 +556,11 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
       (onTree.props?.onClick as () => void)();
       expect(aquarelleSelectMode.value).toBe(false);
       expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      // Leaving select mode never re-arms the flag — only the dialog's close
+      // handler writes it (an event), so it stays cleared here.
       expect(aquarelleStrokeSettingsDismissed.value).toBe(false);
     } finally {
+      aquarelleStrokeSettingsDismissed.value = false;
       setAquarelleSelectMode(false);
     }
   });
