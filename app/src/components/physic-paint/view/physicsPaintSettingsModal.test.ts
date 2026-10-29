@@ -184,6 +184,15 @@ describe('261029-hy2 floating Settings sheet', () => {
     ).toBe('translate(30px, 20px)');
   });
 
+  it('seats the sheet one step below both siblings (261029-hy2 WR-01)', () => {
+    setAquarelleSettingsModalOpen(true);
+    const style = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
+    // The cascade is stroke-settings 12px / brushes 28px / settings 44px: a
+    // covered sheet must keep a clickable strip of its 38px header.
+    expect(style?.top).toBe('44px');
+    expect(style?.height, 'the bottom inset stays 12px').toBe('min(560px, calc(100% - 56px))');
+  });
+
   it('takes its z-index from the shared sheet stack (261029-hy2)', () => {
     setAquarelleSettingsModalOpen(true);
     const tree = PhysicsPaintSettingsModal() as TestVNode;

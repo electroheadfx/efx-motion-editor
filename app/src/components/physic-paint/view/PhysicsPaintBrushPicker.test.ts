@@ -323,6 +323,15 @@ describe('261027-gh9g floating brush catalog', () => {
     expect(preventDefault, 'header drag capture stays intact').toHaveBeenCalledTimes(1);
   });
 
+  it('seats the catalog one step below the stroke sheet (261029-hy2 WR-01)', () => {
+    setAquarelleBrushModalOpen(true);
+    const style = (PhysicsPaintBrushModal() as TestVNode).props?.style as Record<string, unknown>;
+    // The cascade is stroke-settings 12px / brushes 28px / settings 44px: a
+    // covered sheet must keep a clickable strip of its 38px header.
+    expect(style?.top).toBe('28px');
+    expect(style?.height, 'the bottom inset stays 12px').toBe('min(560px, calc(100% - 40px))');
+  });
+
   it('takes its z-index from the shared sheet stack and rises one level (261029-hy2)', () => {
     setAquarelleBrushModalOpen(true);
     const before = PhysicsPaintBrushModal() as TestVNode;

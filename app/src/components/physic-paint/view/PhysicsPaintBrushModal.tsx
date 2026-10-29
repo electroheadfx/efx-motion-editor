@@ -47,16 +47,23 @@ export function resetBrushModalLayout(): void {
 }
 
 const SURFACE_INSET_PX = 12;
+/**
+ * 261029-hy2 WR-01: the three sheet seats cascade (stroke-settings 12,
+ * brushes 28, settings 44) so a covered sheet keeps a clickable header strip
+ * instead of losing every pressable pixel to its pixel-identical sibling.
+ */
+const SURFACE_TOP_INSET_PX = 28;
 
 const SURFACE_STYLE: CSSProperties = {
   position: 'absolute',
-  top: `${SURFACE_INSET_PX}px`,
+  top: `${SURFACE_TOP_INSET_PX}px`,
   right: `${SURFACE_INSET_PX}px`,
   width: '372px',
   maxWidth: 'calc(100vw - 24px)',
   // A definite height is required: the SidebarScrollArea scroller is
   // absolutely positioned, so an auto-height surface collapses its track.
-  height: 'min(560px, calc(100% - 24px))',
+  // The bottom inset stays SURFACE_INSET_PX whatever the top seat.
+  height: `min(560px, calc(100% - ${SURFACE_TOP_INSET_PX + SURFACE_INSET_PX}px))`,
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
