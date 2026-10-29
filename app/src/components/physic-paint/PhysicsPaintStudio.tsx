@@ -4735,6 +4735,7 @@ export function PhysicsPaintStudio() {
     prepare,
     onStep,
     tileHistory = false,
+    skipCapture = false,
   }: {
     direction: AquarelleReplayDirection;
     editId?: number;
@@ -4742,6 +4743,8 @@ export function PhysicsPaintStudio() {
     onStep?: (step: AquarelleReplayStep) => void;
     /** TEMP: drive the pixels from the engine's own undo/redo tiles. */
     tileHistory?: boolean;
+    /** 261029-lsr UAT row 4: the auto-key composite deletes the key next. */
+    skipCapture?: boolean;
   }): Promise<boolean> => {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     // TEMP (261029-lsr UAT row 4): name the refusing guard.
@@ -4799,7 +4802,10 @@ export function PhysicsPaintStudio() {
       // and the tile history restored the pixels), so SNAPSHOT it into the
       // frame cache — a capture, never a re-render. Without this the cache
       // would keep the pre-undo pixels until some later capture.
-      if (replayed && tileHistory) {
+      // 261029-lsr UAT row 4: the auto-key composite skips it — the key is
+      // deleted immediately after, and this commit would advance the document
+      // revision under the coordinator's own flush and fail the key replay.
+      if (replayed && tileHistory && !skipCapture) {
         aquarelleCaptureFrameRef.current(
           playFrame,
           () => aquarelleEnginePortRef.current?.exportCanvas('transparent') ?? null,
@@ -4941,7 +4947,8 @@ export function PhysicsPaintStudio() {
       // needs its live cached edit to retry and could never reconstruct the
       // WITHOUT side without it, so a failed redo re-anchors the same way and
       // never drops.
-      replayStroke: async (mutationId, direction) => {
+      replayStroke: async (mutationId, direction, options) => {
+        const skipCapture = options?.skipCapture === true;
         // The recorded-script timeline is GLOBAL, but the re-bake is per-frame:
         // a stroke recorded on another frame is refused (fail closed, mirroring
         // `aquarelleStrokesOnFrame`) so its history entry is never consumed
@@ -4980,13 +4987,14 @@ export function PhysicsPaintStudio() {
         // history instead of a frame re-bake.
         const tileHistory = AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE;
         const ok = cached !== undefined
-          ? await runScriptReplay({ direction, editId: cached, onStep, tileHistory })
+          ? await runScriptReplay({ direction, editId: cached, onStep, tileHistory, skipCapture })
           : direction === 'redo'
             ? false
             : await runScriptReplay({
               direction,
               onStep,
               tileHistory,
+              skipCapture,
               prepare: () => {
                 // `runScriptReplay` already holds the in-flight gate for this
                 // replay, so the build passes `ownedInFlight` — otherwise the

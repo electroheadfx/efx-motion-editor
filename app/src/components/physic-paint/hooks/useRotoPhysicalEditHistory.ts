@@ -284,8 +284,17 @@ export interface AquarelleScriptHistoryRoute {
    * 261029-lsr: undo/redo ONE recorded stroke as a script edit + re-bake.
    * Resolves false (never throws) when the script swap or the bake refuses;
    * the caller must leave both stacks untouched.
+   *
+   * `skipCapture` (261029-lsr UAT row 4): the auto-key composite deletes the
+   * key right after this stroke replay, so the post-replay cache snapshot is
+   * moot — and its commit would advance the document revision under the
+   * coordinator's own flush, failing the key replay's provenance.
    */
-  replayStroke: (mutationId: number, direction: 'undo' | 'redo') => Promise<boolean>;
+  replayStroke: (
+    mutationId: number,
+    direction: 'undo' | 'redo',
+    options?: { skipCapture?: boolean },
+  ) => Promise<boolean>;
 }
 
 export interface UseRotoPhysicalEditHistoryInput<EngineState> {
@@ -1099,7 +1108,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       });
       if (!autoKeyGuardOk) return false;
       if (recordedStroke && route !== undefined) {
-        const strokeReplayed = await route.replayStroke(entry.mutationId, 'undo');
+        const strokeReplayed = await route.replayStroke(entry.mutationId, 'undo', { skipCapture: true });
         recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-stroke-replay', strokeReplayed });
         if (!strokeReplayed) return false;
       } else {
@@ -1117,7 +1126,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       const autoKeyDispatchLive = typeof autoKeyLiveSnapshot === 'function' ? autoKeyLiveSnapshot() : null;
       if (!autoKeyDispatchLive || !snapshotReplayAuthorityEqual(autoKeyDispatchLive, command.after, true)) {
         recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-dispatch-stale' });
-        if (recordedStroke && route !== undefined) await route.replayStroke(entry.mutationId, 'redo');
+        if (recordedStroke && route !== undefined) await route.replayStroke(entry.mutationId, 'redo', { skipCapture: true });
         else inputRef.current.redoPaint();
         publishAvailability();
         return false;
@@ -1148,7 +1157,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
           // replay can undo it: after the sheet reset the engine history is a
           // re-bake history and redoPaint() would be wrong (P1). The result is
           // intentionally not gating the return, mirroring the engine call.
-          await route.replayStroke(entry.mutationId, 'redo');
+          await route.replayStroke(entry.mutationId, 'redo', { skipCapture: true });
         } else {
           inputRef.current.redoPaint();
         }

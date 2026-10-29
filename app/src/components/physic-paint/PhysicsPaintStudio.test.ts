@@ -3228,7 +3228,8 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort.indexOf('if (replayed) return true;'))
       .toBeLessThan(replayPort.indexOf('reanchorAquarelleEditFromLiveContent(editId, direction)'));
     expect(replayPort).toContain('hasRecordedStroke: (mutationId) =>');
-    expect(replayPort).toContain('replayStroke: async (mutationId, direction) =>');
+    expect(replayPort).toContain('replayStroke: async (mutationId, direction, options) => {');
+    expect(replayPort).toContain('const skipCapture = options?.skipCapture === true;');
     // The onStep stream classifies a failed replay: a post-rebake failure
     // re-anchors the cached edit for BOTH directions, and an undo drops a
     // cached id the ledger can no longer serve so the next Cmd+Z rebuilds it.
