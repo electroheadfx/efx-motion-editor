@@ -271,6 +271,19 @@ export interface ReferencedActionHistoryRoute {
 
 export interface AquarelleScriptHistoryRoute {
   replay: (editId: number, direction: 'undo' | 'redo') => Promise<boolean>;
+  /**
+   * 261029-lsr: true when this mutation id names a RECORDED script stroke.
+   * A tombstoned stroke still answers true, so the REDO of a paint entry that
+   * was just undone still routes through the script (R-2) — the tombstone
+   * refusal lives inside the edit builder, not in this predicate.
+   */
+  hasRecordedStroke: (mutationId: number) => boolean;
+  /**
+   * 261029-lsr: undo/redo ONE recorded stroke as a script edit + re-bake.
+   * Resolves false (never throws) when the script swap or the bake refuses;
+   * the caller must leave both stacks untouched.
+   */
+  replayStroke: (mutationId: number, direction: 'undo' | 'redo') => Promise<boolean>;
 }
 
 export interface UseRotoPhysicalEditHistoryInput<EngineState> {
@@ -942,6 +955,24 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       return true;
     }
     if (entry.kind === 'paint') {
+      // 261029-lsr: a RECORDED stroke's undo is script-authoritative — the
+      // script event leaves the timeline and the frame is re-baked through the
+      // shared Apply path, so the display can never drift from its bake. An
+      // unrecorded stroke (Script switch OFF, a raster Lift that pins nothing)
+      // keeps the engine-only tile restore below.
+      const route = inputRef.current.aquarelleScriptHistory;
+      if (route !== undefined && route.hasRecordedStroke(entry.mutationId)) {
+        const replayed = await route.replayStroke(entry.mutationId, 'undo');
+        // Never fall back to undoPaint() after a reset: engine.clear() is a
+        // history step, so an engine undo would resurrect pre-undo pixels.
+        if (!replayed) return false;
+        const top = appliedRef.current[appliedRef.current.length - 1];
+        if (top !== entry) return false;
+        appliedRef.current.pop();
+        redoRef.current.push(entry);
+        publishAvailability();
+        return true;
+      }
       appliedRef.current.pop();
       redoRef.current.push(entry);
       const changed = inputRef.current.undoPaint();
@@ -997,10 +1028,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // stroke removal runs FIRST; a rejected key replay reverts it and leaves
       // both stacks untouched.
       const command = entry.command;
+      // 261029-lsr (D-06): the first stroke painted under an auto-key
+      // acceptance is a recorded stroke like any other — its half routes
+      // through the script. `route !== undefined` is re-checked at each use
+      // site because `recordedStroke` is a plain boolean, not a type guard.
+      const route = inputRef.current.aquarelleScriptHistory;
+      const recordedStroke = route !== undefined && route.hasRecordedStroke(entry.mutationId);
       const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
       if (typeof autoKeyLiveSnapshot !== 'function'
         || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.after)) return false;
-      if (!inputRef.current.undoPaint()) return false;
+      if (recordedStroke && route !== undefined) {
+        if (!await route.replayStroke(entry.mutationId, 'undo')) return false;
+      } else if (!inputRef.current.undoPaint()) return false;
       if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
       pendingReplayRef.current = { direction: 'undo', command };
       const autoKeyProposal = buildReplayProposal(command.before);
@@ -1021,7 +1060,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       });
       if (!autoKeyAccepted) {
         pendingReplayRef.current = null;
-        inputRef.current.redoPaint();
+        if (recordedStroke && route !== undefined) {
+          // The stroke half was a script replay, so only the inverse SCRIPT
+          // replay can undo it: after the sheet reset the engine history is a
+          // re-bake history and redoPaint() would be wrong (P1). The result is
+          // intentionally not gating the return, mirroring the engine call.
+          await route.replayStroke(entry.mutationId, 'redo');
+        } else {
+          inputRef.current.redoPaint();
+        }
         publishAvailability();
         return false;
       }
@@ -1096,6 +1143,20 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       return true;
     }
     if (entry.kind === 'paint') {
+      // 261029-lsr: symmetric with undo — a recorded stroke redoes through the
+      // script (inverse snapshot swap + re-bake) and moves the stacks only on
+      // true; an unrecorded stroke keeps the engine-only redo.
+      const route = inputRef.current.aquarelleScriptHistory;
+      if (route !== undefined && route.hasRecordedStroke(entry.mutationId)) {
+        const replayed = await route.replayStroke(entry.mutationId, 'redo');
+        if (!replayed) return false;
+        const top = redoRef.current[redoRef.current.length - 1];
+        if (top !== entry) return false;
+        redoRef.current.pop();
+        appliedRef.current.push(entry);
+        publishAvailability();
+        return true;
+      }
       redoRef.current.pop();
       appliedRef.current.push(entry);
       const changed = inputRef.current.redoPaint();
@@ -1142,6 +1203,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // D-14: redo replays the key FIRST, then restores the stroke. A rejected
       // key replay leaves both stacks untouched.
       const command = entry.command;
+      // 261029-lsr (D-06): the stroke half resolves its own route — the
+      // `aquarelle-script` branch's `const route` is block-scoped above.
+      const route = inputRef.current.aquarelleScriptHistory;
+      const recordedStroke = route !== undefined && route.hasRecordedStroke(entry.mutationId);
       const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
       if (typeof autoKeyLiveSnapshot !== 'function'
         || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.before)) return false;
@@ -1167,7 +1232,17 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
         pendingReplayRef.current = null;
         return false;
       }
-      inputRef.current.redoPaint();
+      if (recordedStroke && route !== undefined) {
+        // The key replay succeeded; a refused stroke redo leaves both stacks
+        // untouched (the next Cmd+Shift+Z retries the same recorded edit).
+        const strokeRedone = await route.replayStroke(entry.mutationId, 'redo');
+        if (!strokeRedone) {
+          publishAvailability();
+          return false;
+        }
+      } else {
+        inputRef.current.redoPaint();
+      }
       publishAvailability();
       return true;
     }

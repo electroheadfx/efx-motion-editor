@@ -200,6 +200,7 @@ import {
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
+  getRecordedAquarelleStroke,
   hasAquarellePaintScriptForFrame,
   hasAquarelleScriptForFrame,
   purgeAllAquarelleKeyScripts,
@@ -213,6 +214,13 @@ import {
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
 import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
+// 261029-lsr: the ONE script-replay orchestration (invalidate -> durable base ->
+// prepare -> restore -> reset -> rebake -> notify -> owner publish).
+import {
+  runAquarelleScriptReplay,
+  type AquarelleReplayDirection,
+  type AquarelleReplayStep,
+} from './roto/aquarelleScriptReplay';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
@@ -223,12 +231,14 @@ import {
   beginAquarelleMoveEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
+  beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
   cycleAquarelleStrokeTypeFilter,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
   listSelectableAquarelleStrokes,
   readAquarelleStrokeAppearance,
+  reanchorAquarelleEditRevision,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
@@ -1488,6 +1498,10 @@ export function PhysicsPaintStudio() {
   // it now rides the SNAP v4 durable-base section and is seeded back by every
   // successful restore, so Move works after a Studio reopen.
   const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());
+  // 261029-lsr: mutationId -> the ONE script edit id that undoes this stroke
+  // (P3 — a stroke undone twice reuses this id, so the 10-entry ledger is not
+  // consumed by repeated Cmd+Z on the same stroke).
+  const aquarelleStrokeEditIdsRef = useRef<Map<number, number>>(new Map());
   // 261028-k03i: keyIds whose base was RECOVERED (inverted out of the display),
   // not recorded at the key's first scripted stroke. A recovered base is
   // session-only — it is filtered from the snapshot save so a mistake can never
@@ -4668,6 +4682,55 @@ export function PhysicsPaintStudio() {
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
   });
+  // 261029-lsr: the ONE replay entry every script-backed undo/redo goes
+  // through — the `aquarelle-script` route and a recorded stroke's Cmd+Z.
+  // `invalidateLivePixels` runs FIRST (inside the orchestrator, synchronously,
+  // before any await): `applyAquarelleTimeline` force-flushes pending live-pixel
+  // captures at its own first await, so a capture queued before the undo must
+  // already be dead by then. Durable-base recovery precedes the edit build
+  // (R-1: recovery bumps `aquarelleStrokesRevision`, so an edit built earlier
+  // would carry a stale `after.revision`). The guard block runs BEFORE the
+  // playback stop: a refused Cmd+Z must neither kill a queued capture nor stop
+  // playback (D-07).
+  const runScriptReplay = useCallback(async ({
+    direction,
+    editId,
+    prepare,
+    onStep,
+  }: {
+    direction: AquarelleReplayDirection;
+    editId?: number;
+    prepare?: () => number | null;
+    onStep?: (step: AquarelleReplayStep) => void;
+  }): Promise<boolean> => {
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    rotoCachedPlayback.stop();
+    return runAquarelleScriptReplay({
+      direction,
+      editId,
+      onStep,
+      ports: {
+        invalidate: () => {
+          rotoPersistence.invalidateLivePixels(playFrame);
+        },
+        ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame),
+        prepare,
+        restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
+        resetSheet: () => {
+          aquarelleResetSheetRef.current?.();
+        },
+        rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+        rollback: (revert) => {
+          restoreAquarelleSnapshotRaw(revert);
+        },
+        notify: () => { rotoScript.notifySourceRevision(); },
+        publishOwner: () => { applyFrameModuleState(playFrame); },
+      },
+    });
+  }, [isPhysicalMutationLocked, rotoScript, rotoPersistence]);
   const rotoMoveHistory = useRotoPhysicalEditHistory<RotoEditableState>({
     identity: launchContext ? {
       launchOperationId: launchContext.operationId,
@@ -4734,22 +4797,54 @@ export function PhysicsPaintStudio() {
     // 261022-pim: one watercolor delete + re-bake is one ledger command. The
     // snapshot swap is revision-authoritative (a newer script mutation fails
     // closed), and the re-bake runs through the SAME shared Apply path.
+    // 261029-lsr: a RECORDED stroke's paint undo/redo takes the same path — the
+    // live sheet is reset and re-baked from the mutated script, so the frame
+    // can never drift from its bake. Unrecorded strokes keep `undoPaint()`.
     aquarelleScriptHistory: {
-      replay: async (editId, direction) => {
-        const revert = restoreAquarelleEditSnapshot(editId, direction);
-        if (revert === null) return false;
-        const playFrame = launchContextRef.current?.startFrame ?? 0;
-        aquarelleResetSheetRef.current?.();
-        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-        if (!ok) {
-          restoreAquarelleSnapshotRaw(revert);
-          return false;
+      replay: (editId, direction) => runScriptReplay({ direction, editId }),
+      // R-2: no tombstone term — a just-deleted stroke still answers true so its
+      // REDO can route through the script.
+      hasRecordedStroke: (mutationId) => getRecordedAquarelleStroke(mutationId) !== undefined,
+      // The `onStep` stream is the discriminator for a failed replay:
+      // `enteredReplay` false means the guard block refused before the module
+      // ran (no step emitted) — nothing happened, so a transient refusal must
+      // NOT consume the recorded edit. `reachedRebake` true is the only proof
+      // the restore succeeded and `restoreAquarelleSnapshotRaw` therefore ran,
+      // so the re-anchor is confined to that self-inflicted revision drift and
+      // never forgives a foreign script mutation. `enteredReplay &&
+      // !reachedRebake` is a CACHED id the ledger can no longer serve (most
+      // commonly a 10-entry eviction) — dropping it lets the next Cmd+Z rebuild
+      // the edit from live state instead of replaying a dead id forever. Redo
+      // needs a live cached edit by construction, so a failed redo simply
+      // retries the same id and never drops.
+      replayStroke: async (mutationId, direction) => {
+        let enteredReplay = false;
+        let reachedRebake = false;
+        const onStep = (step: AquarelleReplayStep) => {
+          if (step === 'invalidate') enteredReplay = true;
+          if (step === 'rebake') reachedRebake = true;
+        };
+        const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
+        const ok = cached !== undefined
+          ? await runScriptReplay({ direction, editId: cached, onStep })
+          : direction === 'redo'
+            ? false
+            : await runScriptReplay({
+              direction,
+              onStep,
+              prepare: () => {
+                const created = beginAquarelleStrokeUndoEdit(mutationId);
+                if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
+                return created;
+              },
+            });
+        if (ok) return true;
+        if (direction === 'undo' && enteredReplay) {
+          const editId = aquarelleStrokeEditIdsRef.current.get(mutationId);
+          const reanchored = reachedRebake && editId !== undefined && reanchorAquarelleEditRevision(editId, direction);
+          if (!reanchored) aquarelleStrokeEditIdsRef.current.delete(mutationId);
         }
-        rotoScript.notifySourceRevision();
-        // quick-261025-awl (D-02/D-03): an aquarelle undo/redo can add or
-        // remove the frame's last stroke — republish the captured frame.
-        applyFrameModuleState(playFrame);
-        return true;
+        return false;
       },
     },
     // 261027-klx: watercolor's controller undo/redo moves the live sheet and

@@ -39,6 +39,8 @@ const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCan
 // 261022-pim: the Water color stroke select surface — overlay leaf + layer mount.
 const aquarelleCanvasLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
 const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/AquarelleStrokeOverlay.tsx', import.meta.url)), 'utf8');
+// 261029-lsr: the ONE script-replay orchestration the Studio's route delegates to.
+const aquarelleScriptReplay = readFileSync(fileURLToPath(new URL('./roto/aquarelleScriptReplay.ts', import.meta.url)), 'utf8');
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
@@ -3213,15 +3215,45 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayStart).toBeGreaterThan(-1);
     const replayPort = studio.slice(replayStart, studio.indexOf('undoPaint:', replayStart));
 
-    expect(replayPort).toContain('const revert = restoreAquarelleEditSnapshot(editId, direction);');
-    expect(replayPort).toContain('if (revert === null) return false;');
-    expect(replayPort).toContain('aquarelleResetSheetRef.current?.();');
-    expect(replayPort).toContain('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
-    expect(replayPort).not.toContain('applyCurrentScript');
-    expect(replayPort).toContain('restoreAquarelleSnapshotRaw(revert);');
-    expect(replayPort).toContain('return false;');
-    expect(replayPort).toContain('rotoScript.notifySourceRevision();');
-    expect(replayPort).not.toContain('physicalEditCoordinator');
+    // 261029-lsr: the route delegates the ONE orchestration and answers the
+    // recorded-stroke question (R-2: no tombstone term — a deleted stroke's
+    // REDO must still route through the script).
+    expect(replayPort).toContain('replay: (editId, direction) => runScriptReplay({ direction, editId }),');
+    expect(replayPort).toContain('hasRecordedStroke: (mutationId) =>');
+    expect(replayPort).toContain('replayStroke: async (mutationId, direction) =>');
+    // The onStep stream classifies a failed replay: a post-rebake failure
+    // re-anchors the cached edit, a cached id the ledger can no longer serve
+    // is dropped so the next Cmd+Z rebuilds it.
+    expect(replayPort).toContain("if (direction === 'undo' && enteredReplay)");
+    expect(replayPort).toContain("if (step === 'invalidate') enteredReplay = true;");
+    expect(replayPort).toContain('reanchorAquarelleEditRevision(editId, direction)');
+    expect(replayPort).toContain('aquarelleStrokeEditIdsRef.current.delete(mutationId)');
+    expect(replayPort.indexOf('reanchorAquarelleEditRevision(editId, direction)'))
+      .toBeLessThan(replayPort.indexOf('aquarelleStrokeEditIdsRef.current.delete(mutationId)'));
+    expect(replayPort.split('aquarelleStrokeEditIdsRef.current.delete(mutationId)').length - 1).toBe(1);
+
+    const runReplayStart = studio.indexOf('const runScriptReplay = useCallback(');
+    expect(runReplayStart).toBeGreaterThan(-1);
+    const runReplay = studio.slice(
+      runReplayStart,
+      studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', runReplayStart),
+    );
+    expect(runReplay).toContain('restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir)');
+    expect(runReplay).toContain('aquarelleResetSheetRef.current?.();');
+    expect(runReplay).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    expect(runReplay).toContain('restoreAquarelleSnapshotRaw(revert)');
+    expect(runReplay).toContain('rotoScript.notifySourceRevision();');
+    expect(runReplay.indexOf('rotoPersistence.invalidateLivePixels(playFrame)'))
+      .toBeLessThan(runReplay.indexOf('aquarelleResetSheetRef.current?.();'));
+    // A refused replay must not stop playback (D-07).
+    expect(runReplay.indexOf('isPhysicalMutationLocked()'))
+      .toBeLessThan(runReplay.indexOf('rotoCachedPlayback.stop();'));
+    expect(runReplay).not.toContain('applyCurrentScript');
+    expect(runReplay).not.toContain('physicalEditCoordinator');
+
+    // The two fail-closed literals the route used to carry now live in the module.
+    expect(aquarelleScriptReplay).toContain('if (revert === null) return false;');
+    expect(aquarelleScriptReplay).toContain('ports.rollback(revert);');
   });
 
   it('wires the Delete/Backspace action and the A tool cycle (watercolor only)', () => {
@@ -4104,12 +4136,19 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(refreshIndex).toBeGreaterThan(clearRefusalIndex);
     expect(nextReturnIndex).toBeGreaterThan(refreshIndex);
 
-    const replayStart = studio.indexOf('replay: async (editId, direction) => {');
-    const replayEnd = studio.indexOf('return true;', replayStart);
-    const replay = studio.slice(replayStart, replayEnd);
-    expect(replay).toContain('rotoScript.notifySourceRevision();');
-    expect(replay.indexOf('applyFrameModuleState(playFrame);'))
-      .toBeGreaterThan(replay.indexOf('rotoScript.notifySourceRevision();'));
+    // 261029-lsr: the replay body moved into `runScriptReplay` + the shared
+    // orchestration module; the route row above pins that helper.
+    const runReplayStart = studio.indexOf('const runScriptReplay = useCallback(');
+    expect(runReplayStart).toBeGreaterThan(-1);
+    const runReplay = studio.slice(
+      runReplayStart,
+      studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', runReplayStart),
+    );
+    expect(runReplay).toContain('notify: () => { rotoScript.notifySourceRevision(); }');
+    expect(runReplay).toContain('publishOwner: () => { applyFrameModuleState(playFrame); }');
+    // The notify -> owner-publish ordering now lives in the module.
+    expect(aquarelleScriptReplay.indexOf('ports.notify();'))
+      .toBeLessThan(aquarelleScriptReplay.indexOf('ports.publishOwner();'));
   });
 
   it('republishes on clearActiveSource, clearCanvas and every Memory purge seam', () => {

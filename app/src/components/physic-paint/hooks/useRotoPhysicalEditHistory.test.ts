@@ -3020,6 +3020,8 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
     const pendingOperationId = signal<string | null>(null);
     const availability = signal({ undo: 0, redo: 0 });
     const replay = vi.fn<(editId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
+    const hasRecordedStroke = vi.fn<(mutationId: number) => boolean>(() => false);
+    const replayStroke = vi.fn<(mutationId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
     const undoPaint = vi.fn(() => true);
     const redoPaint = vi.fn(() => true);
     const state = { current: snapshot([record('A', 0)], 'A', 0) };
@@ -3050,11 +3052,20 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
         replaceRecords: () => ({ ok: true }),
       },
       getLiveSourceSnapshot: () => state.current,
-      aquarelleScriptHistory: { replay },
+      aquarelleScriptHistory: { replay, hasRecordedStroke, replayStroke },
       undoPaint,
       redoPaint,
     });
-    return { availability, replay, undoPaint, redoPaint, executePhysicalEdit, history };
+    return {
+      availability,
+      replay,
+      hasRecordedStroke,
+      replayStroke,
+      undoPaint,
+      redoPaint,
+      executePhysicalEdit,
+      history,
+    };
   }
 
   it('recordAquarelleScriptEdit pushes exactly one entry and clears redo', async () => {
@@ -3118,5 +3129,292 @@ describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 
     expect(await harness.history.undo()).toBe(true);
     expect(harness.replay).toHaveBeenLastCalledWith(45, 'undo');
     expect(harness.availability.value).toEqual({ undo: 0, redo: 2 });
+  });
+});
+
+// 261029-lsr: a RECORDED stroke's undo/redo is script-authoritative — the
+// ledger routes it through `replayStroke` (script edit + re-bake) and never
+// `undoPaint()` / `redoPaint()`. Unrecorded strokes keep the engine-only
+// route byte-for-byte. The auto-key composite's stroke half is gated by the
+// same predicate, and its rollback uses the inverse SCRIPT replay (after a
+// reset the engine history is a re-bake history — P1).
+describe('261029-lsr recorded-stroke routing', () => {
+  interface RoutingHarnessOptions {
+    current?: RotoPhysicalEditSnapshot<null>;
+    recordedStroke?: boolean;
+    rejectReplay?: boolean;
+    undoPaintResult?: boolean;
+    redoPaintResult?: boolean;
+    replayStrokeResults?: boolean[];
+  }
+
+  function snapshotWithCapacity(
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    selectedKeyId: string,
+    selectedAppFrame: number,
+    capacity: number,
+  ): RotoPhysicalEditSnapshot<null> {
+    return { ...snapshot(records, selectedKeyId, selectedAppFrame), capacity };
+  }
+
+  function createRoutingHarness(options: RoutingHarnessOptions = {}) {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const events: string[] = [];
+    const state = { current: options.current ?? snapshot([record('A', 0)], 'A', 0) };
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      events.push(`replay-${input.operationKind}`);
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      if (options.rejectReplay) return false;
+      const source = state.current;
+      state.current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const queuedStrokeResults = [...(options.replayStrokeResults ?? [])];
+    const hasRecordedStroke = vi.fn((_mutationId: number) => options.recordedStroke ?? false);
+    const replayStroke = vi.fn(async (_mutationId: number, direction: 'undo' | 'redo') => {
+      events.push(`replayStroke-${direction}`);
+      return queuedStrokeResults.length > 0 ? queuedStrokeResults.shift()! : true;
+    });
+    const replay = vi.fn<(editId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
+    const undoPaint = vi.fn(() => {
+      events.push('undoPaint');
+      return options.undoPaintResult ?? true;
+    });
+    const redoPaint = vi.fn(() => {
+      events.push('redoPaint');
+      return options.redoPaintResult ?? true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      aquarelleScriptHistory: { replay, hasRecordedStroke, replayStroke },
+      undoPaint,
+      redoPaint,
+    });
+    return {
+      acceptedOutput,
+      availability,
+      events,
+      executePhysicalEdit,
+      hasRecordedStroke,
+      replayStroke,
+      replay,
+      undoPaint,
+      redoPaint,
+      history,
+      state,
+    };
+  }
+
+  function acceptPasteKey(
+    harness: ReturnType<typeof createRoutingHarness>,
+    before: RotoPhysicalEditSnapshot<null>,
+    after: RotoPhysicalEditSnapshot<null>,
+  ) {
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'coordinator-minted-op-77',
+      operationKind: 'paste-key',
+      historyProvenance: null,
+    };
+  }
+
+  it('paint undo with a recorded stroke replays the script and never calls undoPaint', async () => {
+    const harness = createRoutingHarness({ recordedStroke: true });
+    harness.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    harness.history.observePaintMutation(401, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.replayStroke).toHaveBeenLastCalledWith(401, 'undo');
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.replay).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('a refused script replay leaves the paint stacks untouched', async () => {
+    const harness = createRoutingHarness({ recordedStroke: true, replayStrokeResults: [false] });
+    harness.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    harness.history.observePaintMutation(402, 'paint');
+
+    expect(await harness.history.undo()).toBe(false);
+    // Never falls back to the engine tile undo after a refused replay (P1).
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('an unrecorded paint undo/redo keeps the engine route, optimistic rollback included', async () => {
+    const failed = createRoutingHarness({ undoPaintResult: false });
+    failed.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    failed.history.observePaintMutation(403, 'paint');
+    expect(await failed.history.undo()).toBe(false);
+    expect(failed.undoPaint).toHaveBeenCalledTimes(1);
+    expect(failed.replayStroke).not.toHaveBeenCalled();
+    expect(failed.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    const ok = createRoutingHarness();
+    ok.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    ok.history.observePaintMutation(404, 'paint');
+    expect(await ok.history.undo()).toBe(true);
+    expect(ok.undoPaint).toHaveBeenCalledTimes(1);
+    expect(ok.replayStroke).not.toHaveBeenCalled();
+    expect(ok.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('paint redo is symmetric for both arms', async () => {
+    const recorded = createRoutingHarness({ recordedStroke: true });
+    recorded.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    recorded.history.observePaintMutation(405, 'paint');
+    expect(await recorded.history.undo()).toBe(true);
+    expect(await recorded.history.redo()).toBe(true);
+    expect(recorded.replayStroke).toHaveBeenLastCalledWith(405, 'redo');
+    expect(recorded.redoPaint).not.toHaveBeenCalled();
+    expect(recorded.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    const unrecorded = createRoutingHarness();
+    unrecorded.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    unrecorded.history.observePaintMutation(406, 'paint');
+    expect(await unrecorded.history.undo()).toBe(true);
+    expect(await unrecorded.history.redo()).toBe(true);
+    expect(unrecorded.redoPaint).toHaveBeenCalledTimes(1);
+    expect(unrecorded.replayStroke).not.toHaveBeenCalled();
+    expect(unrecorded.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('auto-key undo/redo with a recorded stroke routes the stroke half through the script', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createRoutingHarness({ current: after, recordedStroke: true });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(407, 'paint');
+
+    expect(await harness.history.undo()).toBe(true);
+    // The stroke removal runs FIRST — as a SCRIPT replay, never undoPaint().
+    expect(harness.events).toEqual(['replayStroke-undo', 'replay-undo']);
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+    expect(harness.state.current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+    ]);
+
+    expect(await harness.history.redo()).toBe(true);
+    // The key replay runs FIRST, then the stroke's script redo.
+    expect(harness.events).toEqual([
+      'replayStroke-undo',
+      'replay-undo',
+      'replay-redo',
+      'replayStroke-redo',
+    ]);
+    expect(harness.redoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('auto-key undo rolls a recorded stroke back through the inverse script replay', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createRoutingHarness({
+      current: after,
+      recordedStroke: true,
+      rejectReplay: true,
+    });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(408, 'paint');
+
+    expect(await harness.history.undo()).toBe(false);
+    // Never redoPaint() after a script reset — the inverse SCRIPT replay.
+    expect(harness.events).toEqual(['replayStroke-undo', 'replay-undo', 'replayStroke-redo']);
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.redoPaint).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('auto-key redo with a recorded stroke fails closed when the stroke redo fails', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createRoutingHarness({
+      current: after,
+      recordedStroke: true,
+      replayStrokeResults: [true, false],
+    });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(409, 'paint');
+    expect(await harness.history.undo()).toBe(true);
+
+    expect(await harness.history.redo()).toBe(false);
+    expect(harness.events).toEqual([
+      'replayStroke-undo',
+      'replay-undo',
+      'replay-redo',
+      'replayStroke-redo',
+    ]);
+    expect(harness.redoPaint).not.toHaveBeenCalled();
+    // The composite resolves by the KEY half's own acceptance pathway (the
+    // pre-existing D-14 rule: an accepted key replay moves the entry) — the
+    // refused stroke redo only fails the return, it never moves the ledger
+    // itself and never falls back to the engine redo.
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('auto-key undo/redo with an unrecorded stroke keeps the engine calls', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createRoutingHarness({ current: after });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(410, 'paint');
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    expect(harness.replayStroke).not.toHaveBeenCalled();
+
+    expect(await harness.history.redo()).toBe(true);
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo', 'replay-redo', 'redoPaint']);
+    expect(harness.replayStroke).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
   });
 });
