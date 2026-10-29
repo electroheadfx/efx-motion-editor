@@ -4743,9 +4743,19 @@ export function PhysicsPaintStudio() {
     tileHistory?: boolean;
   }): Promise<boolean> => {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
-    if (isPhysicalMutationLocked()) return false;
-    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
-    if (isAquarelleScriptEditInFlight()) return false;
+    // TEMP (261029-lsr UAT row 4): name the refusing guard.
+    if (isPhysicalMutationLocked()) {
+      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: 'physical-lock', direction, editId: editId ?? null, tileHistory });
+      return false;
+    }
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) {
+      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: rotoScript.applying.peek() ? 'applying' : 'mutation-lock', direction, editId: editId ?? null, tileHistory });
+      return false;
+    }
+    if (isAquarelleScriptEditInFlight()) {
+      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: 'in-flight', direction, editId: editId ?? null, tileHistory });
+      return false;
+    }
     rotoCachedPlayback.stop();
     // WR-01: hold the in-flight flag across the WHOLE replay (set after the
     // guard so a re-entrant call still refuses itself, before the first await):
@@ -4918,7 +4928,18 @@ export function PhysicsPaintStudio() {
         // `aquarelleStrokesOnFrame`) so its history entry is never consumed
         // while the current frame's pixels cannot change.
         const stroke = getRecordedAquarelleStroke(mutationId);
-        if (!stroke || (stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0)) return false;
+        if (!stroke || (stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0)) {
+          recordAquarelleRenderSplitEvent('undo-probe', {
+            stage: 'stroke-route',
+            outcome: 'refused',
+            direction,
+            mutationId,
+            hasStroke: stroke !== undefined,
+            strokeFrame: stroke?.playFrame ?? null,
+            launchFrame: launchContextRef.current?.startFrame ?? null,
+          });
+          return false;
+        }
         let enteredReplay = false;
         let reachedRebake = false;
         const onStep = (step: AquarelleReplayStep) => {
@@ -4954,9 +4975,20 @@ export function PhysicsPaintStudio() {
                 // stroke's Cmd+Z would be a silent no-op (261029-lsr UAT row 1).
                 const created = beginAquarelleStrokeUndoEdit(mutationId, true);
                 if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
+                recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-prepare', mutationId, created });
                 return created;
               },
             });
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'stroke-route',
+          outcome: 'replay',
+          direction,
+          mutationId,
+          ok,
+          cached: cached !== undefined,
+          enteredReplay,
+          reachedRebake,
+        });
         if (ok) return true;
         if (enteredReplay) {
           const editId = aquarelleStrokeEditIdsRef.current.get(mutationId);
