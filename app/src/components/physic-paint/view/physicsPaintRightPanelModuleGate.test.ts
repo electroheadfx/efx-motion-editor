@@ -92,22 +92,31 @@ function expectMountsBehindWatercolorGate(region: string, component: string): vo
 }
 
 describe('single-engine right panel (261027-klx)', () => {
-  it('Brush tab body is mounted again and everything it mounts stays watercolor-gated', () => {
-    // 261028-k03d: the Brush tab is the catalog + the top-bar response
-    // (Size + the seven globals). The Settings clone and the Lift section are
-    // gone — Settings owns the response block, the top bar owns Lift.
+  it('Brush tab body keeps its watercolor gate and its catalog behind it', () => {
+    // 261029-hy2: the Brush tab is the Settings entry point + the catalog.
+    // The Settings clone (Size + globals) and the Lift section are gone —
+    // Settings owns the response block, the top bar owns Lift.
     const body = stripComments(brushTabSource);
     const gateAt = body.indexOf("activeModule.value === 'watercolor'");
     expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
 
     expectMountsBehindWatercolorGate(body, 'WatercolorBrushLibrary');
-    expectMountsBehindWatercolorGate(body, 'AquarelleGlobalsPanel');
-    expect(body, 'Settings content stays in the Settings tab').not.toMatch(
+    expect(body, 'the globals clone left the Brush tab').not.toMatch(
+      /<AquarelleGlobalsPanel\b/,
+    );
+    expect(body, 'Settings content stays in the Settings sheet').not.toMatch(
       /<BrushResponsePanel\b/,
     );
     expect(body, 'Lift controls stay in the top bar').not.toMatch(/<LiftShapePicker\b/);
     expect(body, 'BrushModuleSection is not mounted in the Brush tab').not.toMatch(
       /<BrushModuleSection\b/,
+    );
+    // The Settings button is the ONE entry point into the floating sheet.
+    expect(body, 'the tab carries the Settings button').toContain(
+      'data-testid="brush-tab-open-settings"',
+    );
+    expect(body, 'the button opens the Settings sheet').toContain(
+      'setAquarelleSettingsModalOpen(true)',
     );
     // The panel mounts the Brush tab arm again.
     expect(stripComments(panelSource), 'the Brush tab body is mounted').toMatch(
@@ -115,7 +124,10 @@ describe('single-engine right panel (261027-klx)', () => {
     );
   });
 
-  it('Settings tab mounts BrushResponsePanel behind its watercolor gate (I-11 / D)', () => {
+  it('Settings content still mounts BrushResponsePanel behind its watercolor gate — the sheet body', () => {
+    // 261029-hy2: the Settings TAB is retired, but RightPanelSettingsTab stays
+    // on disk and is mounted by the floating Settings sheet. This case guards
+    // that sheet's body (the component is unchanged).
     const body = stripComments(settingsTabSource);
     const gateAt = body.indexOf("activeModule.value === 'watercolor'");
     expect(gateAt, 'Settings tab keeps its watercolor gate').toBeGreaterThan(-1);
@@ -195,19 +207,20 @@ describe('single-engine right panel (261027-klx)', () => {
     expect(paperTabBody, 'RightPanelPaperTab stays ungated').not.toMatch(/activeModule/);
   });
 
-  it('top-pane tab row is fixed to Color + Brush + Settings + Paper + Memory', () => {
+  it('top-pane tab row is fixed to Color + Brush + Paper + Memory', () => {
     // 261018-cy1 + I-11 / D retired Actions; 261027-klx removed the
     // mode-derived variant entirely. 261028-k03c D2 reinstated the Brush tab
     // (261027-gh9g had retired it). quick-261023-ors: 'memory' is LAST.
+    // 261029-hy2: the Settings tab is retired into the floating sheet.
     expect(panelSource, 'top-pane tab list').toContain(
-      "['color', 'brush', 'settings', 'paper', 'memory']",
+      "['color', 'brush', 'paper', 'memory']",
     );
     expect(panelSource, 'no brush-mode tab list').not.toContain("['color', 'paper', 'memory']");
     expect(panelSource, 'no actions id in the tab list').not.toMatch(
       /\[\s*'color',\s*'actions'/,
     );
     expect(panelSource, 'topPaneTab union carries the live tabs').toContain(
-      "useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>",
+      "useState<'color' | 'brush' | 'paper' | 'memory'>",
     );
     expect(panelSource, 'no mode-derived settings gate').not.toContain('isWatercolorModule');
     expect(panelSource, 'no stale brush-mode fallback').not.toContain(
@@ -216,7 +229,7 @@ describe('single-engine right panel (261027-klx)', () => {
     // Labels stay the human names (no Watercolor tab).
     expect(panelSource, 'Color label stays').toContain("color: 'Color'");
     expect(panelSource, 'Brush label is back').toContain("brush: 'Brush'");
-    expect(panelSource, 'Settings label stays').toContain("settings: 'Settings'");
+    expect(panelSource, 'the settings tab id is gone').not.toContain("settings: 'Settings'");
     expect(panelSource, 'Paper label stays').toContain("paper: 'Paper'");
     expect(panelSource, 'Memory label').toContain("memory: 'Memory'");
     // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).

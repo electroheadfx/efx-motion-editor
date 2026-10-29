@@ -3,49 +3,40 @@
 //  row 6). Water color only.
 //
 //  261028-k03d: the tab is the brush CATALOG plus the brush
-//  response the top bar exposes (Size + the seven globals). The
-//  Settings-tab clone (the eight response multipliers) and the
-//  Lift section are gone — the Settings tab keeps the response
-//  block and the top bar keeps the Lift controls, so no control
-//  has two homes.
+//  response the top bar exposes.
+//
+//  261029-hy2: the Settings tab is retired. The tab's FIRST child
+//  is now the Settings button that opens the floating Settings
+//  sheet (the eight response multipliers); a 15px gap separates
+//  it from the catalog. The cloned Brush size slider and the
+//  globals panel are removed — neither control has a second home
+//  here (globals stay in the Paint tool tab).
 //
 //  261018-0ox I-10: adopted into PhysicsPaintRightPanel.
 //  The activeModule branch stays inside this tab component.
 // ============================================================
 
+import { SlidersHorizontal } from 'lucide-preact';
 import { activeModule } from '../../shared/activeModule';
-import { SliderStepper } from '../../shared/SliderStepper';
-import {
-  aquarelleParams,
-  setAquarelleParam,
-} from './aquarelleRecordState';
-import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
+import { setAquarelleSettingsModalOpen } from './aquarelleRecordState';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 
 export function RightPanelBrushTab() {
   if (activeModule.value === 'watercolor') {
-    // Narrow signal read (efx-preact-reactivity rule 5).
-    const size = aquarelleParams.value.size;
     return (
       <div data-testid="right-panel-brush-tab" data-module="watercolor">
-        <WatercolorBrushLibrary />
-
-        <div class="physics-paint-option-group">
-          <div class="physics-paint-option-row">
-            <SliderStepper
-              id="brush-tab-brush-size"
-              label="Brush size"
-              value={size}
-              onChange={(value) => setAquarelleParam('size', Math.max(1, Math.min(80, Math.round(value))))}
-              step={1}
-              min={1}
-              max={80}
-              ariaLabel="Brush size"
-            />
-          </div>
+        <div class="physics-paint-brush-tab-body">
+          <button
+            type="button"
+            class="physics-paint-text-button physics-paint-brush-tab-settings"
+            data-testid="brush-tab-open-settings"
+            onClick={() => setAquarelleSettingsModalOpen(true)}
+          >
+            <SlidersHorizontal size={13} aria-hidden="true" />
+            Settings
+          </button>
+          <WatercolorBrushLibrary />
         </div>
-
-        <AquarelleGlobalsPanel />
       </div>
     );
   }

@@ -1450,9 +1450,13 @@ button.destructive {
   padding: 0 14px 14px;
 }
 
-/* I-11 follow-up: Settings tab gets a 10px top inset above the response rows. */
-.physics-paint-options-tab-panel-settings {
-  padding-top: 10px;
+/* 261029-hy2: the Brush tab body — the Settings button flush at the top, a
+   15px gap, then the brush grid. The gap lives here, never as a grid margin. */
+.physics-paint-brush-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 0;
 }
 
 /* quick-261023-ors: Memory tab (read-only script-memory gauge + confirmed

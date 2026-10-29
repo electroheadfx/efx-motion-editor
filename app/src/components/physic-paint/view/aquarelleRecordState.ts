@@ -118,6 +118,12 @@ export const aquarelleBrushMenuAnchor = signal<{ left: number; top: number } | n
  */
 export const aquarelleBrushMenuTarget = signal<'brush' | 'lift'>('brush');
 export const aquarelleBrushModalOpen = signal(false);
+/**
+ * 261029-hy2: the floating Settings sheet (the retired Settings tab's content)
+ * opened from the top of the right sidebar's Brush tab. Studio UI state only —
+ * never persisted.
+ */
+export const aquarelleSettingsModalOpen = signal(false);
 
 /**
  * 261027-k6j — the top-bar "Script" session switch. On (default) = the
@@ -155,6 +161,12 @@ export function setAquarelleBrushMenuOpen(
 export function setAquarelleBrushModalOpen(open: boolean): void {
   if (aquarelleBrushModalOpen.value === open) return;
   aquarelleBrushModalOpen.value = open;
+}
+
+/** Compare-then-write (efx-preact-reactivity rule 3). */
+export function setAquarelleSettingsModalOpen(open: boolean): void {
+  if (aquarelleSettingsModalOpen.value === open) return;
+  aquarelleSettingsModalOpen.value = open;
 }
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */

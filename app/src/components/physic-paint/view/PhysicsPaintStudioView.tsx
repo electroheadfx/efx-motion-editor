@@ -11,6 +11,7 @@ import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
+import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
@@ -422,6 +423,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               mechanics and seats inside the canvas region (no clip, so it can
               be dragged over the side panels). */}
           {!pickerOpen ? <PhysicsPaintBrushModal /> : null}
+          {/* 261029-hy2: the floating Settings sheet (the retired Settings
+              tab's content) shares the same canvas-region seat and picker
+              step-aside. */}
+          {!pickerOpen ? <PhysicsPaintSettingsModal /> : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

@@ -13,7 +13,6 @@ import { aquarelleParams } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
 import { RightPanelBrushTab } from './RightPanelBrushTab';
-import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelMemoryTab } from './RightPanelMemoryTab';
 import { RightPanelTrackTab } from './RightPanelTrackTab';
@@ -112,13 +111,14 @@ const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
 const TOP_PANE_TAB_LABELS: Readonly<
-  Record<'color' | 'brush' | 'settings' | 'paper' | 'memory', string>
+  Record<'color' | 'brush' | 'paper' | 'memory', string>
 > = Object.freeze({
   color: 'Color',
   // 261028-k03c D2: the Brush tab is back (261027-gh9g had retired it) — the
-  // catalog, Size, the globals, the response multipliers and the Lift section.
+  // catalog plus the Settings entry point.
+  // 261029-hy2: the Settings TAB is retired — its content moved into the
+  // floating Settings sheet opened from the top of this tab.
   brush: 'Brush',
-  settings: 'Settings',
   paper: 'Paper',
   // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
   memory: 'Memory',
@@ -206,13 +206,14 @@ export function PhysicsPaintRightPanel({
   // removal leaves Water color as the only module, so there is no mode-derived
   // variant left.
   // quick-261023-ors: 'memory' is LAST.
-  const topPaneTabs = ['color', 'brush', 'settings', 'paper', 'memory'] as ReadonlyArray<
-    'color' | 'brush' | 'settings' | 'paper' | 'memory'
+  const topPaneTabs = ['color', 'brush', 'paper', 'memory'] as ReadonlyArray<
+    'color' | 'brush' | 'paper' | 'memory'
   >;
-  // A stale tab id can never be selected: the union only holds live tabs.
+  // A stale tab id can never be selected: the union only holds live tabs, and
+  // the tab is component-local state (never persisted) — no migration needed.
   const [topPaneTab, setTopPaneTab] =
-    useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>('color');
-  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' | 'memory' = topPaneTab;
+    useState<'color' | 'brush' | 'paper' | 'memory'>('color');
+  const effectiveTopPaneTab: 'color' | 'brush' | 'paper' | 'memory' = topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -322,10 +323,6 @@ export function PhysicsPaintRightPanel({
             // multipliers live in Settings — no control has two homes.
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
               <RightPanelBrushTab />
-            </div>
-          ) : effectiveTopPaneTab === 'settings' ? (
-            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">
-              <RightPanelSettingsTab />
             </div>
           ) : effectiveTopPaneTab === 'paper' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Paper">

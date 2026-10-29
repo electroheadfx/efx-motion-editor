@@ -197,15 +197,21 @@ describe('panel split shell — right-panel chrome (261018-f15)', () => {
     expect(block).toMatch(/padding:\s*10px 10px/);
   });
 
-  it('Settings tab gets a 10px top inset (I-11 follow-up)', () => {
+  it('Brush tab body separates the Settings button from the catalog by 15px (261029-hy2)', () => {
     const css = readFileSync(
       resolve(__dirname, '../physicsPaintStudio.css'),
       'utf8',
     );
-    const start = css.indexOf('.physics-paint-options-tab-panel-settings {');
-    expect(start, 'settings panel rule must exist').toBeGreaterThan(-1);
+    const start = css.indexOf('.physics-paint-brush-tab-body {');
+    expect(start, 'brush-tab body rule must exist').toBeGreaterThan(-1);
     const block = css.slice(start, css.indexOf('}', start));
-    expect(block).toContain('padding-top: 10px');
+    expect(block).toContain('display: flex');
+    expect(block).toContain('flex-direction: column');
+    expect(block).toContain('gap: 15px');
+    // The retired Settings-tab padding rule is gone with the tab.
+    expect(css, 'the retired Settings panel rule left the stylesheet').not.toContain(
+      '.physics-paint-options-tab-panel-settings',
+    );
   });
 });
 
@@ -276,11 +282,11 @@ describe('panel split shell — shared block', () => {
 });
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
-  it('Brush tab is the catalog + top-bar response; Settings keeps the multipliers (k03d)', () => {
+  it('Brush tab is the Settings button + the catalog; the sheet keeps the multipliers (261029-hy2)', () => {
     // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
-    // 261028-k03d (supersedes the k03c D2 clone): catalog + Size + the seven
-    // globals only. The Settings clone and the Lift section were removed —
-    // Settings owns the eight multipliers, the top bar owns Lift.
+    // 261029-hy2: the tab is the Settings button + the catalog. The Size
+    // slider clone and the globals panel left; the eight multipliers live in
+    // the floating Settings sheet, the top bar owns Lift.
     const brushTabSource = readFileSync(
       resolve(__dirname, 'RightPanelBrushTab.tsx'),
       'utf8',
@@ -288,10 +294,13 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     expect(brushTabSource, 'brush tab mounts WatercolorBrushLibrary').toMatch(
       /<WatercolorBrushLibrary\b/,
     );
-    expect(brushTabSource, 'brush tab mounts the shared globals panel').toMatch(
+    expect(brushTabSource, 'the globals clone left the Brush tab').not.toMatch(
       /<AquarelleGlobalsPanel\b/,
     );
-    expect(brushTabSource, 'response multipliers stay in Settings').not.toMatch(
+    expect(brushTabSource, 'the Size slider clone left the Brush tab').not.toContain(
+      'brush-tab-brush-size',
+    );
+    expect(brushTabSource, 'response multipliers stay in the Settings sheet').not.toMatch(
       /<BrushResponsePanel\b/,
     );
     expect(brushTabSource, 'Lift controls stay in the top bar').not.toMatch(
@@ -301,40 +310,45 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     // The component file stays on disk (I-01 home; not deleted by I-10).
     expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
 
+    // Order: the Settings button is the FIRST child, the catalog follows.
+    const wrapperAt = brushTabSource.indexOf('physics-paint-brush-tab-body');
+    const settingsButtonAt = brushTabSource.indexOf('data-testid="brush-tab-open-settings"');
+    const libraryAt = brushTabSource.indexOf('<WatercolorBrushLibrary');
+    expect(wrapperAt, 'the tab body wrapper exists').toBeGreaterThan(-1);
+    expect(settingsButtonAt, 'the Settings button mounts').toBeGreaterThan(wrapperAt);
+    expect(libraryAt, 'the catalog follows the Settings button').toBeGreaterThan(settingsButtonAt);
+    expect(brushTabSource, 'the button opens the Settings sheet').toContain(
+      'setAquarelleSettingsModalOpen(true)',
+    );
+
     const settingsTabSource = readFileSync(
       resolve(__dirname, 'RightPanelSettingsTab.tsx'),
       'utf8',
     );
-    expect(settingsTabSource, 'Settings tab mounts BrushResponsePanel').toMatch(
+    expect(settingsTabSource, 'the retired tab body still mounts BrushResponsePanel').toMatch(
       /<BrushResponsePanel\b/,
     );
 
-    // 261028-k03c D2: the panel mounts the Brush tab again (top pane order
-    // brush → settings → paper; Memory stays last).
+    // The floating Settings sheet is the retired tab's new home.
+    const sheetSource = readFileSync(
+      resolve(__dirname, 'PhysicsPaintSettingsModal.tsx'),
+      'utf8',
+    );
+    expect(sheetSource, 'the sheet mounts the retired Settings tab body').toMatch(
+      /<RightPanelSettingsTab\b/,
+    );
+
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    expect(panelSource, 'Brush tab is mounted again').toMatch(/<RightPanelBrushTab\b/);
-    // 261027-klx: the top pane is fixed — Water color is the only module, so
-    // the settings arm no longer carries a mode gate.
-    const settingsTabStart = panelSource.indexOf("effectiveTopPaneTab === 'settings'");
-    expect(settingsTabStart, 'settings-tab branch must exist').toBeGreaterThan(-1);
-    const paperTabStart = panelSource.indexOf(
-      "effectiveTopPaneTab === 'paper'",
-      settingsTabStart,
+    expect(panelSource, 'Brush tab is mounted').toMatch(/<RightPanelBrushTab\b/);
+    // 261029-hy2: the Settings tab branch is gone from the panel.
+    expect(panelSource, 'no settings-tab branch in the panel').not.toContain(
+      "effectiveTopPaneTab === 'settings'",
     );
-    expect(paperTabStart, 'paper-tab branch must follow settings').toBeGreaterThan(
-      settingsTabStart,
+    expect(panelSource, 'no padded settings panel class').not.toContain(
+      'physics-paint-options-tab-panel-settings',
     );
-    const settingsBranch = panelSource.slice(settingsTabStart, paperTabStart);
-    expect(
-      settingsBranch,
-      'panel mounts RightPanelSettingsTab in the settings branch',
-    ).toMatch(/<RightPanelSettingsTab\b/);
-    expect(
-      settingsBranch,
-      'settings branch carries the padded panel class',
-    ).toContain('physics-paint-options-tab-panel-settings');
   });
 });
