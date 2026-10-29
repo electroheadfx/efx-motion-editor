@@ -24,13 +24,18 @@ import {
 const PRE_UNDO_BYTES = new Uint8Array([1, 2, 3, 4, 5, 6]);
 /** The post-undo bake. */
 const POST_UNDO_BYTES = new Uint8Array([9, 9, 8, 8, 7, 7]);
+/** The one revert object `restore` hands back — identity proves the rollback. */
+const REVERT_TOKEN: { kind: 'revert' } = { kind: 'revert' };
 
 interface WorldOptions {
   ensureBase?: 'ok' | 'reject';
   prepare?: number | null;
-  restore?: 'revert' | 'null';
-  reset?: 'clear' | 'noop';
+  restore?: 'revert' | 'null' | 'throw';
+  reset?: 'clear' | 'noop' | 'throw';
   rebake?: 'ok' | 'false' | 'reject';
+  rollback?: 'ok' | 'throw';
+  notify?: 'ok' | 'throw';
+  publishOwner?: 'ok' | 'throw';
 }
 
 interface World {
@@ -41,6 +46,8 @@ interface World {
   tail: string[];
   emitted: AquarelleReplayStep[];
   restoreCalls: Array<{ editId: number; direction: AquarelleReplayDirection }>;
+  /** Every `revert` handed to `rollback`, in call order. */
+  rollbackArgs: Array<{ kind: 'revert' }>;
   displayBytes: () => Uint8Array | null;
   publishedBytes: () => Uint8Array | null;
 }
@@ -53,6 +60,7 @@ function createWorld(options: WorldOptions = {}): World {
   const tail: string[] = [];
   const emitted: AquarelleReplayStep[] = [];
   const restoreCalls: Array<{ editId: number; direction: AquarelleReplayDirection }> = [];
+  const rollbackArgs: Array<{ kind: 'revert' }> = [];
 
   const ports: AquarelleReplayPorts<{ kind: 'revert' }> = {
     invalidate: () => {
@@ -70,10 +78,12 @@ function createWorld(options: WorldOptions = {}): World {
     restore: (editId, direction) => {
       steps.push('restore');
       restoreCalls.push({ editId, direction });
-      return options.restore === 'null' ? null : { kind: 'revert' };
+      if (options.restore === 'throw') throw new Error('restore exploded');
+      return options.restore === 'null' ? null : REVERT_TOKEN;
     },
     resetSheet: () => {
       steps.push('reset');
+      if (options.reset === 'throw') throw new Error('reset exploded');
       if (options.reset !== 'noop') sheetBytes = null;
     },
     rebake: async () => {
@@ -83,14 +93,18 @@ function createWorld(options: WorldOptions = {}): World {
       publishedBytes = POST_UNDO_BYTES;
       return true;
     },
-    rollback: () => {
+    rollback: (revert) => {
       steps.push('rollback');
+      rollbackArgs.push(revert);
+      if (options.rollback === 'throw') throw new Error('rollback exploded');
     },
     notify: () => {
       tail.push('notify');
+      if (options.notify === 'throw') throw new Error('notify exploded');
     },
     publishOwner: () => {
       tail.push('publish-owner');
+      if (options.publishOwner === 'throw') throw new Error('publish exploded');
     },
   };
 
@@ -100,6 +114,7 @@ function createWorld(options: WorldOptions = {}): World {
     tail,
     emitted,
     restoreCalls,
+    rollbackArgs,
     // The live sheet wins while it holds pixels — never the bake.
     displayBytes: () => sheetBytes ?? publishedBytes,
     publishedBytes: () => publishedBytes,
@@ -205,5 +220,47 @@ describe('261029-lsr aquarelle script replay orchestration', () => {
 
     expect(world.steps).not.toContain('prepare');
     expect(world.restoreCalls).toEqual([{ editId: 42, direction: 'redo' }]);
+  });
+
+  // WR-02: "never throws to the caller" is a real contract — every port after
+  // the swap is guarded, and a post-bake publish failure cannot undo the undo.
+  it('returns false without throwing when the restore itself throws (nothing was swapped)', async () => {
+    const world = createWorld({ restore: 'throw' });
+    await expect(run(world)).resolves.toBe(false);
+    expect(world.steps).not.toContain('reset');
+    expect(world.steps).not.toContain('rebake');
+    expect(world.steps).not.toContain('rollback');
+    expect(world.tail).toEqual([]);
+  });
+
+  it('rolls the swap back exactly once with the restore revert when resetSheet throws', async () => {
+    const world = createWorld({ reset: 'throw' });
+    await expect(run(world)).resolves.toBe(false);
+    expect(world.steps).not.toContain('rebake');
+    expect(world.steps.filter((step) => step === 'rollback')).toHaveLength(1);
+    expect(world.rollbackArgs).toHaveLength(1);
+    expect(world.rollbackArgs[0]).toBe(REVERT_TOKEN);
+    expect(world.tail).toEqual([]);
+  });
+
+  it('never throws when the raw rollback itself throws after a failed bake', async () => {
+    const world = createWorld({ rebake: 'false', rollback: 'throw' });
+    await expect(run(world)).resolves.toBe(false);
+    expect(world.steps).toContain('rollback');
+    expect(world.rollbackArgs).toHaveLength(1);
+    expect(world.rollbackArgs[0]).toBe(REVERT_TOKEN);
+    expect(world.tail).toEqual([]);
+  });
+
+  it('still resolves true when notify or publishOwner throws after a successful bake', async () => {
+    const notifyThrows = createWorld({ notify: 'throw' });
+    await expect(run(notifyThrows)).resolves.toBe(true);
+    expect(notifyThrows.steps).not.toContain('rollback');
+    expect(notifyThrows.displayBytes()).toEqual(POST_UNDO_BYTES);
+
+    const publishThrows = createWorld({ publishOwner: 'throw' });
+    await expect(run(publishThrows)).resolves.toBe(true);
+    expect(publishThrows.steps).not.toContain('rollback');
+    expect(publishThrows.displayBytes()).toEqual(POST_UNDO_BYTES);
   });
 });

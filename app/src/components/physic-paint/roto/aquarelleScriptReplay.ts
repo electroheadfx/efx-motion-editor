@@ -47,7 +47,7 @@ export interface AquarelleReplayPorts<Revert> {
   resetSheet: () => void;
   /** Re-bake through the shared Apply path; false/rejection = fail closed. */
   rebake: () => Promise<boolean>;
-  /** Undo the snapshot swap after a failed bake (unguarded raw rollback). */
+  /** Undo the snapshot swap after a failed reset or bake (raw rollback). */
   rollback: (revert: Revert) => void;
   notify: () => void;
   publishOwner: () => void;
@@ -92,14 +92,30 @@ export async function runAquarelleScriptReplay<Revert>(
   }
   if (editId === undefined) return false;
 
-  // (4) Revision-authoritative swap; null fails closed, nothing done.
+  // (4) Revision-authoritative swap; null fails closed, nothing done. A throw
+  // here is still BEFORE any swap was installed, so there is nothing to revert.
   onStep?.('restore');
-  const revert = ports.restore(editId, direction);
+  let revert: Revert | null = null;
+  try {
+    revert = ports.restore(editId, direction);
+  } catch {
+    return false;
+  }
   if (revert === null) return false;
 
-  // (5) The live sheet must be gone before the bake publishes.
+  // (5) The live sheet must be gone before the bake publishes. The swap is
+  // installed now, so a throw here must put the script back exactly once.
   onStep?.('reset');
-  ports.resetSheet();
+  try {
+    ports.resetSheet();
+  } catch {
+    try {
+      ports.rollback(revert);
+    } catch {
+      // The raw restore itself failed; nothing else can be done here.
+    }
+    return false;
+  }
 
   // (6) One shared Apply; a false or rejected bake rolls the script back.
   onStep?.('rebake');
@@ -110,12 +126,26 @@ export async function runAquarelleScriptReplay<Revert>(
     ok = false;
   }
   if (!ok) {
-    ports.rollback(revert);
+    try {
+      ports.rollback(revert);
+    } catch {
+      // The raw restore itself failed; nothing else can be done here.
+    }
     return false;
   }
 
-  // (7) Notify, then let the single owner resolver republish the frame.
-  ports.notify();
-  ports.publishOwner();
+  // (7) Notify, then let the single owner resolver republish the frame. Both
+  // are publish-side effects: a throw must never roll back a successful bake
+  // (the sheet already IS the post-undo truth).
+  try {
+    ports.notify();
+  } catch {
+    // Best effort: the bake committed, so the undo still succeeded.
+  }
+  try {
+    ports.publishOwner();
+  } catch {
+    // Best effort: the bake committed, so the undo still succeeded.
+  }
   return true;
 }
