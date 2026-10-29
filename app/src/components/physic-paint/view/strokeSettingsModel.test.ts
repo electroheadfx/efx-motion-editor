@@ -57,6 +57,7 @@ import {
   setAquarelleSelectMode,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
+import { resetFloatingSheetStack } from './floatingSheetStack';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 const dialogSource = readFileSync(
@@ -135,10 +136,13 @@ beforeEach(() => {
   // signals now — an un-reset case would leak into the next one.
   aquarelleStrokeSettingsDismissed.value = false;
   setAquarelleStrokeTypeFilter('all');
+  // The sheet order is module-global; the Escape gate reads it.
+  resetFloatingSheetStack();
 });
 
 afterEach(() => {
   delete (globalThis as unknown as { window?: unknown }).window;
+  resetFloatingSheetStack();
 });
 
 type AnyVNode = VNode<Record<string, any>>;
@@ -209,9 +213,18 @@ function renderDialogTab(
 }
 
 function runDialogEffect(): void {
-  const effect = hooks.effects[0];
-  expect(effect, 'the dialog registers its Escape effect').toBeDefined();
-  effect!();
+  // 261029-hy2 CR-01/WR-03: the dialog registers TWO effects — the
+  // open-transition raise, then the front-gated Escape listener. Run them in
+  // order until the keydown handler is installed; the raise must run too, so
+  // the sheet is front and the Escape gate lets it consume the key.
+  const effects = [...hooks.effects];
+  expect(effects.length, 'the dialog registers its effects').toBeGreaterThan(0);
+  for (const effect of effects) {
+    const before = windowListeners.length;
+    effect();
+    if (windowListeners.length > before) return;
+  }
+  expect.fail('the dialog registers its Escape effect');
 }
 
 function dispatchEscape(target: unknown): { prevented: boolean; stopped: boolean } {
@@ -222,6 +235,9 @@ function dispatchEscape(target: unknown): { prevented: boolean; stopped: boolean
     target,
     preventDefault: () => { prevented = true; },
     stopPropagation: () => { stopped = true; },
+    // WR-03: a winning handler stops its same-node siblings with
+    // stopImmediatePropagation (stopPropagation cannot suppress them).
+    stopImmediatePropagation: () => { stopped = true; },
   };
   for (const listener of [...windowListeners]) listener(event);
   return { prevented, stopped };
