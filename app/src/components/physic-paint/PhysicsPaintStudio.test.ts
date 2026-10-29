@@ -3344,10 +3344,12 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).toContain("if (direction === 'redo' && cached !== undefined) {");
     expect(replayPort).toContain("reanchorAquarelleEditRevision(cached, 'redo');");
     expect(replayPort.indexOf("reanchorAquarelleEditRevision(cached, 'redo');"))
-      .toBeLessThan(replayPort.indexOf('let ok = await attempt(cached !== undefined);'));
+      .toBeLessThan(replayPort.indexOf('let ok = await attempt(cached !== undefined, tileHistory);'));
     // 261029-lsr UAT: a stale cached tile history rebuilds and retries once
-    // instead of consuming a click that visibly does nothing.
+    // instead of consuming a click that visibly does nothing; a redo whose
+    // tile history is exhausted re-bakes from the recorded edit.
     expect(replayPort).toContain("if (!ok && cached !== undefined && direction === 'undo') {");
+    expect(replayPort).toContain("if (!ok && cached !== undefined && direction === 'redo') {");
   });
 
   it('stamps the script epoch and keeps the replay order', () => {
@@ -4481,7 +4483,7 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
 
   it('pins the refreshed probe build marker and the script-bake-composite event', () => {
     const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
-    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-8'");
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-9'");
   });
 });
 
@@ -4892,7 +4894,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
     // Every entry point (event, alpha proof, install, PNG dump) checks this.
     expect(capture).toContain('return import.meta.env.DEV === true;');
-    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-8'");
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-9'");
     // The Studio display sampler is DEV-gated; the Move provenance build
     // marker names this diagnostic revision so a stale window is detectable.
     expect(studio).toContain('if (!import.meta.env.DEV) return;');

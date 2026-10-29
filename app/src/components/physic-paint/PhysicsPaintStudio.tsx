@@ -4930,7 +4930,13 @@ export function PhysicsPaintStudio() {
       },
       // R-2: no tombstone term — a just-deleted stroke still answers true so its
       // REDO can route through the script.
-      hasRecordedStroke: (mutationId) => getRecordedAquarelleStroke(mutationId) !== undefined,
+      // 261029-lsr UAT: the registry drops a stroke when its key vanishes (the
+      // auto-key undo deletes that key), but the ledger's undo edit still owns
+      // the script side — a redo must keep routing through the script.
+      hasRecordedStroke: (mutationId) => (
+        getRecordedAquarelleStroke(mutationId) !== undefined
+        || aquarelleStrokeEditIdsRef.current.has(mutationId)
+      ),
       // The `onStep` stream is the discriminator for a failed replay:
       // `enteredReplay` false means the guard block refused before the module
       // ran (no step emitted) — nothing happened, so a transient refusal must
@@ -4954,7 +4960,15 @@ export function PhysicsPaintStudio() {
         // `aquarelleStrokesOnFrame`) so its history entry is never consumed
         // while the current frame's pixels cannot change.
         const stroke = getRecordedAquarelleStroke(mutationId);
-        if (!stroke || (stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0)) {
+        // Foreign frame: the recorded-script timeline is GLOBAL while the bake
+        // is per-frame — replaying here would pop the entry with no visible
+        // change (CR-02).
+        const foreignFrame = stroke !== undefined
+          && (stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0);
+        // A cached undo edit outlives the registry entry when the stroke's key
+        // was deleted (the auto-key composite) — its script side is still live.
+        const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
+        if (foreignFrame || (stroke === undefined && cached === undefined)) {
           recordAquarelleRenderSplitEvent('undo-probe', {
             stage: 'stroke-route',
             outcome: 'refused',
@@ -4972,7 +4986,6 @@ export function PhysicsPaintStudio() {
           if (step === 'invalidate') enteredReplay = true;
           if (step === 'rebake') reachedRebake = true;
         };
-        const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
         // 261029-lsr UAT: a STACKED redo. Every earlier undo moved the global
         // `aquarelleStrokesRevision`, so this edit's live side (registered at
         // its own undo, or built then) no longer matches — without re-seating
@@ -4996,24 +5009,31 @@ export function PhysicsPaintStudio() {
           recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-prepare', mutationId, created });
           return created;
         };
-        const attempt = async (useCached: boolean): Promise<boolean> => {
+        const attempt = async (useCached: boolean, useTile: boolean): Promise<boolean> => {
           if (useCached) {
-            return runScriptReplay({ direction, editId: cached, onStep, tileHistory, skipCapture });
+            return runScriptReplay({ direction, editId: cached, onStep, tileHistory: useTile, skipCapture });
           }
           if (direction === 'redo') return false;
-          return runScriptReplay({ direction, onStep, tileHistory, skipCapture, prepare: prepareUndo });
+          return runScriptReplay({ direction, onStep, tileHistory: useTile, skipCapture, prepare: prepareUndo });
         };
-        let ok = await attempt(cached !== undefined);
+        let ok = await attempt(cached !== undefined, tileHistory);
         // 261029-lsr UAT: a cached tile history can no longer apply (the sheet
-        // moved since its undo was recorded) — the old code returned false and
-        // the operator's NEXT Cmd+Z rebuilt a fresh edit and worked, which read
-        // as "one invisible stroke to undo". Rebuild and retry once so one
-        // click is enough.
+        // or the engine's own history moved since the edit was recorded). The
+        // old code returned false and the operator's NEXT click did the work,
+        // which read as "one invisible stroke to undo". Retry once with a full
+        // script re-bake, which does not depend on engine tile state.
         if (!ok && cached !== undefined && direction === 'undo') {
           // The fresh build REPLACES the cached id on success; a refused build
           // falls through to the cleanup below, which drops the stale id.
           recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-route-retry', mutationId });
-          ok = await attempt(false);
+          ok = await attempt(false, false);
+        }
+        if (!ok && cached !== undefined && direction === 'redo') {
+          // Stacked redos exhaust the engine's tile history after a couple of
+          // steps; the recorded edit still re-bakes the frame from the script.
+          reanchorAquarelleEditRevision(cached, 'redo');
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-route-rebake-retry', mutationId });
+          ok = await attempt(true, false);
         }
         recordAquarelleRenderSplitEvent('undo-probe', {
           stage: 'stroke-route',
