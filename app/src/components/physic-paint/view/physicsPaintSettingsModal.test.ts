@@ -225,6 +225,22 @@ describe('261029-hy2 floating Settings sheet', () => {
     );
   });
 
+  it('Escape passes through when an input inside the sheet owns the key (261029-hy2 WR-02)', () => {
+    // Same source-pin idiom as the Escape test above (the hooks mock makes
+    // the listener unreachable here): the stroke dialog's editable guard is
+    // ported verbatim, keyed to this sheet's testid.
+    expect(SHEET_SOURCE).toContain("const editable = target?.closest?.('input, textarea, [contenteditable=\"true\"]');");
+    expect(SHEET_SOURCE).toContain("const insideDialog = (editable as { closest?: (selector: string) => unknown })");
+    expect(SHEET_SOURCE).toContain(".closest?.('[data-testid=\"physics-settings-modal\"]');");
+    expect(SHEET_SOURCE).toContain('if (insideDialog) return;');
+    // The guard precedes the close write, so a typo in a multiplier never
+    // dismisses the sheet.
+    const guardAt = SHEET_SOURCE.indexOf('if (insideDialog) return;');
+    const closeAt = SHEET_SOURCE.indexOf('setAquarelleSettingsModalOpen(false);');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(closeAt);
+  });
+
   it('the store setter is compare-then-write', () => {
     // efx-preact-reactivity rule 3: an unchanged value never wakes subscribers.
     let wakeups = 0;

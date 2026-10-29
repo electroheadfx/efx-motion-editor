@@ -113,6 +113,18 @@ export function PhysicsPaintSettingsModal() {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // 261029-hy2 WR-02: an input/textarea/contenteditable INSIDE the sheet
+      // owns the key — the same guard the stroke dialog applies. Typing a
+      // multiplier value must never dismiss the panel.
+      const target = event.target as {
+        closest?: (selector: string) => unknown;
+      } | null;
+      const editable = target?.closest?.('input, textarea, [contenteditable="true"]');
+      if (editable) {
+        const insideDialog = (editable as { closest?: (selector: string) => unknown })
+          .closest?.('[data-testid="physics-settings-modal"]');
+        if (insideDialog) return;
+      }
       setAquarelleSettingsModalOpen(false);
       event.preventDefault();
       event.stopPropagation();
