@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T13:18:21.440Z"
+last_updated: "2026-10-29T13:19:48.075Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick task 261027-klx closed — engine-1 Brush module removed; native UAT approved 2026-10-27
-state_head: 5b748234c98657cdccb5e5dce586eda8cf48f605
+state_head: c6be81d687485a80681f88600bd5ca267f1a3337
 progress:
   total_phases: 3
   completed_phases: 3
@@ -610,6 +610,7 @@ None yet.
 | 261029-eur | Rework the Lift (UI name "Eraser") stroke-editing UX: derived Edit switch, All/Eraser/Paint stroke-type filter, red footprint ribbon overlay, Lift→Eraser copy | 2026-10-29 | 18c90365 | [261029-eur-rework-the-lift-ui-name-eraser-stroke-ed](./quick/261029-eur-rework-the-lift-ui-name-eraser-stroke-ed/) |
 | 261029-hy2 | UI enhancements: right-pinned top-bar settings, Settings tab into a floating sheet, slimmer Brush tab with Settings button, unified Brush/Eraser tool pill and popover, brush-modal Close fix, click-to-front sheet stacking | 2026-10-29 | 690e7b14 | [261029-hy2-ui-enhancements-move-all-time-top-bar-se](./quick/261029-hy2-ui-enhancements-move-all-time-top-bar-se/) |
 | 64 | Studio tool rail: blue hover, orange selected tool | 2026-10-29 | 5b748234 | — |
+| 65 | Palette: bright white ring + glow on the selected swatch | 2026-10-29 | c6be81d6 | — |
 
 ### Roadmap Evolution
 
