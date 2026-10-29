@@ -3295,7 +3295,19 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(gate).toBeGreaterThan(-1);
     // The refusal precedes every cached/uncached branch.
     expect(replayPort.indexOf('aquarelleStrokeEditIdsRef.current.get(mutationId);')).toBeGreaterThan(gate);
-    expect(replayPort.indexOf('beginAquarelleStrokeUndoEdit(mutationId)')).toBeGreaterThan(gate);
+    expect(replayPort.indexOf('beginAquarelleStrokeUndoEdit(mutationId, true)')).toBeGreaterThan(gate);
+  });
+
+  it('builds the stroke undo edit as the in-flight owner (UAT row 1)', () => {
+    // `runScriptReplay` sets the shared in-flight gate before the module runs,
+    // and the builder refuses while that gate is held. The replay owns the gate,
+    // so its build MUST pass `ownedInFlight` — without it `prepare` returns null
+    // and every recorded stroke's Cmd+Z is a silent no-op.
+    const replayStart = studio.indexOf('aquarelleScriptHistory: {');
+    const replayEnd = studio.indexOf('undoPaint:', replayStart);
+    const replayPort = studio.slice(replayStart, replayEnd);
+    expect(replayPort).toContain('beginAquarelleStrokeUndoEdit(mutationId, true)');
+    expect(replayPort).not.toContain('beginAquarelleStrokeUndoEdit(mutationId);');
   });
 
   it('stamps the script epoch and keeps the replay order', () => {

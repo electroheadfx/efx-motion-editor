@@ -922,6 +922,25 @@ describe('261029-lsr script-authoritative stroke undo edit', () => {
     expect(isAquarelleStrokeDeleted(9762)).toBe(false);
   });
 
+  it('builds the replay-owned edit while the shared in-flight gate is held (UAT row 1)', () => {
+    recordAquarelleStroke(9767, stroke({ points: [point(0.45, 0.5)], playFrame: 906 }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // A gesture builder still refuses while an edit is in flight.
+      expect(beginAquarelleStrokeUndoEdit(9767)).toBeNull();
+      // The replay HOLDS that gate, so its own build must succeed. This is the
+      // exact composition that made every recorded stroke's Cmd+Z a no-op.
+      const editId = beginAquarelleStrokeUndoEdit(9767, true);
+      expect(editId).not.toBeNull();
+      expect(restoreAquarelleEditSnapshot(editId as number, 'undo')).not.toBeNull();
+      expect(isAquarelleStrokeDeleted(9767)).toBe(true);
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+    expect(aquarelleStrokesRevision.value).toBeGreaterThan(revisionBefore);
+  });
+
   it('keeps global Dry events on the synthetic before side', () => {
     const dry = emitAquarelleDry(7);
     recordAquarelleStroke(9765, stroke({ points: [point(0.7, 0.5)], playFrame: 904 }));

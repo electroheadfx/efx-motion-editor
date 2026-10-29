@@ -639,8 +639,17 @@ export function beginAquarelleDeleteEdit(
  * already-tombstoned id, and a stroke the timeline does not carry (not
  * script-owned — no event to remove is no edit to make).
  */
-export function beginAquarelleStrokeUndoEdit(mutationId: number): number | null {
-  if (aquarelleScriptEditInFlight) return null;
+export function beginAquarelleStrokeUndoEdit(
+  mutationId: number,
+  /**
+   * 261029-lsr UAT row 1: `runScriptReplay` holds the shared in-flight gate for
+   * the WHOLE replay, so its own edit build must not be refused by it — the
+   * flag exists to stop a SECOND edit from interleaving, and the replay already
+   * holds it. Every gesture caller keeps the default refusal.
+   */
+  ownedInFlight = false,
+): number | null {
+  if (!ownedInFlight && aquarelleScriptEditInFlight) return null;
   if (!Number.isFinite(mutationId)) return null;
   if (getRecordedAquarelleStroke(mutationId) === undefined) return null;
   if (isAquarelleStrokeDeleted(mutationId)) return null;

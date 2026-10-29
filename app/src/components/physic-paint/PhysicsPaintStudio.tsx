@@ -4855,7 +4855,11 @@ export function PhysicsPaintStudio() {
               direction,
               onStep,
               prepare: () => {
-                const created = beginAquarelleStrokeUndoEdit(mutationId);
+                // `runScriptReplay` already holds the in-flight gate for this
+                // replay, so the build passes `ownedInFlight` — otherwise the
+                // builder's own guard would refuse the edit and every recorded
+                // stroke's Cmd+Z would be a silent no-op (261029-lsr UAT row 1).
+                const created = beginAquarelleStrokeUndoEdit(mutationId, true);
                 if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
                 return created;
               },
