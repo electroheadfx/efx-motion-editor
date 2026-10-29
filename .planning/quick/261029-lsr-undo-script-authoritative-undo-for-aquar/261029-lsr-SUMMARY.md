@@ -254,3 +254,33 @@ None — no external service configuration required.
 
 - All three task commits are ancestors of HEAD: `97dc79fd`, `c179ce82`, `162bd902`.
 - Both created source files exist on disk; this SUMMARY is intentionally left uncommitted for the orchestrator's docs commit.
+
+---
+
+## UAT Close-out (2026-10-29)
+
+**Native UAT rows 1-8 approved by the user.** The plan's automated work landed first (`ac6b3af4`); the native rows then drove seven follow-up fixes, each with its own regression pin and a green full suite:
+
+| Commit | Fix |
+| ------ | --- |
+| `1d906da6` | Auto-key composite undo survives its settle capture |
+| `fe501485` | Undo/redo are inert while cached playback runs (user decision: history depth stays 10) |
+| `b00e7405` | Stacked stroke edits undo repeatedly, not just the first (content-proven re-anchor + retry) |
+| `ce2dcab0` | The auto-key stroke half skips the throwaway post-replay capture |
+| `8621cca0` | The auto-key undo settles against the live revision it dispatched with |
+| `73bd39ac` | Replay targets drop a stale cross-frame selection (the document model cannot express it) |
+| `62bd1f72` | The pre-edit cursor is captured at the selected key, matching the parent's document rule |
+| `b8b1f12f` | Replay SOURCES compare structurally (re-bakes are not byte-deterministic); a stale stroke edit rebuilds and retries once |
+| `2455f66d` | A spent tile history falls back to a full re-bake; a stroke whose key was pruned stays redoable while its edit lives |
+| `093970b2` | TEMP undo probes retired; the tile-history stroke route stated as shipped behaviour |
+
+**Final behaviour**
+
+- A recorded stroke's undo/redo swaps the script edit and drives the pixels from the engine's tile history; if that history can no longer apply, the route re-bakes the frame from the script (one retry, same click).
+- The physical replay's SOURCE authority is structural (identity, frames, payload geometry, capacity, interpolation, loops, breaks). Pixel bytes are excluded because watercolor re-bakes are not byte-deterministic; the TARGET authority stays byte-strict.
+- Undo/redo during cached playback are inert; the ledger is untouched.
+- An auto-key composite undo is one command: script stroke half first (keyed by its recorded edit), then the key replay, settled against the live revision it dispatched with.
+
+**Residuals (unchanged)** — WR-03 (a redo whose edit fell out of the 10-entry ledger fails closed) and WR-04 (the auto-key compensating redo's result is not gating). Both are declared, fail-closed, and out of scope.
+
+**Verification at close** — full suite: 355 files passed / 2 skipped (357); 6365 tests passed / 1 skipped / 96 todo (6462). Typecheck clean.

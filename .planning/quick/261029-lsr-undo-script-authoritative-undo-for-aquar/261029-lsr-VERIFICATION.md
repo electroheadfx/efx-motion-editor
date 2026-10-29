@@ -193,3 +193,11 @@ No gaps. All 7 must-have truths are verified in the fixed state (`ac6b3af4`), al
 
 _Verified: 2026-10-29T15:53:46Z_
 _Verifier: Claude (gsd-verifier)_
+
+---
+
+## UAT Close-out (2026-10-29)
+
+The eight native UAT rows above were run by the user across rounds on `dev`. Rows 1-3 and 6-8 passed; rows 4-5 and the stacked-edit behaviour required follow-up fixes (see SUMMARY's UAT Close-out table, commits `1d906da6`..`093970b2`). **Final verdict: all rows approved.** The temporary probes used to diagnose the rounds are retired (`093970b2`); their `/tmp` report files are deleted.
+
+Verification at close: full suite 6365 passed / 1 skipped / 96 todo, typecheck clean.

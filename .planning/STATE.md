@@ -613,7 +613,7 @@ None yet.
 | 65 | Palette: bright white ring + glow on the selected swatch | 2026-10-29 | c6be81d6 | — |
 | 66 | Studio tool shortcuts: B/W/E/P pick tools, A enters Select, cycles Paint/Eraser/All, then leaves Select for Brush; F dry, C clear (confirm modal), D resets fg/bg swatch to black/white; Cmd/Ctrl arms retired; tooltips name the keys | 2026-10-29 | 95a6929a | — |
 | 261029-lel | Grey out the Water tool while the sheet has no standing water (script key, raster key, dry / after F); W is a silent no-op and Water falls back to Brush when the wet gate closes | 2026-10-29 | 5a35055c | [261029-lel-grey-out-the-water-aquarelle-tool-whenev](./quick/261029-lel-grey-out-the-water-aquarelle-tool-whenev/) |
-| 261029-lsr | UNDO — script-authoritative undo for aquarelle strokes: recorded strokes re-bake from the script on undo/redo, the live sheet resets, and a capture epoch blocks pre-undo pixels | 2026-10-29 | ac6b3af4 | [261029-lsr-undo-script-authoritative-undo-for-aquar](./quick/261029-lsr-undo-script-authoritative-undo-for-aquar/) |
+| 261029-lsr | UNDO — script-authoritative undo for aquarelle strokes: recorded strokes swap the script edit and use the engine tile history with a script re-bake fallback; replay sources compare structurally; auto-key composites undo/redo as one command — CLOSED, native UAT rows 1-8 approved 2026-10-29 | 2026-10-29 | 093970b2 | [261029-lsr-undo-script-authoritative-undo-for-aquar](./quick/261029-lsr-undo-script-authoritative-undo-for-aquar/) |
 
 ### Roadmap Evolution
 
