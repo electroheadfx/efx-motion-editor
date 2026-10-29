@@ -4825,6 +4825,12 @@ export function PhysicsPaintStudio() {
       // WITHOUT side without it, so a failed redo re-anchors the same way and
       // never drops.
       replayStroke: async (mutationId, direction) => {
+        // The recorded-script timeline is GLOBAL, but the re-bake is per-frame:
+        // a stroke recorded on another frame is refused (fail closed, mirroring
+        // `aquarelleStrokesOnFrame`) so its history entry is never consumed
+        // while the current frame's pixels cannot change.
+        const stroke = getRecordedAquarelleStroke(mutationId);
+        if (!stroke || (stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0)) return false;
         let enteredReplay = false;
         let reachedRebake = false;
         const onStep = (step: AquarelleReplayStep) => {

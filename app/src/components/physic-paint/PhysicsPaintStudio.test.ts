@@ -3274,6 +3274,21 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).toContain("if (!reanchored && direction === 'undo') aquarelleStrokeEditIdsRef.current.delete(mutationId);");
   });
 
+  it('refuses a recorded stroke from another frame before it can consume history (CR-02)', () => {
+    const replayStart = studio.indexOf('aquarelleScriptHistory: {');
+    const replayEnd = studio.indexOf('undoPaint:', replayStart);
+    const replayPort = studio.slice(replayStart, replayEnd);
+
+    // The recorded-script timeline is GLOBAL, the bake is per-frame: undoing a
+    // stroke recorded elsewhere would pop the entry with no visible change.
+    expect(replayPort).toContain('const stroke = getRecordedAquarelleStroke(mutationId);');
+    const gate = replayPort.indexOf('(stroke.playFrame ?? 0) !== (launchContextRef.current?.startFrame ?? 0)');
+    expect(gate).toBeGreaterThan(-1);
+    // The refusal precedes every cached/uncached branch.
+    expect(replayPort.indexOf('aquarelleStrokeEditIdsRef.current.get(mutationId);')).toBeGreaterThan(gate);
+    expect(replayPort.indexOf('beginAquarelleStrokeUndoEdit(mutationId)')).toBeGreaterThan(gate);
+  });
+
   it('stamps the script epoch and keeps the replay order', () => {
     // 261029-lsr (D-03): the capture gate's epoch is the live script revision —
     // a `peek` read inside a callback (no subscription, no render-body read).
