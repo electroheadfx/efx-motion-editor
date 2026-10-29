@@ -26,6 +26,10 @@ import {
   setAquarelleTool,
 } from './aquarelleRecordState';
 import {
+  aquarelleSelectMode,
+  setAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
+import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
   clearStrokeThumbCache,
@@ -316,6 +320,28 @@ describe('WatercolorBrushLibrary 15-card grid (I-03, 261027-gh9)', () => {
       onClick!();
       expect(aquarelleSelectedTipId.value, `pick ${id}`).toBe(id);
       expect(aquarelleActiveTool.value, `pick ${id} forces brush`).toBe('brush');
+    }
+  });
+
+  it('leaves Edit select mode on every brush pick (WR-03)', () => {
+    for (const id of ['round', 'hake'] as const) {
+      resetSelection();
+      setAquarelleSelectMode(true, 'lift');
+      expect(aquarelleSelectMode.value, 'Edit armed before the pick').toBe(true);
+      try {
+        const tree = renderLibrary();
+        const card = cardNodes(tree).find(
+          (c) => c.props?.['data-testid'] === `watercolor-brush-card-${id}`,
+        );
+        expect(card, `card ${id} must render`).toBeTruthy();
+        (card!.props as { onClick?: () => void }).onClick!();
+        // A pick must never strand select mode: the Edit switch unmounts with
+        // the Eraser cluster, so nothing visible could disarm it afterwards.
+        expect(aquarelleSelectMode.value, `pick ${id} leaves Edit mode`).toBe(false);
+        expect(aquarelleActiveTool.value, `pick ${id} forces brush`).toBe('brush');
+      } finally {
+        setAquarelleSelectMode(false);
+      }
     }
   });
 

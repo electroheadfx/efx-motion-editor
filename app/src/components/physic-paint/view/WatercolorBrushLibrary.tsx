@@ -17,6 +17,15 @@
 //  aquarelleActiveTool to 'brush' (Task 1 seam). Selection is the
 //  existing aquarelleSelectedTipId signal — applied in the click
 //  handler, never via useEffect.
+//
+//  261029-eur WR-03: a pick also leaves Edit (select) mode FIRST.
+//  The right-panel Brush tab and the floating brush modal render
+//  regardless of tool or select state, while the Edit switch only
+//  renders inside the Eraser cluster — flipping the tool to Brush
+//  without disarming select mode would strand it armed (painting
+//  blocked) with no visible exit. Mirrors the rail/tool-row law
+//  (`setAquarelleSelectMode(false)` before switching tool); the
+//  tool switch itself stays inside selectAquarelleTip.
 // ============================================================
 
 import {
@@ -27,6 +36,7 @@ import {
   aquarelleSelectedTipId,
   selectAquarelleTip,
 } from './aquarelleRecordState';
+import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
@@ -68,7 +78,11 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
       data-selected={props.selected ? 'true' : 'false'}
       aria-pressed={props.selected}
       title={preset.hint}
-      onClick={() => selectAquarelleTip(preset.id)}
+      onClick={() => {
+        // 261029-eur WR-03: leave Edit mode before the pick flips the tool.
+        setAquarelleSelectMode(false);
+        selectAquarelleTip(preset.id);
+      }}
     >
       <WatercolorBrushThumb
         presetId={preset.id}
