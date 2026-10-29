@@ -41,6 +41,7 @@ import {
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleTransformEdit,
+  cycleAquarelleStrokeTypeFilter,
   hitTestAquarelleStroke,
   listSelectableAquarelleStrokes,
   matchesAquarelleStrokeFilter,
@@ -535,6 +536,20 @@ describe('261029-eur stroke-type filter + Edit choke point', () => {
     } finally {
       setAquarelleSelectMode(false);
       clearScriptStrokeSelection();
+    }
+  });
+
+  it('cycleAquarelleStrokeTypeFilter walks Paint → Eraser → All → Paint', () => {
+    setAquarelleStrokeTypeFilter('paint');
+    try {
+      expect(cycleAquarelleStrokeTypeFilter()).toBe('lift');
+      expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+      expect(cycleAquarelleStrokeTypeFilter()).toBe('all');
+      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      expect(cycleAquarelleStrokeTypeFilter()).toBe('paint');
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
+    } finally {
+      setAquarelleStrokeTypeFilter('paint');
     }
   });
 

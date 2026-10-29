@@ -220,6 +220,20 @@ export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): v
 }
 
 /**
+ * 261029: the A key cycles the stroke-type filter in the SAME order as the
+ * dialog's segmented control — Paint → Eraser → All → Paint. Delegates to the
+ * ONE setter, so a cycle prunes the selection exactly like a segment click.
+ */
+export function cycleAquarelleStrokeTypeFilter(): AquarelleStrokeTypeFilter {
+  const current = aquarelleStrokeTypeFilter.peek();
+  const next: AquarelleStrokeTypeFilter = current === 'paint'
+    ? 'lift'
+    : current === 'lift' ? 'all' : 'paint';
+  setAquarelleStrokeTypeFilter(next);
+  return next;
+}
+
+/**
  * 261029-eur: the SINGLE select-mode entry/exit choke point.
  *
  * The filter is written BEFORE delegating: `setScriptSelectMode` early-returns

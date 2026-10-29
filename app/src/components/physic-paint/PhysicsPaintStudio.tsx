@@ -213,7 +213,6 @@ import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
-  aquarelleStrokeTypeFilter,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
@@ -221,6 +220,7 @@ import {
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
   beginAquarelleTransformEdit,
+  cycleAquarelleStrokeTypeFilter,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
   listSelectableAquarelleStrokes,
@@ -230,7 +230,6 @@ import {
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
-  setAquarelleStrokeSelection,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
@@ -2312,38 +2311,22 @@ export function PhysicsPaintStudio() {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
   // 261029: the Studio tool shortcuts. B / W / E pick a painting tool and leave
-  // Select mode; A cycles Select → Eraser → Select all → Brush. Every read is
-  // `.peek()` — the Studio render body never subscribes a selection signal.
+  // Select mode; A enters Select, then cycles the stroke-type filter
+  // Paint → Eraser → All. Every read is `.peek()` — the Studio render body
+  // never subscribes a selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'lift') => {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
   const handleCycleAquarelleSelect = useCallback(() => {
-    const frame = launchContextRef.current?.startFrame ?? 0;
-    const size = { width: canvasWidth, height: canvasHeight };
-    if (aquarelleSelectMode.peek()) {
-      // Select with every listed stroke highlighted is the cycle's LAST stop —
-      // the next press returns to Brush; any other Select state hands over to
-      // the Eraser.
-      const listed = listSelectableAquarelleStrokes(frame, size, aquarelleStrokeTypeFilter.peek());
-      const selected = scriptSelectedStrokeIds.peek();
-      const allSelected = listed.length > 0
-        && listed.every((stroke) => selected.has(stroke.mutationId));
-      setAquarelleSelectMode(false);
-      setAquarelleTool(allSelected ? 'brush' : 'lift');
+    if (!aquarelleSelectMode.peek()) {
+      // A scriptless key has nothing to select — the rail gate stays authoritative.
+      if (!watercolorMoveAvailable.peek()) return;
+      setAquarelleSelectMode(true);
       return;
     }
-    if (aquarelleActiveTool.peek() === 'lift') {
-      setAquarelleSelectMode(true, 'all');
-      setAquarelleStrokeSelection(
-        listSelectableAquarelleStrokes(frame, size, 'all').map((stroke) => stroke.mutationId),
-      );
-      return;
-    }
-    // A scriptless key has nothing to select — the rail gate stays authoritative.
-    if (!watercolorMoveAvailable.peek()) return;
-    setAquarelleSelectMode(true);
-  }, [canvasHeight, canvasWidth]);
+    cycleAquarelleStrokeTypeFilter();
+  }, []);
   // The Water color half of the same law: Select cannot stay armed on a key
   // with no script. Painting the first stroke creates the script and re-arms;
   // navigating to a scriptless key disarms. Same effect() precedent — no

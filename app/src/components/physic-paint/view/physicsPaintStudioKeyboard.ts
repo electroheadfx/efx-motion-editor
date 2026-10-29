@@ -39,7 +39,7 @@ export interface PhysicsPaintStudioKeyboardActions {
   swapFgBg?: () => void;
   /** Bare B / W / E: pick Brush / Water / Eraser and leave Select mode. */
   selectAquarelleTool?: (tool: 'brush' | 'water' | 'lift') => void;
-  /** Bare A: Select → Eraser → Select all → Brush. */
+  /** Bare A: enter Select, then cycle the stroke filter Paint → Eraser → All. */
   cycleAquarelleSelect?: () => void;
   /** Bare D: reset the swatch to a black foreground and white background. */
   resetFgBg?: () => void;
@@ -310,7 +310,8 @@ export function dispatchPhysicsPaintStudioKeyDown(
   }
 
     // Bare tool keys: B / W / E pick a painting tool and leave Select mode,
-    // A cycles Select → Eraser → Select all → Brush, D resets the swatch.
+    // A enters Select and cycles its stroke filter Paint → Eraser → All,
+    // D resets the swatch.
     // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
     // owned by the branches above, so these fire only on a bare keypress.
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {

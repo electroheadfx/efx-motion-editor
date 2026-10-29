@@ -693,7 +693,7 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
-  it('cycles Select on a bare A key', () => {
+  it('cycles the Select filter on a bare A key', () => {
     const { handlers, preventDefault } = dispatch('a', new TestHTMLElement('canvas') as unknown as EventTarget);
     expect(handlers.cycleAquarelleSelect).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();

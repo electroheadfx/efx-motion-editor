@@ -3049,7 +3049,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select (A) — click toggles Select on/off · A cycles Select → Eraser → Select all → Brush · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(watercolorRail).toContain('Select (A) — click toggles Select on/off · A enters Select, then cycles the filter Paint → Eraser → All · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
@@ -3236,7 +3236,8 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
-    // A cycles Select → Eraser → Select all → Brush; B / W / E pick a tool.
+    // A enters Select and cycles its filter Paint → Eraser → All; B / W / E
+    // pick a tool.
     expect(studio).toContain('cycleAquarelleSelect: handleCycleAquarelleSelect,');
     expect(studio).toContain('selectAquarelleTool: handleSelectAquarelleTool,');
     // 261027-klx: the Brush-mode Cmd→Move toggle left with engine 1's tool set.
