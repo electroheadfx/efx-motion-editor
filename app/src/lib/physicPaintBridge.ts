@@ -388,8 +388,30 @@ function createAcceptedPhysicalCommandSnapshot(input: {
 function sameAcceptedPhysicalCommandSnapshot(
   left: AcceptedPhysicalCommandSnapshot,
   right: AcceptedPhysicalCommandSnapshot,
+  ignoreRecordPayloadBytes = false,
 ): boolean {
-  return stableSerialize(left, new WeakSet<object>()) === stableSerialize(right, new WeakSet<object>());
+  if (!ignoreRecordPayloadBytes) {
+    return stableSerialize(left, new WeakSet<object>()) === stableSerialize(right, new WeakSet<object>());
+  }
+  // 261029-lsr: the SOURCE side of a replay compares the live document with the
+  // command's recorded outcome. Aquarelle re-bakes are not byte-deterministic —
+  // undoing a later stroke rewrites the frame's pixels through a fresh render —
+  // so strict byte equality refused faithful undos. Identity, frames, payload
+  // geometry, capacity, interpolation, loops and breaks stay strict.
+  const strip = (snapshot: AcceptedPhysicalCommandSnapshot) => ({
+    ...snapshot,
+    // The revision is a fingerprint of exactly the bytes being ignored.
+    revision: null,
+    records: snapshot.records.map((record) => ({
+      ...record,
+      payload: { ...record.payload, bytes: null },
+    })),
+    groupOverrideRecords: snapshot.groupOverrideRecords.map((record) => ({
+      ...record,
+      payload: { ...record.payload, bytes: null },
+    })),
+  });
+  return stableSerialize(strip(left), new WeakSet<object>()) === stableSerialize(strip(right), new WeakSet<object>());
 }
 
 // 46 UAT debug hook: field-level diff of a rejected replay-target snapshot.
@@ -1765,7 +1787,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     const expectedSourceSnapshot = provenance.historyDirection === 'undo'
       ? replayEntry.after
       : replayEntry.before;
-    if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
+    if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot, true)) {
       debugReplaySnapshotDiff(liveSourceSnapshot, expectedSourceSnapshot);
       return reject(`Roto physical replay source snapshot does not match the original accepted command.${replayDiffSuffix(liveSourceSnapshot, expectedSourceSnapshot)}`);
     }

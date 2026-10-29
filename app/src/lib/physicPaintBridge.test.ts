@@ -2828,6 +2828,124 @@ describe('physicPaintBridge', async () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(replayLease)).toBe(true);
   });
 
+  it('accepts a replay whose SOURCE differs only in re-baked pixel bytes', async () => {
+    // 261029-lsr UAT: watercolor re-bakes are not byte-deterministic. Undoing a
+    // later stroke rewrites the frame's pixels through a fresh render, so the
+    // live source legitimately differs from the recorded outcome in BYTES only.
+    // Identity, frames and geometry stay strict.
+    const layer = physicLayer();
+    mockLayers([layer]);
+    const records = [
+      makePhysicalRecord('A', 0),
+      makePhysicalRecord('B', 10),
+    ];
+    seedPhysicalDocument(layer.id, records);
+    projectStore.projectContextId.value = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    expect(launch.ok).toBe(true);
+    if (!launch.ok) return;
+
+    const commandLease = acquirePhysicalLease(layer.id, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+    expect(physicPaintStore.setRotoPhysicalSelection(layer.id, TEST_TRACK_ID, null, 0)).toEqual({ ok: true });
+    const beforeCommand = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!beforeCommand) throw new Error('Expected pre-command physical document.');
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      parentEndExclusive: carriedRotoPhysical(launch.data).capacity,
+      capacity: carriedRotoPhysical(launch.data).capacity,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) return;
+    const spacedRecords = resolution.proposal.orderedKeyIds.map((keyId) => {
+      const record = records.find((candidate) => candidate.keyId === keyId);
+      const appFrame = resolution.proposal.mapping.get(keyId);
+      if (!record || appFrame === undefined) throw new Error(`Missing spaced record ${keyId}`);
+      const { kind: _kind, ...moved } = movePhysicalRecord(record, appFrame);
+      return moved;
+    });
+    const accepted = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'rebake-source-command',
+      operationKind: 'force-spacing',
+      intent: { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      layerId: layer.id,
+      leaseToken: commandLease,
+      startFrame: 4,
+      launchOperationId: launch.data.operationId,
+      projectContextId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      expectedRevision: beforeCommand.revision,
+      records: spacedRecords,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      cursorAppFrame: 4,
+    });
+    expect(accepted.ok).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(commandLease)).toBe(true);
+
+    // Aquarelle re-bake: same identities and frames, different pixels.
+    const rebaked = physicPaintStore.getRotoRealKeyRecords(layer.id, TEST_TRACK_ID).map((record) => ({
+      ...record,
+      payload: { ...record.payload, bytes: testWebpBytes(btoa(`rebaked-${record.appFrame}`)) },
+    }));
+    const rebakedRevision = buildPhysicPaintRotoPhysicalRevision(
+      rebaked,
+      { enabled: false, mode: 'duplicate' },
+      [],
+      [],
+    );
+    const current = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!current) throw new Error('Expected accepted physical document.');
+    const replaced = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      ...current,
+      realKeyRecords: rebaked,
+      revision: rebakedRevision,
+    });
+    expect(replaced.ok).toBe(true);
+
+    const replayLease = acquirePhysicalLease(layer.id, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
+    const undo = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'rebake-source-undo',
+      operationKind: 'undo',
+      layerId: layer.id,
+      leaseToken: replayLease,
+      startFrame: 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      expectedRevision: rebakedRevision,
+      records: payloadRecords(beforeCommand),
+      interpolationEnabled: beforeCommand.interpolation.enabled,
+      interpolationMode: beforeCommand.interpolation.mode,
+      loopClips: beforeCommand.loopClips,
+      incomingInterpolationBreakKeyIds: beforeCommand.incomingInterpolationBreakKeyIds,
+      selectedKeyId: beforeCommand.selectedKeyId,
+      selectedAppFrame: beforeCommand.selectedKeyId === null ? null : beforeCommand.cursorAppFrame,
+      cursorAppFrame: beforeCommand.cursorAppFrame,
+      historyProvenance: {
+        historyCommandId: 'rebake-source-command',
+        historyDirection: 'undo',
+        sourceRevision: rebakedRevision,
+        targetRevision: beforeCommand.revision,
+      },
+    });
+
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID)).toEqual(beforeCommand);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(replayLease)).toBe(true);
+  });
+
   it('removes accepted command authorization when the layer launch authority is replaced', async () => {
     const layer = physicLayer();
     mockLayers([layer]);

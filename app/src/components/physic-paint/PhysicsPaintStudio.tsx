@@ -4986,26 +4986,35 @@ export function PhysicsPaintStudio() {
         // TEMP: the stroke route — and ONLY it — takes the engine's tile
         // history instead of a frame re-bake.
         const tileHistory = AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE;
-        const ok = cached !== undefined
-          ? await runScriptReplay({ direction, editId: cached, onStep, tileHistory, skipCapture })
-          : direction === 'redo'
-            ? false
-            : await runScriptReplay({
-              direction,
-              onStep,
-              tileHistory,
-              skipCapture,
-              prepare: () => {
-                // `runScriptReplay` already holds the in-flight gate for this
-                // replay, so the build passes `ownedInFlight` — otherwise the
-                // builder's own guard would refuse the edit and every recorded
-                // stroke's Cmd+Z would be a silent no-op (261029-lsr UAT row 1).
-                const created = beginAquarelleStrokeUndoEdit(mutationId, true);
-                if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
-                recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-prepare', mutationId, created });
-                return created;
-              },
-            });
+        const prepareUndo = () => {
+          // `runScriptReplay` already holds the in-flight gate for this
+          // replay, so the build passes `ownedInFlight` — otherwise the
+          // builder's own guard would refuse the edit and every recorded
+          // stroke's Cmd+Z would be a silent no-op (261029-lsr UAT row 1).
+          const created = beginAquarelleStrokeUndoEdit(mutationId, true);
+          if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-prepare', mutationId, created });
+          return created;
+        };
+        const attempt = async (useCached: boolean): Promise<boolean> => {
+          if (useCached) {
+            return runScriptReplay({ direction, editId: cached, onStep, tileHistory, skipCapture });
+          }
+          if (direction === 'redo') return false;
+          return runScriptReplay({ direction, onStep, tileHistory, skipCapture, prepare: prepareUndo });
+        };
+        let ok = await attempt(cached !== undefined);
+        // 261029-lsr UAT: a cached tile history can no longer apply (the sheet
+        // moved since its undo was recorded) — the old code returned false and
+        // the operator's NEXT Cmd+Z rebuilt a fresh edit and worked, which read
+        // as "one invisible stroke to undo". Rebuild and retry once so one
+        // click is enough.
+        if (!ok && cached !== undefined && direction === 'undo') {
+          // The fresh build REPLACES the cached id on success; a refused build
+          // falls through to the cleanup below, which drops the stale id.
+          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-route-retry', mutationId });
+          ok = await attempt(false);
+        }
         recordAquarelleRenderSplitEvent('undo-probe', {
           stage: 'stroke-route',
           outcome: 'replay',
