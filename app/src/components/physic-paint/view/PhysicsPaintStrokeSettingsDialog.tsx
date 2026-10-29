@@ -30,6 +30,7 @@ import {
   SHEET_ID_STROKE_SETTINGS,
   bringSheetToFront,
   closeSheetIfFront,
+  releaseSheet,
   sheetZIndex,
 } from './floatingSheetStack';
 import {
@@ -381,7 +382,12 @@ export function PhysicsPaintStrokeSettingsDialog({
   // handler to raise from — so the open transition itself is the raise seam.
   // A lifecycle effect, never a render body (efx-preact-reactivity rule 6).
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // A closed sheet must leave the order — a stale front id would make the
+      // front-only Escape gate inert for every sheet that is still open.
+      releaseSheet(SHEET_ID_STROKE_SETTINGS);
+      return;
+    }
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
   }, [open]);
 

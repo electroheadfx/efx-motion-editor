@@ -44,11 +44,25 @@ export function sheetZIndex(id: FloatingSheetId): number {
  * from a render body (efx-preact-reactivity rule 6). Compare-then-write: an
  * already-front id keeps the SAME array reference, so nothing re-renders.
  */
+const KNOWN_SHEET_IDS: ReadonlySet<FloatingSheetId> = new Set(INITIAL_ORDER);
+
 export function bringSheetToFront(id: FloatingSheetId): void {
+  if (!KNOWN_SHEET_IDS.has(id)) return;
   const order = floatingSheetOrder.value;
   if (order[order.length - 1] === id) return;
-  if (!order.includes(id)) return;
+  // A released (closed) sheet rejoins at the top when it opens again.
   floatingSheetOrder.value = [...order.filter((entry) => entry !== id), id];
+}
+
+/**
+ * Remove a CLOSED sheet from the order. Without this the front id outlives its
+ * sheet, and the front-only Escape gate then ignores the key for every sheet
+ * that is actually open. Compare-then-write; unknown ids are a no-op.
+ */
+export function releaseSheet(id: FloatingSheetId): void {
+  const order = floatingSheetOrder.value;
+  if (!order.includes(id)) return;
+  floatingSheetOrder.value = order.filter((entry) => entry !== id);
 }
 
 /**
@@ -70,6 +84,7 @@ export function isFrontSheet(id: FloatingSheetId): boolean {
 export function closeSheetIfFront(id: FloatingSheetId, close: () => void): boolean {
   if (!isFrontSheet(id)) return false;
   close();
+  releaseSheet(id);
   return true;
 }
 

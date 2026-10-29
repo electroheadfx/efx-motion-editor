@@ -18,6 +18,7 @@ import {
   closeSheetIfFront,
   floatingSheetOrder,
   isFrontSheet,
+  releaseSheet,
   resetFloatingSheetStack,
   sheetZIndex,
   type FloatingSheetId,
@@ -59,6 +60,30 @@ describe('261029-hy2 floating-sheet stack', () => {
     const before = floatingSheetOrder.value;
     bringSheetToFront(unknownId);
     expect(floatingSheetOrder.value).toBe(before);
+  });
+
+  it('releasing a closed sheet hands the front to the next open sheet', () => {
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
+    releaseSheet(SHEET_ID_BRUSHES);
+    expect(floatingSheetOrder.value).not.toContain(SHEET_ID_BRUSHES);
+    expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(true);
+  });
+
+  it('a released sheet rejoins at the front when it opens again', () => {
+    releaseSheet(SHEET_ID_BRUSHES);
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    expect(floatingSheetOrder.value[floatingSheetOrder.value.length - 1]).toBe(SHEET_ID_BRUSHES);
+    expect(sheetZIndex(SHEET_ID_BRUSHES)).toBeGreaterThan(sheetZIndex(SHEET_ID_SETTINGS));
+  });
+
+  it('closeSheetIfFront releases the sheet it closed', () => {
+    bringSheetToFront(SHEET_ID_SETTINGS);
+    let closed = false;
+    expect(closeSheetIfFront(SHEET_ID_SETTINGS, () => { closed = true; })).toBe(true);
+    expect(closed).toBe(true);
+    expect(floatingSheetOrder.value).not.toContain(SHEET_ID_SETTINGS);
+    expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
   });
 
   it('reset restores the initial order', () => {

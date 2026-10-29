@@ -224,7 +224,10 @@ describe('261029-hy2 floating Settings sheet', () => {
     expect(SHEET_SOURCE).toContain("window.addEventListener('keydown', onKeyDown, true);");
     expect(SHEET_SOURCE).toContain("if (event.key !== 'Escape') return;");
     expect(SHEET_SOURCE).toContain("window.removeEventListener('keydown', onKeyDown, true);");
-    expect(SHEET_SOURCE, 'the listener exists only while open').toContain('if (!open) return undefined;');
+    expect(SHEET_SOURCE, 'the listener exists only while open').toContain('if (!open) {');
+    expect(SHEET_SOURCE, 'a closed sheet leaves the stack').toContain(
+      'releaseSheet(SHEET_ID_SETTINGS);',
+    );
     expect(SHEET_SOURCE, 'Escape writes the shared close path').toContain(
       'setAquarelleSettingsModalOpen(false);',
     );

@@ -26,6 +26,7 @@ import {
   SHEET_ID_SETTINGS,
   bringSheetToFront,
   closeSheetIfFront,
+  releaseSheet,
   sheetZIndex,
 } from './floatingSheetStack';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
@@ -111,7 +112,12 @@ export function PhysicsPaintSettingsModal() {
   const resizeStartRef = useRef<{ pointerY: number; height: number; max: number } | null>(null);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      // A closed sheet must leave the order — a stale front id would make the
+      // front-only Escape gate inert for every sheet that is still open.
+      releaseSheet(SHEET_ID_SETTINGS);
+      return undefined;
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       // 261029-hy2 WR-02: an input/textarea/contenteditable INSIDE the sheet
