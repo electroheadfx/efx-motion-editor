@@ -275,7 +275,14 @@ Controller (`roto/physicsPaintRotoPlayScriptController.ts`):
 | A3 | Integer percent (0–100) is the right persisted precision and a flat pair is preferable to a nested object | F3 | Migration-free while nothing is shipped; naming only |
 | A4 | Pigment hue/saturation from `transmittanceToAlpha` is perceptually acceptable as the tint source (it is the app's one pigment law) | F4 | Tint may look muddy on very light washes; mitigation: UAT, possible saturation boost later |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All four below are resolved for this quick; the chosen answers are carried by the plan (and by the revision that replaced the direct output tint with the scratch + 'source-atop' transfer):
+
+- Q1 → keep colorize OUT of the canonical fingerprint (plan Task 1 steps 10/163); file Rust `railKind` parity separately.
+- Q2 → defer the fingerprint join until edit mode lands (plan "Accepted scope").
+- Q3 → flat `colorize?: boolean` + `colorizeMix?: number`, both-or-neither, written only when enabled (plan Task 1 step 16).
+- Q4 → set mix 100 on enable; leave the stored value untouched while disabled (plan Task 1 step 20).
 
 1. **Rust canonical hash and `railKind`.** The TS encoder emits `railKind` (`physicsPaintRotoPhysicalModel.ts:1389`); the Rust mirror has no `railKind` branch at all (`script_library.rs:1382-1508`), and the parity fixture has no `railKind` (`app/src/types/physicPaint.test.ts:1006-1007`). By inspection a reveal-rail document cannot produce the same hash on both sides, and WR-01 rejects a mismatch (`script_library.rs:1244-1247`). What we know: the two encoders differ. What is unclear: whether any script-library transaction reaches a reveal-rail document. Recommendation: keep colorize **out** of the canonical fingerprint for this task (fields persist as opaque members; equality is unaffected because colorize never changes after creation), and file the Rust `railKind` parity as a separate verification task.
 2. **Should colorize join the canonical fingerprint later?** If yes, both encoders (`encodeCanonicalLoopClips` + `canonical_loop_clips`) and the reference vectors must change together. Defer until edit mode lands.
