@@ -3251,6 +3251,15 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // A refused replay must not stop playback (D-07).
     expect(runReplay.indexOf('isPhysicalMutationLocked()'))
       .toBeLessThan(runReplay.indexOf('rotoCachedPlayback.stop();'));
+    // WR-01: the in-flight flag is held across the whole replay — set AFTER the
+    // guard (a re-entrant call must refuse itself) and cleared in `finally`, so
+    // two rapid Cmd+Z presses cannot both mint an edit.
+    expect(runReplay).toContain('setAquarelleScriptEditInFlight(true);');
+    expect(runReplay).toContain('setAquarelleScriptEditInFlight(false);');
+    expect(runReplay.indexOf('if (isAquarelleScriptEditInFlight()) return false;'))
+      .toBeLessThan(runReplay.indexOf('setAquarelleScriptEditInFlight(true);'));
+    expect(runReplay.indexOf('rotoCachedPlayback.stop();'))
+      .toBeLessThan(runReplay.indexOf('setAquarelleScriptEditInFlight(true);'));
     expect(runReplay).not.toContain('applyCurrentScript');
     expect(runReplay).not.toContain('physicalEditCoordinator');
 

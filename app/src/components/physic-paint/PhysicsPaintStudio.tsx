@@ -4711,28 +4711,37 @@ export function PhysicsPaintStudio() {
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
     if (isAquarelleScriptEditInFlight()) return false;
     rotoCachedPlayback.stop();
-    return runAquarelleScriptReplay({
-      direction,
-      editId,
-      onStep,
-      ports: {
-        invalidate: () => {
-          rotoPersistence.invalidateLivePixels(playFrame);
+    // WR-01: hold the in-flight flag across the WHOLE replay (set after the
+    // guard so a re-entrant call still refuses itself, before the first await):
+    // two rapid Cmd+Z presses must not both mint an edit, and the loser must
+    // not delete the winner's cached id on its way out.
+    setAquarelleScriptEditInFlight(true);
+    try {
+      return await runAquarelleScriptReplay({
+        direction,
+        editId,
+        onStep,
+        ports: {
+          invalidate: () => {
+            rotoPersistence.invalidateLivePixels(playFrame);
+          },
+          ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame),
+          prepare,
+          restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
+          resetSheet: () => {
+            aquarelleResetSheetRef.current?.();
+          },
+          rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
+          rollback: (revert) => {
+            restoreAquarelleSnapshotRaw(revert);
+          },
+          notify: () => { rotoScript.notifySourceRevision(); },
+          publishOwner: () => { applyFrameModuleState(playFrame); },
         },
-        ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame),
-        prepare,
-        restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
-        resetSheet: () => {
-          aquarelleResetSheetRef.current?.();
-        },
-        rebake: () => rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame)),
-        rollback: (revert) => {
-          restoreAquarelleSnapshotRaw(revert);
-        },
-        notify: () => { rotoScript.notifySourceRevision(); },
-        publishOwner: () => { applyFrameModuleState(playFrame); },
-      },
-    });
+      });
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
   }, [isPhysicalMutationLocked, rotoScript, rotoPersistence]);
   const rotoMoveHistory = useRotoPhysicalEditHistory<RotoEditableState>({
     identity: launchContext ? {
