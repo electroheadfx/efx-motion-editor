@@ -1773,6 +1773,18 @@ export function PhysicsPaintStudio() {
     const cell = rotoTimelineModel.currentCell.value;
     return resolveFrameScriptOwner(cell.appFrame, resolveStudioScriptCell(cell.appFrame));
   });
+  // 261029-lsr: the force-re-render escape hatch. Enabled only for a frame that
+  // OWNS A PAINT SCRIPT — a lift-only script bakes a blank sheet over raster
+  // pixels (the P8 ownership law), so it is never offered there.
+  const rebakeScriptAvailable = useComputed(() => {
+    void aquarelleStrokesRevision.value;
+    void rotoModelGeneration.value;
+    const cell = rotoTimelineModel.currentCell.value;
+    if (cell.kind !== 'real') return false;
+    const scriptCell = resolveStudioScriptCell(cell.appFrame);
+    if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;
+    return hasAquarellePaintScriptForFrame(cell.appFrame);
+  });
   // DEV-only: the gate's OWN frame context, read by the owner-resolve report.
   // The report's resolve `frame` is the resolver target; this is the frame
   // the gates actually evaluate (the two can differ during navigation).
@@ -4787,6 +4799,29 @@ export function PhysicsPaintStudio() {
       setAquarelleScriptEditInFlight(false);
     }
   }, [isPhysicalMutationLocked, rotoScript, rotoPersistence, rotoFrameEditing]);
+  // 261029-lsr: the manual escape hatch (rail button + Shift+R). It is the SAME
+  // reset-and-replay the script edits run, with no script change — the operator
+  // forces the frame back to its bake when a display ever looks wrong.
+  const handleRebakeScript = useCallback(async () => {
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    if (staticControlsLocked) return;
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (isAquarelleScriptEditInFlight()) return;
+    if (!hasAquarellePaintScriptForFrame(playFrame)) return;
+    setAquarelleScriptEditInFlight(true);
+    try {
+      rotoPersistence.invalidateLivePixels(playFrame);
+      await ensureAquarelleDurableBaseRef.current(playFrame);
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (!ok) return;
+      rotoScript.notifySourceRevision();
+      applyFrameModuleState(playFrame);
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [staticControlsLocked, isPhysicalMutationLocked, rotoScript, rotoPersistence, applyFrameModuleState]);
   const rotoMoveHistory = useRotoPhysicalEditHistory<RotoEditableState>({
     identity: launchContext ? {
       launchOperationId: launchContext.operationId,
@@ -5394,6 +5429,7 @@ export function PhysicsPaintStudio() {
         if (staticControlsLocked) return;
         openClearConfirm();
       },
+      rebakeAquarelleScript: () => { void handleRebakeScript(); },
       resetFgBg: () => {
         paintStore.resetFgBg();
         handleActiveColorChanged(paintStore.foregroundColor.peek());
@@ -5757,13 +5793,15 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged], () => ({
+  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript], () => ({
     historyAvailability,
     selectAvailable: watercolorMoveAvailable,
+    rebakeAvailable: rebakeScriptAvailable,
     disabled: staticControlsLocked,
     onUndo: undo,
     onRedo: redo,
     onClearFrame: clearActiveSource,
+    onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the

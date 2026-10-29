@@ -4476,6 +4476,23 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     return source.slice(start, end);
   }
 
+  it('offers the force-re-render only on a frame that owns a paint script', () => {
+    // 261029-lsr: the escape hatch replays the frame's script — a lift-only
+    // script would bake a blank sheet over raster pixels, so the gate is the
+    // PAINT-script predicate, resolved through the same live-graph projection.
+    const start = studio.indexOf('const rebakeScriptAvailable = useComputed(() => {');
+    expect(start).toBeGreaterThan(-1);
+    const gate = studio.slice(start, studio.indexOf('const gateDiagnosticsRef'));
+    expect(gate).toContain('void rotoModelGeneration.value;');
+    expect(gate).toContain('resolveStudioScriptCell(cell.appFrame)');
+    expect(gate).toContain('hasAquarellePaintScriptForFrame(cell.appFrame)');
+    // The action runs the shared reset-and-replay with the same guards.
+    const handler = between(studio, 'const handleRebakeScript = useCallback', 'const rotoMoveHistory');
+    expect(handler).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    expect(handler).toContain('aquarelleResetSheetRef.current?.();');
+    expect(handler).toContain('rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+  });
+
   it('re-binds the watercolor Select gate to the LIVE timeline graph after every rebuild', () => {
     // `useRotoTimelineModel` rebuilds its WHOLE signal graph on structural
     // changes. A once-created Computed keeps the sources its last evaluation
@@ -4486,10 +4503,10 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const generation = between(studio, 'const rotoModelGeneration = useSignal(0);', 'const loopResolutionContext');
     expect(generation).toContain('rotoModelGeneration.value += 1;');
     expect(generation).toContain('}, [rotoTimelineModel]);');
-    // 261027-klx: the Brush Move gate left with engine 1. Two reads remain:
-    // the Water color gate and the 261028-k03h Raster enablement (the same
-    // live-graph rebind law).
-    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(2);
+    // 261027-klx: the Brush Move gate left with engine 1. Three reads remain:
+    // the Water color gate, the 261028-k03h Raster enablement and the
+    // 261029-lsr force-re-render enablement (the same live-graph rebind law).
+    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(3);
     expect(studio).not.toContain('const moveAvailable = useComputed(');
 
     const waterGate = between(studio, 'const watercolorMoveAvailable = useComputed(() => {', 'const gateDiagnosticsRef = useRef');
@@ -4995,7 +5012,8 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     expect(definition, 'the shared recovery helper exists').toBeGreaterThan(-1);
     const calls = studio.split('await ensureAquarelleDurableBaseRef.current(').length - 1;
     // 261028-k03e: the Apply/Copy target seam joins the four timeline edits.
-    expect(calls, 'delete + move + appearance + transform + apply target').toBe(5);
+    // 261029-lsr: the manual force-re-render (rail / Shift+R) recovers too.
+    expect(calls, 'delete + move + appearance + transform + apply + rebake target').toBe(6);
     for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);

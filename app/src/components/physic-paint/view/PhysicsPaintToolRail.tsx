@@ -6,6 +6,7 @@ import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
+import refreshScriptIcon from '../../../assets/physics-paint-ui/icons/refresh-script.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
@@ -17,7 +18,7 @@ import {
 } from './aquarelleStrokeSelection';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
-export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame';
+export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
 
 export interface PhysicsPaintToolRailItem {
   id: PhysicsPaintRailAction;
@@ -38,6 +39,13 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
   { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
+  {
+    id: 'rebake-script',
+    label: 'Re-render this frame from its script',
+    tooltip: 'Re-render this frame from its script (Shift+R)',
+    icon: refreshScriptIcon,
+    kind: 'action',
+  },
 ];
 
 /** UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift | Dry. */
@@ -57,18 +65,23 @@ function WatercolorRail({
   disabled,
   historyAvailability,
   selectAvailable,
+  rebakeAvailable,
   onUndo,
   onRedo,
   onClearFrame,
+  onRebakeScript,
   onActiveColorChanged,
 }: {
   disabled: boolean;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   /** Frame-scoped: the current key must own a Water color script. */
   selectAvailable: ReadonlySignal<boolean>;
+  /** 261029-lsr: the force-re-render escape hatch — paint script on this frame. */
+  rebakeAvailable: ReadonlySignal<boolean>;
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
+  onRebakeScript: () => void;
   onActiveColorChanged?: (color: string) => void;
 }) {
   const active = aquarelleActiveTool.value;
@@ -81,6 +94,7 @@ function WatercolorRail({
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
+  const rebakeItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'rebake-script')!;
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
@@ -149,6 +163,19 @@ function WatercolorRail({
       <button
         type="button"
         class="physics-paint-icon-button"
+        data-testid="aquarelle-rebake-script"
+        disabled={disabled || !rebakeAvailable.value}
+        title={rebakeAvailable.value
+          ? `${rebakeItem.label} (Shift+R)`
+          : 'Re-render (Shift+R) — this frame has no paint script'}
+        aria-label="Re-render from script"
+        onClick={onRebakeScript}
+      >
+        <img src={rebakeItem.icon} alt="" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        class="physics-paint-icon-button"
         disabled={disabled}
         title={`${clearItem.label} (C — asks to confirm)`}
         aria-label="Trash"
@@ -167,10 +194,14 @@ export interface PhysicsPaintToolRailProps {
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   /** quick-261026-odd — gates Water color Select; the current key must own a script. */
   selectAvailable: ReadonlySignal<boolean>;
+  /** 261029-lsr: force-re-render enablement — the frame must own a paint script. */
+  rebakeAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
+  /** 261029-lsr: reset the sheet and replay the frame's script (escape hatch). */
+  onRebakeScript: () => void;
   /** Fired after a swatch swap/promote with the new foreground hex so the engine color follows. */
   onActiveColorChanged?: (color: string) => void;
 }
@@ -210,10 +241,12 @@ function PhysicsPaintHistoryActionButton({
 function PhysicsPaintToolRailImpl({
   historyAvailability,
   selectAvailable,
+  rebakeAvailable,
   disabled = false,
   onUndo,
   onRedo,
   onClearFrame,
+  onRebakeScript,
   onActiveColorChanged,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
@@ -224,9 +257,11 @@ function PhysicsPaintToolRailImpl({
       disabled={disabled}
       historyAvailability={historyAvailability}
       selectAvailable={selectAvailable}
+      rebakeAvailable={rebakeAvailable}
       onUndo={onUndo}
       onRedo={onRedo}
       onClearFrame={onClearFrame}
+      onRebakeScript={onRebakeScript}
       onActiveColorChanged={onActiveColorChanged}
     />
   );

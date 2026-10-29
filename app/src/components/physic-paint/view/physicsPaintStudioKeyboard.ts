@@ -51,6 +51,8 @@ export interface PhysicsPaintStudioKeyboardActions {
   dryAquarelleSheet?: () => void;
   /** Bare C: clear the current Roto frame (the rail's Trash action). */
   clearAquarelleFrame?: () => void;
+  /** 261029-lsr: Shift+R — reset the sheet and replay the frame's script. */
+  rebakeAquarelleScript?: () => void;
   /** Bare D: reset the swatch to a black foreground and white background. */
   resetFgBg?: () => void;
   deleteRotoKey?: () => void;
@@ -187,6 +189,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
     event.preventDefault();
     if (state.mutationLocked) return;
     action();
+    return;
+  }
+  // 261029-lsr: Shift+R — the force-re-render escape hatch. Bare Shift (no mod)
+  // so it cannot collide with the tool letters, which never fire with Shift.
+  if (!meta && !event.altKey && event.shiftKey && !event.repeat && key === 'r' && actions.rebakeAquarelleScript) {
+    if (state.mutationLocked) return;
+    event.preventDefault();
+    actions.rebakeAquarelleScript();
     return;
   }
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
