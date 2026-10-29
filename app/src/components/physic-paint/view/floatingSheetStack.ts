@@ -51,6 +51,28 @@ export function bringSheetToFront(id: FloatingSheetId): void {
   floatingSheetOrder.value = [...order.filter((entry) => entry !== id), id];
 }
 
+/**
+ * True when `id` is the FRONT (top-most) sheet. Every sheet registers its own
+ * window keydown listener, and listeners on the same node all run — only
+ * `stopImmediatePropagation()` suppresses siblings, never `stopPropagation()`.
+ * Escape dismissal is therefore front-only.
+ */
+export function isFrontSheet(id: FloatingSheetId): boolean {
+  const order = floatingSheetOrder.peek();
+  return order[order.length - 1] === id;
+}
+
+/**
+ * Front-only dismissal shared by the three sheet Escape handlers. Closes and
+ * returns true when this sheet is front; a background sheet returns false and
+ * leaves the key to the front one. Event handlers only — never a render body.
+ */
+export function closeSheetIfFront(id: FloatingSheetId, close: () => void): boolean {
+  if (!isFrontSheet(id)) return false;
+  close();
+  return true;
+}
+
 /** Restore the initial order (test hygiene; not a user-facing action). */
 export function resetFloatingSheetStack(): void {
   if (floatingSheetOrder.value === INITIAL_ORDER) return;

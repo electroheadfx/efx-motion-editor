@@ -29,6 +29,7 @@ import { clampStackPosition } from './stackOrder';
 import {
   SHEET_ID_STROKE_SETTINGS,
   bringSheetToFront,
+  closeSheetIfFront,
   sheetZIndex,
 } from './floatingSheetStack';
 import {
@@ -397,9 +398,11 @@ export function PhysicsPaintStrokeSettingsDialog({
           .closest?.('[data-testid="stroke-settings-dialog"]');
         if (insideDialog) return;
       }
-      closeSurface();
+      // 261029-hy2 WR-03: front-only dismissal — a background stroke sheet
+      // must not swallow the Escape that belongs to the front sheet.
+      if (!closeSheetIfFront(SHEET_ID_STROKE_SETTINGS, closeSurface)) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);

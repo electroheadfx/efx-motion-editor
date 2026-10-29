@@ -39,11 +39,14 @@ import {
   SHEET_ID_BRUSHES,
   SHEET_ID_SETTINGS,
   bringSheetToFront,
+  closeSheetIfFront,
   resetFloatingSheetStack,
   sheetZIndex,
 } from './floatingSheetStack';
 import {
+  aquarelleBrushModalOpen,
   aquarelleSettingsModalOpen,
+  setAquarelleBrushModalOpen,
   setAquarelleSettingsModalOpen,
 } from './aquarelleRecordState';
 
@@ -76,6 +79,7 @@ const SHEET_SOURCE = readFileSync(resolve(__dirname, 'PhysicsPaintSettingsModal.
 
 beforeEach(() => {
   aquarelleSettingsModalOpen.value = false;
+  aquarelleBrushModalOpen.value = false;
   resetSettingsModalLayout();
   // The stack order is module-global: the z-index math only holds from the
   // initial bottom-to-top order.
@@ -84,6 +88,7 @@ beforeEach(() => {
 
 afterEach(() => {
   aquarelleSettingsModalOpen.value = false;
+  aquarelleBrushModalOpen.value = false;
   resetSettingsModalLayout();
   resetFloatingSheetStack();
 });
@@ -239,6 +244,28 @@ describe('261029-hy2 floating Settings sheet', () => {
     const closeAt = SHEET_SOURCE.indexOf('setAquarelleSettingsModalOpen(false);');
     expect(guardAt).toBeGreaterThan(-1);
     expect(guardAt).toBeLessThan(closeAt);
+  });
+
+  it('one Escape closes only the front sheet — Brushes opened after Settings (261029-hy2 WR-03)', () => {
+    // Open order: Settings, then Brushes (each open raises its sheet).
+    setAquarelleSettingsModalOpen(true);
+    bringSheetToFront(SHEET_ID_SETTINGS);
+    setAquarelleBrushModalOpen(true);
+    bringSheetToFront(SHEET_ID_BRUSHES);
+    // Window keydown listeners run in registration order, so the Settings
+    // handler sees this Escape first — and must pass it on.
+    const settingsClosed = closeSheetIfFront(
+      SHEET_ID_SETTINGS,
+      () => setAquarelleSettingsModalOpen(false),
+    );
+    const brushesClosed = closeSheetIfFront(
+      SHEET_ID_BRUSHES,
+      () => setAquarelleBrushModalOpen(false),
+    );
+    expect(settingsClosed, 'a covered sheet never swallows the key').toBe(false);
+    expect(aquarelleSettingsModalOpen.value, 'Settings stays open').toBe(true);
+    expect(brushesClosed).toBe(true);
+    expect(aquarelleBrushModalOpen.value, 'only the front sheet closes').toBe(false);
   });
 
   it('the store setter is compare-then-write', () => {

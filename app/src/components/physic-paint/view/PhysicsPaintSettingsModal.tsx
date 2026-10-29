@@ -25,6 +25,7 @@ import {
 import {
   SHEET_ID_SETTINGS,
   bringSheetToFront,
+  closeSheetIfFront,
   sheetZIndex,
 } from './floatingSheetStack';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
@@ -125,9 +126,11 @@ export function PhysicsPaintSettingsModal() {
           .closest?.('[data-testid="physics-settings-modal"]');
         if (insideDialog) return;
       }
-      setAquarelleSettingsModalOpen(false);
+      // 261029-hy2 WR-03: front-only dismissal — a background Settings sheet
+      // must not swallow the Escape that belongs to the front sheet.
+      if (!closeSheetIfFront(SHEET_ID_SETTINGS, () => setAquarelleSettingsModalOpen(false))) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);

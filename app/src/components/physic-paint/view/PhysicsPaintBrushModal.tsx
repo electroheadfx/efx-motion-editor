@@ -21,7 +21,12 @@ import {
   aquarelleBrushModalOpen,
   setAquarelleBrushModalOpen,
 } from './aquarelleRecordState';
-import { SHEET_ID_BRUSHES, bringSheetToFront, sheetZIndex } from './floatingSheetStack';
+import {
+  SHEET_ID_BRUSHES,
+  bringSheetToFront,
+  closeSheetIfFront,
+  sheetZIndex,
+} from './floatingSheetStack';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 
 interface DragOffset {
@@ -109,9 +114,12 @@ export function PhysicsPaintBrushModal() {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      setAquarelleBrushModalOpen(false);
+      // 261029-hy2 WR-03: only the FRONT sheet consumes Escape — same-node
+      // listeners all run, so a background sheet must not close. Closing
+      // stops its siblings with stopImmediatePropagation (not stopPropagation).
+      if (!closeSheetIfFront(SHEET_ID_BRUSHES, () => setAquarelleBrushModalOpen(false))) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
