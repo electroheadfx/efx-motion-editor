@@ -51,6 +51,12 @@ import {
   setScriptStrokeSelection,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
+import {
+  aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTypeFilter,
+  setAquarelleSelectMode,
+  setAquarelleStrokeTypeFilter,
+} from './aquarelleStrokeSelection';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 const dialogSource = readFileSync(
@@ -125,6 +131,10 @@ beforeEach(() => {
   };
   setScriptSelectMode(false);
   setScriptStrokeSelection([]);
+  // 261029-eur: the dismissal flag and the stroke-type filter are MODULE
+  // signals now — an un-reset case would leak into the next one.
+  aquarelleStrokeSettingsDismissed.value = false;
+  setAquarelleStrokeTypeFilter('all');
 });
 
 afterEach(() => {
@@ -1446,5 +1456,201 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
     expect(findByTestId(tree, 'stroke-settings-stack-top')!.props.disabled).toBe(true);
     expect(findByTestId(tree, 'stroke-settings-stack-bottom')!.props.disabled).toBe(true);
     expect(reorderCalls).toHaveLength(0);
+  });
+});
+
+// ============================================================
+//  quick 261029-eur Task 3 — keep-open-on-empty, the dialog's
+//  All | Eraser | Paint filter row, the Paint-tab fallback and
+//  the module-level explicit-close law.
+// ============================================================
+
+describe('261029-eur keep-open-on-empty open law', () => {
+  const base = {
+    surfaceActive: true,
+    selectionSize: 0,
+    dismissed: false,
+    sawEmptySinceDismiss: false,
+  };
+
+  it('opens an empty selection only when the surface keeps the sheet open', () => {
+    expect(resolveStrokeSettingsOpen(base)).toBe(false);
+    expect(resolveStrokeSettingsOpen({ ...base, keepOpenOnEmpty: true })).toBe(true);
+    // An inactive surface never opens, keep-open or not.
+    expect(resolveStrokeSettingsOpen({
+      ...base,
+      surfaceActive: false,
+      keepOpenOnEmpty: true,
+    })).toBe(false);
+  });
+
+  it('an explicit close still wins under keep-open-on-empty', () => {
+    expect(resolveStrokeSettingsOpen({
+      ...base,
+      dismissed: true,
+      keepOpenOnEmpty: true,
+    })).toBe(false);
+    expect(resolveStrokeSettingsOpen({
+      ...base,
+      selectionSize: 1,
+      dismissed: true,
+      keepOpenOnEmpty: true,
+    })).toBe(false);
+    // The re-arm edge itself is switched OFF (shouldMarkSawEmpty never sets
+    // it under keep-open), so the flag can only be cleared by select-mode
+    // re-entry — see the dialog component case below.
+  });
+
+  it('switches the saw-empty marker OFF under keep-open-on-empty', () => {
+    expect(shouldMarkSawEmpty({
+      dismissed: true,
+      surfaceActive: true,
+      selectionSize: 0,
+      keepOpenOnEmpty: true,
+    })).toBe(false);
+    // Brush keeps today's law (no keep-open).
+    expect(shouldMarkSawEmpty({
+      dismissed: true,
+      surfaceActive: true,
+      selectionSize: 0,
+    })).toBe(true);
+  });
+});
+
+describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => {
+  function watercolorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 12,
+        load: 50,
+        water: 50,
+        flow: 50,
+        bleed: 50,
+        edge: 50,
+        granulation: 50,
+        dry: 50,
+      })),
+      ...overrides,
+    });
+  }
+
+  it('renders the All | Eraser | Paint row for water color only', () => {
+    const { bundle } = watercolorBundle();
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    const row = findByTestId(tree, 'stroke-settings-filter')!;
+    expect(row).toBeDefined();
+    expect(row.props.role).toBe('group');
+    const buttons = ['all', 'eraser', 'paint'].map(
+      (key) => findByTestId(tree, `stroke-settings-filter-${key}`)!,
+    );
+    expect(buttons.map((button) => button.props.children)).toEqual(['All', 'Eraser', 'Paint']);
+    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, false]);
+
+    // Brush keeps its sheet without the filter chrome.
+    const brush = createBundle();
+    setScriptStrokeSelection([7]);
+    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-filter')).toBeUndefined();
+  });
+
+  it('hides the Paint tab in Eraser mode and falls a paint request back to Geometry', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    // Request Paint while it is available.
+    const paintTree = renderDialogTab(bundle, 'paint');
+    expect(findByTestId(paintTree, 'stroke-settings-paint')).toBeDefined();
+
+    // Eraser-only: the tab leaves the row and the requested tab resolves back
+    // to Geometry (the Paint content must not linger).
+    setAquarelleStrokeTypeFilter('lift');
+    const eraserTree = renderDialog(bundle);
+    expect(findByTestId(eraserTree, 'stroke-settings-tab-paint')).toBeUndefined();
+    expect(findByTestId(eraserTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(eraserTree, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(eraserTree, 'stroke-settings-paint')).toBeUndefined();
+
+    // All and Paint bring it back.
+    setAquarelleStrokeTypeFilter('all');
+    const allTree = renderDialog(bundle);
+    expect(findByTestId(allTree, 'stroke-settings-tab-paint')).toBeDefined();
+    expect(findByTestId(allTree, 'stroke-settings-paint')).toBeDefined();
+    setAquarelleStrokeTypeFilter('paint');
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tab-paint')).toBeDefined();
+  });
+
+  it('keeps the sheet open on an empty water color selection', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-filter')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-empty')!.props.children).toBe('Select a stroke to edit.');
+    expect(findByTestId(tree, 'stroke-settings-close')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeUndefined();
+
+    // Brush still closes on an empty selection (keepOpenOnEmpty is false there).
+    setScriptSelectMode(false);
+    const brush = createBundle();
+    expect(renderDialog(brush.bundle)).toBeNull();
+  });
+
+  it('the filter buttons write the shared filter signal', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props.onClick as () => void)();
+    expect(aquarelleStrokeTypeFilter.value).toBe('paint');
+    expect(
+      findByTestId(renderDialog(bundle), 'stroke-settings-filter-paint')!.props['aria-pressed'],
+    ).toBe(true);
+
+    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-eraser')!.props.onClick as () => void)();
+    expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+
+    (findByTestId(renderDialog(bundle), 'stroke-settings-filter-all')!.props.onClick as () => void)();
+    expect(aquarelleStrokeTypeFilter.value).toBe('all');
+  });
+
+  it('an explicit close writes the module flag and wins until select mode re-enters', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
+
+    (findByTestId(tree, 'stroke-settings-close')!.props.onClick as () => void)();
+    expect(aquarelleStrokeSettingsDismissed.value).toBe(true);
+    expect(renderDialog(bundle)).toBeNull();
+
+    // Selection changes never re-arm it, not even the empty edge.
+    setScriptStrokeSelection([9]);
+    expect(renderDialog(bundle)).toBeNull();
+    setScriptStrokeSelection([]);
+    renderDialog(bundle);
+    setScriptStrokeSelection([7, 9]);
+    expect(renderDialog(bundle)).toBeNull();
+
+    // Only a genuine off -> on select-mode edge clears the flag.
+    setAquarelleSelectMode(false);
+    expect(aquarelleStrokeSettingsDismissed.value).toBe(true);
+    expect(renderDialog(bundle)).toBeNull();
+    setAquarelleSelectMode(true);
+    expect(aquarelleStrokeSettingsDismissed.value).toBe(false);
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-dialog')).toBeDefined();
+  });
+
+  it('structural pins: no per-instance dismissal ref, module signal read in the body', () => {
+    expect(dialogSource).toContain('aquarelleStrokeSettingsDismissed.value');
+    expect(dialogSource).toContain('aquarelleStrokeTypeFilter.value');
+    expect(dialogSource).not.toContain('dismissedRef');
   });
 });

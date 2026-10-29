@@ -141,11 +141,11 @@ function renderModule(): TestVNode {
   return materialize(WatercolorModuleSection()) as TestVNode;
 }
 
-const TOOLS = ['Brush', 'Water', 'Pen', 'Lift'] as const;
+const TOOLS = ['Brush', 'Water', 'Pen', 'Eraser'] as const;
 const DRY_TOOLTIP = 'Flash-dry the sheet. Recorded in the script.';
 
 describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
-  it('renders exactly 4 tools with labels Brush, Water, Pen, Lift', () => {
+  it('renders exactly 4 tools with labels Brush, Water, Pen, Eraser', () => {
     setAquarelleTool('brush');
     const tree = renderToolRow();
     const labels = buttonLabels(tree);

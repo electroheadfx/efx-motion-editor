@@ -24,7 +24,7 @@ const TOOLS: ReadonlyArray<{
   { id: 'brush', label: 'Brush', Icon: Paintbrush },
   { id: 'water', label: 'Water', Icon: Droplet },
   { id: 'pen', label: 'Pen', Icon: Pen },
-  { id: 'lift', label: 'Lift', Icon: Eraser },
+  { id: 'lift', label: 'Eraser', Icon: Eraser },
 ]);
 
 export function AquarelleToolRow() {

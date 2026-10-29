@@ -42,7 +42,7 @@ export function LiftShapePicker(props: { testId: string; disabled?: boolean }) {
       />
       <select
         data-testid={`${props.testId}-select`}
-        aria-label="Lift shape"
+        aria-label="Eraser shape"
         value={liftTipId}
         disabled={props.disabled}
         onChange={(event) => setAquarelleLiftTipId(event.currentTarget.value)}

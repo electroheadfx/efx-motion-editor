@@ -26,6 +26,12 @@ import {
 import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 import { clampStackPosition } from './stackOrder';
+import {
+  aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTypeFilter,
+  setAquarelleStrokeTypeFilter,
+  type AquarelleStrokeTypeFilter,
+} from './aquarelleStrokeSelection';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -106,6 +112,27 @@ const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: strin
   { key: 'stack', label: 'Stack' },
   { key: 'paint', label: 'Paint' },
 ];
+
+/**
+ * 261029-eur: the watercolor stroke-type filter row (All | Eraser | Paint).
+ * The setter owns the selection pruning and the compare-then-write law, so
+ * the row is pure chrome.
+ */
+const STROKE_TYPE_FILTERS: ReadonlyArray<{
+  key: 'all' | 'eraser' | 'paint';
+  label: string;
+  filter: AquarelleStrokeTypeFilter;
+}> = [
+  { key: 'all', label: 'All', filter: 'all' },
+  { key: 'eraser', label: 'Eraser', filter: 'lift' },
+  { key: 'paint', label: 'Paint', filter: 'paint' },
+];
+
+const FILTER_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  gap: '4px',
+  padding: '8px 12px 0',
+};
 
 export interface PhysicsPaintStrokeSettingsDialogProps {
   /** The view-supplied bundle for the ACTIVE module; absent means no dialog. */
@@ -270,8 +297,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   bundle,
 }: PhysicsPaintStrokeSettingsDialogProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const dismissedRef = useRef<Signal<boolean> | null>(null);
-  if (!dismissedRef.current) dismissedRef.current = signal(false);
   const dragStartRef = useRef<DragStart | null>(null);
   const resizeStartRef = useRef<{ pointerY: number; height: number; max: number } | null>(null);
   /**
@@ -299,11 +324,24 @@ export function PhysicsPaintStrokeSettingsDialog({
   const surfaceActive = bundle !== null && bundle !== undefined
     ? (engineModule === 'watercolor' ? scriptSelectMode.value : bundle.brushMoveActive)
     : false;
-  const dismissed = dismissedRef.current.value;
+  // 261029-eur: the dismissal flag is module-level so the select-mode choke
+  // point can re-arm it on a genuine off -> on edge. Watercolor Edit mode
+  // keeps the sheet open on an empty selection (filter row + caption).
+  const dismissed = aquarelleStrokeSettingsDismissed.value;
+  const strokeTypeFilter = aquarelleStrokeTypeFilter.value;
+  const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
   // Plain (non-signal) render-body flag write — the dismissal edge marker.
-  if (shouldMarkSawEmpty({ dismissed, surfaceActive, selectionSize: selection.size })) {
+  // Inert under keepOpenOnEmpty (shouldMarkSawEmpty returns false there).
+  if (
+    shouldMarkSawEmpty({
+      dismissed,
+      surfaceActive,
+      selectionSize: selection.size,
+      keepOpenOnEmpty,
+    })
+  ) {
     sawEmptySinceDismiss = true;
   }
 
@@ -314,6 +352,7 @@ export function PhysicsPaintStrokeSettingsDialog({
       selectionSize: selection.size,
       dismissed,
       sawEmptySinceDismiss,
+      keepOpenOnEmpty,
     });
 
   /**
@@ -327,7 +366,9 @@ export function PhysicsPaintStrokeSettingsDialog({
       closeMoveMode();
       return;
     }
-    dismissedRef.current!.value = true;
+    // EVENT-handler write (never a render body). The ONLY reset site is the
+    // setAquarelleSelectMode off -> on choke point.
+    aquarelleStrokeSettingsDismissed.value = true;
     sawEmptySinceDismiss = false;
   }, [closeMoveMode]);
 
@@ -356,13 +397,17 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const requestedSettingsTab = settingsTabRef.current.value;
   const stackTabAvailable = Boolean(bundle.reorderStroke);
+  // 261029-eur: Eraser-only editing hides the Paint tab (a lift has no paint
+  // rows); a requested Paint falls back to Geometry while hidden.
+  const paintTabAvailable = strokeTypeFilter !== 'lift';
   const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable
     ? 'geometry'
-    : requestedSettingsTab;
+    : requestedSettingsTab === 'paint' && !paintTabAvailable
+      ? 'geometry'
+      : requestedSettingsTab;
 
   const ids = [...selection];
   const appearances = bundle.readAppearance(ids, bundle.playFrame);
-  if (appearances.length === 0) return null;
 
   const fields = strokeSettingsFields(engineModule);
   /**
@@ -565,6 +610,31 @@ export function PhysicsPaintStrokeSettingsDialog({
         </button>
       </div>
 
+      {engineModule === 'watercolor' ? (
+        <div
+          role="group"
+          aria-label="Stroke type"
+          data-testid="stroke-settings-filter"
+          style={FILTER_ROW_STYLE}
+        >
+          {STROKE_TYPE_FILTERS.map((option) => {
+            const active = strokeTypeFilter === option.filter;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                data-testid={`stroke-settings-filter-${option.key}`}
+                aria-pressed={active}
+                style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                onClick={() => setAquarelleStrokeTypeFilter(option.filter)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div
         class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
         role="tablist"
@@ -573,6 +643,7 @@ export function PhysicsPaintStrokeSettingsDialog({
       >
         {STROKE_SETTINGS_TABS.map((tab) => {
           if (tab.key === 'stack' && !stackTabAvailable) return null;
+          if (tab.key === 'paint' && !paintTabAvailable) return null;
           const active = activeSettingsTab === tab.key;
           return (
             <button
@@ -594,6 +665,12 @@ export function PhysicsPaintStrokeSettingsDialog({
 
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
+          {appearances.length === 0 ? (
+            <span data-testid="stroke-settings-empty" style={PAINT_ROW_LABEL_STYLE}>
+              Select a stroke to edit.
+            </span>
+          ) : (
+            <>
           {activeSettingsTab === 'geometry' ? (
             liveCenter ? (
               <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
@@ -875,6 +952,8 @@ export function PhysicsPaintStrokeSettingsDialog({
             })}
             </div>
           ) : null}
+            </>
+          )}
         </div>
       </SidebarScrollArea>
 

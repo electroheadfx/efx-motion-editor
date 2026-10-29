@@ -3150,6 +3150,22 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).not.toContain('aquarelleStrokeTypeFilter.value');
   });
 
+  it('keeps the Stroke Settings bundle unfiltered and open on an empty selection', () => {
+    const bundleStart = studio.indexOf('const bundle: StrokeSettingsDialogBundle = {');
+    const bundleEnd = studio.indexOf('return bundle;', bundleStart);
+    expect(bundleStart).toBeGreaterThanOrEqual(0);
+    expect(bundleEnd).toBeGreaterThan(bundleStart);
+    const bundle = studio.slice(bundleStart, bundleEnd);
+    // Stack positions/neighbours stay GLOBAL: the dialog's filter narrows the
+    // overlay and hit-test only, never the Studio's own listing.
+    expect(bundle).toContain('listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),');
+    expect(bundle).not.toContain('aquarelleStrokeTypeFilter');
+    // 261029-eur: the sheet survives an empty selection in water color.
+    expect(bundle).toContain('keepOpenOnEmpty: true,');
+    // The one-shot close path is gone; closeSurface uses its sticky fallback.
+    expect(bundle).not.toContain('closeMoveMode');
+  });
+
   it('wires the delete callback through the canvas mount props and memo deps', () => {
     expect(canvasMount).toContain('onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;');
     expect(canvasMount).toContain(

@@ -201,16 +201,23 @@ export interface StrokeSettingsOpenArgs {
   readonly selectionSize: number;
   readonly dismissed: boolean;
   readonly sawEmptySinceDismiss: boolean;
+  /**
+   * 261029-eur: keep the dialog open on an EMPTY selection (watercolor Edit
+   * mode shows its filter row and "Select a stroke to edit." caption instead
+   * of vanishing). An explicit close still wins until select mode exits and
+   * re-enters, so the saw-empty re-arm edge is switched OFF here too.
+   */
+  readonly keepOpenOnEmpty?: boolean;
 }
 
 /**
  * Open only for an active surface with a non-empty selection that has not
  * been dismissed — unless the selection emptied after the dismissal (the
- * one edge that re-arms it).
+ * one edge that re-arms it), or the surface keeps the dialog open on empty.
  */
 export function resolveStrokeSettingsOpen(args: StrokeSettingsOpenArgs): boolean {
   return args.surfaceActive
-    && args.selectionSize > 0
+    && (args.selectionSize > 0 || args.keepOpenOnEmpty === true)
     && (!args.dismissed || args.sawEmptySinceDismiss);
 }
 
@@ -218,11 +225,16 @@ export interface SawEmptyArgs {
   readonly dismissed: boolean;
   readonly surfaceActive: boolean;
   readonly selectionSize: number;
+  /** 261029-eur: under keep-open-on-empty the re-arm edge is inert. */
+  readonly keepOpenOnEmpty?: boolean;
 }
 
 /** The plain (non-signal) dismissal-edge marker law. */
 export function shouldMarkSawEmpty(args: SawEmptyArgs): boolean {
-  return args.dismissed && args.surfaceActive && args.selectionSize === 0;
+  return args.dismissed
+    && args.surfaceActive
+    && args.selectionSize === 0
+    && args.keepOpenOnEmpty !== true;
 }
 
 /**
@@ -238,6 +250,11 @@ export interface StrokeSettingsDialogBundle {
   readonly brushMoveActive: boolean;
   readonly playFrame: number;
   readonly canvasSize: ScriptStrokeSize;
+  /**
+   * 261029-eur: the Studio's watercolor passthrough must keep listing with the
+   * default `'all'` filter, so Stack positions and neighbours stay GLOBAL even
+   * while the dialog's stroke-type filter narrows the overlay.
+   */
   listStrokes(playFrame: number, size: ScriptStrokeSize): SelectableScriptStroke[];
   readAppearance(ids: readonly number[], playFrame: number): ScriptStrokeAppearance[];
   applyAppearance(ids: readonly number[], patch: ScriptStrokeAppearancePatch): boolean | Promise<boolean>;
@@ -255,6 +272,12 @@ export interface StrokeSettingsDialogBundle {
    * legacy sticky dismissal (hidden until the selection goes empty).
    */
   readonly closeMoveMode?: () => void;
+  /**
+   * 261029-eur: keep the sheet open on an EMPTY selection (Water color Edit
+   * mode shows its filter row and caption instead of vanishing). Absent
+   * falls back to the module law — watercolor keeps it open.
+   */
+  readonly keepOpenOnEmpty?: boolean;
 }
 
 // ============================================================

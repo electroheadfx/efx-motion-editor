@@ -264,12 +264,12 @@ const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;
 // 261028-k03 — Lift (the eraser) three-state copy. Every message names what
 // happened AND what to do next; none is a 'success' status (the capsule hides
 // its text on success, PhysicsPaintStudio.tsx:8069).
-const AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL = 'Lift needs Script ON to erase recorded paint. Turn Script ON, or use Raster Key for a pixel-only erase.';
+const AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL = 'Eraser needs Script ON to erase recorded paint. Turn Script ON, or use Raster Key for a pixel-only erase.';
 const AQUARELLE_LIFT_GROUP_REFUSAL = 'Group frames cannot be lifted — erase the source key instead.';
 const AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL = "This key's pre-script base is unavailable — nothing changed.";
 const AQUARELLE_LIFT_NO_CACHE_REFUSAL = "The frame's painted pixels are unavailable — nothing changed.";
-const AQUARELLE_LIFT_PERMANENT_MESSAGE = 'Lifted — erased pixels are permanent (no undo).';
-const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture is unchanged. The recorded Lift applies on the next Apply.';
+const AQUARELLE_LIFT_PERMANENT_MESSAGE = 'Erased — removed pixels are permanent (no undo).';
+const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture is unchanged. The recorded Eraser applies on the next Apply.';
 /**
  * 261028-k03 D2 preflight. `normal` = the live-sheet path owns this stroke (no
  * committed paint to punch, or Script is off with no script to protect);
@@ -9210,9 +9210,9 @@ export function PhysicsPaintStudio() {
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
-        closeMoveMode: () => {
-          if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
-        },
+        // 261029-eur: the sheet survives an empty selection — the filter row and
+        // the "Select a stroke to edit." caption are the only editing surface.
+        keepOpenOnEmpty: true,
       };
       return bundle;
     },
