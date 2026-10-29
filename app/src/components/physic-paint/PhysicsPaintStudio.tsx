@@ -4716,19 +4716,15 @@ export function PhysicsPaintStudio() {
   // would carry a stale `after.revision`). The guard block runs BEFORE the
   // playback stop: a refused Cmd+Z must neither kill a queued capture nor stop
   // playback (D-07).
-  // TEMP EXPERIMENT (261029-lsr UAT, user request): a RECORDED STROKE's undo
-  // and redo take their pixels from the watercolor engine's own tile
-  // undo/redo — the same mechanism a brush stroke already uses — instead of
-  // resetting the sheet and re-rendering the whole frame. The script still
-  // mutates through the identical edit swap, so display and script stay in
-  // step. Scoped to the stroke route only: `aquarelle-script` edits
-  // (delete/move/appearance/transform) still re-bake, because their script
-  // mutation has no one-step engine history to pair with.
-  // Flip to false to restore the script-authoritative re-bake.
-  // Test on a FRESH Studio session with paints only: once a delete/move has
-  // re-baked, the engine history is a re-bake history and tile undo is no
-  // longer the pre-stroke sheet.
-  const AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE = true;
+  // 261029-lsr: a RECORDED STROKE's undo and redo take their pixels from the
+  // watercolor engine's own tile undo/redo — the same mechanism a brush stroke
+  // already uses — instead of resetting the sheet and re-rendering the whole
+  // frame. The script still mutates through the identical edit swap, so display
+  // and script stay in step. Scoped to the stroke route only: `aquarelle-script`
+  // edits (delete/move/appearance/transform) re-bake, because their script
+  // mutation has no one-step engine history to pair with. A tile step can be
+  // spent (a capture or an earlier redo moved the history), so the route
+  // retries once with a full re-bake.
   const runScriptReplay = useCallback(async ({
     direction,
     editId,
@@ -4741,23 +4737,19 @@ export function PhysicsPaintStudio() {
     editId?: number;
     prepare?: () => number | null;
     onStep?: (step: AquarelleReplayStep) => void;
-    /** TEMP: drive the pixels from the engine's own undo/redo tiles. */
+    /** 261029-lsr: drive the pixels from the engine's own undo/redo tiles. */
     tileHistory?: boolean;
     /** 261029-lsr UAT row 4: the auto-key composite deletes the key next. */
     skipCapture?: boolean;
   }): Promise<boolean> => {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
-    // TEMP (261029-lsr UAT row 4): name the refusing guard.
     if (isPhysicalMutationLocked()) {
-      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: 'physical-lock', direction, editId: editId ?? null, tileHistory });
       return false;
     }
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) {
-      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: rotoScript.applying.peek() ? 'applying' : 'mutation-lock', direction, editId: editId ?? null, tileHistory });
       return false;
     }
     if (isAquarelleScriptEditInFlight()) {
-      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'replay-guard', refusedGuard: 'in-flight', direction, editId: editId ?? null, tileHistory });
       return false;
     }
     rotoCachedPlayback.stop();
@@ -4779,13 +4771,13 @@ export function PhysicsPaintStudio() {
           prepare,
           restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
           resetSheet: () => {
-            // TEMP: the tile path keeps the live sheet — no reset, no flash.
+            // The tile path keeps the live sheet — no reset, no flash.
             if (tileHistory) return;
             aquarelleResetSheetRef.current?.();
           },
           rebake: () => {
-            // TEMP: the engine's tile undo/redo IS the pixel side of this
-            // command. It restores the exact sheet step without re-rendering.
+            // The engine's tile undo/redo IS the pixel side of this command.
+            // It restores the exact sheet step without re-rendering.
             if (tileHistory) {
               return Promise.resolve(direction === 'undo' ? rotoFrameEditing.undo() : rotoFrameEditing.redo());
             }
@@ -4921,11 +4913,6 @@ export function PhysicsPaintStudio() {
         // live content is exactly that side. Re-seat it and retry ONCE; a
         // foreign script edit never matches and still fails closed.
         if (!attempted || !reanchorAquarelleEditFromLiveContent(editId, direction)) return false;
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'script-route-reanchor',
-          editId,
-          direction,
-        });
         return runScriptReplay({ direction, editId });
       },
       // R-2: no tombstone term — a just-deleted stroke still answers true so its
@@ -4969,15 +4956,6 @@ export function PhysicsPaintStudio() {
         // was deleted (the auto-key composite) — its script side is still live.
         const cached = aquarelleStrokeEditIdsRef.current.get(mutationId);
         if (foreignFrame || (stroke === undefined && cached === undefined)) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'stroke-route',
-            outcome: 'refused',
-            direction,
-            mutationId,
-            hasStroke: stroke !== undefined,
-            strokeFrame: stroke?.playFrame ?? null,
-            launchFrame: launchContextRef.current?.startFrame ?? null,
-          });
           return false;
         }
         let enteredReplay = false;
@@ -4996,9 +4974,9 @@ export function PhysicsPaintStudio() {
         if (direction === 'redo' && cached !== undefined) {
           reanchorAquarelleEditRevision(cached, 'redo');
         }
-        // TEMP: the stroke route — and ONLY it — takes the engine's tile
-        // history instead of a frame re-bake.
-        const tileHistory = AQUARELLE_STROKE_HISTORY_WITHOUT_REBAKE;
+        // The stroke route — and ONLY it — takes the engine's tile history
+        // instead of a frame re-bake.
+        const tileHistory = true;
         const prepareUndo = () => {
           // `runScriptReplay` already holds the in-flight gate for this
           // replay, so the build passes `ownedInFlight` — otherwise the
@@ -5006,7 +4984,6 @@ export function PhysicsPaintStudio() {
           // stroke's Cmd+Z would be a silent no-op (261029-lsr UAT row 1).
           const created = beginAquarelleStrokeUndoEdit(mutationId, true);
           if (created !== null) aquarelleStrokeEditIdsRef.current.set(mutationId, created);
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-prepare', mutationId, created });
           return created;
         };
         const attempt = async (useCached: boolean, useTile: boolean): Promise<boolean> => {
@@ -5025,26 +5002,14 @@ export function PhysicsPaintStudio() {
         if (!ok && cached !== undefined && direction === 'undo') {
           // The fresh build REPLACES the cached id on success; a refused build
           // falls through to the cleanup below, which drops the stale id.
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-route-retry', mutationId });
           ok = await attempt(false, false);
         }
         if (!ok && cached !== undefined && direction === 'redo') {
           // Stacked redos exhaust the engine's tile history after a couple of
           // steps; the recorded edit still re-bakes the frame from the script.
           reanchorAquarelleEditRevision(cached, 'redo');
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'stroke-route-rebake-retry', mutationId });
           ok = await attempt(true, false);
         }
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'stroke-route',
-          outcome: 'replay',
-          direction,
-          mutationId,
-          ok,
-          cached: cached !== undefined,
-          enteredReplay,
-          reachedRebake,
-        });
         if (ok) return true;
         if (enteredReplay) {
           const editId = aquarelleStrokeEditIdsRef.current.get(mutationId);

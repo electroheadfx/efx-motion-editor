@@ -1586,7 +1586,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
 
   const executePhysicalEdit = useCallback(
     async (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>): Promise<boolean> => {
-      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-call', kind: input.operationKind });
       // G-43.6-2: a recovery lease must never permanently block edits — the store's token validation is the real concurrency authority, and this is the only production caller of releasePhysicalEditRecoveryLease. Best-effort release here; if the parent still refuses (stale token), the guard below keeps blocking.
       releasePhysicalEditRecoveryLease();
       if (
@@ -1595,31 +1594,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         || settledLeaseRef.current
         || recoveryLeaseSignal.peek()
       ) {
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-serialize',
-          kind: input.operationKind,
-          inFlight: inFlightRef.current,
-          pending: pendingRef.current !== null,
-          settledLease: settledLeaseRef.current !== null,
-          recoveryLease: recoveryLeaseSignal.peek() !== null,
-        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== input.expectedLaunch.layerId || launch.operationId !== input.expectedLaunch.operationId) {
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-launch',
-          kind: input.operationKind,
-          hasLaunch: launch !== null,
-          layerMatches: launch?.layerId === input.expectedLaunch.layerId,
-          operationMatches: launch?.operationId === input.expectedLaunch.operationId,
-        });
         return false;
       }
       const bridgeMode = portsRef.current.bridge.getBridgeMode();
       if (bridgeMode === 'Unavailable') {
-        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-bridge', kind: input.operationKind });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
@@ -1807,24 +1790,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
       }
       if (!isInterpolationChange && !isGeneratedPublication && !isGroupFramePaint && !isGroupLifecycleDelete && !isRailSetDelete && !isRailSetPaste
         && (proposal?.selectedKeyId !== requestedSelectedKeyId || proposal?.selectedAppFrame !== requestedSelectedAppFrame)) {
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-selection',
-          kind: input.operationKind,
-          proposalKey: proposal?.selectedKeyId ?? null,
-          requestedKey: requestedSelectedKeyId ?? null,
-          proposalFrame: proposal?.selectedAppFrame ?? null,
-          requestedFrame: requestedSelectedAppFrame ?? null,
-        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
       if (isReplay && (!proposal || !replayTarget || !replayProposalMatchesTarget(proposal, replayTarget))) {
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-replay-target',
-          kind: input.operationKind,
-          hasProposal: proposal !== null,
-          hasTarget: replayTarget !== undefined,
-        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
@@ -1850,20 +1819,17 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           await portsRef.current.paint.flushLivePixels(flushAppFrame);
         }
         if (cancelledRef.current) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-cancelled', kind: input.operationKind });
           clearPendingOnce();
           return false;
         }
         const projectContextId = launch.project?.contextId;
         if (!projectContextId) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-project', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
         }
         const leaseToken = portsRef.current.lease.acquire(projectContextId, launch.layerId);
         if (!leaseToken) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-lease', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
           clearPendingOnce();
           return false;
@@ -1875,15 +1841,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           || revalidatedLaunch.operationId !== input.expectedLaunch.operationId
           || revalidatedLaunch.project?.contextId !== leaseToken.projectContextId
           || revalidatedLaunch.layerId !== leaseToken.layerId) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'coord-relaunch',
-            kind: input.operationKind,
-            hasLaunch: revalidatedLaunch !== null,
-            layerMatches: revalidatedLaunch?.layerId === input.expectedLaunch.layerId,
-            operationMatches: revalidatedLaunch?.operationId === input.expectedLaunch.operationId,
-            contextMatches: revalidatedLaunch?.project?.contextId === leaseToken.projectContextId,
-            leaseLayerMatches: revalidatedLaunch?.layerId === leaseToken.layerId,
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -1909,7 +1866,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         }
         const currentDocument = portsRef.current.records.getDocument(revalidatedLaunch.layerId);
         if (!currentDocument) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-document', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2135,22 +2091,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           || replayTarget.currentAppFrame < 0
           || replayTarget.currentAppFrame >= capacity
         )) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'coord-replay-strict',
-            kind: input.operationKind,
-            hasTarget: replayTarget !== undefined,
-            launchMatches: replayTarget?.launchOperationId === revalidatedLaunch.operationId,
-            layerMatches: replayTarget?.layerId === revalidatedLaunch.layerId,
-            contextMatches: replayTarget?.projectContextId === (revalidatedLaunch.project?.contextId ?? null),
-            capacityMatches: replayTarget?.capacity === capacity,
-            capacity,
-            targetCapacity: replayTarget?.capacity ?? null,
-            selectedKeyMatches: replayTarget?.selectedKeyId === targetSelectedKeyId,
-            selectedFrameMatches: replayTarget?.selectedAppFrame === targetSelectedAppFrame,
-            selectedAppFrame: targetSelectedAppFrame,
-            targetSelectedAppFrame: replayTarget?.selectedAppFrame ?? null,
-            cursor: replayTarget?.currentAppFrame ?? null,
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2236,7 +2176,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
                   ? buildStagedRecords(currentRecords, proposal, capacity)
                   : null;
         if (stagedRecords === null) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-staged-records', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2304,7 +2243,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           const detail = error instanceof Error
             ? error.message
             : 'Invalid staged real-key records.';
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-staged-invalid', kind: input.operationKind, message: detail });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           portsRef.current.status.logDiagnostic(`Roto physical record validation failed: ${detail}`);
           clearPendingOnce();
@@ -2323,12 +2261,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             (record) => record.keyId === targetSelectedKeyId,
           ) ?? null;
           if (selectedRecord !== null && selectedRecord.appFrame !== targetCursorAppFrame) {
-            recordAquarelleRenderSplitEvent('undo-probe', {
-              stage: 'coord-replay-selection-dropped',
-              kind: input.operationKind,
-              selectedAppFrame: selectedRecord.appFrame,
-              cursorAppFrame: targetCursorAppFrame,
-            });
             targetSelectedKeyId = null;
             targetSelectedAppFrame = null;
           }
@@ -2396,30 +2328,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           || historyProvenance.sourceRevision !== expectedRevision
           || historyProvenance.targetRevision !== stagedRevision
         )) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'coord-replay-provenance',
-            kind: input.operationKind,
-            hasProvenance: historyProvenance !== undefined,
-            sourceMatches: historyProvenance?.sourceRevision === expectedRevision,
-            targetMatches: historyProvenance?.targetRevision === stagedRevision,
-            sourceRevision: historyProvenance?.sourceRevision ?? null,
-            expectedRevision,
-            targetRevision: historyProvenance?.targetRevision ?? null,
-            stagedRevision,
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
         }
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-provenance-passed',
-          kind: input.operationKind,
-          sourceRevision: historyProvenance?.sourceRevision ?? null,
-          targetRevision: historyProvenance?.targetRevision ?? null,
-        });
         const before = captureSnapshot(expectedRevision, stagedRevision);
         if (!before) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-capture-snapshot', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2442,11 +2356,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             incomingInterpolationBreakKeyIds: stagedIncomingInterpolationBreakKeyIds,
           });
         } catch (error) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'coord-target-invalid',
-            kind: input.operationKind,
-            message: error instanceof Error ? error.message : String(error),
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           portsRef.current.status.logDiagnostic(`Roto physical target document validation failed: ${error instanceof Error ? error.message : String(error)}`);
           clearPendingOnce();
@@ -2508,7 +2417,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           intent,
         );
         if (!payload) {
-          recordAquarelleRenderSplitEvent('undo-probe', { stage: 'coord-payload', kind: input.operationKind });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2568,11 +2476,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             });
           }
         } catch (error) {
-          recordAquarelleRenderSplitEvent('undo-probe', {
-            stage: 'coord-transport',
-            kind: input.operationKind,
-            message: error instanceof Error ? error.message : String(error),
-          });
           if (isGroupFramePaint) {
             recordAquarelleRenderSplitEvent('physical-dispatch-refused', {
               stage: 'transport',
@@ -2603,11 +2506,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         }, PHYSICAL_EDIT_TIMEOUT_MS);
         return true;
       } catch (error) {
-        recordAquarelleRenderSplitEvent('undo-probe', {
-          stage: 'coord-exception',
-          kind: input.operationKind,
-          message: error instanceof Error ? error.message : String(error),
-        });
         if (pendingRef.current && beforeRef.current) {
           finalizeFailed(pendingRef.current, beforeRef.current, 'exception', error);
         } else {

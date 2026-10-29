@@ -59,8 +59,6 @@
 
 import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { effect, type ReadonlySignal, type Signal } from '@preact/signals';
-// TEMP (261029-lsr UAT row 4): decision trace for the auto-key undo path.
-import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 import type { CompletedPaintMutation, PaintHistoryAvailability } from '../types/paintCore';
 import type {
   PhysicPaintActionHistoryReleaseReason,
@@ -976,14 +974,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
-    recordAquarelleRenderSplitEvent('undo-probe', {
-      stage: 'entry',
-      direction: 'undo',
-      kind: entry.kind,
-      mutationId: 'mutationId' in entry ? entry.mutationId : null,
-      applied: appliedRef.current.length,
-      redo: redoRef.current.length,
-    });
     if (entry.kind === 'aquarelle-script') {
       // 261022-pim: the replay port swaps the script snapshot, resets the live
       // sheet and awaits the shared Apply. Stacks move ONLY on true — a stale
@@ -1007,17 +997,10 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // keeps the engine-only tile restore below.
       const route = inputRef.current.aquarelleScriptHistory;
       const strokeRecorded = route !== undefined && route.hasRecordedStroke(entry.mutationId);
-      recordAquarelleRenderSplitEvent('undo-probe', {
-        stage: 'paint-route',
-        mutationId: entry.mutationId,
-        recorded: strokeRecorded,
-        hasRoute: route !== undefined,
-      });
       if (strokeRecorded && route !== undefined) {
         const replayed = await route.replayStroke(entry.mutationId, 'undo');
         // Never fall back to undoPaint() after a reset: engine.clear() is a
         // history step, so an engine undo would resurrect pre-undo pixels.
-        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'paint-replay', mutationId: entry.mutationId, replayed });
         if (!replayed) return false;
         const top = appliedRef.current[appliedRef.current.length - 1];
         if (top !== entry) return false;
@@ -1099,29 +1082,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // fails closed.
       const autoKeyLive = typeof autoKeyLiveSnapshot === 'function' ? autoKeyLiveSnapshot() : null;
       const autoKeyGuardOk = autoKeyLive !== null && snapshotReplayAuthorityEqual(autoKeyLive, command.after, true);
-      recordAquarelleRenderSplitEvent('undo-probe', {
-        stage: 'auto-key-guard',
-        mutationId: entry.mutationId,
-        recorded: recordedStroke,
-        hasRoute: route !== undefined,
-        guardOk: autoKeyGuardOk,
-        live: autoKeyLive === null ? null : {
-          records: autoKeyLive.records.map(({ keyId, appFrame }) => [keyId, appFrame]),
-          capacity: autoKeyLive.capacity,
-        },
-        expected: {
-          records: command.after.records.map(({ keyId, appFrame }) => [keyId, appFrame]),
-          capacity: command.after.capacity,
-        },
-      });
       if (!autoKeyGuardOk) return false;
       if (recordedStroke && route !== undefined) {
         const strokeReplayed = await route.replayStroke(entry.mutationId, 'undo', { skipCapture: true });
-        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-stroke-replay', strokeReplayed });
         if (!strokeReplayed) return false;
       } else {
         const painted = inputRef.current.undoPaint();
-        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-undo-paint', painted });
         if (!painted) return false;
       }
       if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
@@ -1133,7 +1099,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       // between, and the provenance must match the revision at dispatch.
       const autoKeyDispatchLive = typeof autoKeyLiveSnapshot === 'function' ? autoKeyLiveSnapshot() : null;
       if (!autoKeyDispatchLive || !snapshotReplayAuthorityEqual(autoKeyDispatchLive, command.after, true)) {
-        recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-dispatch-stale' });
         if (recordedStroke && route !== undefined) await route.replayStroke(entry.mutationId, 'redo', { skipCapture: true });
         else inputRef.current.redoPaint();
         publishAvailability();
@@ -1162,7 +1127,6 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
           targetRevision: autoKeyBeforeRevision,
         },
       });
-      recordAquarelleRenderSplitEvent('undo-probe', { stage: 'auto-key-dispatch', accepted: autoKeyAccepted, sourceRevision: autoKeyLiveRevision });
       if (!autoKeyAccepted) {
         pendingReplayRef.current = null;
         if (recordedStroke && route !== undefined) {
