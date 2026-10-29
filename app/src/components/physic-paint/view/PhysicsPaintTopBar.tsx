@@ -1,4 +1,5 @@
 import type { TargetedMouseEvent } from 'preact';
+import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 import { ChevronDown, Eraser } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
@@ -16,6 +17,11 @@ import {
 } from './aquarelleRecordState';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 import { LiftShapePicker } from './LiftShapePicker';
+import {
+  aquarelleSelectMode,
+  aquarelleStrokeTypeFilter,
+  setAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + brush trigger +
@@ -56,10 +62,11 @@ export interface PhysicsPaintTopBarProps {
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
   /**
-   * 261028-k03b: select every recorded Lift stroke of the current edit frame
-   * and enter move mode (the Lift tool's Select button).
+   * 261029-eur: the frame-scoped "is there anything to select" gate — the
+   * same signal the rail's Select toggle reads. The Edit switch is disabled
+   * without it; the leaf subscribes, never the Studio body.
    */
-  onSelectLiftStrokes?: () => void;
+  moveAvailable: ReadonlySignal<boolean>;
 }
 
 /**
@@ -128,6 +135,44 @@ export function ScriptRecordingSwitch() {
   );
 }
 
+/**
+ * 261029-eur: the Eraser tool's "Edit" switch — the one control that enters
+ * and leaves the lift-only editing surface. It replaces the retired one-shot
+ * "Select lifts" button in place and shares the Script switch's markup/CSS.
+ *
+ * ON is DERIVED (`select mode AND filter === 'lift'`), never mirrored in a
+ * second boolean: flipping the dialog filter to All/Paint turns it off for
+ * free. Both signals are read in THIS leaf — never the Studio body.
+ */
+export function LiftEditSwitch(props: {
+  disabled?: boolean;
+  moveAvailable: ReadonlySignal<boolean>;
+}) {
+  const selectMode = aquarelleSelectMode.value;
+  const filter = aquarelleStrokeTypeFilter.value;
+  const active = selectMode && filter === 'lift';
+  const unavailable = props.disabled === true || !props.moveAvailable.value;
+  return (
+    <button
+      type="button"
+      class={`physics-paint-script-switch${active ? ' is-on' : ''}`}
+      role="switch"
+      aria-checked={active ? 'true' : 'false'}
+      data-testid="physics-lift-edit"
+      disabled={unavailable}
+      title={active
+        ? 'Edit on — only Eraser strokes can be selected; turn off to paint again'
+        : 'Edit — select and edit the Eraser strokes on this frame'}
+      onClick={() => setAquarelleSelectMode(!active, 'lift')}
+    >
+      <span class="physics-paint-script-switch-track" aria-hidden="true">
+        <span class="physics-paint-script-switch-knob" />
+      </span>
+      <span class="physics-paint-script-switch-label">Edit</span>
+    </button>
+  );
+}
+
 function clampTopBarValue(value: unknown, min: number, max: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return min;
@@ -168,7 +213,7 @@ export function PhysicsPaintTopBar({
   disabled = false,
   onBrushSizeChange,
   onOpacityChange,
-  onSelectLiftStrokes,
+  moveAvailable,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -191,8 +236,8 @@ export function PhysicsPaintTopBar({
   // Water color has no opacity — its canonical Pigment `load` rides this same
   // primary control, so the bar never shows Opacity and Pigment twice.
   const liveOpacity = aquarelleParams.value.load;
-  // 261028-k03b: the Lift tool owns the primary cluster — a Lift-strength
-  // slider (eraser icon) + Select. The brush knobs (size/pigment/water/edges/
+  // 261028-k03b / 261029-eur: the Eraser tool owns the primary cluster — Size
+  // + Eraser strength + the Edit switch. The brush knobs (pigment/water/edges/
   // grain) do not describe an eraser stroke.
   const activeTool = aquarelleActiveTool.value;
   const liftStrength = aquarelleParams.value.lift;
@@ -226,13 +271,13 @@ export function PhysicsPaintTopBar({
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).
           I-11 follow-up: this cluster centers inside the remaining width after
           the left cluster; the last optional knobs hide via container queries.
-          261028-k03b: the Lift tool swaps the whole cluster for its own two
-          controls — Strength (eraser icon) + Select lifts. */}
+          261028-k03b / 261029-eur: the Eraser tool swaps the whole cluster for
+          its own controls — Size + Eraser strength (eraser icon) + Edit. */}
       <div class="physics-paint-topbar-primary">
         {activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
-            {/* 261028-k03d: the Lift cluster keeps the shared Size (the lift
-                radius runs through the same sizeMult) + Strength + Select.
+            {/* 261028-k03d: the Eraser cluster keeps the shared Size (the erase
+                radius runs through the same sizeMult) + Strength + Edit.
                 The shape moved to the left slot, where the brush dropdown
                 sits for every other tool. */}
             <TopBarSlider id="physics-lift-size" label="Size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
@@ -243,26 +288,17 @@ export function PhysicsPaintTopBar({
               <Eraser size={15} aria-hidden="true" />
               <SliderStepper
                 id="physics-lift-strength"
-                label="Lift strength"
+                label="Eraser strength"
                 value={liftStrength}
                 onChange={(value) => setAquarelleParam('lift', Math.max(5, Math.min(90, Math.round(value))))}
                 step={1}
                 min={5}
                 max={90}
                 disabled={disabled}
-                ariaLabel="Lift strength"
+                ariaLabel="Eraser strength"
               />
             </div>
-            <button
-              type="button"
-              class="physics-paint-segmented-button physics-paint-topbar-lift-select"
-              data-testid="physics-lift-select"
-              onClick={onSelectLiftStrokes}
-              disabled={disabled || onSelectLiftStrokes === undefined}
-              title="Select every Lift stroke on this frame"
-            >
-              Select lifts
-            </button>
+            <LiftEditSwitch disabled={disabled} moveAvailable={moveAvailable} />
           </div>
         ) : (
           <>

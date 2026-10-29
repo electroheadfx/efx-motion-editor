@@ -232,7 +232,6 @@ import {
   readAquarelleStrokeAppearance,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
-  selectAquarelleLiftStrokes,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
@@ -5514,21 +5513,7 @@ export function PhysicsPaintStudio() {
   const handleOpacityChange = useCallback((value: number) => {
     setAquarelleParam('load', value);
   }, []);
-  // 261028-k03b: the Lift top-bar Select button. Selects every recorded Lift
-  // stroke of the edit frame and enters move mode, so the existing move /
-  // delete / Stroke Settings gestures can target them.
-  const handleSelectLiftStrokes = useCallback(() => {
-    const frame = launchContextRef.current?.startFrame ?? 0;
-    const count = selectAquarelleLiftStrokes(frame);
-    if (count === 0) {
-      setApplyMessage('No Lift strokes on this frame.');
-      setApplyStatus('idle');
-      return;
-    }
-    setApplyMessage(`Selected ${count} Lift stroke${count === 1 ? '' : 's'}.`);
-    setApplyStatus('idle');
-  }, [setApplyMessage, setApplyStatus]);
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, handleSelectLiftStrokes], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange, watercolorMoveAvailable], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
@@ -5541,8 +5526,9 @@ export function PhysicsPaintStudio() {
     // call-time module router as Brush size — watercolor drives
     // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
     onOpacityChange: handleOpacityChange,
-    // 261028-k03b: Lift's Select button (current edit frame).
-    onSelectLiftStrokes: handleSelectLiftStrokes,
+    // 261029-eur: the Eraser Edit switch's enable gate (current edit frame).
+    // Signal object passed by IDENTITY — the top-bar leaf reads `.value`.
+    moveAvailable: watercolorMoveAvailable,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -5766,7 +5752,7 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return;
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleSelectLiftStrokes, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the

@@ -517,8 +517,8 @@ button.destructive {
   min-width: 140px;
 }
 
-/* 261028-k03b: the Lift tool's primary cluster — eraser icon + Strength
-   slider + Select lifts. The icon shares the slider's row. */
+/* 261028-k03b / 261029-eur: the Eraser tool's primary cluster — eraser icon +
+   Strength slider + the Edit switch. The icon shares the slider's row. */
 .physics-paint-topbar-lift {
   display: flex;
   align-items: flex-end;
@@ -531,10 +531,6 @@ button.destructive {
   gap: 7px;
   min-width: 180px;
   color: #9aa5b1;
-}
-
-.physics-paint-topbar-lift-select {
-  white-space: nowrap;
 }
 
 /* I-11 follow-up: hide the last optional watercolor knobs as the settings
@@ -840,6 +836,13 @@ button.destructive {
   outline: 2px solid #2f9fe0;
   outline-offset: 2px;
   border-radius: 8px;
+}
+
+/* 261029-eur: the Eraser Edit switch shares the Script switch chrome but IS
+   disabled without a live script on the frame (the Script switch never is). */
+.physics-paint-script-switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .physics-paint-script-switch-track {

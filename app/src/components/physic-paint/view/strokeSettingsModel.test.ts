@@ -274,6 +274,7 @@ function selectableStroke(
     stackPosition: 1,
     stackTotal: 1,
     color: '#ff0000',
+    kind: 'paint',
   };
 }
 
@@ -293,6 +294,7 @@ function stackStrokeFixture(
     stackPosition,
     stackTotal,
     color,
+    kind: 'paint',
   };
 }
 

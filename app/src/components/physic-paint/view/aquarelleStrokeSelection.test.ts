@@ -27,21 +27,25 @@ import {
   updateAquarelleStrokesInScript,
 } from './aquarelleRecordState';
 import {
+  aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationIds,
   aquarelleStrokeBoundsPx,
   aquarelleStrokePointsPx,
+  aquarelleStrokeSettingsDismissed,
   aquarelleStrokesOnFrame,
+  aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleTransformEdit,
   hitTestAquarelleStroke,
   listSelectableAquarelleStrokes,
+  matchesAquarelleStrokeFilter,
   readAquarelleStrokeAppearance,
   restoreAquarelleEditSnapshot,
-  selectAquarelleLiftStrokes,
   selectAquarelleStroke,
   setAquarelleSelectMode,
+  setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 import {
   clearScriptStrokeSelection,
@@ -466,29 +470,196 @@ describe('261024-p5q watercolor appearance edits', () => {
 
 
 // ============================================================
-//  261028-k03b — the Lift tool's Select button.
+//  261029-eur — the stroke-type filter and the Edit choke point.
+//
+//  One filter signal narrows the LISTING and the HIT-TEST only
+//  (never rendered artwork), the selection is pruned on every
+//  filter change, and `setAquarelleSelectMode` is the single
+//  entry/exit point that owns the filter reset and the one
+//  Stroke Settings dismissal reset.
 // ============================================================
-describe('261028-k03b select all Lift strokes', () => {
-  it('selects every live Lift stroke of the frame and enters move mode', () => {
-    recordAquarelleStroke(9901, { ...stroke({ points: [point(0.1, 0.5)], playFrame: 701 }), tool: 'lift' });
-    recordAquarelleStroke(9902, stroke({ points: [point(0.2, 0.5)], playFrame: 701 }));
-    recordAquarelleStroke(9903, { ...stroke({ points: [point(0.3, 0.5)], playFrame: 701 }), tool: 'lift' });
-    // Another frame's lift and a tombstoned lift never join the selection.
-    recordAquarelleStroke(9904, { ...stroke({ points: [point(0.1, 0.5)], playFrame: 702 }), tool: 'lift' });
-    recordAquarelleStroke(9905, { ...stroke({ points: [point(0.4, 0.5)], playFrame: 701 }), tool: 'lift' });
-    markAquarelleStrokeDeleted(9905);
-    setAquarelleSelectMode(false);
-    clearScriptStrokeSelection();
+describe('261029-eur stroke-type filter + Edit choke point', () => {
+  /** A lift (eraser) stroke: the fixture's only difference is `tool`. */
+  function liftStroke(options: Parameters<typeof stroke>[0]): AquarelleStroke {
+    return { ...stroke(options), tool: 'lift' };
+  }
 
-    expect(selectAquarelleLiftStrokes(701)).toBe(2);
-    expect(aquarelleSelectMode.value).toBe(true);
-    expect([...aquarelleSelectedStrokeMutationIds.value].sort((a, b) => a - b)).toEqual([9901, 9903]);
+  function listedIds(
+    playFrame: number,
+    filter?: Parameters<typeof listSelectableAquarelleStrokes>[2],
+  ): number[] {
+    return listSelectableAquarelleStrokes(playFrame, SHEET, filter).map(
+      (entry) => entry.mutationId,
+    );
+  }
+
+  it('labels every listing entry with its kind', () => {
+    recordAquarelleStroke(10001, stroke({ points: [point(0.2, 0.5)], playFrame: 801 }));
+    recordAquarelleStroke(10002, liftStroke({ points: [point(0.4, 0.5)], playFrame: 801 }));
+    expect(
+      listSelectableAquarelleStrokes(801, SHEET).map((entry) => [entry.mutationId, entry.kind]),
+    ).toEqual([[10001, 'paint'], [10002, 'lift']]);
   });
 
-  it('leaves move mode untouched when the frame has no Lift strokes', () => {
-    recordAquarelleStroke(9911, stroke({ points: [point(0.2, 0.5)], playFrame: 703 }));
+  it('matchesAquarelleStrokeFilter is the one predicate (paint = not a lift)', () => {
+    const paint = stroke({ points: [], playFrame: 801 });
+    const lift = liftStroke({ points: [], playFrame: 801 });
+    expect(matchesAquarelleStrokeFilter(paint, 'all')).toBe(true);
+    expect(matchesAquarelleStrokeFilter(lift, 'all')).toBe(true);
+    expect(matchesAquarelleStrokeFilter(paint, 'paint')).toBe(true);
+    expect(matchesAquarelleStrokeFilter(lift, 'paint')).toBe(false);
+    expect(matchesAquarelleStrokeFilter(lift, 'lift')).toBe(true);
+    expect(matchesAquarelleStrokeFilter(paint, 'lift')).toBe(false);
+  });
+
+  it('setAquarelleSelectMode(true, "lift") enters lift filtering and an exit resets to all', () => {
+    recordAquarelleStroke(10011, stroke({ points: [point(0.2, 0.5)], playFrame: 802 }));
+    recordAquarelleStroke(10012, liftStroke({ points: [point(0.4, 0.5)], playFrame: 802 }));
     setAquarelleSelectMode(false);
-    expect(selectAquarelleLiftStrokes(703)).toBe(0);
-    expect(aquarelleSelectMode.value).toBe(false);
+    try {
+      setAquarelleSelectMode(true, 'lift');
+      expect(aquarelleSelectMode.value).toBe(true);
+      expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+      expect(listedIds(802, aquarelleStrokeTypeFilter.value)).toEqual([10012]);
+
+      setAquarelleSelectMode(false);
+      expect(aquarelleSelectMode.value).toBe(false);
+      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      expect(listedIds(802, aquarelleStrokeTypeFilter.value)).toEqual([10011, 10012]);
+    } finally {
+      setAquarelleSelectMode(false);
+      clearScriptStrokeSelection();
+    }
+  });
+
+  it('the filtered hit-test ignores the other kind under the same pointer', () => {
+    // Both strokes share the exact same centerline, so the filter — not the
+    // geometry — decides which id a pointer at (200, 100) resolves to.
+    recordAquarelleStroke(10021, stroke({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 803,
+      size: 40,
+    }));
+    recordAquarelleStroke(10022, liftStroke({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 803,
+      size: 40,
+    }));
+    const probe = { x: 200, y: 100 };
+    expect(hitTestAquarelleStroke(probe, 803, SHEET)).toBe(10022);
+    expect(hitTestAquarelleStroke(probe, 803, SHEET, 'paint')).toBe(10021);
+    expect(hitTestAquarelleStroke(probe, 803, SHEET, 'lift')).toBe(10022);
+  });
+
+  it('a re-entry while already ON with no filter resets to all and keeps select mode', () => {
+    setAquarelleSelectMode(false);
+    try {
+      setAquarelleSelectMode(true, 'lift');
+      expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+      // setScriptSelectMode early-returns here — the reset must already
+      // have happened BEFORE the delegation, or it would be skipped.
+      setAquarelleSelectMode(true);
+      expect(aquarelleSelectMode.value).toBe(true);
+      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+    } finally {
+      setAquarelleSelectMode(false);
+      clearScriptStrokeSelection();
+    }
+  });
+
+  it('a filter change prunes the selection both ways and keeps unjudgeable ids', () => {
+    recordAquarelleStroke(10031, stroke({ points: [point(0.1, 0.5)], playFrame: 804 }));
+    recordAquarelleStroke(10032, liftStroke({ points: [point(0.2, 0.5)], playFrame: 804 }));
+    setAquarelleSelectMode(false);
+    try {
+      setAquarelleStrokeTypeFilter('all');
+      setScriptStrokeSelection([10031, 10032]);
+      setAquarelleStrokeTypeFilter('lift');
+      expect([...aquarelleSelectedStrokeMutationIds.value]).toEqual([10032]);
+
+      setAquarelleStrokeTypeFilter('paint');
+      expect([...aquarelleSelectedStrokeMutationIds.value]).toEqual([]);
+
+      // An id with no recorded entry is kept — nothing to judge here (the
+      // delete paths already prune vanished strokes).
+      setScriptStrokeSelection([123456]);
+      setAquarelleStrokeTypeFilter('lift');
+      expect([...aquarelleSelectedStrokeMutationIds.value]).toEqual([123456]);
+    } finally {
+      clearScriptStrokeSelection();
+      setAquarelleStrokeTypeFilter('all');
+    }
+  });
+
+  it('the filter setter is idempotent — 1000 identical writes notify zero times', () => {
+    setAquarelleStrokeTypeFilter('all');
+    let runs = 0;
+    const dispose = effect(() => {
+      void aquarelleStrokeTypeFilter.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      for (let index = 0; index < 1000; index += 1) setAquarelleStrokeTypeFilter('all');
+      expect(runs).toBe(before);
+      setAquarelleStrokeTypeFilter('lift');
+      expect(runs).toBe(before + 1);
+    } finally {
+      dispose();
+      setAquarelleStrokeTypeFilter('all');
+    }
+  });
+
+  it('the edition port lists and hits through the LIVE filter', () => {
+    recordAquarelleStroke(10041, stroke({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 805,
+      size: 40,
+    }));
+    recordAquarelleStroke(10042, liftStroke({
+      points: [point(0.2, 0.5), point(0.8, 0.5)],
+      playFrame: 805,
+      size: 40,
+    }));
+    const probe = { x: 200, y: 100 };
+    setAquarelleSelectMode(false);
+    try {
+      expect(aquarelleScriptStrokeEditionPort.listStrokes(805, SHEET).map((entry) => entry.kind))
+        .toEqual(['paint', 'lift']);
+      expect(aquarelleScriptStrokeEditionPort.hitTestStroke(probe, 805, SHEET)).toBe(10042);
+
+      setAquarelleStrokeTypeFilter('paint');
+      expect(aquarelleScriptStrokeEditionPort.listStrokes(805, SHEET).map((entry) => entry.mutationId))
+        .toEqual([10041]);
+      expect(aquarelleScriptStrokeEditionPort.hitTestStroke(probe, 805, SHEET)).toBe(10041);
+    } finally {
+      setAquarelleStrokeTypeFilter('all');
+      clearScriptStrokeSelection();
+    }
+  });
+
+  it('clears the Stroke Settings dismissal flag only on an off -> on select-mode edge', () => {
+    setAquarelleSelectMode(false);
+    try {
+      // A genuine off -> on entry clears it (compare-then-write).
+      aquarelleStrokeSettingsDismissed.value = true;
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeSettingsDismissed.value).toBe(false);
+
+      // An already-ON session is NOT an exit/re-enter edge: strict.
+      aquarelleStrokeSettingsDismissed.value = true;
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeSettingsDismissed.value).toBe(true);
+
+      // Leaving never clears it either — only the next entry does.
+      setAquarelleSelectMode(false);
+      expect(aquarelleStrokeSettingsDismissed.value).toBe(true);
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeSettingsDismissed.value).toBe(false);
+    } finally {
+      aquarelleStrokeSettingsDismissed.value = false;
+      setAquarelleSelectMode(false);
+      clearScriptStrokeSelection();
+    }
   });
 });

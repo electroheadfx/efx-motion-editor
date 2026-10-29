@@ -3101,6 +3101,34 @@ describe('261022-pim watercolor stroke select surface', () => {
     );
   });
 
+  // 261029-eur Task 1: the one-shot "Select lifts" action retired in favour of
+  // the derived Edit switch. The Studio must not keep a handler, an import or a
+  // message for it; the switch is driven entirely by the leaf reading the
+  // shared signals.
+  it('retires the one-shot Select lifts action from the Studio', () => {
+    expect(studio).not.toContain('handleSelectLiftStrokes');
+    expect(studio).not.toContain('selectAquarelleLiftStrokes');
+    expect(studio).not.toContain('onSelectLiftStrokes');
+    expect(studio).not.toContain('No Lift strokes on this frame.');
+    expect(studio).not.toContain('Lift stroke(s).');
+  });
+
+  it('feeds the Edit switch gate through the top-bar memo by identity', () => {
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    expect(topBarStart).toBeGreaterThanOrEqual(0);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
+    // The computed signal object rides the dep array by identity; the leaf
+    // reads `.value` so a frame with nothing eraser-selectable disables the
+    // Edit switch without invalidating frame-only renders.
+    expect(topBarDeps).toContain('watercolorMoveAvailable');
+    expect(topBarBlock).toContain('moveAvailable: watercolorMoveAvailable');
+    // The switch reads the selection signals in the leaf, never the Studio body.
+    expect(studio).not.toContain('aquarelleSelectMode.value');
+    expect(studio).not.toContain('aquarelleStrokeTypeFilter.value');
+  });
+
   it('wires the delete callback through the canvas mount props and memo deps', () => {
     expect(canvasMount).toContain('onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;');
     expect(canvasMount).toContain(

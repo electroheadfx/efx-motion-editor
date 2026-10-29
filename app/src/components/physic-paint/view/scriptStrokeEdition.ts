@@ -62,6 +62,22 @@ export interface SelectableScriptStroke {
   stackTotal: number;
   /** 261022-ujp: the stroke's own colour — the selected box and badge wear it. */
   color: string;
+  /**
+   * 261029-eur: which STROKE KIND this entry is. 'lift' is the eraser stroke
+   * (UI name "Eraser"); every other recorded tool is 'paint'. The kind drives
+   * the filter, the drawn ribbon and the hit radius.
+   */
+  readonly kind: 'paint' | 'lift';
+  /**
+   * 261029-eur: lift only — the drawn ribbon polygon in canvas px (closed by
+   * the renderer with Z). Absent on paint entries.
+   */
+  readonly ribbonPx?: CanvasPoint[];
+  /**
+   * 261029-eur: lift only — the click/hit radius in canvas px, equal to the
+   * band's maximum support (never the bare footprint radius). Absent on paint.
+   */
+  readonly hitRadiusPx?: number;
 }
 
 /** Rail Move/Select toggle. Compare-then-write. */

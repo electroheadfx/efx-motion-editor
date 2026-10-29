@@ -17,7 +17,7 @@
 //  rail toggle), never the Studio render body.
 // ============================================================
 
-import { computed } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import { isAquarelleDryEvent, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
@@ -88,6 +88,33 @@ export const aquarelleSelectedStrokeMutationIds = scriptSelectedStrokeIds;
 /** The singleton view of the selection (computed shared alias). */
 export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
 
+/**
+ * 261029-eur: which stroke kinds the select surface lists, outlines and
+ * hit-tests. Display/editing scope only — it NEVER changes rendered artwork.
+ * 'paint' means "any recorded tool that is not the eraser".
+ */
+export type AquarelleStrokeTypeFilter = 'all' | 'paint' | 'lift';
+
+/** Written only through `setAquarelleStrokeTypeFilter` (compare-then-write). */
+export const aquarelleStrokeTypeFilter = signal<AquarelleStrokeTypeFilter>('all');
+
+/**
+ * 261029-eur: the Stroke Settings dialog's explicit-close flag. Written ONLY
+ * by the dialog's close handler (an event) and cleared ONLY at the
+ * `setAquarelleSelectMode` off -> on choke point — never in a render body, so
+ * an explicit close wins until select mode fully exits and re-enters.
+ */
+export const aquarelleStrokeSettingsDismissed = signal(false);
+
+/** The one filter predicate: 'paint' means "not a lift stroke". */
+export function matchesAquarelleStrokeFilter(
+  stroke: Pick<AquarelleStroke, 'tool'>,
+  filter: AquarelleStrokeTypeFilter,
+): boolean {
+  if (filter === 'all') return true;
+  return filter === 'lift' ? stroke.tool === 'lift' : stroke.tool !== 'lift';
+}
+
 export function selectAquarelleStroke(mutationId: number | null): void {
   selectScriptStroke(mutationId);
 }
@@ -147,8 +174,58 @@ export function readAquarelleStrokeAppearance(
   return out;
 }
 
-export function setAquarelleSelectMode(on: boolean): void {
+/**
+ * 261029-eur: the ONE filter setter. Compare-then-write on the value AND
+ * prune the selection to strokes the new filter still shows: an id whose
+ * recorded entry mismatches (kind, or a tombstoned stroke) leaves the set.
+ * An id with no recorded entry is kept — nothing to judge here, and the
+ * delete paths already prune those. 1000 identical calls notify zero times.
+ */
+export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): void {
+  const selected = scriptSelectedStrokeIds.value;
+  if (selected.size > 0) {
+    const entries = getRecordedAquarelleStrokeEntries();
+    const kept: number[] = [];
+    let changed = false;
+    for (const mutationId of selected) {
+      const stroke = entries.get(mutationId);
+      if (!stroke) {
+        kept.push(mutationId);
+        continue;
+      }
+      if (!isAquarelleStrokeDeleted(mutationId) && matchesAquarelleStrokeFilter(stroke, next)) {
+        kept.push(mutationId);
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) setScriptStrokeSelection(kept);
+  }
+  if (aquarelleStrokeTypeFilter.value !== next) aquarelleStrokeTypeFilter.value = next;
+}
+
+/**
+ * 261029-eur: the SINGLE select-mode entry/exit choke point.
+ *
+ * The filter is written BEFORE delegating: `setScriptSelectMode` early-returns
+ * on an unchanged value, so a reset placed after it would be skipped whenever
+ * select mode is already on. Entering with 'lift' keeps it; every other entry
+ * and every exit resets to 'all' (a re-entry while already ON included).
+ *
+ * The Stroke Settings dismissal flag is cleared here on a genuine off -> on
+ * edge ONLY (compare-then-write). This is the only reset site, and it is an
+ * event/action path — never a render body.
+ */
+export function setAquarelleSelectMode(
+  on: boolean,
+  filter: AquarelleStrokeTypeFilter = 'all',
+): void {
+  const was = scriptSelectMode.peek();
+  setAquarelleStrokeTypeFilter(on ? filter : 'all');
   setScriptSelectMode(on);
+  if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
+    aquarelleStrokeSettingsDismissed.value = false;
+  }
 }
 
 export function toggleAquarelleSelectMode(): void {
@@ -210,19 +287,21 @@ export function aquarelleStrokeBoundsPx(
 
 /**
  * Newest-first hit-test: when ribbons overlap, the last recorded stroke wins.
- * Frame-scoped and deleted-scoped — an invisible stroke can never be the
- * delete target.
+ * Frame-scoped, deleted-scoped and filter-scoped — an invisible stroke can
+ * never be the delete target.
  */
 export function hitTestAquarelleStroke(
   pointPx: CanvasPoint,
   playFrame: number,
   size: EnginePixelSize,
+  filter: AquarelleStrokeTypeFilter = 'all',
 ): number | null {
   void aquarelleStrokesRevision.value;
   const entries = Array.from(getRecordedAquarelleStrokeEntries().entries()).reverse();
   for (const [mutationId, stroke] of entries) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    if (!matchesAquarelleStrokeFilter(stroke, filter)) continue;
     const pointsPx = aquarelleStrokePointsPx(stroke, size);
     if (hitsScriptStroke(pointPx, pointsPx, strokeRadiusPx(stroke))) return mutationId;
   }
@@ -252,33 +331,15 @@ export function selectAquarelleStrokeAt(
 }
 
 /**
- * 261028-k03b: select every recorded Lift stroke of `playFrame` and enter
- * move mode, so the existing move / delete / Stroke Settings gestures can
- * target the eraser strokes. Returns the selected count (0 = none, and the
- * mode is left untouched).
- */
-export function selectAquarelleLiftStrokes(playFrame: number): number {
-  void aquarelleStrokesRevision.value;
-  const ids: number[] = [];
-  for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
-    if (stroke.tool !== 'lift') continue;
-    if (isAquarelleStrokeDeleted(mutationId)) continue;
-    if ((stroke.playFrame ?? 0) !== playFrame) continue;
-    ids.push(mutationId);
-  }
-  if (ids.length === 0) return 0;
-  setScriptSelectMode(true);
-  setScriptStrokeSelection(ids);
-  return ids.length;
-}
-
-/**
  * Every selectable stroke of the frame in recording order. Reads the
  * revision so a narrow leaf re-renders when the stroke set changes.
+ * `filter` narrows the LISTING only — stack positions stay global
+ * (they are derived from the full frame's events below).
  */
 export function listSelectableAquarelleStrokes(
   playFrame: number,
   size: EnginePixelSize,
+  filter: AquarelleStrokeTypeFilter = 'all',
 ): SelectableAquarelleStroke[] {
   void aquarelleStrokesRevision.value;
   // Paint order for this frame, bottom → top. The listing itself walks the
@@ -294,6 +355,8 @@ export function listSelectableAquarelleStrokes(
   for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    const kind = stroke.tool === 'lift' ? 'lift' : 'paint';
+    if (!matchesAquarelleStrokeFilter(stroke, filter)) continue;
     // Serial assignment happens here in registry order for a loaded script
     // (recorded strokes already own theirs).
     const serial = aquarelleStrokeSerial(mutationId, playFrame);
@@ -308,6 +371,7 @@ export function listSelectableAquarelleStrokes(
       stackPosition: stackIndex < 0 ? stackTotal : stackTotal - stackIndex,
       stackTotal,
       color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : '#111827',
+      kind,
     });
   }
   return out;
@@ -317,13 +381,19 @@ export function listSelectableAquarelleStrokes(
  * 261023-g4p: the watercolor half of the shared edition port. The Studio
  * registration adds `isActive` plus the delete/move/step callbacks (the same
  * handlers the rail gestures and the keyboard actions already use).
+ *
+ * 261029-eur: the filter is read LIVE (`.value`, never captured) so the
+ * overlay leaf re-renders on a filter change and the keyboard paths always
+ * agree with what is drawn.
  */
 export const aquarelleScriptStrokeEditionPort: Pick<
   ScriptStrokeEditionPort,
   'listStrokes' | 'hitTestStroke'
 > = {
-  listStrokes: (playFrame, size) => listSelectableAquarelleStrokes(playFrame, size),
-  hitTestStroke: (pointPx, playFrame, size) => hitTestAquarelleStroke(pointPx, playFrame, size),
+  listStrokes: (playFrame, size) =>
+    listSelectableAquarelleStrokes(playFrame, size, aquarelleStrokeTypeFilter.value),
+  hitTestStroke: (pointPx, playFrame, size) =>
+    hitTestAquarelleStroke(pointPx, playFrame, size, aquarelleStrokeTypeFilter.value),
 };
 
 // ============================================================

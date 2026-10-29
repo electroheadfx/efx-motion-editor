@@ -3,7 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
+import { signal } from '@preact/signals';
 import {
+  LiftEditSwitch,
   PhysicsPaintTopBar,
   ScriptRecordingSwitch,
   type PhysicsPaintTopBarProps,
@@ -16,6 +18,12 @@ import {
   setAquarelleScriptRecordingEnabled,
   setAquarelleTool,
 } from './aquarelleRecordState';
+import {
+  aquarelleSelectMode,
+  aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTypeFilter,
+  setAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -51,6 +59,7 @@ function baseTopBarProps(): PhysicsPaintTopBarProps {
     ready: true,
     onBrushSizeChange: vi.fn(),
     onOpacityChange: vi.fn(),
+    moveAvailable: signal(true),
   };
 }
 
@@ -491,46 +500,107 @@ describe('261027-k6j Script switch', () => {
 });
 
 
-describe('261028-k03b Lift tool controls', () => {
-  it('swaps the brush cluster for Lift strength + Select lifts', () => {
+describe('261028-k03b / 261029-eur Eraser tool controls', () => {
+  it('swaps the brush cluster for Eraser strength + the Edit switch', () => {
     setAquarelleTool('lift');
     try {
-      const onSelectLiftStrokes = vi.fn();
-      const tree = renderTopBar({ ...baseTopBarProps(), onSelectLiftStrokes });
+      const tree = renderTopBar(baseTopBarProps());
       const nodes = childrenOf(tree) as AnyVNode[];
       const strength = nodes.find((node) => node.props?.['data-testid'] === 'physics-lift-strength');
-      const select = nodes.find((node) => node.props?.['data-testid'] === 'physics-lift-select');
+      const editSwitch = nodes.find((node) => node.type === LiftEditSwitch);
       expect(strength).toBeDefined();
-      expect(select).toBeDefined();
+      expect(editSwitch, 'the Edit switch seats inside the Eraser cluster').toBeDefined();
+      // The retired one-shot selection button is gone.
+      expect(nodes.some((node) => node.props?.['data-testid'] === 'physics-lift-select')).toBe(false);
       // The brush knobs do not describe an eraser stroke.
-      expect(nodes.some((node) => node.props?.['aria-label'] === 'Brush size')).toBe(false);
-      expect(nodes.some((node) => node.props?.['aria-label'] === 'Pigment')).toBe(false);
-      // The Select button routes to the Studio's current-frame selection.
-      (select!.props?.onClick as () => void)();
-      expect(onSelectLiftStrokes).toHaveBeenCalledTimes(1);
+      expect(nodes.some((node) => node.props?.label === 'Brush size')).toBe(false);
+      expect(nodes.some((node) => node.props?.label === 'Pigment')).toBe(false);
     } finally {
       setAquarelleTool('brush');
     }
   });
 
-  it('pins the eraser icon, strength bounds and the Select wiring in source', () => {
+  it('renders the Edit switch as a role="switch" driving the real setter', () => {
+    setAquarelleSelectMode(false);
+    try {
+      const moveAvailable = signal(true);
+      const offTree = LiftEditSwitch({ moveAvailable }) as AnyVNode;
+      expect(offTree.type).toBe('button');
+      expect(offTree.props?.type).toBe('button');
+      expect(offTree.props?.role).toBe('switch');
+      expect(offTree.props?.['aria-checked']).toBe('false');
+      expect(offTree.props?.['data-testid']).toBe('physics-lift-edit');
+      expect(String(offTree.props?.class)).not.toContain('is-on');
+      expect(offTree.props?.disabled).toBe(false);
+      const label = childrenOf(offTree).find(
+        (node) => (node as AnyVNode).props?.class === 'physics-paint-script-switch-label',
+      ) as AnyVNode | undefined;
+      expect(label?.props?.children).toBe('Edit');
+
+      // Off -> on: one call sets select mode AND the lift filter.
+      (offTree.props?.onClick as () => void)();
+      expect(aquarelleSelectMode.value).toBe(true);
+      expect(aquarelleStrokeTypeFilter.value).toBe('lift');
+
+      const onTree = LiftEditSwitch({ moveAvailable }) as AnyVNode;
+      expect(onTree.props?.['aria-checked']).toBe('true');
+      expect(String(onTree.props?.class)).toContain('is-on');
+
+      // On -> off: select mode leaves and the filter resets through the setter.
+      (onTree.props?.onClick as () => void)();
+      expect(aquarelleSelectMode.value).toBe(false);
+      expect(aquarelleStrokeTypeFilter.value).toBe('all');
+      expect(aquarelleStrokeSettingsDismissed.value).toBe(false);
+    } finally {
+      setAquarelleSelectMode(false);
+    }
+  });
+
+  it('disables the Edit switch when the frame has nothing to select', () => {
+    expect((LiftEditSwitch({ moveAvailable: signal(false) }) as AnyVNode).props?.disabled).toBe(true);
+    expect((LiftEditSwitch({ moveAvailable: signal(true) }) as AnyVNode).props?.disabled).toBe(false);
+    expect(
+      (LiftEditSwitch({ disabled: true, moveAvailable: signal(true) }) as AnyVNode).props?.disabled,
+    ).toBe(true);
+  });
+
+  it('pins the eraser icon, strength bounds and the Edit wiring in source', () => {
     const body = stripComments(topBarSource());
     expect(body).toContain('<Eraser size={15}');
-    expect(body).toContain('label="Lift strength"');
+    expect(body).toContain('label="Eraser strength"');
+    expect(body).toContain('ariaLabel="Eraser strength"');
     expect(body).toContain("setAquarelleParam('lift'");
     expect(body).toContain('min={5}');
     expect(body).toContain('max={90}');
-    expect(body).toContain('onSelectLiftStrokes');
+    expect(body).toContain('data-testid="physics-lift-edit"');
+    expect(body).toContain("setAquarelleSelectMode(!active, 'lift')");
+    // The one-shot Select button and its prop left the file.
+    expect(body).not.toContain('onSelectLiftStrokes');
+    expect(body).not.toContain('physics-lift-select');
+    expect(body).not.toContain('Select lifts');
+    expect(body).not.toContain('Lift strength');
+    // The switch leaf reads the shared signals — never the Studio body.
+    expect(body).toContain('aquarelleSelectMode.value');
+    expect(body).toContain('aquarelleStrokeTypeFilter.value');
+    expect(body).not.toContain('useState');
     // The Layout B control never stacks the icon above the slider.
     const styles = css();
     const row = getCssRuleBlock(styles, '.physics-paint-topbar-lift-strength {');
     expect(row).toContain('flex-direction: row');
   });
 
+  it('pins the switch :disabled arm and drops the retired Select rule', () => {
+    const styles = css();
+    const disabled = getCssRuleBlock(styles, '.physics-paint-script-switch:disabled {');
+    expect(disabled).toContain('opacity: 0.45');
+    expect(disabled).toContain('cursor: not-allowed');
+    expect(styles).not.toContain('.physics-paint-topbar-lift-select');
+  });
+
   it('mounts the Lift Shape picker (261028-k03c D3) before the strength row', () => {
     setAquarelleTool('lift');
     try {
-      const tree = renderTopBar({ ...baseTopBarProps(), onSelectLiftStrokes: vi.fn() });
+      const tree = renderTopBar(baseTopBarProps());
       const nodes = childrenOf(tree) as AnyVNode[];
       const shape = nodes.find((node) => node.props?.testId === 'physics-lift-shape');
       expect(shape, 'the Lift cluster mounts the shared shape picker').toBeDefined();
