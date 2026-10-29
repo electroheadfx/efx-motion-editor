@@ -111,6 +111,12 @@ export const aquarelleLiftTipId = signal<string | null>('filbert');
  */
 export const aquarelleBrushMenuOpen = signal(false);
 export const aquarelleBrushMenuAnchor = signal<{ left: number; top: number } | null>(null);
+/**
+ * 261029-hy2: which tool's dropdown the shared top-bar popover shows. Captured
+ * at OPEN time (the trigger passes its own tool), so a tool change underneath
+ * can never swap the menu's content mid-session.
+ */
+export const aquarelleBrushMenuTarget = signal<'brush' | 'lift'>('brush');
 export const aquarelleBrushModalOpen = signal(false);
 
 /**
@@ -123,13 +129,24 @@ export const aquarelleBrushModalOpen = signal(false);
  */
 export const aquarelleScriptRecordingEnabled = signal(true);
 
-/** Compare-then-write. The anchor is only meaningful while opening. */
-export function setAquarelleBrushMenuOpen(open: boolean, anchor?: { left: number; top: number }): void {
+/**
+ * Compare-then-write. The anchor is only meaningful while opening, and the
+ * target is written ONLY on an opening call that supplies one — a plain close
+ * never rewrites which tool's dropdown was last shown.
+ */
+export function setAquarelleBrushMenuOpen(
+  open: boolean,
+  anchor?: { left: number; top: number },
+  target?: 'brush' | 'lift',
+): void {
   if (open && anchor) {
     const current = aquarelleBrushMenuAnchor.value;
     if (!current || current.left !== anchor.left || current.top !== anchor.top) {
       aquarelleBrushMenuAnchor.value = { ...anchor };
     }
+  }
+  if (open && target && aquarelleBrushMenuTarget.value !== target) {
+    aquarelleBrushMenuTarget.value = target;
   }
   if (aquarelleBrushMenuOpen.value === open) return;
   aquarelleBrushMenuOpen.value = open;

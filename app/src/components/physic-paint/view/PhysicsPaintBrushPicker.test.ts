@@ -33,10 +33,14 @@ import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal, resetBrushModalLayout } from './PhysicsPaintBrushModal';
 import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 import {
+  aquarelleActiveTool,
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
+  aquarelleBrushMenuTarget,
   aquarelleBrushModalOpen,
+  aquarelleLiftTipId,
   aquarelleSelectedTipId,
+  aquarelleToolOverrides,
   setAquarelleBrushMenuOpen,
   setAquarelleBrushModalOpen,
 } from './aquarelleRecordState';
@@ -78,6 +82,9 @@ const CSS_SOURCE = readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css
 
 beforeEach(() => {
   aquarelleSelectedTipId.value = 'chalk';
+  aquarelleActiveTool.value = 'brush';
+  aquarelleBrushMenuTarget.value = 'brush';
+  aquarelleLiftTipId.value = 'filbert';
   aquarelleBrushMenuOpen.value = false;
   aquarelleBrushMenuAnchor.value = { left: 20, top: 70 };
   aquarelleBrushModalOpen.value = false;
@@ -86,6 +93,9 @@ beforeEach(() => {
 
 afterEach(() => {
   aquarelleSelectedTipId.value = 'chalk';
+  aquarelleActiveTool.value = 'brush';
+  aquarelleBrushMenuTarget.value = 'brush';
+  aquarelleLiftTipId.value = 'filbert';
   aquarelleBrushMenuOpen.value = false;
   aquarelleBrushMenuAnchor.value = null;
   aquarelleBrushModalOpen.value = false;
@@ -102,6 +112,54 @@ describe('261027-gh9g top-bar brush dropdown', () => {
       expect(ids).toContain(`watercolor-brush-menu-item-${preset.id}`);
     }
     expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(BRUSH_PRESETS.length);
+    // 261029-hy2: the brush target keeps the catalog's name.
+    expect(String(tree.props?.['aria-label'])).toBe('Brushes');
+  });
+
+  // 261029-hy2: the same popover serves the Eraser tool. Its branch lists the
+  // 15 painted shapes, has NO "Open modal" entry (the catalog's cards pick
+  // brushes through selectAquarelleTip, which would flip the tool to Brush),
+  // and a pick writes ONLY the lift tip.
+  it('lift mode lists the 15 shapes with no Open modal action', () => {
+    aquarelleActiveTool.value = 'lift';
+    setAquarelleBrushMenuOpen(true, undefined, 'lift');
+    const tree = PhysicsPaintBrushMenu() as TestVNode;
+    const ids = buttonTestIds(collect(tree));
+    expect(ids).not.toContain('watercolor-brush-menu-open-modal');
+    for (const preset of BRUSH_PRESETS) {
+      expect(ids).toContain(`watercolor-brush-menu-item-${preset.id}`);
+    }
+    expect(ids.filter((id) => id.startsWith('watercolor-brush-menu-item-')).length).toBe(BRUSH_PRESETS.length);
+    expect(aquarelleBrushMenuTarget.value).toBe('lift');
+    expect(String(tree.props?.['aria-label'])).toBe('Eraser shapes');
+  });
+
+  it('a lift pick writes only the lift tip — tool, brush selection and multipliers untouched', () => {
+    aquarelleActiveTool.value = 'lift';
+    aquarelleSelectedTipId.value = 'chalk';
+    aquarelleLiftTipId.value = 'filbert';
+    const overridesBefore = aquarelleToolOverrides.value;
+    setAquarelleBrushMenuOpen(true, undefined, 'lift');
+    const nodes = collect(PhysicsPaintBrushMenu());
+    const flat = nodes.find((node) => node.props?.['data-testid'] === 'watercolor-brush-menu-item-flat')!;
+    click(flat);
+    expect(aquarelleLiftTipId.value).toBe('flat');
+    expect(aquarelleSelectedTipId.value, 'the brush selection is untouched').toBe('chalk');
+    expect(aquarelleActiveTool.value, 'an eraser pick never flips the tool').toBe('lift');
+    expect(aquarelleToolOverrides.value, 'the brush multiplier bag is untouched').toBe(overridesBefore);
+    expect(aquarelleBrushMenuOpen.value).toBe(false);
+  });
+
+  it('the lift branch never reaches the tool-flipping brush picker (region pin)', () => {
+    const start = MENU_SOURCE.indexOf('aquarelleBrushMenuTarget.value');
+    const end = MENU_SOURCE.indexOf('// 261029-hy2 menu-branch:brush');
+    expect(start, 'the menu reads the target once').toBeGreaterThan(-1);
+    expect(end, 'the brush branch marker exists').toBeGreaterThan(-1);
+    expect(end, 'the brush branch follows the target read').toBeGreaterThan(start);
+    const liftRegion = MENU_SOURCE.slice(start, end);
+    expect(liftRegion, 'the lift region writes the lift tip').toContain('setAquarelleLiftTipId');
+    expect(liftRegion, 'a lift pick never routes through the brush picker').not.toContain('selectAquarelleTip');
+    expect(liftRegion, 'a lift pick never flips the tool directly').not.toContain('setAquarelleTool');
   });
 
   it('picking a brush selects it and closes the dropdown', () => {

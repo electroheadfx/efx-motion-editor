@@ -452,18 +452,19 @@ button.destructive {
   overflow-x: auto;
 }
 
-/* UI checklist row 4: one row. 261018-k1o: left = Engine ready + ModuleSwitcher,
-   center = Brush size + Opacity (+ Water/Edges/Grain/Pigment) as ONE group.
-   I-11 follow-up: the cluster centers in the space AFTER the left cluster, not
-   the whole window (the old balanced right spacer is gone). */
+/* UI checklist row 4: one row. 261018-k1o: left = Engine ready + the tool pill,
+   right = Brush size + Opacity (+ Water/Edges/Grain/Pigment) as ONE group.
+   261029-hy2: the settings cluster is pinned to the RIGHT edge at every width
+   (never centered) — flex-end parks it against the bar's end edge and any
+   overflow exits the start edge. */
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
   /* 261018-k1o: gap 0 — the 15px module-switcher margin is the single
      pill-to-switcher separator (never stack both). */
   gap: 0;
-  /* I-11 follow-up: the left cluster keeps its content width; the slider
-     cluster centers in the space that remains after it. */
+  /* 261029-hy2: the left cluster keeps its content width; the settings cluster
+     takes the remaining width and pins to the right edge. */
   flex: 0 0 auto;
   min-width: 0;
 }
@@ -472,7 +473,7 @@ button.destructive {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex: 1 1 auto;
   gap: 8px 10px;
   min-width: 0;
@@ -805,6 +806,13 @@ button.destructive {
 .physics-paint-brush-trigger-chevron {
   flex: 0 0 auto;
   opacity: 0.7;
+}
+
+/* 261029-hy2: the pill's leading tool icon — Paintbrush for Brush, Eraser for
+   the Eraser tool. Same slot for both, so one rule. */
+.physics-paint-brush-trigger-icon {
+  flex: 0 0 auto;
+  opacity: 0.85;
 }
 
 /* 261027-k6j: the session "Script" switch — sits right after the brush

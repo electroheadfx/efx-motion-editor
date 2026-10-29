@@ -1,13 +1,14 @@
 import type { TargetedMouseEvent } from 'preact';
 import type { ReadonlySignal } from '@preact/signals';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
-import { ChevronDown, Eraser } from 'lucide-preact';
+import { ChevronDown, Eraser, Paintbrush } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import {
   aquarelleActiveTool,
   aquarelleBrushMenuOpen,
+  aquarelleLiftTipId,
   aquarelleParams,
   aquarelleScriptRecordingEnabled,
   aquarelleSelectedTipId,
@@ -16,7 +17,6 @@ import {
   setAquarelleScriptRecordingEnabled,
 } from './aquarelleRecordState';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
-import { LiftShapePicker } from './LiftShapePicker';
 import {
   aquarelleSelectMode,
   aquarelleStrokeTypeFilter,
@@ -35,18 +35,23 @@ import {
  * Opacity only; Water color labels that slot Pigment because its value is the
  * canonical `load`, never an alpha.
  *
- * 261018-gqo move 5: Engine ready is pinned left alone; the brush trigger +
- * Brush size + Opacity (+ Water/Edges/Grain) form ONE centered group. DOM
- * grouping and CSS only — the write-through handlers are unchanged.
+ * 261018-gqo move 5: Engine ready is pinned left alone; the settings controls
+ * (Brush size + Pigment/Opacity + Water/Edges/Grain) form ONE group.
  *
  * 261027-gh9g: the module switcher left the Studio top bar entirely. The
  * active brush's larger painted thumbnail + name seat in the LEFT cluster
- * after the Engine ready pill and open the brush dropdown; center = sliders
- * only. Water / Edges / Grain are the optional watercolor knobs and hide as
- * the settings area narrows (container queries in physicsPaintStudio.css).
+ * after the Engine ready pill and open the brush dropdown. Water / Edges /
+ * Grain are the optional watercolor knobs and hide as the settings area
+ * narrows (container queries in physicsPaintStudio.css).
  *
- * 261027-k6j — the Script switch sits beside the brush trigger and gates
- * stroke recording only.
+ * 261029-hy2: the settings group is pinned to the RIGHT edge at every width,
+ * and it renders ONLY for the tools that own settings — Brush (Brush size +
+ * Pigment + Water + Edges + Grain) and Eraser (Size + Eraser strength + Edit).
+ * Water and Pen remove the whole cluster from the DOM. The left slot is ONE
+ * tool pill for both tools: tool icon + painted thumb + name + chevron.
+ *
+ * 261027-k6j — the Script switch sits beside the tool pill and gates stroke
+ * recording only.
  */
 export interface PhysicsPaintTopBarProps {
   /**
@@ -70,37 +75,50 @@ export interface PhysicsPaintTopBarProps {
 }
 
 /**
- * 261027-gh9g: the top bar's ONE brush surface. The retired module switcher
- * (Water color / Krita) is gone; the active brush's painted thumbnail and name
- * now sit here and open the brush dropdown. The thumb is deliberately larger
- * than the old switcher segment so the live brush reads at a glance.
+ * 261027-gh9g / 261029-hy2: the top bar's ONE tool pill — the retired module
+ * switcher's slot. A leading tool icon (Paintbrush / Eraser), the tool's
+ * painted thumbnail and name, and a chevron open that tool's dropdown. The
+ * thumb is deliberately larger than the old switcher segment so the live tip
+ * reads at a glance. `disabled` mirrors the bar's lock (the retired
+ * LiftShapePicker carried the same contract — dropping it would silently
+ * un-disable the eraser pill while the Studio is busy).
  */
-function TopBarBrushTrigger(props: {
+export function TopBarBrushTrigger(props: {
+  tool: 'brush' | 'lift';
   presetId: string | null;
   open: boolean;
   onToggle: (event: TargetedMouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  testId?: string;
 }) {
   const preset = props.presetId
     ? BRUSH_PRESETS.find((candidate) => candidate.id === props.presetId)
     : undefined;
+  const isLift = props.tool === 'lift';
+  const Icon = isLift ? Eraser : Paintbrush;
+  const title = isLift ? 'Choose an eraser shape' : 'Choose a brush';
+  const name = preset?.name ?? (isLift ? 'Filbert' : 'Brushes');
   return (
     <button
       type="button"
       class={`physics-paint-brush-trigger${props.open ? ' open' : ''}`}
       data-watercolor-brush-trigger
+      data-testid={props.testId}
       aria-haspopup="menu"
       aria-expanded={props.open}
-      title="Choose a brush"
-      aria-label={preset ? `Brush — ${preset.name}` : 'Choose a brush'}
+      title={title}
+      aria-label={preset ? `${isLift ? 'Eraser' : 'Brush'} — ${preset.name}` : title}
+      disabled={props.disabled}
       onClick={props.onToggle}
     >
+      <Icon size={15} class="physics-paint-brush-trigger-icon" aria-hidden="true" />
       {preset ? (
         <WatercolorBrushThumb
           presetId={preset.id}
           class="physics-paint-brush-trigger-thumb"
         />
       ) : <span class="physics-paint-brush-trigger-thumb is-empty" aria-hidden="true" />}
-      <span class="physics-paint-brush-trigger-name">{preset?.name ?? 'Brushes'}</span>
+      <span class="physics-paint-brush-trigger-name">{name}</span>
       <ChevronDown size={13} class="physics-paint-brush-trigger-chevron" aria-hidden="true" />
     </button>
   );
@@ -221,14 +239,19 @@ export function PhysicsPaintTopBar({
   // Narrow signal reads: picking a brush or opening the dropdown re-renders
   // only this bar.
   const selectedTipId = aquarelleSelectedTipId.value;
+  // 261029-hy2: the Eraser pill shows its own shape selection (same Filbert
+  // fallback the retired native picker used).
+  const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
   const brushMenuOpen = aquarelleBrushMenuOpen.value;
-  const toggleBrushMenu = (event: TargetedMouseEvent<HTMLButtonElement>) => {
+  // The tool is captured when the pill opens its dropdown, so the popover
+  // always shows the content of the tool that was clicked.
+  const toggleBrushMenu = (tool: 'brush' | 'lift') => (event: TargetedMouseEvent<HTMLButtonElement>) => {
     if (brushMenuOpen) {
       setAquarelleBrushMenuOpen(false);
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    setAquarelleBrushMenuOpen(true, { left: rect.left, top: rect.bottom + 6 });
+    setAquarelleBrushMenuOpen(true, { left: rect.left, top: rect.bottom + 6 }, tool);
   };
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
   // the live aquarelle size (signal read bypasses the memo).
@@ -241,39 +264,51 @@ export function PhysicsPaintTopBar({
   // grain) do not describe an eraser stroke.
   const activeTool = aquarelleActiveTool.value;
   const liftStrength = aquarelleParams.value.lift;
+  // 261029-hy2: only Brush and Eraser own top-bar settings. Water and Pen
+  // REMOVE the cluster from the DOM (not merely disable it) — an empty
+  // flex: 1 1 auto box would still eat the bar's remaining width.
+  const toolOwnsSettings = activeTool === 'brush' || activeTool === 'lift';
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
-      {/* Left slot: status pill + brush trigger (261018-k1o / 261027-gh9g). */}
+      {/* Left slot: status pill + tool pill (261018-k1o / 261027-gh9g). */}
       <div class="physics-paint-topbar-left">
         <div class="physics-paint-topbar-status" aria-live="polite">
           <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
         </div>
-        {/* 261027-gh9g: the module switcher is gone from the Studio top bar —
-            a single Water color mode. The active brush's larger painted thumb
-            and name open the brush dropdown.
-            261028-k03d: the Lift tool takes the SAME slot — its shape control
-            replaces the brush dropdown, so the eraser never shows brush chrome. */}
+        {/* 261027-gh9g / 261029-hy2: the module switcher is gone from the
+            Studio top bar — a single Water color mode. ONE pill for both
+            tools: the Eraser tool shows its own icon + shape, every other
+            tool (Brush, Water, Pen) shows the active brush. Clicking it opens
+            that tool's dropdown. */}
         {activeTool === 'lift' ? (
-          <div class="physics-paint-topbar-control physics-paint-topbar-lift-shape">
-            <LiftShapePicker testId="physics-lift-shape" disabled={disabled} />
-          </div>
+          <TopBarBrushTrigger
+            tool="lift"
+            presetId={liftTipId}
+            open={brushMenuOpen}
+            onToggle={toggleBrushMenu('lift')}
+            disabled={disabled}
+            testId="physics-lift-shape"
+          />
         ) : (
           <TopBarBrushTrigger
+            tool="brush"
             presetId={selectedTipId}
             open={brushMenuOpen}
-            onToggle={toggleBrushMenu}
+            onToggle={toggleBrushMenu('brush')}
+            disabled={disabled}
           />
         )}
         <ScriptRecordingSwitch />
       </div>
 
-      {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).
-          I-11 follow-up: this cluster centers inside the remaining width after
-          the left cluster; the last optional knobs hide via container queries.
+      {/* Settings cluster: pinned to the right edge at every width. Renders
+          ONLY for Brush and Eraser — Water and Pen have no settings to show.
+          The last optional knobs hide via container queries.
           261028-k03b / 261029-eur: the Eraser tool swaps the whole cluster for
           its own controls — Size + Eraser strength (eraser icon) + Edit. */}
-      <div class="physics-paint-topbar-primary">
+      {toolOwnsSettings ? (
+        <div class="physics-paint-topbar-primary">
         {activeTool === 'lift' ? (
           <div class="physics-paint-topbar-lift" data-testid="physics-lift-controls">
             {/* 261028-k03d: the Eraser cluster keeps the shared Size (the erase
@@ -344,7 +379,8 @@ export function PhysicsPaintTopBar({
             />
           </>
         )}
-      </div>
+        </div>
+      ) : null}
 
     </header>
   );

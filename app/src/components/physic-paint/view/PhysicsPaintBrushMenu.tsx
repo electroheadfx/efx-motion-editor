@@ -20,10 +20,13 @@ import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
+  aquarelleBrushMenuTarget,
+  aquarelleLiftTipId,
   aquarelleSelectedTipId,
   selectAquarelleTip,
   setAquarelleBrushMenuOpen,
   setAquarelleBrushModalOpen,
+  setAquarelleLiftTipId,
 } from './aquarelleRecordState';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 
@@ -31,6 +34,11 @@ export function PhysicsPaintBrushMenu() {
   const open = aquarelleBrushMenuOpen.value;
   const anchor = aquarelleBrushMenuAnchor.value;
   const selectedId = aquarelleSelectedTipId.value;
+  // 261029-hy2: one popover, two tools. Captured at open time by the trigger;
+  // never written here. The lift tip is its own selection (Filbert fallback),
+  // completely independent of the brush selection.
+  const menuTarget = aquarelleBrushMenuTarget.value;
+  const liftTipId = aquarelleLiftTipId.value ?? 'filbert';
   const menuRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // The catalog's own height, measured once the menu has a definite box. Kept
@@ -98,51 +106,90 @@ export function PhysicsPaintBrushMenu() {
       ref={menuRef}
       class="physics-paint-brush-menu"
       role="menu"
-      aria-label="Brushes"
+      aria-label={menuTarget === 'lift' ? 'Eraser shapes' : 'Brushes'}
       data-testid="watercolor-brush-menu"
       style={{ left: `${left}px`, top: `${anchor.top}px`, height: `${menuHeight}px` }}
     >
-      <button
-        type="button"
-        class="physics-paint-brush-menu-open-modal"
-        data-testid="watercolor-brush-menu-open-modal"
-        onClick={() => {
-          setAquarelleBrushMenuOpen(false);
-          setAquarelleBrushModalOpen(true);
-        }}
-      >
-        <Maximize2 size={13} aria-hidden="true" />
-        Open modal
-      </button>
-      <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
-      <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
-        <div ref={listRef} class="physics-paint-brush-menu-list">
-          {BRUSH_PRESETS.map((preset) => {
-            const selected = preset.id === selectedId;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={selected}
-                class={`physics-paint-brush-menu-item${selected ? ' active' : ''}`}
-                data-testid={`watercolor-brush-menu-item-${preset.id}`}
-                title={preset.hint}
-                onClick={() => {
-                  selectAquarelleTip(preset.id);
-                  setAquarelleBrushMenuOpen(false);
-                }}
-              >
-                <WatercolorBrushThumb
-                  presetId={preset.id}
-                  class="physics-paint-brush-menu-thumb"
-                />
-                <span class="physics-paint-brush-menu-name">{preset.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      </SidebarScrollArea>
+      {menuTarget === 'lift' ? (
+        // 261029-hy2 menu-branch:lift
+        // The Eraser popover: the same 15 painted shapes, NO "Open modal" (the
+        // catalog's cards route through the BRUSH pick path, which would flip
+        // the tool back to Brush) and no separator. A pick writes the lift tip
+        // through setAquarelleLiftTipId — never the brush seam.
+        <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
+          <div ref={listRef} class="physics-paint-brush-menu-list">
+            {BRUSH_PRESETS.map((preset) => {
+              const selected = preset.id === liftTipId;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={selected}
+                  class={`physics-paint-brush-menu-item${selected ? ' active' : ''}`}
+                  data-testid={`watercolor-brush-menu-item-${preset.id}`}
+                  title={preset.hint}
+                  onClick={() => {
+                    setAquarelleLiftTipId(preset.id);
+                    setAquarelleBrushMenuOpen(false);
+                  }}
+                >
+                  <WatercolorBrushThumb
+                    presetId={preset.id}
+                    class="physics-paint-brush-menu-thumb"
+                  />
+                  <span class="physics-paint-brush-menu-name">{preset.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </SidebarScrollArea>
+      ) : (
+        // 261029-hy2 menu-branch:brush
+        <>
+          <button
+            type="button"
+            class="physics-paint-brush-menu-open-modal"
+            data-testid="watercolor-brush-menu-open-modal"
+            onClick={() => {
+              setAquarelleBrushMenuOpen(false);
+              setAquarelleBrushModalOpen(true);
+            }}
+          >
+            <Maximize2 size={13} aria-hidden="true" />
+            Open modal
+          </button>
+          <div class="physics-paint-brush-menu-separator" aria-hidden="true" />
+          <SidebarScrollArea class="physics-paint-brush-menu-scroll" interactive>
+            <div ref={listRef} class="physics-paint-brush-menu-list">
+              {BRUSH_PRESETS.map((preset) => {
+                const selected = preset.id === selectedId;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selected}
+                    class={`physics-paint-brush-menu-item${selected ? ' active' : ''}`}
+                    data-testid={`watercolor-brush-menu-item-${preset.id}`}
+                    title={preset.hint}
+                    onClick={() => {
+                      selectAquarelleTip(preset.id);
+                      setAquarelleBrushMenuOpen(false);
+                    }}
+                  >
+                    <WatercolorBrushThumb
+                      presetId={preset.id}
+                      class="physics-paint-brush-menu-thumb"
+                    />
+                    <span class="physics-paint-brush-menu-name">{preset.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </SidebarScrollArea>
+        </>
+      )}
     </div>
   );
 }

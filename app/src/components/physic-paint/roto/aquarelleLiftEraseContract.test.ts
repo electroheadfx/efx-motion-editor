@@ -45,10 +45,12 @@ const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.ts
 const mount = readFileSync(resolve(__dirname, '../engine/PhysicsPaintCanvasMount.tsx'), 'utf8');
 const baseLayer = readFileSync(resolve(__dirname, '../engine/AquarelleCachedBaseLayer.tsx'), 'utf8');
 // 261029-eur ERASER-COPY: the four UI files the rename touches.
+// 261029-hy2: the eraser shape surface is now the shared top-bar popover
+// (PhysicsPaintBrushMenu) — the retired LiftShapePicker is gone from disk.
 const topBarUi = readFileSync(resolve(__dirname, '../view/PhysicsPaintTopBar.tsx'), 'utf8');
 const toolRailUi = readFileSync(resolve(__dirname, '../view/PhysicsPaintToolRail.tsx'), 'utf8');
 const toolRowUi = readFileSync(resolve(__dirname, '../view/AquarelleToolRow.tsx'), 'utf8');
-const shapePickerUi = readFileSync(resolve(__dirname, '../view/LiftShapePicker.tsx'), 'utf8');
+const brushMenuUi = readFileSync(resolve(__dirname, '../view/PhysicsPaintBrushMenu.tsx'), 'utf8');
 
 function slice(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -550,7 +552,7 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     const stripComments = (source: string) => source
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '');
-    for (const [name, source] of Object.entries({ topBarUi, toolRailUi, toolRowUi, shapePickerUi })) {
+    for (const [name, source] of Object.entries({ topBarUi, toolRailUi, toolRowUi, brushMenuUi })) {
       const code = stripComments(source);
       expect(code, name).not.toMatch(/label:\s*'Lift'/);
       expect(code, name).not.toMatch(/label="Lift"/);
@@ -561,8 +563,8 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     // The recorded tool id and every internal identifier stay untouched.
     expect(toolRailUi).toContain("{ id: 'lift', label: 'Eraser', Icon: Eraser }");
     expect(toolRowUi).toContain("{ id: 'lift', label: 'Eraser', Icon: Eraser }");
-    expect(shapePickerUi).toContain('setAquarelleLiftTipId');
-    expect(shapePickerUi).toContain('aria-label="Eraser shape"');
+    expect(brushMenuUi).toContain('setAquarelleLiftTipId');
+    expect(topBarUi).toContain('Choose an eraser shape');
     expect(topBarUi).toContain('physics-paint-topbar-lift');
     expect(topBarUi).toContain('physics-lift-shape');
     expect(studio).toContain('AQUARELLE_LIFT_SCRIPT_OFF_REFUSAL');

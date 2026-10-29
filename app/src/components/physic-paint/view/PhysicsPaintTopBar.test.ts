@@ -4,16 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { signal } from '@preact/signals';
+import { Eraser, Paintbrush } from 'lucide-preact';
 import {
   LiftEditSwitch,
   PhysicsPaintTopBar,
   ScriptRecordingSwitch,
+  TopBarBrushTrigger,
   type PhysicsPaintTopBarProps,
 } from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
 import {
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
+  aquarelleBrushMenuTarget,
   aquarelleScriptRecordingEnabled,
   setAquarelleScriptRecordingEnabled,
   setAquarelleTool,
@@ -102,14 +105,15 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(styles).not.toContain('minmax(120px, 1fr)');
   });
 
-  it('centers the tool cluster in the space after the left cluster (I-11 follow-up)', () => {
+  it('pins the tool cluster to the right edge at every width (261029-hy2)', () => {
     const styles = css();
     const base = styles.slice(0, styles.indexOf('@media'));
     const primary = getCssRuleBlock(base, '.physics-paint-topbar-primary {');
-    expect(primary, 'no auto margin — the cluster is not pushed right').not.toContain('margin-left: auto');
+    expect(primary, 'no auto margin — the flex-end pin does the work').not.toContain('margin-left: auto');
     expect(primary).toContain('flex-wrap: nowrap');
-    expect(primary, 'primary takes the remaining width and centers inside it').toContain('flex: 1 1 auto');
-    expect(primary, 'primary centers its cluster').toContain('justify-content: center');
+    expect(primary, 'primary takes the remaining width and pins inside it').toContain('flex: 1 1 auto');
+    expect(primary, 'primary pins its cluster to the right edge').toContain('justify-content: flex-end');
+    expect(primary, 'the centered layout is retired').not.toContain('justify-content: center');
     expect(primary, 'primary is the optional-knob query container').toContain('container-type: inline-size');
     const left = getCssRuleBlock(base, '.physics-paint-topbar-left {');
     expect(left, 'left cluster keeps its content width').toContain('flex: 0 0 auto');
@@ -220,6 +224,190 @@ describe('261027-gh9g top bar brush trigger + centered sliders', () => {
   });
 });
 
+// 261029-hy2: ONE tool pill for Brush and Eraser, and the settings cluster
+// renders only for tools that own settings.
+describe('261029-hy2 tool pill + settings-cluster gating', () => {
+  function findPill(tree: AnyVNode): AnyVNode | undefined {
+    return (childrenOf(tree) as AnyVNode[]).find((node) => node.type === TopBarBrushTrigger);
+  }
+
+  it('renders the tool icon, name and aria-label for both tools', () => {
+    const brush = TopBarBrushTrigger({
+      tool: 'brush',
+      presetId: 'filbert',
+      open: false,
+      onToggle: () => {},
+    }) as AnyVNode;
+    expect(brush.type).toBe('button');
+    const brushNodes = childrenOf(brush) as AnyVNode[];
+    const brushIcon = brushNodes.find((node) => node.props?.class === 'physics-paint-brush-trigger-icon');
+    expect(brushIcon, 'the brush pill leads with the Paintbrush icon').toBeDefined();
+    expect(brushIcon!.type).toBe(Paintbrush);
+    expect(brushIcon!.props?.size).toBe(15);
+    expect(brushIcon!.props?.['aria-hidden']).toBe('true');
+    const brushName = brushNodes.find((node) => node.props?.class === 'physics-paint-brush-trigger-name');
+    expect(brushName?.props?.children).toBe('Filbert');
+    expect(brush.props?.title).toBe('Choose a brush');
+    expect(brush.props?.['aria-label']).toBe('Brush — Filbert');
+
+    const lift = TopBarBrushTrigger({
+      tool: 'lift',
+      presetId: 'round',
+      open: false,
+      onToggle: () => {},
+    }) as AnyVNode;
+    const liftNodes = childrenOf(lift) as AnyVNode[];
+    const liftIcon = liftNodes.find((node) => node.props?.class === 'physics-paint-brush-trigger-icon');
+    expect(liftIcon, 'the eraser pill leads with the Eraser icon').toBeDefined();
+    expect(liftIcon!.type).toBe(Eraser);
+    const liftName = liftNodes.find((node) => node.props?.class === 'physics-paint-brush-trigger-name');
+    expect(liftName?.props?.children).toBe('Round');
+    expect(lift.props?.title).toBe('Choose an eraser shape');
+    expect(lift.props?.['aria-label']).toBe('Eraser — Round');
+
+    // Null tip: the lift name falls back to Filbert (the effective eraser
+    // shape), the brush name keeps its generic fallback.
+    const nullLift = TopBarBrushTrigger({
+      tool: 'lift',
+      presetId: null,
+      open: false,
+      onToggle: () => {},
+    }) as AnyVNode;
+    const nullLiftName = (childrenOf(nullLift) as AnyVNode[]).find(
+      (node) => node.props?.class === 'physics-paint-brush-trigger-name',
+    );
+    expect(nullLiftName?.props?.children).toBe('Filbert');
+    expect(nullLift.props?.['aria-label']).toBe('Choose an eraser shape');
+    const nullBrush = TopBarBrushTrigger({
+      tool: 'brush',
+      presetId: null,
+      open: false,
+      onToggle: () => {},
+    }) as AnyVNode;
+    const nullBrushName = (childrenOf(nullBrush) as AnyVNode[]).find(
+      (node) => node.props?.class === 'physics-paint-brush-trigger-name',
+    );
+    expect(nullBrushName?.props?.children).toBe('Brushes');
+    expect(nullBrush.props?.['aria-label']).toBe('Choose a brush');
+  });
+
+  it('the eraser pill carries the shape testid and the shared trigger attribute', () => {
+    const lift = TopBarBrushTrigger({
+      tool: 'lift',
+      presetId: 'filbert',
+      open: false,
+      onToggle: () => {},
+      testId: 'physics-lift-shape',
+    }) as AnyVNode;
+    expect(lift.props?.['data-testid']).toBe('physics-lift-shape');
+    expect(lift.props?.['data-watercolor-brush-trigger']).toBe(true);
+    expect(lift.props?.['aria-haspopup']).toBe('menu');
+    expect(lift.props?.['aria-expanded']).toBe(false);
+  });
+
+  it('both pills honor the bar disabled prop', () => {
+    for (const tool of ['brush', 'lift'] as const) {
+      const disabledPill = TopBarBrushTrigger({
+        tool,
+        presetId: 'filbert',
+        open: false,
+        onToggle: () => {},
+        disabled: true,
+      }) as AnyVNode;
+      expect(disabledPill.props?.disabled, `${tool} pill follows disabled`).toBe(true);
+      const enabledPill = TopBarBrushTrigger({
+        tool,
+        presetId: 'filbert',
+        open: false,
+        onToggle: () => {},
+      }) as AnyVNode;
+      expect(enabledPill.props?.disabled, `${tool} pill is enabled by default`).toBeFalsy();
+    }
+    // Both top-bar mounts thread the bar's disabled prop into the pill.
+    const body = stripComments(topBarSource());
+    const mounts = body.match(/<TopBarBrushTrigger[\s\S]*?\/>/g) ?? [];
+    expect(mounts.length, 'one pill per tool branch').toBe(2);
+    for (const mount of mounts) expect(mount).toContain('disabled={disabled}');
+  });
+
+  it('renders the brush pill but no settings cluster for Water and Pen', () => {
+    for (const tool of ['water', 'pen'] as const) {
+      setAquarelleTool(tool);
+      try {
+        const tree = renderTopBar(baseTopBarProps());
+        const nodes = childrenOf(tree) as AnyVNode[];
+        expect(
+          nodes.some((node) => node.props?.class === 'physics-paint-topbar-primary'),
+          `${tool} removes the whole settings cluster from the DOM`,
+        ).toBe(false);
+        const pill = findPill(tree);
+        expect(pill, `${tool} keeps the brush pill`).toBeDefined();
+        expect(pill!.props?.tool).toBe('brush');
+        expect(pill!.props?.presetId).toBe('filbert');
+      } finally {
+        setAquarelleTool('brush');
+      }
+    }
+  });
+
+  it('the pill opens its own dropdown with the tool target and the viewport anchor', () => {
+    setAquarelleTool('brush');
+    aquarelleBrushMenuOpen.value = false;
+    try {
+      const brushPill = findPill(renderTopBar(baseTopBarProps()));
+      expect(brushPill!.props?.tool).toBe('brush');
+      (brushPill!.props?.onToggle as (event: unknown) => void)({
+        currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 58 }) },
+      });
+      expect(aquarelleBrushMenuOpen.value).toBe(true);
+      expect(aquarelleBrushMenuAnchor.value).toEqual({ left: 24, top: 64 });
+      expect(aquarelleBrushMenuTarget.value).toBe('brush');
+    } finally {
+      aquarelleBrushMenuOpen.value = false;
+      aquarelleBrushMenuAnchor.value = null;
+      aquarelleBrushMenuTarget.value = 'brush';
+    }
+
+    setAquarelleTool('lift');
+    try {
+      const liftPill = findPill(renderTopBar(baseTopBarProps()));
+      expect(liftPill!.props?.tool).toBe('lift');
+      (liftPill!.props?.onToggle as (event: unknown) => void)({
+        currentTarget: { getBoundingClientRect: () => ({ left: 24, bottom: 58 }) },
+      });
+      expect(aquarelleBrushMenuOpen.value).toBe(true);
+      expect(aquarelleBrushMenuTarget.value).toBe('lift');
+    } finally {
+      aquarelleBrushMenuOpen.value = false;
+      aquarelleBrushMenuAnchor.value = null;
+      aquarelleBrushMenuTarget.value = 'brush';
+      setAquarelleTool('brush');
+    }
+  });
+
+  it('replaces the native shape picker with the eraser pill (261029-hy2)', () => {
+    setAquarelleTool('lift');
+    try {
+      const pill = findPill(renderTopBar(baseTopBarProps()));
+      expect(pill, 'the Eraser tool seats the shared pill in the left slot').toBeDefined();
+      expect(pill!.props?.tool).toBe('lift');
+      expect(pill!.props?.presetId).toBe('filbert');
+      expect(pill!.props?.testId).toBe('physics-lift-shape');
+      // The retired picker is gone from disk and from the top bar, while its
+      // testid, the Eraser cluster and the lift tip read survive.
+      const body = stripComments(topBarSource());
+      expect(body).toContain('physics-lift-shape');
+      expect(body).toContain('physics-paint-topbar-lift');
+      expect(body).toContain('aquarelleLiftTipId');
+      expect(body).not.toContain('<LiftShapePicker');
+      expect(body).not.toContain("from './LiftShapePicker'");
+      expect(body).toContain("const liftTipId = aquarelleLiftTipId.value ?? 'filbert';");
+    } finally {
+      setAquarelleTool('brush');
+    }
+  });
+});
+
 // 261017-vcn Q6: the grain widgets left the top bar for the Paper tab. The
 // top bar keeps Brush size + Pigment only among the former top-bar controls.
 describe('261017-vcn top bar slim (I-04 remainder)', () => {
@@ -258,9 +446,13 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35, lift: 22 } },
       aquarelleActiveTool: { value: 'brush' },
       aquarelleSelectedTipId: { value: 'chalk' },
+      // 261029-hy2: the bar reads the lift tip unconditionally now (the pill's
+      // preset for the Eraser tool), exactly like aquarelleSelectedTipId.
+      aquarelleLiftTipId: { value: null },
       aquarelleBrushMenuOpen: { value: false },
       aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
       setAquarelleBrushMenuOpen: vi.fn(),
+      setAquarelleLiftTipId: vi.fn(),
       setAquarelleParam: vi.fn(),
       setAquarelleScriptRecordingEnabled: vi.fn(),
     }));
@@ -607,31 +799,22 @@ describe('261028-k03b / 261029-eur Eraser tool controls', () => {
     expect(styles).not.toContain('.physics-paint-topbar-lift-select');
   });
 
-  it('mounts the Lift Shape picker (261028-k03c D3) before the strength row', () => {
+  it('seats the eraser pill in the left slot, before the strength row', () => {
     setAquarelleTool('lift');
     try {
       const tree = renderTopBar(baseTopBarProps());
       const nodes = childrenOf(tree) as AnyVNode[];
-      const shape = nodes.find((node) => node.props?.testId === 'physics-lift-shape');
-      expect(shape, 'the Lift cluster mounts the shared shape picker').toBeDefined();
-      expect(shape!.props?.disabled, 'the picker follows the disabled prop').toBe(false);
-      // Shape sits before Strength inside the Lift cluster (source order).
+      const pill = nodes.find((node) => node.type === TopBarBrushTrigger);
+      expect(pill, 'the Eraser tool seats the shared pill in the left slot').toBeDefined();
+      expect(pill!.props?.tool).toBe('lift');
+      expect(pill!.props?.testId).toBe('physics-lift-shape');
+      expect(pill!.props?.disabled, 'the pill follows the disabled prop').toBe(false);
+      // The shape pill sits in the left slot, before the strength row.
       const body = stripComments(topBarSource());
-      const shapeAt = body.indexOf('<LiftShapePicker');
+      const pillAt = body.indexOf('<TopBarBrushTrigger');
       const strengthAt = body.indexOf('data-testid="physics-lift-strength"');
-      expect(shapeAt, 'shape picker mount exists').toBeGreaterThan(-1);
-      expect(strengthAt, 'strength row exists').toBeGreaterThan(shapeAt);
-      // The picker writes only the Lift selection — never the Brush seam.
-      const pickerSource = readFileSync(
-        resolve(dirname(fileURLToPath(import.meta.url)), './LiftShapePicker.tsx'),
-        'utf8',
-      );
-      expect(pickerSource).toContain('setAquarelleLiftTipId');
-      expect(pickerSource).not.toContain('selectAquarelleTip');
-      expect(pickerSource).not.toContain('setAquarelleTool');
-      // Compact row layout lives in the component (no stylesheet edit).
-      expect(pickerSource).toContain("flexDirection: 'row'");
-      expect(pickerSource).toContain("maxWidth: '120px'");
+      expect(pillAt, 'eraser pill mount exists').toBeGreaterThan(-1);
+      expect(strengthAt, 'strength row exists').toBeGreaterThan(pillAt);
     } finally {
       setAquarelleTool('brush');
     }
