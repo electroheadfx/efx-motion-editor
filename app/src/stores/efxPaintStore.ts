@@ -1705,6 +1705,10 @@ export async function replayRevealRail(
     canonicalStart: rail.clip.placementStart,
     motion: rail.clip.motion ?? { deformation: 0, position: 0 },
     mode: rail.clip.mode,
+    // 261029-vbp: a replayed colorized rail re-bakes with its persisted tint
+    // pair, so a reload + replay reproduces the creation bake.
+    colorize: rail.clip.colorize === true,
+    colorizeMix: normalizeRevealColorizeMix(rail.clip.colorizeMix),
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,

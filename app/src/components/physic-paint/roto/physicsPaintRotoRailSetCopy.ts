@@ -465,6 +465,11 @@ function buildDuplicatedLoopClip(
           overrideColor: clip.overrideColor ?? null,
         }
       : {}),
+    // 261029-vbp: the duplicate reveal bakes and re-bakes with the source's
+    // tint pair; dropping it would silently uncolorize a pasted rail.
+    ...(clip.colorize !== undefined
+      ? { colorize: clip.colorize, colorizeMix: clip.colorizeMix! }
+      : {}),
     ...(clip.syncState !== undefined
       ? {
           syncState: clip.syncState,

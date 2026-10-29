@@ -118,6 +118,24 @@ describe('reveal rail record round-trip through the physical-level parser (52-02
     const document = baseDocument([{ ...revealRail(), railKind: 'mask' }]);
     expect(() => parsePhysicPaintRotoPhysicalDocument(document)).toThrow();
   });
+
+  it('261029-vbp: a colorized reveal clip round-trips its pair through save/load', () => {
+    const colorized = { ...revealRail(), colorize: true, colorizeMix: 40 };
+    // The canonical fingerprint is a fixed term list that excludes the pair, so
+    // a colorized rail's saved revision is byte-identical to the plain one.
+    expect(buildPhysicPaintRotoPhysicalRevision(sourceRecords(), { enabled: false, mode: 'duplicate' }, [colorized]))
+      .toBe(buildPhysicPaintRotoPhysicalRevision(sourceRecords(), { enabled: false, mode: 'duplicate' }, [revealRail()]));
+    const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([colorized]));
+    expect(parsed.loopClips[0].railKind).toBe('reveal');
+    expect(parsed.loopClips[0].colorize).toBe(true);
+    expect(parsed.loopClips[0].colorizeMix).toBe(40);
+  });
+
+  it('261029-vbp: a reveal clip without the pair loads unchanged and gains no keys', () => {
+    const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([revealRail()]));
+    expect('colorize' in parsed.loopClips[0]).toBe(false);
+    expect('colorizeMix' in parsed.loopClips[0]).toBe(false);
+  });
 });
 
 describe('reveal-baked key through the persisted door (52.2-02, D-01 / D-07)', () => {

@@ -114,6 +114,10 @@ const lifecycleLoopClip = () => ({
   scriptId: 'action-1',
   motion: { deformation: 0, position: 0 },
   overrideColor: null,
+  // 261029-vbp: the persisted tint pair rides the Group lifecycle clip so
+  // Undo/Redo settlement round-trips it instead of reporting a divergence.
+  colorize: true,
+  colorizeMix: 40,
 });
 
 const GROUP_LIFECYCLE_OPERATION_KINDS = [
@@ -794,6 +798,116 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(await history.redo()).toBe(true);
     expect(current.loopClips).toEqual(after.loopClips);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('261029-vbp: a before/after differing only in the colorize mix settles as a real edit', () => {
+    const base = snapshot([record('A', 0)], 'A', 0);
+    const colorized = { ...lifecycleLoopClip(), colorize: true, colorizeMix: 40 };
+    const before = { ...base, loopClips: [colorized] } as RotoPhysicalEditSnapshot<null>;
+    const after = { ...base, loopClips: [{ ...colorized, colorizeMix: 60 }] } as RotoPhysicalEditSnapshot<null>;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+
+    useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: vi.fn() as never,
+        pendingOperationId: signal<string | null>(null),
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => after.records,
+        getInterpolation: () => after.interpolation,
+        getCapacity: () => after.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => after.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => after,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'colorize-mix-1',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    // A mix-only difference is a real edit — it must be recorded, not dropped
+    // as a no-change settlement.
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('261029-vbp: identical colorize pairs are not recorded as an edit', () => {
+    const base = snapshot([record('A', 0)], 'A', 0);
+    const colorized = { ...lifecycleLoopClip(), colorize: true, colorizeMix: 40 };
+    const before = { ...base, loopClips: [colorized] } as RotoPhysicalEditSnapshot<null>;
+    const after = { ...base, loopClips: [{ ...colorized }] } as RotoPhysicalEditSnapshot<null>;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+
+    useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: vi.fn() as never,
+        pendingOperationId: signal<string | null>(null),
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => after.records,
+        getInterpolation: () => after.interpolation,
+        getCapacity: () => after.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => after.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => after,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'colorize-mix-noop',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    expect(availability.value).toEqual({ undo: 0, redo: 0 });
   });
 
   it('atomically restores and reapplies one deleted source phase across Repeat 3', async () => {

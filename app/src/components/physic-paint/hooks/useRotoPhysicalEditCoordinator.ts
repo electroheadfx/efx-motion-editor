@@ -700,6 +700,12 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       ...(normalized.scriptId !== undefined
         ? { scriptId: normalized.scriptId, motion: { ...normalized.motion! }, overrideColor: normalized.overrideColor ?? null }
         : {}),
+      // 261029-vbp: the bridge compares whole-clip stableSerialize
+      // (physicPaintBridge.ts:453), so a dropped optional member rejects every
+      // physical edit on the track (the G-52-4 failure family).
+      ...(normalized.colorize !== undefined
+        ? { colorize: normalized.colorize, colorizeMix: normalized.colorizeMix! }
+        : {}),
       syncState: normalized.syncState,
       provenanceState: normalized.provenanceState!,
       phaseOrigin: normalized.phaseOrigin!,

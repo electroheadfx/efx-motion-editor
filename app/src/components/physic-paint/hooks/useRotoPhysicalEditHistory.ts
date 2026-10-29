@@ -410,6 +410,13 @@ function snapshotRecordsEqual(
     if (left.motion && right.motion
       && (left.motion.deformation !== right.motion.deformation || left.motion.position !== right.motion.position)) return false;
     if ((left.overrideColor ?? null) !== (right.overrideColor ?? null)) return false;
+    // 261029-vbp: the colorize pair is durable canonical state (persisted
+    // both-or-neither) — a differing mix is a real edit, not a settlement no-op.
+    if ((left.colorize === undefined) !== (right.colorize === undefined)) return false;
+    if (left.colorize !== undefined && right.colorize !== undefined) {
+      if (left.colorize !== right.colorize) return false;
+      if (left.colorizeMix !== right.colorizeMix) return false;
+    }
     if (left.syncState !== right.syncState) return false;
     if (left.provenanceState !== right.provenanceState) return false;
     if (left.phaseOrigin !== right.phaseOrigin) return false;

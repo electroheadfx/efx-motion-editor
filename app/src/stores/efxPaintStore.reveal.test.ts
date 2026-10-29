@@ -618,6 +618,57 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.payload.bytes)).toEqual([PNG_1X1_WEBP, PNG_1X1_WEBP]);
   });
 
+  it('261029-vbp: replay re-bakes a colorized rail with its persisted tint pair', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const created = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      colorize: true,
+      colorizeMix: 40,
+    });
+    expect(created.ok).toBe(true);
+    const loopId = (created as OkRevealMutation).descriptor!.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+
+    // Replay stages fresh frames; the pair must reach the bake again or a
+    // reload + replay would silently drop the tint.
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('replayed')));
+    const replay = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
+    expect(replay.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledTimes(1);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({ colorize: true, colorizeMix: 40 }));
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect(clip.colorize).toBe(true);
+    expect(clip.colorizeMix).toBe(40);
+  });
+
+  it('261029-vbp: replay of a rail without the pair never asks for a tint', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    const createDescriptor = await createRail(layerId);
+    const loopId = createDescriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const replay = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
+    expect(replay.ok).toBe(true);
+    const bakeInput = harness.renderReveal.mock.calls[0]![0] as { colorize?: boolean };
+    expect(bakeInput.colorize).not.toBe(true);
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect('colorize' in clip).toBe(false);
+    expect('colorizeMix' in clip).toBe(false);
+  });
+
   it('delete reveal rail is one undo-ledger entry; undo restores the whole rail + keys unit (D-06)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

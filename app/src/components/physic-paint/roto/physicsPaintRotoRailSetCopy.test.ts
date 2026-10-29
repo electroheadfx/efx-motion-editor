@@ -278,6 +278,9 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
       scriptId: 'script-1',
       motion: { deformation: 0, position: 0 },
       overrideColor: null,
+      // 261029-vbp: a pasted colorized reveal keeps its tint pair.
+      colorize: true,
+      colorizeMix: 40,
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 0,
@@ -294,6 +297,10 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'r1')!;
     expect(duplicated.railKind).toBe('reveal');
     expect(duplicated.scriptId).toBe('script-1');
+    // 261029-vbp: the tint pair rides the duplicate — a pasted colorized
+    // reveal must not silently lose its colour.
+    expect(duplicated.colorize).toBe(true);
+    expect(duplicated.colorizeMix).toBe(40);
     // The original reveal clip is unchanged.
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
   });

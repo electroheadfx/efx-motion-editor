@@ -992,6 +992,10 @@ describe('physicPaintBridge', async () => {
       sourceKeyIds: ['key-0', 'key-16'],
       repeat: 2,
       mode: 'progressive' as const,
+      // 261029-vbp: the tint pair must survive bridge payload equality — a
+      // dropped optional member is a whole-clip stableSerialize mismatch.
+      colorize: true,
+      colorizeMix: 40,
     }];
     const incomingInterpolationBreakKeyIds = ['key-32'];
     const seeded = physicPaintStore.replaceRotoPhysicalDocument('phys-layer-1', TEST_TRACK_ID, {
@@ -1036,6 +1040,8 @@ describe('physicPaintBridge', async () => {
       loopClips,
       incomingInterpolationBreakKeyIds,
     });
+    // The pair verifies and rehydrates intact.
+    expect(reopened.document.loopClips[0]).toMatchObject({ loopId: 'loop-1', colorize: true, colorizeMix: 40 });
     expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', TEST_TRACK_ID, 1)).toEqual(parentRasterBeforeReopen);
     expect(physicPaintStore.getRotoPhysicalRenderSource('phys-layer-1', TEST_TRACK_ID, 31)).toBeNull();
   });

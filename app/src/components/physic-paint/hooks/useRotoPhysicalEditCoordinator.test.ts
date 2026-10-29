@@ -1238,6 +1238,10 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       scriptId: 'script-1',
       motion: { deformation: 0, position: 0 },
       overrideColor: null,
+      // 261029-vbp: the tint pair rides the clone too — the bridge compares
+      // whole-clip stableSerialize, so dropping it rejects every physical edit.
+      colorize: true,
+      colorizeMix: 40,
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 12,
@@ -1268,6 +1272,9 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     const payloadClips = test.getPayload()?.loopClips ?? [];
     expect(payloadClips).toHaveLength(1);
     expect(payloadClips[0]!.railKind).toBe('reveal');
+    // 261029-vbp: the persisted tint pair survives the payload clone.
+    expect(payloadClips[0]!.colorize).toBe(true);
+    expect(payloadClips[0]!.colorizeMix).toBe(40);
     // The exact bridge comparison (validateCanonical*): proposed ≡ canonical.
     expect(payloadClips[0]).toEqual(doc.loopClips[0]);
     test.coordinator.cancelPhysicalEdit('disposal');
