@@ -238,6 +238,7 @@ import {
   isAquarelleScriptEditInFlight,
   listSelectableAquarelleStrokes,
   readAquarelleStrokeAppearance,
+  reanchorAquarelleEditFromLiveContent,
   reanchorAquarelleEditRevision,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
@@ -4902,7 +4903,25 @@ export function PhysicsPaintStudio() {
     // live sheet is reset and re-baked from the mutated script, so the frame
     // can never drift from its bake. Unrecorded strokes keep `undoPaint()`.
     aquarelleScriptHistory: {
-      replay: (editId, direction) => runScriptReplay({ direction, editId }),
+      replay: async (editId, direction) => {
+        let attempted = false;
+        const onStep = (step: AquarelleReplayStep) => {
+          if (step === 'invalidate') attempted = true;
+        };
+        const replayed = await runScriptReplay({ direction, editId, onStep });
+        if (replayed) return true;
+        // Stacked stroke edits: undoing/redoing one edit bumps the shared
+        // revision, so the NEXT edit's attempted side is stale even though the
+        // live content is exactly that side. Re-seat it and retry ONCE; a
+        // foreign script edit never matches and still fails closed.
+        if (!attempted || !reanchorAquarelleEditFromLiveContent(editId, direction)) return false;
+        recordAquarelleRenderSplitEvent('undo-probe', {
+          stage: 'script-route-reanchor',
+          editId,
+          direction,
+        });
+        return runScriptReplay({ direction, editId });
+      },
       // R-2: no tombstone term — a just-deleted stroke still answers true so its
       // REDO can route through the script.
       hasRecordedStroke: (mutationId) => getRecordedAquarelleStroke(mutationId) !== undefined,

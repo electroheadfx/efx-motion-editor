@@ -828,3 +828,47 @@ export function reanchorAquarelleEditRevision(
   liveSide.revision = aquarelleStrokesRevision.value;
   return true;
 }
+
+/** Content identity of two snapshots by live-object reference (no revision). */
+function snapshotContentIdentical(
+  left: AquarelleScriptSnapshot,
+  right: AquarelleScriptSnapshot,
+): boolean {
+  if (left.timeline.length !== right.timeline.length) return false;
+  for (let index = 0; index < left.timeline.length; index += 1) {
+    if (left.timeline[index] !== right.timeline[index]) return false;
+  }
+  if (left.deleted.length !== right.deleted.length) return false;
+  for (let index = 0; index < left.deleted.length; index += 1) {
+    if (left.deleted[index] !== right.deleted[index]) return false;
+  }
+  if (left.registry.pairs.length !== right.registry.pairs.length) return false;
+  for (let index = 0; index < left.registry.pairs.length; index += 1) {
+    const leftPair = left.registry.pairs[index];
+    const rightPair = right.registry.pairs[index];
+    if (leftPair[0] !== rightPair[0] || leftPair[1] !== rightPair[1] || leftPair[2] !== rightPair[2]) return false;
+  }
+  return true;
+}
+
+/**
+ * 261029-lsr UAT (stacked stroke edits): undoing one stroke edit bumps
+ * `aquarelleStrokesRevision`, so the NEXT edit's attempted side is still the
+ * live CONTENT but carries a stale revision and its restore fails closed —
+ * only the first stroke edit could ever be undone. Re-seat the attempted
+ * side's revision ONLY when the live content is provably identical to it
+ * (same timeline entries, registry pairs and tombstones by reference); any
+ * foreign script edit keeps the stale revision and still fails closed.
+ */
+export function reanchorAquarelleEditFromLiveContent(
+  editId: number,
+  direction: 'undo' | 'redo',
+): boolean {
+  const edit = aquarelleEdits.get(editId);
+  if (!edit) return false;
+  const attempted = direction === 'undo' ? edit.after : edit.before;
+  const live = captureAquarelleSnapshot();
+  if (!snapshotContentIdentical(live, attempted)) return false;
+  attempted.revision = live.revision;
+  return true;
+}

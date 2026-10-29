@@ -52,6 +52,7 @@ import {
   listSelectableAquarelleStrokes,
   matchesAquarelleStrokeFilter,
   readAquarelleStrokeAppearance,
+  reanchorAquarelleEditFromLiveContent,
   reanchorAquarelleEditRevision,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
@@ -982,5 +983,40 @@ describe('261029-lsr script-authoritative stroke undo edit', () => {
     expect(restoreAquarelleEditSnapshot(editId, 'undo')).not.toBeNull();
     expect(isAquarelleStrokeDeleted(9766)).toBe(true);
     expect(timelineMutationIds()).not.toContain(9766);
+  });
+
+  // 261029-lsr UAT (stacked stroke edits): only the FIRST move/delete could be
+  // undone because every sibling undo bumps the shared revision and strands
+  // the next edit's guard. The live CONTENT is still that edit's attempted
+  // side, so the re-seat is provable rather than blind.
+  it('re-seats a stacked sibling edit only when the live content is identical', () => {
+    recordAquarelleStroke(9768, stroke({ points: [point(0.2, 0.5)], playFrame: 906 }));
+    recordAquarelleStroke(9769, stroke({ points: [point(0.4, 0.5)], playFrame: 906 }));
+    const deleteFirst = beginAquarelleDeleteEdit([9768])!;
+    const deleteSecond = beginAquarelleDeleteEdit([9769])!;
+
+    // Cmd+Z #1 undoes the last delete; the live content becomes its BEFORE.
+    expect(restoreAquarelleEditSnapshot(deleteSecond, 'undo')).not.toBeNull();
+    // Cmd+Z #2 targets the older edit: its attempted side is the live CONTENT,
+    // but its revision predates the sibling undo — the strict guard refuses.
+    expect(restoreAquarelleEditSnapshot(deleteFirst, 'undo')).toBeNull();
+    expect(reanchorAquarelleEditFromLiveContent(deleteFirst, 'undo')).toBe(true);
+    expect(restoreAquarelleEditSnapshot(deleteFirst, 'undo')).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(9768)).toBe(false);
+    expect(isAquarelleStrokeDeleted(9769)).toBe(false);
+  });
+
+  it('refuses the content re-seat when a foreign script edit changed the live script', () => {
+    recordAquarelleStroke(9770, stroke({ points: [point(0.6, 0.5)], playFrame: 907 }));
+    recordAquarelleStroke(9771, stroke({ points: [point(0.8, 0.5)], playFrame: 907 }));
+    const deleteFirst = beginAquarelleDeleteEdit([9770])!;
+    const deleteSecond = beginAquarelleDeleteEdit([9771])!;
+    expect(restoreAquarelleEditSnapshot(deleteSecond, 'undo')).not.toBeNull();
+
+    // A new recorded stroke is a competing edit: the older delete's attempted
+    // side no longer describes the live script, so it must fail closed.
+    recordAquarelleStroke(9772, stroke({ points: [point(0.9, 0.5)], playFrame: 907 }));
+    expect(reanchorAquarelleEditFromLiveContent(deleteFirst, 'undo')).toBe(false);
+    expect(restoreAquarelleEditSnapshot(deleteFirst, 'undo')).toBeNull();
   });
 });

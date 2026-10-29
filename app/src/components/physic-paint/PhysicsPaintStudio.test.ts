@@ -3220,7 +3220,13 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // 261029-lsr: the route delegates the ONE orchestration and answers the
     // recorded-stroke question (R-2: no tombstone term — a deleted stroke's
     // REDO must still route through the script).
-    expect(replayPort).toContain('replay: (editId, direction) => runScriptReplay({ direction, editId }),');
+    expect(replayPort).toContain('const replayed = await runScriptReplay({ direction, editId, onStep });');
+    // Stacked stroke edits: a failed replay re-seats the attempted side ONLY
+    // on provable content identity and retries once.
+    expect(replayPort).toContain('reanchorAquarelleEditFromLiveContent(editId, direction)');
+    expect(replayPort).toContain('if (!attempted || !reanchorAquarelleEditFromLiveContent(editId, direction)) return false;');
+    expect(replayPort.indexOf('if (replayed) return true;'))
+      .toBeLessThan(replayPort.indexOf('reanchorAquarelleEditFromLiveContent(editId, direction)'));
     expect(replayPort).toContain('hasRecordedStroke: (mutationId) =>');
     expect(replayPort).toContain('replayStroke: async (mutationId, direction) =>');
     // The onStep stream classifies a failed replay: a post-rebake failure
