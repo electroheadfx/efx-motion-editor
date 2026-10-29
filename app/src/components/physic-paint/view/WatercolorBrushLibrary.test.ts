@@ -9,6 +9,7 @@
  *   card pick -> selectAquarelleTip(presetId) -> selection + Brush tool
  *   stroke painter runs at most once per preset id (cache hit on remount)
  *   never canvas.toDataURL / toBlob (52.1 D-19)
+ *   blitStrokeThumb matches the visible bitmap to the DPR-scaled cache (261029-uoz)
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  * Render tests materialize the vnode tree (no DOM environment).
@@ -32,11 +33,15 @@ import {
 import {
   STROKE_THUMB_HEIGHT,
   STROKE_THUMB_WIDTH,
+  blitStrokeThumb,
   clearStrokeThumbCache,
   getStrokeThumb,
   strokeThumbPainter,
 } from './watercolorStrokeThumb';
-import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
+import {
+  WatercolorBrushLibrary,
+  WatercolorBrushThumb,
+} from './WatercolorBrushLibrary';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -186,6 +191,76 @@ function makeStubCanvas(): Record<string, unknown> {
     }),
     toDataURL: () => 'data:,',
   };
+}
+
+interface RecordingCanvas {
+  width: number;
+  height: number;
+  dataset: Record<string, string>;
+  clientWidth: number;
+  clientHeight: number;
+  ops: { clearRect: unknown[][]; drawImage: unknown[][] };
+  getContext: () => Record<string, unknown>;
+}
+
+/**
+ * Recording canvas for the blit pin (261029-uoz). Unlike makeStubCanvas this
+ * one exposes every clear/draw call, and getContext always returns the SAME
+ * recorder so the cache painter and the blit share one observable context.
+ */
+function makeRecordingCanvas(width = 0, height = 0): RecordingCanvas {
+  const clearRect: unknown[][] = [];
+  const drawImage: unknown[][] = [];
+  const recorder: Record<string, unknown> = {
+    setTransform() {},
+    clearRect(...args: unknown[]) {
+      clearRect.push([...args]);
+    },
+    drawImage(...args: unknown[]) {
+      drawImage.push([...args]);
+    },
+    createImageData: (w: number, h: number) => ({
+      data: new Uint8ClampedArray(w * h * 4),
+      width: w,
+      height: h,
+    }),
+    putImageData() {},
+    save() {},
+    restore() {},
+    translate() {},
+    rotate() {},
+    globalAlpha: 1,
+  };
+  return {
+    width,
+    height,
+    dataset: {} as Record<string, string>,
+    clientWidth: 0,
+    clientHeight: 0,
+    ops: { clearRect, drawImage },
+    getContext: () => recorder,
+  };
+}
+
+/**
+ * Run `run` with a fake `window.devicePixelRatio`, restoring the previous
+ * state even on throw. try/finally (not a suite-wide beforeEach) keeps the
+ * fake window invisible to every other case and file.
+ */
+function withStubbedWindow<T>(dpr: number, run: () => T): T {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  const hadWindow = Object.prototype.hasOwnProperty.call(globalThis, 'window');
+  const previous = scope['window'];
+  scope['window'] = { devicePixelRatio: dpr };
+  try {
+    return run();
+  } finally {
+    if (hadWindow) {
+      scope['window'] = previous;
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
+  }
 }
 
 let originalDocument: typeof globalThis.document;
@@ -409,5 +484,101 @@ describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
     } finally {
       paintSpy.mockRestore();
     }
+  });
+});
+
+describe('blitStrokeThumb is DPR-aware (261029-uoz)', () => {
+  let savedDocument: typeof globalThis.document;
+  let windowWasPresent = false;
+  let savedWindow: unknown;
+
+  beforeEach(() => {
+    savedDocument = globalThis.document;
+    windowWasPresent = Object.prototype.hasOwnProperty.call(globalThis, 'window');
+    savedWindow = (globalThis as unknown as Record<string, unknown>)['window'];
+    resetSelection();
+  });
+
+  afterEach(() => {
+    Object.assign(globalThis, { document: savedDocument });
+    const scope = globalThis as unknown as Record<string, unknown>;
+    if (windowWasPresent) {
+      scope['window'] = savedWindow;
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
+    clearStrokeThumbCache();
+  });
+
+  it('at dpr 2 the blit copies the whole cached bitmap', () => {
+    withStubbedWindow(2, () => {
+      clearStrokeThumbCache();
+      // The contract that caused the bug: prepare() scales the cache bitmap.
+      const thumb = getStrokeThumb('round');
+      expect(thumb.width, 'dpr-2 cache is 2x wide').toBe(STROKE_THUMB_WIDTH * 2);
+      expect(thumb.height, 'dpr-2 cache is 2x tall').toBe(STROKE_THUMB_HEIGHT * 2);
+
+      const target = makeRecordingCanvas(STROKE_THUMB_WIDTH, STROKE_THUMB_HEIGHT);
+      blitStrokeThumb(target as unknown as HTMLCanvasElement, 'round');
+
+      expect(target.width, 'visible bitmap matches the cache width').toBe(thumb.width);
+      expect(target.height, 'visible bitmap matches the cache height').toBe(thumb.height);
+      expect(target.ops.drawImage.length, 'exactly one draw').toBe(1);
+      const draw = target.ops.drawImage[0]!;
+      expect(draw.length, '1:1 draw keeps three arguments').toBe(3);
+      expect(draw[0], 'draws the cached canvas').toBe(thumb);
+      expect(draw[1], 'x origin').toBe(0);
+      expect(draw[2], 'y origin').toBe(0);
+      expect(target.ops.clearRect.length, 'exactly one clear').toBe(1);
+      const clear = target.ops.clearRect[0]!;
+      expect(clear[2], 'clear covers the resized width').toBe(thumb.width);
+      expect(clear[3], 'clear covers the resized height').toBe(thumb.height);
+    });
+  });
+
+  it('at dpr 1 (no window) the blit is unchanged', () => {
+    clearStrokeThumbCache();
+    expect(typeof globalThis.window, 'node test env has no window').toBe('undefined');
+    const thumb = getStrokeThumb('round');
+    expect(thumb.width, 'dpr-1 cache is the logical width').toBe(STROKE_THUMB_WIDTH);
+    expect(thumb.height, 'dpr-1 cache is the logical height').toBe(STROKE_THUMB_HEIGHT);
+
+    const target = makeRecordingCanvas(STROKE_THUMB_WIDTH, STROKE_THUMB_HEIGHT);
+    blitStrokeThumb(target as unknown as HTMLCanvasElement, 'round');
+
+    expect(target.width, 'no resize at dpr 1').toBe(STROKE_THUMB_WIDTH);
+    expect(target.height, 'no resize at dpr 1').toBe(STROKE_THUMB_HEIGHT);
+    expect(target.ops.drawImage.length, 'exactly one draw').toBe(1);
+    const draw = target.ops.drawImage[0]!;
+    expect(draw.length, '1:1 draw keeps three arguments').toBe(3);
+    expect(draw[0], 'draws the cached canvas').toBe(thumb);
+    expect(draw[1], 'x origin').toBe(0);
+    expect(draw[2], 'y origin').toBe(0);
+  });
+
+  it('the component ref path lands the full bitmap', () => {
+    withStubbedWindow(2, () => {
+      clearStrokeThumbCache();
+      const vnode = WatercolorBrushThumb({
+        presetId: 'round',
+        class: 'watercolor-brush-thumb',
+      });
+      const canvas = materialize(vnode) as TestVNode;
+      expect(canvas.type, 'component renders a canvas').toBe('canvas');
+      // Preact extracts `ref` from props onto the vnode itself (createElement /
+      // jsx-runtime normalize it), so the callback lives at vnode.ref.
+      const ref = (canvas as unknown as { ref?: unknown }).ref;
+      expect(typeof ref, 'canvas exposes a ref callback').toBe('function');
+
+      const target = makeRecordingCanvas(STROKE_THUMB_WIDTH, STROKE_THUMB_HEIGHT);
+      (ref as (el: unknown) => void)(target);
+
+      const thumb = getStrokeThumb('round');
+      expect(thumb.width, 'cache is 300 wide at dpr 2').toBe(STROKE_THUMB_WIDTH * 2);
+      expect(thumb.height, 'cache is 88 tall at dpr 2').toBe(STROKE_THUMB_HEIGHT * 2);
+      expect(target.width, 'visible bitmap equals the cache width').toBe(thumb.width);
+      expect(target.height, 'visible bitmap equals the cache height').toBe(thumb.height);
+      expect(target.ops.drawImage.length, 'component blits once per mount').toBe(1);
+    });
   });
 });
