@@ -213,6 +213,7 @@ import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
+  aquarelleStrokeTypeFilter,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
@@ -2311,9 +2312,9 @@ export function PhysicsPaintStudio() {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
   // 261029: the Studio tool shortcuts. B / W / E pick a painting tool and leave
-  // Select mode; A enters Select, then cycles the stroke-type filter
-  // Paint → Eraser → All → Paint. Every read is `.peek()` — the Studio render
-  // body never subscribes a selection signal.
+  // Select mode; A enters Select, cycles the stroke-type filter
+  // Paint → Eraser → All, then leaves Select for the Brush tool. Every read is
+  // `.peek()` — the Studio render body never subscribes a selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'lift') => {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
@@ -2323,6 +2324,12 @@ export function PhysicsPaintStudio() {
       // A scriptless key has nothing to select — the rail gate stays authoritative.
       if (!watercolorMoveAvailable.peek()) return;
       setAquarelleSelectMode(true);
+      return;
+    }
+    // Past the last segment, A leaves the Select surface and resumes painting.
+    if (aquarelleStrokeTypeFilter.peek() === 'all') {
+      setAquarelleSelectMode(false);
+      setAquarelleTool('brush');
       return;
     }
     cycleAquarelleStrokeTypeFilter();
