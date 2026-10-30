@@ -2594,19 +2594,19 @@ button.destructive {
 }
 
 /* Timing footer: both columns end on the same line (Max/Infinity or the
-   Reveal "from F{n}" hint). */
+   Reveal "from F{n}" hint). The 5px switch top padding is part of the row. */
 .physics-paint-play-script-timing-foot {
   display: flex;
   align-items: center;
-  min-height: 18px;
+  min-height: 25px;
 }
 
 /* Create Rail switches: the top-bar Script switch's visuals at card scale. */
 .physics-paint-play-script-dialog .physics-paint-play-script-switch {
   height: auto;
   margin-left: 0;
-  padding: 0;
-  gap: 7px;
+  padding: 5px 0 0;
+  gap: 8px;
   color: var(--ps-muted);
 }
 
@@ -2615,19 +2615,19 @@ button.destructive {
 }
 
 .physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-track {
-  width: 28px;
-  height: 16px;
+  width: 36px;
+  height: 20px;
 }
 
 .physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-knob {
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
 }
 
 .physics-paint-play-script-dialog .physics-paint-play-script-switch.is-on .physics-paint-script-switch-knob {
-  transform: translateX(12px);
+  transform: translateX(16px);
 }
 
 .physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-label {
@@ -2635,26 +2635,14 @@ button.destructive {
   font-weight: 600;
 }
 
-/* Color pane (D-08R): centers its compact content — the card never reserves dead space.
-   min-height matches the Custom row's deterministic outer height (7px padding + meta
-   16+2+14px + 7px + 2px border = 48px) so toggling Original/Custom never changes the
-   card (and modal) height (UAT remediation). */
+/* Color pane (D-08R): renders only for the Custom color row — Original colors
+   keep the card compact now that the swatch row lives in the heading. */
 .physics-paint-play-script-color-pane {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
   margin-top: 10px;
-  min-height: 48px;
-}
-
-.physics-paint-play-script-color-original-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  color: var(--ps-muted);
-  font-size: 12px;
 }
 
 .physics-paint-play-script-color-dots {

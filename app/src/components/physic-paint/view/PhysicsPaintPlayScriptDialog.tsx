@@ -705,7 +705,12 @@ export function PhysicsPaintPlayScriptDialog({
           <>
           <div class="physics-paint-play-script-side-stack">
             <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-              <span class="physics-paint-play-script-card-title">Color</span>
+              <div class="physics-paint-play-script-card-heading">
+                <span class="physics-paint-play-script-card-title">Color</span>
+                <span class="physics-paint-play-script-color-dots" aria-hidden="true">
+                  {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
+                </span>
+              </div>
               <div
                 class="physics-paint-play-script-mode-group"
                 role="radiogroup"
@@ -733,8 +738,8 @@ export function PhysicsPaintPlayScriptDialog({
                   );
                 })}
               </div>
-              <div class="physics-paint-play-script-color-pane">
-                {playScript.overrideEnabled.value ? (
+              {playScript.overrideEnabled.value ? (
+                <div class="physics-paint-play-script-color-pane">
                   <div class="physics-paint-play-script-color-custom-row">
                     <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
                     <div class="physics-paint-play-script-color-meta">
@@ -742,15 +747,8 @@ export function PhysicsPaintPlayScriptDialog({
                       <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
                     </div>
                   </div>
-                ) : (
-                  <div class="physics-paint-play-script-color-original-row">
-                    <span class="physics-paint-play-script-color-dots" aria-hidden="true">
-                      {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
-                    </span>
-                    Keep each stroke's original paint color.
-                  </div>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
             {motionCard}
           </div>

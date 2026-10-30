@@ -609,18 +609,19 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(playScriptCssRule('.physics-paint-play-script-key-column > :last-child')).toContain('flex: 1 1 auto');
   });
 
-  it('uses the compact top-bar Script switch styling and aligned timing footers', () => {
+  it('uses the top-bar Script switch styling, scaled up with a 5px top pad, and aligned footers', () => {
     const footRule = playScriptCssRule('.physics-paint-play-script-timing-foot');
-    expect(footRule).toContain('min-height: 18px');
+    expect(footRule).toContain('min-height: 25px');
     expect(footRule).toContain('align-items: center');
     const switchRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch');
-    expect(switchRule).toContain('gap: 7px');
+    expect(switchRule).toContain('padding: 5px 0 0');
+    expect(switchRule).toContain('gap: 8px');
     expect(switchRule).toContain('height: auto');
     const trackRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-track');
-    expect(trackRule).toContain('width: 28px');
-    expect(trackRule).toContain('height: 16px');
+    expect(trackRule).toContain('width: 36px');
+    expect(trackRule).toContain('height: 20px');
     const knobRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch.is-on .physics-paint-script-switch-knob');
-    expect(knobRule).toContain('translateX(12px)');
+    expect(knobRule).toContain('translateX(16px)');
   });
 });
 
@@ -644,7 +645,12 @@ describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', ()
     expect(radios[1].props['aria-checked']).toBe(false);
     expect(radios[1].props.tabIndex).toBe(-1);
     expect(signals.overrideEnabled.value).toBe(false);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-original-row')))).toContain("Keep each stroke's original paint color.");
+    // The swatches live beside the Color title; the old copy row is gone.
+    const card = findOne(tree, byClass('physics-paint-play-script-card-color'));
+    const heading = findOne(card, byClass('physics-paint-play-script-card-heading'));
+    expect(findAll(heading, byClass('physics-paint-play-script-color-dots'))).toHaveLength(1);
+    expect(findAll(heading, (vnode) => vnode.type === 'i')).toHaveLength(4);
+    expect(findAll(tree, byClass('physics-paint-play-script-color-original-row'))).toHaveLength(0);
   });
 
   it('arrow keys move check with wrap-around between the two color options', () => {
@@ -690,7 +696,7 @@ describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', ()
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain('#aa5500');
   });
 
-  it("checking 'Original colors' sets overrideEnabled false and restores the original pane", () => {
+  it("checking 'Original colors' sets overrideEnabled false and collapses the custom pane", () => {
     const { controller, signals } = createFakeController({ overrideEnabled: true });
     let tree = renderDialog(controller);
     const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
@@ -698,7 +704,8 @@ describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', ()
     expect(signals.overrideEnabled.value).toBe(false);
     tree = renderDialog(controller);
     expect(findAll(tree, byClass('physics-paint-play-script-color-custom-row'))).toHaveLength(0);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-original-row')))).toContain("Keep each stroke's original paint color.");
+    expect(findAll(tree, byClass('physics-paint-play-script-color-pane'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-color-dots'))).toHaveLength(1);
   });
 
   it('mounts no InlineColorPicker anywhere in the dialog and keeps no pick-guard state', () => {
@@ -828,7 +835,7 @@ describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked 
     expect(source).toContain('Original colors');
     expect(source).toContain('Custom color');
     expect(source).toContain("Picked from the app's brush color panel");
-    expect(source).toContain("Keep each stroke's original paint color.");
+    expect(source).not.toContain("Keep each stroke's original paint color.");
     expect(source).toContain('Frames per cycle');
     expect(source).toContain('Motion wiggle');
     expect(source).toContain('Reset defaults');
@@ -842,7 +849,7 @@ describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked 
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (UAT remediation)', () => {
+describe('PhysicsPaintPlayScriptDialog header drag + Custom color row metrics', () => {
   it('drags the modal via the header: pointerdown + pointermove translates the surface, pointerup ends the drag', () => {
     const { controller } = createFakeController();
     let tree = renderDialog(controller);
@@ -869,9 +876,8 @@ describe('PhysicsPaintPlayScriptDialog header drag + stable color-pane height (U
     expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-dragging .physics-paint-play-script-header')).toContain('cursor: grabbing');
   });
 
-  it('locks the color pane to the Custom row height so Original/Custom toggling never resizes the modal (CSS contract)', () => {
-    // Deterministic Custom row: 7px padding + meta (hex 16px + 2px gap + note 14px) + 7px + 2px border = 48px.
-    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).toContain('min-height: 48px');
+  it('keeps the Custom color row metrics deterministic without Original-mode dead space', () => {
+    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).not.toContain('min-height');
     expect(playScriptCssRule('.physics-paint-play-script-color-hex')).toContain('line-height: 16px');
     expect(playScriptCssRule('.physics-paint-play-script-color-note')).toContain('line-height: 14px');
   });
