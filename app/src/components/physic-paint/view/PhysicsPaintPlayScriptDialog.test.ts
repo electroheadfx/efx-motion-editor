@@ -308,7 +308,7 @@ beforeEach(() => {
 });
 
 describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
-  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack; Paint keeps the summary in col1, Reveal spans it', () => {
+  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack; the summary closes col1 on Paint and col2 on Reveal', () => {
     const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
@@ -366,11 +366,16 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
 
-    // Reveal: the summary spans both columns under the main grid row.
+    // Reveal: the summary closes col2, under Motion wiggle and Colorize, so it
+    // no longer adds a full-width row to the modal height.
     const revealTree = renderDialog(createFakeController({ railTab: 'reveal', loopReadout: readout }).controller);
-    const revealContent = findOne(revealTree, byClass('physics-paint-play-script-content'));
+    const revealStack = findOne(revealTree, byClass('physics-paint-play-script-side-stack'));
     const revealSummary = findOne(revealTree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealContent);
+    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealStack);
+    const revealStackChildren = [...walk(revealStack)]
+      .filter((child) => child !== revealStack && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(revealStack, child) === revealStack);
+    expect(revealStackChildren[revealStackChildren.length - 1]).toBe(revealSummary);
 
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
@@ -393,10 +398,11 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const rowsRule = playScriptCssRule('.physics-paint-play-script-motion-rows');
     expect(rowsRule).toContain('gap: 10px');
     expect(playScriptCssRule('.physics-paint-play-script-motion-rows > .slider-stepper')).toContain('flex: 0 0 auto');
-    // Paint pins the summary inside col1; Reveal spans it under both columns.
+    // Paint pins the summary inside col1; Reveal closes col2 the same way.
     expect(playScriptCssRule('.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
-    expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).toContain('grid-column: 1 / -1');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack')).toContain('justify-content: space-between');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
+    expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).not.toContain('grid-column');
+    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack {');
   });
 
   it('marks the root with the reveal modifier only on the Reveal tab', () => {
@@ -1473,7 +1479,10 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         .filter((child) => renderedParentOf(tree, child) === parent);
       const columnChildren = directChildrenOf(column);
       const contentChildren = directChildrenOf(content);
+      const stack = findOne(content, byClass('physics-paint-play-script-side-stack'));
+      const stackChildren = directChildrenOf(stack);
       const photoWiggle = findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))[0];
+      const colorize = findAll(tree, byClass('physics-paint-play-script-card-colorize'))[0];
       return {
         keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
         timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
@@ -1482,8 +1491,12 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         photoWiggleInColumn: photoWiggle ? columnChildren.indexOf(photoWiggle) : -1,
         summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
         summaryInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
+        motionInStack: stackChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-motion'))),
+        colorizeInStack: colorize ? stackChildren.indexOf(colorize) : -1,
+        summaryInStack: stackChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
+        stackChildCount: stackChildren.length,
         columnInContent: contentChildren.indexOf(column),
-        stackInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
+        stackInContent: contentChildren.indexOf(stack),
       };
     };
     const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
@@ -1494,6 +1507,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(paintOrder.seedInColumn).toBeLessThan(paintOrder.summaryInColumn);
     expect(paintOrder.photoWiggleInColumn).toBe(-1);
     expect(paintOrder.summaryInContent).toBe(-1);
+    expect(paintOrder.summaryInStack).toBe(-1);
     expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
@@ -1501,9 +1515,14 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
     expect(revealOrder.keyScriptInColumn).toBeLessThan(revealOrder.seedInColumn);
     expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.photoWiggleInColumn);
+    // Reveal's summary closes col2 (under Motion wiggle + Colorize) instead of
+    // spanning a new grid row, so it never adds modal height.
     expect(revealOrder.summaryInColumn).toBe(-1);
+    expect(revealOrder.summaryInContent).toBe(-1);
+    expect(revealOrder.motionInStack).toBeLessThan(revealOrder.colorizeInStack);
+    expect(revealOrder.colorizeInStack).toBeLessThan(revealOrder.summaryInStack);
+    expect(revealOrder.summaryInStack).toBe(revealOrder.stackChildCount - 1);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
-    expect(revealOrder.stackInContent).toBeLessThan(revealOrder.summaryInContent);
   });
 
   it('261030-v1t: renders the Paint seed variation card on both tabs in apply mode only, routing the checkbox', () => {

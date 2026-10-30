@@ -2362,9 +2362,11 @@ button.destructive {
 
 .physics-paint-play-script-motion-rows > .slider-stepper { flex: 0 0 auto; }
 
-/* Reveal: Colorize is pinned to the stack bottom so both column bottoms align. */
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack {
-  justify-content: space-between;
+/* Reveal: the summary closes column 2, pinned to the stack bottom so both
+   column bottoms align without adding a full-width grid row. */
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack > .physics-paint-play-script-summary-bar {
+  flex: 0 0 auto;
+  margin-top: auto;
 }
 
 
@@ -2763,11 +2765,10 @@ button.destructive {
   margin-top: auto;
 }
 
-/* Requested/Effective summary bar (D-13/D-16 Row 4): full-width row under both
-   columns; Requested left / Effective right; renders the controller loopReadout
-   — informational only (D-14). */
+/* Requested/Effective summary bar (D-13/D-16 Row 4): closes the column that
+   has room (col1 on Paint, col2 on Reveal); Requested left / Effective right;
+   renders the controller loopReadout — informational only (D-14). */
 .physics-paint-play-script-summary-bar {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;

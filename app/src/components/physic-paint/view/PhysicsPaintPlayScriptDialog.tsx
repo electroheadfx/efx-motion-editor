@@ -686,6 +686,7 @@ export function PhysicsPaintPlayScriptDialog({
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
             {colorizeCard}
+            {summaryBar}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
               error. The action opens the Photo Reference modal so the user places
@@ -796,7 +797,6 @@ export function PhysicsPaintPlayScriptDialog({
           ) : null}
           </>)}
           </>)}
-          {revealTab ? summaryBar : null}
         </div>
         {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
