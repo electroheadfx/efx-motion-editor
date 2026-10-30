@@ -202,3 +202,14 @@ None — the executed tasks implemented T-quick-261030-v1t-03 (fail-closed ON br
 - Task 3 gate: 8 suites / 475 tests pass; app typecheck clean.
 - Suites: watercolor 176 passed / 8 skipped (GPU-gated), host traceSeed 7/7; both package builds succeed.
 - SUMMARY intentionally left uncommitted (orchestrator owns `.planning/` commits).
+
+## UAT Approval (2026-10-30)
+
+All live native UAT rows approved: ON/OFF for Paint Motion, Paint Static, Reveal Motion and Reveal Static; wiggle 0 with ON (paint varies, geometry does not move); save/reopen + Replay/Regenerate reproduce; OFF matches the pre-change build.
+
+Post-UAT fixes committed:
+
+- `80e4dd1f` — the physical-edit wire clone round-trips `paintSeedVariation` (a dropped optional member failed the Play Script acknowledgement after a successful bake and persisted the rail as OFF).
+- `13046831` — Create Rail layout compaction: Frames/Repeat in two columns with Max/Infinity beneath their own fields, Key Script and Paint seed hints removed, Paint seed variation moved under Key Script Editing in column 1, both columns bottom-aligned.
+
+Quick task CLOSED.
