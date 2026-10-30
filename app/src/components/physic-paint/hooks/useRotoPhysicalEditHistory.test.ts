@@ -96,6 +96,8 @@ const GROUP_FIELD_PARTICIPATION = [
   // 261030-ig0: opting into per-key script edits is durable canonical state —
   // a flag-only difference settles as a real edit.
   { field: 'keyScriptEdits', value: true },
+  // 261030-v1t: the per-frame paint-seed variation flag is durable state too.
+  { field: 'paintSeedVariation', value: true },
 ] as const;
 
 const baseLoopClip = () => ({

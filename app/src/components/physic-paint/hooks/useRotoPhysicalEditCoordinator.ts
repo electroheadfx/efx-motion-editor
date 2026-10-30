@@ -714,6 +714,11 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       // clips, so a dropped member rejects every physical edit on the track
       // (the G-52-4 failure family).
       ...(normalized.keyScriptEdits !== undefined ? { keyScriptEdits: normalized.keyScriptEdits } : {}),
+      // 261030-v1t: the per-frame paint-seed variation flag must ride the clone
+      // too (same G-52-4 failure family). The parent echoes this clone back as
+      // the accepted document, so dropping it also fails the Play Script
+      // acknowledgement and silently persists an OFF rail.
+      ...(normalized.paintSeedVariation !== undefined ? { paintSeedVariation: normalized.paintSeedVariation } : {}),
       syncState: normalized.syncState,
       provenanceState: normalized.provenanceState!,
       phaseOrigin: normalized.phaseOrigin!,

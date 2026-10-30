@@ -1246,6 +1246,9 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       photoWiggle: true,
       // 261030-ig0: the per-key opt-in rides the clone too.
       keyScriptEdits: true,
+      // 261030-v1t: the per-frame paint-seed variation rides the clone too — a
+      // dropped member fails the Play Script ack and persists an OFF rail.
+      paintSeedVariation: true,
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 12,
@@ -1283,6 +1286,9 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(payloadClips[0]!.photoWiggle).toBe(true);
     // 261030-ig0: the per-key opt-in survives the clone.
     expect(payloadClips[0]!.keyScriptEdits).toBe(true);
+    // 261030-v1t: the per-frame paint-seed variation survives the clone — the
+    // parent echoes it back as the accepted document (Play Script ack).
+    expect(payloadClips[0]!.paintSeedVariation).toBe(true);
     // The exact bridge comparison (validateCanonical*): proposed ≡ canonical.
     expect(payloadClips[0]).toEqual(doc.loopClips[0]);
     test.coordinator.cancelPhysicalEdit('disposal');

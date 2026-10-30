@@ -426,6 +426,8 @@ function snapshotRecordsEqual(
     if ((left.photoWiggle ?? false) !== (right.photoWiggle ?? false)) return false;
     // The per-key opt-in is durable state.
     if ((left.keyScriptEdits ?? false) !== (right.keyScriptEdits ?? false)) return false;
+    // 261030-v1t: the per-frame paint-seed variation flag is durable state too.
+    if ((left.paintSeedVariation ?? false) !== (right.paintSeedVariation ?? false)) return false;
     if (left.syncState !== right.syncState) return false;
     if (left.provenanceState !== right.provenanceState) return false;
     if (left.phaseOrigin !== right.phaseOrigin) return false;
@@ -555,6 +557,8 @@ function snapshotCanonicalContentEqual(
     // flag-only difference settles as a real edit.
     if ((l.photoWiggle ?? false) !== (r.photoWiggle ?? false)) return false;
     if ((l.keyScriptEdits ?? false) !== (r.keyScriptEdits ?? false)) return false;
+    // 261030-v1t: the per-frame paint-seed variation flag settles as a real edit.
+    if ((l.paintSeedVariation ?? false) !== (r.paintSeedVariation ?? false)) return false;
     if (l.syncState !== r.syncState) return false;
     if (l.provenanceState !== r.provenanceState) return false;
     if (l.phaseOrigin !== r.phaseOrigin) return false;
