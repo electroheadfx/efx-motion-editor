@@ -2736,7 +2736,16 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
 
   it('passes the pointer event from the capture listener into the Studio intent', () => {
     expect(studioView).toContain('onInputIntent?: (event: PointerEvent) => void;');
-    expect(studioView).toContain('onPointerDownCapture={(event) => props.onInputIntent?.(event)}');
+    expect(studioView).toContain('onPointerDownCapture={(event) => {');
+    expect(studioView).toContain('props.onInputIntent?.(event);');
+    // 261030-cnq: a color pick is consumed BEFORE the intent, so a pick press
+    // can never reach beginRotoFrameEdit (no stroke, no auto-key).
+    const captureStart = studioView.indexOf('onPointerDownCapture={(event) => {');
+    const pickStart = studioView.indexOf('if (props.onColorPick?.(event, event.currentTarget as HTMLElement)) {');
+    const intentStart = studioView.indexOf('props.onInputIntent?.(event);');
+    expect(captureStart).toBeGreaterThan(-1);
+    expect(pickStart).toBeGreaterThan(captureStart);
+    expect(intentStart).toBeGreaterThan(pickStart);
     expect(studio).toContain('beginRotoFrameEditImplRef.current(event);');
   });
 
@@ -3048,8 +3057,9 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('onClick={() => toggleAquarelleSelectMode()}');
     expect(watercolorRail).toContain('aria-pressed={selectActive}');
     expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value;');
-    // Select/Move owns the active state: the paint tool is deselected.
-    expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
+    // Select/Move owns the active state: the paint tool is deselected. The
+    // 261030-cnq picker joins it — an armed picker deselects the paint tool too.
+    expect(watercolorRail).toContain('const isActive = !selectActive && !pickerActive && active === id;');
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
