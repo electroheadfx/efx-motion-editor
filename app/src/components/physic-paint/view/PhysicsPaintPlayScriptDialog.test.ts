@@ -142,6 +142,8 @@ interface FakeControllerSeed {
   colorizeMix?: number;
   // 261030-ey9: the Reveal tab Photo wiggle
   photoWiggle?: boolean;
+  // 261030-ig0: per-key script editing
+  keyScriptEdits?: boolean;
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -194,6 +196,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     colorize: sig(seed.colorize ?? false),
     colorizeMix: sig(seed.colorizeMix ?? 100),
     photoWiggle: sig(seed.photoWiggle ?? false),
+    keyScriptEdits: sig(seed.keyScriptEdits ?? false),
   };
   const controller = {
     ...signals,
@@ -222,6 +225,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setColorize: vi.fn(),
     setColorizeMix: vi.fn(),
     setPhotoWiggle: vi.fn(),
+    setKeyScriptEdits: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1368,6 +1372,30 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     // The Paint tab renders no Photo wiggle card.
     const paintTree = renderDialog(createFakeController().controller);
     expect(findAll(paintTree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
+  });
+
+  it('261030-ig0: renders the Key Script Editing opt-in in apply mode only, defaulting unchecked', () => {
+    const { controller, signals } = createFakeController();
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-key-script'));
+    expect(textOf(card)).toContain('Key Script Editing');
+    expect(textOf(card)).toContain('Save script on each key');
+    const checkbox = findOne(card, byId('physics-play-script-key-script-edits')) as TestVNode;
+    expect(checkbox.props.type).toBe('checkbox');
+    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.disabled).toBe(false);
+    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setKeyScriptEdits).toHaveBeenCalledWith(true);
+    // The dialog never writes the signal itself — the controller owns it.
+    expect(signals.keyScriptEdits.value).toBe(false);
+
+    // A seeded enable renders checked.
+    const seeded = renderDialog(createFakeController({ keyScriptEdits: true }).controller);
+    expect((findOne(seeded, byId('physics-play-script-key-script-edits')) as TestVNode).props.checked).toBe(true);
+
+    // Edit modes never render the creation opt-in.
+    const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
+    expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {

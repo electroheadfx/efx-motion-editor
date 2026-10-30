@@ -302,6 +302,29 @@ export interface PhysicPaintRotoGroupFrameOverride {
   readonly keyId: string;
 }
 
+/**
+ * 261030-ig0: one rail KEY's script settings for an opted-in rail.
+ *
+ * The SLOT — the 0-based index into the rail's `sourceKeyIds` — is the
+ * identity, never a duplicated `keyId`: `sourceKeyIds[slot]` already IS the
+ * keyId, a slot survives duplicate/paste (which mint fresh keyIds) and Replay
+ * (which mints fresh keyIds), and a copied keyId field would rot the moment
+ * either happens. The override is metadata only — the rail keeps exactly ONE
+ * `scriptId` (D-01); a per-key script copy would blow the 16 MB envelope cap.
+ *
+ * The reveal-only members (`colorize`, `colorizeMix`, `photoWiggle`) mirror the
+ * rail's own optional pair/flag: written both-or-neither / only-when-true so a
+ * Paint rail's override stays minimal.
+ */
+export interface PhysicPaintRotoKeyScriptOverride {
+  readonly slot: number;
+  readonly motion: PhysicPaintRotoScriptMotionSettings;
+  readonly overrideColor: string | null;
+  readonly colorize?: boolean;
+  readonly colorizeMix?: number;
+  readonly photoWiggle?: boolean;
+}
+
 export interface PhysicPaintRotoLoopClip {
   readonly loopId: string;
   readonly placementStart: number;
@@ -333,6 +356,21 @@ export interface PhysicPaintRotoLoopClip {
    * the rails, exactly like the colorize pair (research A5).
    */
   readonly photoWiggle?: boolean;
+  /**
+   * 261030-ig0: the Create Rail "Save script on each key" opt-in. Written ONLY
+   * when true (the photoWiggle precedent), so a rail created with it off is
+   * byte-identical to a pre-quick rail; absent means off. Deliberately
+   * EXCLUDED from the canonical fingerprint — every write accompanies a
+   * re-bake that changes the key bytes, exactly like `colorize`/`photoWiggle`.
+   */
+  readonly keyScriptEdits?: boolean;
+  /**
+   * 261030-ig0: the individual per-key overrides of an opted-in rail. Written
+   * only when non-empty AND `keyScriptEdits === true` (the validator rejects
+   * any other combination), slots strictly ascending. Also excluded from the
+   * canonical fingerprint for the same reason as the flag.
+   */
+  readonly keyScriptOverrides?: readonly PhysicPaintRotoKeyScriptOverride[];
   /** Durable Group lifecycle facts. Canonical finite Groups always carry all six members. */
   readonly syncState?: 'synchronized' | 'modified';
   readonly provenanceState?: 'attached' | 'detached';
@@ -482,12 +520,24 @@ const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   'colorizeMix',
   // 261030-ey9: the reveal Photo wiggle flag — fail-closed allowlist entry.
   'photoWiggle',
+  // 261030-ig0: the per-key script-edit opt-in + override collection.
+  'keyScriptEdits',
+  'keyScriptOverrides',
   'syncState',
   'provenanceState',
   'phaseOrigin',
   'originalEndExclusive',
   'visibleRanges',
   'frameOverrides',
+]);
+/** 261030-ig0: closed allowlist for one `keyScriptOverrides` entry. */
+const PHYSIC_PAINT_ROTO_KEY_SCRIPT_OVERRIDE_KEYS = new Set([
+  'slot',
+  'motion',
+  'overrideColor',
+  'colorize',
+  'colorizeMix',
+  'photoWiggle',
 ]);
 const PHYSIC_PAINT_ROTO_GROUP_VISIBLE_RANGE_KEYS = new Set(['start', 'endExclusive']);
 const PHYSIC_PAINT_ROTO_GROUP_FRAME_OVERRIDE_KEYS = new Set(['appFrame', 'keyId']);
@@ -844,6 +894,37 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
   if (!isNonNegativeInteger(value.placementStart)) return false;
   if (!Array.isArray(value.sourceKeyIds) || value.sourceKeyIds.length === 0) return false;
   if (!value.sourceKeyIds.every(isBoundedKeyId)) return false;
+  // 261030-ig0 (T-261030-ig0-01): the opt-in flag and the per-key override
+  // collection are fail-closed. Placed after the `sourceKeyIds` checks so a
+  // slot can be bounded against the cycle length. An override array on a rail
+  // that did not opt in is a malformed record, never repaired; slots are
+  // STRICTLY ASCENDING so every positional comparator downstream is valid.
+  if (value.keyScriptEdits !== undefined && typeof value.keyScriptEdits !== 'boolean') return false;
+  if (value.keyScriptOverrides !== undefined) {
+    if (!Array.isArray(value.keyScriptOverrides)) return false;
+    if (value.keyScriptOverrides.length > value.sourceKeyIds.length) return false;
+    if (value.keyScriptEdits !== true) return false;
+    let previousSlot = -1;
+    for (const override of value.keyScriptOverrides) {
+      if (!isRecord(override)) return false;
+      if (!hasOnlyAllowedKeys(override, PHYSIC_PAINT_ROTO_KEY_SCRIPT_OVERRIDE_KEYS)) return false;
+      if (typeof override.slot !== 'number' || !Number.isSafeInteger(override.slot) || override.slot < 0) return false;
+      if (override.slot >= value.sourceKeyIds.length) return false;
+      if (override.slot <= previousSlot) return false;
+      previousSlot = override.slot;
+      if (!isPhysicPaintRotoScriptMotionSettings(override.motion)) return false;
+      if (override.overrideColor !== null
+        && !(typeof override.overrideColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(override.overrideColor))) return false;
+      const hasOverrideColorize = override.colorize !== undefined;
+      const hasOverrideColorizeMix = override.colorizeMix !== undefined;
+      if (hasOverrideColorize !== hasOverrideColorizeMix) return false;
+      if (hasOverrideColorize) {
+        if (typeof override.colorize !== 'boolean') return false;
+        if (!isPercentInteger(override.colorizeMix)) return false;
+      }
+      if (override.photoWiggle !== undefined && typeof override.photoWiggle !== 'boolean') return false;
+    }
+  }
   if (value.repeat !== 'infinity') {
     if (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1) return false;
   }
@@ -1023,6 +1104,29 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       // 261030-ey9: the Photo wiggle flag copies verbatim (written only when
       // true) — never derived from any other member.
       ...(entry.photoWiggle !== undefined ? { photoWiggle: entry.photoWiggle } : {}),
+      // 261030-ig0: the per-key opt-in flag copies verbatim (written only when
+      // in effect), and the override collection rebuilds fresh + frozen from
+      // the validated entries — never derived from any other member.
+      ...(entry.keyScriptEdits !== undefined ? { keyScriptEdits: entry.keyScriptEdits } : {}),
+      ...(entry.keyScriptOverrides !== undefined
+        ? {
+            keyScriptOverrides: Object.freeze(entry.keyScriptOverrides.map((override) => Object.freeze({
+              slot: override.slot,
+              // Same conditional rotation/scale compaction as the rail motion.
+              motion: Object.freeze({
+                deformation: override.motion.deformation,
+                position: override.motion.position,
+                ...(override.motion.rotation !== undefined ? { rotation: override.motion.rotation } : {}),
+                ...(override.motion.scale !== undefined ? { scale: override.motion.scale } : {}),
+              }),
+              overrideColor: override.overrideColor ?? null,
+              ...(override.colorize !== undefined
+                ? { colorize: override.colorize, colorizeMix: override.colorizeMix! }
+                : {}),
+              ...(override.photoWiggle !== undefined ? { photoWiggle: override.photoWiggle } : {}),
+            }))),
+          }
+        : {}),
       ...(entry.syncState !== undefined
         ? {
             syncState: entry.syncState,
@@ -1480,6 +1584,13 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
       // precedent) — the baked key bytes already distinguish the rails, and the
       // flag is creation-only. A future toggle-on-existing-rail edit must add
       // the term here AND at the identical ordinal in the Rust encoder.
+      //
+      // 261030-ig0: `keyScriptEdits` and `keyScriptOverrides` are deliberately
+      // EXCLUDED too, for the same reason: every write accompanies a re-bake
+      // that changes the key bytes, so the payload content token already moves
+      // the revision. Adding a term here would force an identical-ordinal Rust
+      // mirror in app/src-tauri/src/services/script_library.rs and move every
+      // existing rail's revision.
       encodeCanonicalString(lifecycle.syncState),
       encodeCanonicalString(lifecycle.provenanceState),
       encodeCanonicalNumber(lifecycle.phaseOrigin),

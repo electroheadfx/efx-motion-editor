@@ -2930,6 +2930,67 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(linked).toMatchObject({ placementStart: 20, sourceKeyIds: [...CYCLE_IDS], repeat: 2, mode: 'static' });
     });
 
+    // 261030-ig0 (D-03/D-04): the per-key opt-in is written on BOTH creation
+    // branches and only when on; off stays byte-identical (no member at all).
+    it('261030-ig0: writes keyScriptEdits on a NEW-loop Apply only when the toggle is on', async () => {
+      for (const mode of ['progressive', 'static'] as const) {
+        const on = applyHarness([]);
+        await on.controller.openConfirmation();
+        on.controller.mode.value = mode;
+        on.controller.countText.value = '3';
+        on.controller.setKeyScriptEdits(true);
+        expect(await on.controller.confirm()).toBe(true);
+        const committedOn = on.commit.mock.calls[0][0].loopClips?.[0];
+        expect(committedOn?.keyScriptEdits).toBe(true);
+
+        const off = applyHarness([]);
+        await off.controller.openConfirmation();
+        off.controller.mode.value = mode;
+        off.controller.countText.value = '3';
+        expect(off.controller.keyScriptEdits.value).toBe(false);
+        expect(await off.controller.confirm()).toBe(true);
+        const committedOff = off.commit.mock.calls[0][0].loopClips?.[0];
+        expect(committedOff).toBeDefined();
+        expect('keyScriptEdits' in (committedOff as object)).toBe(false);
+        expect('keyScriptOverrides' in (committedOff as object)).toBe(false);
+      }
+    });
+
+    it('261030-ig0: writes keyScriptEdits on the Link-to-existing-cycle branch too', async () => {
+      const test = applyHarness([loopClip('L1', 10, 3)]);
+      await test.controller.openConfirmation();
+      test.controller.mode.value = 'static';
+      test.controller.countText.value = '5';
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+      test.controller.repeatText.value = '2';
+      expect(test.controller.identicalSourceCycle.value).not.toBeNull();
+      test.controller.linkChoice.value = 'link';
+      test.controller.setKeyScriptEdits(true);
+      expect(await test.controller.confirm()).toBe(true);
+      const linked = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
+      expect(linked?.keyScriptEdits).toBe(true);
+
+      const off = applyHarness([loopClip('L1', 10, 3)]);
+      await off.controller.openConfirmation();
+      off.controller.mode.value = 'static';
+      off.controller.countText.value = '5';
+      off.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+      off.controller.repeatText.value = '2';
+      off.controller.linkChoice.value = 'link';
+      expect(await off.controller.confirm()).toBe(true);
+      const linkedOff = off.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
+      expect('keyScriptEdits' in (linkedOff as object)).toBe(false);
+    });
+
+    it('261030-ig0: openConfirmation resets the opt-in so it is never sticky across rails', async () => {
+      const test = applyHarness([]);
+      await test.controller.openConfirmation();
+      test.controller.setKeyScriptEdits(true);
+      test.controller.closeConfirmation();
+      await test.controller.openConfirmation();
+      expect(test.controller.keyScriptEdits.value).toBe(false);
+    });
+
     it('Create new cycle: generation proceeds and the new loop references the NEW committed keyIds', async () => {
       const test = applyHarness([loopClip('L1', 10, 3)]);
       await test.controller.openConfirmation();

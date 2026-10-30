@@ -357,6 +357,11 @@ export interface RotoPlayScriptController {
   photoWiggle: Signal<boolean>;
   /** Write the flag (event-handler path only — never a render body). */
   setPhotoWiggle: (enabled: boolean) => void;
+  /* ---- 261030-ig0: per-key script editing (creation opt-in) ---- */
+  /** Save each key's script settings so one key can be re-baked alone (off by default). */
+  keyScriptEdits: Signal<boolean>;
+  /** Write the flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
+  setKeyScriptEdits: (enabled: boolean) => void;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
   requestPhotoReference: () => void;
   openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
@@ -410,6 +415,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // 261030-ey9: Photo wiggle defaults OFF (today's reveal exactly); reset on
   // every apply-mode open beside colorize.
   const photoWiggle = signal(false);
+  // 261030-ig0: "Save script on each key" defaults OFF (today's record); it is
+  // an apply-mode CREATION setting, reset with the rest on every open — never
+  // sticky across rails.
+  const keyScriptEdits = signal(false);
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -661,6 +670,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     photoWiggle.value = enabled;
   }
 
+  /** 261030-ig0: compare-then-write — a repeat write of the same value must not
+   *  bump any subscriber (efx-preact-reactivity rule 3). */
+  function setKeyScriptEdits(enabled: boolean): void {
+    if (keyScriptEdits.peek() === enabled) return;
+    keyScriptEdits.value = enabled;
+  }
+
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
     dialogMotion.value = toDialogMotion(ports.getMotion());
@@ -732,6 +748,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261030-ey9: the Photo wiggle is an apply-mode creation setting too —
       // reset on every open (colorize precedent, never sticky).
       photoWiggle.value = false;
+      // 261030-ig0: still guarding the same value (rule 3) rather than writing
+      // unconditionally — a reset to the default must not churn subscribers.
+      if (keyScriptEdits.peek()) keyScriptEdits.value = false;
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -1583,6 +1602,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           scriptId: selectedId,
           motion: compactPhysicPaintRotoMotion(motion),
           overrideColor: renderOverrideColor,
+          // 261030-ig0 (D-03): the Link-to-existing-cycle branch is the DEFAULT
+          // whenever an identical cycle exists — the opt-in must be written here
+          // too or the checkbox would be silently inert on that path.
+          ...(keyScriptEdits.peek() ? { keyScriptEdits: true as const } : {}),
           ...(buildNewLoopLifecycle(start, freshMatch.sourceKeyIds.length, linkedRepeat, authority.physicalCapacity) ?? {}),
         };
         const publication = buildLoopOnlyPublication({
@@ -1769,6 +1792,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           scriptId: selectedId,
           motion: compactPhysicPaintRotoMotion(motion),
           overrideColor: renderOverrideColor,
+          // 261030-ig0 (D-03): the creation opt-in, written ONLY when on.
+          ...(keyScriptEdits.peek() ? { keyScriptEdits: true as const } : {}),
           ...(buildNewLoopLifecycle(start, cycleKeyIds.length, newLoopRepeat, commitAuthority.physicalCapacity) ?? {}),
         };
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
@@ -1887,6 +1912,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
     colorize, colorizeMix, setColorize, setColorizeMix,
     photoWiggle, setPhotoWiggle,
+    keyScriptEdits, setKeyScriptEdits,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;
