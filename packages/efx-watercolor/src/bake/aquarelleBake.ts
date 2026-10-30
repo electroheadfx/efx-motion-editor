@@ -135,6 +135,12 @@ type MutableBakeDiagnostics = {
   -readonly [K in keyof AquarelleBakeDiagnostics]: AquarelleBakeDiagnostics[K]
 }
 
+/** 261030-np9: one stroke paired with the output frame the bake started it on. */
+export interface AquarelleStrokeFrameAnchor {
+  readonly stroke: StudioStroke<AquarelleStrokePayload>
+  readonly startFrame: number
+}
+
 export interface AquarelleBakeOptions {
   /** WebP encoder. Defaults to canvas.toDataURL when available. */
   encodeWebp?: AquarelleBakeEncoder
@@ -178,6 +184,14 @@ export interface AquarelleBakeOptions {
    * not rely on its own errors surfacing.
    */
   onDiagnostics?: (d: AquarelleBakeDiagnostics) => void
+  /**
+   * 261030-np9: the per-stroke start-frame mapping the bake ACTUALLY used
+   * (timed and fallback paths alike), in script order, reported once per
+   * `bake()`. It can never throw into the bake: a throwing consumer is
+   * swallowed (T-bks-02), so the consumer must not rely on its own errors
+   * surfacing.
+   */
+  onStrokeFrameAnchors?: (anchors: readonly AquarelleStrokeFrameAnchor[]) => void
 }
 
 export type AquarelleBakeResult =

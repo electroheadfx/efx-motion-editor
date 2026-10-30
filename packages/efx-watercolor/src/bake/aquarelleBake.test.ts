@@ -721,6 +721,72 @@ describe('261022 per-stroke progress (Apply parity)', () => {
   })
 })
 
+describe('261030-np9 per-stroke start-frame anchors', () => {
+  it('reports one anchor per stroke, in script order, with the start frames the bake used', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly stroke: StudioStroke<AquarelleStrokePayload>; readonly startFrame: number }[])[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    // timestamp 0 makes buildRecordedTimeline return null, so the shared
+    // point-weight schedule is the authority here: two 2-point strokes over
+    // four frames allocate [0..1] and [2..3].
+    const strokeA = timedStroke(2, 0, null)
+    const strokeB = timedStroke(2, 0, null)
+
+    const result = await bake.bake([strokeA, strokeB])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    const anchors = seen[0]!
+    expect(anchors.map((anchor) => anchor.stroke)).toEqual([strokeA, strokeB])
+    expect(anchors.map((anchor) => anchor.startFrame)).toEqual([0, 2])
+  })
+
+  it('is absent-safe on the static (frameCount 1) path and there anchors every stroke on frame 0', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seeNothing = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+    const absent = await seeNothing.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+    expect(absent.ok).toBe(true)
+
+    const { adapter: listeningAdapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly startFrame: number }[])[] = []
+    const listening = createAquarelleBake(listeningAdapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    const result = await listening.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.map((anchor) => anchor.startFrame)).toEqual([0, 0])
+  })
+
+  it('a throwing consumer never fails the bake', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      onStrokeFrameAnchors: () => { throw new Error('consumer exploded') },
+    })
+
+    const result = await bake.bake([timedStroke(2, 0, null), timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(4)
+  })
+})
+
 describe('261019 recorded-timeline progressive replay', () => {
   it('starts the animation at frame 0 (no playFrame anchor) and simulates the real inter-stroke gap', async () => {
     // HOST_TICK_MS = 16.667 ms. Stroke A: 11 pts (10 ticks), END at t=1000ms.
