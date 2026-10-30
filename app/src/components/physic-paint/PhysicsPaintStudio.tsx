@@ -3350,6 +3350,16 @@ export function PhysicsPaintStudio() {
     // too — otherwise Apply fails closed on the very same frames Move fixed.
     await ensureAquarelleDurableBaseRef.current(source.appFrame);
 
+    // 261030-np9: a key of a "Save script on each key" rail carries the WHOLE
+    // picture in its script, so its durable base is KNOWN EMPTY. The loop
+    // clip's frames resolve through the group branch, which otherwise reads
+    // the baked source payload as the base — replaying the script over its own
+    // baked pixels doubled every stroke (a moved stroke left its old copy).
+    const railScriptOwnsKey = (keyId: string): boolean =>
+      physicPaintStore
+        .getRotoPhysicalLoopClips(launch.layerId, studioActiveTrackId())
+        .some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId));
+
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
       const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);
@@ -3416,15 +3426,17 @@ export function PhysicsPaintStudio() {
         };
       }
       if (target.kind === 'source-occurrence') {
-        return target.sourceKeyId === source.keyId
-          ? { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId }
-          : null;
+        if (target.sourceKeyId !== source.keyId) return null;
+        return railScriptOwnsKey(target.sourceKeyId)
+          ? { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: null, durableBaseBytes: null }
+          : { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId };
       }
       if (target.kind === 'override') {
         const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);
-        return sourceKeyId !== null && sourceKeyId === source.keyId
-          ? { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId }
-          : null;
+        if (sourceKeyId === null || sourceKeyId !== source.keyId) return null;
+        return railScriptOwnsKey(sourceKeyId)
+          ? { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: null, durableBaseBytes: null }
+          : { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId };
       }
       return null;
     }

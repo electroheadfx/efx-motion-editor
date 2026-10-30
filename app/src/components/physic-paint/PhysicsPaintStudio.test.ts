@@ -4884,14 +4884,14 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // the source key still held the red-only payload under the composite).
     const overrideBranch = between(prepare, "if (target.kind === 'override') {", 'if (source.keyId !== null) return null;');
     expect(overrideBranch).toContain('const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);');
-    expect(overrideBranch).toContain('sourceKeyId !== null && sourceKeyId === source.keyId');
+    expect(overrideBranch).toContain('if (sourceKeyId === null || sourceKeyId !== source.keyId) return null;');
     expect(overrideBranch).toContain('keyId: target.keyId');
     expect(overrideBranch).toContain('durableBaseKeyId: sourceKeyId');
 
     // A source occurrence publishes to the source key the route turns into a
     // NEW override; its identity must match the mounted projection source.
     const sourceBranch = between(prepare, "if (target.kind === 'source-occurrence') {", "if (target.kind === 'override') {");
-    expect(sourceBranch).toContain('target.sourceKeyId === source.keyId');
+    expect(sourceBranch).toContain('if (target.sourceKeyId !== source.keyId) return null;');
     expect(sourceBranch).toContain('keyId: target.sourceKeyId');
     expect(sourceBranch).toContain('durableBaseKeyId: target.sourceKeyId');
 
@@ -5011,6 +5011,21 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(pin).toBeGreaterThan(-1);
     expect(pin).toBeLessThan(recordRail.indexOf('recordAquarelleStroke(mutationId, stroke, keyId);'));
     expect(recordRail).not.toContain('enqueueRecordedStroke');
+  });
+
+  it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {
+    const prep = slice(
+      studio,
+      'prepareRotoScriptTargetRef.current = async (source) => {',
+      'if (source.keyId !== null) return null;',
+    );
+    // Rail frames resolve through the GROUP branch, which otherwise reads the
+    // source key's baked payload as the durable base — the script would be
+    // composited over its own baked pixels. The rail's persisted opt-in is the
+    // authority (never session state), so this holds after a reopen too.
+    expect(prep).toContain('.some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId));');
+    expect(countOccurrences(prep, 'durableBaseBytes: null')).toBe(2);
+    expect(countOccurrences(prep, 'durableBaseKeyId: null, durableBaseBytes: null')).toBe(2);
   });
 
   it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {
