@@ -43,10 +43,14 @@ export interface SliceRailKeyScriptsInput {
 /**
  * D-02. Static = the complete drawing on EVERY key. Progressive = each stroke
  * lands on the key whose slot equals the bake's start-frame index for that
- * stroke; a slot with no starting stroke inherits the last stroke that started
- * at or before it, and a leading gap inherits the first stroke of the nearest
- * later non-empty slot. Every key therefore owns at least one stroke, which is
- * what keeps Move/Select available on every key.
+ * stroke, and the key owns EVERY stroke that had started by then. The sheet is
+ * cumulative: a key's script must reproduce the picture its frame actually
+ * shows, so F0 owns the top line, F1 owns the top line AND the bar, and the
+ * last key owns the whole drawing. Slicing to "only the new stroke" left every
+ * key after the first unable to reproduce its own frame.
+ *
+ * A slot before the first anchor still owns the first stroke, so no key is
+ * ever script-less and Move/Select stays available on every key.
  */
 export function sliceRailKeyScripts(input: SliceRailKeyScriptsInput): readonly RailKeyScriptResult[] {
   const { anchors, frames } = input;
@@ -61,22 +65,16 @@ export function sliceRailKeyScripts(input: SliceRailKeyScriptsInput): readonly R
       for (const bucket of buckets) bucket.push(anchor);
     }
   } else {
-    for (const anchor of anchors) {
-      const slot = Math.max(0, Math.min(lastSlot, Math.trunc(anchor.startFrame)));
-      buckets[slot]!.push(anchor);
-    }
-    // Every key must own at least one stroke: a slot with no starting stroke
-    // inherits the LAST stroke that started before it; a leading gap inherits
-    // the FIRST stroke of the nearest later non-empty slot.
-    let lastStarted: RailKeyScriptAnchor | null = null;
+    const clamped = anchors.map((anchor) => ({
+      anchor,
+      slot: Math.max(0, Math.min(lastSlot, Math.trunc(anchor.startFrame))),
+    }));
     for (let slot = 0; slot <= lastSlot; slot += 1) {
       const bucket = buckets[slot]!;
-      if (bucket.length > 0) {
-        lastStarted = bucket[bucket.length - 1]!;
-        continue;
+      for (const entry of clamped) {
+        if (entry.slot <= slot) bucket.push(entry.anchor);
       }
-      const inherited = lastStarted ?? firstStartedAfter(buckets, slot) ?? anchors[anchors.length - 1]!;
-      bucket.push(inherited);
+      if (bucket.length === 0) bucket.push(clamped[0]!.anchor);
     }
   }
 
@@ -88,15 +86,4 @@ export function sliceRailKeyScripts(input: SliceRailKeyScriptsInput): readonly R
       strokes: bucket.map((anchor) => aquarelleStrokeFromScriptEvent(anchor.stroke, frame)),
     };
   });
-}
-
-function firstStartedAfter(
-  buckets: readonly (readonly RailKeyScriptAnchor[])[],
-  slot: number,
-): RailKeyScriptAnchor | null {
-  for (let index = slot + 1; index < buckets.length; index += 1) {
-    const bucket = buckets[index]!;
-    if (bucket.length > 0) return bucket[0]!;
-  }
-  return null;
 }

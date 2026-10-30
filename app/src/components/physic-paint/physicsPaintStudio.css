@@ -2340,6 +2340,16 @@ button.destructive {
   min-height: 0;
 }
 
+/* 261030-np9: grid column 1 — Timing with the key-script opt-in directly
+   beneath it, filling the space the shorter column leaves under Timing. */
+.physics-paint-play-script-key-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+}
+
 .physics-paint-play-script-card-motion { flex: 1 1 auto; }
 
 /* Motion wiggle rows center in the card's remaining space — no inner dead area (D-16). */

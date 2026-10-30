@@ -3037,12 +3037,12 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       // The slices land on the COMMITTED keyIds, at the committed app frames.
       expect(recorded.keyIds).toEqual(onCycleIds);
       expect(recorded.slices.map((slice) => slice.frame)).toEqual([20, 21, 22]);
-      // Progressive [0, 2] over 3 keys: key 0 owns tip-a, key 1 inherits the
-      // last stroke that started at or before it, key 2 owns tip-b.
+      // Progressive [0, 2] over 3 keys: the sheet is cumulative, so a key owns
+      // every stroke that had started by then and re-bakes to its own picture.
       expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
         ['tip-a'],
         ['tip-a'],
-        ['tip-b'],
+        ['tip-a', 'tip-b'],
       ]);
       for (const slice of recorded.slices) {
         expect(slice.strokes.every((stroke) => stroke.playFrame === slice.frame)).toBe(true);

@@ -1221,10 +1221,11 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(recorded.keyIds).toEqual(onClip.sourceKeyIds);
     expect(recorded.slices.map((slice) => slice.slot)).toEqual([0, 1]);
     expect(recorded.slices.map((slice) => slice.frame)).toEqual([10, 11]);
-    // Progressive: stroke k owns key k, projected onto that key's app frame.
+    // Progressive is cumulative: the last key owns the complete drawing so far,
+    // every stroke projected onto that key's own app frame.
     expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
       ['tip-a'],
-      ['tip-b'],
+      ['tip-a', 'tip-b'],
     ]);
     for (const slice of recorded.slices) {
       expect(slice.strokes.every((stroke) => stroke.playFrame === slice.frame)).toBe(true);

@@ -48,33 +48,40 @@ describe('sliceRailKeyScripts', () => {
     }
   });
 
-  it('progressive: the 5-stroke / 5-frame law puts stroke k on slot k in script order', () => {
+  it('progressive: the 5-stroke / 5-frame law makes each key cumulative — F0 the top line, F4 the whole drawing', () => {
     const anchors = [0, 1, 2, 3, 4].map((slot) => anchor(`s${slot}`, slot));
     const slices = sliceRailKeyScripts({ anchors, frames: [12, 13, 14, 15, 16], mode: 'progressive' });
 
     expect(slices.map((slice) => slice.frame)).toEqual([12, 13, 14, 15, 16]);
+    expect(slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
+      ['tip-s0'],
+      ['tip-s0', 'tip-s1'],
+      ['tip-s0', 'tip-s1', 'tip-s2'],
+      ['tip-s0', 'tip-s1', 'tip-s2', 'tip-s3'],
+      ['tip-s0', 'tip-s1', 'tip-s2', 'tip-s3', 'tip-s4'],
+    ]);
+    // Every stroke is projected onto ITS key's frame, so a key's script
+    // re-bakes to exactly the picture that frame shows.
     for (const slice of slices) {
-      expect(slice.strokes).toHaveLength(1);
-      expect(slice.strokes[0]!.brushId).toBe(`tip-s${slice.slot}`);
-      expect(slice.strokes[0]!.playFrame).toBe(slice.frame);
+      expect(slice.strokes.map((stroke) => stroke.playFrame)).toEqual(slice.strokes.map(() => slice.frame));
     }
   });
 
-  it('progressive: two strokes starting on one slot stay there and the next empty slot inherits the LAST of them', () => {
+  it('progressive: two strokes starting on one slot both join every later slot', () => {
     const anchors = [anchor('a', 0), anchor('b', 0), anchor('c', 2)];
     const slices = sliceRailKeyScripts({ anchors, frames: [10, 11, 12], mode: 'progressive' });
 
     expect(slices[0]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a', 'tip-b']);
-    expect(slices[1]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
-    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-c']);
+    expect(slices[1]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a', 'tip-b']);
+    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a', 'tip-b', 'tip-c']);
     expect(slices.map((slice) => slice.strokes.map((stroke) => stroke.playFrame))).toEqual([
       [10, 10],
-      [11],
-      [12],
+      [11, 11],
+      [12, 12, 12],
     ]);
   });
 
-  it('progressive: a leading gap inherits the FIRST stroke of the nearest later slot', () => {
+  it('progressive: a leading gap still owns the FIRST stroke so no key is script-less', () => {
     const anchors = [anchor('a', 2), anchor('b', 3)];
     const slices = sliceRailKeyScripts({ anchors, frames: [0, 1, 2, 3], mode: 'progressive' });
 
@@ -82,19 +89,18 @@ describe('sliceRailKeyScripts', () => {
       ['tip-a'],
       ['tip-a'],
       ['tip-a'],
-      ['tip-b'],
+      ['tip-a', 'tip-b'],
     ]);
   });
 
-  it('progressive: out-of-range anchor indices clamp to the last slot', () => {
+  it('progressive: out-of-range anchor indices clamp to the slot range', () => {
     const anchors = [anchor('a', 9), anchor('b', -3)];
     const slices = sliceRailKeyScripts({ anchors, frames: [0, 1, 2], mode: 'progressive' });
 
-    // -3 clamps to slot 0, 9 clamps to the last slot; the middle slot then
-    // inherits the last stroke that started at or before it (the clamped one).
+    // -3 clamps to slot 0, 9 clamps to the last slot, so the last key owns both.
     expect(slices[0]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
     expect(slices[1]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
-    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a']);
+    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a', 'tip-b']);
   });
 
   it('no anchors yields an empty result — never a fabricated script', () => {

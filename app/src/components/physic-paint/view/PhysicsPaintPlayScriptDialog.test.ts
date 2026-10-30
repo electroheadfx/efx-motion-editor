@@ -326,12 +326,14 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(renderedParentOf(tree, modeCard)).toBe(content);
     expect(contentChildren[1]).toBe(modeCard);
 
-    // (a) Timing card is the LEFT sibling of the right-column stack — same body grid row.
+    // (a) Timing and the key-script opt-in share grid column 1; the right-column
+    // stack is the sibling cell in the same body grid row.
+    const keyColumn = findOne(content, byClass('physics-paint-play-script-key-column'));
     const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
     const sideStack = findOne(tree, byClass('physics-paint-play-script-side-stack'));
-    expect(renderedParentOf(tree, timingCard)).toBe(content);
+    expect(renderedParentOf(tree, timingCard)).toBe(keyColumn);
     expect(renderedParentOf(tree, sideStack)).toBe(content);
-    expect(contentChildren.indexOf(timingCard)).toBeLessThan(contentChildren.indexOf(sideStack));
+    expect(contentChildren.indexOf(keyColumn)).toBeLessThan(contentChildren.indexOf(sideStack));
 
     // (b) Color card precedes Motion wiggle inside the right column; Motion wiggle is
     // NEVER a separate full-width row and NEVER above Color (D-16).
@@ -1397,32 +1399,37 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
     expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
 
-    // 261030-np9 (D-08): the card renders AFTER the Timing/side-stack row and
-    // BEFORE the summary bar so the 1fr/1fr auto-placement puts it in column 1,
-    // directly under Timing — on both the Paint and the Reveal tab.
+    // 261030-np9 (D-08): the card shares grid column 1 with Timing and renders
+    // directly BENEATH it (the empty space under Timing), on both tabs.
     const orderOf = (tree: TestVNode) => {
       const content = findOne(tree, byClass('physics-paint-play-script-content'));
-      const children = [...walk(content)]
-        .filter((child) => child !== content && typeof child.type !== 'function')
-        .filter((child) => renderedParentOf(tree, child) === content);
+      const column = findOne(content, byClass('physics-paint-play-script-key-column'));
+      const directChildrenOf = (parent: TestVNode) => [...walk(parent)]
+        .filter((child) => child !== parent && typeof child.type !== 'function')
+        .filter((child) => renderedParentOf(tree, child) === parent);
+      const columnChildren = directChildrenOf(column);
+      const contentChildren = directChildrenOf(content);
       return {
         keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
-        timing: children.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
-        stack: children.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
-        keyScript: children.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
-        summary: children.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
+        timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
+        keyScriptInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
+        columnInContent: contentChildren.indexOf(column),
+        stackInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
+        summaryInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
       };
     };
     const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(hasClass(paintOrder.keyScriptCard, 'physics-paint-play-script-card-wide')).toBe(false);
-    expect(paintOrder.timing).toBeLessThan(paintOrder.stack);
-    expect(paintOrder.stack).toBeLessThan(paintOrder.keyScript);
-    expect(paintOrder.keyScript).toBeLessThan(paintOrder.summary);
+    expect(paintOrder.timingInColumn).toBe(0);
+    expect(paintOrder.timingInColumn).toBeLessThan(paintOrder.keyScriptInColumn);
+    expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
+    expect(paintOrder.columnInContent).toBeLessThan(paintOrder.summaryInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
-    expect(revealOrder.timing).toBeLessThan(revealOrder.stack);
-    expect(revealOrder.stack).toBeLessThan(revealOrder.keyScript);
-    expect(revealOrder.keyScript).toBeLessThan(revealOrder.summary);
+    expect(revealOrder.timingInColumn).toBe(0);
+    expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
+    expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
+    expect(revealOrder.columnInContent).toBeLessThan(revealOrder.summaryInContent);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {
