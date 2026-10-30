@@ -54,6 +54,12 @@ interface PhysicsPaintCanvasStackViewProps {
    */
   onInputIntent?: (event: PointerEvent) => void;
   /**
+   * 261030-cnq: the color picker. Returns true when the press was a pick
+   * and MUST NOT reach the Roto edit intent or any paint listener under
+   * this capture target.
+   */
+  onColorPick?: (event: PointerEvent, stack: HTMLElement) => boolean;
+  /**
    * Phase 48-05 (D-05): the program monitor config. Present when the Studio
    * has a launch layer. The monitor is mounted BELOW the engine canvas (the
    * engine supplies the active track's live pixels; the monitor draws the
@@ -207,7 +213,16 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
 
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => props.onInputIntent?.(event)}>
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => {
+        // 261030-cnq: the picker consumes the press at the capture phase — before
+        // beginRotoFrameEdit and before the engine/stroke-overlay listeners below.
+        if (props.onColorPick?.(event, event.currentTarget as HTMLElement)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        props.onInputIntent?.(event);
+      }}>
       {/* 48-06 (UAT-C): the paper fond lives on its OWN layer beneath the
           isolated tracks group — the monitor reads the fond-less composite, so
           the active track's CSS blend (the engine shell inside the group) never
@@ -454,7 +469,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         {status.shortcutsVisible ? (
           <aside class="physics-paint-shortcuts-help" aria-label="Physics Paint shortcuts">
             <strong>Physics Paint shortcuts</strong>
-            <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help</span>
+            <span>Cmd+Z undo · Cmd+Shift+Z / Ctrl+Y redo · Esc stop preview · ? help · I picker · hold Alt to pick temporarily</span>
             <span>Cmd/Ctrl+C copy selected key(s) · Cmd/Ctrl+V paste at current frame</span>
             <span>Backspace / Delete remove selected real key</span>
             <span>Roto: arrows navigate · O onion · [ ] onion count · completed paint caches automatically</span>

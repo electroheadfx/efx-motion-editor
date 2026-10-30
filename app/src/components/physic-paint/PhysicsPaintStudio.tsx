@@ -77,6 +77,8 @@ import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintPr
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
+import { isAquarellePickerArmed, sampleAquarelleStackColor } from './view/aquarelleColorPicker';
+import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -664,6 +666,9 @@ export function PhysicsPaintStudio() {
   const handleAquarelleEnginePortReady = useCallback((port: AquarelleEnginePort | null) => {
     aquarelleEnginePortRef.current = port;
   }, []);
+  // 261030-cnq: the Alt-hold arming hook (window keydown/keyup/blur + document
+  // hide). Declared BELOW the engine-port ref: the pick handler reads the port.
+  useAquarelleColorPicker();
   const [isPlaying, setIsPlaying] = useState(false);
   // 38.1-D-01/D-08: the playback per-tick surface is signal-backed — written
   // by onStart/onFrame per tick and read ONLY via .peek() (statusMessage) or
@@ -2402,6 +2407,35 @@ export function PhysicsPaintStudio() {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
+  // 261030-cnq: the ONE pick seam — sample the visible stack and write BOTH
+  // color surfaces with the same normalized hex (the right-panel color law).
+  // Returns true whenever the picker owns the press: an empty sample must
+  // still never paint (the capture-phase consumption in the view).
+  const handleAquarelleColorPick = useCallback((event: PointerEvent, stack: HTMLElement): boolean => {
+    // The picker is inert while Move/Edit is armed — Select owns Alt (the
+    // Alt+click stroke-delete law).
+    if (!isAquarellePickerArmed() && !event.altKey) return false;
+    if (event.button !== 0) return false;
+    if (aquarelleSelectMode.peek()) return false;
+    if (isPlaying) return false;
+    let paintCanvas: HTMLCanvasElement | null = null;
+    try {
+      paintCanvas = aquarelleEnginePortRef.current?.exportCanvas('transparent', false) ?? null;
+    } catch {
+      paintCanvas = null;
+    }
+    const hex = sampleAquarelleStackColor({
+      stack,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      paintCanvas,
+    });
+    if (hex !== null) {
+      handleActiveColorChanged(hex);
+      paintStore.setForeground(hex);
+    }
+    return true;
+  }, [handleActiveColorChanged, isPlaying]);
   const handleToggleAquarelleSelect = useCallback(() => {
     if (aquarelleSelectMode.peek()) {
       setAquarelleSelectMode(false);
@@ -8440,7 +8474,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -8515,6 +8549,7 @@ export function PhysicsPaintStudio() {
       inputDisabled: rotoInputDisabled,
       inputDisabledMessage: rotoInputDisabledMessage,
       onInputIntent: beginRotoFrameEdit,
+      onColorPick: handleAquarelleColorPick,
       onionOverlay,
       canvasKey,
       mount: canvasMount,
