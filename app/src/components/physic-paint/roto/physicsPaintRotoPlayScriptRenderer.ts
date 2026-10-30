@@ -3,6 +3,7 @@ import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 import { transmittanceToAlpha } from '../../../lib/rasterAlpha';
+import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 
 const MAX_FRAME_COUNT = 10_000;
 const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
@@ -69,7 +70,16 @@ export interface RotoRevealRenderInput {
   }>;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
+  /**
+   * 261030-np9: the per-stroke start-frame mapping the bake used, reported
+   * once. The reveal rail slices it onto each baked key; never throw from it —
+   * the bake swallows consumer errors.
+   */
+  onStrokeFrameAnchors?: (anchors: readonly AquarelleStrokeFrameAnchor[]) => void;
 }
+
+/** 261030-np9: the reveal bake's per-stroke anchors, re-exported for the store. */
+export type RotoRevealStrokeFrameAnchors = readonly AquarelleStrokeFrameAnchor[];
 
 /**
  * 52-01 (D-11): the reveal bake — one pass over the rail span producing
@@ -160,6 +170,7 @@ async function renderRotoRevealFramesAquarelle(
       });
     },
     frameCount: isStatic ? 1 : input.frameCount,
+    ...(input.onStrokeFrameAnchors ? { onStrokeFrameAnchors: input.onStrokeFrameAnchors } : {}),
     // No bake motion: its per-deposit pose is frozen into the cumulative wash.
     // Reveal poses the flattened coverage once per output frame instead.
     onCommit: () => reportProgress(reportedProgress + 1),

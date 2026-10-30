@@ -23,7 +23,7 @@ export interface RailKeyScriptAnchor {
 }
 
 /** The strokes one rail key owns, projected onto that key's app frame. */
-export interface RailKeyScriptSlice {
+export interface RailKeyScriptResult {
   /** 0-based cycle slot — the index into the rail's `sourceKeyIds`. */
   readonly slot: number;
   /** The committed key's app frame; every stroke's `playFrame` is this frame. */
@@ -48,7 +48,7 @@ export interface SliceRailKeyScriptsInput {
  * later non-empty slot. Every key therefore owns at least one stroke, which is
  * what keeps Move/Select available on every key.
  */
-export function sliceRailKeyScripts(input: SliceRailKeyScriptsInput): readonly RailKeyScriptSlice[] {
+export function sliceRailKeyScripts(input: SliceRailKeyScriptsInput): readonly RailKeyScriptResult[] {
   const { anchors, frames } = input;
   // No anchor means the bake reported no schedule — never fabricate a script.
   if (anchors.length === 0 || frames.length === 0) return [];

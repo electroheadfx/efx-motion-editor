@@ -37,9 +37,11 @@ import {
   type AquarelleBakeDiagnostics,
   type AquarelleBakeOptions,
   type AquarelleBakePaper,
+  type AquarelleStrokeFrameAnchor,
 } from '@efxlab/efx-watercolor/bake';
 import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
 import { applyAquarelleSheetRigidWiggle, createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
+import { sliceRailKeyScripts, type RailKeyScriptResult } from './physicsPaintRotoRailKeyScripts';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -244,6 +246,16 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   openPhotoReference?: () => void;
   /** The create-reveal-rail mutation (Plan 01) — creation IS the first bake (D-11). */
   createReveal?: (input: RotoRevealRailCreateInput) => Promise<RotoRevealRailCreateResult>;
+  /**
+   * 261030-np9 (D-04): the ONE recording seam for per-key rail scripts. The
+   * controller decides WHICH strokes land on WHICH key (D-02) and never mints
+   * mutation ids — the Studio's ledger mints them behind this port. Absent
+   * port = no recording, which is the keyScriptEdits OFF path.
+   */
+  recordRailKeyScripts?: (input: {
+    readonly keyIds: readonly string[];
+    readonly slices: readonly RailKeyScriptResult[];
+  }) => void;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
@@ -1326,7 +1338,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     acceptedGeneration: number;
     motion: { deformation: number; position: number; rotation?: number; scale?: number };
     mode: RotoPlayScriptMode;
-  }): Promise<PhysicPaintRotoCacheFrame[]> {
+  }): Promise<{ staged: PhysicPaintRotoCacheFrame[]; anchors: readonly AquarelleStrokeFrameAnchor[] }> {
     const { snapshot, count, start, size, acceptedGeneration, mode } = input;
     // 261017-fz3: paper enters the bake AND its cache key. Single source:
     // ports.getBackgroundMetadata() (never a second paper source).
@@ -1345,6 +1357,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // semantics on the Play path (eventIndex is an event index on the
     // non-progressive bake path) and is clamped to `count`.
     let committedFrames = 0;
+    // 261030-np9 (D-01): the bake is the ONE slicing authority — it reports the
+    // output frame it actually started each stroke on. Nothing below re-derives
+    // a schedule.
+    let anchors: readonly AquarelleStrokeFrameAnchor[] = [];
     const bake = createBake(adapter, {
       width: size.width,
       height: size.height,
@@ -1370,6 +1386,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         committedFrames = Math.min(count, committedFrames + 1);
         progress.value = { completed: committedFrames, total: count };
         status.value = `Rendering ${committedFrames} / ${count}`;
+      },
+      onStrokeFrameAnchors: (next) => {
+        anchors = next;
       },
     });
     aquarelleBake = bake;
@@ -1430,7 +1449,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             status.value = `Rendering ${committedFrames} / ${count}`;
             await new Promise<void>((resolve) => setTimeout(resolve, 0));
           }
-          return staged;
+          return { staged, anchors };
         } finally {
           bitmap?.close();
         }
@@ -1445,7 +1464,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         height: frame.height,
         source: 'real-key' as const,
       }));
-      return staged;
+      return { staged, anchors };
     } finally {
       // Release the offscreen bake engine's WebGL surface. bake.bake() has
       // awaited every turn (including flush-survives-navigation work) before
@@ -1587,6 +1606,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         : resolveOverrideColor();
       const rotoBackground = { ...ports.getBackgroundMetadata() };
 
+      // 261030-np9 (D-01/D-05): the bake is the ONLY anchor source, so a path
+      // that does not bake owns no anchors and records nothing.
+      let anchors: readonly AquarelleStrokeFrameAnchor[] = [];
       // 43-06 S4 (D-05): Link to existing cycle — one loop-only atomic commit,
       // NO regeneration; the new Loop Clip shares the matched sourceKeyIds.
       // The branch engages only when the S4 choice was actually offered.
@@ -1630,6 +1652,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         assertCurrent(acceptedGeneration);
         if (!result.ok) throw new Error(result.error || 'Parent rejected the Loop Clip link.');
         assertPublicationAck(publication, result);
+        // 261030-np9 (D-05): the link branch reuses an existing cycle and never
+        // re-bakes, so it has no anchors — the shared cycle's per-key scripts
+        // stay exactly as its own apply wrote them (never purged, never
+        // rewritten from a schedule this path did not produce). Recording only
+        // engages when the flag is on AND a bake reported anchors.
+        if (linkedLoop.keyScriptEdits === true && anchors.length > 0) {
+          const linkedFrames = linkedLoop.sourceKeyIds.map((keyId) => {
+            const record = authority.physicalRecords.find((candidate) => candidate.keyId === keyId);
+            return record?.appFrame;
+          });
+          if (linkedFrames.every((frame): frame is number => frame !== undefined)) {
+            ports.recordRailKeyScripts?.({
+              keyIds: linkedLoop.sourceKeyIds,
+              slices: sliceRailKeyScripts({ anchors, frames: linkedFrames, mode: renderMode }),
+            });
+          }
+        }
         const appliedSummary = composeAppliedSummary({ mode: renderMode, overrideColor: renderOverrideColor, motion, start, count });
         appliedSummaryLine1.value = appliedSummary.line1;
         appliedSummaryLine2.value = `F${start} · Linked to the existing source cycle · Cycle ${count}f × ${infinity.peek() ? '∞' : parsedRepeat.peek().count}`;
@@ -1653,7 +1692,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // with mode 'flush-survives-navigation' (AQUA-07 / D-21). 261027-klx:
       // watercolor is the only engine, so there is no engine-1 fallback — an
       // old Brush envelope never reaches this point (the library refuses it).
-      const staged = await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode });
+      const baked = await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode });
+      const staged = baked.staged;
+      anchors = baked.anchors;
       assertCurrent(acceptedGeneration);
       const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
       assertCurrent(acceptedGeneration);
@@ -1870,6 +1911,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Play Script batch.');
       assertPublicationAck(publication, result);
+      // 261030-np9 (D-05/D-06): a re-bake REPLACES the per-key scripts, but only
+      // for a cycle whose PERSISTED flag is on — the dialog signal is a draft
+      // and is never the gate. A cycle that did not opt in stays byte-identical:
+      // no purge, no record, no mutation ids consumed.
+      const preserveKeyScripts = (loopClips ?? currentLoopClips()).some(
+        (clip) => clip.keyScriptEdits === true && sameOrderedIds(clip.sourceKeyIds, cycleKeyIds),
+      );
+      if (preserveKeyScripts && anchors.length > 0) {
+        ports.recordRailKeyScripts?.({
+          keyIds: cycleKeyIds,
+          slices: sliceRailKeyScripts({ anchors, frames: cycleAppFrames, mode: renderMode }),
+        });
+      }
       // Single appliedSummary assignment site: composed atomically from the options snapshot and
       // destination actually committed for THIS generation — never from live dialog draft values.
       const appliedSummary = composeAppliedSummary({ mode: renderMode, overrideColor: renderOverrideColor, motion, start, count });

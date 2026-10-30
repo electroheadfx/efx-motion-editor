@@ -72,6 +72,7 @@ import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } f
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics } from './roto/physicsPaintRotoPlayScriptController';
+import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -3870,6 +3871,28 @@ export function PhysicsPaintStudio() {
       .then(({ getCurrentWindow }) => getCurrentWindow().close())
       .catch(() => { window.close(); });
   }, []);
+  // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
+  // timeline the live sheet writes, with mutation ids from the ONE ledger. A
+  // re-bake REPLACES a key's script, so each slice purges its frame first. The
+  // OFF path is byte-identical: the controller never calls this port.
+  const recordRailKeyScripts = (input: {
+    readonly keyIds: readonly string[];
+    readonly slices: readonly RailKeyScriptResult[];
+  }) => {
+    const launch = launchContextRef.current;
+    if (!launch) return;
+    for (const slice of input.slices) {
+      const keyId = input.keyIds[slice.slot];
+      if (keyId === undefined) continue;
+      purgeAquarelleFrameScript(slice.frame);
+      for (const stroke of slice.strokes) {
+        const mutationId = paintMutationLedger.allocateStrokeMutation({
+          primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
+        });
+        recordAquarelleStroke(mutationId, stroke, keyId);
+      }
+    }
+  };
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,
     getLaunchContext: () => launchContext,
@@ -3945,6 +3968,9 @@ export function PhysicsPaintStudio() {
           grainStrength: backgroundMetadata.grainStrength,
           grainScale: backgroundMetadata.grainScale ?? 1,
         },
+        // 261030-np9 (D-04): creation records each key's own script through the
+        // SAME ledger-backed seam the Paint Rail uses.
+        recordRailKeyScripts,
       });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
@@ -3955,6 +3981,7 @@ export function PhysicsPaintStudio() {
       }
       return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
     },
+    recordRailKeyScripts,
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,

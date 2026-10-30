@@ -32,6 +32,8 @@ import { buildMachineCacheRelativePath, EFX_PAINT_MACHINE_CACHE_DIR } from '../l
 import { stableSegment } from '../lib/efxPaintPersistence';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
+import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import { sliceRailKeyScripts, type RailKeyScriptResult } from '../components/physic-paint/roto/physicsPaintRotoRailKeyScripts';
 import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -1539,6 +1541,15 @@ export async function createRevealRail(
     photoWiggle?: boolean;
     /** 261030-ig0: save each key's script settings (default off). */
     keyScriptEdits?: boolean;
+    /**
+     * 261030-np9 (D-04): the ONE recording seam — the Studio's ledger mints the
+     * mutation ids. Called only when the opt-in is ON and the bake reported
+     * anchors; the OFF path never records (byte-identical, D-06).
+     */
+    recordRailKeyScripts?: (input: {
+      readonly keyIds: readonly string[];
+      readonly slices: readonly RailKeyScriptResult[];
+    }) => void;
     /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
     projectSize: Readonly<{ width: number; height: number }>;
     /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
@@ -1570,9 +1581,11 @@ export async function createRevealRail(
   // 261030-ey9: the wiggle flag resolves ONCE so the bake and the persisted
   // clip can never disagree.
   const revealPhotoWiggle = input.photoWiggle === true;
-  // 261030-ig0: the per-key opt-in resolves ONCE for the persisted clip only —
-  // the creation bake is identical either way (no per-key override exists yet).
+  // 261030-np9 (D-05): the per-key opt-in resolves ONCE. The bake's PIXELS are
+  // identical either way; only the recording (below) is gated on it.
   const revealKeyScriptEdits = input.keyScriptEdits === true;
+  // The bake reports the output frame it actually started each stroke on (D-01).
+  let revealAnchors: readonly AquarelleStrokeFrameAnchor[] = [];
   const bakeResult = await commitRevealBake({
     layerId,
     trackId: input.trackId,
@@ -1586,6 +1599,7 @@ export async function createRevealRail(
     photoWiggle: revealPhotoWiggle,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
+    onStrokeFrameAnchors: (next) => { revealAnchors = next; },
     signal: input.signal ?? new AbortController().signal,
     onProgress: input.onProgress,
   });
@@ -1640,6 +1654,20 @@ export async function createRevealRail(
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, input.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, input.trackId, [...currentLoopClips, loopClip]);
   if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+  // 261030-np9 (D-03/D-05/D-06): creation with the opt-in ON records each
+  // committed key's own slice of the bake into the SAME aquarelle timeline the
+  // live sheet writes. The OFF path records nothing and purges nothing — a
+  // pre-quick rail stays byte-identical.
+  if (revealKeyScriptEdits && revealAnchors.length > 0) {
+    input.recordRailKeyScripts?.({
+      keyIds: loopClip.sourceKeyIds,
+      slices: sliceRailKeyScripts({
+        anchors: revealAnchors,
+        frames: loopClip.sourceKeyIds.map((_, index) => input.startFrame + index),
+        mode: input.variant,
+      }),
+    });
+  }
 
   // Build the immutable next document: re-project the target track's runtime
   // (the runtime is the authority — the baked keys + the new Loop Clip ride the

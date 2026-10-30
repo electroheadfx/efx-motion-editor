@@ -12,7 +12,8 @@ import {
   type RotoPlayScriptPhysicalPublication,
   type RotoPlayScriptSourceCycleMatchInput,
 } from './physicsPaintRotoPlayScriptController';
-import type { AquarelleBakeOptions } from '@efxlab/efx-watercolor/bake';
+import type { AquarelleBakeOptions, AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 
 // Preact hook shims for the REAL useRotoPhysicalEditHistory hook driven by the
 // HOLD-03 one-history-command case below (same idiom as the hook's own spec).
@@ -2988,6 +2989,73 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(await off.controller.confirm()).toBe(true);
       const linkedOff = off.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
       expect('keyScriptEdits' in (linkedOff as object)).toBe(false);
+    });
+
+    // 261030-np9 (D-01/D-02/D-05): the bake's OWN start-frame anchors are the
+    // only slicing source; a persisted opt-in cycle is re-recorded onto the
+    // committed keyIds, and a cycle that never opted in records nothing.
+    it('261030-np9: records each key\'s slice from the bake anchors only for an opted-in cycle', async () => {
+      const anchor = (brushId: string, startFrame: number): AquarelleStrokeFrameAnchor => ({
+        stroke: toStudioStroke({
+          tool: 'brush',
+          color: '#103c65',
+          params: { size: 8, opacity: 1 },
+          brushId,
+          points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }],
+          timestamp: startFrame + 1,
+        } as AquarelleStroke),
+        startFrame,
+      });
+      const anchors = [anchor('tip-a', 0), anchor('tip-b', 2)];
+      const reportAnchors = (options: Record<string, any>) => {
+        options.onStrokeFrameAnchors?.(anchors);
+        return Promise.resolve({
+          ok: true,
+          frames: Array.from({ length: options.frameCount ?? 1 }, (_, index) => ({
+            frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
+          })),
+        });
+      };
+
+      const recorder = vi.fn();
+      const on = loopOpHarness([], {}, { recordRailKeyScripts: recorder });
+      on.setSelection({ kind: 'empty', keyId: null, appFrame: 20 });
+      nextBakeBehavior(reportAnchors);
+      await on.controller.openConfirmation();
+      on.controller.countText.value = '3';
+      on.controller.setKeyScriptEdits(true);
+      expect(await on.controller.confirm()).toBe(true);
+      const onPublication = on.commit.mock.calls[0][0];
+      const onCycleIds = onPublication.records
+        .filter((record) => record.appFrame >= 20 && record.appFrame <= 22)
+        .map((record) => record.keyId);
+      expect(recorder).toHaveBeenCalledTimes(1);
+      const recorded = recorder.mock.calls[0]![0] as {
+        keyIds: readonly string[];
+        slices: readonly { slot: number; frame: number; strokes: readonly AquarelleStroke[] }[];
+      };
+      // The slices land on the COMMITTED keyIds, at the committed app frames.
+      expect(recorded.keyIds).toEqual(onCycleIds);
+      expect(recorded.slices.map((slice) => slice.frame)).toEqual([20, 21, 22]);
+      // Progressive [0, 2] over 3 keys: key 0 owns tip-a, key 1 inherits the
+      // last stroke that started at or before it, key 2 owns tip-b.
+      expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
+        ['tip-a'],
+        ['tip-a'],
+        ['tip-b'],
+      ]);
+      for (const slice of recorded.slices) {
+        expect(slice.strokes.every((stroke) => stroke.playFrame === slice.frame)).toBe(true);
+      }
+
+      const offRecorder = vi.fn();
+      const off = loopOpHarness([], {}, { recordRailKeyScripts: offRecorder });
+      off.setSelection({ kind: 'empty', keyId: null, appFrame: 20 });
+      nextBakeBehavior(reportAnchors);
+      await off.controller.openConfirmation();
+      off.controller.countText.value = '3';
+      expect(await off.controller.confirm()).toBe(true);
+      expect(offRecorder).not.toHaveBeenCalled();
     });
 
     it('261030-ig0: openConfirmation resets the opt-in so it is never sticky across rails', async () => {

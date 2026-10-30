@@ -24,6 +24,8 @@ import {
   setPhotoReferenceSource,
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
+import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 
 /**
  * 52-01 (RVL-06): the reveal rail undo-by-reference semantics. Every committed
@@ -94,6 +96,38 @@ function stagedFrames(start: number, count: number, bytes = PNG_1X1_WEBP): Array
     height: 3,
     source: 'real-key' as const,
   }));
+}
+
+/** 261030-np9: the synthetic anchor set the renderer mock reports for a 2-key bake. */
+function twoStrokeAnchors(): readonly AquarelleStrokeFrameAnchor[] {
+  const anchor = (brushId: string, startFrame: number): AquarelleStrokeFrameAnchor => ({
+    stroke: toStudioStroke({
+      tool: 'brush',
+      color: '#103c65',
+      params: { size: 8, opacity: 1 },
+      brushId,
+      points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }],
+      timestamp: startFrame + 1,
+    }),
+    startFrame,
+  });
+  return [anchor('tip-a', 0), anchor('tip-b', 1)];
+}
+
+/**
+ * 261030-np9: the renderer mock must reach the bake's anchor seam — the store
+ * only forwards what the bake actually reported.
+ */
+function renderWithAnchors(
+  frames: ReturnType<typeof stagedFrames>,
+  anchors: readonly AquarelleStrokeFrameAnchor[],
+): void {
+  harness.renderReveal.mockImplementation(async (input: {
+    onStrokeFrameAnchors?: (next: readonly AquarelleStrokeFrameAnchor[]) => void;
+  }) => {
+    input.onStrokeFrameAnchors?.(anchors);
+    return frames;
+  });
 }
 
 async function createRail(
@@ -1158,6 +1192,59 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(on.ok).toBe(true);
     const onClip = getDocument(onLayer)!.tracks[0].rotoPhysical!.loopClips[0];
     expect(onClip.keyScriptEdits).toBe(true);
+  });
+
+  it('createRevealRail records each key\'s own slice when opted in and never records when off', async () => {
+    const anchors = twoStrokeAnchors();
+    const onLayer = 'layer-reveal-scripts-on';
+    seedLayer(onLayer);
+    renderWithAnchors(stagedFrames(10, 2), anchors);
+    const recorder = vi.fn();
+    const on = await createRevealRail(onLayer, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      keyScriptEdits: true,
+      recordRailKeyScripts: recorder,
+    });
+    expect(on.ok).toBe(true);
+    const onClip = getDocument(onLayer)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect(recorder).toHaveBeenCalledTimes(1);
+    const recorded = recorder.mock.calls[0]![0] as {
+      keyIds: readonly string[];
+      slices: readonly { slot: number; frame: number; strokes: readonly AquarelleStroke[] }[];
+    };
+    // The slices land on the BAKED keyIds, in slot order, on the committed frames.
+    expect(recorded.keyIds).toEqual(onClip.sourceKeyIds);
+    expect(recorded.slices.map((slice) => slice.slot)).toEqual([0, 1]);
+    expect(recorded.slices.map((slice) => slice.frame)).toEqual([10, 11]);
+    // Progressive: stroke k owns key k, projected onto that key's app frame.
+    expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
+      ['tip-a'],
+      ['tip-b'],
+    ]);
+    for (const slice of recorded.slices) {
+      expect(slice.strokes.every((stroke) => stroke.playFrame === slice.frame)).toBe(true);
+    }
+
+    const offLayer = 'layer-reveal-scripts-off';
+    seedLayer(offLayer);
+    renderWithAnchors(stagedFrames(10, 2), anchors);
+    const offRecorder = vi.fn();
+    const off = await createRevealRail(offLayer, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      recordRailKeyScripts: offRecorder,
+    });
+    expect(off.ok).toBe(true);
+    expect(offRecorder).not.toHaveBeenCalled();
   });
 
   it('replay keeps a rail that never opted in non-opted', async () => {

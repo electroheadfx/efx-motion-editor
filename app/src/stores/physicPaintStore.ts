@@ -98,7 +98,7 @@ import {
   type RotoRailSetPasteImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
-import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
+import { renderRotoRevealFrames, type RotoRevealRenderInput } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 // 52.2-06 (D-06/D-07): the persist seam's media projection. Both roto
@@ -2004,6 +2004,8 @@ export interface RevealBakeInput {
   projectSize: Readonly<{ width: number; height: number }>;
   /** The Studio paper an aquarelle wash deposits on (engine-2 scripts only). */
   aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+  /** 261030-np9 (D-01): the bake reports the output frame each stroke started on. */
+  onStrokeFrameAnchors?: NonNullable<RotoRevealRenderInput['onStrokeFrameAnchors']>;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
 }
@@ -2066,6 +2068,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,
+      onStrokeFrameAnchors: input.onStrokeFrameAnchors,
       signal: input.signal,
       onProgress: input.onProgress,
     });
