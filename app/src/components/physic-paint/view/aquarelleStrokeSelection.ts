@@ -2,7 +2,7 @@
 //  aquarelleStrokeSelection — Water color stroke select mode
 //  (quick 261022-pim Task 1).
 //
-//  Select mode is the rail Move/Select toggle or the A tool cycle.
+//  Select mode is the rail Move/Select toggle or the A Move/Edit toggle.
 //  While active the overlay above the vendor canvas outlines every
 //  recorded stroke of the CURRENT edit frame, and a click selects
 //  the newest stroke under the pointer. Selection is written in the
@@ -107,7 +107,7 @@ export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
 export type AquarelleStrokeTypeFilter = 'all' | 'paint' | 'lift';
 
 /**
- * 261029-eur UAT: every PLAIN select-mode entry (rail Select, A tool cycle)
+ * 261029-eur UAT: every PLAIN select-mode entry (rail Select, A Move/Edit toggle)
  * starts on Paint — the everyday editing surface — and an exit returns to it.
  * Only the Eraser tool's Edit switch asks for 'lift'.
  */
@@ -226,9 +226,10 @@ export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): v
 }
 
 /**
- * 261029: the A key cycles the stroke-type filter in the SAME order as the
- * dialog's segmented control — Paint → Eraser → All → Paint. Delegates to the
- * ONE setter, so a cycle prunes the selection exactly like a segment click.
+ * 261029: Tab cycles the stroke-type filter (inside Move/Edit only) in the SAME
+ * order as the dialog's segmented control — Paint → Eraser → All → Paint.
+ * Delegates to the ONE setter, so a cycle prunes the selection exactly like a
+ * segment click.
  */
 export function cycleAquarelleStrokeTypeFilter(): AquarelleStrokeTypeFilter {
   const current = aquarelleStrokeTypeFilter.peek();

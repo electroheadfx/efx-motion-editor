@@ -73,7 +73,8 @@ function actions() {
     addTrack: vi.fn(),
     duplicateTrack: vi.fn(),
     selectAquarelleTool: vi.fn(),
-    cycleAquarelleSelect: vi.fn(),
+    toggleAquarelleSelect: vi.fn(),
+    cycleAquarelleSelectFilter: vi.fn(),
     dryAquarelleSheet: vi.fn(),
     clearAquarelleFrame: vi.fn(),
     resetFgBg: vi.fn(),
@@ -739,10 +740,37 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     expect(canSelectWater).not.toHaveBeenCalled();
   });
 
-  it('cycles the Select filter on a bare A key', () => {
+  it('toggles the Move/Edit surface on a bare A key', () => {
     const { handlers, preventDefault } = dispatch('a', new TestHTMLElement('canvas') as unknown as EventTarget);
-    expect(handlers.cycleAquarelleSelect).toHaveBeenCalledOnce();
+    expect(handlers.toggleAquarelleSelect).toHaveBeenCalledOnce();
     expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('cycles the Select filter on Tab only when Move/Edit consumes it', () => {
+    const consumedHandlers = actions();
+    consumedHandlers.cycleAquarelleSelectFilter.mockReturnValue(true);
+    const consumedEvent = eventFor('Tab', new TestHTMLElement('canvas') as unknown as EventTarget);
+    dispatchPhysicsPaintStudioKeyDown(
+      consumedEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      consumedHandlers,
+      [],
+    );
+    expect(consumedHandlers.cycleAquarelleSelectFilter).toHaveBeenCalledOnce();
+    expect(consumedEvent.preventDefault).toHaveBeenCalledOnce();
+
+    // Outside Move/Edit the action refuses (false) — native focus navigation stays.
+    const outsideHandlers = actions();
+    outsideHandlers.cycleAquarelleSelectFilter.mockReturnValue(false);
+    const outsideEvent = eventFor('Tab', new TestHTMLElement('canvas') as unknown as EventTarget);
+    dispatchPhysicsPaintStudioKeyDown(
+      outsideEvent.event,
+      { currentFrame: 4, isPlaying: false, mutationLocked: false, hasSelectedRotoKey: false },
+      outsideHandlers,
+      [],
+    );
+    expect(outsideHandlers.cycleAquarelleSelectFilter).toHaveBeenCalledOnce();
+    expect(outsideEvent.preventDefault).not.toHaveBeenCalled();
   });
 
   it('flash-dries on a bare F key', () => {
@@ -764,7 +792,7 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
   });
 
   it('ignores modified, shifted and repeated tool keys', () => {
-    for (const key of ['b', 'w', 'e', 'p', 'a', 'f', 'c', 'd']) {
+    for (const key of ['b', 'w', 'e', 'p', 'a', 'f', 'c', 'd', 'Tab']) {
       for (const overrides of [
         { metaKey: true },
         { ctrlKey: true },
@@ -774,7 +802,8 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
       ]) {
         const { handlers } = dispatch(key, new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
         expect(handlers.selectAquarelleTool).not.toHaveBeenCalled();
-        expect(handlers.cycleAquarelleSelect).not.toHaveBeenCalled();
+        expect(handlers.toggleAquarelleSelect).not.toHaveBeenCalled();
+        expect(handlers.cycleAquarelleSelectFilter).not.toHaveBeenCalled();
         expect(handlers.dryAquarelleSheet).not.toHaveBeenCalled();
         expect(handlers.clearAquarelleFrame).not.toHaveBeenCalled();
         expect(handlers.resetFgBg).not.toHaveBeenCalled();

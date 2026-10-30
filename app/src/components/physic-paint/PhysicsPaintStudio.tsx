@@ -224,7 +224,6 @@ import {
 import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
-  aquarelleStrokeTypeFilter,
   aquarelleStrokesOnFrame,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
@@ -2392,27 +2391,29 @@ export function PhysicsPaintStudio() {
     setSettings((current) => (current.color === color ? current : { ...current, color }));
   }, [setSettings]);
   // 261029: the Studio tool shortcuts. B / W / E / P pick a painting tool and
-  // leave Select mode; A enters Select, cycles the stroke-type filter
-  // Paint → Eraser → All, then leaves Select for the Brush tool. Every read is
-  // `.peek()` — the Studio render body never subscribes a selection signal.
+  // leave Move/Edit mode; A toggles the Move/Edit (Select) surface — leaving
+  // resumes the previous paint tool, which the surface never replaced; Tab
+  // cycles the stroke-type filter Paint → Eraser → All while Move/Edit is on.
+  // Every read is `.peek()` — the Studio render body never subscribes a
+  // selection signal.
   const handleSelectAquarelleTool = useCallback((tool: 'brush' | 'water' | 'pen' | 'lift') => {
     setAquarelleSelectMode(false);
     setAquarelleTool(tool);
   }, []);
-  const handleCycleAquarelleSelect = useCallback(() => {
-    if (!aquarelleSelectMode.peek()) {
-      // A scriptless key has nothing to select — the rail gate stays authoritative.
-      if (!watercolorMoveAvailable.peek()) return;
-      setAquarelleSelectMode(true);
-      return;
-    }
-    // Past the last segment, A leaves the Select surface and resumes painting.
-    if (aquarelleStrokeTypeFilter.peek() === 'all') {
+  const handleToggleAquarelleSelect = useCallback(() => {
+    if (aquarelleSelectMode.peek()) {
       setAquarelleSelectMode(false);
-      setAquarelleTool('brush');
       return;
     }
+    // A scriptless key has nothing to select — the rail gate stays authoritative.
+    if (!watercolorMoveAvailable.peek()) return;
+    setAquarelleSelectMode(true);
+  }, []);
+  const handleCycleAquarelleSelectFilter = useCallback(() => {
+    // Tab belongs to focus navigation outside the Move/Edit surface.
+    if (!aquarelleSelectMode.peek()) return false;
     cycleAquarelleStrokeTypeFilter();
+    return true;
   }, []);
   // The Water color half of the same law: Select cannot stay armed on a key
   // with no script. Painting the first stroke creates the script and re-arms;
@@ -5478,7 +5479,8 @@ export function PhysicsPaintStudio() {
         handleActiveColorChanged(paintStore.foregroundColor.peek());
       },
       selectAquarelleTool: handleSelectAquarelleTool,
-      cycleAquarelleSelect: handleCycleAquarelleSelect,
+      toggleAquarelleSelect: handleToggleAquarelleSelect,
+      cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,
       dryAquarelleSheet: () => {
         if (staticControlsLocked) return;
         emitAquarelleDry(aquarelleRecordClock());

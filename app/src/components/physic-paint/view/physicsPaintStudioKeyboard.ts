@@ -45,8 +45,13 @@ export interface PhysicsPaintStudioKeyboardActions {
   swapFgBg?: () => void;
   /** Bare B / W / E / P: pick a painting tool and leave Select mode. */
   selectAquarelleTool?: (tool: 'brush' | 'water' | 'pen' | 'lift') => void;
-  /** Bare A: enter Select (Paint), cycle Paint → Eraser → All, then leave for Brush. */
-  cycleAquarelleSelect?: () => void;
+  /** Bare A: toggle the Move/Edit (Select) surface; leaving resumes the
+   *  previous paint tool, which the surface never replaced. */
+  toggleAquarelleSelect?: () => void;
+  /** Bare Tab: cycle Paint → Eraser → All while Move/Edit is on. Returns true
+   *  ONLY when Move/Edit consumed the key, so focus navigation survives
+   *  everywhere else. */
+  cycleAquarelleSelectFilter?: () => boolean;
   /** Bare F: flash-dry the sheet (the rail's Dry action). */
   dryAquarelleSheet?: () => void;
   /** Bare C: clear the current Roto frame (the rail's Trash action). */
@@ -330,12 +335,19 @@ export function dispatchPhysicsPaintStudioKeyDown(
   }
 
     // Bare tool keys: B / W / E / P pick a painting tool and leave Select mode,
-    // A enters Select, cycles its stroke filter Paint → Eraser → All, then
-    // leaves Select for Brush; F flash-dries, C clears the frame, D resets the
-    // swatch.
+    // A toggles the Move/Edit surface (leaving resumes the previous paint
+    // tool), Tab cycles its stroke filter Paint → Eraser → All while Move/Edit
+    // is on; F flash-dries, C clears the frame, D resets the swatch.
     // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
     // owned by the branches above, so these fire only on a bare keypress.
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
+      if (event.key === 'Tab' && actions.cycleAquarelleSelectFilter) {
+        // preventDefault only when Move/Edit consumes it — everywhere else Tab
+        // keeps its native focus navigation.
+        if (!actions.cycleAquarelleSelectFilter()) return;
+        event.preventDefault();
+        return;
+      }
       if ((key === 'b' || key === 'w' || key === 'e' || key === 'p') && actions.selectAquarelleTool) {
         event.preventDefault();
         // 261029-lel: W is a silent no-op while the live sheet is dry (the key
@@ -346,9 +358,9 @@ export function dispatchPhysicsPaintStudioKeyDown(
         );
         return;
       }
-      if (key === 'a' && actions.cycleAquarelleSelect) {
+      if (key === 'a' && actions.toggleAquarelleSelect) {
         event.preventDefault();
-        actions.cycleAquarelleSelect();
+        actions.toggleAquarelleSelect();
         return;
       }
       if (key === 'f' && actions.dryAquarelleSheet) {

@@ -3053,14 +3053,14 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select (A) — click toggles Select on/off · A enters Select, cycles the filter Paint → Eraser → All, then leaves Select for Brush · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
     expect(watercolorRail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {');
   });
 
-  it('greys Select and makes the A cycle inert when there is no live script', () => {
+  it('greys Select and makes the A toggle inert when there is no live script', () => {
     // 261027-klx: Water color is the only module — the Brush Move arm left with
     // engine 1; the frame-scoped watercolor gate is the only availability law.
     expect(studio).toContain('if (!watercolorMoveAvailable.peek()) return;');
@@ -3369,7 +3369,7 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(livePixelTransactions.split('input.isStillCurrent !== undefined && !input.isStillCurrent()').length - 1).toBe(2);
   });
 
-  it('wires the Delete/Backspace action and the A tool cycle (watercolor only)', () => {
+  it('wires the Delete/Backspace action and the A Move/Edit toggle (watercolor only)', () => {
     // 261023-g4p: the Studio delegates; the ONE consume law (active port +
     // selected id, peek-only) lives in the shared edition module.
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
@@ -3381,12 +3381,15 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
-    // A enters Select, cycles its filter Paint → Eraser → All, then leaves
-    // Select for Brush; B / W / E pick a tool.
-    expect(studio).toContain('cycleAquarelleSelect: handleCycleAquarelleSelect,');
+    // A toggles Move/Edit (leaving resumes the previous paint tool); Tab cycles
+    // its filter Paint → Eraser → All only while Move/Edit is on; B / W / E / P
+    // pick a tool.
+    expect(studio).toContain('toggleAquarelleSelect: handleToggleAquarelleSelect,');
+    expect(studio).toContain('cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,');
     expect(studio).toContain('selectAquarelleTool: handleSelectAquarelleTool,');
-    expect(studio).toContain("if (aquarelleStrokeTypeFilter.peek() === 'all') {");
-    expect(studio).toContain("setAquarelleTool('brush');");
+    expect(studio).toContain('if (!aquarelleSelectMode.peek()) return false;');
+    expect(studio).toContain('cycleAquarelleStrokeTypeFilter();');
+    expect(studio).not.toContain("setAquarelleTool('brush');");
     // 261027-klx: the Brush-mode Cmd→Move toggle left with engine 1's tool set.
     expect(studio).not.toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
     expect(studio).not.toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');

@@ -127,7 +127,7 @@ function WatercolorRail({
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
         disabled={disabled || !selectAvailable.value}
-        title="Select (A) — click toggles Select on/off · A enters Select, cycles the filter Paint → Eraser → All, then leaves Select for Brush · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
+        title="Select (A) — click or A toggles Select on/off and returns to the previous tool · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}
