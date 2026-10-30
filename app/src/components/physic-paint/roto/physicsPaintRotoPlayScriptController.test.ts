@@ -2685,6 +2685,20 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const repairedLoop = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'LU');
       expect(Object.keys(repairedLoop!.motion!)).toEqual(['deformation', 'position']);
     });
+
+    it('261030-ig0 (WR-01): a repair re-bake drops per-key overrides but keeps the opt-in', async () => {
+      const loop: PhysicPaintRotoLoopClip = {
+        ...unresolvedLoop(),
+        keyScriptEdits: true,
+        keyScriptOverrides: [{ slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null }],
+      };
+      const test = loopOpHarness([loop], repairAuthority);
+      await test.controller.repairLoop('LU');
+      expect(await test.controller.confirm()).toBe(true);
+      const repairedLoop = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'LU')!;
+      expect(repairedLoop.keyScriptEdits).toBe(true);
+      expect('keyScriptOverrides' in repairedLoop).toBe(false);
+    });
   });
 
   describe('relinkLoop (D-31)', () => {
@@ -3287,6 +3301,20 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(JSON.stringify(driver.getCurrent().records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
       expect(await driver.history.redo()).toBe(true);
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toEqual(['S1', 'S2', 'S3']);
+    });
+
+    it('261030-ig0 (WR-01): a legacy Source Edit re-bake drops per-key overrides but keeps the opt-in', async () => {
+      const loop: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 3),
+        keyScriptEdits: true,
+        keyScriptOverrides: [{ slot: 1, motion: { deformation: 7, position: 9 }, overrideColor: '#4b6382' }],
+      };
+      const test = loopOpHarness([loop]);
+      await test.controller.openSourceEdit('L1');
+      expect(await test.controller.confirm()).toBe(true);
+      const edited = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'L1')!;
+      expect(edited.keyScriptEdits).toBe(true);
+      expect('keyScriptOverrides' in edited).toBe(false);
     });
   });
 

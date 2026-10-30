@@ -1603,22 +1603,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return next;
   }
 
-  /**
-   * 261030-ig0: keep only the overrides whose slot still addresses a key of the
-   * rewritten cycle. Gated on the opt-in (the validator rejects overrides on a
-   * rail that is not opted in) and written as an explicit array so a pruned
-   * collection can never leave a stale out-of-range slot behind.
-   */
-  function keepAddressableKeyScriptOverrides(
-    clip: PhysicPaintRotoLoopClip,
-    cycleLength: number,
-  ): Pick<PhysicPaintRotoLoopClip, 'keyScriptOverrides'> | Record<string, never> {
-    if (clip.keyScriptEdits !== true || clip.keyScriptOverrides === undefined) return {};
-    return {
-      keyScriptOverrides: Object.freeze(clip.keyScriptOverrides.filter((override) => override.slot < cycleLength)),
-    };
-  }
-
   async function duplicateLinkedLoop(loopId: string, destinationStart: number): Promise<RotoPlayScriptLoopOpResult> {
     if (!Number.isSafeInteger(destinationStart) || destinationStart < 0) {
       return { ok: false, reason: 'Choose a non-negative integer destination start frame.' };
@@ -2100,16 +2084,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       let regenerateSemanticDelta: RotoRegenerateGroupSemanticDelta | null = null;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
+        // 261030-ig0: the whole cycle is re-baked from the rail-level settings,
+        // so no per-key override still describes its key — drop the collection
+        // (the Edited marker and the key-edit prefill must never claim settings
+        // that were not applied). The opt-in itself stays on.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
           ? {
-              ...clip,
+              ...withoutKeyScriptOverrides(clip),
               sourceKeyIds: Object.freeze([...cycleKeyIds]),
               mode: renderMode,
               scriptId: selectedId,
               motion: compactPhysicPaintRotoMotion(motion),
               overrideColor: renderOverrideColor,
-              // 261030-ig0: a shortened cycle must never keep an out-of-range slot.
-              ...keepAddressableKeyScriptOverrides(clip, cycleKeyIds.length),
             }
           : clip));
       } else if (isSourceEdit && editTarget && preparedRegenerate) {
@@ -2189,15 +2175,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         loopClips = currentLoopClips().map((clip) => {
           if (!sameOrderedIds(clip.sourceKeyIds, editTarget.sourceKeyIds)) return clip;
           const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
+          // 261030-ig0: same law as the repair branch — the re-bake replaces
+          // every key of the cycle from the rail-level settings, so the stored
+          // overrides no longer describe the pixels. The opt-in stays on.
           return {
-            ...clip,
+            ...withoutKeyScriptOverrides(clip),
             sourceKeyIds: Object.freeze([...cycleKeyIds]),
             mode: renderMode,
             scriptId: selectedId,
             motion: compactPhysicPaintRotoMotion(motion),
             overrideColor: renderOverrideColor,
-            // 261030-ig0: same slot hygiene as the repair branch.
-            ...keepAddressableKeyScriptOverrides(clip, cycleKeyIds.length),
             ...(clip.loopId === editTarget.loopId && draftRepeat !== null ? { repeat: draftRepeat } : {}),
           };
         });
