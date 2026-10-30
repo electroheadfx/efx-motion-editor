@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-30T16:42:43.988Z"
+last_updated: "2026-10-30T21:06:53.632Z"
 last_activity: 2026-10-30
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: 24ccaef80f8a539d2e18587623e26fa6856cc680
+state_head: 239aeab62b602fc16af92e105389654e7c4c2d2c
 progress:
   total_phases: 3
   completed_phases: 3
@@ -628,6 +628,7 @@ None yet.
 | 261030-ey9 | Reveal rail wiggle: Photo wiggle checkbox moves photo + wash as one unit (both Reveal variants); Rotation and Scale become wiggle channels in all modes, controlled from the Create Rail dialog and the Motion tab | 2026-10-30 | d0d9b9ee | [261030-ey9-reveal-rail-wiggle-enhancement-add-an-ch](./quick/261030-ey9-reveal-rail-wiggle-enhancement-add-an-ch/) |
 | 261030-ig0 | Add an off-by-default option in Create Rail (Paint Motion/Static, Reveal Motion/Static) that saves per-key script settings so any rail key can be reopened and re-baked alone; Regenerate protects edited keys | 2026-10-30 | d56a0255 | [261030-ig0-is-it-possible-to-have-an-option-in-crea](./quick/261030-ig0-is-it-possible-to-have-an-option-in-crea/) |
 | 261030-np9 | Rail 'Save script on each key' preserves the script ON EACH DRAWN KEY (one stroke per Motion key, complete drawing per Static key, wash sliced for Reveal); ig0 override model retired; Key Script Editing card under Timing | 2026-10-30 | 24ccaef8 | [261030-np9-create-rail-s-save-script-on-each-key-op](./quick/261030-np9-create-rail-s-save-script-on-each-key-op/) |
+| 79 | Grey out the Key Script Editing option on the Reveal tab of Create Rail (per-key scripts unavailable on Reveal rails for now) | 2026-10-30 | 239aeab62 | — |
 
 ### Roadmap Evolution
 
