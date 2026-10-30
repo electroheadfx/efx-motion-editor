@@ -27,6 +27,7 @@ import {
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { isWebpBytes } from '../../../types/physicPaint';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
+import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
@@ -1919,10 +1920,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         (clip) => clip.keyScriptEdits === true && sameOrderedIds(clip.sourceKeyIds, cycleKeyIds),
       );
       if (preserveKeyScripts && anchors.length > 0) {
-        ports.recordRailKeyScripts?.({
-          keyIds: cycleKeyIds,
-          slices: sliceRailKeyScripts({ anchors, frames: cycleAppFrames, mode: renderMode }),
+        const keyScriptSlices = sliceRailKeyScripts({ anchors, frames: cycleAppFrames, mode: renderMode });
+        // 261030-np9: the bake's anchor count and its slot distribution are the
+        // only way to tell "the bake never reported this stroke" apart from
+        // "the slice dropped it". Recorded once per apply.
+        recordAquarelleRenderSplitEvent('rail-key-scripts', {
+          start,
+          count,
+          mode: renderMode,
+          anchors: anchors.length,
+          anchorStartFrames: anchors.map((anchor) => anchor.startFrame),
+          slices: keyScriptSlices.map((slice) => ({
+            slot: slice.slot,
+            frame: slice.frame,
+            strokes: slice.strokes.length,
+          })),
         });
+        ports.recordRailKeyScripts?.({ keyIds: cycleKeyIds, slices: keyScriptSlices });
       }
       // Single appliedSummary assignment site: composed atomically from the options snapshot and
       // destination actually committed for THIS generation — never from live dialog draft values.
