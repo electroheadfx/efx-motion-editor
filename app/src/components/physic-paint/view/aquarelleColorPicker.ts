@@ -182,6 +182,13 @@ export function sampleAquarelleStackColor(input: {
    * the DOM monitor slices are then the fallback.
    */
   beneathCanvas?: HTMLCanvasElement | null;
+  /**
+   * 261030-cnq UAT round 3: a photo layer under the pointer wins outright.
+   * Called with the normalized sheet point; a non-null hex is the photo's own
+   * full-strength color (never mixed with paint, never scaled by the overlay
+   * opacity) and is returned as the pick.
+   */
+  photoSampler?: ((u: number, v: number) => string | null) | null;
 }): string | null {
   const shell = input.stack.querySelector<HTMLElement>('.demo-canvas-shell') ?? input.stack;
   const rect = shell.getBoundingClientRect();
@@ -189,6 +196,8 @@ export function sampleAquarelleStackColor(input: {
   const u = (input.clientX - rect.left) / rect.width;
   const v = (input.clientY - rect.top) / rect.height;
   if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  const photoHex = input.photoSampler?.(u, v) ?? null;
+  if (photoHex !== null) return photoHex;
   // 261030-cnq UAT fix: with a Background photo active, reading the DOM
   // monitor slice missed the photo and the pick fell through to the paint.
   // The store's flattened raster is the exact composite the monitor draws —

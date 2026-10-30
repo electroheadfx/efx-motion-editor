@@ -42,6 +42,7 @@ import {
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
+import { aquarellePickerActive } from '../view/aquarelleColorPicker';
 import { clearAquarelleWetPaint, setAquarelleHasWetPaint } from '../view/aquarelleWetPaintGate';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
@@ -74,9 +75,11 @@ const FIX_SETTLE_MS = 1200;
 // ============================================================
 
 const CURSOR_CROSSHAIR_SIZE = 23;
-const cursorX = signal(-1);
-const cursorY = signal(-1);
-const cursorVisible = signal(false);
+/** 261030-cnq: exported for the picker visor, which renders ABOVE the tracks
+ *  group (outside its stacking context) at the same shell-relative point. */
+export const cursorX = signal(-1);
+export const cursorY = signal(-1);
+export const cursorVisible = signal(false);
 /**
  * 261028-k03c WR-01: the footprint inputs below (tilt, pressure, buttons,
  * pointer type, movement angle, layer height) are module variables, and an
@@ -112,6 +115,8 @@ function AquarelleBrushCursor(): JSX.Element | null {
   // Select mode hides the paint-size ring — the stroke overlay owns the
   // pointer. Narrow leaf read.
   if (aquarelleSelectMode.value) return null;
+  // 261030-cnq: the color picker replaces the ring with the Pipette visor.
+  if (aquarellePickerActive.value) return null;
   const x = cursorX.value;
   const y = cursorY.value;
   const visible = cursorVisible.value;

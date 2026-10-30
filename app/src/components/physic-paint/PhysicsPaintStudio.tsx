@@ -83,6 +83,7 @@ import {
   toggleAquarellePickerLatched,
 } from './view/aquarelleColorPicker';
 import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
+import { createPhotoPickSampler } from './view/aquarellePhotoPick';
 import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
@@ -2435,6 +2436,10 @@ export function PhysicsPaintStudio() {
     // every track except this one, plus the paper fond and the Background
     // photo — so it is the authoritative image UNDER this track's sheet.
     let beneathCanvas: HTMLCanvasElement | null = null;
+    // 261030-cnq UAT round 3: a photo layer under the pointer is picked from
+    // its SOURCE image — the photo's full color, never its display opacity and
+    // never a blend with the paint.
+    let photoSampler: ((u: number, v: number) => string | null) | null = null;
     try {
       const layerId = launchContextRef.current?.layerId ?? '';
       if (layerId !== '') {
@@ -2451,9 +2456,11 @@ export function PhysicsPaintStudio() {
         // multiply — reading it source-over would sample white. Fall back to
         // the DOM slices for that (transparent-document) case.
         beneathCanvas = record && !record.transmittance ? record.raster ?? null : null;
+        photoSampler = createPhotoPickSampler(layerId, currentFrame, projectCanvasWidth, projectCanvasHeight);
       }
     } catch {
       beneathCanvas = null;
+      photoSampler = null;
     }
     const hex = sampleAquarelleStackColor({
       stack,
@@ -2461,6 +2468,7 @@ export function PhysicsPaintStudio() {
       clientY: event.clientY,
       paintCanvas,
       beneathCanvas,
+      photoSampler,
     });
     if (hex !== null) {
       handleActiveColorChanged(hex);

@@ -31,6 +31,7 @@ import {
   transmittancePixelToPigment,
   type PickRgba,
 } from './aquarelleColorPicker';
+import { photoPixelAt } from './aquarellePhotoPick';
 
 const OPAQUE_BLACK: PickRgba = { r: 0, g: 0, b: 0, a: 1 };
 const TRANSPARENT: PickRgba = { r: 0, g: 0, b: 0, a: 0 };
@@ -240,22 +241,63 @@ describe('wiring pins — the pick is consumed at the canvas-stack capture phase
   });
 });
 
-describe('wiring pins — UAT round 2 (cursor, Background photo, slider hit area)', () => {
-  it('the canvas stack shows the pipette cursor while the picker is armed', () => {
-    const view = readFileSync(resolve(__dirname, './PhysicsPaintStudioView.tsx'), 'utf8');
-    expect(view).toContain("${pickerArmed ? ' picker-armed' : ''}");
-    const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
-    expect(css).toContain('.physics-paint-canvas-stack.picker-armed *');
-    expect(css).toContain("data:image/svg+xml");
+describe('photo pointer mapping (UAT round 3)', () => {
+  const placement = {
+    imageWidth: 200,
+    imageHeight: 100,
+    centerU: 0.5,
+    centerV: 0.5,
+    widthU: 0.5,
+    heightV: 0.25,
+    rotationDeg: 0,
+    scaleX: 1,
+    scaleY: 1,
+  };
+
+  it('maps a point inside the photo to its source pixel', () => {
+    expect(photoPixelAt(placement, 0.5, 0.5)).toEqual({ x: 100, y: 50 });
+    expect(photoPixelAt(placement, 0.3, 0.4)).toEqual({ x: 20, y: 10 });
   });
 
-  it('the pick samples the store composite (Background photo) and the reference ghost', () => {
+  it('rejects points outside the photo rect', () => {
+    expect(photoPixelAt(placement, 0.1, 0.5)).toBeNull();
+    expect(photoPixelAt(placement, 0.5, 0.9)).toBeNull();
+  });
+
+  it('inverts the transform rotation', () => {
+    // A point to the RIGHT of center maps to the image's TOP edge at 90°.
+    expect(photoPixelAt({ ...placement, rotationDeg: 90 }, 0.6, 0.5)).toEqual({ x: 100, y: 10 });
+  });
+
+  it('rejects a degenerate scale', () => {
+    expect(photoPixelAt({ ...placement, scaleX: 0 }, 0.5, 0.5)).toBeNull();
+  });
+});
+
+describe('wiring pins — UAT round 2/3 (visor, photo sampling, slider hit area)', () => {
+  it('the picker pointer is a lucide Pipette visor above the tracks group', () => {
+    const view = readFileSync(resolve(__dirname, './PhysicsPaintStudioView.tsx'), 'utf8');
+    expect(view).toContain('<AquarellePickerVisor');
+    const visor = readFileSync(resolve(__dirname, './AquarellePickerVisor.tsx'), 'utf8');
+    expect(visor).toContain("import { Pipette } from 'lucide-preact'");
+    expect(visor).toContain('<Pipette size={20} />');
+    // No hand-embedded cursor asset: the OS cursor is `none` on the sheet and
+    // the brush ring must step aside while armed.
+    const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
+    expect(layer).toContain('if (aquarellePickerActive.value) return null;');
+    const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
+    expect(css).toContain('.physics-paint-picker-visor');
+    expect(css).not.toContain('data:image/png;base64');
+  });
+
+  it('the pick samples the store composite and prefers a photo layer', () => {
     const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
     expect(studio).toContain('const record = physicPaintStore.getFlattenedFrameExcluding(');
     expect(studio).toContain('beneathCanvas = record && !record.transmittance');
-    expect(studio).toContain('beneathCanvas,');
+    expect(studio).toContain('createPhotoPickSampler(layerId, currentFrame, projectCanvasWidth, projectCanvasHeight)');
     const picker = readFileSync(resolve(__dirname, './aquarelleColorPicker.ts'), 'utf8');
     expect(picker).toContain('input.beneathCanvas');
+    expect(picker).toContain('input.photoSampler?.(u, v)');
     expect(picker).toContain('.physics-paint-reference-ghost canvas');
   });
 
