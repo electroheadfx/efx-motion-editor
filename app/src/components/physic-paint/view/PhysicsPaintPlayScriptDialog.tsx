@@ -414,7 +414,7 @@ export function PhysicsPaintPlayScriptDialog({
 
   return (
     <div
-      class={`physics-paint-play-script-dialog${tabsVisible ? ' physics-paint-play-script-apply-tabs' : ''}${revealTab ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
+      class={`physics-paint-play-script-dialog${revealTab ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
       role="dialog"
       aria-labelledby="physics-play-script-title"
       onKeyDown={(event) => {

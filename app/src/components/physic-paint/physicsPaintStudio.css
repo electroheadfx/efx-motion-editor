@@ -2350,65 +2350,23 @@ button.destructive {
   min-height: 0;
 }
 
-/* 261030-v1t UAT: the two content columns must END on the same line. The side
-   stack's Motion card already absorbs slack on the right; the left column's
-   last card absorbs it when the left column is the shorter one. */
-.physics-paint-play-script-key-column > :last-child { flex: 1 1 auto; }
-
-/* Paint rail: the Motion wiggle card stretches to fill the right stack and
-   centers its rows (unchanged D-16 behaviour). */
-.physics-paint-play-script-card-motion { flex: 1 1 auto; }
+/* Both tabs: the Motion card hugs its rows — no stretch, no dead space. */
+.physics-paint-play-script-card-motion { flex: 0 0 auto; }
 
 .physics-paint-play-script-motion-rows {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
-  justify-content: center;
+  gap: 10px;
   min-height: 0;
 }
 
-.physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper { margin-top: 10px; }
+.physics-paint-play-script-motion-rows > .slider-stepper { flex: 0 0 auto; }
 
-/* Reveal: the Motion card fills the right stack and its rows spread with a
-   minimum 12px rhythm — no leftover space under the last stepper, and Colorize
-   lands on the left column's bottom. */
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion {
-  flex: 1 1 auto;
-}
-
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows {
-  flex: 1 1 auto;
-  justify-content: space-between;
-}
-
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper {
-  flex: 0 0 auto;
-}
-
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper {
-  margin-top: 12px;
-}
-
-/* Reveal: Colorize is pinned to the stack bottom, and the full-width summary
-   sits flush under the columns (the 14px grid row gap is pulled out). */
+/* Reveal: Colorize is pinned to the stack bottom so both column bottoms align. */
 .physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack {
   justify-content: space-between;
 }
 
-/* Both creation tabs share ONE frame height: the modal always fills 96% of the
-   viewport and the columns row absorbs the slack, so switching tabs never
-   resizes the window and the summary keeps its 14px top gap. */
-.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-surface {
-  height: 96%;
-}
-
-.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-content {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs.physics-paint-play-script-reveal .physics-paint-play-script-content {
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-}
 
 .physics-paint-play-script-card-title {
   margin-bottom: 9px;

@@ -388,38 +388,24 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const stackRule = playScriptCssRule('.physics-paint-play-script-side-stack');
     expect(stackRule).toContain('display: flex');
     expect(stackRule).toContain('flex-direction: column');
-    // Paint keeps the stretched/centered Motion card; Reveal scopes the compact
-    // card to a 12px row rhythm so Colorize meets the left column's bottom.
-    expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 1 1 auto');
+    // Both tabs hug the Motion card to its rows with a flat 10px rhythm.
+    expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 0 0 auto');
     const rowsRule = playScriptCssRule('.physics-paint-play-script-motion-rows');
-    expect(rowsRule).toContain('justify-content: center');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion')).toContain('flex: 1 1 auto');
-    const revealRowsRule = playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows');
-    expect(revealRowsRule).toContain('justify-content: space-between');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper')).toContain('flex: 0 0 auto');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper')).toContain('margin-top: 12px');
-    // Paint pins the summary to col1's bottom; Reveal spans it flush under the columns.
+    expect(rowsRule).toContain('gap: 10px');
+    expect(playScriptCssRule('.physics-paint-play-script-motion-rows > .slider-stepper')).toContain('flex: 0 0 auto');
+    // Paint pins the summary inside col1; Reveal spans it under both columns.
     expect(playScriptCssRule('.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
     expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).toContain('grid-column: 1 / -1');
     expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack')).toContain('justify-content: space-between');
-    // Both creation tabs share the same 96% frame; the columns row absorbs slack.
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-surface')).toContain('height: 96%');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-content')).toContain('grid-template-rows: auto auto minmax(0, 1fr)');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs.physics-paint-play-script-reveal .physics-paint-play-script-content')).toContain('grid-template-rows: auto auto minmax(0, 1fr) auto');
   });
 
-  it('marks the root with apply-tabs on both creation tabs and reveal only on Reveal', () => {
+  it('marks the root with the reveal modifier only on the Reveal tab', () => {
     const paint = renderDialog(createFakeController().controller);
     const paintRoot = findOne(paint, (vnode) => vnode.props?.role === 'dialog');
-    expect(hasClass(paintRoot, 'physics-paint-play-script-apply-tabs')).toBe(true);
     expect(hasClass(paintRoot, 'physics-paint-play-script-reveal')).toBe(false);
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
     const revealRoot = findOne(reveal, (vnode) => vnode.props?.role === 'dialog');
-    expect(hasClass(revealRoot, 'physics-paint-play-script-apply-tabs')).toBe(true);
     expect(hasClass(revealRoot, 'physics-paint-play-script-reveal')).toBe(true);
-    const edit = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
-    const editRoot = findOne(edit, (vnode) => vnode.props?.role === 'dialog');
-    expect(hasClass(editRoot, 'physics-paint-play-script-apply-tabs')).toBe(false);
   });
 
   it('splits the infinity readout as Cycle Nf × ∞ left / Effective right, and renders nothing when the readout is null', () => {
@@ -646,9 +632,9 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     // 261030-v1t UAT: Frames + Repeat share one row; Max/Infinity sit beneath.
     expect(playScriptCssRule('.physics-paint-play-script-timing-grid')).toContain('grid-template-columns: 1fr 1fr');
     expect(playScriptCssRule('.physics-paint-play-script-timing-grid > .physics-paint-play-script-field + .physics-paint-play-script-field')).toContain('margin-top: 0');
-    // Both content columns end on the same line — the shorter column's last
-    // card absorbs the shared row height.
-    expect(playScriptCssRule('.physics-paint-play-script-key-column > :last-child')).toContain('flex: 1 1 auto');
+    // Cards keep their natural height — the last card no longer inflates to
+    // absorb the column height; the Paint summary pins itself instead.
+    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-key-column > :last-child');
   });
 
   it('uses the top-bar Script switch styling, scaled up with a 5px top pad, and aligned footers', () => {
