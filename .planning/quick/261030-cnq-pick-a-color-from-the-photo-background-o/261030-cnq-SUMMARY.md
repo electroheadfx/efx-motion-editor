@@ -309,3 +309,17 @@ Commits `41b41eaf`, `b27f729e`. Gates: typecheck clean; focused suites 324 selec
 | Pick returned "photo transparency mixed with paint" | A pick over a photo layer is now read from the **source image**: `createPhotoPickSampler(layerId, frame, projectW, projectH)` samples the Photo Reference first, then the Background clip, with the exact placement math of each draw path (`photoPixelAt` inverse-maps translate→rotate→scale). The result is the photo's full-strength pixel — overlay opacity and translucent paint are both ignored. |
 
 Commit `430442ef`. Gates: typecheck clean; picker suite 33; **full app suite 356 files / 6,439 tests passed**. The three native rows remain PENDING until re-tested live.
+
+## UAT APPROVED (2026-10-30)
+
+All native rows passed live, including the round-2/3 follow-ups:
+
+- Alt-hold and the rail Picker (`I`) both arm the picker; releasing Alt returns to the previous paint tool.
+- Pointer is the **lucide `Pipette` visor** (no embedded cursor asset); it stays visible above a 100%-opacity Photo Reference.
+- The **brush ring** stays visible above the reference overlay (moved out of the isolated tracks group).
+- A pick over a photo returns the photo's **full source color** at any overlay opacity (1%–100%), not a paint blend.
+- The Photo Reference **"Overlay opacity" slider** is draggable across the whole track.
+- Alt arms the picker even while a Studio dialog holds focus (capture-phase listeners).
+- Picks never paint and never create a Roto key; Select keeps Alt+click stroke delete.
+
+Quick task closed. Commits: `55b775bd`, `c123a28c`, `4c1ec3a4`, `314c93cf`, `b04b407b`, `50123e3e`, `41b41eaf`, `b27f729e`, `b5f2b6aa`, `430442ef`, `9d26e1d9`, `10315a9f`, `8c25e49e`.
