@@ -2998,11 +2998,15 @@ describe('261019-mj2 Task 4 composite auto-key undo reservation', () => {
 
 // 261022-pim: Water color stroke select + Alt+click delete surface.
 describe('261022-pim watercolor stroke select surface', () => {
-  it('mounts the stroke overlay inside the layer above the canvas and below the brush cursor', () => {
+  it('mounts the stroke overlay inside the layer above the canvas; the ring sits in the stack above it', () => {
     const overlayIndex = aquarelleCanvasLayer.indexOf('<AquarelleStrokeOverlay');
     expect(overlayIndex).toBeGreaterThan(-1);
     expect(overlayIndex).toBeGreaterThan(aquarelleCanvasLayer.indexOf('ref={attachEngine}'));
-    expect(overlayIndex).toBeLessThan(aquarelleCanvasLayer.indexOf('<AquarelleBrushCursor />'));
+    // 261030-cnq: the ring moved OUT of the isolated tracks group (the
+    // reference overlay used to bury it at high opacity) — the canvas stack
+    // now mounts it, above the composite.
+    expect(aquarelleCanvasLayer).not.toContain('<AquarelleBrushCursor />');
+    expect(studioView).toContain('<AquarelleBrushCursor />');
     // 261023-g4p: the adapter carries the watercolor identity only; the ONE
     // shared gesture implementation owns the surface.
     expect(aquarelleStrokeOverlay).toContain('testId="aquarelle-stroke-overlay"');

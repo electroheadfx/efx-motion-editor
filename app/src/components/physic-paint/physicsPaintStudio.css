@@ -7103,6 +7103,19 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   min-height: 0;
 }
 
+/* 261030-cnq: the brush ring's seat. It used to live inside the live canvas
+   layer, i.e. inside `.physics-paint-tracks-group` whose `isolation: isolate`
+   traps its z-index below the reference overlay (z 5) — at high overlay
+   opacity the pointer vanished behind the photo. It is now a direct child of
+   the canvas stack, still clipped to the sheet exactly like the shell was. */
+.physics-paint-brush-ring-seat {
+  position: absolute;
+  z-index: 55;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
 /* 261030-cnq: while the color picker is armed the brush ring is replaced by
    the picker visor — a lucide Pipette that follows the pointer ABOVE the whole
    composite (the reference photo included). It lives outside the isolated

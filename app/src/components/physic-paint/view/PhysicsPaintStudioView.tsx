@@ -28,6 +28,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import { AquarellePickerVisor } from './AquarellePickerVisor';
+import { AquarelleBrushCursor } from '../engine/AquarelleCanvasLayer';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
@@ -327,6 +328,18 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />
+        </div>
+      ) : null}
+      {/* 261030-cnq: the brush ring, moved out of the isolated tracks group so
+          the reference overlay can no longer bury it. Same shell-relative
+          coordinates as before (the layer is inset:0 in the shell). */}
+      {canvasBounds ? (
+        <div
+          class="physics-paint-brush-ring-seat"
+          aria-hidden="true"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <AquarelleBrushCursor />
         </div>
       ) : null}
       {/* 261030-cnq: the picker pointer. A direct child of the stack (never of

@@ -111,7 +111,14 @@ let lastPointerPressure = 0;
  */
 const aquarelleLivePaint = signal(false);
 
-function AquarelleBrushCursor(): JSX.Element | null {
+/**
+ * 261030-cnq: the ring is MOUNTED by the canvas stack (a sibling of the
+ * reference overlay), not by this layer — inside the isolated tracks group its
+ * z-index is trapped below the photo overlay, so at high overlay opacity the
+ * pointer disappeared behind the photo. The signals stay module-private here;
+ * the export is only the component.
+ */
+export function AquarelleBrushCursor(): JSX.Element | null {
   // Select mode hides the paint-size ring — the stroke overlay owns the
   // pointer. Narrow leaf read.
   if (aquarelleSelectMode.value) return null;
@@ -983,7 +990,8 @@ export function AquarelleCanvasLayer(props: {
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
         onTransformStrokes={(mutationIds, transform) => onTransformStrokesRef.current?.(mutationIds, transform)}
       />
-      <AquarelleBrushCursor />
+      {/* 261030-cnq: the brush ring is mounted by the canvas stack — above the
+          reference overlay, which used to cover it inside this group. */}
     </div>
   );
 }
