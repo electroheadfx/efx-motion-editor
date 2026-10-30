@@ -533,19 +533,12 @@ export function createAquarelleBake(
     } else {
       for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
     }
-    // 261030-np9: report the mapping BOTH branches just filled, in script
-    // order — the rail's per-key slices can never disagree with the pixels.
-    // A throwing consumer is swallowed (T-bks-02), exactly like onDiagnostics.
-    if (options.onStrokeFrameAnchors) {
-      try {
-        options.onStrokeFrameAnchors(strokes.map((stroke) => ({
-          stroke,
-          startFrame: startFrameOf.get(stroke) ?? 0,
-        })))
-      } catch {
-        // The bake owns the pixels; the consumer's errors are its own.
-      }
-    }
+    // 261030-np9: the frame a stroke is FIRST DRAWN in — taken from the window
+    // law below, never from the clock. Frames are allocated by SAMPLE count
+    // (261019b), so a clock-proportional mapping reports strokes one frame
+    // later than the pixels show them (UAT: a wash visible at F3 had no script
+    // on that key). Reported after the loop, once every window is known.
+    const firstFedFrameOf = new Map<StudioStroke<AquarelleStrokePayload>, number>()
     const drysByFrame = new Map<number, AquarelleDryEvent[]>()
     // Timed path: a Dry rides with the stroke that follows it in recorded
     // order and fires at that stroke's first SAMPLE (not the frame start).
@@ -642,6 +635,21 @@ export function createAquarelleBake(
           ? diffusionPerFrame + lastStrokeCatchUp
           : diffusionPerFrame
         diagnostics.timelineTicks += tickBudget
+      }
+
+      // 261030-np9: mirror the feed law exactly. A timed stroke is first drawn
+      // in the frame whose window END passes its beginTick (a window that has
+      // merely OPENED holds zero of its samples); a scheduled stroke is first
+      // drawn in the frame that lists it.
+      if (timed) {
+        for (const entry of timed) {
+          if (entry.beginTick >= windowEnd) break
+          if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
+        }
+      } else {
+        for (const entry of frameStrokes) {
+          if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
+        }
       }
 
       const framePromise = scheduleAdapter(async () => {
@@ -760,6 +768,20 @@ export function createAquarelleBake(
         () => releaseBarrier(),
       )
       outcomes.push(outcome)
+    }
+
+    // 261030-np9: report the frame each stroke was ACTUALLY first drawn in, in
+    // script order, so the rail's per-key slices can never disagree with the
+    // pixels. A throwing consumer is swallowed (T-bks-02), like onDiagnostics.
+    if (options.onStrokeFrameAnchors) {
+      try {
+        options.onStrokeFrameAnchors(strokes.map((stroke) => ({
+          stroke,
+          startFrame: firstFedFrameOf.get(stroke) ?? startFrameOf.get(stroke) ?? 0,
+        })))
+      } catch {
+        // The bake owns the pixels; the consumer's errors are its own.
+      }
     }
 
     const settled = await Promise.all(outcomes)

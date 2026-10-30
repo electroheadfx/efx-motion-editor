@@ -747,6 +747,31 @@ describe('261030-np9 per-stroke start-frame anchors', () => {
     expect(anchors.map((anchor) => anchor.startFrame)).toEqual([0, 2])
   })
 
+  it('anchors a timed stroke to the frame it is FIRST DRAWN in, not its clock-proportional frame', async () => {
+    const { adapter } = makeTimelineAdapter(0)
+    const seen: (readonly { readonly startFrame: number }[])[] = []
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 10,
+      onStrokeFrameAnchors: (anchors) => { seen.push(anchors) },
+    })
+    // Recorded timing is usable, so the timed path runs. Frames are allocated
+    // by SAMPLE count (261019b): 40 + 2 samples across 9 draw frames puts the
+    // short late stroke's first sample in frame 8. A clock-proportional
+    // mapping instead said frame 3 — that disagreement left a wash visible on
+    // a rail key with no script for it (UAT 261030-np9).
+    const long = timedStroke(40, 1000, null)
+    const short = timedStroke(2, 5000, null)
+
+    const result = await bake.bake([long, short])
+
+    expect(result.ok).toBe(true)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.map((anchor) => anchor.startFrame)).toEqual([0, 8])
+  })
+
   it('is absent-safe on the static (frameCount 1) path and there anchors every stroke on frame 0', async () => {
     const { adapter } = makeTimelineAdapter(0)
     const seeNothing = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
