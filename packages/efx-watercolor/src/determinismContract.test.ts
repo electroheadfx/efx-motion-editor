@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { hashMutationId } from '@efxlab/efx-paint-host'
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { createAquarelleEngineAdapter } from './adapter/engineAdapter'
 import type { AquarelleStrokePayload } from './payload/toStudioStroke'
@@ -24,6 +24,9 @@ import { toStudioStroke } from './payload/toStudioStroke'
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ENGINE_DIR = join(PKG_DIR, 'src', 'engine')
 const PAYLOAD_DIR = join(PKG_DIR, 'src', 'payload')
+// 261030-v1t: the per-frame paint salt lives in the HOST package (the one
+// determinism surface both engines share) — scan its source too.
+const HOST_TRACE_SEED = resolve(PKG_DIR, '..', 'efx-paint-host', 'src', 'util', 'traceSeed.ts')
 
 function collectSources(dir: string): string[] {
   const out: string[] = []
@@ -42,6 +45,17 @@ function sourceText(dir: string): string {
   return collectSources(dir)
     .map((file) => readFileSync(file, 'utf8'))
     .join('\n')
+}
+
+/**
+ * 261030-v1t: the host traceSeed module NAMES `Math.random` in its doc
+ * comments (the law it forbids). A raw substring scan would flag prose, so
+ * strip comments before scanning for real nondeterministic sources.
+ */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +160,26 @@ describe('unseeded RNG source scan', () => {
     const payload = sourceText(PAYLOAD_DIR)
     expect(engine.includes('crypto.getRandomValues')).toBe(false)
     expect(payload.includes('crypto.getRandomValues')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. 261030-v1t — the per-frame paint salt stays pure
+//    The salted seed rides configure() every replay; a stray nondeterministic
+//    source there would break same-script-same-pixels reproduction.
+// ---------------------------------------------------------------------------
+
+describe('paint seed salt contract (261030-v1t)', () => {
+  it('the host traceSeed module carries no Math.random, crypto or clock source', () => {
+    const source = stripComments(readFileSync(HOST_TRACE_SEED, 'utf8'))
+    expect(source.includes('Math.random')).toBe(false)
+    expect(source.includes('crypto.getRandomValues')).toBe(false)
+    expect(source.includes('Date.now')).toBe(false)
+    expect(source.includes('performance.now')).toBe(false)
+  })
+
+  it('pins the same literal in the engine package as the host pins in its own suite', () => {
+    expect(mixStrokeSeed(hashMutationId(42), 3)).toBe(179180383)
   })
 })
 

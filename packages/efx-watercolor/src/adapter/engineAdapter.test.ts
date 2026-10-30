@@ -16,7 +16,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { hashMutationId } from '@efxlab/efx-paint-host'
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import { mixSpectral } from '@efxlab/efx-spectral'
 import { createAquarelleEngineAdapter, resolveBakePaperPreset } from './engineAdapter'
@@ -368,5 +368,105 @@ describe('skipTicks (261029-bks)', () => {
 
     adapter.dispose()
     expect(() => adapter.skipTicks(0, 10)).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 6. 261030-v1t — the per-frame paint salt seams.
+//    setPaintSeedFrame / resetSheet are optional EXTENSION seams on the
+//    adapter (the host EngineAdapter interface is untouched). The salt is a
+//    pure mix of (traceSeed, output frame): the same salt reproduces the
+//    pixels, an adjacent salt changes them, and resetSheet never re-rolls the
+//    paper. The seam contract below is context-free; the pixel pins need
+//    WebGL2 and close on live/disk UAT otherwise.
+// ---------------------------------------------------------------------------
+
+describe('paint seed salt seams (261030-v1t)', () => {
+  it('exposes setPaintSeedFrame and resetSheet, total even without a WebGL2 engine', () => {
+    const adapter = createAquarelleEngineAdapter()
+
+    expect(typeof adapter.setPaintSeedFrame).toBe('function')
+    expect(typeof adapter.resetSheet).toBe('function')
+    expect(() => adapter.setPaintSeedFrame(3)).not.toThrow()
+    expect(() => adapter.resetSheet()).not.toThrow()
+    expect(() => adapter.setPaintSeedFrame(null)).not.toThrow()
+
+    adapter.dispose()
+    // dispose() nulls the engine — the seams stay total, never throw.
+    expect(() => adapter.resetSheet()).not.toThrow()
+    expect(() => adapter.setPaintSeedFrame(1)).not.toThrow()
+  })
+
+  it('sources its salt from the pure host mix of (traceSeed, frame)', () => {
+    const stroke = toStudioStroke(makeStrokePayload())
+    // The adapter keys configure() with seededRandom(mixStrokeSeed(traceSeed, frame))
+    // when a frame is set — pinning the pair here keeps a refactor from silently
+    // re-keying the stream.
+    const frame0 = mixStrokeSeed(stroke.traceSeed || 1, 0)
+    const frame1 = mixStrokeSeed(stroke.traceSeed || 1, 1)
+    expect(frame0).toBe(1370007503)
+    expect(frame1).not.toBe(frame0)
+    // No salt => today's exact key: seededRandom(stroke.traceSeed || 1).
+    expect(mixStrokeSeed(stroke.traceSeed || 1, 0)).not.toBe(stroke.traceSeed)
+  })
+})
+
+describe.skipIf(!gpu)('per-frame paint salt GPU (WebGL2 required)', () => {
+  const width = 64
+  const height = 64
+
+  const paintFresh = (salt: number | null): Uint8ClampedArray => {
+    const canvas = makeSurface(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+    adapter.setPaintSeedFrame(salt)
+    adapter.applyStroke(toStudioStroke(makeStrokePayload()))
+    for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+    const bytes = frameBytes(adapter.captureFrame())
+    adapter.dispose()
+    return bytes
+  }
+
+  it('resetSheet leaves the paper-only export byte-identical and clears the paint', () => {
+    const canvas = makeSurface(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+
+    const blank = frameBytes(adapter.captureFrame())
+    adapter.applyStroke(toStudioStroke(makeStrokePayload()))
+    const painted = frameBytes(adapter.captureFrame())
+    expect(Buffer.from(painted).equals(Buffer.from(blank))).toBe(false)
+
+    adapter.resetSheet()
+    const afterReset = frameBytes(adapter.captureFrame())
+    expect(Buffer.from(afterReset).equals(Buffer.from(blank))).toBe(true)
+    adapter.dispose()
+  })
+
+  it('salt j, reset, salt j again is byte-identical (the same frame reproduces)', () => {
+    const canvas = makeSurface(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+    const paint = (salt: number): Uint8ClampedArray => {
+      adapter.setPaintSeedFrame(salt)
+      adapter.applyStroke(toStudioStroke(makeStrokePayload()))
+      for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+      return frameBytes(adapter.captureFrame())
+    }
+
+    const first = paint(3)
+    adapter.resetSheet()
+    const again = paint(3)
+    expect(Buffer.from(again).equals(Buffer.from(first))).toBe(true)
+    adapter.dispose()
+  })
+
+  it('salt j versus j+1 changes the captured pixels', () => {
+    const a = paintFresh(3)
+    const b = paintFresh(4)
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(false)
+  })
+
+  it('absence of a salt keeps today’s stream: two fresh null-salt runs are byte-identical', () => {
+    const a = paintFresh(null)
+    const b = paintFresh(null)
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
   })
 })
