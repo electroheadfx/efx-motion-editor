@@ -462,13 +462,13 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
 });
 
 describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', () => {
-  it('renders a radiogroup with two radio options, roving tabindex, and the helper line', () => {
+  it('renders a radiogroup with two radio options and roving tabindex, without a helper line', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
     const group = findOne(modeCard, byRadioGroup('Rail Type'));
     expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Rail Type');
-    expect(group.props['aria-describedby']).toBe('physics-play-script-mode-helper');
+    expect(group.props['aria-describedby']).toBeUndefined();
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
     expect(textOf(radios[0])).toBe('Motion');
@@ -477,7 +477,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(radios[0].props.tabIndex).toBe(0);
     expect(radios[1].props['aria-checked']).toBe(false);
     expect(radios[1].props.tabIndex).toBe(-1);
-    expect(textOf(findOne(tree, byId('physics-play-script-mode-helper')))).toBe('The drawing builds stroke by stroke across frames.');
+    expect(findAll(tree, byId('physics-play-script-mode-helper'))).toHaveLength(0);
   });
 
   it('arrow keys move focus AND check with wrap-around', () => {
@@ -500,7 +500,7 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(updated[1].props.tabIndex).toBe(0);
     expect(updated[0].props['aria-checked']).toBe(false);
     expect(updated[0].props.tabIndex).toBe(-1);
-    expect(textOf(findOne(tree, byId('physics-play-script-mode-helper')))).toBe('The complete drawing is applied to every cycle frame.');
+    expect(findAll(tree, byId('physics-play-script-mode-helper'))).toHaveLength(0);
 
     // Wrap-around forward and backward.
     keydown('ArrowRight');
@@ -844,8 +844,8 @@ describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked 
     expect(source).toContain('Frames per cycle');
     expect(source).toContain('Motion wiggle');
     expect(source).toContain('Reset defaults');
-    expect(source).toContain('The drawing builds stroke by stroke across frames.');
-    expect(source).toContain('The complete drawing is applied to every cycle frame.');
+    expect(source).not.toContain('The drawing builds stroke by stroke across frames.');
+    expect(source).not.toContain('The complete drawing is applied to every cycle frame.');
     expect(source).not.toContain('Save as defaults');
     expect(source).not.toContain('Reset to Motion defaults');
     expect(source).not.toContain('Cycle frames');
@@ -1316,7 +1316,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const tree = renderDialog(controller);
     const radios = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
     expect(radios.map((radio) => textOf(radio))).toEqual(['Reveal Motion', 'Reveal Static']);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-mode-helper')))).toBe('The reveal extends frame after frame across the span.');
+    expect(findAll(tree, byId('physics-play-script-mode-helper'))).toHaveLength(0);
     // Frames defaults + the playhead-snapshot hint.
     const frames = findOne(tree, byId('physics-play-script-reveal-count'));
     expect(frames.props.value).toBe(3);
@@ -1381,6 +1381,14 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const card = findOne(tree, byClass('physics-paint-play-script-card-photo-wiggle'));
     expect(textOf(card)).toContain('Photo wiggle');
     expect(textOf(card)).toContain('Wiggle photo and wash together');
+    // The card lives in the left column, under Paint seed variation.
+    const keyColumn = findOne(tree, byClass('physics-paint-play-script-key-column'));
+    expect(renderedParentOf(tree, card)).toBe(keyColumn);
+    const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
+    const columnChildren = [...walk(keyColumn)]
+      .filter((child) => child !== keyColumn && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(keyColumn, child) === keyColumn);
+    expect(columnChildren.indexOf(card)).toBeGreaterThan(columnChildren.indexOf(seedCard));
 
     const checkbox = findOne(card, byId('physics-play-script-photo-wiggle')) as TestVNode;
     expect(checkbox.props.role).toBe('switch');
@@ -1426,7 +1434,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const revealCard = findOne(reveal, byClass('physics-paint-play-script-card-key-script'));
     expect(hasClass(revealCard, 'physics-paint-play-script-locked')).toBe(true);
     expect((findOne(reveal, byId('physics-play-script-key-script-edits')) as TestVNode).props.disabled).toBe(true);
-    expect(textOf(revealCard)).toContain('Not available on Reveal rails yet.');
+    expect(textOf(revealCard)).not.toContain('Not available on Reveal rails yet.');
 
     // Edit modes never render the creation opt-in.
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
@@ -1442,11 +1450,13 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         .filter((child) => renderedParentOf(tree, child) === parent);
       const columnChildren = directChildrenOf(column);
       const contentChildren = directChildrenOf(content);
+      const photoWiggle = findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))[0];
       return {
         keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
         timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
         keyScriptInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
         seedInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))),
+        photoWiggleInColumn: photoWiggle ? columnChildren.indexOf(photoWiggle) : -1,
         summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
         columnInContent: contentChildren.indexOf(column),
         stackInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
@@ -1458,13 +1468,15 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(paintOrder.timingInColumn).toBeLessThan(paintOrder.keyScriptInColumn);
     expect(paintOrder.keyScriptInColumn).toBeLessThan(paintOrder.seedInColumn);
     expect(paintOrder.seedInColumn).toBeLessThan(paintOrder.summaryInColumn);
+    expect(paintOrder.photoWiggleInColumn).toBe(-1);
     expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(revealOrder.timingInColumn).toBe(0);
     expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
     expect(revealOrder.keyScriptInColumn).toBeLessThan(revealOrder.seedInColumn);
-    expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.summaryInColumn);
+    expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.photoWiggleInColumn);
+    expect(revealOrder.photoWiggleInColumn).toBeLessThan(revealOrder.summaryInColumn);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
   });
 

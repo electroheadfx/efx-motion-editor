@@ -15,16 +15,16 @@ export interface PhysicsPaintPlayScriptDialogProps {
 }
 
 // D-05: locked mode options, labels, and helper copy (42-UI-SPEC Copywriting Contract).
-const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string; helper: string }> = [
-  { value: 'progressive', label: 'Motion', helper: 'The drawing builds stroke by stroke across frames.' },
-  { value: 'static', label: 'Static', helper: 'The complete drawing is applied to every cycle frame.' },
+const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
+  { value: 'progressive', label: 'Motion' },
+  { value: 'static', label: 'Static' },
 ];
 
 // 52-05 (G-52-3): the Reveal Photo Rail variant options — the same progressive/static
-// union with the reveal caption copy (52 UI-SPEC Copywriting Contract, mirrors D-03/D-26).
-const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string; helper: string }> = [
-  { value: 'progressive', label: 'Reveal Motion', helper: 'The reveal extends frame after frame across the span.' },
-  { value: 'static', label: 'Reveal Static', helper: 'Every frame carries the entire revealed photo with per-frame brush variation.' },
+// union with the reveal captions (52 UI-SPEC Copywriting Contract, mirrors D-03/D-26).
+const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
+  { value: 'progressive', label: 'Reveal Motion' },
+  { value: 'static', label: 'Reveal Static' },
 ];
 
 // 52-05 (G-52-3): the Create Rail dialog tabs (apply mode only).
@@ -191,7 +191,6 @@ export function PhysicsPaintPlayScriptDialog({
   // 52-05 (G-52-3): the Rail Type control renders the Paint labels on the Paint
   // tab and the Reveal labels on the Reveal tab — both write the same mode union.
   const activeModeOptions = revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
-  const activeMode = activeModeOptions.find((option) => option.value === playScript.mode.value) ?? activeModeOptions[0];
 
   const selectMode = (value: RotoPlayScriptMode) => {
     // D-01: source fields are locked in loop-edit.
@@ -512,7 +511,6 @@ export function PhysicsPaintPlayScriptDialog({
               class="physics-paint-play-script-mode-group"
               role="radiogroup"
               aria-label="Rail Type"
-              aria-describedby="physics-play-script-mode-helper"
               onKeyDown={onModeKeyDown}
             >
               {activeModeOptions.map((option) => {
@@ -536,7 +534,6 @@ export function PhysicsPaintPlayScriptDialog({
                 );
               })}
             </div>
-            <span id="physics-play-script-mode-helper" class="physics-paint-play-script-mode-helper">{activeMode.helper}</span>
           </div>
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
@@ -672,10 +669,10 @@ export function PhysicsPaintPlayScriptDialog({
                 disabled: busy || revealTab,
                 onClick: () => playScript.setKeyScriptEdits(!playScript.keyScriptEdits.value),
               })}
-              {revealTab ? <span class="physics-paint-play-script-hint">Not available on Reveal rails yet.</span> : null}
             </div>
           ) : null}
           {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
+          {revealTab ? photoWiggleCard : null}
           {summaryRequested ? (
             <p class="physics-paint-play-script-summary-bar">
               <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
@@ -687,7 +684,6 @@ export function PhysicsPaintPlayScriptDialog({
           <>
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
-            {photoWiggleCard}
             {colorizeCard}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
