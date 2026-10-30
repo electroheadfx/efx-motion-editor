@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 31
+open_count: 32
 waived_count: 6
 fixed_count: 70
-total_count: 107
-last_updated: 2026-10-24T15:04:35.585Z
+total_count: 108
+last_updated: 2026-10-30T21:55:02.464Z
 ---
 
 # Broken Windows Ledger
@@ -122,6 +122,7 @@ last_updated: 2026-10-24T15:04:35.585Z
 | 105 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance | open |  | 2026-10-24T15:04:35.281Z |  |
 | 106 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3 | open |  | 2026-10-24T15:04:35.435Z |  |
 | 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | open |  | 2026-10-24T15:04:35.585Z |  |
+| 108 | 261030-v1t | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels | open |  | 2026-10-30T21:55:02.464Z |  |
 
 ````json
 [
@@ -1441,6 +1442,19 @@ last_updated: 2026-10-24T15:04:35.585Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-24T15:04:35.585Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 108,
+    "kind": "deviation",
+    "phase": "261030-v1t",
+    "file": "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts",
+    "line": null,
+    "description": "Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-30T21:55:02.464Z",
     "resolved_at": null,
     "milestone": "v2.0.0"
   }
