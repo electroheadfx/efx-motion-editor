@@ -2756,14 +2756,21 @@ button.destructive {
   text-align: right;
 }
 
-/* Requested/Effective summary bar (D-13/D-16 Row 4): full-width inset bar, Requested
-   left / Effective right; renders the controller loopReadout — informational only (D-14). */
+/* Requested/Effective summary bar (D-13/D-16 Row 4): sits under Paint seed
+   variation inside the left column; Requested left / Effective right; renders
+   the controller loopReadout — informational only (D-14). Pinned to the column
+   bottom so it aligns with the right stack without stretching the seed card. */
+.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
 .physics-paint-play-script-summary-bar {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
   margin: 0;
   padding: 8px 12px;
   border: 1px solid var(--ps-border);
@@ -2773,6 +2780,9 @@ button.destructive {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+
+.physics-paint-play-script-summary-requested,
+.physics-paint-play-script-summary-effective { min-width: 0; }
 
 .physics-paint-play-script-mode-helper,
 .physics-paint-play-script-hint,

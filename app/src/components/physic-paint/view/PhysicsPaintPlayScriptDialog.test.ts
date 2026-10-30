@@ -308,7 +308,7 @@ beforeEach(() => {
 });
 
 describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
-  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack, then the summary bar (span-2)', () => {
+  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack, with the summary under Paint seed variation', () => {
     const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
@@ -355,10 +355,15 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(textOf(heading)).toContain('Motion wiggle');
     expect(textOf(findOne(heading, (vnode) => textOf(vnode) === 'Reset defaults'))).toBe('Reset defaults');
 
-    // (d) Summary bar: Requested left / Effective right, after the main grid row.
+    // (d) Summary bar: Requested left / Effective right, beneath Paint seed
+    // variation inside the left column.
     const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(tree, summaryBar)).toBe(content);
-    expect(contentChildren.indexOf(summaryBar)).toBeGreaterThan(contentChildren.indexOf(sideStack));
+    expect(renderedParentOf(tree, summaryBar)).toBe(keyColumn);
+    const keyColumnChildren = [...walk(keyColumn)]
+      .filter((child) => child !== keyColumn && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(keyColumn, child) === keyColumn);
+    const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
+    expect(keyColumnChildren.indexOf(summaryBar)).toBeGreaterThan(keyColumnChildren.indexOf(seedCard));
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
 
@@ -1441,23 +1446,26 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
         timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
         keyScriptInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
+        seedInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))),
+        summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
         columnInContent: contentChildren.indexOf(column),
         stackInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
-        summaryInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
       };
     };
     const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(hasClass(paintOrder.keyScriptCard, 'physics-paint-play-script-card-wide')).toBe(false);
     expect(paintOrder.timingInColumn).toBe(0);
     expect(paintOrder.timingInColumn).toBeLessThan(paintOrder.keyScriptInColumn);
+    expect(paintOrder.keyScriptInColumn).toBeLessThan(paintOrder.seedInColumn);
+    expect(paintOrder.seedInColumn).toBeLessThan(paintOrder.summaryInColumn);
     expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
-    expect(paintOrder.columnInContent).toBeLessThan(paintOrder.summaryInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(revealOrder.timingInColumn).toBe(0);
     expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
+    expect(revealOrder.keyScriptInColumn).toBeLessThan(revealOrder.seedInColumn);
+    expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.summaryInColumn);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
-    expect(revealOrder.columnInContent).toBeLessThan(revealOrder.summaryInContent);
   });
 
   it('261030-v1t: renders the Paint seed variation card on both tabs in apply mode only, routing the checkbox', () => {

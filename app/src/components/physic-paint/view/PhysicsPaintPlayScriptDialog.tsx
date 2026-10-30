@@ -676,6 +676,12 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           ) : null}
           {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
+          {summaryRequested ? (
+            <p class="physics-paint-play-script-summary-bar">
+              <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
+              {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
+            </p>
+          ) : null}
           </div>
           {revealTab ? (
           <>
@@ -792,12 +798,6 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           ) : null}
           </>)}
-          {summaryRequested ? (
-            <p class="physics-paint-play-script-summary-bar">
-              <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
-              {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
-            </p>
-          ) : null}
           </>)}
         </div>
         {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
