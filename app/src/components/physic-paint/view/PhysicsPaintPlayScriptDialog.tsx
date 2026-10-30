@@ -621,19 +621,21 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
           )}
           {playScript.dialogMode.value === 'apply' ? (
-            <div class="physics-paint-play-script-card physics-paint-play-script-card-key-script">
+            // The per-key script opt-in is disabled on the Reveal tab for now —
+            // the card stays visible, greyed, so the option reads as unavailable.
+            <div class={`physics-paint-play-script-card physics-paint-play-script-card-key-script${revealTab ? ' physics-paint-play-script-locked' : ''}`}>
               <span class="physics-paint-play-script-card-title">Key Script Editing</span>
               <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-key-script-edits">
                 <input
                   id="physics-play-script-key-script-edits"
                   type="checkbox"
                   checked={playScript.keyScriptEdits.value}
-                  disabled={busy}
+                  disabled={busy || revealTab}
                   onChange={(event) => playScript.setKeyScriptEdits((event.currentTarget as HTMLInputElement).checked)}
                 />
                 Save script on each key
               </label>
-              <span class="physics-paint-play-script-hint">Each key of this Rail keeps everything painted up to its frame.</span>
+              <span class="physics-paint-play-script-hint">{revealTab ? 'Not available on Reveal rails yet.' : 'Each key of this Rail keeps everything painted up to its frame.'}</span>
             </div>
           ) : null}
           </div>

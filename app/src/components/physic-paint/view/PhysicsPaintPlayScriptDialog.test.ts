@@ -1395,6 +1395,13 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const seeded = renderDialog(createFakeController({ keyScriptEdits: true }).controller);
     expect((findOne(seeded, byId('physics-play-script-key-script-edits')) as TestVNode).props.checked).toBe(true);
 
+    // The Reveal tab greys the opt-in out: visible, greyed, disabled.
+    const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
+    const revealCard = findOne(reveal, byClass('physics-paint-play-script-card-key-script'));
+    expect(hasClass(revealCard, 'physics-paint-play-script-locked')).toBe(true);
+    expect((findOne(reveal, byId('physics-play-script-key-script-edits')) as TestVNode).props.disabled).toBe(true);
+    expect(textOf(revealCard)).toContain('Not available on Reveal rails yet.');
+
     // Edit modes never render the creation opt-in.
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
     expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);

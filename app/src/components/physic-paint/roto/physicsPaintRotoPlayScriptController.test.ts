@@ -3640,6 +3640,17 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     expect(openPhotoReference).toHaveBeenCalledTimes(1);
   });
 
+  it('261030-fas: switching to Reveal clears the per-key script opt-in and the bake never records it', async () => {
+    const createReveal = vi.fn(async (_input: { keyScriptEdits?: boolean }) => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation();
+    test.controller.setKeyScriptEdits(true);
+    test.controller.setRailTab('reveal');
+    expect(test.controller.keyScriptEdits.value).toBe(false);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal.mock.calls[0]![0].keyScriptEdits).toBe(false);
+  });
+
   it('confirmReveal routes through the create-reveal port with the shared repeat/motion law (D-08/D-09/D-11)', async () => {
     const createReveal = vi.fn(async (input: { onProgress?: (completed: number, total: number) => void }) => {
       input.onProgress?.(1, 3);

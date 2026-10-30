@@ -709,6 +709,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (isBusyPhase(phase.peek())) return;
     railTab.value = tab;
     if (tab !== 'reveal') return;
+    // The per-key script opt-in is disabled on the Reveal tab for now — a
+    // Paint-tab ON must never ride invisibly into a Reveal bake.
+    if (keyScriptEdits.peek()) keyScriptEdits.value = false;
     const selectedId = ports.library.selectedId.peek();
     revealCountText.value = String((selectedId ? ports.getScriptNaturalDuration?.(selectedId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
     if (!revealReferencePlaced.peek()) ports.openPhotoReference?.();
@@ -1515,8 +1518,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         colorize: colorize.peek(),
         colorizeMix: colorizeMix.peek(),
         photoWiggle: photoWiggle.peek(),
-        // 261030-ig0 (D-03): the creation opt-in, persisted on the reveal rail.
-        keyScriptEdits: keyScriptEdits.peek(),
+        // The per-key script opt-in is disabled on Reveal rails for now: a
+        // reveal bake never records per-key scripts.
+        keyScriptEdits: false,
         signal: bakeSignal,
         onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
       });
