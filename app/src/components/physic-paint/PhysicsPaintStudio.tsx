@@ -83,6 +83,7 @@ import {
   toggleAquarellePickerLatched,
 } from './view/aquarelleColorPicker';
 import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
+import { isSoloArmed } from './view/physicsPaintSoloArm';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { createPaintMutationLedger } from './engine/paintMutationLedger';
@@ -2428,18 +2429,45 @@ export function PhysicsPaintStudio() {
     } catch {
       paintCanvas = null;
     }
+    // 261030-cnq UAT fix: with a Background photo active, sampling the DOM
+    // monitor slice missed the photo and the pick fell through to the paint.
+    // The store's flattened composite is the exact image the monitor draws —
+    // every track except this one, plus the paper fond and the Background
+    // photo — so it is the authoritative image UNDER this track's sheet.
+    let beneathCanvas: HTMLCanvasElement | null = null;
+    try {
+      const layerId = launchContextRef.current?.layerId ?? '';
+      if (layerId !== '') {
+        const activeTrackId = readDocumentActiveTrackId(layerId) || null;
+        const record = physicPaintStore.getFlattenedFrameExcluding(
+          layerId,
+          currentFrame,
+          activeTrackId ? new Set([activeTrackId]) : new Set<string>(),
+          true,
+          null,
+          isSoloArmed() ? activeTrackId : null,
+        );
+        // A `transmittance` raster is the OPAQUE paint sheet meant for
+        // multiply — reading it source-over would sample white. Fall back to
+        // the DOM slices for that (transparent-document) case.
+        beneathCanvas = record && !record.transmittance ? record.raster ?? null : null;
+      }
+    } catch {
+      beneathCanvas = null;
+    }
     const hex = sampleAquarelleStackColor({
       stack,
       clientX: event.clientX,
       clientY: event.clientY,
       paintCanvas,
+      beneathCanvas,
     });
     if (hex !== null) {
       handleActiveColorChanged(hex);
       paintStore.setForeground(hex);
     }
     return true;
-  }, [handleActiveColorChanged, isPlaying]);
+  }, [handleActiveColorChanged, isPlaying, currentFrame]);
   // 261030-cnq: the `I` shortcut and the rail Picker button drive the SAME
   // latch; both leave Move/Edit first (Select owns Alt).
   const handleToggleAquarellePicker = useCallback(() => {

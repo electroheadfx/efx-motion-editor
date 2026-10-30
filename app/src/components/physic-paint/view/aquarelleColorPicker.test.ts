@@ -239,3 +239,31 @@ describe('wiring pins — the pick is consumed at the canvas-stack capture phase
     expect(rail).not.toContain("id: 'picker'");
   });
 });
+
+describe('wiring pins — UAT round 2 (cursor, Background photo, slider hit area)', () => {
+  it('the canvas stack shows the pipette cursor while the picker is armed', () => {
+    const view = readFileSync(resolve(__dirname, './PhysicsPaintStudioView.tsx'), 'utf8');
+    expect(view).toContain("${pickerArmed ? ' picker-armed' : ''}");
+    const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
+    expect(css).toContain('.physics-paint-canvas-stack.picker-armed *');
+    expect(css).toContain("data:image/svg+xml");
+  });
+
+  it('the pick samples the store composite (Background photo) and the reference ghost', () => {
+    const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
+    expect(studio).toContain('const record = physicPaintStore.getFlattenedFrameExcluding(');
+    expect(studio).toContain('beneathCanvas = record && !record.transmittance');
+    expect(studio).toContain('beneathCanvas,');
+    const picker = readFileSync(resolve(__dirname, './aquarelleColorPicker.ts'), 'utf8');
+    expect(picker).toContain('input.beneathCanvas');
+    expect(picker).toContain('.physics-paint-reference-ghost canvas');
+  });
+
+  it('the photo-reference opacity slider input spans the whole track', () => {
+    const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
+    // A bare class loses to the global `input[type="range"] { width: 80px }`
+    // rule, which left the input as an 80px stub and made the thumb undraggable.
+    expect(css).toContain('input[type="range"].physics-paint-photo-reference-slider-input');
+    expect(css).not.toContain('\n.physics-paint-photo-reference-slider-input {');
+  });
+});

@@ -175,6 +175,13 @@ export function sampleAquarelleStackColor(input: {
   clientX: number;
   clientY: number;
   paintCanvas: HTMLCanvasElement | null;
+  /**
+   * The store's flattened composite MINUS the active track (Background photo
+   * + every other track + the paper fond) — the authoritative image under
+   * this track's sheet. OMIT it only when the store record is unavailable;
+   * the DOM monitor slices are then the fallback.
+   */
+  beneathCanvas?: HTMLCanvasElement | null;
 }): string | null {
   const shell = input.stack.querySelector<HTMLElement>('.demo-canvas-shell') ?? input.stack;
   const rect = shell.getBoundingClientRect();
@@ -182,17 +189,32 @@ export function sampleAquarelleStackColor(input: {
   const u = (input.clientX - rect.left) / rect.width;
   const v = (input.clientY - rect.top) / rect.height;
   if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+  // 261030-cnq UAT fix: with a Background photo active, reading the DOM
+  // monitor slice missed the photo and the pick fell through to the paint.
+  // The store's flattened raster is the exact composite the monitor draws —
+  // sample it first, and keep the DOM slices as the unavailable-record fallback.
+  const beneath: ReadonlyArray<PickRgba | null> = input.beneathCanvas
+    ? [sampleCanvasAtUv(input.beneathCanvas, u, v)]
+    : [
+        // Paper fond (project resolution, CSS-scaled to the shell).
+        sampleCanvasAtUv(input.stack.querySelector<HTMLCanvasElement>('.physics-paint-fond-layer canvas'), u, v),
+        // Below monitor: the Background photo + every track below the active one.
+        sampleCanvasAtUv(
+          input.stack.querySelector<HTMLCanvasElement>(
+            '.physics-paint-program-monitor:not(.physics-paint-program-monitor-above) canvas',
+          ),
+          u,
+          v,
+        ),
+        // Above monitor: the tracks above the active one.
+        sampleCanvasAtUv(
+          input.stack.querySelector<HTMLCanvasElement>('.physics-paint-program-monitor-above canvas'),
+          u,
+          v,
+        ),
+      ];
   const layers: ReadonlyArray<PickRgba | null> = [
-    // Paper fond (project resolution, CSS-scaled to the shell).
-    sampleCanvasAtUv(input.stack.querySelector<HTMLCanvasElement>('.physics-paint-fond-layer canvas'), u, v),
-    // Below monitor: the Background photo + every track below the active one.
-    sampleCanvasAtUv(
-      input.stack.querySelector<HTMLCanvasElement>(
-        '.physics-paint-program-monitor:not(.physics-paint-program-monitor-above) canvas',
-      ),
-      u,
-      v,
-    ),
+    ...beneath,
     // Committed sheet — already STRAIGHT-ALPHA PIGMENT (AquarelleCachedBaseLayer).
     sampleCanvasAtUv(
       input.stack.querySelector<HTMLCanvasElement>('.demo-canvas-shell .aquarelle-cached-base'),
@@ -201,9 +223,11 @@ export function sampleAquarelleStackColor(input: {
     ),
     // Live engine sheet — opaque transmittance from the caller's export.
     sampleTransmittanceCanvasAtUv(input.paintCanvas, u, v),
-    // Above monitor: the tracks above the active one.
+    // 261030-cnq UAT fix: the Photo Reference overlay is monitor paint ABOVE
+    // the whole composite — if the photo is visible there, that is the color
+    // the user is pointing at.
     sampleCanvasAtUv(
-      input.stack.querySelector<HTMLCanvasElement>('.physics-paint-program-monitor-above canvas'),
+      input.stack.querySelector<HTMLCanvasElement>('.physics-paint-reference-ghost canvas'),
       u,
       v,
     ),

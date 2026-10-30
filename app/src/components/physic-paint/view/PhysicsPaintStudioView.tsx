@@ -27,6 +27,7 @@ import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWo
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
+import { aquarellePickerActive } from './aquarelleColorPicker';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
@@ -211,9 +212,12 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   }, []);
 
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
+  // 261030-cnq UAT fix: the pipette cursor must show the instant the picker is
+  // armed (Alt or the latched rail tool), so this leaf subscribes to it.
+  const pickerArmed = aquarellePickerActive.value;
 
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => {
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}${pickerArmed ? ' picker-armed' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => {
         // 261030-cnq: the picker consumes the press at the capture phase — before
         // beginRotoFrameEdit and before the engine/stroke-overlay listeners below.
         if (props.onColorPick?.(event, event.currentTarget as HTMLElement)) {
