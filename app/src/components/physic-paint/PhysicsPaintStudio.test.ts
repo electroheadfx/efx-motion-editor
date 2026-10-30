@@ -4705,8 +4705,11 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // never advances to the composed output, and each erase path is specified
     // with EXACTLY ONE `set(` statement of its own. One more (261028-k03h):
     // the recorder pins the KNOWN-EMPTY entry for a fresh blank key whose two
-    // caches hold only placeholders.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(9);
+    // caches hold only placeholders. One more (261030-np9): the Create Rail
+    // per-key script recorder pins KNOWN-EMPTY for every rail key, because a
+    // rail key's picture is ENTIRELY its script while its baked cache already
+    // holds the strokes — replaying over that cache duplicated every stroke.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(10);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
@@ -4995,11 +4998,27 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(recordCopy).not.toContain('enqueueRecordedStroke');
   });
 
+  it('pins a KNOWN-EMPTY durable base for every rail key it records a script onto', () => {
+    const recordRail = slice(
+      studio,
+      'const recordRailKeyScripts = (input: {',
+      'const rotoPlayScript = useRotoPlayScriptController({',
+    );
+    // A rail key's picture IS its script. The baked cache already holds the
+    // strokes, so replaying the script over it duplicated every one of them —
+    // a moved stroke left its old copy behind in the cache.
+    const pin = recordRail.indexOf('aquarelleDurableBaseByKeyRef.current.set(keyId, null);');
+    expect(pin).toBeGreaterThan(-1);
+    expect(pin).toBeLessThan(recordRail.indexOf('recordAquarelleStroke(mutationId, stroke, keyId);'));
+    expect(recordRail).not.toContain('enqueueRecordedStroke');
+  });
+
   it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {
-    // Two accepted-stroke paths (live stroke end + duplicate copy) — no third
-    // site may invent an id, or a stroke would complete twice.
+    // Three accepted-stroke paths (live stroke end, duplicate copy, and the
+    // 261030-np9 Create Rail per-key script recorder) — no other site may
+    // invent an id, or a stroke would complete twice.
     const allocations = studio.match(/paintMutationLedger\.allocateStrokeMutation\(/g) ?? [];
-    expect(allocations).toHaveLength(2);
+    expect(allocations).toHaveLength(3);
     // The ledger is the completion SOURCE; the ref keeps the existing ordering
     // (latest render's closure) while staying synchronous.
     expect(studio).toContain('useEffect(() => paintMutationLedger.subscribe((mutation) => {');

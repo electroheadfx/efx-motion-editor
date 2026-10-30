@@ -3885,6 +3885,12 @@ export function PhysicsPaintStudio() {
       const keyId = input.keyIds[slice.slot];
       if (keyId === undefined) continue;
       purgeAquarelleFrameScript(slice.frame);
+      // 261030-np9: a rail key's picture is ENTIRELY its script — the baked
+      // cache already holds the strokes, so replaying the script over it
+      // duplicated every stroke (a moved stroke left its old copy behind).
+      // Pin the known-empty base so the rebake reconstructs the frame from
+      // blank paper, exactly like a freshly painted key.
+      aquarelleDurableBaseByKeyRef.current.set(keyId, null);
       for (const stroke of slice.strokes) {
         const mutationId = paintMutationLedger.allocateStrokeMutation({
           primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),

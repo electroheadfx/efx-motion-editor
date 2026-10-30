@@ -577,14 +577,17 @@ describe('Lift copy and untouched laws (261028-k03)', () => {
     expect(studio).toContain('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
   });
 
-  it('adds the nine lift durable-base set sites (3 base + scripted + recovery x2 + empty + raster + known-empty pin)', () => {
+  it('adds the ten durable-base set sites (3 base + scripted + recovery x2 + empty + raster + known-empty pin + rail key script)', () => {
     // 261028-k03c: the recovery arm adopts the recovered base and then rewrites
     // it as t^K — two writes, both before the shared re-bake tail.
     // 261028-k03e: `adoptKnownEmpty` writes the `null` known-empty entry when
     // the composite proves there is no pre-script pigment.
     // 261028-k03h: the recorder pins `null` for a fresh blank key whose two
     // caches hold only placeholders.
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(9);
+    // 261030-np9: the Create Rail per-key script recorder pins `null` for each
+    // rail key — its picture is entirely its script, so the baked cache must
+    // never seed the replay.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(10);
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
   });
 });
