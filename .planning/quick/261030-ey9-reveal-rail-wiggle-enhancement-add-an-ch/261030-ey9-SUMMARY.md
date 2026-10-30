@@ -230,3 +230,15 @@ Code review found and fixed one critical defect and three warnings:
 
 Deferred items (pre-existing or unreachable): see `261030-ey9-deferred-items.md`.
 
+## UAT APPROVED (2026-10-30)
+
+All five live Studio rows passed:
+
+- Photo wiggle cohesion in Reveal Motion and Reveal Static — photo and wash move as one unit with the 2-frame hold.
+- Rotation pivot and amount at 100 in all four modes — per-element centre pivots, no positional jump.
+- Scale amount and drift at 100 in all four modes.
+- Dialog and right-panel share one settings model, integer 0-100 clamp, no silent zeroing, Photo wiggle reveal-only.
+- Persistence across project reopen — the flag and rotation/scale are restored.
+
+Quick task closed. Commits: `d87efcfd`, `7d5248c3`, `af2c82b8`, `d0d9b9ee`.
+
