@@ -15,6 +15,7 @@ import {
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   type PhysicPaintRotoKeyIdentity,
+  type PhysicPaintRotoKeyScriptOverride,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyRecord,
@@ -73,6 +74,12 @@ export interface RotoRevealRailCreateInput {
   readonly colorizeMix: number;
   /** 261030-ey9: move photo + wash as one rigid unit per held frame. */
   readonly photoWiggle: boolean;
+  /**
+   * 261030-ig0: save each key's script settings. The ONLY optional creation
+   * input here (photoWiggle is required) — every existing caller and harness
+   * omits it, absent meaning off.
+   */
+  readonly keyScriptEdits?: boolean;
   readonly signal: AbortSignal;
   readonly onProgress?: (completed: number, total: number) => void;
 }
@@ -119,6 +126,10 @@ export interface RotoPlayScriptRegenerateImpact {
   readonly groupType: 'Motion' | 'Static';
   readonly restoredRange: string;
   readonly locallyPaintedFrameCount: number;
+  /** 261030-ig0 D-05: distinct keys whose own script bake survives this Regenerate. */
+  readonly keyScriptEditedKeyCount: number;
+  /** Absolute frames of those keys ("F3–F4, F9"); "None" when there are none. */
+  readonly keyScriptEditedFramesLabel: string;
   readonly deletedFrameCount: number;
   readonly deletedFrameRanges: string;
   readonly fragmentCount: number;
@@ -316,6 +327,10 @@ export interface RotoPlayScriptController {
   regenerateDisabledReason: ReadonlySignal<string | null>;
   /** Frozen G3a facts; null until exact preparation succeeds. */
   regenerateImpact: ReadonlySignal<RotoPlayScriptRegenerateImpact | null>;
+  /** 261030-ig0 D-05: explicit Regenerate opt-out of the per-key bakes (default false). */
+  discardKeyEdits: Signal<boolean>;
+  /** Write the discard flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
+  setDiscardKeyEdits: (enabled: boolean) => void;
   /** True for every Play Script Apply; Repeat changes duration, not capsule creation. */
   loopIntentActive: ReadonlySignal<boolean>;
   /** S4 match — non-null only in apply mode with loop intent and an identical cycle. */
@@ -401,6 +416,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const sourceEditRepairId = signal<string | null>(null);
   const regenerateDisabledReason = signal<string | null>(null);
   const regenerateImpact = signal<RotoPlayScriptRegenerateImpact | null>(null);
+  // 261030-ig0 D-05: Regenerate protects each edited key's own bake unless the
+  // user explicitly discards them; the choice is per-open (never sticky).
+  const discardKeyEdits = signal(false);
   const linkChoice = signal<'link' | 'create'>('link');
   /* ---- 52-05 (G-52-3): the Create Rail dialog tabs ----
      The Reveal Photo Rail tab carries its own span-length draft (defaulting to
@@ -677,6 +695,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     keyScriptEdits.value = enabled;
   }
 
+  /** 261030-ig0 D-05: same compare-then-write law as the creation toggle. */
+  function setDiscardKeyEdits(enabled: boolean): void {
+    if (discardKeyEdits.peek() === enabled) return;
+    discardKeyEdits.value = enabled;
+  }
+
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
     dialogMotion.value = toDialogMotion(ports.getMotion());
@@ -730,6 +754,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       dialogMode.value = 'apply';
       loopEditTargetId.value = null;
       sourceEditRepairId.value = null;
+      regenerateImpact.value = null;
+      // 261030-ig0 D-05: the Regenerate discard choice is per-open — never sticky.
+      if (discardKeyEdits.peek()) discardKeyEdits.value = false;
       linkChoice.value = 'link';
       countText.value = '3';
       lastFiniteCount.value = '3';
@@ -806,6 +833,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (loopEditTargetId.peek() === loop.loopId) loopEditTargetId.value = null;
     loopEditTargetId.value = loop.loopId;
     sourceEditRepairId.value = repair ? loop.loopId : null;
+    // 261030-ig0 D-05: a fresh Regenerate always starts protected.
+    if (discardKeyEdits.peek()) discardKeyEdits.value = false;
     linkChoice.value = 'link';
     countText.value = String(loop.sourceKeyIds.length);
     lastFiniteCount.value = countText.value;
@@ -863,6 +892,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return ranges.map((range) => range.endExclusive === range.start + 1
       ? `F${range.start}`
       : `F${range.start}–F${range.endExclusive - 1}`).join(', ');
+  }
+
+  /** 261030-ig0: contiguous ranges from individual absolute frames (for the fact line). */
+  function framesToRanges(frames: readonly number[]): readonly { readonly start: number; readonly endExclusive: number }[] {
+    const sorted = [...new Set(frames)].sort((left, right) => left - right);
+    const ranges: Array<{ start: number; endExclusive: number }> = [];
+    for (const frame of sorted) {
+      const last = ranges[ranges.length - 1];
+      if (last && frame === last.endExclusive) last.endExclusive = frame + 1;
+      else ranges.push({ start: frame, endExclusive: frame + 1 });
+    }
+    return Object.freeze(ranges.map((range) => Object.freeze(range)));
   }
 
   function deletedRangesFor(group: PhysicPaintRotoLoopClip & Required<Pick<
@@ -957,6 +998,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         name: `Rail at F${candidate.phaseOrigin!}`,
         range: `F${candidate.phaseOrigin!}–F${candidate.originalEndExclusive! - 1}`,
       })));
+      // 261030-ig0 D-05 fact: which keys carry their own bake. Affected rails share
+      // the same source cycle, so frames are deduped by absolute position.
+      const recordFrames = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
+      const editedFrames = new Set<number>();
+      for (const candidate of affected) {
+        if (candidate.keyScriptEdits !== true || candidate.keyScriptOverrides === undefined) continue;
+        for (const override of candidate.keyScriptOverrides) {
+          const keyId = candidate.sourceKeyIds[override.slot];
+          const appFrame = keyId === undefined ? undefined : recordFrames.get(keyId);
+          if (appFrame !== undefined) editedFrames.add(appFrame);
+        }
+      }
       regenerateImpact.value = Object.freeze({
         actionId: group.scriptId,
         actionRevision: action.revision,
@@ -967,6 +1020,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         groupType: group.mode === 'progressive' ? 'Motion' : 'Static',
         restoredRange: `F${group.phaseOrigin}–F${group.originalEndExclusive - 1}`,
         locallyPaintedFrameCount: group.frameOverrides.length,
+        keyScriptEditedKeyCount: editedFrames.size,
+        keyScriptEditedFramesLabel: compactFrameRanges(framesToRanges([...editedFrames])),
         deletedFrameCount: deletedRanges.reduce((count, range) => count + range.endExclusive - range.start, 0),
         deletedFrameRanges: compactFrameRanges(deletedRanges),
         fragmentCount: group.visibleRanges.length,
@@ -1244,6 +1299,34 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     );
   }
 
+  /**
+   * 261030-ig0: a rewrite that replaces the cycle with an UNRELATED key set
+   * (relink) drops the per-key override collection entirely — no old slot
+   * keeps its address, and a stale out-of-range slot would make the next save
+   * fail the document validator.
+   */
+  function withoutKeyScriptOverrides(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
+    const next = { ...clip };
+    delete next.keyScriptOverrides;
+    return next;
+  }
+
+  /**
+   * 261030-ig0: keep only the overrides whose slot still addresses a key of the
+   * rewritten cycle. Gated on the opt-in (the validator rejects overrides on a
+   * rail that is not opted in) and written as an explicit array so a pruned
+   * collection can never leave a stale out-of-range slot behind.
+   */
+  function keepAddressableKeyScriptOverrides(
+    clip: PhysicPaintRotoLoopClip,
+    cycleLength: number,
+  ): Pick<PhysicPaintRotoLoopClip, 'keyScriptOverrides'> | Record<string, never> {
+    if (clip.keyScriptEdits !== true || clip.keyScriptOverrides === undefined) return {};
+    return {
+      keyScriptOverrides: Object.freeze(clip.keyScriptOverrides.filter((override) => override.slot < cycleLength)),
+    };
+  }
+
   async function duplicateLinkedLoop(loopId: string, destinationStart: number): Promise<RotoPlayScriptLoopOpResult> {
     if (!Number.isSafeInteger(destinationStart) || destinationStart < 0) {
       return { ok: false, reason: 'Choose a non-negative integer destination start frame.' };
@@ -1292,7 +1375,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
         // D-30: cycle length and requested duration re-derive from the new
         // sourceKeyIds; no source key or asset is modified (D-31).
-        return currentLoopClips().map((clip) => (clip.loopId === loop.loopId ? { ...clip, sourceKeyIds: Object.freeze([...targetKeyIds]) } : clip));
+        return currentLoopClips().map((clip) => (clip.loopId === loop.loopId
+          ? { ...withoutKeyScriptOverrides(clip), sourceKeyIds: Object.freeze([...targetKeyIds]) }
+          : clip));
       },
       'Loop Clip relinked to the chosen source cycle.',
     );
@@ -1487,6 +1572,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         colorize: colorize.peek(),
         colorizeMix: colorizeMix.peek(),
         photoWiggle: photoWiggle.peek(),
+        // 261030-ig0 (D-03): the creation opt-in, persisted on the reveal rail.
+        keyScriptEdits: keyScriptEdits.peek(),
         signal: bakeSignal,
         onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
       });
@@ -1719,18 +1806,54 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
-          ? { ...clip, sourceKeyIds: Object.freeze([...cycleKeyIds]), mode: renderMode, scriptId: selectedId, motion: compactPhysicPaintRotoMotion(motion), overrideColor: renderOverrideColor }
+          ? {
+              ...clip,
+              sourceKeyIds: Object.freeze([...cycleKeyIds]),
+              mode: renderMode,
+              scriptId: selectedId,
+              motion: compactPhysicPaintRotoMotion(motion),
+              overrideColor: renderOverrideColor,
+              // 261030-ig0: a shortened cycle must never keep an out-of-range slot.
+              ...keepAddressableKeyScriptOverrides(clip, cycleKeyIds.length),
+            }
           : clip));
       } else if (isSourceEdit && editTarget && preparedRegenerate) {
         const acceptedDocument = ports.getPhysicalDocument?.() ?? null;
         if (!acceptedDocument || acceptedDocument.revision !== preparedRegenerate.documentRevision) {
           throw new Error('Regenerate rejected — physical Rail document changed.');
         }
+        const discardKeyScriptOverrides = discardKeyEdits.peek();
+        // 261030-ig0 D-05: each individually edited key keeps its OWN accepted bake
+        // unless the user explicitly discards. The substituted records are the ONE
+        // set that derives the revision, the loop clips and the submitted records.
+        const protectedByKeyId = new Map<string, PhysicPaintRotoRealKeyRecord>();
+        if (!discardKeyScriptOverrides) {
+          const acceptedRecords = new Map(commitAuthority.physicalRecords.map((record) => [record.keyId, record]));
+          for (const affected of preparedRegenerate.affectedGroups) {
+            const clip = acceptedDocument.loopClips.find((candidate) => candidate.loopId === affected.groupId);
+            if (!clip || clip.keyScriptEdits !== true || clip.keyScriptOverrides === undefined) continue;
+            for (const override of clip.keyScriptOverrides) {
+              const keyId = clip.sourceKeyIds[override.slot];
+              if (keyId === undefined) continue;
+              const record = acceptedRecords.get(keyId);
+              if (!record || !Number.isFinite(record.appFrame) || !isWebpBytes(record.payload.bytes)) continue;
+              protectedByKeyId.set(keyId, {
+                kind: 'real-key',
+                keyId,
+                appFrame: record.appFrame,
+                payload: clonePhysicalPayload(record.payload),
+              });
+            }
+          }
+        }
+        const substitutedRecords = protectedByKeyId.size === 0
+          ? basePublication.records
+          : basePublication.records.map((record) => protectedByKeyId.get(record.keyId) ?? record);
         let proposalDocument: PhysicPaintRotoPhysicalDocument = {
           ...acceptedDocument,
-          realKeyRecords: basePublication.records,
+          realKeyRecords: substitutedRecords,
           revision: buildPhysicPaintRotoPhysicalRevision(
-            basePublication.records,
+            substitutedRecords,
             acceptedDocument.interpolation,
             acceptedDocument.loopClips,
             acceptedDocument.incomingInterpolationBreakKeyIds,
@@ -1743,6 +1866,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             groupId: affected.groupId,
             expectedActionRevision: preparedRegenerate.actionRevision,
             currentActionRevision: preparedRegenerate.actionRevision,
+            discardKeyScriptOverrides,
           });
           if (!proposal.ok) throw new Error(`Regenerate rejected — ${proposal.reason}.`);
           proposalDocument = proposal.proposal;
@@ -1760,6 +1884,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             .sort()),
           previousRevision: acceptedDocument.revision,
           nextRevision: proposalDocument.revision,
+          ...(discardKeyScriptOverrides ? { discardKeyScriptOverrides: true as const } : {}),
         });
         loopClips = proposalDocument.loopClips;
         regeneratedRecords = proposalDocument.realKeyRecords;
@@ -1776,6 +1901,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             scriptId: selectedId,
             motion: compactPhysicPaintRotoMotion(motion),
             overrideColor: renderOverrideColor,
+            // 261030-ig0: same slot hygiene as the repair branch.
+            ...keepAddressableKeyScriptOverrides(clip, cycleKeyIds.length),
             ...(clip.loopId === editTarget.loopId && draftRepeat !== null ? { repeat: draftRepeat } : {}),
           };
         });
@@ -1907,7 +2034,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   return {
     confirmationOpen, countText, max, lastFiniteCount, capacity, canonicalStart, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
-    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
+    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact,
+    discardKeyEdits, setDiscardKeyEdits,
+    loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
     colorize, colorizeMix, setColorize, setColorizeMix,
@@ -2489,6 +2618,34 @@ function sameLoopClipCollections(
           && (clip.motion.rotation ?? 0) === (candidate.motion!.rotation ?? 0)
           && (clip.motion.scale ?? 0) === (candidate.motion!.scale ?? 0)))
       && (clip.photoWiggle ?? false) === (candidate.photoWiggle ?? false)
+      // 261030-ig0: the commit acknowledgement must SEE a per-key edit — an
+      // override-only change that compared equal would be rejected as an
+      // unacknowledged commit.
+      && (clip.keyScriptEdits ?? false) === (candidate.keyScriptEdits ?? false)
+      && keyScriptOverridesEqual(clip.keyScriptOverrides, candidate.keyScriptOverrides)
       && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
+  });
+}
+
+/** 261030-ig0: field-level comparison of one rail's per-key override collections. */
+function keyScriptOverridesEqual(
+  left: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
+  right: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
+): boolean {
+  if ((left === undefined) !== (right === undefined)) return false;
+  if (left === undefined || right === undefined) return true;
+  if (left.length !== right.length) return false;
+  return left.every((override, index) => {
+    const candidate = right[index];
+    return candidate !== undefined
+      && override.slot === candidate.slot
+      && override.motion.deformation === candidate.motion.deformation
+      && override.motion.position === candidate.motion.position
+      && (override.motion.rotation ?? 0) === (candidate.motion.rotation ?? 0)
+      && (override.motion.scale ?? 0) === (candidate.motion.scale ?? 0)
+      && (override.overrideColor ?? null) === (candidate.overrideColor ?? null)
+      && (override.colorize ?? false) === (candidate.colorize ?? false)
+      && (override.colorizeMix ?? 0) === (candidate.colorizeMix ?? 0)
+      && (override.photoWiggle ?? false) === (candidate.photoWiggle ?? false);
   });
 }

@@ -4823,6 +4823,226 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
     ]);
   });
 
+  // 261030-ig0 D-05: an opted-in Group whose slot-0 key is individually edited
+  // PLUS a non-opted-in Group sharing the same cycle — the discard flag is
+  // global to the regenerate run, so the mixed list is the real contract.
+  // The child edits key `source-A` (protected by default, re-baked on an
+  // explicit discard); `source-B` always re-bakes.
+  async function keyScriptRegenerateHarness() {
+    const layer = physicLayer();
+    mockLayers([layer]);
+    projectStore.projectContextId.value = projectContextId;
+    const records = [
+      makePhysicalRecord('source-A', 0),
+      makePhysicalRecord('source-B', 2),
+      makePhysicalRecord('ordinary', 20),
+    ];
+    const interpolation = { enabled: true, mode: 'duplicate' as const };
+    const perKeyOverride = {
+      slot: 0,
+      motion: { deformation: 6, position: 3, rotation: 15, scale: 5 },
+      overrideColor: '#4b6382',
+    };
+    const loopClips = [{
+      loopId: 'group-1',
+      placementStart: 0,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: 3 as const,
+      mode: 'progressive' as const,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      keyScriptEdits: true as const,
+      keyScriptOverrides: [perKeyOverride],
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    }, {
+      loopId: 'group-2',
+      placementStart: 10,
+      sourceKeyIds: ['source-A', 'source-B'],
+      repeat: 2 as const,
+      mode: 'static' as const,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 10,
+      originalEndExclusive: 14,
+      visibleRanges: [{ start: 10, endExclusive: 14 }],
+      frameOverrides: [],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 5,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips, ['source-B'], []),
+      loopClips,
+      incomingInterpolationBreakKeyIds: ['source-B'],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+    if (!launch.ok) throw new Error(launch.error);
+    const current = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!current) throw new Error('Expected key-script regenerate document.');
+
+    const bake = (record: PhysicPaintRotoRealKeyRecord, bytes: Uint8Array) => ({
+      ...record,
+      payload: { ...record.payload, bytes, width: 1, height: 1 },
+    });
+    // The controller's protected set substitutes the ACCEPTED bytes for edited
+    // keys; every other source key re-bakes.
+    const protectedRecords = current.realKeyRecords.map((record) => (
+      record.keyId === 'source-B' ? bake(record, TRANSPARENT_ONE_PIXEL_WEBP) : record
+    ));
+    const reBakedRecords = current.realKeyRecords.map((record) => (
+      record.keyId === 'source-A'
+        ? bake(record, OPAQUE_ONE_PIXEL_WEBP)
+        : record.keyId === 'source-B'
+          ? bake(record, TRANSPARENT_ONE_PIXEL_WEBP)
+          : record
+    ));
+
+    const buildSubmission = (options: {
+      readonly discard: boolean;
+      readonly omitDiscardFlag?: boolean;
+      readonly operationId: string;
+    }) => {
+      const submittedRecords = options.discard ? reBakedRecords : protectedRecords;
+      let proposalDocument: PhysicPaintRotoPhysicalDocument = {
+        ...current,
+        realKeyRecords: submittedRecords,
+        revision: buildPhysicPaintRotoPhysicalRevision(
+          submittedRecords,
+          current.interpolation,
+          current.loopClips,
+          current.incomingInterpolationBreakKeyIds,
+          current.groupOverrideRecords,
+        ),
+      };
+      const proposal = proposePhysicPaintRotoRegenerateGroup({
+        document: proposalDocument,
+        groupId: 'group-1',
+        expectedActionRevision: 'action-revision-1',
+        currentActionRevision: 'action-revision-1',
+        ...(options.discard ? { discardKeyScriptOverrides: true } : {}),
+      });
+      if (!proposal.ok) throw new Error(proposal.reason);
+      proposalDocument = proposal.proposal;
+      const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+      const payload = {
+        kind: 'replace-roto-physical-map',
+        trackId: TEST_TRACK_ID,
+        operationId: options.operationId,
+        operationKind: 'regenerate-group',
+        leaseToken,
+        layerId: layer.id,
+        startFrame: 5,
+        launchOperationId: launch.data.operationId,
+        projectContextId,
+        expectedRevision: current.revision,
+        records: proposalDocument.realKeyRecords.map(({ kind: _kind, ...record }) => record),
+        groupOverrideRecords: (proposalDocument.groupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+        interpolationEnabled: proposalDocument.interpolation.enabled,
+        interpolationMode: proposalDocument.interpolation.mode,
+        loopClips: proposalDocument.loopClips,
+        incomingInterpolationBreakKeyIds: proposalDocument.incomingInterpolationBreakKeyIds,
+        selectedKeyId: proposalDocument.selectedKeyId,
+        selectedAppFrame: null,
+        cursorAppFrame: proposalDocument.cursorAppFrame,
+        semanticDelta: {
+          kind: 'regenerate-group',
+          groupId: 'group-1',
+          expectedActionRevision: 'action-revision-1',
+          cleanupKeyIds: [],
+          previousRevision: current.revision,
+          nextRevision: proposalDocument.revision,
+          ...(options.discard && options.omitDiscardFlag !== true
+            ? { discardKeyScriptOverrides: true as const }
+            : {}),
+        },
+      };
+      return { proposalDocument, payload, leaseToken, submittedRecords, reBakedRecords };
+    };
+
+    return { layer, current, perKeyOverride, buildSubmission };
+  }
+
+  it('261030-ig0: protects an edited key by default — overrides survive and the accepted bytes are kept', async () => {
+    const test = await keyScriptRegenerateHarness();
+    const submission = test.buildSubmission({ discard: false, operationId: 'key-script-protect' });
+    const result = await applyPhysicPaintPayload(submission.payload as PhysicPaintApplyPayload);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(submission.proposalDocument);
+    const clips = physicPaintStore.getRotoPhysicalLoopClips(test.layer.id, TEST_TRACK_ID);
+    expect(clips[0]!.keyScriptEdits).toBe(true);
+    expect(clips[0]!.keyScriptOverrides).toEqual([test.perKeyOverride]);
+    // The mixed-list member never opted in — the global flag must not give it
+    // an override array.
+    expect('keyScriptEdits' in clips[1]!).toBe(false);
+    expect('keyScriptOverrides' in clips[1]!).toBe(false);
+    const storedA = physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)!
+      .realKeyRecords.find((record) => record.keyId === 'source-A')!;
+    expect(storedA.payload.bytes).toEqual(test.current.realKeyRecords.find((record) => record.keyId === 'source-A')!.payload.bytes);
+    expect(storedA.payload.bytes).not.toEqual(OPAQUE_ONE_PIXEL_WEBP);
+  });
+
+  it('261030-ig0: an explicit discard clears only the overrides and publishes the fresh bake', async () => {
+    const test = await keyScriptRegenerateHarness();
+    const submission = test.buildSubmission({ discard: true, operationId: 'key-script-discard' });
+    const result = await applyPhysicPaintPayload(submission.payload as PhysicPaintApplyPayload);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(submission.proposalDocument);
+    const clips = physicPaintStore.getRotoPhysicalLoopClips(test.layer.id, TEST_TRACK_ID);
+    expect(clips[0]!.keyScriptEdits).toBe(true);
+    expect(clips[0]!.keyScriptOverrides).toEqual([]);
+    expect('keyScriptOverrides' in clips[1]!).toBe(false);
+    const storedA = physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)!
+      .realKeyRecords.find((record) => record.keyId === 'source-A')!;
+    expect(storedA.payload.bytes).toEqual(OPAQUE_ONE_PIXEL_WEBP);
+  });
+
+  it('261030-ig0: a discard-shaped submission that omits the delta flag is rejected by parent recomputation', async () => {
+    const test = await keyScriptRegenerateHarness();
+    const submission = test.buildSubmission({ discard: true, omitDiscardFlag: true, operationId: 'key-script-discard-omit-flag' });
+    const result = await applyPhysicPaintPayload(submission.payload as PhysicPaintApplyPayload);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain('Group lifecycle target document does not match parent recomputation.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(submission.leaseToken)).toBe(true);
+  });
+
+  it('261030-ig0: nextRevision covers the substituted record set and differs from the pure re-bake revision', async () => {
+    const test = await keyScriptRegenerateHarness();
+    const submission = test.buildSubmission({ discard: false, operationId: 'key-script-next-revision' });
+    expect(submission.payload.semanticDelta.nextRevision).toBe(submission.proposalDocument.revision);
+    expect(submission.proposalDocument.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+      submission.submittedRecords,
+      test.current.interpolation,
+      submission.proposalDocument.loopClips,
+      submission.proposalDocument.incomingInterpolationBreakKeyIds,
+      test.current.groupOverrideRecords,
+    ));
+    expect(submission.proposalDocument.revision).not.toBe(buildPhysicPaintRotoPhysicalRevision(
+      submission.reBakedRecords,
+      test.current.interpolation,
+      submission.proposalDocument.loopClips,
+      submission.proposalDocument.incomingInterpolationBreakKeyIds,
+      test.current.groupOverrideRecords,
+    ));
+    expect(await applyPhysicPaintPayload(submission.payload as PhysicPaintApplyPayload)).toMatchObject({ ok: true });
+  });
+
   it('restores and reapplies the complete Group deletion document through leased Undo and Redo', async () => {
     const test = await lifecycleHarness('delete-group', 'group-delete-history-matrix');
     const forward = await applyPhysicPaintPayload(test.payload as PhysicPaintApplyPayload);

@@ -3077,6 +3077,80 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(await test.controller.confirm()).toBe(false);
       expect(test.controller.phase.value).toBe('failed');
     });
+
+    it('261030-ig0: rejects the commit when the acknowledgement changes a per-key script override', async () => {
+      const perKeyOverride = {
+        slot: 0,
+        motion: { deformation: 4, position: 8, rotation: 15, scale: 5 },
+        overrideColor: '#4b6382',
+      };
+      const source: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 3),
+        keyScriptEdits: true,
+        keyScriptOverrides: [perKeyOverride],
+      };
+      const test = loopOpHarness([source], {}, {
+        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          loopClips: (publication.loopClips ?? []).map((clip) => ({
+            ...clip,
+            keyScriptOverrides: clip.keyScriptEdits === true
+              ? [{ ...perKeyOverride, overrideColor: '#000000' }]
+              : clip.keyScriptOverrides,
+          })),
+        })),
+      });
+      await test.controller.openLoopEdit('L1');
+      test.controller.repeatText.value = '5';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.controller.phase.value).toBe('failed');
+      expect(test.controller.error.value).toBe('Parent returned a mismatched Loop Clip acknowledgement.');
+    });
+
+    it('261030-ig0: accepts a field-identical per-key override echo', async () => {
+      const perKeyOverride = {
+        slot: 0,
+        motion: { deformation: 4, position: 8, rotation: 15, scale: 5 },
+        overrideColor: '#4b6382',
+      };
+      const source: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 3),
+        keyScriptEdits: true,
+        keyScriptOverrides: [perKeyOverride],
+      };
+      const test = loopOpHarness([source], {}, {
+        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          // Distinct instances, value-identical content — the comparator is
+          // field-based, never identity-based.
+          loopClips: (publication.loopClips ?? []).map((clip) => ({
+            ...clip,
+            ...(clip.keyScriptOverrides === undefined
+              ? {}
+              : { keyScriptOverrides: clip.keyScriptOverrides.map((override) => ({
+                  ...override,
+                  motion: { ...override.motion },
+                })) }),
+          })),
+        })),
+      });
+      await test.controller.openLoopEdit('L1');
+      test.controller.repeatText.value = '5';
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.controller.phase.value).toBe('complete');
+    });
   });
 
   describe('Repeat validation in loop-edit (S2)', () => {

@@ -1537,6 +1537,8 @@ export async function createRevealRail(
     colorizeMix?: number;
     /** 261030-ey9: move photo + wash as one rigid unit per held frame (default off). */
     photoWiggle?: boolean;
+    /** 261030-ig0: save each key's script settings (default off). */
+    keyScriptEdits?: boolean;
     /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
     projectSize: Readonly<{ width: number; height: number }>;
     /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
@@ -1568,6 +1570,9 @@ export async function createRevealRail(
   // 261030-ey9: the wiggle flag resolves ONCE so the bake and the persisted
   // clip can never disagree.
   const revealPhotoWiggle = input.photoWiggle === true;
+  // 261030-ig0: the per-key opt-in resolves ONCE for the persisted clip only —
+  // the creation bake is identical either way (no per-key override exists yet).
+  const revealKeyScriptEdits = input.keyScriptEdits === true;
   const bakeResult = await commitRevealBake({
     layerId,
     trackId: input.trackId,
@@ -1622,6 +1627,9 @@ export async function createRevealRail(
     ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
     // 261030-ey9: written only when enabled (colorize precedent).
     ...(revealPhotoWiggle ? { photoWiggle: true } : {}),
+    // 261030-ig0 (D-03): written only when enabled — an untouched reveal rail
+    // stays byte-identical to a pre-quick rail.
+    ...(revealKeyScriptEdits ? { keyScriptEdits: true } : {}),
     syncState: 'synchronized',
     provenanceState: 'attached',
     phaseOrigin: input.startFrame,
@@ -1732,6 +1740,17 @@ export async function replayRevealRail(
   const updatedClip: PhysicPaintRotoLoopClip = {
     ...rail.clip,
     sourceKeyIds: bakeResult.records.map((record) => record.keyId),
+    // 261030-ig0: a replay re-bakes the WHOLE span from the rail-level settings,
+    // so no per-key override still describes its key — the collection must go.
+    // The write is GATED on the rail actually being opted in: the validator
+    // rejects `keyScriptOverrides` on a record whose `keyScriptEdits` is not
+    // true, and `replaceRotoPhysicalLoopClips` parses fail-closed, so an
+    // unconditional write would make every replay of a non-opted-in reveal rail
+    // fail as `loop-clip-failed`. Undoable through the existing 'reveal-replay'
+    // descriptor; the OPT-IN itself stays on (the option remains enabled).
+    ...(rail.clip.keyScriptEdits === true && rail.clip.keyScriptOverrides !== undefined
+      ? { keyScriptOverrides: Object.freeze([]) }
+      : {}),
   };
   const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
@@ -1901,11 +1920,21 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
   const resizedEnd = rail.clip.repeat === 'infinity'
     ? rail.clip.placementStart + survivingKeyIds.length
     : newEndExclusive;
+  // 261030-ig0: `survivingKeyIds` is a PREFIX of the old cycle (shortening only
+  // removes trailing keys), so every surviving slot keeps its address — only
+  // drop the overrides whose slot no longer addresses a key. An out-of-range
+  // slot would fail the document validator on the next save.
+  const survivingKeyScriptOverrides = rail.clip.keyScriptEdits === true && rail.clip.keyScriptOverrides !== undefined
+    ? rail.clip.keyScriptOverrides.filter((override) => override.slot < survivingKeyIds.length)
+    : undefined;
   const updatedClip: PhysicPaintRotoLoopClip = {
     ...rail.clip,
     sourceKeyIds: survivingKeyIds,
     originalEndExclusive: resizedEnd,
     visibleRanges: [{ start: rail.clip.placementStart, endExclusive: resizedEnd }],
+    ...(survivingKeyScriptOverrides !== undefined
+      ? { keyScriptOverrides: Object.freeze(survivingKeyScriptOverrides) }
+      : {}),
   };
   const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(

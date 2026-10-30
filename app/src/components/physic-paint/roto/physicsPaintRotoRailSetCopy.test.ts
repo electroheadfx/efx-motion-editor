@@ -309,6 +309,80 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
   });
 
+  it('261030-ig0: a pasted opted-in reveal keeps its per-key script option and overrides verbatim', () => {
+    const perKeyOverride = {
+      slot: 0,
+      motion: { deformation: 12, position: 30, rotation: 15, scale: 5 },
+      overrideColor: '#4b6382',
+      colorize: true,
+      colorizeMix: 60,
+      photoWiggle: true,
+    };
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'r1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      keyScriptEdits: true,
+      keyScriptOverrides: [perKeyOverride],
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const document = buildDocument([recordKey('k0', 0)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'r1' }] });
+    if (!built.ok) throw new Error('Reveal rail payload must resolve');
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 8 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Reveal rail paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'r1')!;
+    expect(duplicated.keyScriptEdits).toBe(true);
+    // Slots are CYCLE-relative: the paste delta (8) must never translate them.
+    expect(duplicated.keyScriptOverrides).toEqual([perKeyOverride]);
+    // The source rail keeps its own members untouched.
+    expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
+
+    // A rail that never opted in gains neither member on paste.
+    const plainClip: PhysicPaintRotoLoopClip = {
+      loopId: 'r2',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const plainDocument = buildDocument([recordKey('k0', 0)], [plainClip]);
+    const plainBuilt = buildRotoRailSetCopyPayload({ document: plainDocument, members: [{ kind: 'loop', loopId: 'r2' }] });
+    if (!plainBuilt.ok) throw new Error('Plain reveal payload must resolve');
+    const plainPasted = proposeRails({
+      document: plainDocument,
+      payload: plainBuilt.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 8,
+    });
+    if (!plainPasted.ok) throw new Error(`Plain reveal paste must resolve: ${plainPasted.reason}`);
+    const plainDuplicate = plainPasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'r2')!;
+    expect('keyScriptEdits' in plainDuplicate).toBe(false);
+    expect('keyScriptOverrides' in plainDuplicate).toBe(false);
+  });
+
   it('RED 2dup: duplicating a Motion Rail also starts the fresh source key on a new segment (no interpolation before the duplicated rail)', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'g1',

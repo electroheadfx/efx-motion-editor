@@ -120,6 +120,8 @@ interface FakeControllerSeed {
     groupType: 'Motion' | 'Static';
     restoredRange: string;
     locallyPaintedFrameCount: number;
+    keyScriptEditedKeyCount: number;
+    keyScriptEditedFramesLabel: string;
     deletedFrameCount: number;
     deletedFrameRanges: string;
     fragmentCount: number;
@@ -197,6 +199,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     colorizeMix: sig(seed.colorizeMix ?? 100),
     photoWiggle: sig(seed.photoWiggle ?? false),
     keyScriptEdits: sig(seed.keyScriptEdits ?? false),
+    discardKeyEdits: sig(false),
   };
   const controller = {
     ...signals,
@@ -226,6 +229,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setColorizeMix: vi.fn(),
     setPhotoWiggle: vi.fn(),
     setKeyScriptEdits: vi.fn(),
+    setDiscardKeyEdits: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1115,6 +1119,8 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     groupType: 'Static' as const,
     restoredRange: 'F10–F19',
     locallyPaintedFrameCount: 2,
+    keyScriptEditedKeyCount: 0,
+    keyScriptEditedFramesLabel: 'None',
     deletedFrameCount: 3,
     deletedFrameRanges: 'F13, F16–F17',
     fragmentCount: 3,
@@ -1158,6 +1164,46 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'))).toBe('Keep Local Changes');
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail'))).toBe('Regenerate Rail');
+  });
+
+  it('261030-ig0: renders the edited-key fact and the Discard key edits checkbox only when keys were edited', () => {
+    const edited = {
+      ...impact,
+      keyScriptEditedKeyCount: 2,
+      keyScriptEditedFramesLabel: 'F12, F16–F17',
+    };
+    const { controller } = createFakeController({ ...sourceEditSeed, regenerateImpact: edited });
+    const tree = renderDialog(controller);
+    const facts = findAll(tree, byClass('physics-paint-play-script-regenerate-fact'));
+    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dt')))).toEqual([
+      'Rail', 'Rail Type', 'Restored range', 'Locally painted frames', 'Individually edited keys',
+      'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
+    ]);
+    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dd')))).toEqual([
+      edited.groupName,
+      'Static',
+      'F10–F19',
+      '2',
+      'F12, F16–F17',
+      '3 · F13, F16–F17',
+      '3 → 1',
+      'F13, F16–F17',
+      'Synchronized with Script.',
+      edited.sourceCacheEffects,
+    ]);
+    const checkbox = findOne(tree, byId('physics-play-script-discard-key-edits'));
+    expect(checkbox.props.type).toBe('checkbox');
+    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.disabled).toBe(false);
+    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setDiscardKeyEdits).toHaveBeenCalledWith(true);
+    expect(textOf(findOne(tree, (vnode) => vnode.type === 'label' && vnode.props.for === 'physics-play-script-discard-key-edits'))).toBe('Discard key edits');
+
+    // No edited keys → neither the fact nor the checkbox renders.
+    const plain = createFakeController(sourceEditSeed);
+    const plainTree = renderDialog(plain.controller);
+    expect(findAll(plainTree, byId('physics-play-script-discard-key-edits'))).toHaveLength(0);
+    expect(findAll(plainTree, (vnode) => textOf(vnode) === 'Individually edited keys')).toHaveLength(0);
   });
 
   it('lists shared Groups once in placement order and uses the exact plural lead and CTA', () => {

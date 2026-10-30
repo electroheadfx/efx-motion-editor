@@ -418,12 +418,31 @@ export function PhysicsPaintPlayScriptDialog({
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Rail Type</dt><dd>{regenerateImpact.groupType}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Restored range</dt><dd>{regenerateImpact.restoredRange}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Locally painted frames</dt><dd>{regenerateImpact.locallyPaintedFrameCount}</dd></div>
+                {regenerateImpact.keyScriptEditedKeyCount > 0 ? (
+                  <div class="physics-paint-play-script-regenerate-fact"><dt>Individually edited keys</dt><dd>{regenerateImpact.keyScriptEditedFramesLabel}</dd></div>
+                ) : null}
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Deleted frames</dt><dd>{regenerateImpact.deletedFrameCount > 0 ? `${regenerateImpact.deletedFrameCount} · ${regenerateImpact.deletedFrameRanges}` : 'None'}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Fragments</dt><dd>{regenerateImpact.fragmentCount} → 1</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Gaps cleared</dt><dd>{regenerateImpact.gapRanges}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Result</dt><dd>Synchronized with Script.</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Source/cache effects</dt><dd>{regenerateImpact.sourceCacheEffects}</dd></div>
               </dl>
+              {/* 261030-ig0 D-05: edited keys keep their own bake unless discarded here. */}
+              {regenerateImpact.keyScriptEditedKeyCount > 0 ? (
+                <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-key-script">
+                  <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-discard-key-edits">
+                    <input
+                      id="physics-play-script-discard-key-edits"
+                      type="checkbox"
+                      checked={playScript.discardKeyEdits.value}
+                      disabled={busy}
+                      onChange={(event) => playScript.setDiscardKeyEdits((event.currentTarget as HTMLInputElement).checked)}
+                    />
+                    Discard key edits
+                  </label>
+                  <span class="physics-paint-play-script-hint">Unticked keeps each edited key's own bake.</span>
+                </div>
+              ) : null}
               {regenerateImpact.affectedGroups.length > 1 ? (
                 <div class="physics-paint-play-script-regenerate-shared">
                   <p class="physics-paint-play-script-regenerate-shared-lead">Regenerate will update {regenerateImpact.affectedGroups.length} Rails that share the same accepted source cycle.</p>
