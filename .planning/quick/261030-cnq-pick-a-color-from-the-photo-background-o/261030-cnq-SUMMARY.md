@@ -288,3 +288,13 @@ None — no external service configuration required.
 ---
 *Quick task: 261030-cnq*
 *Completed: 2026-10-30*
+
+## UAT round 2 (2026-10-30) — three native findings fixed
+
+| Finding | Root cause | Fix |
+|---|---|---|
+| Pointer must be the lucide Pipette | no cursor rule existed | `.physics-paint-canvas-stack.picker-armed *` sets a 32px PNG pipette cursor (SVG + crosshair fallbacks); the stack leaf subscribes to `aquarellePickerActive` and adds `picker-armed`. |
+| With a Background photo active, a pick returned the paint | the sampler read the DOM monitor slice, which did not resolve to the photo | `sampleAquarelleStackColor` now takes `beneathCanvas` — `physicPaintStore.getFlattenedFrameExcluding(layer, frame, activeTrack, includeFond=true, …).raster`, the exact composite the monitor draws (Background photo + other tracks + paper). DOM slices remain the fallback; an opaque `transmittance` record is rejected. The Photo Reference ghost canvas is sampled last (it is monitor paint above the composite). |
+| Photo Reference "Overlay opacity" slider could not be dragged | CSS specificity: the global `input[type="range"] { width: 80px; height: 6px }` out-specified `.physics-paint-photo-reference-slider-input`, leaving the invisible input an 80px stub on a ~228px track — the thumb past ~35% was outside its hit area | selector raised to `input[type="range"].physics-paint-photo-reference-slider-input` (plus `padding: 0`). |
+
+Commits `41b41eaf`, `b27f729e`. Gates: typecheck clean; focused suites 324 selected / picker 29; **full app suite 356 files passed / 6,435 tests passed / 0 failures**. Native rows for the three findings remain PENDING until the user re-tests live.
