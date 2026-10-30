@@ -216,8 +216,8 @@ function normalizeTimelineSettings(settings: Partial<PhysicPaintRotoInterpolatio
     mode: settings?.mode === 'blend' ? 'blend' : 'duplicate',
     deform: Number.isInteger(deform) && deform !== undefined ? deform : 0,
     position: Number.isInteger(position) && position !== undefined ? position : 0,
-    ...(typeof settings?.rotation === 'number' ? { rotation: settings.rotation } : {}),
-    ...(typeof settings?.scale === 'number' ? { scale: settings.scale } : {}),
+    ...(Number.isInteger(settings?.rotation) ? { rotation: settings!.rotation } : {}),
+    ...(Number.isInteger(settings?.scale) ? { scale: settings!.scale } : {}),
     ...(settings?.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides } : {}),
   };
 }

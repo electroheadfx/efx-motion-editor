@@ -2236,14 +2236,22 @@ function toDialogMotion(motion: Readonly<{ deformation: number; position: number
   };
 }
 
-function composeSummaryLine1(mode: RotoPlayScriptMode, overrideColor: string | null, motion: Readonly<{ deformation: number; position: number }>): string {  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';
-  return `${modeLabel} · ${overrideColor ? `Override ${overrideColor}` : 'Original colors'} · Motion ${motion.deformation}/${motion.position}`;
+function composeSummaryLine1(
+  mode: RotoPlayScriptMode,
+  overrideColor: string | null,
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>,
+): string {
+  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';
+  const rotation = motion.rotation ?? 0;
+  const scale = motion.scale ?? 0;
+  const rigid = [rotation !== 0 ? `Rotation ${rotation}` : '', scale !== 0 ? `Scale ${scale}` : ''].filter(Boolean).join(' · ');
+  return `${modeLabel} · ${overrideColor ? `Override ${overrideColor}` : 'Original colors'} · Motion ${motion.deformation}/${motion.position}${rigid ? ` · ${rigid}` : ''}`;
 }
 
 function composeAppliedSummary(input: {
   readonly mode: RotoPlayScriptMode;
   readonly overrideColor: string | null;
-  readonly motion: Readonly<{ deformation: number; position: number }>;
+  readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
   readonly start: number;
   readonly count: number;
 }): { line1: string; line2: string } {
@@ -2450,7 +2458,11 @@ function sameLoopClipCollections(
       && clip.scriptId === candidate.scriptId
       && (clip.motion === undefined) === (candidate.motion === undefined)
       && (clip.motion === undefined
-        || (clip.motion.deformation === candidate.motion!.deformation && clip.motion.position === candidate.motion!.position))
+        || (clip.motion.deformation === candidate.motion!.deformation
+          && clip.motion.position === candidate.motion!.position
+          && (clip.motion.rotation ?? 0) === (candidate.motion!.rotation ?? 0)
+          && (clip.motion.scale ?? 0) === (candidate.motion!.scale ?? 0)))
+      && (clip.photoWiggle ?? false) === (candidate.photoWiggle ?? false)
       && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
   });
 }

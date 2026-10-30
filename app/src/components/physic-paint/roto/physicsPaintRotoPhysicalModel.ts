@@ -1476,6 +1476,10 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
             encodeCanonicalString(clip.overrideColor ?? ''),
           ]
         : []),
+      // 261030-ey9: photoWiggle is deliberately NOT a canonical term (colorize
+      // precedent) — the baked key bytes already distinguish the rails, and the
+      // flag is creation-only. A future toggle-on-existing-rail edit must add
+      // the term here AND at the identical ordinal in the Rust encoder.
       encodeCanonicalString(lifecycle.syncState),
       encodeCanonicalString(lifecycle.provenanceState),
       encodeCanonicalNumber(lifecycle.phaseOrigin),

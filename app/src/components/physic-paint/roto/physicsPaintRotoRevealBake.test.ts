@@ -566,6 +566,14 @@ describe('renderRotoRevealFrames photo wiggle (261030-ey9)', () => {
         x: photoCentreX + pose!.centerX - 10 / 2,
         y: photoCentreY + pose!.centerY - 10 / 2,
       });
+      // The pivot must move the DRAW ORIGIN too. Translate + draw-at-−pivot
+      // cancels the photo offset, leaving the pose displacement
+      // (pose.center − frame centre) independent of transform.x/y/zoom.
+      // Drawing at −w/2 would shift the whole reveal by the photo offset.
+      const posedDraw = harness.canvases[index]!.ops.find(
+        (op): op is Extract<MaskOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.sourceCanvas !== null,
+      );
+      expect(posedDraw?.args).toEqual([-photoCentreX, -photoCentreY, 10, 10]);
     }
   });
 

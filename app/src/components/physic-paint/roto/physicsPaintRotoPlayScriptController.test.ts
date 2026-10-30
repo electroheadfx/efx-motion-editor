@@ -507,6 +507,9 @@ describe('createRotoPlayScriptController', () => {
     test.controller.countText.value = '3';
     test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 60, scale: 0 };
     expect(await test.controller.confirm()).toBe(true);
+    // The applied summary must report the rigid channel — "Motion 0/0" alone
+    // would misdescribe a rotation-only generation.
+    expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Original colors · Motion 0/0 · Rotation 60');
     expect(bakePose.deform).not.toHaveBeenCalled();
     expect(bakePose.rigid).toHaveBeenCalledTimes(3);
     for (const call of bakePose.rigid.mock.calls) {
@@ -2957,6 +2960,55 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           selectedKeyId: publication.selectedKeyId,
           selectedAppFrame: publication.selectedAppFrame,
           loopClips: [], // mismatched echo
+        })),
+      });
+      await test.controller.openLoopEdit('L1');
+      test.controller.repeatText.value = '5';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.controller.phase.value).toBe('failed');
+    });
+
+    it('rejects the commit when the acknowledgement drops a clip rotation/scale channel', async () => {
+      const source: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 3),
+        railKind: 'reveal',
+        photoWiggle: true,
+        motion: { deformation: 0, position: 0, rotation: 30, scale: 20 },
+      };
+      const test = loopOpHarness([source], {}, {
+        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          loopClips: [{ ...source, motion: { deformation: 0, position: 0 } }],
+        })),
+      });
+      await test.controller.openLoopEdit('L1');
+      test.controller.repeatText.value = '5';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.controller.phase.value).toBe('failed');
+    });
+
+    it('rejects the commit when the acknowledgement drops photoWiggle', async () => {
+      const source: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 3),
+        railKind: 'reveal',
+        photoWiggle: true,
+      };
+      const test = loopOpHarness([source], {}, {
+        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          loopClips: [{ ...source, photoWiggle: false }],
         })),
       });
       await test.controller.openLoopEdit('L1');

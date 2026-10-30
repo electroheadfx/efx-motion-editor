@@ -97,17 +97,24 @@ export function drawAquarelleSheetPose(
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
   }
+  // The pivot must move BOTH operands: the translate target AND the draw origin.
+  // Translate alone leaves the frame drawn about its own centre, so the image
+  // keeps the constant offset sR(pivot − frame centre) — the whole composite
+  // would jump by the placed photo's offset. Drawing at −pivot makes the
+  // mapping pivot + (pose.center − frame/2) + sR(p − pivot): identical to the
+  // no-pivot path when rotation/scale are 0, and a true pivot rotation otherwise.
+  let drawX = -width / 2;
+  let drawY = -height / 2;
   if (pivot) {
-    // The pose centre is already the posed frame centre; shifting it by
-    // (pivot − frame centre) keeps the exact rotate/scale/drawImage sequence
-    // and only moves the origin. Never re-derive the no-pivot operand.
     context.translate(pivot.x + pose.centerX - width / 2, pivot.y + pose.centerY - height / 2);
+    drawX = -pivot.x;
+    drawY = -pivot.y;
   } else {
     context.translate(pose.centerX, pose.centerY);
   }
   context.rotate(pose.rotation);
   context.scale(pose.scale, pose.scale);
-  context.drawImage(frame, -width / 2, -height / 2, width, height);
+  context.drawImage(frame, drawX, drawY, width, height);
   return output;
 }
 
