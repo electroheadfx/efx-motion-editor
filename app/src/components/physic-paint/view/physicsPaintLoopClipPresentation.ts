@@ -78,6 +78,12 @@ export interface PhysicsPaintLoopClipPresentation {
   readonly freshnessLine: string | null;
   /** The reveal rail's Replay disabled reason (D-24), null when Replay can run. */
   readonly replayDisabledReason: string | null;
+  /** 261030-ig0: the rail was created with "Save script on each key" (off by default). */
+  readonly keyScriptEdits: boolean;
+  /** 261030-ig0: how many keys the rail's source cycle has (the key-edit list). */
+  readonly sourceKeyCount: number;
+  /** 261030-ig0: the slots that carry a per-key override, ascending. */
+  readonly editedKeySlots: readonly number[];
   readonly lifecycle: PhysicsPaintGroupLifecycle;
   readonly statusLabel: string;
   readonly synchronizationDot: PhysicsPaintGroupSynchronizationDot | null;
@@ -189,6 +195,11 @@ export function projectPhysicsPaintLoopClipPresentation(
     ...(interruptionTooltipLine ? [interruptionTooltipLine] : []),
     ...(fragmentLabel ? [fragmentLabel] : []),
   ];
+  // 261030-ig0: the per-key affordance facts. A rail that did not opt in
+  // reports `false`/`0`/`[]` so no key-edit surface is ever rendered for it.
+  const keyScriptEdits = clip?.keyScriptEdits === true;
+  const sourceKeyCount = clip?.sourceKeyIds.length ?? 0;
+  const editedKeySlots = Object.freeze(clip?.keyScriptOverrides?.map((override) => override.slot) ?? []);
   const accessibleName = fragmentLabel && fragment
     ? `${displayName}. Fragment ${fragment.index} of ${fragment.count}, frames ${fragment.start} through ${fragment.endExclusive - 1}. ${groupTypeLabel}. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${replayDisabledReason ? ` ${replayDisabledReason}` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`
     : `${displayName}. ${groupTypeLabel}. ${cycleLabel}. Effective ${effectiveDuration} frames. ${statusLabel}${freshnessLine ? ` ${freshnessLine}.` : ''}${replayDisabledReason ? ` ${replayDisabledReason}` : ''}${linkedDescription ? ` ${linkedDescription}` : ''}`;
@@ -212,6 +223,9 @@ export function projectPhysicsPaintLoopClipPresentation(
     overrideColor,
     freshnessLine,
     replayDisabledReason,
+    keyScriptEdits,
+    sourceKeyCount,
+    editedKeySlots,
     lifecycle,
     statusLabel,
     synchronizationDot,

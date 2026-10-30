@@ -71,15 +71,25 @@ export function PhysicsPaintPlayScriptDialog({
   const dialogMode = playScript.dialogMode.value;
   const loopEdit = dialogMode === 'loop-edit';
   const sourceEdit = dialogMode === 'source-edit';
+  // 261030-ig0 (D-02): ONE key of an opted-in rail. Timing/repeat are rail-owned
+  // here — the surface must never present an input this mode silently ignores.
+  const keyEdit = dialogMode === 'key-edit';
+  const keyEditSlot = playScript.keyEditSlot.value;
+  const keyEditFrame = playScript.keyEditFrame.value;
   const editTarget = playScript.loopEditTarget.value;
   const regenerateImpact = sourceEdit ? playScript.regenerateImpact.value : null;
   const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
   const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
+  // 261030-ig0: key-edit must never focus a disabled Timing input.
+  const keyEditConfirmRef = useRef<HTMLButtonElement>(null);
   const restoreRegenerateTriggerFocus = useRef(false);
   // 52-05 (G-52-3): the tab strip is an apply-mode creation surface — edit and
   // regenerate modes keep their existing single-surface layout.
-  const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact;
-  const revealTab = tabsVisible && playScript.railTab.value === 'reveal';
+  // The rail kind is fixed once the rail exists, so key-edit never shows the strip.
+  const tabsVisible = !loopEdit && !sourceEdit && !keyEdit && !regenerateImpact;
+  // 261030-ig0: NOT gated on `tabsVisible` — a key edit on a reveal rail still
+  // selects the reveal Timing + settings cards while the strip stays hidden.
+  const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit;
 
   useEffect(() => {
     // Focus follows the visible dialog state: G3a starts on its non-destructive
@@ -91,7 +101,8 @@ export function PhysicsPaintPlayScriptDialog({
           restoreRegenerateTriggerFocus.current = false;
           regenerateTriggerRef.current?.focus();
         } else repeatInputRef.current?.focus();
-      } else if (playScript.railTab.value === 'reveal') revealInputRef.current?.focus();
+      } else if (keyEdit) keyEditConfirmRef.current?.focus();
+      else if (playScript.railTab.value === 'reveal') revealInputRef.current?.focus();
       else inputRef.current?.focus();
     } else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
@@ -158,7 +169,9 @@ export function PhysicsPaintPlayScriptDialog({
   const activeMode = activeModeOptions.find((option) => option.value === playScript.mode.value) ?? activeModeOptions[0];
 
   const selectMode = (value: RotoPlayScriptMode) => {
-    if (loopEdit) return; // D-01: source fields are locked in loop-edit mode
+    // D-01: source fields are locked in loop-edit; 261030-ig0: the rail kind is
+    // fixed in key-edit too (updateRailKey always bakes with rail.mode).
+    if (loopEdit || keyEdit) return;
     playScript.mode.value = value;
   };
 
@@ -167,7 +180,7 @@ export function PhysicsPaintPlayScriptDialog({
   const onModeKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
-    if (playScript.canCancel.value || loopEdit) return;
+    if (playScript.canCancel.value || loopEdit || keyEdit) return;
     const currentIndex = activeModeOptions.findIndex((option) => option.value === playScript.mode.value);
     const delta = event.key === 'ArrowRight' ? 1 : -1;
     const nextIndex = (currentIndex + delta + activeModeOptions.length) % activeModeOptions.length;
@@ -201,7 +214,9 @@ export function PhysicsPaintPlayScriptDialog({
   // 43-06 S4 (D-05): the apply-time Link/Create choice renders only when the
   // controller reports an identical source cycle — a Paint Rail concept only
   // (the Reveal tab always bakes a fresh cycle through the reveal mutation).
-  const identicalCycle = !loopEdit && !sourceEdit && !revealTab ? playScript.identicalSourceCycle.value : null;
+  // 261030-ig0: linking is a creation choice — a key edit never rewrites
+  // sourceKeyIds, so no Source cycle card renders in key-edit.
+  const identicalCycle = !loopEdit && !sourceEdit && !keyEdit && !revealTab ? playScript.identicalSourceCycle.value : null;
   const activeSourceChoice = PLAY_SCRIPT_SOURCE_CHOICES.find((option) => option.value === playScript.linkChoice.value) ?? PLAY_SCRIPT_SOURCE_CHOICES[0];
 
   // Same APG radio pattern as Mode/Color for the S4 segmented control.
@@ -377,8 +392,10 @@ export function PhysicsPaintPlayScriptDialog({
           return;
         }
         if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value) {
-          const tabValidationError = revealTab ? playScript.revealValidationError.value : playScript.validationError.value;
-          if (tabValidationError || playScript.repeatError.value) return;
+          // 261030-ig0: a key edit never touches timing/repeat — those inputs are
+          // locked, so their stale validation must not gate Apply Key.
+          const tabValidationError = keyEdit ? null : revealTab ? playScript.revealValidationError.value : playScript.validationError.value;
+          if (tabValidationError || (!keyEdit && playScript.repeatError.value)) return;
           event.preventDefault();
           void playScript.confirm();
         }
@@ -398,16 +415,20 @@ export function PhysicsPaintPlayScriptDialog({
         >
           <strong id="physics-play-script-title">{regenerateImpact
             ? `Regenerate “${regenerateImpact.groupName}”?`
-            : loopEdit
-              ? 'Edit Rail'
-              : sourceEdit
-                ? 'Edit Source Cycle'
-                : 'Create Rail'}</strong>
+            : keyEdit
+              ? `Edit Key ${(keyEditSlot ?? 0) + 1}${editTarget ? ` of ${editTarget.sourceKeyIds.length}` : ''}`
+              : loopEdit
+                ? 'Edit Rail'
+                : sourceEdit
+                  ? 'Edit Source Cycle'
+                  : 'Create Rail'}</strong>
           {regenerateImpact
             ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
-            : loopEdit && editTarget
-              ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
-              : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+            : keyEdit
+              ? <span class="physics-paint-play-script-header-range">{keyEditFrame !== null ? `F${keyEditFrame}` : ''}</span>
+              : loopEdit && editTarget
+                ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
+                : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
         </div>
         <div class="physics-paint-play-script-content">
           {regenerateImpact ? (
@@ -481,7 +502,7 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
-          <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
+          <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit || keyEdit ? ' physics-paint-play-script-locked' : ''}`}>
             <span class="physics-paint-play-script-card-title">Rail Type</span>
             <div
               class="physics-paint-play-script-mode-group"
@@ -498,10 +519,10 @@ export function PhysicsPaintPlayScriptDialog({
                     class="physics-paint-play-script-mode-option"
                     role="radio"
                     aria-checked={checked}
-                    aria-disabled={busy || loopEdit}
-                    tabIndex={!busy && !loopEdit && checked ? 0 : -1}
+                    aria-disabled={busy || loopEdit || keyEdit}
+                    tabIndex={!busy && !loopEdit && !keyEdit && checked ? 0 : -1}
                     onClick={(event) => {
-                      if (playScript.canCancel.value || loopEdit) return;
+                      if (playScript.canCancel.value || loopEdit || keyEdit) return;
                       selectMode(option.value);
                       (event.currentTarget as HTMLElement | null)?.focus?.();
                     }}
@@ -538,9 +559,9 @@ export function PhysicsPaintPlayScriptDialog({
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
               the same mutation law as the Paint Rail (D-08). No Max toggle. */}
           {revealTab ? (
-          <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
+          <div class={`physics-paint-play-script-card physics-paint-play-script-card-timing${keyEdit ? ' physics-paint-play-script-locked' : ''}`}>
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <div class="physics-paint-play-script-field">
+            <div class={`physics-paint-play-script-field${keyEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <label for="physics-play-script-reveal-count">Frames</label>
               <div class="physics-paint-play-script-timing-row">
                 <input
@@ -548,7 +569,7 @@ export function PhysicsPaintPlayScriptDialog({
                   id="physics-play-script-reveal-count"
                   inputMode="numeric"
                   value={playScript.revealCountText.value}
-                  disabled={busy}
+                  disabled={busy || keyEdit}
                   aria-invalid={Boolean(playScript.revealValidationError.value)}
                   aria-describedby="physics-play-script-reveal-help physics-play-script-reveal-error"
                   onInput={(event) => {
@@ -567,7 +588,7 @@ export function PhysicsPaintPlayScriptDialog({
                   id="physics-play-script-repeat"
                   inputMode="numeric"
                   value={playScript.repeatText.value}
-                  disabled={busy || playScript.infinity.value}
+                  disabled={busy || playScript.infinity.value || keyEdit}
                   aria-invalid={Boolean(playScript.repeatError.value)}
                   aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
                   onInput={(event) => {
@@ -579,7 +600,7 @@ export function PhysicsPaintPlayScriptDialog({
                     id="physics-play-script-infinity"
                     type="checkbox"
                     checked={playScript.infinity.value}
-                    disabled={busy}
+                    disabled={busy || keyEdit}
                     onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
                   />
                   Infinity
@@ -592,7 +613,7 @@ export function PhysicsPaintPlayScriptDialog({
           ) : (
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
+            <div class={`physics-paint-play-script-field${loopEdit || keyEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
               <div class="physics-paint-play-script-timing-row">
                 <input
@@ -600,7 +621,7 @@ export function PhysicsPaintPlayScriptDialog({
                   id="physics-play-script-count"
                   inputMode="numeric"
                   value={playScript.countText.value}
-                  disabled={busy || loopEdit || playScript.max.value}
+                  disabled={busy || loopEdit || keyEdit || playScript.max.value}
                   aria-invalid={Boolean(playScript.validationError.value)}
                   aria-describedby="physics-play-script-help physics-play-script-error"
                   onInput={(event) => {
@@ -612,7 +633,7 @@ export function PhysicsPaintPlayScriptDialog({
                     id="physics-play-script-max"
                     type="checkbox"
                     checked={playScript.max.value}
-                    disabled={busy || loopEdit}
+                    disabled={busy || loopEdit || keyEdit}
                     onChange={(event) => playScript.setMax((event.currentTarget as HTMLInputElement).checked)}
                   />
                   Max
@@ -629,7 +650,7 @@ export function PhysicsPaintPlayScriptDialog({
                   id="physics-play-script-repeat"
                   inputMode="numeric"
                   value={playScript.repeatText.value}
-                  disabled={busy || playScript.infinity.value}
+                  disabled={busy || playScript.infinity.value || keyEdit}
                   aria-invalid={Boolean(playScript.repeatError.value)}
                   aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
                   onInput={(event) => {
@@ -641,7 +662,7 @@ export function PhysicsPaintPlayScriptDialog({
                     id="physics-play-script-infinity"
                     type="checkbox"
                     checked={playScript.infinity.value}
-                    disabled={busy}
+                    disabled={busy || keyEdit}
                     onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
                   />
                   Infinity
@@ -805,8 +826,15 @@ export function PhysicsPaintPlayScriptDialog({
                   : 'Regenerate Rail'}
               </button>
             </>) : (<>
-              <button type="button" class="physics-paint-play-script-button physics-paint-play-script-button-ghost" onClick={playScript.cancel}>{playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}</button>
-              {loopEdit && !playScript.canCancel.value ? (
+              <button
+                type="button"
+                class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                disabled={keyEdit ? busy : false}
+                onClick={playScript.cancel}
+              >
+                {keyEdit ? 'Cancel' : playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}
+              </button>
+              {loopEdit && !keyEdit && !playScript.canCancel.value ? (
                 <button
                   ref={regenerateTriggerRef}
                   type="button"
@@ -821,14 +849,19 @@ export function PhysicsPaintPlayScriptDialog({
               ) : null}
               {!playScript.canCancel.value ? (
                 <button
+                  ref={keyEdit ? keyEditConfirmRef : undefined}
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-primary"
-                  disabled={(revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value)}
+                  disabled={keyEdit
+                    ? busy
+                    : (revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value)}
                   onClick={() => { void playScript.confirm(); }}
                 >
-                  {loopEdit
-                    ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
-                    : sourceEdit ? 'Regenerate source cycle' : 'Create Rail'}
+                  {keyEdit
+                    ? 'Apply Key'
+                    : loopEdit
+                      ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
+                      : sourceEdit ? 'Regenerate source cycle' : 'Create Rail'}
                 </button>
               ) : null}
             </>)}

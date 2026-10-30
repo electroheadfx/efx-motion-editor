@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, KeyRound, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
@@ -23,6 +24,12 @@ export interface PhysicsPaintScriptsPanelProps {
     onGoToGroup: () => void;
   } | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
+  /**
+   * 261030-ig0: reopen the Create Rail dialog for ONE key of an opted-in rail.
+   * OPTIONAL on purpose — a harness without the handler renders no key-edit
+   * control at all (never a dead one).
+   */
+  onOpenRailKeyEdit?: (loopId: string, slot: number) => Promise<unknown>;
   onCloseLoopClip: () => void;
   onSave: () => void;
   onActivateRow: (id: string) => void;
@@ -38,6 +45,7 @@ export function PhysicsPaintScriptsPanel({
   selectedLoopClip = null,
   linkedGroupNavigation = null,
   onOpenLoopEdit,
+  onOpenRailKeyEdit,
   onCloseLoopClip,
   onSave,
   onActivateRow,
@@ -70,6 +78,11 @@ export function PhysicsPaintScriptsPanel({
   const confirmation = library.deleteConfirmation.value;
   const deleteError = library.deleteError.value;
   const referenceImpact = confirmation?.referenceImpact ?? null;
+  // 261030-ig0: the compact key list is local UI state (a signal in a ref —
+  // `useSignal` would add a second hook the manual-hook harness cannot
+  // stub). The list is derived from the inspected rail every render, so a
+  // selection change never shows a stale key set.
+  const keyEditOpen = useRef(signal(false));
   const toolbarRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
@@ -135,6 +148,15 @@ export function PhysicsPaintScriptsPanel({
       <div class="physics-paint-scripts-panel physics-paint-loop-clip-panel" role="tabpanel" aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}>
         <div class="physics-paint-loop-clip-inspector-top-actions">
           <IconButton buttonRef={playButtonRef} label={`Edit Rail — ${selectedLoopClip.displayName}`} title={`Edit Rail — ${selectedLoopClip.displayName}`} onClick={() => { void onOpenLoopEdit(selectedLoopClip.loopId); }} className="physics-paint-loop-clip-nav-compact-button primary labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><Pencil size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Rail</span></IconButton>
+          {selectedLoopClip.keyScriptEdits && onOpenRailKeyEdit ? (
+            <IconButton
+              label={`Edit Keys — ${selectedLoopClip.displayName}`}
+              title={`Edit Keys — ${selectedLoopClip.displayName}`}
+              onClick={() => { keyEditOpen.current.value = !keyEditOpen.current.value; }}
+              className="physics-paint-loop-clip-nav-compact-button primary labeled"
+              wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"
+            ><KeyRound size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Keys</span></IconButton>
+          ) : null}
           {linkedGroupNavigation && linkedGroupNavigation.total > 1 ? (
             <>
               <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Previous Rail</span></IconButton>
@@ -153,6 +175,24 @@ export function PhysicsPaintScriptsPanel({
           <div><dt>Rail Type</dt><dd>{selectedLoopClip.modeLabel}</dd></div>
           <div><dt>Status</dt><dd>{selectedLoopClip.statusLabel}</dd></div>
         </dl>
+        {selectedLoopClip.keyScriptEdits && onOpenRailKeyEdit && keyEditOpen.current.value ? (
+          <section class="physics-paint-loop-clip-key-edit-list" aria-label="Edit Rail keys">
+            <strong>Keys — {selectedLoopClip.sourceKeyCount}</strong>
+            {Array.from({ length: selectedLoopClip.sourceKeyCount }, (_unused, slot) => (
+              <button
+                key={slot}
+                type="button"
+                class="physics-paint-loop-clip-inspector-action physics-paint-loop-clip-key-edit-button"
+                onClick={() => { void onOpenRailKeyEdit(selectedLoopClip.loopId, slot); }}
+              >
+                <span>Key {slot + 1}</span>
+                {selectedLoopClip.editedKeySlots.includes(slot) ? (
+                  <span class="physics-paint-loop-clip-key-edit-edited">Edited</span>
+                ) : null}
+              </button>
+            ))}
+          </section>
+        ) : null}
         {linkedGroupNavigation ? (
           <section class="physics-paint-loop-clip-linked-navigation" aria-label="Linked Rail navigation">
             <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>

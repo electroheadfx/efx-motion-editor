@@ -20,7 +20,13 @@ import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDoc
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { compactPhysicPaintRotoMotion, createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoKeyScriptOverride, PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+// 261030-ig0 (D-02): the reveal single-key re-bake renders ONE key through the
+// same renderer entry point as the span bake. Exactly one named import: the
+// reveal suite mocks this module with only `renderRotoRevealFrames`, so any
+// other helper imported from it would resolve to undefined there.
+import { renderRotoRevealFrames } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
+import { getPhysicsPaintWorkingSize } from '../components/physic-paint/engine/physicsPaintCanvasSizing';
 // 52.2-06 (D-06/D-07): the serialize seam takes its media authority from the
 // caller (plan 07's save funnel); the store never invents a digest.
 import type { PhysicPaintRotoMediaReferenceResolver } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
@@ -593,7 +599,10 @@ export type BackgroundEditOperationKind =
   | 'reveal-create'
   | 'reveal-replay'
   | 'reveal-delete'
-  | 'reveal-span';
+  | 'reveal-span'
+  // 261030-ig0 (D-02): one key of an opted-in reveal rail re-baked alone — the
+  // store is the branch's single committer, so this one entry is the whole undo.
+  | 'reveal-key-edit';
 
 /**
  * Acceptance descriptor emitted by every committed Background op (BKG-08).
@@ -1774,6 +1783,171 @@ export async function replayRevealRail(
     descriptor: {
       operationId: crypto.randomUUID(),
       operationKind: 'reveal-replay',
+      before: document,
+      after: next,
+    },
+  };
+}
+
+/**
+ * 261030-ig0 (D-02): re-bake EXACTLY ONE key of an opted-in reveal rail.
+ *
+ * This is that edit's SINGLE COMMITTER: it renders the prefix bake, replaces
+ * one record (preserving the target `keyId`), writes the rail's per-key
+ * override, rebuilds the document and returns the one `'reveal-key-edit'`
+ * descriptor. Nothing after it may commit again — a second commit would
+ * double-write the record set and mint a second undo entry.
+ *
+ * Fail-closed surfaces (all `'bake-failed'`, nothing written): a rail that is
+ * not opted in, a slot/key mismatch, a missing frame-aligned reference (the
+ * same D-15 law as `commitRevealBake`), or a rendered prefix that does not
+ * contain the target destination (a relink can move a source key away from
+ * `placementStart + slot`; the store never writes an undefined frame).
+ */
+export async function rebakeRevealRailKey(
+  layerId: string,
+  loopId: string,
+  input: {
+    slot: number;
+    targetKeyId: string;
+    targetAppFrame: number;
+    motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    overrideColor: string | null;
+    colorize: boolean;
+    colorizeMix: number;
+    photoWiggle: boolean;
+    /** The PROJECT canvas dims the reference transform is authored against. */
+    projectSize: Readonly<{ width: number; height: number }>;
+    aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+    signal?: AbortSignal;
+    onProgress?: (completed: number, total: number) => void;
+  },
+): Promise<RevealRailMutationResult> {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (document.photoReference === null) return { ok: false, reason: 'no-photo-reference' };
+  const rail = _findRevealRail(document, layerId, loopId);
+  if (!rail) return { ok: false, reason: 'no-track' };
+  if (!_revealScriptLoader) return { ok: false, reason: 'script-loader-unavailable' };
+  const script = await _revealScriptLoader(rail.clip.scriptId ?? '');
+  if (!script) return { ok: false, reason: 'script-not-found' };
+  // The persisted override collection is legal ONLY on an opted-in rail (the
+  // document validator rejects any other combination), so an un-opted rail
+  // fails closed before a pixel is rendered.
+  if (rail.clip.keyScriptEdits !== true) return { ok: false, reason: 'bake-failed' };
+  if (!Number.isInteger(input.slot) || input.slot < 0 || input.slot >= rail.clip.sourceKeyIds.length) {
+    return { ok: false, reason: 'bake-failed' };
+  }
+  if (rail.clip.sourceKeyIds[input.slot] !== input.targetKeyId) return { ok: false, reason: 'bake-failed' };
+
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
+  const canonicalStart = rail.clip.placementStart;
+  // `renderRotoRevealFrames` derives every destination as start + frameIndex,
+  // so the accepted O(k) prefix bake renders frames [start, start + slot] and
+  // the target is the LAST one (a static bake poses the same settled wash).
+  const frameCount = input.slot + 1;
+  if (canonicalStart + frameCount > capacity) return { ok: false, reason: 'bake-failed' };
+
+  const projectSize = input.projectSize;
+  const size = getPhysicsPaintWorkingSize(projectSize.width, projectSize.height);
+  const referenceZoom = size.width / projectSize.width;
+  const track = document.photoReference;
+  const bytesByAppFrame = new Map<number, Uint8Array>();
+  for (let index = 0; index < frameCount; index += 1) {
+    const appFrame = canonicalStart + index;
+    const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, appFrame);
+    if (verdict === null) return { ok: false, reason: 'bake-failed' };
+    bytesByAppFrame.set(appFrame, verdict.bytes);
+  }
+
+  let staged;
+  try {
+    staged = await renderRotoRevealFrames({
+      script,
+      frameCount,
+      canonicalStart,
+      motion: input.motion,
+      mode: rail.clip.mode,
+      colorize: input.colorize,
+      colorizeMix: normalizeRevealColorizeMix(input.colorizeMix),
+      photoWiggle: input.photoWiggle,
+      size,
+      reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
+      aquarellePaper: input.aquarellePaper,
+      signal: input.signal ?? new AbortController().signal,
+      onProgress: input.onProgress,
+    });
+  } catch {
+    return { ok: false, reason: 'bake-failed' };
+  }
+  const rendered = staged.find((frame) => frame.appFrame === input.targetAppFrame);
+  if (!rendered) return { ok: false, reason: 'bake-failed' };
+
+  // Replace ONLY the target record, preserving its identity: every sibling key
+  // stays byte-identical and `incomingInterpolationBreakKeyIds` is untouched (a
+  // mid-rail key must never become a break owner — T-261030-ig0-03).
+  const existingRecords = physicPaintStore.getRotoRealKeyRecords(layerId, rail.trackId);
+  const existingTarget = existingRecords.find((record) => record.keyId === input.targetKeyId);
+  if (!existingTarget || existingTarget.appFrame !== input.targetAppFrame) return { ok: false, reason: 'bake-failed' };
+  const replacement: PhysicPaintRotoRealKeyRecord = {
+    kind: 'real-key',
+    keyId: input.targetKeyId,
+    appFrame: input.targetAppFrame,
+    payload: {
+      frameIndex: rendered.frameIndex,
+      appFrame: input.targetAppFrame,
+      bytes: rendered.bytes,
+      ...(rendered.width !== undefined ? { width: rendered.width } : {}),
+      ...(rendered.height !== undefined ? { height: rendered.height } : {}),
+    },
+  };
+  const merged = [...existingRecords.filter((record) => record.appFrame !== input.targetAppFrame), replacement];
+  const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
+  // Records FIRST: the override members are not canonical terms, so the loop
+  // write below is only effective because this replacement already moved the
+  // revision (replaceRotoPhysicalLoopClips no-ops on an unchanged revision).
+  const commitResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, merged, interpolation, capacity);
+  if (!commitResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  const override: PhysicPaintRotoKeyScriptOverride = {
+    slot: input.slot,
+    motion: compactPhysicPaintRotoMotion(input.motion),
+    overrideColor: input.overrideColor,
+    ...(input.colorize ? { colorize: true as const, colorizeMix: normalizeRevealColorizeMix(input.colorizeMix) } : {}),
+    ...(input.photoWiggle ? { photoWiggle: true as const } : {}),
+  };
+  const existingOverrides = rail.clip.keyScriptOverrides ?? [];
+  const nextOverrides = Object.freeze(
+    [...existingOverrides.filter((candidate) => candidate.slot !== input.slot), override]
+      .sort((left, right) => left.slot - right.slot),
+  );
+  const updatedClip: PhysicPaintRotoLoopClip = {
+    ...rail.clip,
+    keyScriptOverrides: nextOverrides,
+    ...(rail.clip.syncState !== undefined ? { syncState: 'modified' as const } : {}),
+  };
+  const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
+    layerId,
+    rail.trackId,
+    currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip)),
+  );
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
+  const candidate: EfxPaintDocument = {
+    ...document,
+    tracks: document.tracks.map((current) =>
+      current.id === rail.trackId ? { ...current, ..._projectTrackRotoPhysical(layerId, rail.trackId) } : current,
+    ),
+  };
+  const next: EfxPaintDocument = { ...candidate, documentRevision: document.documentRevision + 1 };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return {
+    ok: true,
+    descriptor: {
+      operationId: crypto.randomUUID(),
+      operationKind: 'reveal-key-edit',
       before: document,
       after: next,
     },
