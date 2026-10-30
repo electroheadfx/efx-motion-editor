@@ -475,6 +475,9 @@ function buildDuplicatedLoopClip(
     ...(clip.photoWiggle !== undefined ? { photoWiggle: clip.photoWiggle } : {}),
     // An opted-in rail keeps its per-key option verbatim.
     ...(clip.keyScriptEdits !== undefined ? { keyScriptEdits: clip.keyScriptEdits } : {}),
+    // 261030-v1t: a duplicated rail keeps its per-frame paint-seed variation —
+    // dropping the flag would silently re-bake the pasted rail OFF.
+    ...(clip.paintSeedVariation !== undefined ? { paintSeedVariation: clip.paintSeedVariation } : {}),
     ...(clip.syncState !== undefined
       ? {
           syncState: clip.syncState,

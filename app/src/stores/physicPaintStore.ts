@@ -1995,6 +1995,8 @@ export interface RevealBakeInput {
   colorizeMix?: number;
   /** 261030-ey9: pose the finished composite as one rigid unit (Photo wiggle). */
   photoWiggle?: boolean;
+  /** 261030-v1t: one salted from-scratch replay per output frame (off = today). */
+  paintSeedVariation?: boolean;
   /**
    * The PROJECT canvas dims the reference transform and the Studio canvas are
    * authored against. Carried explicitly: Reveal creation runs in the Studio
@@ -2065,6 +2067,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       colorize: input.colorize,
       colorizeMix: input.colorizeMix,
       photoWiggle: input.photoWiggle,
+      paintSeedVariation: input.paintSeedVariation,
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,

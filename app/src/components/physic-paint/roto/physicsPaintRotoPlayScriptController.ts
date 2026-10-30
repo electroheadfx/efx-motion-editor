@@ -76,11 +76,15 @@ export interface RotoRevealRailCreateInput {
   /** 261030-ey9: move photo + wash as one rigid unit per held frame. */
   readonly photoWiggle: boolean;
   /**
-   * 261030-ig0: save each key's script settings. The ONLY optional creation
-   * input here (photoWiggle is required) — every existing caller and harness
-   * omits it, absent meaning off.
+   * 261030-ig0: save each key's script settings. Optional so every existing
+   * caller and harness omits it, absent meaning off.
    */
   readonly keyScriptEdits?: boolean;
+  /**
+   * 261030-v1t: one salted from-scratch replay per output frame. Optional like
+   * keyScriptEdits; absent means off (today's reveal pixels exactly).
+   */
+  readonly paintSeedVariation?: boolean;
   readonly signal: AbortSignal;
   readonly onProgress?: (completed: number, total: number) => void;
 }
@@ -138,6 +142,9 @@ export interface RotoPlayScriptRegenerateImpact {
     motion: { readonly deformation: number; readonly position: number; readonly rotation?: number; readonly scale?: number };
     overrideColor: string | null;
     sourceKeyIds: readonly string[];
+    /** 261030-v1t: the Group's creation flag, restored by Regenerate so the
+     *  re-bake reproduces the accepted pixels. */
+    paintSeedVariation: boolean;
   }>;
 }
 
@@ -209,6 +216,9 @@ export interface RotoPlayScriptSourceCycleMatchInput {
     readonly scale?: number;
   };
   readonly overrideColor: string | null;
+  /** 261030-v1t: the draft per-frame paint-seed variation — a cycle only links
+   *  to one baked with the same flag (different texture = different content). */
+  readonly paintSeedVariation: boolean;
   readonly start: number;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
@@ -380,6 +390,11 @@ export interface RotoPlayScriptController {
   keyScriptEdits: Signal<boolean>;
   /** Write the flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
   setKeyScriptEdits: (enabled: boolean) => void;
+  /* ---- 261030-v1t: per-frame paint-seed variation (creation opt-in) ---- */
+  /** Same strokes, new brush texture each frame (off by default). */
+  paintSeedVariation: Signal<boolean>;
+  /** Write the flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
+  setPaintSeedVariation: (enabled: boolean) => void;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
   requestPhotoReference: () => void;
   openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
@@ -437,6 +452,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // an apply-mode CREATION setting, reset with the rest on every open — never
   // sticky across rails.
   const keyScriptEdits = signal(false);
+  // 261030-v1t: per-frame paint-seed variation defaults OFF (today's pixels
+  // exactly); an apply-mode CREATION setting, reset with the rest on every
+  // open — never sticky across rails.
+  const paintSeedVariation = signal(false);
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -597,6 +616,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       cycleLength,
       motion: dialogMotion.value,
       overrideColor: draftOverride,
+      paintSeedVariation: paintSeedVariation.value,
       start,
       loopClips: currentLoopClips(),
       identities: snapshot.identities,
@@ -623,6 +643,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if ((clip.motion.rotation ?? 0) !== (input.motion.rotation ?? 0)) continue;
       if ((clip.motion.scale ?? 0) !== (input.motion.scale ?? 0)) continue;
       if ((clip.overrideColor ?? null) !== input.overrideColor) continue;
+      // 261030-v1t: a salted cycle and an unsalted cycle are different content
+      // even at identical strokes — linking across the flag would show one
+      // texture for a rail the dialog promised another.
+      if ((clip.paintSeedVariation ?? false) !== input.paintSeedVariation) continue;
       const frames = clip.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId));
       if (frames.some((frame) => frame === undefined)) continue; // never link to an unresolved cycle
       const sourceStart = frames[0]!;
@@ -693,6 +717,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function setKeyScriptEdits(enabled: boolean): void {
     if (keyScriptEdits.peek() === enabled) return;
     keyScriptEdits.value = enabled;
+  }
+
+  /** 261030-v1t: compare-then-write (efx-preact-reactivity rule 3). */
+  function setPaintSeedVariation(enabled: boolean): void {
+    if (paintSeedVariation.peek() === enabled) return;
+    paintSeedVariation.value = enabled;
   }
 
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
@@ -773,6 +803,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261030-ig0: still guarding the same value (rule 3) rather than writing
       // unconditionally — a reset to the default must not churn subscribers.
       if (keyScriptEdits.peek()) keyScriptEdits.value = false;
+      // 261030-v1t: the per-frame paint-seed variation is an apply-mode
+      // creation setting too — reset on every open (never sticky).
+      if (paintSeedVariation.peek()) paintSeedVariation.value = false;
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -1002,6 +1035,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           motion: Object.freeze({ ...group.motion }),
           overrideColor: group.overrideColor ?? null,
           sourceKeyIds: Object.freeze([...group.sourceKeyIds]),
+          // 261030-v1t: the re-bake must reproduce the accepted pixels.
+          paintSeedVariation: group.paintSeedVariation === true,
         }),
       });
       const loopEditSnapshot = ports.getLoopEditSnapshot?.(sourceStart) ?? null;
@@ -1342,8 +1377,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     acceptedGeneration: number;
     motion: { deformation: number; position: number; rotation?: number; scale?: number };
     mode: RotoPlayScriptMode;
+    /** 261030-v1t: one salted from-scratch replay per output frame. */
+    paintSeedVariation?: boolean;
   }): Promise<{ staged: PhysicPaintRotoCacheFrame[]; anchors: readonly AquarelleStrokeFrameAnchor[] }> {
     const { snapshot, count, start, size, acceptedGeneration, mode } = input;
+    // 261030-v1t: ON re-bakes every output frame (static included) with its own
+    // salted replay; OFF keeps today's one-wash static law byte-identically.
+    const paintSeedVariation = input.paintSeedVariation === true;
     // 261017-fz3: paper enters the bake AND its cache key. Single source:
     // ports.getBackgroundMetadata() (never a second paper source).
     const bgMeta = ports.getBackgroundMetadata();
@@ -1373,7 +1413,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261018 progressive Play: emit `count` frames with stroke growth across
       // the span. Static bakes ONE settled wash and derives `count` posed
       // copies below — the complete drawing on every frame (engine-1 static).
-      frameCount: mode === 'static' ? 1 : count,
+      // 261030-v1t: ON bakes `count` from-scratch replays in BOTH modes.
+      frameCount: mode === 'static' && !paintSeedVariation ? 1 : count,
+      ...(paintSeedVariation ? { paintSeedVariation: mode } as const : {}),
+      // 261030-v1t: the ON-only cost evidence line (bake + encode + replays).
+      // OFF attaches nothing and stays silent.
+      ...(paintSeedVariation
+        ? {
+            onDiagnostics: (diagnostics: AquarelleBakeDiagnostics) => {
+              ports.log(`Paint seed variation · ${diagnostics.paintSeedReplays} replays · bake ${Math.round(diagnostics.bakeMs)} ms · encode ${Math.round(diagnostics.encodeMs)} ms · ${diagnostics.simulatedTicks} simulated ticks`);
+            },
+          }
+        : {}),
       // 261026: the cumulative sheet cannot re-warp deposits, so the pose is
       // applied to each CAPTURED progressive frame at its OUTPUT frame — this
       // is what makes already-drawn paint move with the animation.
@@ -1411,34 +1462,46 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // Static holds ONE settled wash across the span. With motion, each
         // output frame gets its own held pose so the complete drawing wiggles
         // frame to frame (engine-1 static parity).
-        const base = result.frames[0];
-        if (!base) throw new Error('Aquarelle static bake produced no frame.');
+        // 261030-v1t: ON, every held frame is its OWN complete salted replay —
+        // the wash is selected per j and decoded/closed per j (never shared).
         // 261030-ey9: rotation-only / scale-only settings are MOVING too.
         const moving = input.motion.deformation !== 0 || input.motion.position !== 0
           || (input.motion.rotation ?? 0) !== 0 || (input.motion.scale ?? 0) !== 0;
         // O3: the band boil stays the deform pass; a rotation/scale-only
         // setting skips it and takes the outer rigid pass alone.
         const bandPass = input.motion.deformation !== 0 || input.motion.position !== 0;
-        let bitmap: ImageBitmap | null = null;
+        // OFF decodes the ONE settled wash exactly once (unchanged path).
+        let sharedBitmap: ImageBitmap | null = null;
         try {
-          if (moving) {
-            bitmap = await createImageBitmap(new Blob([base.bytes.slice()], { type: 'image/webp' }));
-          }
           const staged: PhysicPaintRotoCacheFrame[] = [];
           for (let j = 0; j < count; j += 1) {
             if (disposed || generation !== acceptedGeneration) {
               throw new DOMException('Play Script generation cancelled.', 'AbortError');
             }
+            const base = result.frames[paintSeedVariation ? j : 0];
+            if (!base) throw new Error('Aquarelle static bake produced no frame.');
             let bytes = base.bytes;
-            if (bitmap) {
-              const deformed = bandPass
-                ? drawAquarelleSheetDeform(bitmap, size.width, size.height, start + j, input.motion, 'white')
-                : bitmap;
-              bytes = await encodeAquarelleWebpFrame(
-                applyAquarelleSheetRigidWiggle(deformed, size.width, size.height, start + j, input.motion, 'white'),
-                size.width,
-                size.height,
-              );
+            if (moving) {
+              let bitmap: ImageBitmap | null;
+              if (paintSeedVariation) {
+                bitmap = await createImageBitmap(new Blob([base.bytes.slice()], { type: 'image/webp' }));
+              } else {
+                sharedBitmap ??= await createImageBitmap(new Blob([base.bytes.slice()], { type: 'image/webp' }));
+                bitmap = sharedBitmap;
+              }
+              try {
+                const deformed = bandPass
+                  ? drawAquarelleSheetDeform(bitmap, size.width, size.height, start + j, input.motion, 'white')
+                  : bitmap;
+                bytes = await encodeAquarelleWebpFrame(
+                  applyAquarelleSheetRigidWiggle(deformed, size.width, size.height, start + j, input.motion, 'white'),
+                  size.width,
+                  size.height,
+                );
+              } finally {
+                // The per-frame replay bitmap is this frame's alone.
+                if (paintSeedVariation) bitmap.close();
+              }
             }
             staged.push({
               frameIndex: j,
@@ -1455,7 +1518,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           }
           return { staged, anchors };
         } finally {
-          bitmap?.close();
+          sharedBitmap?.close();
         }
       }
       // 261018 progressive Play: frameCount emits exactly `count` frames with
@@ -1518,6 +1581,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         colorize: colorize.peek(),
         colorizeMix: colorizeMix.peek(),
         photoWiggle: photoWiggle.peek(),
+        // 261030-v1t: one salted from-scratch replay per output frame.
+        paintSeedVariation: paintSeedVariation.peek(),
         // The per-key script opt-in is disabled on Reveal rails for now: a
         // reveal bake never records per-key scripts.
         keyScriptEdits: false,
@@ -1609,6 +1674,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const renderOverrideColor = preparedRegenerate
         ? preparedRegenerate.storedSettings.overrideColor
         : resolveOverrideColor();
+      // 261030-v1t: the per-frame paint-seed variation resolves ONCE for the
+      // bake — Regenerate restores the frozen Group fact, legacy Source Edit
+      // uses the edit target's persisted flag, Apply uses the dialog draft.
+      const renderPaintSeedVariation = preparedRegenerate
+        ? preparedRegenerate.storedSettings.paintSeedVariation
+        : isSourceEdit ? editTarget?.paintSeedVariation === true : paintSeedVariation.peek();
       const rotoBackground = { ...ports.getBackgroundMetadata() };
 
       // 261030-np9 (D-01/D-05): the bake is the ONLY anchor source, so a path
@@ -1624,6 +1695,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           cycleLength: count,
           motion,
           overrideColor: renderOverrideColor,
+          paintSeedVariation: renderPaintSeedVariation,
           start,
           loopClips: currentLoopClips(),
           identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
@@ -1643,6 +1715,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           // whenever an identical cycle exists — the opt-in must be written here
           // too or the checkbox would be silently inert on that path.
           ...(keyScriptEdits.peek() ? { keyScriptEdits: true as const } : {}),
+          // 261030-v1t: the link branch is the DEFAULT whenever an identical
+          // cycle exists — the flag must ride here too, or a later Regenerate /
+          // Source Edit of that rail would re-bake OFF pixels.
+          ...(renderPaintSeedVariation ? { paintSeedVariation: true as const } : {}),
           ...(buildNewLoopLifecycle(start, freshMatch.sourceKeyIds.length, linkedRepeat, authority.physicalCapacity) ?? {}),
         };
         const publication = buildLoopOnlyPublication({
@@ -1697,7 +1773,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // with mode 'flush-survives-navigation' (AQUA-07 / D-21). 261027-klx:
       // watercolor is the only engine, so there is no engine-1 fallback — an
       // old Brush envelope never reaches this point (the library refuses it).
-      const baked = await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode });
+      const baked = await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode, paintSeedVariation: renderPaintSeedVariation });
       const staged = baked.staged;
       anchors = baked.anchors;
       assertCurrent(acceptedGeneration);
@@ -1847,6 +1923,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           overrideColor: renderOverrideColor,
           // 261030-ig0 (D-03): the creation opt-in, written ONLY when on.
           ...(keyScriptEdits.peek() ? { keyScriptEdits: true as const } : {}),
+          // 261030-v1t: written ONLY when on — an OFF rail stays byte-identical.
+          ...(renderPaintSeedVariation ? { paintSeedVariation: true as const } : {}),
           ...(buildNewLoopLifecycle(start, cycleKeyIds.length, newLoopRepeat, commitAuthority.physicalCapacity) ?? {}),
         };
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
@@ -1993,6 +2071,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     colorize, colorizeMix, setColorize, setColorizeMix,
     photoWiggle, setPhotoWiggle,
     keyScriptEdits, setKeyScriptEdits,
+    paintSeedVariation, setPaintSeedVariation,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;
@@ -2053,6 +2132,7 @@ function zeroDiagnostics(): AquarelleBakeDiagnostics {
     settleTicks: 0,
     bakeMs: 0,
     encodeMs: 0,
+    paintSeedReplays: 0,
   };
 }
 
@@ -2570,6 +2650,7 @@ function sameLoopClipCollections(
           && (clip.motion.scale ?? 0) === (candidate.motion!.scale ?? 0)))
       && (clip.photoWiggle ?? false) === (candidate.photoWiggle ?? false)
       && (clip.keyScriptEdits ?? false) === (candidate.keyScriptEdits ?? false)
+      && (clip.paintSeedVariation ?? false) === (candidate.paintSeedVariation ?? false)
       && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
   });
 }

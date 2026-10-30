@@ -1539,6 +1539,8 @@ export async function createRevealRail(
     colorizeMix?: number;
     /** 261030-ey9: move photo + wash as one rigid unit per held frame (default off). */
     photoWiggle?: boolean;
+    /** 261030-v1t: same strokes, new brush texture each frame (default off). */
+    paintSeedVariation?: boolean;
     /** 261030-ig0: save each key's script settings (default off). */
     keyScriptEdits?: boolean;
     /**
@@ -1581,6 +1583,9 @@ export async function createRevealRail(
   // 261030-ey9: the wiggle flag resolves ONCE so the bake and the persisted
   // clip can never disagree.
   const revealPhotoWiggle = input.photoWiggle === true;
+  // 261030-v1t: the per-frame paint-seed variation resolves ONCE so the bake
+  // and the persisted clip can never disagree.
+  const revealPaintSeedVariation = input.paintSeedVariation === true;
   // 261030-np9 (D-05): the per-key opt-in resolves ONCE. The bake's PIXELS are
   // identical either way; only the recording (below) is gated on it.
   const revealKeyScriptEdits = input.keyScriptEdits === true;
@@ -1597,6 +1602,7 @@ export async function createRevealRail(
     colorize: revealColorize,
     colorizeMix: revealColorizeMix,
     photoWiggle: revealPhotoWiggle,
+    paintSeedVariation: revealPaintSeedVariation,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     onStrokeFrameAnchors: (next) => { revealAnchors = next; },
@@ -1641,6 +1647,9 @@ export async function createRevealRail(
     ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
     // 261030-ey9: written only when enabled (colorize precedent).
     ...(revealPhotoWiggle ? { photoWiggle: true } : {}),
+    // 261030-v1t: written only when enabled — an untouched reveal rail stays
+    // byte-identical to a pre-quick rail.
+    ...(revealPaintSeedVariation ? { paintSeedVariation: true } : {}),
     // 261030-ig0 (D-03): written only when enabled — an untouched reveal rail
     // stays byte-identical to a pre-quick rail.
     ...(revealKeyScriptEdits ? { keyScriptEdits: true } : {}),
@@ -1758,6 +1767,9 @@ export async function replayRevealRail(
     // 261030-ey9: a replayed rail re-bakes with its persisted Photo wiggle so a
     // reopen + replay reproduces the creation bake.
     photoWiggle: rail.clip.photoWiggle === true,
+    // 261030-v1t: a replayed rail re-bakes with its persisted paint-seed
+    // variation so a reopen + replay reproduces the creation pixels.
+    paintSeedVariation: rail.clip.paintSeedVariation === true,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,

@@ -43,6 +43,15 @@ export interface RotoRevealRenderInput {
    * slider); all values at 0 means no visible motion even when checked.
    */
   photoWiggle?: boolean;
+  /**
+   * 261030-v1t: per-output-frame paint-seed variation. Off (absent/false) is
+   * today's bake. On makes the bake replay the script FROM SCRATCH once per
+   * output frame with the stroke RNG salted by that frame — progressive replays
+   * each growing window, static replays the whole settled drawing — so every
+   * baked key has its own brush texture. The variant is derived from `mode`;
+   * the reveal still masks with the wash alpha and poses per output frame.
+   */
+  paintSeedVariation?: boolean;
   mode?: RotoPlayScriptRenderMode;
   size: Readonly<{ width: number; height: number }>;
   /**
@@ -140,6 +149,9 @@ async function renderRotoRevealFramesAquarelle(
     paperStrength: paper?.grainStrength,
   });
   const isStatic = (input.mode ?? 'progressive') === 'static';
+  // 261030-v1t: ON re-bakes every output frame (static included) with its own
+  // salted from-scratch replay; OFF keeps the one-wash static law.
+  const paintSeedVariation = input.paintSeedVariation === true;
   // 261029-vbp: one resolution for the whole span — 0 is today's op ledger.
   const colorizeMix = resolveRevealColorizeMix(input);
   // The fluid bake reports committed frames as it goes; the composite turn
@@ -169,7 +181,8 @@ async function renderRotoRevealFramesAquarelle(
         height,
       });
     },
-    frameCount: isStatic ? 1 : input.frameCount,
+    frameCount: isStatic && !paintSeedVariation ? 1 : input.frameCount,
+    ...(paintSeedVariation ? { paintSeedVariation: isStatic ? 'static' : 'progressive' } as const : {}),
     ...(input.onStrokeFrameAnchors ? { onStrokeFrameAnchors: input.onStrokeFrameAnchors } : {}),
     // No bake motion: its per-deposit pose is frozen into the cumulative wash.
     // Reveal poses the flattened coverage once per output frame instead.
@@ -186,7 +199,11 @@ async function renderRotoRevealFramesAquarelle(
     }
     const frames = result.frames;
     if (frames.length === 0) throw new Error('Aquarelle reveal bake produced no frames.');
-    if (!isStatic && frames.length !== input.frameCount) throw new Error('Aquarelle reveal bake frame count mismatch.');
+    // ON bakes `input.frameCount` frames in BOTH modes (each held static frame
+    // is a complete replay), so the mismatch guard covers static there too.
+    if ((!isStatic || paintSeedVariation) && frames.length !== input.frameCount) {
+      throw new Error('Aquarelle reveal bake frame count mismatch.');
+    }
     // Decode-once per distinct payload: static mode reuses the single wash for
     // every span frame, and a repeated reference payload shares one decode.
     const washImages = new Map<Uint8Array, HTMLImageElement>();
@@ -199,7 +216,7 @@ async function renderRotoRevealFramesAquarelle(
     for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
       throwIfAborted(input.signal);
       const destination = input.canonicalStart + frameIndex;
-      const washFrame = isStatic ? frames[0]! : frames[frameIndex]!;
+      const washFrame = isStatic && !paintSeedVariation ? frames[0]! : frames[frameIndex]!;
       let coverage = coverageByBytes.get(washFrame.bytes);
       if (coverage === undefined) {
         const washImage = washImages.get(washFrame.bytes) ?? await loadRevealWebpImage(washFrame.bytes);

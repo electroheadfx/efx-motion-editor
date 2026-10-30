@@ -366,6 +366,29 @@ export function PhysicsPaintPlayScriptDialog({
     </div>
   );
 
+  // 261030-v1t: "Same strokes, new brush texture each frame" — every output
+  // frame is re-baked from scratch under a per-frame paint salt. Off keeps the
+  // cumulative-sheet pixels of today exactly. Creation setting only (apply
+  // mode); one card serves both tabs, so only one renders at a time.
+  const paintSeedVariationCard = (
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-paint-seed-variation">
+      <div class="physics-paint-play-script-card-heading">
+        <span class="physics-paint-play-script-card-title">Paint seed variation</span>
+      </div>
+      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-paint-seed-variation">
+        <input
+          id="physics-play-script-paint-seed-variation"
+          type="checkbox"
+          checked={playScript.paintSeedVariation.value}
+          disabled={busy}
+          onChange={(event) => playScript.setPaintSeedVariation((event.currentTarget as HTMLInputElement).checked)}
+        />
+        Vary the brush texture per frame
+      </label>
+      <span class="physics-paint-play-script-hint">Same strokes, new brush texture each frame. Off keeps today's exact pixels.</span>
+    </div>
+  );
+
   return (
     <div
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
@@ -644,6 +667,7 @@ export function PhysicsPaintPlayScriptDialog({
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
             {photoWiggleCard}
+            {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
             {colorizeCard}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
@@ -715,6 +739,7 @@ export function PhysicsPaintPlayScriptDialog({
               </div>
             </div>
             {motionCard}
+            {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           </div>
           {identicalCycle ? (
             <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">

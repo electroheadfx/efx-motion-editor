@@ -341,6 +341,15 @@ export interface PhysicPaintRotoLoopClip {
    * re-bake that changes the key bytes, exactly like `colorize`/`photoWiggle`.
    */
   readonly keyScriptEdits?: boolean;
+  /**
+   * 261030-v1t: the per-frame paint-seed variation opt-in ("Same strokes, new
+   * brush texture each frame"). Written ONLY when true (the photoWiggle
+   * precedent), so a rail created with it off is byte-identical to a
+   * pre-quick rail; absent means off. Deliberately EXCLUDED from the canonical
+   * fingerprint — every write accompanies a re-bake that changes the key bytes,
+   * exactly like `colorize`/`photoWiggle`/`keyScriptEdits`.
+   */
+  readonly paintSeedVariation?: boolean;
   /** Durable Group lifecycle facts. Canonical finite Groups always carry all six members. */
   readonly syncState?: 'synchronized' | 'modified';
   readonly provenanceState?: 'attached' | 'detached';
@@ -492,6 +501,8 @@ const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   'photoWiggle',
   // The per-key script-edit opt-in.
   'keyScriptEdits',
+  // 261030-v1t: the per-frame paint-seed variation flag — fail-closed entry.
+  'paintSeedVariation',
   'syncState',
   'provenanceState',
   'phaseOrigin',
@@ -885,6 +896,9 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
   // 261030-ey9: the Photo wiggle flag accepts only a boolean when present; a
   // non-boolean is rejected, never coerced (T-quick-261030-ey9-01).
   if (value.photoWiggle !== undefined && typeof value.photoWiggle !== 'boolean') return false;
+  // 261030-v1t: the per-frame paint-seed variation flag accepts only a boolean
+  // when present; a non-boolean is rejected, never coerced.
+  if (value.paintSeedVariation !== undefined && typeof value.paintSeedVariation !== 'boolean') return false;
   return hasValidPhysicPaintRotoGroupLifecycle(value);
 }
 
@@ -1039,6 +1053,9 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       // The per-key opt-in flag copies verbatim (written only when in effect)
       // — never derived from any other member.
       ...(entry.keyScriptEdits !== undefined ? { keyScriptEdits: entry.keyScriptEdits } : {}),
+      // 261030-v1t: the per-frame paint-seed variation flag copies verbatim
+      // (written only when true) — never derived from any other member.
+      ...(entry.paintSeedVariation !== undefined ? { paintSeedVariation: entry.paintSeedVariation } : {}),
       ...(entry.syncState !== undefined
         ? {
             syncState: entry.syncState,
@@ -1503,6 +1520,10 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
       // would force an identical-ordinal Rust mirror in
       // app/src-tauri/src/services/script_library.rs and move every existing
       // rail's revision.
+      //
+      // 261030-v1t: `paintSeedVariation` is deliberately EXCLUDED for the same
+      // creation-only reason — every write accompanies a re-bake that moves the
+      // key bytes.
       encodeCanonicalString(lifecycle.syncState),
       encodeCanonicalString(lifecycle.provenanceState),
       encodeCanonicalNumber(lifecycle.phaseOrigin),
