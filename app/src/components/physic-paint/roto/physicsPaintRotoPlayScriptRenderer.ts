@@ -23,7 +23,7 @@ export interface RotoRevealRenderInput {
   script: Readonly<RotoPaintScript>;
   frameCount: number;
   canonicalStart: number;
-  motion: Readonly<{ deformation: number; position: number }>;
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
   /**
    * 261029-vbp: tint the revealed photo with the wash pigment. Absent/false
    * means today's output (the photo's own colours, masked by the wash alpha);
@@ -365,7 +365,7 @@ function buildRevealTint(
 function poseRevealedResult(
   masked: HTMLCanvasElement,
   destinationFrame: number,
-  motion: Readonly<{ deformation: number; position: number }>,
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>,
   transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
   zoom: number,
 ): HTMLCanvasElement {
@@ -382,7 +382,7 @@ function poseRevealedResult(
 function poseRevealCoverage(
   coverage: HTMLCanvasElement,
   destinationFrame: number,
-  motion: Readonly<{ deformation: number; position: number }>,
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>,
 ): HTMLCanvasElement {
   const pose = computeAquarelleSheetPose(coverage.width, coverage.height, destinationFrame, motion);
   return pose

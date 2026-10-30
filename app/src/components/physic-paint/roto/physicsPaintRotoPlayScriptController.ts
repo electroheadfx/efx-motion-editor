@@ -11,6 +11,7 @@ import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrar
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   type PhysicPaintRotoKeyIdentity,
@@ -39,7 +40,7 @@ import {
   type AquarelleBakePaper,
 } from '@efxlab/efx-watercolor/bake';
 import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
-import { createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
+import { applyAquarelleSheetRigidWiggle, createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -62,7 +63,7 @@ export interface RotoRevealRailCreateInput {
   /** The repeat law surfaced at creation (D-08) — same semantics as the Paint Rail. */
   readonly repeat: number | 'infinity';
   /** The creation-time motion wiggle feeding the bake (D-09 — both variants). */
-  readonly motion: Readonly<{ deformation: number; position: number }>;
+  readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
   /**
    * 261029-vbp: tint the revealed photo with the wash pigment. The mix is
    * always an integer 0-100 and 100 whenever colorize is on; creation writes
@@ -126,7 +127,7 @@ export interface RotoPlayScriptRegenerateImpact {
   readonly sourceCacheEffects: string;
   readonly storedSettings: Readonly<{
     mode: RotoPlayScriptMode;
-    motion: { readonly deformation: number; readonly position: number };
+    motion: { readonly deformation: number; readonly position: number; readonly rotation?: number; readonly scale?: number };
     overrideColor: string | null;
     sourceKeyIds: readonly string[];
   }>;
@@ -193,7 +194,12 @@ export interface RotoPlayScriptSourceCycleMatchInput {
   readonly scriptId: string;
   readonly mode: RotoPlayScriptMode;
   readonly cycleLength: number;
-  readonly motion: { readonly deformation: number; readonly position: number };
+  readonly motion: {
+    readonly deformation: number;
+    readonly position: number;
+    readonly rotation?: number;
+    readonly scale?: number;
+  };
   readonly overrideColor: string | null;
   readonly start: number;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
@@ -206,7 +212,7 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
    * is stale after an in-place track switch (row click / add / duplicate). */
   getActiveTrackId: (layerId: string) => string;
   getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
-  getMotion: () => { deformation: number; position: number };
+  getMotion: () => { deformation: number; position: number; rotation?: number; scale?: number };
   // D-08R: the ONLY override-color resolution path — reads the live Studio brush color
   // (settings.color; sole writer setBrushColor). Read at confirm time and at the first-open
   // summary compose; the value is never stored dialog-side (D-10/D-18).
@@ -271,7 +277,7 @@ export interface RotoPlayScriptController {
   canonicalStart: ReadonlySignal<number | null>;
   mode: Signal<RotoPlayScriptMode>;
   overrideEnabled: Signal<boolean>;
-  dialogMotion: Signal<{ deformation: number; position: number }>;
+  dialogMotion: Signal<{ deformation: number; position: number; rotation?: number; scale?: number }>;
   repeatText: Signal<string>;
   infinity: Signal<boolean>;
   lastFiniteRepeat: Signal<string>;
@@ -372,7 +378,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
   const overrideEnabled = signal(false);
-  const dialogMotion = signal<{ deformation: number; position: number }>({ deformation: 0, position: 0 });
+  const dialogMotion = signal<{ deformation: number; position: number; rotation?: number; scale?: number }>({ deformation: 0, position: 0 });
   const repeatText = signal('1');
   const infinity = signal(false);
   const lastFiniteRepeat = signal('1');
@@ -576,13 +582,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   function findIdenticalSourceCycle(input: RotoPlayScriptSourceCycleMatchInput): RotoPlayScriptIdenticalSourceCycle | null {
     const frameByKeyId = new Map(input.identities.map((entry) => [entry.keyId, entry.appFrame]));
-    const motionZero = input.motion.deformation === 0 && input.motion.position === 0;
+    // 261030-ey9: ALL FOUR channels classify the cycle — a rotation-only or
+    // scale-only cycle still seeds its held pose by the absolute destination
+    // frame, so it is not identity.
+    const motionZero = input.motion.deformation === 0 && input.motion.position === 0
+      && (input.motion.rotation ?? 0) === 0 && (input.motion.scale ?? 0) === 0;
     for (const clip of input.loopClips) {
       if (clip.scriptId === undefined || !clip.motion) continue; // no provenance → never matches
       if (clip.scriptId !== input.scriptId) continue;
       if (clip.mode !== input.mode) continue;
       if (clip.sourceKeyIds.length !== input.cycleLength) continue;
       if (clip.motion.deformation !== input.motion.deformation || clip.motion.position !== input.motion.position) continue;
+      if ((clip.motion.rotation ?? 0) !== (input.motion.rotation ?? 0)) continue;
+      if ((clip.motion.scale ?? 0) !== (input.motion.scale ?? 0)) continue;
       if ((clip.overrideColor ?? null) !== input.overrideColor) continue;
       const frames = clip.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId));
       if (frames.some((frame) => frame === undefined)) continue; // never link to an unresolved cycle
@@ -1285,7 +1297,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     start: number;
     size: { width: number; height: number };
     acceptedGeneration: number;
-    motion: { deformation: number; position: number };
+    motion: { deformation: number; position: number; rotation?: number; scale?: number };
     mode: RotoPlayScriptMode;
   }): Promise<PhysicPaintRotoCacheFrame[]> {
     const { snapshot, count, start, size, acceptedGeneration, mode } = input;
@@ -1351,7 +1363,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // frame to frame (engine-1 static parity).
         const base = result.frames[0];
         if (!base) throw new Error('Aquarelle static bake produced no frame.');
-        const moving = input.motion.deformation !== 0 || input.motion.position !== 0;
+        // 261030-ey9: rotation-only / scale-only settings are MOVING too.
+        const moving = input.motion.deformation !== 0 || input.motion.position !== 0
+          || (input.motion.rotation ?? 0) !== 0 || (input.motion.scale ?? 0) !== 0;
+        // O3: the band boil stays the deform pass; a rotation/scale-only
+        // setting skips it and takes the outer rigid pass alone.
+        const bandPass = input.motion.deformation !== 0 || input.motion.position !== 0;
         let bitmap: ImageBitmap | null = null;
         try {
           if (moving) {
@@ -1364,8 +1381,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             }
             let bytes = base.bytes;
             if (bitmap) {
+              const deformed = bandPass
+                ? drawAquarelleSheetDeform(bitmap, size.width, size.height, start + j, input.motion, 'white')
+                : bitmap;
               bytes = await encodeAquarelleWebpFrame(
-                drawAquarelleSheetDeform(bitmap, size.width, size.height, start + j, input.motion, 'white'),
+                applyAquarelleSheetRigidWiggle(deformed, size.width, size.height, start + j, input.motion, 'white'),
                 size.width,
                 size.height,
               );
@@ -1561,7 +1581,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           repeat: linkedRepeat,
           mode: renderMode,
           scriptId: selectedId,
-          motion: { ...motion },
+          motion: compactPhysicPaintRotoMotion(motion),
           overrideColor: renderOverrideColor,
           ...(buildNewLoopLifecycle(start, freshMatch.sourceKeyIds.length, linkedRepeat, authority.physicalCapacity) ?? {}),
         };
@@ -1676,7 +1696,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
-          ? { ...clip, sourceKeyIds: Object.freeze([...cycleKeyIds]), mode: renderMode, scriptId: selectedId, motion: { ...motion }, overrideColor: renderOverrideColor }
+          ? { ...clip, sourceKeyIds: Object.freeze([...cycleKeyIds]), mode: renderMode, scriptId: selectedId, motion: compactPhysicPaintRotoMotion(motion), overrideColor: renderOverrideColor }
           : clip));
       } else if (isSourceEdit && editTarget && preparedRegenerate) {
         const acceptedDocument = ports.getPhysicalDocument?.() ?? null;
@@ -1731,7 +1751,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             sourceKeyIds: Object.freeze([...cycleKeyIds]),
             mode: renderMode,
             scriptId: selectedId,
-            motion: { ...motion },
+            motion: compactPhysicPaintRotoMotion(motion),
             overrideColor: renderOverrideColor,
             ...(clip.loopId === editTarget.loopId && draftRepeat !== null ? { repeat: draftRepeat } : {}),
           };
@@ -1747,7 +1767,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           repeat: newLoopRepeat,
           mode: renderMode,
           scriptId: selectedId,
-          motion: { ...motion },
+          motion: compactPhysicPaintRotoMotion(motion),
           overrideColor: renderOverrideColor,
           ...(buildNewLoopLifecycle(start, cycleKeyIds.length, newLoopRepeat, commitAuthority.physicalCapacity) ?? {}),
         };

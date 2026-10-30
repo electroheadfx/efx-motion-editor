@@ -1048,6 +1048,37 @@ describe('referenced Action transaction contracts', () => {
     expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-305-ed764eca');
   });
 
+  it('261030-ey9: a nonzero motion rotation/scale changes the project hash while zero stays byte-identical', () => {
+    const realKeyRecords = [
+      { kind: 'real-key', keyId: 'key-1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const fingerprint = (motion: Record<string, number>) => {
+      const loopClips = [
+        { loopId: 'group-1', placementStart: 0, sourceKeyIds: ['key-1'], repeat: 2, mode: 'progressive' as const, scriptId: 'action-1', motion, overrideColor: null, syncState: 'synchronized' as const, provenanceState: 'attached' as const, phaseOrigin: 0, originalEndExclusive: 2, visibleRanges: [{ start: 0, endExclusive: 2 }], frameOverrides: [] },
+      ];
+      return buildPhysicPaintRotoProjectEquality({
+        capacity: 24,
+        realKeyRecords,
+        groupOverrideRecords: [],
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 18,
+        revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips),
+        loopClips,
+        incomingInterpolationBreakKeyIds: [],
+      });
+    };
+    const base = fingerprint({ deformation: 0, position: 0 });
+    expect(fingerprint({ deformation: 0, position: 0, rotation: 0, scale: 0 })).toBe(base);
+    expect(fingerprint({ deformation: 0, position: 0, rotation: 30, scale: 0 })).not.toBe(base);
+    expect(fingerprint({ deformation: 0, position: 0, rotation: 0, scale: 40 })).not.toBe(base);
+    expect(fingerprint({ deformation: 0, position: 0, rotation: 30, scale: 40 }))
+      .not.toBe(fingerprint({ deformation: 0, position: 0, rotation: 30, scale: 0 }));
+  });
+
   it('distinguishes every durable journal and retained-history result state', () => {
     const request = actionTransactionPrepare();
     const record = { schemaVersion: 1, state: 'prepared', ...request };

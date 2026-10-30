@@ -1985,7 +1985,7 @@ export interface RevealBakeInput {
   script: RotoPaintScript;
   frameCount: number;
   canonicalStart: number;
-  motion: Readonly<{ deformation: number; position: number }>;
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
   mode: 'progressive' | 'static';
   /** 261029-vbp: tint the revealed photo with the wash pigment (absent/false = off). */
   colorize?: boolean;

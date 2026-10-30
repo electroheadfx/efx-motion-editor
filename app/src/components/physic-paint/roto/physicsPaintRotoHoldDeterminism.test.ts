@@ -142,6 +142,24 @@ describe('transformRecordedStrokeForHeldPose determinism (HOLD-02)', () => {
     expect(fingerprint(first)).toBe(fingerprint(second));
   });
 
+  it('261030-ey9: four-channel motion (deformation + position + rotation + scale) stays byte-identical across reruns and a save/reopen', () => {
+    const input = stroke('paint', '#123456', 4, 111);
+    const pose = { destinationSourceFrame: 9, strokeIndex: 1, deformation: 25, position: 40, rotation: 60, scale: 35 };
+    const first = transformRecordedStrokeForHeldPose(input, pose);
+    const second = transformRecordedStrokeForHeldPose(input, pose);
+    expect(fingerprint(first)).toBe(fingerprint(second));
+    expect(first).not.toBe(input);
+    expect(first.pts.some((candidate, index) => candidate.x !== input.pts[index].x || candidate.y !== input.pts[index].y)).toBe(true);
+
+    const reopenedInput = JSON.parse(JSON.stringify(input)) as StudioStroke<TestPayload>;
+    const reopenedPose = JSON.parse(JSON.stringify(pose)) as typeof pose;
+    expect(fingerprint(transformRecordedStrokeForHeldPose(reopenedInput, reopenedPose))).toBe(fingerprint(first));
+    // 2-frame hold applies to the rigid channels too.
+    const at = (destinationSourceFrame: number) => fingerprint(transformRecordedStrokeForHeldPose(input, { ...pose, destinationSourceFrame }));
+    expect(at(1)).toBe(at(0));
+    expect(at(3)).toBe(at(2));
+  });
+
   it('never mutates the input stroke, its points, or its params', () => {
     const input = stroke('paint', '#123456', 4, 111);
     const snapshot = fingerprint(input);

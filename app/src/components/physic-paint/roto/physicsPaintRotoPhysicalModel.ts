@@ -237,6 +237,13 @@ export interface PhysicPaintRotoInterpolationState {
 export interface PhysicPaintRotoScriptMotionSettings {
   readonly deformation: number;
   readonly position: number;
+  /**
+   * 261030-ey9: bounded integer percentages 0-100 (absent reads as 0). They
+   * join the canonical fingerprint ONLY when nonzero, so every pre-existing
+   * record and both golden fixtures keep their exact revision.
+   */
+  readonly rotation?: number;
+  readonly scale?: number;
 }
 
 /**
@@ -380,6 +387,25 @@ export const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO: PhysicPaintRotoScriptMotionSe
 });
 
 /**
+ * 261030-ey9: compact a runtime motion object for PERSISTENCE. A zero
+ * rotation/scale never lands on a Loop Clip record, so the conditional
+ * canonical terms stay byte-identical to every pre-existing document.
+ * Never call this on a bake input — the renderer wants plain numbers.
+ */
+export function compactPhysicPaintRotoMotion(
+  motion: Readonly<PhysicPaintRotoScriptMotionSettings>,
+): PhysicPaintRotoScriptMotionSettings {
+  const rotation = motion.rotation ?? 0;
+  const scale = motion.scale ?? 0;
+  return {
+    deformation: motion.deformation,
+    position: motion.position,
+    ...(rotation !== 0 ? { rotation } : {}),
+    ...(scale !== 0 ? { scale } : {}),
+  };
+}
+
+/**
  * Allocate a fresh stable `keyId` for a new durable real key.
  *
  * Uses the supported runtime's native `crypto.randomUUID()` only. Per D-01,
@@ -436,7 +462,7 @@ export const PHYSIC_PAINT_ROTO_PERSISTED_REAL_KEY_PAYLOAD_KEYS = new Set(['frame
 const PHYSIC_PAINT_ROTO_REAL_KEY_RECORD_KEYS = new Set(['kind', 'keyId', 'appFrame', 'payload']);
 const PHYSIC_PAINT_ROTO_GENERATED_CELL_KEYS = new Set(['kind', 'appFrame', 'leftKeyId', 'rightKeyId']);
 const PHYSIC_PAINT_ROTO_INTERPOLATION_STATE_KEYS = new Set(['enabled', 'mode']);
-const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position']);
+const PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS = new Set(['deformation', 'position', 'rotation', 'scale']);
 const PHYSIC_PAINT_ROTO_PHYSICAL_STATE_KEYS = new Set(['realKeyRecords', 'interpolation', 'scriptMotion']);
 const PHYSIC_PAINT_ROTO_LEGACY_LOOP_CLIP_KEYS = new Set([
   'loopId',
@@ -746,7 +772,9 @@ export function isPhysicPaintRotoInterpolationState(value: unknown): value is Ph
 export function isPhysicPaintRotoScriptMotionSettings(value: unknown): value is PhysicPaintRotoScriptMotionSettings {
   if (!isRecord(value)) return false;
   if (!hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_SCRIPT_MOTION_KEYS)) return false;
-  return isPercentInteger(value.deformation) && isPercentInteger(value.position);
+  return isPercentInteger(value.deformation) && isPercentInteger(value.position)
+    && (value.rotation === undefined || isPercentInteger(value.rotation))
+    && (value.scale === undefined || isPercentInteger(value.scale));
 }
 
 function hasValidPhysicPaintRotoGroupLifecycle(value: Record<string, unknown>): boolean {
@@ -978,7 +1006,14 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       ...(entry.scriptId !== undefined
         ? {
             scriptId: entry.scriptId,
-            motion: Object.freeze({ deformation: entry.motion!.deformation, position: entry.motion!.position }),
+            // 261030-ey9: the rigid channels copy verbatim (both freeze sites
+            // must carry them or the parse-time revision equality throws).
+            motion: Object.freeze({
+              deformation: entry.motion!.deformation,
+              position: entry.motion!.position,
+              ...(entry.motion!.rotation !== undefined ? { rotation: entry.motion!.rotation } : {}),
+              ...(entry.motion!.scale !== undefined ? { scale: entry.motion!.scale } : {}),
+            }),
             overrideColor: entry.overrideColor ?? null,
           }
         : {}),
@@ -1156,6 +1191,8 @@ export function parsePhysicPaintRotoPhysicalState(
   const scriptMotion = Object.freeze<PhysicPaintRotoScriptMotionSettings>({
     deformation: value.scriptMotion.deformation,
     position: value.scriptMotion.position,
+    ...(value.scriptMotion.rotation !== undefined ? { rotation: value.scriptMotion.rotation } : {}),
+    ...(value.scriptMotion.scale !== undefined ? { scale: value.scriptMotion.scale } : {}),
   });
 
   return Object.freeze<PhysicPaintRotoPhysicalState>({
@@ -1387,7 +1424,7 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
       document.groupOverrideRecords,
     ),
     `capacity:${encodeCanonicalNumber(document.capacity)}`,
-    `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}`,
+    `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}${document.scriptMotion.rotation ? encodeCanonicalNumber(document.scriptMotion.rotation) : ''}${document.scriptMotion.scale ? encodeCanonicalNumber(document.scriptMotion.scale) : ''}`,
     `background:${encodeCanonicalBackground(document.background)}`,
     `selection:${document.selectedKeyId === null ? 'null;' : encodeCanonicalString(document.selectedKeyId)}`,
     `cursor:${encodeCanonicalNumber(document.cursorAppFrame)}`,
@@ -1432,6 +1469,10 @@ function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[])
             encodeCanonicalString(clip.scriptId),
             encodeCanonicalNumber(clip.motion!.deformation),
             encodeCanonicalNumber(clip.motion!.position),
+            // 261030-ey9: conditional terms — the Rust encoder appends the
+            // identical pair at the identical ordinal, gated on nonzero.
+            ...(clip.motion!.rotation ? [encodeCanonicalNumber(clip.motion!.rotation)] : []),
+            ...(clip.motion!.scale ? [encodeCanonicalNumber(clip.motion!.scale)] : []),
             encodeCanonicalString(clip.overrideColor ?? ''),
           ]
         : []),

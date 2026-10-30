@@ -409,6 +409,11 @@ function snapshotRecordsEqual(
     if ((left.motion === undefined) !== (right.motion === undefined)) return false;
     if (left.motion && right.motion
       && (left.motion.deformation !== right.motion.deformation || left.motion.position !== right.motion.position)) return false;
+    // 261030-ey9: rotation/scale are durable canonical state — a rigid-only
+    // change is a real edit, not a settlement no-op.
+    if (left.motion && right.motion
+      && ((left.motion.rotation ?? 0) !== (right.motion.rotation ?? 0)
+        || (left.motion.scale ?? 0) !== (right.motion.scale ?? 0))) return false;
     if ((left.overrideColor ?? null) !== (right.overrideColor ?? null)) return false;
     // 261029-vbp: the colorize pair is durable canonical state (persisted
     // both-or-neither) — a differing mix is a real edit, not a settlement no-op.
@@ -539,6 +544,10 @@ function snapshotCanonicalContentEqual(
     if ((l.motion === undefined) !== (r.motion === undefined)) return false;
     if (l.motion && r.motion
       && (l.motion.deformation !== r.motion.deformation || l.motion.position !== r.motion.position)) return false;
+    // 261030-ey9: rotation/scale are durable canonical state (absent reads 0).
+    if (l.motion && r.motion
+      && ((l.motion.rotation ?? 0) !== (r.motion.rotation ?? 0)
+        || (l.motion.scale ?? 0) !== (r.motion.scale ?? 0))) return false;
     if ((l.overrideColor ?? null) !== (r.overrideColor ?? null)) return false;
     // 261030-ey9: the Photo wiggle flag is durable canonical state — a
     // flag-only difference settles as a real edit.

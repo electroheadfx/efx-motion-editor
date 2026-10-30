@@ -1441,6 +1441,10 @@ fn canonical_loop_clips(loop_clips: &[Value]) -> Result<String, String> {
                 .get("position")
                 .and_then(Value::as_f64)
                 .ok_or("Target physical document loop motion position is malformed")?;
+            // 261030-ey9: rotation/scale are conditional terms at the same
+            // ordinal as the TypeScript encoder — present AND nonzero only.
+            let rotation = motion.get("rotation").and_then(Value::as_f64);
+            let scale = motion.get("scale").and_then(Value::as_f64);
             let override_color = clip
                 .get("overrideColor")
                 .and_then(Value::as_str)
@@ -1448,6 +1452,12 @@ fn canonical_loop_clips(loop_clips: &[Value]) -> Result<String, String> {
             encoded.push_str(&canonical_string(script_id));
             encoded.push_str(&canonical_number(deformation));
             encoded.push_str(&canonical_number(position));
+            if let Some(rotation) = rotation.filter(|value| *value != 0.0) {
+                encoded.push_str(&canonical_number(rotation));
+            }
+            if let Some(scale) = scale.filter(|value| *value != 0.0) {
+                encoded.push_str(&canonical_number(scale));
+            }
             encoded.push_str(&canonical_string(override_color));
         }
         if let Some(sync_state) = clip.get("syncState").and_then(Value::as_str) {
@@ -1617,11 +1627,21 @@ pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
         .get("position")
         .and_then(Value::as_f64)
         .ok_or("Target physical document scriptMotion position is malformed")?;
+    // 261030-ey9: same conditional ordinal as the Loop Clip block and the
+    // TypeScript project-equality template.
+    let rotation = script_motion.get("rotation").and_then(Value::as_f64);
+    let scale = script_motion.get("scale").and_then(Value::as_f64);
     source.push_str(&format!(
         "motion:{}{}",
         canonical_number(deformation),
         canonical_number(position)
     ));
+    if let Some(rotation) = rotation.filter(|value| *value != 0.0) {
+        source.push_str(&canonical_number(rotation));
+    }
+    if let Some(scale) = scale.filter(|value| *value != 0.0) {
+        source.push_str(&canonical_number(scale));
+    }
     source.push_str(&format!("background:{}", canonical_background(background)?));
     source.push_str(&format!(
         "selection:{}",
@@ -2880,6 +2900,72 @@ mod tests {
         // canonical form is base64, so a JSON number array must be rejected.
         let document = physical_document(json!([116, 101, 115, 116]));
         assert!(canonical_physical_hash(&document).is_err());
+    }
+
+    // ---- 261030-ey9: motion rotation/scale are conditional canonical terms ----
+
+    fn motion_document(motion: Value) -> Value {
+        let mut document = physical_document(json!("dGVzdA=="));
+        document["loopClips"] = json!([{
+            "loopId": "l1",
+            "placementStart": 0.0,
+            "sourceKeyIds": ["k1"],
+            "repeat": 1.0,
+            "mode": "progressive",
+            "scriptId": "s1",
+            "motion": motion,
+            "overrideColor": null,
+            "syncState": "synchronized",
+            "provenanceState": "attached",
+            "phaseOrigin": 0.0,
+            "originalEndExclusive": 1.0,
+            "visibleRanges": [{ "start": 0.0, "endExclusive": 1.0 }],
+            "frameOverrides": []
+        }]);
+        document
+    }
+
+    #[test]
+    fn canonical_physical_hash_ignores_zero_motion_rotation_and_scale() {
+        let plain = motion_document(json!({ "deformation": 5.0, "position": 10.0 }));
+        let zeroed = motion_document(json!({
+            "deformation": 5.0, "position": 10.0, "rotation": 0.0, "scale": 0.0
+        }));
+        assert_eq!(
+            canonical_physical_hash(&plain).expect("plain"),
+            canonical_physical_hash(&zeroed).expect("zeroed"),
+            "absent and zero rigid channels must encode byte-identically"
+        );
+    }
+
+    #[test]
+    fn canonical_physical_hash_changes_on_nonzero_motion_rotation_or_scale() {
+        let plain = canonical_physical_hash(&motion_document(json!({ "deformation": 5.0, "position": 10.0 })))
+            .expect("plain");
+        let rotated = canonical_physical_hash(&motion_document(json!({
+            "deformation": 5.0, "position": 10.0, "rotation": 30.0
+        })))
+        .expect("rotated");
+        let scaled = canonical_physical_hash(&motion_document(json!({
+            "deformation": 5.0, "position": 10.0, "scale": 40.0
+        })))
+        .expect("scaled");
+        assert_ne!(rotated, plain, "a nonzero rotation must change the source");
+        assert_ne!(scaled, plain, "a nonzero scale must change the source");
+        assert_ne!(scaled, rotated, "rotation and scale occupy distinct ordinals");
+    }
+
+    #[test]
+    fn canonical_physical_hash_applies_the_same_rule_to_script_motion() {
+        let mut plain = physical_document(json!("dGVzdA=="));
+        plain["scriptMotion"] = json!({ "deformation": 5.0, "position": 10.0 });
+        let mut zeroed = plain.clone();
+        zeroed["scriptMotion"] = json!({ "deformation": 5.0, "position": 10.0, "rotation": 0.0, "scale": 0.0 });
+        let mut rotated = plain.clone();
+        rotated["scriptMotion"] = json!({ "deformation": 5.0, "position": 10.0, "rotation": 30.0 });
+        let plain_hash = canonical_physical_hash(&plain).expect("plain");
+        assert_eq!(canonical_physical_hash(&zeroed).expect("zeroed"), plain_hash);
+        assert_ne!(canonical_physical_hash(&rotated).expect("rotated"), plain_hash);
     }
 
     #[test]

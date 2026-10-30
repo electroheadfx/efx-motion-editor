@@ -546,6 +546,56 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
+  // 261030-ey9: rotation/scale are optional motion members, emitted canonically
+  // only when nonzero — every pre-existing record keeps its exact revision.
+  describe('261030-ey9 motion rotation and scale', () => {
+    const rigid = { scriptId: 'script-1', motion: { deformation: 5, position: 10, rotation: 30, scale: 40 }, overrideColor: null };
+
+    it('accepts and round-trips rotation/scale inside the motion record', () => {
+      const record = { ...baseLoop(), ...rigid };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips([record]);
+      expect(parsed[0].motion).toEqual({ deformation: 5, position: 10, rotation: 30, scale: 40 });
+      expect(Object.isFrozen(parsed[0].motion)).toBe(true);
+    });
+
+    it('a zero rotation/scale encodes byte-identically to an absent pair', () => {
+      const records = sourceRecords();
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const absent = buildPhysicPaintRotoPhysicalRevision(records, interpolation, [{ ...baseLoop(), scriptId: 'script-1', motion: { deformation: 5, position: 10 }, overrideColor: null }]);
+      const zeroed = buildPhysicPaintRotoPhysicalRevision(records, interpolation, [{ ...baseLoop(), scriptId: 'script-1', motion: { deformation: 5, position: 10, rotation: 0, scale: 0 }, overrideColor: null }]);
+      expect(zeroed).toBe(absent);
+    });
+
+    it('a nonzero rotation changes the canonical fingerprint (both clip and project equality)', () => {
+      const records = sourceRecords();
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      const source = { ...baseLoop(), scriptId: 'script-1', motion: { deformation: 5, position: 10 }, overrideColor: null };
+      const rotated = { ...source, motion: { ...source.motion, rotation: 30 } };
+      expect(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [rotated]))
+        .not.toBe(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [source]));
+      expect(buildPhysicPaintRotoProjectEquality(baseDocument([rotated])))
+        .not.toBe(buildPhysicPaintRotoProjectEquality(baseDocument([source])));
+    });
+
+    it.each([
+      ['out-of-range rotation', { rotation: 101 }],
+      ['negative scale', { scale: -1 }],
+      ['non-integer rotation', { rotation: 30.5 }],
+      ['string scale', { scale: '30' }],
+    ])('rejects %s fail-closed', (_label, rigidPart) => {
+      const record = { ...baseLoop(), scriptId: 'script-1', motion: { deformation: 5, position: 10, ...rigidPart }, overrideColor: null };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('persists the pair through save and reopen verbatim', () => {
+      const document = baseDocument([{ ...baseLoop(), ...rigid }]);
+      const parsed = parsePhysicPaintRotoPhysicalDocument(document);
+      expect(parsed.loopClips[0]!.motion).toEqual({ deformation: 5, position: 10, rotation: 30, scale: 40 });
+    });
+  });
+
   // 261030-ey9: the Photo wiggle flag is written only when true, round-trips
   // verbatim, and a non-boolean is rejected fail-closed.
   describe('261030-ey9 reveal Photo wiggle flag', () => {

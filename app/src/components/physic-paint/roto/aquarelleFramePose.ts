@@ -14,6 +14,18 @@ import { transformRecordedStrokeForHeldPose, type StudioPoint, type StudioStroke
 export interface AquarelleSheetMotion {
   readonly deformation: number;
   readonly position: number;
+  /** 261030-ey9: integer percent 0-100; absent reads as 0. */
+  readonly rotation?: number;
+  /** 261030-ey9: integer percent 0-100; absent reads as 0. */
+  readonly scale?: number;
+}
+
+/** 261030-ey9: every pose consumer classifies rotation-only/scale-only as motion. */
+export function isSheetMotionZero(motion: Readonly<AquarelleSheetMotion>): boolean {
+  return (motion.deformation ?? 0) === 0
+    && (motion.position ?? 0) === 0
+    && (motion.rotation ?? 0) === 0
+    && (motion.scale ?? 0) === 0;
 }
 
 export interface AquarelleSheetPose {
@@ -29,13 +41,17 @@ export function computeAquarelleSheetPose(
   destinationSourceFrame: number,
   motion: Readonly<AquarelleSheetMotion>,
 ): AquarelleSheetPose | null {
-  if (motion.deformation === 0 && motion.position === 0) return null;
+  if (isSheetMotionZero(motion)) return null;
   const shadow = createSheetShadowStroke(width, height);
   const posed = transformRecordedStrokeForHeldPose(shadow, {
     destinationSourceFrame,
     strokeIndex: 0,
     deformation: motion.deformation,
     position: motion.position,
+    // The two-corner shadow's centroid is the canvas centre, so the rigid
+    // channels pivot exactly like the sheet does.
+    rotation: motion.rotation,
+    scale: motion.scale,
   });
   const baseStart = shadow.pts[0]!;
   const baseEnd = shadow.pts[1]!;
@@ -161,16 +177,53 @@ export function drawAquarelleSheetDeform(
   return output;
 }
 
-/** Bake seam: deforms each captured progressive frame at its OUTPUT frame. */
+/**
+ * 261030-ey9: the outer RIGID pass of the two-pass design. Returns the frame
+ * unchanged (identity) when rotation and scale are both zero, so the deform
+ * path stays byte-identical at zero; otherwise runs the rotation/scale-only
+ * sheet pose over the already-deformed frame.
+ */
+export function applyAquarelleSheetRigidWiggle(
+  frame: CanvasImageSource,
+  width: number,
+  height: number,
+  destinationSourceFrame: number,
+  motion: Readonly<AquarelleSheetMotion>,
+  background: AquarelleSheetBackground = 'transparent',
+): CanvasImageSource {
+  const rotation = motion.rotation ?? 0;
+  const scale = motion.scale ?? 0;
+  if (rotation === 0 && scale === 0) return frame;
+  const pose = computeAquarelleSheetPose(width, height, destinationSourceFrame, {
+    deformation: 0,
+    position: 0,
+    rotation,
+    scale,
+  });
+  if (!pose) return frame;
+  return drawAquarelleSheetPose(frame, width, height, pose, background);
+}
+
+/**
+ * Bake seam: poses each captured progressive frame at its OUTPUT frame.
+ * Two passes — the band deform boils the sheet when deformation/position are
+ * set, then the outer rigid pass rotates/scales the result. The extra canvas
+ * is never allocated when rotation and scale are zero.
+ */
 export function createAquarelleDeformPoser(
   size: Readonly<{ width: number; height: number }>,
   motion: Readonly<AquarelleSheetMotion>,
   startFrame: number,
   background: AquarelleSheetBackground,
 ): ((frame: CanvasImageSource, frameIndex: number) => CanvasImageSource) | undefined {
-  if (motion.deformation === 0 && motion.position === 0) return undefined;
-  return (frame, frameIndex) =>
-    drawAquarelleSheetDeform(frame, size.width, size.height, startFrame + frameIndex, motion, background);
+  if (isSheetMotionZero(motion)) return undefined;
+  return (frame, frameIndex) => {
+    const destinationSourceFrame = startFrame + frameIndex;
+    const deformed = (motion.deformation === 0 && motion.position === 0)
+      ? frame
+      : drawAquarelleSheetDeform(frame, size.width, size.height, destinationSourceFrame, motion, background);
+    return applyAquarelleSheetRigidWiggle(deformed, size.width, size.height, destinationSourceFrame, motion, background);
+  };
 }
 
 function createVerticalShadowStroke(width: number, height: number, pointCount: number): StudioStroke<null> {

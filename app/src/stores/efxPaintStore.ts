@@ -19,7 +19,7 @@ import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
-import { createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { compactPhysicPaintRotoMotion, createPhysicPaintRotoKeyId } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 // 52.2-06 (D-06/D-07): the serialize seam takes its media authority from the
 // caller (plan 07's save funnel); the store never invents a digest.
@@ -1613,7 +1613,9 @@ export async function createRevealRail(
     railKind: 'reveal',
     scriptId: input.scriptId,
     // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
-    motion: { ...bakeMotion },
+    // 261030-ey9: persistence compaction — a zero rotation/scale never lands on
+    // the record; the BAKE above still saw plain numbers.
+    motion: compactPhysicPaintRotoMotion(bakeMotion),
     overrideColor: null,
     // 261029-vbp: written only when enabled, both keys together, so a
     // non-colorized reveal rail stays byte-identical to a pre-quick rail.

@@ -173,7 +173,7 @@ export interface RotoScriptClipboardControllerPorts {
   sessionId?: string;
   getEngine: () => RotoScriptEnginePort | null;
   getSource: () => RotoScriptSourceSnapshot;
-  getMotion: () => { deformation: number; position: number };
+  getMotion: () => { deformation: number; position: number; rotation?: number; scale?: number };
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
   prepareTarget: (source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>;
   flushSourcePublication?: (appFrame: number) => Promise<void>;
@@ -814,6 +814,9 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         strokeIndex: brushIndex,
         deformation: motion.deformation,
         position: motion.position,
+        // 261030-ey9: the rigid channels ride the same held-pose law.
+        rotation: motion.rotation,
+        scale: motion.scale,
       })),
       continuations: brush.continuations?.map(cloneStroke),
     };

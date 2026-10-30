@@ -61,10 +61,14 @@ import {
 const bakePose = vi.hoisted(() => ({
   poser: vi.fn(),
   deform: vi.fn(),
+  rigid: vi.fn(),
 }));
 vi.mock('./aquarelleFramePose', () => ({
   createAquarelleDeformPoser: bakePose.poser,
   drawAquarelleSheetDeform: bakePose.deform,
+  // 261030-ey9: the static branch imports the outer rigid pass directly; a
+  // missing export would fail the WHOLE suite at import time.
+  applyAquarelleSheetRigidWiggle: bakePose.rigid,
 }));
 vi.mock('../../../lib/webpFrameCodec', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../lib/webpFrameCodec')>();
@@ -82,6 +86,7 @@ vi.mock('../../../lib/webpFrameCodec', async (importOriginal) => {
 
 bakePose.poser.mockImplementation(() => (frame: unknown) => frame);
 bakePose.deform.mockImplementation(() => ({}));
+bakePose.rigid.mockImplementation((frame: unknown) => frame);
 
 // Node environment: the Static/Hold held-pose path decodes and re-encodes
 // through the DOM. A minimal canvas double suffices because the WebP encoder
@@ -110,6 +115,7 @@ function resetBakeBehavior(): void {
   pendingBakeBehavior = null;
   bakePose.poser.mockClear();
   bakePose.deform.mockClear();
+  bakePose.rigid.mockClear();
 }
 
 import { getPhysicPaintRotoAuthority } from '../../../lib/physicPaintBridge';
@@ -492,6 +498,35 @@ describe('createRotoPlayScriptController', () => {
     // open (D-06), so this second confirm snapshots the port's 90/90 — the
     // override color is what is re-read at confirm time.
     expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #aa5500 · Motion 90/90');
+  });
+
+  it('261030-ey9: a rotation-only static motion runs the rigid pass once per output frame and skips the band deform', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 60, scale: 0 };
+    expect(await test.controller.confirm()).toBe(true);
+    expect(bakePose.deform).not.toHaveBeenCalled();
+    expect(bakePose.rigid).toHaveBeenCalledTimes(3);
+    for (const call of bakePose.rigid.mock.calls) {
+      expect(call[4]).toMatchObject({ deformation: 0, position: 0, rotation: 60, scale: 0 });
+      expect(call[5]).toBe('white');
+    }
+  });
+
+  it('261030-ey9: a combined static motion runs the band deform first, then the rigid pass per frame', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    test.controller.dialogMotion.value = { deformation: 30, position: 20, rotation: 50, scale: 25 };
+    expect(await test.controller.confirm()).toBe(true);
+    expect(bakePose.deform).toHaveBeenCalledTimes(3);
+    expect(bakePose.rigid).toHaveBeenCalledTimes(3);
+    // Each rigid call receives the exact frame the band pass produced.
+    expect(bakePose.rigid.mock.calls.map((call) => call[0]))
+      .toEqual(bakePose.deform.mock.results.map((result) => result.value));
   });
 
   it('passes progressive defaults and a null override color when options are untouched or the override is disabled (Original colors)', async () => {
@@ -2626,6 +2661,25 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(await driver.history.redo()).toBe(true);
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toEqual(repairedIds);
       expect(deriveRange(driver.getCurrent().records, driver.getCurrent().loopClips, 'LU').unresolved).toBeNull();
+    });
+
+    it('261030-ey9: the repair write persists rotation only when nonzero — Object.keys proves the compaction', async () => {
+      const test = loopOpHarness([unresolvedLoop()], repairAuthority);
+      await test.controller.repairLoop('LU');
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 30, scale: 0 };
+      expect(await test.controller.confirm()).toBe(true);
+      const repairedLoop = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'LU');
+      expect(Object.keys(repairedLoop!.motion!)).toEqual(['deformation', 'position', 'rotation']);
+      expect(repairedLoop!.motion!.rotation).toBe(30);
+      expect('scale' in repairedLoop!.motion!).toBe(false);
+    });
+
+    it('261030-ey9: an all-zero repair persists exactly deformation and position', async () => {
+      const test = loopOpHarness([unresolvedLoop()], repairAuthority);
+      await test.controller.repairLoop('LU');
+      expect(await test.controller.confirm()).toBe(true);
+      const repairedLoop = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'LU');
+      expect(Object.keys(repairedLoop!.motion!)).toEqual(['deformation', 'position']);
     });
   });
 
