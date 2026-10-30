@@ -104,10 +104,7 @@ interface FakeControllerSeed {
   validationError?: string | null;
   phase?: string;
   // 43-06 loop modes
-  dialogMode?: 'apply' | 'loop-edit' | 'source-edit' | 'key-edit';
-  // 261030-ig0: the per-key re-bake target
-  keyEditSlot?: number | null;
-  keyEditFrame?: number | null;
+  dialogMode?: 'apply' | 'loop-edit' | 'source-edit';
   loopEditTargetId?: string | null;
   loopEditTarget?: { loopId: string; placementStart: number; sourceKeyIds: string[]; repeat: number | 'infinity'; mode: 'progressive' | 'static' } | null;
   loopEditSourceStart?: number | null;
@@ -123,8 +120,6 @@ interface FakeControllerSeed {
     groupType: 'Motion' | 'Static';
     restoredRange: string;
     locallyPaintedFrameCount: number;
-    keyScriptEditedKeyCount: number;
-    keyScriptEditedFramesLabel: string;
     deletedFrameCount: number;
     deletedFrameRanges: string;
     fragmentCount: number;
@@ -181,10 +176,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     error: sig<string | null>(seed.error ?? null),
     canCancel: sig(seed.canCancel ?? false),
     // 43-06 loop modes
-    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit' | 'key-edit'>(seed.dialogMode ?? 'apply'),
-    // 261030-ig0: the key-edit target (slot is 0-based; the header renders 1-based)
-    keyEditSlot: sig<number | null>(seed.keyEditSlot ?? null),
-    keyEditFrame: sig<number | null>(seed.keyEditFrame ?? null),
+    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit'>(seed.dialogMode ?? 'apply'),
     loopEditTargetId: sig<string | null>(seed.loopEditTargetId ?? null),
     loopEditTarget: sig(seed.loopEditTarget ?? null),
     loopEditSourceStart: sig<number | null>(seed.loopEditSourceStart ?? null),
@@ -205,7 +197,6 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     colorizeMix: sig(seed.colorizeMix ?? 100),
     photoWiggle: sig(seed.photoWiggle ?? false),
     keyScriptEdits: sig(seed.keyScriptEdits ?? false),
-    discardKeyEdits: sig(false),
   };
   const controller = {
     ...signals,
@@ -223,7 +214,6 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     dispose: vi.fn(),
     openLoopEdit: vi.fn(async () => ({ ok: true, reason: null })),
     openSourceEdit: vi.fn(async () => ({ ok: true, reason: null })),
-    openRailKeyEdit: vi.fn(async () => ({ ok: true, reason: null })),
     repairLoop: vi.fn(async () => ({ ok: true, reason: null })),
     updateLoop: vi.fn(async () => true),
     unlinkLoop: vi.fn(async () => ({ ok: true, reason: null })),
@@ -236,7 +226,6 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setColorizeMix: vi.fn(),
     setPhotoWiggle: vi.fn(),
     setKeyScriptEdits: vi.fn(),
-    setDiscardKeyEdits: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1115,106 +1104,6 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
   });
 });
 
-// 261030-ig0 (D-02/D-03): the key-edit surface. Reopening the dialog for ONE key
-// of an opted-in rail keeps the rail-owned fields LOCKED (a mode must never
-// present an input whose change it silently ignores) and exposes exactly one
-// primary action — Apply Key — that no timing validation can gate.
-describe('PhysicsPaintPlayScriptDialog key-edit mode (261030-ig0)', () => {
-  const keyTarget = { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const };
-  const keyEditSeed = {
-    dialogMode: 'key-edit' as const,
-    loopEditTargetId: 'L1',
-    loopEditTarget: keyTarget,
-    loopEditSourceStart: 10,
-    keyEditSlot: 1,
-    keyEditFrame: 11,
-    mode: 'static' as const,
-    countText: '5',
-    repeatText: '3',
-  };
-
-  it('renders the Edit Key title/F range and an Apply Key primary — no Create/Update/Regenerate action', () => {
-    const { controller } = createFakeController(keyEditSeed);
-    const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Key 2 of 5');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F11');
-    const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
-    const apply = findOne(footer, (vnode) => textOf(vnode) === 'Apply Key');
-    expect(apply.props.disabled).toBe(false);
-    expect(findAll(footer, (vnode) => textOf(vnode) === 'Cancel')).toHaveLength(1);
-    expect(findAll(footer, (vnode) => textOf(vnode) === 'Cancel generation')).toHaveLength(0);
-    for (const retired of ['Create Rail', 'Update Static', 'Update Motion', 'Regenerate Rail', 'Regenerate source cycle']) {
-      expect(findAll(footer, (vnode) => textOf(vnode) === retired), retired).toHaveLength(0);
-    }
-    handler(apply, 'onClick')();
-    expect(controller.confirm).toHaveBeenCalledTimes(1);
-  });
-
-  it('locks the Rail Type and Timing cards while the per-key settings stay editable', () => {
-    const { controller, signals } = createFakeController(keyEditSeed);
-    const tree = renderDialog(controller);
-
-    // Rail Type: locked card, every radio out of the tab order, a click changes nothing.
-    const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
-    expect(hasClass(modeCard, 'physics-paint-play-script-locked')).toBe(true);
-    const modeRadios = findAll(modeCard, (vnode) => vnode.props?.role === 'radio');
-    expect(modeRadios.length).toBeGreaterThan(0);
-    for (const radio of modeRadios) {
-      expect(radio.props['aria-disabled']).toBe(true);
-      expect(radio.props.tabIndex).toBe(-1);
-      handler(radio, 'onClick')({ currentTarget: null });
-    }
-    expect(signals.mode.value).toBe('static');
-
-    // Timing: Frames/Max/Repeat/Infinity are all rail-owned (D-02).
-    const countInput = findOne(tree, byId('physics-play-script-count'));
-    expect(countInput.props.disabled).toBe(true);
-    expect(countInput.props.value).toBe('5');
-    expect(hasClass(parentOf(tree, parentOf(tree, countInput)!)!, 'physics-paint-play-script-locked')).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-max')).props.disabled).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(true);
-
-    // The per-key fields stay live: Color, Motion wiggle, Reset defaults.
-    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-color')), 'physics-paint-play-script-locked')).toBe(false);
-    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-motion')), 'physics-paint-play-script-locked')).toBe(false);
-    expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(false);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Reset defaults').props.disabled).toBe(false);
-    for (const radio of findAll(findOne(tree, byClass('physics-paint-play-script-card-color')), (vnode) => vnode.props?.role === 'radio')) {
-      expect(radio.props['aria-disabled']).toBe(false);
-    }
-  });
-
-  it('a stale timing validation never gates Apply Key or Enter (timing is locked)', () => {
-    const { controller } = createFakeController({
-      ...keyEditSeed,
-      validationError: 'Maximum available count is 4.',
-      repeatError: 'Enter a positive integer.',
-    });
-    const tree = renderDialog(controller);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Apply Key').props.disabled).toBe(false);
-    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
-    const preventDefault = vi.fn();
-    handler(root, 'onKeyDown')({ key: 'Enter', preventDefault, stopPropagation: vi.fn(), currentTarget: null });
-    expect(preventDefault).toHaveBeenCalled();
-    expect(controller.confirm).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the reveal Timing card locked and the colorize/photo-wiggle settings live', () => {
-    const { controller } = createFakeController({ ...keyEditSeed, railTab: 'reveal' });
-    const tree = renderDialog(controller);
-    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Key 2 of 5');
-    expect(findOne(tree, byId('physics-play-script-reveal-count')).props.disabled).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(true);
-    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-timing')), 'physics-paint-play-script-locked')).toBe(true);
-    expect(findOne(tree, byId('physics-play-script-colorize')).props.disabled).toBe(false);
-    expect(findOne(tree, byId('physics-play-script-photo-wiggle')).props.disabled).toBe(false);
-    expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-colorize')), 'physics-paint-play-script-locked')).toBe(false);
-    expect(findOne(tree, (vnode) => textOf(vnode) === 'Apply Key').props.disabled).toBe(false);
-  });
-});
-
 describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a)', () => {
   const impact = {
     actionId: 'action-1',
@@ -1226,8 +1115,6 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     groupType: 'Static' as const,
     restoredRange: 'F10–F19',
     locallyPaintedFrameCount: 2,
-    keyScriptEditedKeyCount: 0,
-    keyScriptEditedFramesLabel: 'None',
     deletedFrameCount: 3,
     deletedFrameRanges: 'F13, F16–F17',
     fragmentCount: 3,
@@ -1271,46 +1158,6 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Keep Local Changes'))).toBe('Keep Local Changes');
     expect(textOf(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail'))).toBe('Regenerate Rail');
-  });
-
-  it('261030-ig0: renders the edited-key fact and the Discard key edits checkbox only when keys were edited', () => {
-    const edited = {
-      ...impact,
-      keyScriptEditedKeyCount: 2,
-      keyScriptEditedFramesLabel: 'F12, F16–F17',
-    };
-    const { controller } = createFakeController({ ...sourceEditSeed, regenerateImpact: edited });
-    const tree = renderDialog(controller);
-    const facts = findAll(tree, byClass('physics-paint-play-script-regenerate-fact'));
-    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dt')))).toEqual([
-      'Rail', 'Rail Type', 'Restored range', 'Locally painted frames', 'Individually edited keys',
-      'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
-    ]);
-    expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dd')))).toEqual([
-      edited.groupName,
-      'Static',
-      'F10–F19',
-      '2',
-      'F12, F16–F17',
-      '3 · F13, F16–F17',
-      '3 → 1',
-      'F13, F16–F17',
-      'Synchronized with Script.',
-      edited.sourceCacheEffects,
-    ]);
-    const checkbox = findOne(tree, byId('physics-play-script-discard-key-edits'));
-    expect(checkbox.props.type).toBe('checkbox');
-    expect(checkbox.props.checked).toBe(false);
-    expect(checkbox.props.disabled).toBe(false);
-    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
-    expect(controller.setDiscardKeyEdits).toHaveBeenCalledWith(true);
-    expect(textOf(findOne(tree, (vnode) => vnode.type === 'label' && vnode.props.for === 'physics-play-script-discard-key-edits'))).toBe('Discard key edits');
-
-    // No edited keys → neither the fact nor the checkbox renders.
-    const plain = createFakeController(sourceEditSeed);
-    const plainTree = renderDialog(plain.controller);
-    expect(findAll(plainTree, byId('physics-play-script-discard-key-edits'))).toHaveLength(0);
-    expect(findAll(plainTree, (vnode) => textOf(vnode) === 'Individually edited keys')).toHaveLength(0);
   });
 
   it('lists shared Groups once in placement order and uses the exact plural lead and CTA', () => {

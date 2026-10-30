@@ -618,16 +618,9 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
-  // 261030-ig0: per-key script editing — the rail-level opt-in plus one small
-  // per-slot override collection. Off is today's record, byte-for-byte.
+  // The rail-level opt-in only: off is today's record, byte-for-byte.
   describe('261030-ig0 per-key script editing', () => {
     const motion = { deformation: 5, position: 10 };
-    const override = (slot: number, extra: Record<string, unknown> = {}) => ({
-      slot,
-      motion,
-      overrideColor: null,
-      ...extra,
-    });
     const optedIn = (extra: Record<string, unknown> = {}) => ({
       ...baseLoop(),
       scriptId: 'script-1',
@@ -637,22 +630,18 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
       ...extra,
     });
 
-    it('round-trips keyScriptEdits and the override collection', () => {
-      const record = optedIn({ keyScriptOverrides: [override(0), override(2, { colorize: true, colorizeMix: 40 })] });
+    it('round-trips keyScriptEdits', () => {
+      const record = optedIn();
       expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
       const parsed = parsePhysicPaintRotoLoopClips(jsonRoundTrip([record]));
       expect(parsed[0]).toMatchObject(record);
       expect('keyScriptEdits' in parsed[0]).toBe(true);
       expect(parsed[0].keyScriptEdits).toBe(true);
-      expect(Object.isFrozen(parsed[0].keyScriptOverrides)).toBe(true);
-      expect(Object.isFrozen(parsed[0].keyScriptOverrides?.[0])).toBe(true);
-      expect(Object.isFrozen(parsed[0].keyScriptOverrides?.[0].motion)).toBe(true);
     });
 
     it('adds no members when the rail did not opt in (byte-identical off state)', () => {
       const parsed = parsePhysicPaintRotoLoopClips(jsonRoundTrip([baseLoop()]));
       expect('keyScriptEdits' in parsed[0]).toBe(false);
-      expect('keyScriptOverrides' in parsed[0]).toBe(false);
       const records = sourceRecords();
       const interpolation = { enabled: false, mode: 'duplicate' as const };
       expect(buildPhysicPaintRotoProjectEquality(baseDocument([baseLoop()])))
@@ -672,33 +661,17 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
 
     it.each([
       ['a string flag', { keyScriptEdits: 'yes' }],
-      ['an overrides-only record', { keyScriptOverrides: [] }],
-      ['overrides with the flag explicitly false', { keyScriptEdits: false, keyScriptOverrides: [override(0)] }],
-      ['a non-array collection', { keyScriptEdits: true, keyScriptOverrides: {} }],
-      ['an out-of-range slot', { keyScriptEdits: true, keyScriptOverrides: [override(5)] }],
-      ['a negative slot', { keyScriptEdits: true, keyScriptOverrides: [override(-1)] }],
-      ['a non-integer slot', { keyScriptEdits: true, keyScriptOverrides: [override(1.5)] }],
-      ['duplicate slots', { keyScriptEdits: true, keyScriptOverrides: [override(1), override(1)] }],
-      ['descending slots', { keyScriptEdits: true, keyScriptOverrides: [override(2), override(0)] }],
-      ['an unknown override member', { keyScriptEdits: true, keyScriptOverrides: [override(0, { keyId: 'k1' })] }],
-      ['a malformed motion', { keyScriptEdits: true, keyScriptOverrides: [override(0, { motion: { deformation: 5 } })] }],
-      ['a malformed override color', { keyScriptEdits: true, keyScriptOverrides: [override(0, { overrideColor: 'red' })] }],
-      ['a lone colorize', { keyScriptEdits: true, keyScriptOverrides: [override(0, { colorize: true })] }],
-      ['an out-of-range colorizeMix', { keyScriptEdits: true, keyScriptOverrides: [override(0, { colorize: true, colorizeMix: 101 })] }],
-      ['a non-boolean photoWiggle', { keyScriptEdits: true, keyScriptOverrides: [override(0, { photoWiggle: 1 })] }],
+      ['a numeric flag', { keyScriptEdits: 1 }],
+      ['a null flag', { keyScriptEdits: null }],
     ])('rejects %s fail-closed', (_label, extra) => {
       const record = { ...baseLoop(), ...extra };
       expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
       expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
     });
 
-    it('persists the flag and overrides through save and reopen', () => {
-      const record = optedIn({ keyScriptOverrides: [override(1, { overrideColor: '#112233', photoWiggle: true })] });
-      const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([record]));
+    it('persists the flag through save and reopen', () => {
+      const parsed = parsePhysicPaintRotoPhysicalDocument(baseDocument([optedIn()]));
       expect(parsed.loopClips[0]!.keyScriptEdits).toBe(true);
-      expect(parsed.loopClips[0]!.keyScriptOverrides).toEqual([
-        { slot: 1, motion, overrideColor: '#112233', photoWiggle: true },
-      ]);
     });
   });
 

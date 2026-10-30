@@ -68,7 +68,6 @@ import type {
 } from '../../../types/physicPaint';
 import {
   buildPhysicPaintRotoPhysicalRevision,
-  type PhysicPaintRotoKeyScriptOverride,
   type PhysicPaintRotoPhysicalDocument,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
@@ -382,34 +381,6 @@ function physicalRecordsEqual(
   return true;
 }
 
-/**
- * 261030-ig0: field-level equality of one rail's per-key override collections.
- * Shared by BOTH settlement comparators — a missing compare makes an
- * override-only edit register as a no-op and skip its undo entry.
- */
-function keyScriptOverridesEqual(
-  left: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
-  right: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
-): boolean {
-  if ((left === undefined) !== (right === undefined)) return false;
-  if (left === undefined || right === undefined) return true;
-  if (left.length !== right.length) return false;
-  for (let index = 0; index < left.length; index += 1) {
-    const l = left[index];
-    const r = right[index];
-    if (l.slot !== r.slot) return false;
-    if (l.motion.deformation !== r.motion.deformation) return false;
-    if (l.motion.position !== r.motion.position) return false;
-    if ((l.motion.rotation ?? 0) !== (r.motion.rotation ?? 0)) return false;
-    if ((l.motion.scale ?? 0) !== (r.motion.scale ?? 0)) return false;
-    if ((l.overrideColor ?? null) !== (r.overrideColor ?? null)) return false;
-    if ((l.colorize ?? false) !== (r.colorize ?? false)) return false;
-    if ((l.colorizeMix ?? 0) !== (r.colorizeMix ?? 0)) return false;
-    if ((l.photoWiggle ?? false) !== (r.photoWiggle ?? false)) return false;
-  }
-  return true;
-}
-
 function snapshotRecordsEqual(
   before: RotoPhysicalEditReplaySourceSnapshot,
   after: RotoPhysicalEditReplaySourceSnapshot,
@@ -453,11 +424,8 @@ function snapshotRecordsEqual(
     }
     // 261030-ey9: a wiggle-flag-only difference is a real edit, not a no-op.
     if ((left.photoWiggle ?? false) !== (right.photoWiggle ?? false)) return false;
-    // 261030-ig0: the per-key opt-in and its override collection are durable
-    // state — an OVERRIDE-ONLY edit is a real edit, never a settlement no-op
-    // (a missing compare would skip the undo entry entirely).
+    // The per-key opt-in is durable state.
     if ((left.keyScriptEdits ?? false) !== (right.keyScriptEdits ?? false)) return false;
-    if (!keyScriptOverridesEqual(left.keyScriptOverrides, right.keyScriptOverrides)) return false;
     if (left.syncState !== right.syncState) return false;
     if (left.provenanceState !== right.provenanceState) return false;
     if (left.phaseOrigin !== right.phaseOrigin) return false;
@@ -586,9 +554,7 @@ function snapshotCanonicalContentEqual(
     // 261030-ey9: the Photo wiggle flag is durable canonical state — a
     // flag-only difference settles as a real edit.
     if ((l.photoWiggle ?? false) !== (r.photoWiggle ?? false)) return false;
-    // 261030-ig0: an override-only difference settles as a real edit.
     if ((l.keyScriptEdits ?? false) !== (r.keyScriptEdits ?? false)) return false;
-    if (!keyScriptOverridesEqual(l.keyScriptOverrides, r.keyScriptOverrides)) return false;
     if (l.syncState !== r.syncState) return false;
     if (l.provenanceState !== r.provenanceState) return false;
     if (l.phaseOrigin !== r.phaseOrigin) return false;

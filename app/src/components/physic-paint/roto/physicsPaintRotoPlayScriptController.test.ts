@@ -11,7 +11,6 @@ import {
   type RotoPlayScriptControllerPorts,
   type RotoPlayScriptPhysicalPublication,
   type RotoPlayScriptSourceCycleMatchInput,
-  type RotoRevealRailKeyRebakeInput,
 } from './physicsPaintRotoPlayScriptController';
 import type { AquarelleBakeOptions } from '@efxlab/efx-watercolor/bake';
 
@@ -2686,18 +2685,13 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(Object.keys(repairedLoop!.motion!)).toEqual(['deformation', 'position']);
     });
 
-    it('261030-ig0 (WR-01): a repair re-bake drops per-key overrides but keeps the opt-in', async () => {
-      const loop: PhysicPaintRotoLoopClip = {
-        ...unresolvedLoop(),
-        keyScriptEdits: true,
-        keyScriptOverrides: [{ slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null }],
-      };
+    it('261030-ig0 (WR-01): a repair re-bake keeps the opt-in', async () => {
+      const loop: PhysicPaintRotoLoopClip = { ...unresolvedLoop(), keyScriptEdits: true };
       const test = loopOpHarness([loop], repairAuthority);
       await test.controller.repairLoop('LU');
       expect(await test.controller.confirm()).toBe(true);
       const repairedLoop = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'LU')!;
       expect(repairedLoop.keyScriptEdits).toBe(true);
-      expect('keyScriptOverrides' in repairedLoop).toBe(false);
     });
   });
 
@@ -2967,7 +2961,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         const committedOff = off.commit.mock.calls[0][0].loopClips?.[0];
         expect(committedOff).toBeDefined();
         expect('keyScriptEdits' in (committedOff as object)).toBe(false);
-        expect('keyScriptOverrides' in (committedOff as object)).toBe(false);
       }
     });
 
@@ -3093,79 +3086,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.phase.value).toBe('failed');
     });
 
-    it('261030-ig0: rejects the commit when the acknowledgement changes a per-key script override', async () => {
-      const perKeyOverride = {
-        slot: 0,
-        motion: { deformation: 4, position: 8, rotation: 15, scale: 5 },
-        overrideColor: '#4b6382',
-      };
-      const source: PhysicPaintRotoLoopClip = {
-        ...loopClip('L1', 10, 3),
-        keyScriptEdits: true,
-        keyScriptOverrides: [perKeyOverride],
-      };
-      const test = loopOpHarness([source], {}, {
-        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
-          ok: true,
-          operationId: 'accepted-operation',
-          acceptedRevision: 'revision-2',
-          records: publication.records,
-          interpolationMode: publication.interpolationMode,
-          selectedKeyId: publication.selectedKeyId,
-          selectedAppFrame: publication.selectedAppFrame,
-          loopClips: (publication.loopClips ?? []).map((clip) => ({
-            ...clip,
-            keyScriptOverrides: clip.keyScriptEdits === true
-              ? [{ ...perKeyOverride, overrideColor: '#000000' }]
-              : clip.keyScriptOverrides,
-          })),
-        })),
-      });
-      await test.controller.openLoopEdit('L1');
-      test.controller.repeatText.value = '5';
-      expect(await test.controller.confirm()).toBe(false);
-      expect(test.controller.phase.value).toBe('failed');
-      expect(test.controller.error.value).toBe('Parent returned a mismatched Loop Clip acknowledgement.');
-    });
-
-    it('261030-ig0: accepts a field-identical per-key override echo', async () => {
-      const perKeyOverride = {
-        slot: 0,
-        motion: { deformation: 4, position: 8, rotation: 15, scale: 5 },
-        overrideColor: '#4b6382',
-      };
-      const source: PhysicPaintRotoLoopClip = {
-        ...loopClip('L1', 10, 3),
-        keyScriptEdits: true,
-        keyScriptOverrides: [perKeyOverride],
-      };
-      const test = loopOpHarness([source], {}, {
-        commit: vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
-          ok: true,
-          operationId: 'accepted-operation',
-          acceptedRevision: 'revision-2',
-          records: publication.records,
-          interpolationMode: publication.interpolationMode,
-          selectedKeyId: publication.selectedKeyId,
-          selectedAppFrame: publication.selectedAppFrame,
-          // Distinct instances, value-identical content — the comparator is
-          // field-based, never identity-based.
-          loopClips: (publication.loopClips ?? []).map((clip) => ({
-            ...clip,
-            ...(clip.keyScriptOverrides === undefined
-              ? {}
-              : { keyScriptOverrides: clip.keyScriptOverrides.map((override) => ({
-                  ...override,
-                  motion: { ...override.motion },
-                })) }),
-          })),
-        })),
-      });
-      await test.controller.openLoopEdit('L1');
-      test.controller.repeatText.value = '5';
-      expect(await test.controller.confirm()).toBe(true);
-      expect(test.controller.phase.value).toBe('complete');
-    });
   });
 
   describe('Repeat validation in loop-edit (S2)', () => {
@@ -3303,18 +3223,13 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(driver.getCurrent().loopClips[0].sourceKeyIds).toEqual(['S1', 'S2', 'S3']);
     });
 
-    it('261030-ig0 (WR-01): a legacy Source Edit re-bake drops per-key overrides but keeps the opt-in', async () => {
-      const loop: PhysicPaintRotoLoopClip = {
-        ...loopClip('L1', 10, 3),
-        keyScriptEdits: true,
-        keyScriptOverrides: [{ slot: 1, motion: { deformation: 7, position: 9 }, overrideColor: '#4b6382' }],
-      };
+    it('261030-ig0 (WR-01): a legacy Source Edit re-bake keeps the opt-in', async () => {
+      const loop: PhysicPaintRotoLoopClip = { ...loopClip('L1', 10, 3), keyScriptEdits: true };
       const test = loopOpHarness([loop]);
       await test.controller.openSourceEdit('L1');
       expect(await test.controller.confirm()).toBe(true);
       const edited = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'L1')!;
       expect(edited.keyScriptEdits).toBe(true);
-      expect('keyScriptOverrides' in edited).toBe(false);
     });
   });
 
@@ -3526,171 +3441,6 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       ]);
       expect(test.controller.phase.value).toBe('complete');
       expect(test.controller.confirmationOpen.value).toBe(false);
-    });
-  });
-
-  // 261030-ig0 (D-01/D-02/D-03): the per-key script edit. Reopen the Create
-  // Rail dialog for ONE key of an opted-in rail and re-bake exactly that key:
-  // a paint rail publishes a one-frame record set through the ONE commit port,
-  // a reveal rail hands the whole edit to the store mutation (its single
-  // committer) and NEVER commits through the controller.
-  describe('rail key edit (261030-ig0)', () => {
-    const keyRail = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip => ({
-      ...loopClip('L1', 10, 3),
-      keyScriptEdits: true,
-      ...overrides,
-    });
-
-    it('openRailKeyEdit prefills the target key from its own override (D-02)', async () => {
-      const test = loopOpHarness([keyRail({
-        keyScriptOverrides: [{ slot: 1, motion: { deformation: 7, position: 9, rotation: 15, scale: 5 }, overrideColor: '#4b6382' }],
-      })]);
-      expect(await test.controller.openRailKeyEdit('L1', 1)).toEqual({ ok: true, reason: null });
-      expect(test.controller.dialogMode.value).toBe('key-edit');
-      expect(test.controller.confirmationOpen.value).toBe(true);
-      expect(test.controller.keyEditSlot.value).toBe(1);
-      expect(test.controller.keyEditFrame.value).toBe(11);
-      expect(test.controller.dialogMotion.value).toEqual({ deformation: 7, position: 9, rotation: 15, scale: 5 });
-      expect(test.controller.overrideEnabled.value).toBe(true);
-      // Timing is rail-owned (D-02): prefilled, never editable from a key edit.
-      expect(test.controller.countText.value).toBe('5');
-      expect(test.controller.repeatText.value).toBe('3');
-      expect(test.controller.railTab.value).toBe('paint');
-      expect(test.controller.status.value).toBe('Key 2 · F11');
-      expect(test.getLoopEditSnapshot).toHaveBeenCalledWith(10);
-    });
-
-    it('openRailKeyEdit on a Reveal rail opens the Reveal tab with that key\'s settings (D-03)', async () => {
-      const test = loopOpHarness([keyRail({ railKind: 'reveal', colorize: true, colorizeMix: 40, photoWiggle: true })]);
-      expect(await test.controller.openRailKeyEdit('L1', 0)).toEqual({ ok: true, reason: null });
-      expect(test.controller.railTab.value).toBe('reveal');
-      expect(test.controller.colorize.value).toBe(true);
-      expect(test.controller.colorizeMix.value).toBe(40);
-      expect(test.controller.photoWiggle.value).toBe(true);
-      expect(test.controller.keyEditFrame.value).toBe(10);
-    });
-
-    it('openRailKeyEdit fails closed for a non-opted rail, a foreign slot, and a rail with no source script', async () => {
-      const notOpted = loopOpHarness([loopClip('L1', 10, 3)]);
-      expect((await notOpted.controller.openRailKeyEdit('L1', 0)).reason)
-        .toBe('This Rail was not created with per-key script editing.');
-      expect(notOpted.controller.confirmationOpen.value).toBe(false);
-
-      const badSlot = loopOpHarness([keyRail()]);
-      expect((await badSlot.controller.openRailKeyEdit('L1', 5)).reason).toBe('Key 6 is outside this Rail (1–5).');
-      expect(badSlot.controller.confirmationOpen.value).toBe(false);
-
-      const noScript = loopOpHarness([{ ...loopClip('L1', 10, 3, CYCLE_IDS, false), keyScriptEdits: true }]);
-      expect((await noScript.controller.openRailKeyEdit('L1', 0)).reason)
-        .toBe('This Rail has no source script to re-bake from.');
-
-      const missingRail = loopOpHarness([keyRail()]);
-      expect((await missingRail.controller.openRailKeyEdit('L9', 0)).reason)
-        .toBe('Loop Clip "L9" no longer exists.');
-    });
-
-    it('updateRailKey re-bakes ONE paint key, preserves its keyId, and writes the override (D-01)', async () => {
-      const test = loopOpHarness([keyRail({ mode: 'progressive' })]);
-      await test.controller.openRailKeyEdit('L1', 1);
-      test.controller.dialogMotion.value = { deformation: 12, position: 34, rotation: 0, scale: 0 };
-      expect(await test.controller.confirm()).toBe(true);
-      expect(test.commit).toHaveBeenCalledOnce();
-      const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
-      // Exactly one record replaced; every sibling key keeps its identity AND bytes.
-      expect(publication.records.map((record) => record.appFrame)).toEqual([10, 11, 12, 13, 14]);
-      expect(publication.records[1]!.keyId).toBe('S2');
-      expect(publication.records[1]!.payload.bytes).toEqual(testWebpBytes('staged-1'));
-      expect(publication.records[0]!.payload.bytes).toEqual(pngDataUrl('src-S1'));
-      expect(publication.records[2]!.payload.bytes).toEqual(pngDataUrl('src-S3'));
-      expect(publication.semanticDelta).toMatchObject({ affectedStartAppFrame: 11, affectedEndAppFrame: 11 });
-      // The accepted O(k) prefix bake asks for exactly slot + 1 frames from the rail start.
-      expect(test.bakeOptions[0]).toMatchObject({ frameCount: 2 });
-      expect(test.library.loadSnapshot).toHaveBeenCalledWith('script-1');
-      const clip = publication.loopClips!.find((entry) => entry.loopId === 'L1')!;
-      expect(clip.keyScriptOverrides).toEqual([{ slot: 1, motion: { deformation: 12, position: 34 }, overrideColor: null }]);
-      expect(test.controller.appliedSummary.line2.value).toBe('F11 · Key 2 of 5 re-baked');
-      expect(test.controller.status.value).toBe('Key 2 re-baked');
-      expect(test.controller.phase.value).toBe('complete');
-      expect(test.controller.confirmationOpen.value).toBe(false);
-    });
-
-    it('a metadata-only key confirm is a no-op — no bake, no commit, "Key unchanged" (D-02)', async () => {
-      const test = loopOpHarness([keyRail()]);
-      await test.controller.openRailKeyEdit('L1', 1);
-      expect(await test.controller.confirm()).toBe(true);
-      expect(test.createAquarelleBake).not.toHaveBeenCalled();
-      expect(test.commit).not.toHaveBeenCalled();
-      expect(test.controller.status.value).toBe('Key unchanged');
-      expect(test.controller.confirmationOpen.value).toBe(false);
-      expect(test.controller.phase.value).toBe('idle');
-    });
-
-    it('a reveal key edit is handed to rebakeRevealKey and never committed by the controller', async () => {
-      const rebakeRevealKey = vi.fn(async (_input: RotoRevealRailKeyRebakeInput) => ({ ok: true } as const));
-      const test = loopOpHarness([keyRail({ railKind: 'reveal', colorize: true, colorizeMix: 40, photoWiggle: true })], {}, { rebakeRevealKey });
-      await test.controller.openRailKeyEdit('L1', 1);
-      test.controller.dialogMotion.value = { deformation: 5, position: 6, rotation: 0, scale: 0 };
-      expect(await test.controller.confirm()).toBe(true);
-      expect(rebakeRevealKey).toHaveBeenCalledOnce();
-      expect(rebakeRevealKey.mock.calls[0]![0]).toMatchObject({
-        layerId: 'layer-1',
-        loopId: 'L1',
-        slot: 1,
-        targetKeyId: 'S2',
-        targetAppFrame: 11,
-        motion: { deformation: 5, position: 6, rotation: 0, scale: 0 },
-        overrideColor: null,
-        colorize: true,
-        colorizeMix: 40,
-        photoWiggle: true,
-      });
-      // Single committer: the store mutation owns the whole write.
-      expect(test.commit).not.toHaveBeenCalled();
-      expect(test.requestAuthority).not.toHaveBeenCalled();
-      expect(test.controller.status.value).toBe('Key 2 re-baked');
-      expect(test.controller.confirmationOpen.value).toBe(false);
-    });
-
-    it('a failed reveal re-bake surfaces the store reason and stays closed', async () => {
-      const rebakeRevealKey = vi.fn(async () => ({ ok: false, reason: 'Reveal bake failed. Nothing changed.' } as const));
-      const test = loopOpHarness([keyRail({ railKind: 'reveal' })], {}, { rebakeRevealKey });
-      await test.controller.openRailKeyEdit('L1', 0);
-      test.controller.dialogMotion.value = { deformation: 5, position: 6, rotation: 0, scale: 0 };
-      expect(await test.controller.confirm()).toBe(false);
-      expect(test.controller.error.value).toBe('Reveal bake failed. Nothing changed.');
-      expect(test.controller.phase.value).toBe('failed');
-      expect(test.controller.confirmationOpen.value).toBe(false);
-      expect(test.commit).not.toHaveBeenCalled();
-    });
-
-    it('a reveal key edit without the rebake port fails closed before any write', async () => {
-      const test = loopOpHarness([keyRail({ railKind: 'reveal' })]);
-      await test.controller.openRailKeyEdit('L1', 0);
-      test.controller.dialogMotion.value = { deformation: 5, position: 6, rotation: 0, scale: 0 };
-      expect(await test.controller.confirm()).toBe(false);
-      expect(test.controller.error.value).toBe('Reveal key re-bake is unavailable.');
-      expect(test.controller.phase.value).toBe('failed');
-      expect(test.commit).not.toHaveBeenCalled();
-    });
-
-    it('updateRailKey rejects a rail whose target key moved before commit (T-261030-ig0-02)', async () => {
-      const movedAuthority = vi.fn(async () => loopAuthority({
-        physicalRecords: [
-          physicalRecord('S1', 10, 'src-S1'),
-          physicalRecord('S2', 12, 'src-S2'),
-          physicalRecord('S3', 13, 'src-S3'),
-          physicalRecord('S4', 14, 'src-S4'),
-          physicalRecord('S5', 15, 'src-S5'),
-        ],
-      }));
-      const test = loopOpHarness([keyRail()], {}, { requestAuthority: movedAuthority });
-      await test.controller.openRailKeyEdit('L1', 1);
-      test.controller.dialogMotion.value = { deformation: 12, position: 34, rotation: 0, scale: 0 };
-      expect(await test.controller.confirm()).toBe(false);
-      expect(test.controller.error.value).toBe('Rail changed before commit.');
-      expect(test.controller.phase.value).toBe('failed');
-      expect(test.library.loadSnapshot).not.toHaveBeenCalled();
-      expect(test.commit).not.toHaveBeenCalled();
     });
   });
 });

@@ -2054,11 +2054,6 @@ button.destructive {
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:disabled { border-color: #4d5156; background: #34373a; color: #777e86; cursor: not-allowed; }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
-/* 261030-ig0: the per-key edit list — one row per key of an opted-in rail. */
-.physics-paint-loop-clip-key-edit-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin-top: 4px; }
-.physics-paint-loop-clip-key-edit-list > strong { overflow: hidden; color: #eef1f4; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.physics-paint-loop-clip-key-edit-button { justify-content: space-between; height: 26px; }
-.physics-paint-loop-clip-key-edit-edited { color: #8fa8ff; font-size: 10px; }
 /* 260905-hfd: compact one-line Linked Rails nav — icon-only chevron buttons.
    The old row container and its `-actions` wrapper went with 260922-jss, which
    moved the list-view nav into the scope meta row as a pager; only the button

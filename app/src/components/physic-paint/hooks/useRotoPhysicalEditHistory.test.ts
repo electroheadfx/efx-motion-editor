@@ -30,7 +30,6 @@ vi.mock('../../../stores/efxPaintStore', async (importOriginal) => {
 });
 
 import type {
-  PhysicPaintRotoKeyScriptOverride,
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
@@ -98,14 +97,6 @@ const GROUP_FIELD_PARTICIPATION = [
   // a flag-only difference settles as a real edit.
   { field: 'keyScriptEdits', value: true },
 ] as const;
-
-// 261030-ig0: one per-key script override. Deliberately value-equal clones are
-// used by the settlement no-op control to prove the comparators are value-based.
-const PER_KEY_SCRIPT_OVERRIDE: PhysicPaintRotoKeyScriptOverride = {
-  slot: 0,
-  motion: { deformation: 0, position: 0, rotation: 15, scale: 5 },
-  overrideColor: '#4b6382',
-};
 
 const baseLoopClip = () => ({
   loopId: 'loop-1',
@@ -1084,161 +1075,28 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(availability.value).toEqual({ undo: 0, redo: 0 });
   });
 
-  it('261030-ig0: a before/after differing only in one per-key override field settles as a real edit', () => {
-    const base = snapshot([record('A', 0)], 'A', 0);
-    const optedIn = {
-      ...lifecycleLoopClip(),
-      keyScriptEdits: true as const,
-      keyScriptOverrides: [PER_KEY_SCRIPT_OVERRIDE],
-    };
-    const before = { ...base, loopClips: [optedIn] } as RotoPhysicalEditSnapshot<null>;
-    const after = {
-      ...base,
-      loopClips: [{
-        ...optedIn,
-        keyScriptOverrides: [{ ...PER_KEY_SCRIPT_OVERRIDE, motion: { deformation: 10, position: 0, rotation: 15, scale: 5 } }],
-      }],
-    } as RotoPhysicalEditSnapshot<null>;
-    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
-    const availability = signal({ undo: 0, redo: 0 });
-
-    useRotoPhysicalEditHistory({
-      identity: {
-        trackId: 'track-a',
-        launchOperationId: 'launch-1',
-        layerId: 'layer-1',
-        projectContextId: 'project-1',
-        capacity: 10,
-      },
-      availability,
-      coordinator: {
-        executePhysicalEdit: vi.fn() as never,
-        pendingOperationId: signal<string | null>(null),
-        acceptedOutput,
-      },
-      recordsPort: {
-        getRecords: () => after.records,
-        getInterpolation: () => after.interpolation,
-        getCapacity: () => after.capacity,
-        raiseCapacity: () => {},
-        getLoopClips: () => after.loopClips,
-        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
-        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
-        replaceLoopClips: () => ({ ok: true }),
-        replaceRecords: () => ({ ok: true }),
-      },
-      getLiveSourceSnapshot: () => after,
-      undoPaint: () => false,
-      redoPaint: () => false,
-    });
-
-    acceptedOutput.value = {
-      before,
-      after,
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
-        after.records,
-        after.interpolation,
-        after.loopClips,
-        after.incomingInterpolationBreakKeyIds,
-      ),
-      operationId: 'key-script-override-1',
-      operationKind: 'move-key',
-      historyProvenance: null,
-    };
-    // An override-only edit must be recorded, never dropped as a no-change
-    // settlement.
-    expect(availability.value).toEqual({ undo: 1, redo: 0 });
-  });
-
-  it('261030-ig0: value-equal per-key overrides across distinct instances are not recorded as an edit', () => {
-    const base = snapshot([record('A', 0)], 'A', 0);
-    const optedIn = {
-      ...lifecycleLoopClip(),
-      keyScriptEdits: true as const,
-      keyScriptOverrides: [PER_KEY_SCRIPT_OVERRIDE],
-    };
-    const before = { ...base, loopClips: [optedIn] } as RotoPhysicalEditSnapshot<null>;
-    const after = {
-      ...base,
-      loopClips: [{
-        ...optedIn,
-        keyScriptOverrides: [{ ...PER_KEY_SCRIPT_OVERRIDE, motion: { ...PER_KEY_SCRIPT_OVERRIDE.motion } }],
-      }],
-    } as RotoPhysicalEditSnapshot<null>;
-    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
-    const availability = signal({ undo: 0, redo: 0 });
-
-    useRotoPhysicalEditHistory({
-      identity: {
-        trackId: 'track-a',
-        launchOperationId: 'launch-1',
-        layerId: 'layer-1',
-        projectContextId: 'project-1',
-        capacity: 10,
-      },
-      availability,
-      coordinator: {
-        executePhysicalEdit: vi.fn() as never,
-        pendingOperationId: signal<string | null>(null),
-        acceptedOutput,
-      },
-      recordsPort: {
-        getRecords: () => after.records,
-        getInterpolation: () => after.interpolation,
-        getCapacity: () => after.capacity,
-        raiseCapacity: () => {},
-        getLoopClips: () => after.loopClips,
-        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
-        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
-        replaceLoopClips: () => ({ ok: true }),
-        replaceRecords: () => ({ ok: true }),
-      },
-      getLiveSourceSnapshot: () => after,
-      undoPaint: () => false,
-      redoPaint: () => false,
-    });
-
-    acceptedOutput.value = {
-      before,
-      after,
-      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
-        after.records,
-        after.interpolation,
-        after.loopClips,
-        after.incomingInterpolationBreakKeyIds,
-      ),
-      operationId: 'key-script-override-noop',
-      operationKind: 'move-key',
-      historyProvenance: null,
-    };
-    expect(availability.value).toEqual({ undo: 0, redo: 0 });
-  });
-
-  it('261030-ig0: a replay acknowledgement differing only in per-key script members fails settlement', async () => {
+  it('261030-ig0: a replay acknowledgement differing only in the per-key script flag fails settlement', async () => {
     const base = snapshot([record('A', 0)], 'A', 0);
     const optedIn = { ...lifecycleLoopClip(), keyScriptEdits: true as const };
-    const before = { ...base, loopClips: [optedIn] } as RotoPhysicalEditSnapshot<null>;
-    const after = {
-      ...base,
-      loopClips: [{ ...optedIn, keyScriptOverrides: [PER_KEY_SCRIPT_OVERRIDE] }],
-    } as RotoPhysicalEditSnapshot<null>;
+    const before = { ...base, loopClips: [lifecycleLoopClip()] } as RotoPhysicalEditSnapshot<null>;
+    const after = { ...base, loopClips: [optedIn] } as RotoPhysicalEditSnapshot<null>;
     const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
     const pendingOperationId = signal<string | null>(null);
     const availability = signal({ undo: 0, redo: 0 });
     let current = after;
     let replayNumber = 0;
-    let acknowledgement: 'override-mismatch' | 'flag-mismatch' | 'exact' = 'override-mismatch';
+    let acknowledgement: 'flag-mismatch' | 'exact' = 'flag-mismatch';
     const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
       const target = input.replayTargetSnapshot;
       if (!target || !input.historyProvenance) return false;
       const source = current;
       replayNumber += 1;
       const targetClip = target.loopClips[0]!;
-      const acknowledgedClip = acknowledgement === 'override-mismatch'
-        ? { ...targetClip, keyScriptOverrides: [{ ...PER_KEY_SCRIPT_OVERRIDE, overrideColor: '#000000' }] }
-        : acknowledgement === 'flag-mismatch'
-          ? { ...targetClip, keyScriptEdits: false as const }
-          : { ...targetClip };
+      // The Undo target predates the opt-in, so the mismatched acknowledgement
+      // ADDS the flag — the same fingerprint, a different canonical clip.
+      const acknowledgedClip = acknowledgement === 'flag-mismatch'
+        ? { ...targetClip, keyScriptEdits: true as const }
+        : { ...targetClip };
       if (acknowledgement === 'exact') current = target;
       acceptedOutput.value = {
         before: source,
@@ -1301,12 +1159,8 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     };
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
 
-    // Revisions stay identical because the per-key members are excluded from
-    // the canonical fingerprint; only the canonical comparator can reject.
-    expect(await history.undo()).toBe(true);
-    expect(availability.value).toEqual({ undo: 1, redo: 0 });
-
-    acknowledgement = 'flag-mismatch';
+    // Revisions stay identical because the opt-in is excluded from the
+    // canonical fingerprint; only the canonical comparator can reject.
     expect(await history.undo()).toBe(true);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
 
@@ -1314,7 +1168,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     acknowledgement = 'exact';
     expect(await history.undo()).toBe(true);
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
-    expect(executePhysicalEdit).toHaveBeenCalledTimes(3);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(2);
   });
 
   it('atomically restores and reapplies one deleted source phase across Repeat 3', async () => {

@@ -14,7 +14,6 @@ import {
   addTrack,
   commitDeleteTrack,
   createRevealRail,
-  rebakeRevealRailKey,
   duplicateTrack,
   efxPaintVersion,
   getDocument as getEfxPaintDocument,
@@ -3956,39 +3955,6 @@ export function PhysicsPaintStudio() {
       }
       return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
     },
-    // 261030-ig0 (D-02): ONE key of an opted-in reveal rail re-baked alone. The
-    // store IS the commit (record replacement + rail override + document
-    // rebuild); this adapter only carries the launch dims/paper and records the
-    // returned descriptor exactly once — the edit's whole undo entry.
-    rebakeRevealKey: async (input) => {
-      const carriedLaunch = launchContextRef.current;
-      const backgroundMetadata = buildRotoBackgroundMetadata(settings);
-      const result = await rebakeRevealRailKey(input.layerId, input.loopId, {
-        slot: input.slot,
-        targetKeyId: input.targetKeyId,
-        targetAppFrame: input.targetAppFrame,
-        motion: input.motion,
-        overrideColor: input.overrideColor,
-        colorize: input.colorize,
-        colorizeMix: input.colorizeMix,
-        photoWiggle: input.photoWiggle,
-        projectSize: {
-          width: carriedLaunch?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH,
-          height: carriedLaunch?.height ?? DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT,
-        },
-        aquarellePaper: {
-          paperId: backgroundMetadata.background,
-          grainStrength: backgroundMetadata.grainStrength,
-          grainScale: backgroundMetadata.grainScale ?? 1,
-        },
-        signal: input.signal,
-      });
-      if (result.ok) {
-        if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
-        return { ok: true };
-      }
-      return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
-    },
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,
@@ -4220,15 +4186,6 @@ export function PhysicsPaintStudio() {
     (loopId: string) => {
       selectedLoopClipId.value = loopId;
       return rotoPlayScript.openLoopEdit(loopId);
-    },
-    [rotoPlayScript],
-  );
-  // 261030-ig0 (D-02): reopen the Create Rail dialog for ONE key of the
-  // selected opted-in rail (the panel only offers the control for those).
-  const handleOpenRotoRailKeyEdit = useCallback(
-    (loopId: string, slot: number) => {
-      selectedLoopClipId.value = loopId;
-      return rotoPlayScript.openRailKeyEdit(loopId, slot);
     },
     [rotoPlayScript],
   );
@@ -6215,7 +6172,7 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return;
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleOpenRotoRailKeyEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -6302,7 +6259,6 @@ export function PhysicsPaintStudio() {
           onGoToGroup: handleGoToLinkedGroup,
         },
       onOpenLoopEdit: handleOpenRotoLoopEdit,
-      onOpenRailKeyEdit: handleOpenRotoRailKeyEdit,
       onCloseLoopClip: handleCloseRotoLoopClip,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },

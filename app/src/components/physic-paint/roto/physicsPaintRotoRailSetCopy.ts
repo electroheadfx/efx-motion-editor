@@ -473,18 +473,8 @@ function buildDuplicatedLoopClip(
     // 261030-ey9: a duplicated reveal rail keeps its Photo wiggle — dropping
     // the flag would silently un-wiggle a pasted rail.
     ...(clip.photoWiggle !== undefined ? { photoWiggle: clip.photoWiggle } : {}),
-    // 261030-ig0: an opted-in rail keeps its per-key option and every override
-    // verbatim. Slots are CYCLE-relative — never translated by `delta` (unlike
-    // frameOverrides, which is frame-keyed).
+    // An opted-in rail keeps its per-key option verbatim.
     ...(clip.keyScriptEdits !== undefined ? { keyScriptEdits: clip.keyScriptEdits } : {}),
-    ...(clip.keyScriptOverrides !== undefined
-      ? {
-          keyScriptOverrides: Object.freeze(clip.keyScriptOverrides.map((override) => Object.freeze({
-            ...override,
-            motion: Object.freeze({ ...override.motion }),
-          }))),
-        }
-      : {}),
     ...(clip.syncState !== undefined
       ? {
           syncState: clip.syncState,

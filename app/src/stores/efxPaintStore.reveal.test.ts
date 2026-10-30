@@ -15,7 +15,6 @@ import {
   createRevealRail,
   deleteRevealRail,
   getDocument,
-  rebakeRevealRailKey,
   registerDocument,
   replayRevealRail,
   reset,
@@ -1128,41 +1127,6 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
   }
 
-  /**
-   * Write a per-key override collection into the runtime document.
-   *
-   * The canonical revision encoder DELIBERATELY excludes the per-key members
-   * (no Rust mirror change), so an override-ONLY clip write is dropped as a
-   * no-op by `replaceRotoPhysicalLoopClips`'s revision guard. Every real path
-   * changes a fingerprint term in the SAME write (replay/resize/regenerate all
-   * rewrite `sourceKeyIds`). Mirror that here with two transient writes that
-   * change a fingerprint term (`repeat`) in the SAME write so the clip lands.
-   */
-  function injectOverrides(
-    layerId: string,
-    loopId: string,
-    overrides: ReadonlyArray<{ slot: number; motion: { deformation: number; position: number }; overrideColor: string | null }>,
-  ): void {
-    const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID);
-    const clip = clips.find((candidate) => candidate.loopId === loopId)!;
-    expect(clip.keyScriptEdits).toBe(true);
-    const bumpedRepeat = clip.repeat === 'infinity' ? 2 : clip.repeat + 1;
-    const written = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, TEST_TRACK_ID, clips.map((candidate) => (
-      candidate.loopId === loopId
-        ? {
-            ...clip,
-            repeat: bumpedRepeat,
-            keyScriptOverrides: Object.freeze(overrides.map((override) => Object.freeze({ ...override }))),
-          }
-        : candidate
-    )));
-    expect(written.ok).toBe(true);
-    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)
-      .find((candidate) => candidate.loopId === loopId)!.keyScriptOverrides).toHaveLength(overrides.length);
-    serializeRuntimeIntoDocument(layerId);
-    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides).toHaveLength(overrides.length);
-  }
-
   it('createRevealRail writes keyScriptEdits ONLY when opted in (off stays byte-identical)', async () => {
     const offLayer = 'layer-reveal-off';
     seedLayer(offLayer);
@@ -1178,7 +1142,6 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(off.ok).toBe(true);
     const offClip = getDocument(offLayer)!.tracks[0].rotoPhysical!.loopClips[0];
     expect('keyScriptEdits' in offClip).toBe(false);
-    expect('keyScriptOverrides' in offClip).toBe(false);
 
     const onLayer = 'layer-reveal-on';
     seedLayer(onLayer);
@@ -1195,10 +1158,9 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(on.ok).toBe(true);
     const onClip = getDocument(onLayer)!.tracks[0].rotoPhysical!.loopClips[0];
     expect(onClip.keyScriptEdits).toBe(true);
-    expect('keyScriptOverrides' in onClip).toBe(false);
   });
 
-  it('replay never lands an override array on a rail that never opted in', async () => {
+  it('replay keeps a rail that never opted in non-opted', async () => {
     const layerId = 'layer-reveal';
     seedLayer(layerId);
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, PNG_1X1_WEBP));
@@ -1217,11 +1179,10 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     const replay = await replayRevealRail(layerId, clip.loopId, { projectSize: TEST_PROJECT_SIZE });
     expect(replay.ok).toBe(true);
     const replayedClip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
-    expect('keyScriptOverrides' in replayedClip).toBe(false);
     expect('keyScriptEdits' in replayedClip).toBe(false);
   });
 
-  it('replay of an opted-in rail discards per-key overrides but keeps the opt-in', async () => {
+  it('replay of an opted-in rail keeps the opt-in', async () => {
     const layerId = 'layer-reveal';
     seedLayer(layerId);
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, PNG_1X1_WEBP));
@@ -1236,213 +1197,12 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     });
     expect(created.ok).toBe(true);
     const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID);
-    injectOverrides(layerId, clips[0]!.loopId, [{ slot: 1, motion: { deformation: 3, position: 4 }, overrideColor: null }]);
-    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides).toHaveLength(1);
 
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('replayed')));
     const replay = await replayRevealRail(layerId, clips[0]!.loopId, { projectSize: TEST_PROJECT_SIZE });
     expect(replay.ok).toBe(true);
     const replayedClip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
     expect(replayedClip.keyScriptEdits).toBe(true);
-    expect(replayedClip.keyScriptOverrides).toEqual([]);
   });
 
-  it('a shortened reveal cycle drops out-of-range override slots and still persists', async () => {
-    const layerId = 'layer-reveal';
-    seedLayer(layerId);
-    harness.renderReveal.mockResolvedValue(stagedFrames(10, 3, PNG_1X1_WEBP));
-    const created = await createRevealRail(layerId, {
-      trackId: TEST_TRACK_ID,
-      projectSize: TEST_PROJECT_SIZE,
-      scriptId: 'script-1',
-      variant: 'progressive',
-      startFrame: 10,
-      frameCount: 3,
-      keyScriptEdits: true,
-    });
-    expect(created.ok).toBe(true);
-    const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID);
-    injectOverrides(layerId, clips[0]!.loopId, [
-      { slot: 0, motion: { deformation: 1, position: 2 }, overrideColor: null },
-      { slot: 2, motion: { deformation: 3, position: 4 }, overrideColor: null },
-    ]);
-
-    const resized = resizeRevealRail(layerId, clips[0]!.loopId, 12);
-    expect(resized.ok).toBe(true);
-    const after = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
-    expect(after.sourceKeyIds).toHaveLength(2);
-    expect(after.keyScriptEdits).toBe(true);
-    // Only the surviving prefix keeps its address; the out-of-range slot is gone
-    // and the persisted document still parsed (resize fails as 'loop-clip-failed'
-    // otherwise).
-    expect(after.keyScriptOverrides?.map((override) => override.slot)).toEqual([0]);
-  });
-
-  async function createOptedRail(layerId: string, frameCount = 3, keyScriptEdits = true): Promise<string> {
-    seedLayer(layerId);
-    harness.renderReveal.mockResolvedValue(stagedFrames(10, frameCount, PNG_1X1_WEBP));
-    const created = await createRevealRail(layerId, {
-      trackId: TEST_TRACK_ID,
-      projectSize: TEST_PROJECT_SIZE,
-      scriptId: 'script-1',
-      variant: 'progressive',
-      startFrame: 10,
-      frameCount,
-      keyScriptEdits,
-    });
-    expect(created.ok).toBe(true);
-    return physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!.loopId;
-  }
-
-  it('rebakeRevealRailKey replaces exactly ONE key, keeps its keyId, and merges the override (D-02)', async () => {
-    const layerId = 'layer-reveal';
-    const loopId = await createOptedRail(layerId);
-    injectOverrides(layerId, loopId, [{ slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null }]);
-    const recordsBefore = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
-    const target = recordsBefore.find((record) => record.appFrame === 11)!;
-    const breaksBefore = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID);
-    const documentBefore = getDocument(layerId)!;
-
-    harness.renderReveal.mockReset();
-    harness.renderReveal.mockResolvedValue([
-      { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('k0'), width: 4, height: 3, source: 'real-key' as const },
-      { frameIndex: 1, appFrame: 11, bytes: testWebpBytes('k1-new'), width: 4, height: 3, source: 'real-key' as const },
-    ]);
-    const result = await rebakeRevealRailKey(layerId, loopId, {
-      slot: 1,
-      targetKeyId: target.keyId,
-      targetAppFrame: 11,
-      motion: { deformation: 7, position: 9 },
-      overrideColor: '#4b6382',
-      colorize: false,
-      colorizeMix: 100,
-      photoWiggle: false,
-      projectSize: TEST_PROJECT_SIZE,
-    });
-    expect(result.ok).toBe(true);
-    const descriptor = (result as OkRevealMutation).descriptor!;
-    expect(descriptor.operationKind).toBe('reveal-key-edit');
-    expect(descriptor.before).toBe(documentBefore);
-    expect(getDocument(layerId)!.documentRevision).toBe(documentBefore.documentRevision + 1);
-
-    // ONE renderer call: the accepted O(k) prefix from the placement start.
-    expect(harness.renderReveal).toHaveBeenCalledTimes(1);
-    const options = harness.renderReveal.mock.calls[0]![0];
-    expect(options).toMatchObject({
-      frameCount: 2,
-      canonicalStart: 10,
-      mode: 'progressive',
-      motion: { deformation: 7, position: 9 },
-      colorize: false,
-      colorizeMix: 100,
-      photoWiggle: false,
-    });
-    expect([...options.reference.bytesByAppFrame.keys()]).toEqual([10, 11]);
-
-    // Exactly one record replaced; every sibling key stays byte-identical.
-    const recordsAfter = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
-    expect(recordsAfter.map((record) => record.appFrame)).toEqual([10, 11, 12]);
-    expect(recordsAfter[1]!.keyId).toBe(target.keyId);
-    expect(recordsAfter[1]!.payload.bytes).toEqual(testWebpBytes('k1-new'));
-    expect(recordsAfter[0]!.payload.bytes).toEqual(recordsBefore[0]!.payload.bytes);
-    expect(recordsAfter[2]!.payload.bytes).toEqual(recordsBefore[2]!.payload.bytes);
-    // A mid-rail key never becomes an incoming-interpolation break owner.
-    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual(breaksBefore);
-
-    // The override merge lands (records were written FIRST — they are the only
-    // fingerprint-changing write) and the untouched slot keeps its address.
-    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!;
-    expect(clip.keyScriptOverrides).toEqual([
-      { slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null },
-      { slot: 1, motion: { deformation: 7, position: 9 }, overrideColor: '#4b6382' },
-    ]);
-    expect(clip.syncState).toBe('modified');
-    expect(clip.keyScriptEdits).toBe(true);
-  });
-
-  it('CR-01: two consecutive key edits on the same reveal rail both persist their overrides', async () => {
-    const layerId = 'layer-reveal';
-    const loopId = await createOptedRail(layerId);
-    const target = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
-      .find((record) => record.appFrame === 11)!;
-
-    harness.renderReveal.mockReset();
-    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('k1-a')));
-    const editKey = (motion: { deformation: number; position: number }, overrideColor: string | null) =>
-      rebakeRevealRailKey(layerId, loopId, {
-        slot: 1,
-        targetKeyId: target.keyId,
-        targetAppFrame: 11,
-        motion,
-        overrideColor,
-        colorize: false,
-        colorizeMix: 100,
-        photoWiggle: false,
-        projectSize: TEST_PROJECT_SIZE,
-      });
-
-    const first = await editKey({ deformation: 5, position: 6 }, null);
-    expect(first.ok).toBe(true);
-    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides).toEqual([
-      { slot: 1, motion: { deformation: 5, position: 6 }, overrideColor: null },
-    ]);
-    const bytesAfterFirst = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
-      .find((record) => record.appFrame === 11)!.payload.bytes;
-
-    // Byte-identical second bake: the same motion and pixels, only the metadata
-    // differs. `syncState` is already 'modified' and the override members are
-    // not canonical terms, so the clip's canonical revision never moves — the
-    // revision-equality guard used to discard exactly this write.
-    const second = await editKey({ deformation: 5, position: 6 }, '#4b6382');
-    expect(second.ok).toBe(true);
-    expect((second as OkRevealMutation).descriptor!.operationKind).toBe('reveal-key-edit');
-    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
-      .find((record) => record.appFrame === 11)!.payload.bytes).toEqual(bytesAfterFirst);
-    const persisted = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!;
-    expect(persisted.keyScriptOverrides).toEqual([
-      { slot: 1, motion: { deformation: 5, position: 6 }, overrideColor: '#4b6382' },
-    ]);
-    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides)
-      .toEqual(persisted.keyScriptOverrides);
-  });
-
-  it('rebakeRevealRailKey fails closed on a non-opted rail and on a stale slot/key pair — nothing renders, nothing writes', async () => {
-    const offLayer = 'layer-reveal-off';
-    const offLoopId = await createOptedRail(offLayer, 2, false);
-    const offBefore = getDocument(offLayer)!;
-    harness.renderReveal.mockReset();
-    const off = await rebakeRevealRailKey(offLayer, offLoopId, {
-      slot: 0,
-      targetKeyId: physicPaintStore.getRotoPhysicalLoopClips(offLayer, TEST_TRACK_ID)[0]!.sourceKeyIds[0]!,
-      targetAppFrame: 10,
-      motion: { deformation: 1, position: 1 },
-      overrideColor: null,
-      colorize: false,
-      colorizeMix: 100,
-      photoWiggle: false,
-      projectSize: TEST_PROJECT_SIZE,
-    });
-    expect(off).toEqual({ ok: false, reason: 'bake-failed' });
-    expect(harness.renderReveal).not.toHaveBeenCalled();
-    expect(getDocument(offLayer)).toBe(offBefore);
-
-    const layerId = 'layer-reveal';
-    const loopId = await createOptedRail(layerId);
-    const docBefore = getDocument(layerId)!;
-    harness.renderReveal.mockReset();
-    const mismatched = await rebakeRevealRailKey(layerId, loopId, {
-      slot: 0,
-      targetKeyId: 'foreign-key',
-      targetAppFrame: 10,
-      motion: { deformation: 1, position: 1 },
-      overrideColor: null,
-      colorize: false,
-      colorizeMix: 100,
-      photoWiggle: false,
-      projectSize: TEST_PROJECT_SIZE,
-    });
-    expect(mismatched).toEqual({ ok: false, reason: 'bake-failed' });
-    expect(harness.renderReveal).not.toHaveBeenCalled();
-    expect(getDocument(layerId)).toBe(docBefore);
-  });
 });

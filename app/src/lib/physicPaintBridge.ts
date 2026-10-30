@@ -1388,8 +1388,6 @@ function recomputeCanonicalGroupRegenerate(input: {
   readonly impact: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
 } | string {
   const { currentDocument, targetDocument, proposedRecords, proposedGroupOverrideRecords, delta } = input;
-  // 261030-ig0 D-05: without an explicit discard the per-key script edits survive Regenerate.
-  const discardKeyScriptOverrides = delta.discardKeyScriptOverrides === true;
   const initiatingGroup = currentDocument.loopClips.find((group) => group.loopId === delta.groupId);
   if (!initiatingGroup || !isCompleteRegenerateGroup(initiatingGroup)) {
     return 'Group Regenerate initiating Group is unavailable.';
@@ -1501,7 +1499,6 @@ function recomputeCanonicalGroupRegenerate(input: {
       groupId: group.loopId,
       expectedActionRevision: delta.expectedActionRevision,
       currentActionRevision: delta.expectedActionRevision,
-      discardKeyScriptOverrides,
     });
     if (!proposed.ok) return `Group Regenerate proposal rejected: ${proposed.reason}.`;
     proposalDocument = proposed.proposal;
@@ -1515,7 +1512,6 @@ function recomputeCanonicalGroupRegenerate(input: {
       cleanupKeyIds: Object.freeze(expectedCleanupKeyIds),
       previousRevision: currentDocument.revision,
       nextRevision: proposalDocument.revision,
-      ...(discardKeyScriptOverrides ? { discardKeyScriptOverrides: true as const } : {}),
     }),
   };
 }

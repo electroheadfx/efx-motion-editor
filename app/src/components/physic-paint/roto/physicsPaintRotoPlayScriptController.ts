@@ -10,13 +10,10 @@ import type {
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
-  buildPhysicPaintRotoPhysicalRevision,
   compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
-  PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   type PhysicPaintRotoKeyIdentity,
-  type PhysicPaintRotoKeyScriptOverride,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyRecord,
@@ -48,11 +45,8 @@ export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committi
 
 export type RotoPlayScriptMode = 'progressive' | 'static';
 
-/**
- * 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface.
- * 261030-ig0: `key-edit` reopens the dialog for ONE key of an opted-in rail.
- */
-export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit' | 'key-edit';
+/** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
+export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
 
 /** 52-05 (G-52-3): the Create Rail dialog tabs — Paint Rail or Reveal Photo Rail. */
 export type RotoPlayScriptRailTab = 'paint' | 'reveal';
@@ -90,30 +84,6 @@ export interface RotoRevealRailCreateInput {
 
 /** 52-05 (G-52-3): closed result of the create-reveal-rail port; reason is display-ready copy. */
 export type RotoRevealRailCreateResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
-
-/**
- * 261030-ig0 (D-02): input to the reveal single-key re-bake port. NO frame
- * crosses the port — the store renders, replaces the record, writes the rail's
- * override and returns the descriptor, so the store is the branch's single
- * committer (a second commit would double-write and mint a second undo entry).
- */
-export interface RotoRevealRailKeyRebakeInput {
-  readonly layerId: string;
-  readonly trackId: string;
-  readonly loopId: string;
-  readonly slot: number;
-  readonly targetKeyId: string;
-  readonly targetAppFrame: number;
-  readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
-  readonly overrideColor: string | null;
-  readonly colorize: boolean;
-  readonly colorizeMix: number;
-  readonly photoWiggle: boolean;
-  readonly signal: AbortSignal;
-}
-
-/** 261030-ig0: closed result of the reveal single-key re-bake port. */
-export type RotoRevealRailKeyRebakeResult = { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 /** Uniform result for the atomic loop ops — a rejection always names its reason. */
 export interface RotoPlayScriptLoopOpResult {
@@ -154,10 +124,6 @@ export interface RotoPlayScriptRegenerateImpact {
   readonly groupType: 'Motion' | 'Static';
   readonly restoredRange: string;
   readonly locallyPaintedFrameCount: number;
-  /** 261030-ig0 D-05: distinct keys whose own script bake survives this Regenerate. */
-  readonly keyScriptEditedKeyCount: number;
-  /** Absolute frames of those keys ("F3–F4, F9"); "None" when there are none. */
-  readonly keyScriptEditedFramesLabel: string;
   readonly deletedFrameCount: number;
   readonly deletedFrameRanges: string;
   readonly fragmentCount: number;
@@ -278,12 +244,6 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   openPhotoReference?: () => void;
   /** The create-reveal-rail mutation (Plan 01) — creation IS the first bake (D-11). */
   createReveal?: (input: RotoRevealRailCreateInput) => Promise<RotoRevealRailCreateResult>;
-  /**
-   * 261030-ig0 (D-02): the reveal single-key re-bake — the reveal branch's ONLY
-   * committer (it renders, replaces one record, writes the rail override and
-   * records the undo entry). Absent port = the branch fails closed.
-   */
-  rebakeRevealKey?: (input: RotoRevealRailKeyRebakeInput) => Promise<RotoRevealRailKeyRebakeResult>;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
@@ -349,12 +309,8 @@ export interface RotoPlayScriptController {
   // --- 43-06 loop modes and loop ops (D-01/D-02/D-03/D-05/D-10/D-31) ---
   /** Active dialog mode; 'apply' is the Phase 42 generation surface. */
   dialogMode: Signal<RotoPlayScriptDialogMode>;
-  /** Target Loop Clip identity for loop-edit/source-edit/key-edit; null otherwise. */
+  /** Target Loop Clip identity for loop-edit/source-edit; null otherwise. */
   loopEditTargetId: Signal<string | null>;
-  /** 261030-ig0: the edited key's slot (0-based into sourceKeyIds); null outside key-edit. */
-  keyEditSlot: ReadonlySignal<number | null>;
-  /** 261030-ig0: the edited key's resolved absolute frame; null outside key-edit. */
-  keyEditFrame: ReadonlySignal<number | null>;
   /** The resolved target record from the durable collection (null when absent). */
   loopEditTarget: ReadonlySignal<PhysicPaintRotoLoopClip | null>;
   /** Resolved first source-key frame of the target loop; null when dangling. */
@@ -365,10 +321,6 @@ export interface RotoPlayScriptController {
   regenerateDisabledReason: ReadonlySignal<string | null>;
   /** Frozen G3a facts; null until exact preparation succeeds. */
   regenerateImpact: ReadonlySignal<RotoPlayScriptRegenerateImpact | null>;
-  /** 261030-ig0 D-05: explicit Regenerate opt-out of the per-key bakes (default false). */
-  discardKeyEdits: Signal<boolean>;
-  /** Write the discard flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
-  setDiscardKeyEdits: (enabled: boolean) => void;
   /** True for every Play Script Apply; Repeat changes duration, not capsule creation. */
   loopIntentActive: ReadonlySignal<boolean>;
   /** S4 match — non-null only in apply mode with loop intent and an identical cycle. */
@@ -377,8 +329,6 @@ export interface RotoPlayScriptController {
   linkChoice: Signal<'link' | 'create'>;
   openLoopEdit: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
   openSourceEdit: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
-  /** 261030-ig0 (D-02): reopen the dialog for ONE key of an opted-in rail. */
-  openRailKeyEdit: (loopId: string, slot: number) => Promise<RotoPlayScriptLoopOpResult>;
   repairLoop: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
   updateLoop: () => Promise<boolean>;
   unlinkLoop: (loopId: string) => Promise<RotoPlayScriptLoopOpResult>;
@@ -453,17 +403,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // 43-06 loop modes (D-01/D-02): apply is the default Phase 42 surface.
   const dialogMode = signal<RotoPlayScriptDialogMode>('apply');
   const loopEditTargetId = signal<string | null>(null);
-  // 261030-ig0 (D-02): the single key under edit — its slot AND resolved absolute
-  // frame. The frame is state, not a derivation: only the controller resolves the
-  // key identity, and the dialog header has no other way to show it.
-  const keyEditSlot = signal<number | null>(null);
-  const keyEditFrame = signal<number | null>(null);
   const sourceEditRepairId = signal<string | null>(null);
   const regenerateDisabledReason = signal<string | null>(null);
   const regenerateImpact = signal<RotoPlayScriptRegenerateImpact | null>(null);
-  // 261030-ig0 D-05: Regenerate protects each edited key's own bake unless the
-  // user explicitly discards them; the choice is per-open (never sticky).
-  const discardKeyEdits = signal(false);
   const linkChoice = signal<'link' | 'create'>('link');
   /* ---- 52-05 (G-52-3): the Create Rail dialog tabs ----
      The Reveal Photo Rail tab carries its own span-length draft (defaulting to
@@ -740,12 +682,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     keyScriptEdits.value = enabled;
   }
 
-  /** 261030-ig0 D-05: same compare-then-write law as the creation toggle. */
-  function setDiscardKeyEdits(enabled: boolean): void {
-    if (discardKeyEdits.peek() === enabled) return;
-    discardKeyEdits.value = enabled;
-  }
-
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
     dialogMotion.value = toDialogMotion(ports.getMotion());
@@ -798,13 +734,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 43-06: every apply-mode open resets the loop-mode state.
       dialogMode.value = 'apply';
       loopEditTargetId.value = null;
-      // 261030-ig0: a stale key target must never leak into an apply-mode open.
-      keyEditSlot.value = null;
-      keyEditFrame.value = null;
       sourceEditRepairId.value = null;
       regenerateImpact.value = null;
-      // 261030-ig0 D-05: the Regenerate discard choice is per-open — never sticky.
-      if (discardKeyEdits.peek()) discardKeyEdits.value = false;
       linkChoice.value = 'link';
       countText.value = '3';
       lastFiniteCount.value = '3';
@@ -880,13 +811,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     railTab.value = 'paint'; // 52-05: edit modes always render the Paint surface
     if (loopEditTargetId.peek() === loop.loopId) loopEditTargetId.value = null;
     loopEditTargetId.value = loop.loopId;
-    // 261030-ig0: the key target is per-open — a loop/source edit must not keep
-    // a stale slot or frame from a previous key edit.
-    keyEditSlot.value = null;
-    keyEditFrame.value = null;
     sourceEditRepairId.value = repair ? loop.loopId : null;
-    // 261030-ig0 D-05: a fresh Regenerate always starts protected.
-    if (discardKeyEdits.peek()) discardKeyEdits.value = false;
     linkChoice.value = 'link';
     countText.value = String(loop.sourceKeyIds.length);
     lastFiniteCount.value = countText.value;
@@ -927,51 +852,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return { ok: true, reason: null };
   }
 
-  /**
-   * 261030-ig0 (D-02): reopen the Create Rail dialog for ONE key of an opted-in
-   * rail, prefilled from that key's own override (falling back to the rail's
-   * settings). One identity lookup happens here so `updateRailKey` never has to
-   * ask the authority twice before the bake.
-   */
-  async function openRailKeyEdit(loopId: string, slot: number): Promise<RotoPlayScriptLoopOpResult> {
-    const guard = loopEditOpenGuard();
-    if (guard) return { ok: false, reason: guard };
-    const rail = currentLoopClips().find((clip) => clip.loopId === loopId);
-    if (!rail) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
-    if (rail.keyScriptEdits !== true) return rejectLoopOp('This Rail was not created with per-key script editing.');
-    if (rail.scriptId === undefined) return rejectLoopOp('This Rail has no source script to re-bake from.');
-    if (!Number.isInteger(slot) || slot < 0 || slot >= rail.sourceKeyIds.length) {
-      return rejectLoopOp(`Key ${slot + 1} is outside this Rail (1–${rail.sourceKeyIds.length}).`);
-    }
-    const snapshot = ports.getLoopEditSnapshot?.(rail.placementStart) ?? null;
-    if (!snapshot) return rejectLoopOp('The accepted local Roto physical document is unavailable.');
-    const targetKeyId = rail.sourceKeyIds[slot]!;
-    const resolved = snapshot.identities.find((identity) => identity.keyId === targetKeyId);
-    if (!resolved) return rejectLoopOp('Rail key is no longer addressable.');
-    const override = rail.keyScriptOverrides?.find((candidate) => candidate.slot === slot) ?? null;
-    ports.stopPlayback();
-    phase.value = 'preparing'; status.value = `Preparing Key ${slot + 1}…`; error.value = null;
-    prefillEditMode(rail, snapshot, rail.placementStart, 'key-edit', false);
-    // prefillEditMode hardcodes 'paint' (52-05: the edit modes render the Paint
-    // surface). A key edit inherits the rail's family: the reveal Timing card and
-    // the colorize/photo-wiggle settings are the ones this key actually reads.
-    railTab.value = rail.railKind === 'reveal' ? 'reveal' : 'paint';
-    dialogMotion.value = toDialogMotion(override?.motion ?? rail.motion ?? dialogMotion.peek());
-    const overrideColor = override ? override.overrideColor : (rail.overrideColor ?? null);
-    overrideEnabled.value = overrideColor !== null;
-    if (rail.railKind === 'reveal') {
-      const colorizeOn = override?.colorize ?? rail.colorize ?? false;
-      colorize.value = colorizeOn;
-      colorizeMix.value = override?.colorizeMix ?? rail.colorizeMix ?? 100;
-      photoWiggle.value = override?.photoWiggle ?? rail.photoWiggle ?? false;
-    }
-    keyEditSlot.value = slot;
-    keyEditFrame.value = resolved.appFrame;
-    confirmationOpen.value = true;
-    phase.value = 'idle'; status.value = `Key ${slot + 1} · F${resolved.appFrame}`;
-    return { ok: true, reason: null };
-  }
-
   function isRegenerableLifecycleShape(group: PhysicPaintRotoLoopClip): group is PhysicPaintRotoLoopClip & Required<Pick<
     PhysicPaintRotoLoopClip,
     'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
@@ -989,18 +869,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return ranges.map((range) => range.endExclusive === range.start + 1
       ? `F${range.start}`
       : `F${range.start}–F${range.endExclusive - 1}`).join(', ');
-  }
-
-  /** 261030-ig0: contiguous ranges from individual absolute frames (for the fact line). */
-  function framesToRanges(frames: readonly number[]): readonly { readonly start: number; readonly endExclusive: number }[] {
-    const sorted = [...new Set(frames)].sort((left, right) => left - right);
-    const ranges: Array<{ start: number; endExclusive: number }> = [];
-    for (const frame of sorted) {
-      const last = ranges[ranges.length - 1];
-      if (last && frame === last.endExclusive) last.endExclusive = frame + 1;
-      else ranges.push({ start: frame, endExclusive: frame + 1 });
-    }
-    return Object.freeze(ranges.map((range) => Object.freeze(range)));
   }
 
   function deletedRangesFor(group: PhysicPaintRotoLoopClip & Required<Pick<
@@ -1095,18 +963,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         name: `Rail at F${candidate.phaseOrigin!}`,
         range: `F${candidate.phaseOrigin!}–F${candidate.originalEndExclusive! - 1}`,
       })));
-      // 261030-ig0 D-05 fact: which keys carry their own bake. Affected rails share
-      // the same source cycle, so frames are deduped by absolute position.
-      const recordFrames = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
-      const editedFrames = new Set<number>();
-      for (const candidate of affected) {
-        if (candidate.keyScriptEdits !== true || candidate.keyScriptOverrides === undefined) continue;
-        for (const override of candidate.keyScriptOverrides) {
-          const keyId = candidate.sourceKeyIds[override.slot];
-          const appFrame = keyId === undefined ? undefined : recordFrames.get(keyId);
-          if (appFrame !== undefined) editedFrames.add(appFrame);
-        }
-      }
       regenerateImpact.value = Object.freeze({
         actionId: group.scriptId,
         actionRevision: action.revision,
@@ -1117,8 +973,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         groupType: group.mode === 'progressive' ? 'Motion' : 'Static',
         restoredRange: `F${group.phaseOrigin}–F${group.originalEndExclusive - 1}`,
         locallyPaintedFrameCount: group.frameOverrides.length,
-        keyScriptEditedKeyCount: editedFrames.size,
-        keyScriptEditedFramesLabel: compactFrameRanges(framesToRanges([...editedFrames])),
         deletedFrameCount: deletedRanges.reduce((count, range) => count + range.endExclusive - range.start, 0),
         deletedFrameRanges: compactFrameRanges(deletedRanges),
         fragmentCount: group.visibleRanges.length,
@@ -1388,219 +1242,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return result.ok;
   }
 
-  /**
-   * 261030-ig0 (D-01/D-02): re-bake exactly ONE key of an opted-in rail.
-   *
-   * Two families, ONE commit path each: a paint rail publishes a single-key
-   * record set through `ports.commit`; a reveal rail hands the whole edit to
-   * `ports.rebakeRevealKey`, which renders, replaces the one record and writes
-   * the rail override itself — a second commit there would double-write the
-   * record set and mint a second undo entry.
-   */
-  async function updateRailKey(): Promise<RotoPlayScriptLoopOpResult> {
-    const guard = loopOpGuard();
-    if (guard) return { ok: false, reason: guard };
-    const targetId = loopEditTargetId.peek();
-    const slot = keyEditSlot.peek();
-    const targetFrame = keyEditFrame.peek();
-    if (dialogMode.peek() !== 'key-edit' || targetId === null || slot === null || targetFrame === null) {
-      return { ok: false, reason: 'This key edit is no longer active.' };
-    }
-    const context = ports.getLaunchContext()!;
-    const rail = currentLoopClips().find((clip) => clip.loopId === targetId) ?? null;
-    if (!rail) return rejectKeyEdit(`Loop Clip "${targetId}" no longer exists.`);
-    if (rail.scriptId === undefined) return rejectKeyEdit('This Rail has no source script to re-bake from.');
-    if (!Number.isInteger(slot) || slot < 0 || slot >= rail.sourceKeyIds.length) {
-      return rejectKeyEdit('Rail key is no longer addressable.');
-    }
-    const targetKeyId = rail.sourceKeyIds[slot]!;
-    const motion = { ...dialogMotion.peek() };
-    // D-08R: override color resolves from the LIVE brush color at confirm time.
-    const overrideColor = resolveOverrideColor();
-    const revealRail = rail.railKind === 'reveal';
-    const nextColorize = revealRail && colorize.peek();
-    const nextColorizeMix = colorizeMix.peek();
-    const nextPhotoWiggle = revealRail && photoWiggle.peek();
-    const existingOverride = rail.keyScriptOverrides?.find((candidate) => candidate.slot === slot) ?? null;
-    const baselineMotion = existingOverride ? existingOverride.motion : (rail.motion ?? PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO);
-    const baselineColor = existingOverride ? existingOverride.overrideColor : (rail.overrideColor ?? null);
-    const baselineColorize = revealRail
-      ? (existingOverride ? (existingOverride.colorize ?? false) : (rail.colorize ?? false))
-      : false;
-    const baselineColorizeMix = revealRail
-      ? (existingOverride ? (existingOverride.colorizeMix ?? 100) : (rail.colorizeMix ?? 100))
-      : 100;
-    const baselinePhotoWiggle = revealRail
-      ? (existingOverride ? (existingOverride.photoWiggle ?? false) : (rail.photoWiggle ?? false))
-      : false;
-    // Step 8 no-op guard: a metadata-only confirm never bakes and never commits
-    // (the overrides are not canonical terms, so a write would be dropped by the
-    // revision no-op while the acknowledgement still expected it).
-    if (sameMotionSettings(motion, baselineMotion)
-      && overrideColor === baselineColor
-      && nextColorize === baselineColorize
-      && nextPhotoWiggle === baselinePhotoWiggle
-      && (!nextColorize || nextColorizeMix === baselineColorizeMix)) {
-      status.value = 'Key unchanged';
-      confirmationOpen.value = false;
-      ports.log(status.value);
-      return { ok: true, reason: null };
-    }
-    const nextOverride: PhysicPaintRotoKeyScriptOverride = {
-      slot,
-      motion: compactPhysicPaintRotoMotion(motion),
-      overrideColor,
-      ...(nextColorize ? { colorize: true as const, colorizeMix: nextColorizeMix } : {}),
-      ...(nextPhotoWiggle ? { photoWiggle: true as const } : {}),
-    };
-    const acceptedGeneration = ++generation;
-    abortController = new AbortController();
-    const bakeSignal = abortController.signal;
-    ports.stopPlayback();
-    phase.value = 'preparing'; progress.value = null; status.value = `Preparing Key ${slot + 1}…`; error.value = null;
-    try {
-      if (revealRail) {
-        const rebake = ports.rebakeRevealKey;
-        if (!rebake) throw new Error('Reveal key re-bake is unavailable.');
-        phase.value = 'rendering'; progress.value = { completed: 0, total: 1 }; status.value = `Re-baking Key ${slot + 1}…`;
-        const result = await rebake({
-          layerId: context.layerId,
-          trackId: ports.getActiveTrackId(context.layerId),
-          loopId: rail.loopId,
-          slot,
-          targetKeyId,
-          targetAppFrame: targetFrame,
-          motion,
-          overrideColor,
-          colorize: nextColorize,
-          colorizeMix: nextColorizeMix,
-          photoWiggle: nextPhotoWiggle,
-          signal: bakeSignal,
-        });
-        if (disposed || generation !== acceptedGeneration || bakeSignal.aborted) {
-          if (!disposed) { phase.value = 'cancelled'; progress.value = null; status.value = 'Key re-bake cancelled'; error.value = null; ports.log(status.value); }
-          return { ok: false, reason: 'Key re-bake cancelled.' };
-        }
-        abortController = null;
-        if (!result.ok) {
-          phase.value = 'failed'; progress.value = null; status.value = 'Key re-bake failed'; error.value = result.reason;
-          confirmationOpen.value = false; ports.log(result.reason, true);
-          return { ok: false, reason: result.reason };
-        }
-        finishKeyEdit(rail, slot, targetFrame, motion, overrideColor);
-        return { ok: true, reason: null };
-      }
-
-      // Paint rail: the single-key prefix bake (accepted O(k) — progressive
-      // frame k only exists after a bake of at least k+1 frames; the static
-      // branch poses `count` copies of one settled wash and stays cheap).
-      const authority = await ports.requestAuthority(nextOperationId('key-edit'), rail.placementStart);
-      assertCurrent(acceptedGeneration);
-      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
-      const targetRecord = authority.physicalRecords.find((record) => record.keyId === targetKeyId);
-      if (!targetRecord) throw new Error('Rail key is no longer addressable.');
-      if (targetRecord.appFrame !== targetFrame) throw new Error('Rail changed before commit.');
-      const snapshot = await ports.library.loadSnapshot(rail.scriptId);
-      assertCurrent(acceptedGeneration);
-      if (!snapshot) throw new Error('The Rail source script could not be reloaded.');
-      phase.value = 'rendering'; progress.value = { completed: 0, total: slot + 1 }; status.value = `Rendering 0 / ${slot + 1}`;
-      const staged = await bakeAquarelleScript({
-        snapshot,
-        count: slot + 1,
-        start: rail.placementStart,
-        size: ports.getSize(),
-        acceptedGeneration,
-        motion,
-        mode: rail.mode,
-      });
-      assertCurrent(acceptedGeneration);
-      const rendered = staged[slot];
-      if (!rendered) throw new Error('The key bake did not render the requested key.');
-      const frame: PhysicPaintRotoCacheFrame = { ...rendered, frameIndex: slot, appFrame: targetRecord.appFrame };
-      const commitAuthority = await ports.requestAuthority(nextOperationId('key-commit-check'), rail.placementStart);
-      assertCurrent(acceptedGeneration);
-      if (!commitAuthority.ok
-        || commitAuthority.physicalRevision !== authority.physicalRevision
-        || commitAuthority.physicalCapacity !== authority.physicalCapacity
-        || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
-      const publication = buildPhysicalPublication({
-        authority: commitAuthority,
-        staged: [frame],
-        start: targetRecord.appFrame,
-        count: 1,
-        destinationAppFrames: [targetRecord.appFrame],
-        expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
-        rotoBackground: { ...ports.getBackgroundMetadata() },
-      });
-      const loopClips = Object.freeze(currentLoopClips().map((clip) => (clip.loopId === rail.loopId
-        ? {
-            ...clip,
-            keyScriptOverrides: mergeKeyScriptOverride(clip.keyScriptOverrides, nextOverride),
-            // 'modified' is what makes groupRegenerateReason stop reporting
-            // "Already synchronized with Script" after a per-key edit.
-            ...(clip.syncState !== undefined ? { syncState: 'modified' as const } : {}),
-          }
-        : clip)));
-      const committed: RotoGeneratedPhysicalPublication = { ...publication, loopClips };
-      phase.value = 'committing'; status.value = 'Committing key re-bake…'; abortController = null;
-      const result = await ports.commit(committed);
-      assertCurrent(acceptedGeneration);
-      if (!result.ok) throw new Error(result.error || 'Parent rejected the key re-bake.');
-      assertPublicationAck(committed, result);
-      finishKeyEdit(rail, slot, targetRecord.appFrame, motion, overrideColor);
-      return { ok: true, reason: null };
-    } catch (cause) {
-      if (isAbort(cause) || bakeSignal.aborted) {
-        if (!disposed) { phase.value = 'cancelled'; progress.value = null; status.value = 'Key re-bake cancelled'; error.value = null; ports.log(status.value); }
-        return { ok: false, reason: 'Key re-bake cancelled.' };
-      }
-      fail(cause);
-      return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
-    } finally { if (generation === acceptedGeneration) abortController = null; }
-  }
-
-  /** 261030-ig0: the shared success tail of a key edit (both families). */
-  function finishKeyEdit(
-    rail: PhysicPaintRotoLoopClip,
-    slot: number,
-    frame: number,
-    motion: { deformation: number; position: number; rotation?: number; scale?: number },
-    overrideColor: string | null,
-  ): void {
-    hasSuccessfulGeneration = true;
-    appliedSummaryLine1.value = composeSummaryLine1(rail.mode, overrideColor, motion);
-    appliedSummaryLine2.value = `F${frame} · Key ${slot + 1} of ${rail.sourceKeyIds.length} re-baked`;
-    phase.value = 'complete'; progress.value = null;
-    status.value = `Key ${slot + 1} re-baked`;
-    confirmationOpen.value = false;
-    ports.log(status.value);
-  }
-
-  /** 261030-ig0: a key-edit rejection surfaces in the dialog and returns closed. */
-  function rejectKeyEdit(reason: string): RotoPlayScriptLoopOpResult {
-    phase.value = 'failed'; progress.value = null; status.value = 'Key re-bake failed'; error.value = reason;
-    ports.log(reason, true);
-    return { ok: false, reason };
-  }
-
   function unlinkLoop(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
     return runLoopOp(
       loopId,
       (loop) => currentLoopClips().filter((clip) => clip.loopId !== loop.loopId),
       'Loop Clip unlinked — source keys remain ordinary Roto keys.',
     );
-  }
-
-  /**
-   * 261030-ig0: a rewrite that replaces the cycle with an UNRELATED key set
-   * (relink) drops the per-key override collection entirely — no old slot
-   * keeps its address, and a stale out-of-range slot would make the next save
-   * fail the document validator.
-   */
-  function withoutKeyScriptOverrides(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
-    const next = { ...clip };
-    delete next.keyScriptOverrides;
-    return next;
   }
 
   async function duplicateLinkedLoop(loopId: string, destinationStart: number): Promise<RotoPlayScriptLoopOpResult> {
@@ -1652,7 +1299,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // D-30: cycle length and requested duration re-derive from the new
         // sourceKeyIds; no source key or asset is modified (D-31).
         return currentLoopClips().map((clip) => (clip.loopId === loop.loopId
-          ? { ...withoutKeyScriptOverrides(clip), sourceKeyIds: Object.freeze([...targetKeyIds]) }
+          ? { ...clip, sourceKeyIds: Object.freeze([...targetKeyIds]) }
           : clip));
       },
       'Loop Clip relinked to the chosen source cycle.',
@@ -1660,9 +1307,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   async function confirm(): Promise<boolean> {
-    // 261030-ig0: key-edit owns the confirm path ahead of the rail-tab branch —
-    // a reveal key edit must never fall through to create-reveal.
-    if (dialogMode.peek() === 'key-edit') return (await updateRailKey()).ok;
     if (dialogMode.peek() === 'loop-edit') return updateLoop();
     if (railTab.peek() === 'reveal') return confirmReveal();
     return confirmGeneration();
@@ -2084,13 +1728,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       let regenerateSemanticDelta: RotoRegenerateGroupSemanticDelta | null = null;
       if (repairId) {
         // D-31 repair: regenerate + retarget the loop's sourceKeyIds atomically.
-        // 261030-ig0: the whole cycle is re-baked from the rail-level settings,
-        // so no per-key override still describes its key — drop the collection
-        // (the Edited marker and the key-edit prefill must never claim settings
-        // that were not applied). The opt-in itself stays on.
         loopClips = currentLoopClips().map((clip) => (clip.loopId === repairId
           ? {
-              ...withoutKeyScriptOverrides(clip),
+              ...clip,
               sourceKeyIds: Object.freeze([...cycleKeyIds]),
               mode: renderMode,
               scriptId: selectedId,
@@ -2103,51 +1743,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         if (!acceptedDocument || acceptedDocument.revision !== preparedRegenerate.documentRevision) {
           throw new Error('Regenerate rejected — physical Rail document changed.');
         }
-        const discardKeyScriptOverrides = discardKeyEdits.peek();
-        // 261030-ig0 D-05: each individually edited key keeps its OWN accepted bake
-        // unless the user explicitly discards. The substituted records are the ONE
-        // set that derives the revision, the loop clips and the submitted records.
-        const protectedByKeyId = new Map<string, PhysicPaintRotoRealKeyRecord>();
-        if (!discardKeyScriptOverrides) {
-          const acceptedRecords = new Map(commitAuthority.physicalRecords.map((record) => [record.keyId, record]));
-          for (const affected of preparedRegenerate.affectedGroups) {
-            const clip = acceptedDocument.loopClips.find((candidate) => candidate.loopId === affected.groupId);
-            if (!clip || clip.keyScriptEdits !== true || clip.keyScriptOverrides === undefined) continue;
-            for (const override of clip.keyScriptOverrides) {
-              const keyId = clip.sourceKeyIds[override.slot];
-              if (keyId === undefined) continue;
-              const record = acceptedRecords.get(keyId);
-              if (!record || !Number.isFinite(record.appFrame) || !isWebpBytes(record.payload.bytes)) continue;
-              protectedByKeyId.set(keyId, {
-                kind: 'real-key',
-                keyId,
-                appFrame: record.appFrame,
-                payload: clonePhysicalPayload(record.payload),
-              });
-            }
-          }
-        }
-        const substitutedRecords = protectedByKeyId.size === 0
-          ? basePublication.records
-          : basePublication.records.map((record) => protectedByKeyId.get(record.keyId) ?? record);
-        let proposalDocument: PhysicPaintRotoPhysicalDocument = {
-          ...acceptedDocument,
-          realKeyRecords: substitutedRecords,
-          revision: buildPhysicPaintRotoPhysicalRevision(
-            substitutedRecords,
-            acceptedDocument.interpolation,
-            acceptedDocument.loopClips,
-            acceptedDocument.incomingInterpolationBreakKeyIds,
-            acceptedDocument.groupOverrideRecords,
-          ),
-        };
+        let proposalDocument: PhysicPaintRotoPhysicalDocument = acceptedDocument;
         for (const affected of preparedRegenerate.affectedGroups) {
           const proposal = proposePhysicPaintRotoRegenerateGroup({
             document: proposalDocument,
             groupId: affected.groupId,
             expectedActionRevision: preparedRegenerate.actionRevision,
             currentActionRevision: preparedRegenerate.actionRevision,
-            discardKeyScriptOverrides,
           });
           if (!proposal.ok) throw new Error(`Regenerate rejected — ${proposal.reason}.`);
           proposalDocument = proposal.proposal;
@@ -2165,7 +1767,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             .sort()),
           previousRevision: acceptedDocument.revision,
           nextRevision: proposalDocument.revision,
-          ...(discardKeyScriptOverrides ? { discardKeyScriptOverrides: true as const } : {}),
         });
         loopClips = proposalDocument.loopClips;
         regeneratedRecords = proposalDocument.realKeyRecords;
@@ -2175,11 +1776,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         loopClips = currentLoopClips().map((clip) => {
           if (!sameOrderedIds(clip.sourceKeyIds, editTarget.sourceKeyIds)) return clip;
           const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
-          // 261030-ig0: same law as the repair branch — the re-bake replaces
-          // every key of the cycle from the rail-level settings, so the stored
-          // overrides no longer describe the pixels. The opt-in stays on.
           return {
-            ...withoutKeyScriptOverrides(clip),
+            ...clip,
             sourceKeyIds: Object.freeze([...cycleKeyIds]),
             mode: renderMode,
             scriptId: selectedId,
@@ -2316,10 +1914,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   return {
     confirmationOpen, countText, max, lastFiniteCount, capacity, canonicalStart, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
-    dialogMode, loopEditTargetId, keyEditSlot, keyEditFrame, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact,
-    discardKeyEdits, setDiscardKeyEdits,
+    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact,
     loopIntentActive, identicalSourceCycle, linkChoice,
-    openLoopEdit, openSourceEdit, openRailKeyEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
+    openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
     colorize, colorizeMix, setColorize, setColorizeMix,
     photoWiggle, setPhotoWiggle,
@@ -2853,32 +2450,6 @@ function toPhysicalEditRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaint
   };
 }
 
-/**
- * 261030-ig0: field-identical motion compare (absent rotation/scale read as 0)
- * — the key-edit no-op guard must never bake on a re-selected setting.
- */
-function sameMotionSettings(
-  left: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>,
-  right: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>,
-): boolean {
-  return left.deformation === right.deformation
-    && left.position === right.position
-    && (left.rotation ?? 0) === (right.rotation ?? 0)
-    && (left.scale ?? 0) === (right.scale ?? 0);
-}
-
-/**
- * 261030-ig0: the rail's override collection with ONE slot replaced or
- * inserted, kept strictly ascending (the document validator's law) and frozen.
- */
-function mergeKeyScriptOverride(
-  existing: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
-  next: PhysicPaintRotoKeyScriptOverride,
-): readonly PhysicPaintRotoKeyScriptOverride[] {
-  const others = (existing ?? []).filter((override) => override.slot !== next.slot);
-  return Object.freeze([...others, next].sort((left, right) => left.slot - right.slot));
-}
-
 function samePhysicalRecords(
   left: readonly PhysicPaintRotoRealKeyRecord[],
   right: readonly PhysicPaintRotoRealKeyRecord[],
@@ -2926,34 +2497,7 @@ function sameLoopClipCollections(
           && (clip.motion.rotation ?? 0) === (candidate.motion!.rotation ?? 0)
           && (clip.motion.scale ?? 0) === (candidate.motion!.scale ?? 0)))
       && (clip.photoWiggle ?? false) === (candidate.photoWiggle ?? false)
-      // 261030-ig0: the commit acknowledgement must SEE a per-key edit — an
-      // override-only change that compared equal would be rejected as an
-      // unacknowledged commit.
       && (clip.keyScriptEdits ?? false) === (candidate.keyScriptEdits ?? false)
-      && keyScriptOverridesEqual(clip.keyScriptOverrides, candidate.keyScriptOverrides)
       && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
-  });
-}
-
-/** 261030-ig0: field-level comparison of one rail's per-key override collections. */
-function keyScriptOverridesEqual(
-  left: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
-  right: readonly PhysicPaintRotoKeyScriptOverride[] | undefined,
-): boolean {
-  if ((left === undefined) !== (right === undefined)) return false;
-  if (left === undefined || right === undefined) return true;
-  if (left.length !== right.length) return false;
-  return left.every((override, index) => {
-    const candidate = right[index];
-    return candidate !== undefined
-      && override.slot === candidate.slot
-      && override.motion.deformation === candidate.motion.deformation
-      && override.motion.position === candidate.motion.position
-      && (override.motion.rotation ?? 0) === (candidate.motion.rotation ?? 0)
-      && (override.motion.scale ?? 0) === (candidate.motion.scale ?? 0)
-      && (override.overrideColor ?? null) === (candidate.overrideColor ?? null)
-      && (override.colorize ?? false) === (candidate.colorize ?? false)
-      && (override.colorizeMix ?? 0) === (candidate.colorizeMix ?? 0)
-      && (override.photoWiggle ?? false) === (candidate.photoWiggle ?? false);
   });
 }

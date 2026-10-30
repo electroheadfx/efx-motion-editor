@@ -4598,16 +4598,12 @@ export const physicPaintStore = {
    * collection (Phase 43, D-29). Records and interpolation are untouched.
    * Failure changes nothing; an accepted canonical change publishes one
    * visible change and moves the canonical content revision (loops join the
-   * fingerprint, Q1). `persistNonCanonical` is the opt-out for a writer whose
-   * change lives ONLY in members the canonical encoder excludes
-   * (`keyScriptOverrides`): the revision-equality guard would otherwise
-   * discard that write as a no-op.
+   * fingerprint, Q1).
    */
   replaceRotoPhysicalLoopClips(
     layerId: string,
     trackId: string,
     value: unknown,
-    options?: { readonly persistNonCanonical?: boolean },
   ): { ok: true } | { ok: false; error: string } {
     if (!layerId || typeof layerId !== 'string') {
       return { ok: false, error: 'Layer ID must be a non-empty string.' };
@@ -4641,16 +4637,14 @@ export const physicPaintStore = {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Invalid Loop Clip collection.' };
     }
-    if (!options?.persistNonCanonical) {
-      const nextRevision = buildPhysicPaintRotoPhysicalRevision(
-        this.getRotoRealKeyRecords(layerId, trackId),
-        this.getRotoPhysicalInterpolationState(layerId, trackId),
-        validated,
-        this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
-        this.getRotoGroupOverrideRecords(layerId, trackId),
-      );
-      if (nextRevision === this.getRotoPhysicalContentRevision(layerId, trackId)) return { ok: true };
-    }
+    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
+      this.getRotoRealKeyRecords(layerId, trackId),
+      this.getRotoPhysicalInterpolationState(layerId, trackId),
+      validated,
+      this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
+      this.getRotoGroupOverrideRecords(layerId, trackId),
+    );
+    if (nextRevision === this.getRotoPhysicalContentRevision(layerId, trackId)) return { ok: true };
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, validated);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);

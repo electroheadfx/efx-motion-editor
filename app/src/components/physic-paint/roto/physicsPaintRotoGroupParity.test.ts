@@ -493,19 +493,12 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
   });
 });
 
-describe('261030-ig0 per-key script editing — Regenerate protection (D-05)', () => {
-  const perKeyOverride = {
-    slot: 1,
-    motion: { deformation: 5, position: 0 },
-    overrideColor: '#4b6382',
-  };
+describe('261030-ig0 per-key script editing — Regenerate keeps the opt-in', () => {
   const buildOptedInDocument = (optedIn: boolean) => {
     const records = MAIN_CYCLE.map((keyId, index) => realKey(keyId, index));
     const interpolation = { enabled: false, mode: 'duplicate' as const };
     const base = lifecycleGroup('group-main', 0, MAIN_CYCLE, 2, 'action-main');
-    const group = optedIn
-      ? { ...base, keyScriptEdits: true as const, keyScriptOverrides: [perKeyOverride] }
-      : base;
+    const group = optedIn ? { ...base, keyScriptEdits: true as const } : base;
     return parsePhysicPaintRotoPhysicalDocument({
       capacity: 600,
       realKeyRecords: records,
@@ -520,7 +513,7 @@ describe('261030-ig0 per-key script editing — Regenerate protection (D-05)', (
     });
   };
 
-  it('keeps the opt-in and every per-key override when Regenerate runs without a discard', () => {
+  it('keeps the opt-in when Regenerate runs', () => {
     const regenerated = proposePhysicPaintRotoRegenerateGroup({
       document: buildOptedInDocument(true),
       groupId: 'group-main',
@@ -529,42 +522,20 @@ describe('261030-ig0 per-key script editing — Regenerate protection (D-05)', (
     });
     expect(regenerated.ok).toBe(true);
     if (!regenerated.ok) return;
-    expect(regenerated.proposal.loopClips[0]).toMatchObject({
-      keyScriptEdits: true,
-      keyScriptOverrides: [perKeyOverride],
-    });
-    expect(regenerated.impact.discardKeyScriptOverrides).toBeUndefined();
+    expect(regenerated.proposal.loopClips[0]).toMatchObject({ keyScriptEdits: true });
   });
 
-  it('clears only the overrides — never the opt-in — when the discard is explicit', () => {
-    const regenerated = proposePhysicPaintRotoRegenerateGroup({
-      document: buildOptedInDocument(true),
-      groupId: 'group-main',
-      expectedActionRevision: 'action-revision-1',
-      currentActionRevision: 'action-revision-1',
-      discardKeyScriptOverrides: true,
-    });
-    expect(regenerated.ok).toBe(true);
-    if (!regenerated.ok) return;
-    const clip = regenerated.proposal.loopClips[0]!;
-    expect(clip.keyScriptEdits).toBe(true);
-    expect(clip.keyScriptOverrides).toEqual([]);
-    expect(regenerated.impact.discardKeyScriptOverrides).toBe(true);
-  });
-
-  it('leaves a never-opted-in Group without per-key script members under the same flag', () => {
+  it('leaves a never-opted-in Group without per-key script members', () => {
     const regenerated = proposePhysicPaintRotoRegenerateGroup({
       document: buildOptedInDocument(false),
       groupId: 'group-main',
       expectedActionRevision: 'action-revision-1',
       currentActionRevision: 'action-revision-1',
-      discardKeyScriptOverrides: true,
     });
     expect(regenerated.ok).toBe(true);
     if (!regenerated.ok) return;
     const clip = regenerated.proposal.loopClips[0]!;
     expect('keyScriptEdits' in clip).toBe(false);
-    expect('keyScriptOverrides' in clip).toBe(false);
   });
 });
 

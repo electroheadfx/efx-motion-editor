@@ -1152,15 +1152,6 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly groupId: string;
       readonly expectedActionRevision: string;
       readonly cleanupKeyIds: readonly string[];
-      /**
-       * 261030-ig0 (D-05): the explicit "Discard key edits" decision. It MUST
-       * ride the request because the parent recomputes the loop clips and the
-       * semantic impact, then compares BOTH against the submission — a
-       * controller-only flag could never commit. Absent means non-discarding,
-       * so a non-discarding regenerate stays wire-identical; `false` is never
-       * valid (the parent emits the member only when it discards).
-       */
-      readonly discardKeyScriptOverrides?: true;
       readonly previousRevision: string;
       readonly nextRevision: string;
     }
@@ -1657,14 +1648,10 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
     return isRotoRailSetPasteSemanticDelta(value);
   }
   if (value.kind === 'regenerate-group') {
-    return hasOnlyKeys(value, ['kind', 'groupId', 'expectedActionRevision', 'cleanupKeyIds', 'discardKeyScriptOverrides', 'previousRevision', 'nextRevision'])
+    return hasOnlyKeys(value, ['kind', 'groupId', 'expectedActionRevision', 'cleanupKeyIds', 'previousRevision', 'nextRevision'])
       && isBoundedPhysicalKeyId(value.groupId)
       && isNonEmptyString(value.expectedActionRevision)
       && isUniqueBoundedPhysicalKeyIdCollection(value.cleanupKeyIds)
-      // 261030-ig0 (T-261030-ig0-04): the discard decision is accepted ONLY as
-      // the literal `true` — `false` could not round-trip through the impact
-      // comparison (the parent emits the member only when it discards).
-      && (value.discardKeyScriptOverrides === undefined || value.discardKeyScriptOverrides === true)
       && hasValidPhysicalRevisionTransition(value);
   }
   if (value.kind === 'detach-action-groups' || value.kind === 'delete-action-groups') {

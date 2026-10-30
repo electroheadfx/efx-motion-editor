@@ -65,9 +65,6 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       photoReferenceRevision: ports.photoReferenceRevision,
       openPhotoReference: () => portsRef.current.openPhotoReference?.(),
       createReveal: (input) => portsRef.current.createReveal?.(input) ?? Promise.resolve({ ok: false, reason: 'Reveal unavailable — create-reveal port is not wired.' }),
-      // 261030-ig0 (D-02): the reveal single-key re-bake — the reveal branch's
-      // ONLY committer. A harness without the port fails closed with copy.
-      rebakeRevealKey: (input) => portsRef.current.rebakeRevealKey?.(input) ?? Promise.resolve({ ok: false, reason: 'Reveal key re-bake is unavailable.' }),
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),

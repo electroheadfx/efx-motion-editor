@@ -1244,16 +1244,8 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       colorizeMix: 40,
       // 261030-ey9: the Photo wiggle flag rides the clone too.
       photoWiggle: true,
-      // 261030-ig0: the per-key opt-in + override collection ride the clone too.
+      // 261030-ig0: the per-key opt-in rides the clone too.
       keyScriptEdits: true,
-      keyScriptOverrides: [{
-        slot: 1,
-        motion: { deformation: 5, position: 10 },
-        overrideColor: '#112233',
-        colorize: true,
-        colorizeMix: 40,
-        photoWiggle: true,
-      }],
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 12,
@@ -1289,16 +1281,8 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(payloadClips[0]!.colorizeMix).toBe(40);
     // 261030-ey9: the persisted Photo wiggle flag survives the payload clone.
     expect(payloadClips[0]!.photoWiggle).toBe(true);
-    // 261030-ig0: the per-key opt-in and every override field survive the clone.
+    // 261030-ig0: the per-key opt-in survives the clone.
     expect(payloadClips[0]!.keyScriptEdits).toBe(true);
-    expect(payloadClips[0]!.keyScriptOverrides).toEqual([{
-      slot: 1,
-      motion: { deformation: 5, position: 10 },
-      overrideColor: '#112233',
-      colorize: true,
-      colorizeMix: 40,
-      photoWiggle: true,
-    }]);
     // The exact bridge comparison (validateCanonical*): proposed ≡ canonical.
     expect(payloadClips[0]).toEqual(doc.loopClips[0]);
     test.coordinator.cancelPhysicalEdit('disposal');

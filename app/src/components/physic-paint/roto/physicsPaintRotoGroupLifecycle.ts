@@ -488,8 +488,6 @@ export interface PhysicPaintRotoGroupLifecycleImpact {
   readonly cleanupKeyIds: readonly string[];
   readonly previousRevision: string;
   readonly nextRevision: string;
-  /** 261030-ig0 D-05: the Regenerate ran with an explicit discard of per-key script edits. */
-  readonly discardKeyScriptOverrides?: true;
 }
 
 export interface PhysicPaintRotoActionGroupLifecycleImpact {
@@ -695,8 +693,6 @@ export interface PhysicPaintRotoRegenerateGroupInput {
   readonly groupId: string;
   readonly expectedActionRevision: string;
   readonly currentActionRevision: string;
-  /** 261030-ig0 D-05: explicit discard of per-key script edits (default false = protect). */
-  readonly discardKeyScriptOverrides?: boolean;
 }
 
 export function proposePhysicPaintRotoRegenerateGroup(
@@ -720,11 +716,6 @@ export function proposePhysicPaintRotoRegenerateGroup(
       endExclusive: group.originalEndExclusive,
     })]),
     frameOverrides: Object.freeze([]),
-    // 261030-ig0 D-05: only an explicit discard clears the per-key script edits, and only on a
-    // record that opted in (the validator rejects overrides on a non-opted-in clip).
-    ...(input.discardKeyScriptOverrides === true && group.keyScriptEdits === true
-      ? { keyScriptOverrides: Object.freeze([]) }
-      : {}),
   };
   const loopClips = input.document.loopClips.map((candidate, index) => index === groupIndex ? nextGroup : candidate);
   const removedOverrideIds = group.frameOverrides.map((override) => override.keyId);
@@ -742,7 +733,6 @@ export function proposePhysicPaintRotoRegenerateGroup(
         cleanupKeyIds,
         previousRevision: input.document.revision,
         nextRevision: proposal.revision,
-        ...(input.discardKeyScriptOverrides === true ? { discardKeyScriptOverrides: true as const } : {}),
       }),
     });
   } catch {

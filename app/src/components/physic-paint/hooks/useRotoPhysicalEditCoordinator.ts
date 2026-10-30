@@ -710,21 +710,10 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       // compares whole clips, so a dropped member rejects every physical edit
       // on a photoWiggle reveal track (the G-52-4 failure family).
       ...(normalized.photoWiggle !== undefined ? { photoWiggle: normalized.photoWiggle } : {}),
-      // 261030-ig0: the per-key opt-in and the override collection must ride
-      // the clone too — the bridge compares whole clips, so a dropped member
-      // rejects every physical edit on the track (the G-52-4 failure family).
+      // The per-key opt-in must ride the clone too — the bridge compares whole
+      // clips, so a dropped member rejects every physical edit on the track
+      // (the G-52-4 failure family).
       ...(normalized.keyScriptEdits !== undefined ? { keyScriptEdits: normalized.keyScriptEdits } : {}),
-      ...(normalized.keyScriptOverrides !== undefined
-        ? {
-            keyScriptOverrides: normalized.keyScriptOverrides.map((override) => ({
-              slot: override.slot,
-              motion: { ...override.motion },
-              overrideColor: override.overrideColor,
-              ...(override.colorize !== undefined ? { colorize: override.colorize, colorizeMix: override.colorizeMix! } : {}),
-              ...(override.photoWiggle !== undefined ? { photoWiggle: override.photoWiggle } : {}),
-            })),
-          }
-        : {}),
       syncState: normalized.syncState,
       provenanceState: normalized.provenanceState!,
       phaseOrigin: normalized.phaseOrigin!,
