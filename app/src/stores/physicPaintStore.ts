@@ -1991,6 +1991,8 @@ export interface RevealBakeInput {
   colorize?: boolean;
   /** 261029-vbp: tint strength as an integer percent 0-100. */
   colorizeMix?: number;
+  /** 261030-ey9: pose the finished composite as one rigid unit (Photo wiggle). */
+  photoWiggle?: boolean;
   /**
    * The PROJECT canvas dims the reference transform and the Studio canvas are
    * authored against. Carried explicitly: Reveal creation runs in the Studio
@@ -2058,6 +2060,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       mode: input.mode,
       colorize: input.colorize,
       colorizeMix: input.colorizeMix,
+      photoWiggle: input.photoWiggle,
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       aquarellePaper: input.aquarellePaper,

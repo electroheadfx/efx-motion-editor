@@ -281,6 +281,8 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
       // 261029-vbp: a pasted colorized reveal keeps its tint pair.
       colorize: true,
       colorizeMix: 40,
+      // 261030-ey9: a pasted photo-wiggled reveal keeps its flag.
+      photoWiggle: true,
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 0,
@@ -301,6 +303,8 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     // reveal must not silently lose its colour.
     expect(duplicated.colorize).toBe(true);
     expect(duplicated.colorizeMix).toBe(40);
+    // 261030-ey9: the Photo wiggle flag rides the duplicate.
+    expect(duplicated.photoWiggle).toBe(true);
     // The original reveal clip is unchanged.
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
   });

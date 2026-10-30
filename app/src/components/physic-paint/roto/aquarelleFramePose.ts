@@ -59,6 +59,14 @@ export function drawAquarelleSheetPose(
   height: number,
   pose: Readonly<AquarelleSheetPose>,
   background: AquarelleSheetBackground = 'transparent',
+  /**
+   * 261030-ey9: optional pivot override. The reveal Photo wiggle poses the
+   * finished composite around the PLACED photo's own centre (size/2 +
+   * transform*zoom), not the canvas centre. Absent keeps the exact
+   * `translate(pose.centerX, pose.centerY)` operand every recorded-canvas pin
+   * compares; a supplied pivot translates to `pivot + (pose.center − frame/2)`.
+   */
+  pivot?: Readonly<{ x: number; y: number }>,
 ): HTMLCanvasElement {
   const output = document.createElement('canvas');
   output.width = width;
@@ -73,7 +81,14 @@ export function drawAquarelleSheetPose(
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
   }
-  context.translate(pose.centerX, pose.centerY);
+  if (pivot) {
+    // The pose centre is already the posed frame centre; shifting it by
+    // (pivot − frame centre) keeps the exact rotate/scale/drawImage sequence
+    // and only moves the origin. Never re-derive the no-pivot operand.
+    context.translate(pivot.x + pose.centerX - width / 2, pivot.y + pose.centerY - height / 2);
+  } else {
+    context.translate(pose.centerX, pose.centerY);
+  }
   context.rotate(pose.rotation);
   context.scale(pose.scale, pose.scale);
   context.drawImage(frame, -width / 2, -height / 2, width, height);

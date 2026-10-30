@@ -318,6 +318,14 @@ export interface PhysicPaintRotoLoopClip {
    */
   readonly colorize?: boolean;
   readonly colorizeMix?: number;
+  /**
+   * 261030-ey9: the Reveal "Photo wiggle" flag. Written ONLY when true (the
+   * colorize precedent), so a rail created with it off is byte-identical to a
+   * pre-quick rail; absent means off (today's reveal). Deliberately EXCLUDED
+   * from the canonical fingerprint — the baked key bytes already distinguish
+   * the rails, exactly like the colorize pair (research A5).
+   */
+  readonly photoWiggle?: boolean;
   /** Durable Group lifecycle facts. Canonical finite Groups always carry all six members. */
   readonly syncState?: 'synchronized' | 'modified';
   readonly provenanceState?: 'attached' | 'detached';
@@ -446,6 +454,8 @@ const PHYSIC_PAINT_ROTO_LOOP_CLIP_KEYS = new Set([
   // 261029-vbp: the reveal colorize pair — fail-closed allowlist entries.
   'colorize',
   'colorizeMix',
+  // 261030-ey9: the reveal Photo wiggle flag — fail-closed allowlist entry.
+  'photoWiggle',
   'syncState',
   'provenanceState',
   'phaseOrigin',
@@ -831,6 +841,9 @@ export function isPhysicPaintRotoLoopClip(value: unknown): value is PhysicPaintR
     if (typeof value.colorize !== 'boolean') return false;
     if (!isPercentInteger(value.colorizeMix)) return false;
   }
+  // 261030-ey9: the Photo wiggle flag accepts only a boolean when present; a
+  // non-boolean is rejected, never coerced (T-quick-261030-ey9-01).
+  if (value.photoWiggle !== undefined && typeof value.photoWiggle !== 'boolean') return false;
   return hasValidPhysicPaintRotoGroupLifecycle(value);
 }
 
@@ -972,6 +985,9 @@ export function parsePhysicPaintRotoLoopClips(value: unknown): readonly PhysicPa
       // 261029-vbp: the reveal colorize pair copies verbatim (both-or-neither,
       // already validated above) — never derived from any other member.
       ...(entry.colorize !== undefined ? { colorize: entry.colorize, colorizeMix: entry.colorizeMix! } : {}),
+      // 261030-ey9: the Photo wiggle flag copies verbatim (written only when
+      // true) — never derived from any other member.
+      ...(entry.photoWiggle !== undefined ? { photoWiggle: entry.photoWiggle } : {}),
       ...(entry.syncState !== undefined
         ? {
             syncState: entry.syncState,

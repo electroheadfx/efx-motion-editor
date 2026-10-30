@@ -417,6 +417,8 @@ function snapshotRecordsEqual(
       if (left.colorize !== right.colorize) return false;
       if (left.colorizeMix !== right.colorizeMix) return false;
     }
+    // 261030-ey9: a wiggle-flag-only difference is a real edit, not a no-op.
+    if ((left.photoWiggle ?? false) !== (right.photoWiggle ?? false)) return false;
     if (left.syncState !== right.syncState) return false;
     if (left.provenanceState !== right.provenanceState) return false;
     if (left.phaseOrigin !== right.phaseOrigin) return false;
@@ -538,6 +540,9 @@ function snapshotCanonicalContentEqual(
     if (l.motion && r.motion
       && (l.motion.deformation !== r.motion.deformation || l.motion.position !== r.motion.position)) return false;
     if ((l.overrideColor ?? null) !== (r.overrideColor ?? null)) return false;
+    // 261030-ey9: the Photo wiggle flag is durable canonical state — a
+    // flag-only difference settles as a real edit.
+    if ((l.photoWiggle ?? false) !== (r.photoWiggle ?? false)) return false;
     if (l.syncState !== r.syncState) return false;
     if (l.provenanceState !== r.provenanceState) return false;
     if (l.phaseOrigin !== r.phaseOrigin) return false;

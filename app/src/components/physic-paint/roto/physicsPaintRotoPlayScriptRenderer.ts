@@ -33,6 +33,15 @@ export interface RotoRevealRenderInput {
    */
   colorize?: boolean;
   colorizeMix?: number;
+  /**
+   * 261030-ey9: Reveal "Photo wiggle". Off (absent/false) is today's bake — the
+   * wash coverage takes the held pose and the photo stays as placed. On masks
+   * the UNPOSED coverage and applies exactly ONE rigid held pose to the
+   * finished composite pivoting on the placed photo's own centre, so photo and
+   * wash breathe as one unit. Reuses the Motion wiggle values (no second
+   * slider); all values at 0 means no visible motion even when checked.
+   */
+  photoWiggle?: boolean;
   mode?: RotoPlayScriptRenderMode;
   size: Readonly<{ width: number; height: number }>;
   /**
@@ -203,9 +212,18 @@ async function renderRotoRevealFramesAquarelle(
         referenceImages.set(referenceBytes, referenceImage);
       }
       throwIfAborted(input.signal);
-      const posedCoverage = poseRevealCoverage(coverage, destination, input.motion);
+      // 261030-ey9: OFF keeps today's exact path (pose the flattened coverage).
+      // ON masks the UNPOSED coverage, then poses the finished composite — the
+      // coverage is never posed in the same frame (that would double the motion
+      // and break the locked "whole revealed result moves as one unit" rule).
+      const posedCoverage = input.photoWiggle === true
+        ? coverage
+        : poseRevealCoverage(coverage, destination, input.motion);
       const masked = compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom, colorizeMix);
-      const encoded = await encodeRotoFrameFromCanvas(masked, destination, input.size);
+      const finalFrame = input.photoWiggle === true
+        ? poseRevealedResult(masked, destination, input.motion, input.reference.transform, input.reference.zoom)
+        : masked;
+      const encoded = await encodeRotoFrameFromCanvas(finalFrame, destination, input.size);
       throwIfAborted(input.signal);
       staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
       reportProgress(frameIndex + 1);
@@ -333,6 +351,31 @@ function buildRevealTint(
   context.drawImage(coverageAlpha, 0, 0, size.width, size.height);
   context.restore();
   return tint;
+}
+
+/**
+ * 261030-ey9: the Reveal Photo wiggle — exactly ONE rigid held pose of the
+ * FINISHED composite, pivoting on the placed photo's own centre (the same
+ * centre `drawPlacedReference` uses), so photo and wash move together.
+ *
+ * `computeAquarelleSheetPose` returns null when all motion values are zero —
+ * return the composite UNCHANGED (the locked "all values at 0 means no visible
+ * motion even when checked" rule). Never draw an identity pose to fake it.
+ */
+function poseRevealedResult(
+  masked: HTMLCanvasElement,
+  destinationFrame: number,
+  motion: Readonly<{ deformation: number; position: number }>,
+  transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
+  zoom: number,
+): HTMLCanvasElement {
+  const pose = computeAquarelleSheetPose(masked.width, masked.height, destinationFrame, motion);
+  if (!pose) return masked;
+  const pivot = {
+    x: masked.width / 2 + transform.x * zoom,
+    y: masked.height / 2 + transform.y * zoom,
+  };
+  return drawAquarelleSheetPose(masked, masked.width, masked.height, pose, 'transparent', pivot);
 }
 
 /** Per-output-frame pose for the flattened aquarelle coverage (see aquarelleFramePose). */

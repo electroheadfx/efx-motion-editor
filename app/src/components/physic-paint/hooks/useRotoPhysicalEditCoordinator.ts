@@ -706,6 +706,10 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
       ...(normalized.colorize !== undefined
         ? { colorize: normalized.colorize, colorizeMix: normalized.colorizeMix! }
         : {}),
+      // 261030-ey9: the Photo wiggle flag must ride the clone too — the bridge
+      // compares whole clips, so a dropped member rejects every physical edit
+      // on a photoWiggle reveal track (the G-52-4 failure family).
+      ...(normalized.photoWiggle !== undefined ? { photoWiggle: normalized.photoWiggle } : {}),
       syncState: normalized.syncState,
       provenanceState: normalized.provenanceState!,
       phaseOrigin: normalized.phaseOrigin!,

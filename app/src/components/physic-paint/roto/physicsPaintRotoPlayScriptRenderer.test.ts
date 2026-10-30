@@ -71,9 +71,24 @@ describe('renderRotoRevealFrames dispatch (watercolor-only, 261027-klx)', () => 
     // The cumulative sheet cannot re-warp deposits, so the bake stays unposed
     // and the coverage takes the frame's held pose — a single stroke must move.
     expect(renderer).not.toContain('motion: { ...input.motion, startFrame: input.canonicalStart }');
-    expect(renderer).toContain('const posedCoverage = poseRevealCoverage(coverage, destination, input.motion);');
+    // 261030-ey9: the off path still calls poseRevealCoverage for every frame.
+    expect(renderer).toContain('poseRevealCoverage(coverage, destination, input.motion)');
     expect(renderer).toContain('computeAquarelleSheetPose(coverage.width, coverage.height, destinationFrame, motion)');
     expect(renderer).toContain('drawAquarelleSheetPose(coverage, coverage.width, coverage.height, pose)');
+  });
+
+  it('261030-ey9: the Photo wiggle poses the finished composite ONCE, gated on the flag', () => {
+    // Two mutually exclusive branches: OFF poses the coverage, ON masks the raw
+    // coverage and poses the finished composite — never both in one frame.
+    expect(renderer).toContain('const posedCoverage = input.photoWiggle === true');
+    expect(renderer).toContain('function poseRevealedResult(');
+    expect(renderer).toContain('poseRevealedResult(masked, destination, input.motion, input.reference.transform, input.reference.zoom)');
+    // The pivot is the placed photo's own centre (the drawPlacedReference
+    // centre), never the canvas centre.
+    expect(renderer).toContain('masked.width / 2 + transform.x * zoom');
+    expect(renderer).toContain('masked.height / 2 + transform.y * zoom');
+    // All-zero motion returns the composite unchanged — no identity pose.
+    expect(renderer).toContain('if (!pose) return masked;');
   });
 
   it('keeps no engine-1 renderer surface', () => {

@@ -1242,6 +1242,8 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       // whole-clip stableSerialize, so dropping it rejects every physical edit.
       colorize: true,
       colorizeMix: 40,
+      // 261030-ey9: the Photo wiggle flag rides the clone too.
+      photoWiggle: true,
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 12,
@@ -1275,6 +1277,8 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     // 261029-vbp: the persisted tint pair survives the payload clone.
     expect(payloadClips[0]!.colorize).toBe(true);
     expect(payloadClips[0]!.colorizeMix).toBe(40);
+    // 261030-ey9: the persisted Photo wiggle flag survives the payload clone.
+    expect(payloadClips[0]!.photoWiggle).toBe(true);
     // The exact bridge comparison (validateCanonical*): proposed ≡ canonical.
     expect(payloadClips[0]).toEqual(doc.loopClips[0]);
     test.coordinator.cancelPhysicalEdit('disposal');

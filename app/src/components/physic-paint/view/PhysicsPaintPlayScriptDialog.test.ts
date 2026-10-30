@@ -140,6 +140,8 @@ interface FakeControllerSeed {
   // 261029-vbp: the Reveal tab colorize pair
   colorize?: boolean;
   colorizeMix?: number;
+  // 261030-ey9: the Reveal tab Photo wiggle
+  photoWiggle?: boolean;
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -191,6 +193,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     revealReferencePlaced: sig(seed.revealReferencePlaced ?? true),
     colorize: sig(seed.colorize ?? false),
     colorizeMix: sig(seed.colorizeMix ?? 100),
+    photoWiggle: sig(seed.photoWiggle ?? false),
   };
   const controller = {
     ...signals,
@@ -218,6 +221,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     requestPhotoReference: vi.fn(),
     setColorize: vi.fn(),
     setColorizeMix: vi.fn(),
+    setPhotoWiggle: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1310,6 +1314,31 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(mix.props.disabled).toBe(false);
     handler(mix, 'onInput')({ currentTarget: { value: '30' } });
     expect(controller.setColorizeMix).toHaveBeenCalledWith(30);
+  });
+
+  it('261030-ey9: renders the Photo wiggle card in the Reveal tab only, routing the checkbox to the controller', () => {
+    const { controller, signals } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-photo-wiggle'));
+    expect(textOf(card)).toContain('Photo wiggle');
+    expect(textOf(card)).toContain('Wiggle photo and wash together');
+
+    const checkbox = findOne(card, byId('physics-play-script-photo-wiggle')) as TestVNode;
+    expect(checkbox.props.type).toBe('checkbox');
+    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.disabled).toBe(false);
+    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setPhotoWiggle).toHaveBeenCalledWith(true);
+    // The dialog never writes the signal itself — the controller owns it.
+    expect(signals.photoWiggle.value).toBe(false);
+
+    // A seeded enable renders checked.
+    const seeded = renderDialog(createFakeController({ railTab: 'reveal', photoWiggle: true }).controller);
+    expect((findOne(seeded, byId('physics-play-script-photo-wiggle')) as TestVNode).props.checked).toBe(true);
+
+    // The Paint tab renders no Photo wiggle card.
+    const paintTree = renderDialog(createFakeController().controller);
+    expect(findAll(paintTree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {

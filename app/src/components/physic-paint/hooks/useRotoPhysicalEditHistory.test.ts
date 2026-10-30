@@ -910,6 +910,60 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
     expect(availability.value).toEqual({ undo: 0, redo: 0 });
   });
 
+  it('261030-ey9: a before/after differing only in the Photo wiggle flag settles as a real edit', () => {
+    const base = snapshot([record('A', 0)], 'A', 0);
+    const before = { ...base, loopClips: [lifecycleLoopClip()] } as RotoPhysicalEditSnapshot<null>;
+    const after = { ...base, loopClips: [{ ...lifecycleLoopClip(), photoWiggle: true }] } as RotoPhysicalEditSnapshot<null>;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+
+    useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: vi.fn() as never,
+        pendingOperationId: signal<string | null>(null),
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => after.records,
+        getInterpolation: () => after.interpolation,
+        getCapacity: () => after.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => after.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => after.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => after,
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: buildPhysicPaintRotoPhysicalRevision(
+        after.records,
+        after.interpolation,
+        after.loopClips,
+        after.incomingInterpolationBreakKeyIds,
+      ),
+      operationId: 'photo-wiggle-1',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    // A flag-only difference must be recorded — absent reads as false.
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
   it('atomically restores and reapplies one deleted source phase across Repeat 3', async () => {
     const records = [record('A', 0), record('B', 1)];
     const override = record('override-phase-0', 0);

@@ -546,6 +546,28 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
+  // 261030-ey9: the Photo wiggle flag is written only when true, round-trips
+  // verbatim, and a non-boolean is rejected fail-closed.
+  describe('261030-ey9 reveal Photo wiggle flag', () => {
+    it('accepts and round-trips photoWiggle: true', () => {
+      const record = { ...baseLoop(), photoWiggle: true };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips([record]);
+      expect(parsed[0].photoWiggle).toBe(true);
+    });
+
+    it('adds no key when the flag is absent (off is today\'s record)', () => {
+      const parsed = parsePhysicPaintRotoLoopClips([baseLoop()]);
+      expect('photoWiggle' in parsed[0]).toBe(false);
+    });
+
+    it.each([1, 'true', null, {}])('rejects the non-boolean %j fail-closed', (value) => {
+      const record = { ...baseLoop(), photoWiggle: value };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+  });
+
   describe('Phase 43.2 Group lifecycle and source-phase Paint tracer', () => {
     const lifecycleFixtures = [
       { name: 'synchronized Group', record: proposedGroup() },

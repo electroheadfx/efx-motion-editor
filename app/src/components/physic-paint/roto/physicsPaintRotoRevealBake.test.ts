@@ -75,6 +75,7 @@ vi.mock('../../../lib/webpFrameCodec', () => ({ encodeWebpFrame: vi.fn() }));
 vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
 
 import { renderRotoRevealFrames } from './physicsPaintRotoPlayScriptRenderer';
+import { computeAquarelleSheetPose } from './aquarelleFramePose';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 class RecordingCanvas {
@@ -486,6 +487,109 @@ describe('renderRotoRevealFrames bake window and paper (52-01 Task 2)', () => {
     await renderRotoRevealFrames(input({ frameCount: 2, canonicalStart: 15 }));
     expect(harness.canvases).toHaveLength(6);
     expect(maskCanvasIndices()).toHaveLength(2);
+  });
+});
+
+describe('renderRotoRevealFrames photo wiggle (261030-ey9)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  /** Canvases that drew a MASK canvas as their source — the posed composite. */
+  function posedCompositeIndices(): number[] {
+    const maskIds = maskCanvasIndices();
+    return harness.canvases
+      .map((canvas, index) => ({ canvas, index }))
+      .filter(({ canvas, index }) => !maskIds.includes(index)
+        && canvas.ops.some((op) => op.type === 'drawImage' && op.sourceCanvas !== null && maskIds.includes(op.sourceCanvas)))
+      .map(({ index }) => index);
+  }
+
+  const motion = { deformation: 60, position: 40 };
+  const transform = { x: 3, y: -2, scaleX: 1, scaleY: 1, rotation: 0 };
+  const zoom = 0.5;
+
+  it('off parity: the coverage pose path is byte-identical to today', async () => {
+    stagedBake(['w0', 'w1']);
+    await renderRotoRevealFrames(input({ frameCount: 2, canonicalStart: 15, motion, photoWiggle: false }));
+    // Per output frame: wash canvas + pigment-alpha canvas + posed sheet
+    // canvas + mask canvas — exactly the pre-261030-ey9 count.
+    expect(harness.canvases).toHaveLength(8);
+    expect(maskCanvasIndices()).toHaveLength(2);
+    expect(posedCompositeIndices()).toHaveLength(0);
+  });
+
+  it('on: masks the UNPOSED coverage, then poses the composite ONCE per frame around the placed photo centre', async () => {
+    stagedBake(['w0', 'w1']);
+    const bytesByAppFrame = new Map([
+      [15, testWebpBytes('ref-15')],
+      [16, testWebpBytes('ref-16')],
+    ]);
+    await renderRotoRevealFrames(input({
+      frameCount: 2,
+      canonicalStart: 15,
+      motion,
+      photoWiggle: true,
+      reference: { bytesByAppFrame, transform, zoom },
+    }));
+
+    // Per output frame: wash + pigment-alpha + mask + posed composite. Still
+    // FOUR canvases per frame — the composite pose replaces the coverage pose,
+    // never adds to it.
+    expect(harness.canvases).toHaveLength(8);
+    // The mask draws the RAW coverage (a converted-pixel canvas with no rotate
+    // op) — the coverage itself is never posed when the composite is.
+    for (const maskId of maskCanvasIndices()) {
+      const destinationIn = harness.canvases[maskId]!.ops.find(
+        (op) => op.type === 'drawImage' && op.composite === 'destination-in',
+      );
+      expect(destinationIn).toBeDefined();
+      const coverageCanvas = (destinationIn as Extract<MaskOp, { type: 'drawImage' }>).sourceCanvas;
+      expect(coverageCanvas).not.toBeNull();
+      expect(harness.canvases[coverageCanvas!]!.ops.some((op) => op.type === 'rotate')).toBe(false);
+    }
+    const posed = posedCompositeIndices();
+    expect(posed).toHaveLength(2);
+    for (const [frameIndex, index] of posed.entries()) {
+      const destination = 15 + frameIndex;
+      const pose = computeAquarelleSheetPose(10, 10, destination, motion);
+      expect(pose).not.toBeNull();
+      const photoCentreX = 10 / 2 + transform.x * zoom;
+      const photoCentreY = 10 / 2 + transform.y * zoom;
+      const translate = harness.canvases[index]!.ops.find((op) => op.type === 'translate');
+      // The recorded operand is the PIVOT-RELATIVE target — not the raw photo
+      // centre (they differ whenever the pose offset is nonzero).
+      expect(translate).toEqual({
+        type: 'translate',
+        canvas: index,
+        x: photoCentreX + pose!.centerX - 10 / 2,
+        y: photoCentreY + pose!.centerY - 10 / 2,
+      });
+    }
+  });
+
+  it('on with all-zero motion: the composite is returned unposed and the counts match the off path', async () => {
+    stagedBake(['w0', 'w1']);
+    await renderRotoRevealFrames(input({
+      frameCount: 2,
+      canonicalStart: 15,
+      photoWiggle: true,
+      reference: { bytesByAppFrame: new Map([[15, testWebpBytes('ref-15')], [16, testWebpBytes('ref-16')]]), transform, zoom },
+    }));
+    expect(harness.canvases).toHaveLength(6);
+    expect(posedCompositeIndices()).toHaveLength(0);
+  });
+
+  it('on in static mode: every span frame carries its own composite pose (the loop is never short-circuited)', async () => {
+    stagedBake(['settled']);
+    await renderRotoRevealFrames(input({ mode: 'static', frameCount: 3, canonicalStart: 15, motion, photoWiggle: true }));
+    expect(harness.bakeOptions[0]!.frameCount).toBe(1);
+    expect(harness.encode).toHaveBeenCalledTimes(3);
+    // One wash decode + one alpha conversion, then mask + posed composite per
+    // output frame.
+    expect(harness.canvases).toHaveLength(2 + 3 * 2);
+    expect(posedCompositeIndices()).toHaveLength(3);
   });
 });
 

@@ -1530,11 +1530,13 @@ export async function createRevealRail(
     /** G-52-3 (D-08): the repeat law surfaced at creation — same semantics as the Paint Rail. */
     repeat?: number | 'infinity';
     /** G-52-3 (D-09): the creation-time motion wiggle feeding the bake (both variants). */
-    motion?: Readonly<{ deformation: number; position: number }>;
+    motion?: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
     /** 261029-vbp: tint the revealed photo with the wash pigment (default off). */
     colorize?: boolean;
     /** 261029-vbp: tint strength as an integer percent 0-100 (default 100). */
     colorizeMix?: number;
+    /** 261030-ey9: move photo + wash as one rigid unit per held frame (default off). */
+    photoWiggle?: boolean;
     /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
     projectSize: Readonly<{ width: number; height: number }>;
     /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
@@ -1563,6 +1565,9 @@ export async function createRevealRail(
   // clip can never disagree about the strength.
   const revealColorize = input.colorize === true;
   const revealColorizeMix = normalizeRevealColorizeMix(input.colorizeMix);
+  // 261030-ey9: the wiggle flag resolves ONCE so the bake and the persisted
+  // clip can never disagree.
+  const revealPhotoWiggle = input.photoWiggle === true;
   const bakeResult = await commitRevealBake({
     layerId,
     trackId: input.trackId,
@@ -1573,6 +1578,7 @@ export async function createRevealRail(
     mode: input.variant,
     colorize: revealColorize,
     colorizeMix: revealColorizeMix,
+    photoWiggle: revealPhotoWiggle,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,
@@ -1612,6 +1618,8 @@ export async function createRevealRail(
     // 261029-vbp: written only when enabled, both keys together, so a
     // non-colorized reveal rail stays byte-identical to a pre-quick rail.
     ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
+    // 261030-ey9: written only when enabled (colorize precedent).
+    ...(revealPhotoWiggle ? { photoWiggle: true } : {}),
     syncState: 'synchronized',
     provenanceState: 'attached',
     phaseOrigin: input.startFrame,
@@ -1709,6 +1717,9 @@ export async function replayRevealRail(
     // pair, so a reload + replay reproduces the creation bake.
     colorize: rail.clip.colorize === true,
     colorizeMix: normalizeRevealColorizeMix(rail.clip.colorizeMix),
+    // 261030-ey9: a replayed rail re-bakes with its persisted Photo wiggle so a
+    // reopen + replay reproduces the creation bake.
+    photoWiggle: rail.clip.photoWiggle === true,
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,

@@ -3462,6 +3462,23 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     expect(createReveal.mock.calls[0]![0]).toMatchObject({ colorize: true, colorizeMix: 40 });
   });
 
+  it('261030-ey9: Photo wiggle defaults off, threads into the create-reveal port, and resets on every apply-mode open', async () => {
+    const createReveal = vi.fn(async (_input: { photoWiggle?: boolean }) => ({ ok: true as const }));
+    const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.photoWiggle.value).toBe(false);
+
+    test.controller.setPhotoWiggle(true);
+    expect(test.controller.photoWiggle.value).toBe(true);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).toHaveBeenCalledTimes(1);
+    expect(createReveal.mock.calls[0]![0]).toMatchObject({ photoWiggle: true });
+
+    // Every apply-mode open resets the toggle — it is per-creation, never sticky.
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    expect(test.controller.photoWiggle.value).toBe(false);
+  });
+
   it('confirmReveal without a reference opens the Photo Reference modal and never creates (D-12 guard)', async () => {
     const openPhotoReference = vi.fn();
     const createReveal = vi.fn(async () => ({ ok: true as const }));

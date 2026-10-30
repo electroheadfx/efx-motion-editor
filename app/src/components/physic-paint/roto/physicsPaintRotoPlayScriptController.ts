@@ -70,6 +70,8 @@ export interface RotoRevealRailCreateInput {
    */
   readonly colorize: boolean;
   readonly colorizeMix: number;
+  /** 261030-ey9: move photo + wash as one rigid unit per held frame. */
+  readonly photoWiggle: boolean;
   readonly signal: AbortSignal;
   readonly onProgress?: (completed: number, total: number) => void;
 }
@@ -344,6 +346,11 @@ export interface RotoPlayScriptController {
   setColorize: (enabled: boolean) => void;
   /** Clamp every write to an integer 0-100. */
   setColorizeMix: (value: number) => void;
+  /* ---- 261030-ey9: the Reveal tab Photo wiggle ---- */
+  /** Move photo + wash as one rigid unit per held frame (off by default). */
+  photoWiggle: Signal<boolean>;
+  /** Write the flag (event-handler path only — never a render body). */
+  setPhotoWiggle: (enabled: boolean) => void;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
   requestPhotoReference: () => void;
   openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
@@ -394,6 +401,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // the locked 100 mix, and every apply-mode open resets both.
   const colorize = signal(false);
   const colorizeMix = signal(100);
+  // 261030-ey9: Photo wiggle defaults OFF (today's reveal exactly); reset on
+  // every apply-mode open beside colorize.
+  const photoWiggle = signal(false);
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
@@ -634,6 +644,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     colorizeMix.value = Math.min(100, Math.max(0, Math.round(Number.isFinite(value) ? value : 100)));
   }
 
+  /** 261030-ey9: the Reveal Photo wiggle toggle; never sticky across opens. */
+  function setPhotoWiggle(enabled: boolean): void {
+    photoWiggle.value = enabled;
+  }
+
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
     dialogMotion.value = { ...ports.getMotion() };
@@ -702,6 +717,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // the rest of the apply-mode state on every open (never sticky).
       colorize.value = false;
       colorizeMix.value = 100;
+      // 261030-ey9: the Photo wiggle is an apply-mode creation setting too —
+      // reset on every open (colorize precedent, never sticky).
+      photoWiggle.value = false;
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -1429,6 +1447,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         motion: { ...dialogMotion.peek() },
         colorize: colorize.peek(),
         colorizeMix: colorizeMix.peek(),
+        photoWiggle: photoWiggle.peek(),
         signal: bakeSignal,
         onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Baking ${completed} / ${total}`; } },
       });
@@ -1847,6 +1866,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
     colorize, colorizeMix, setColorize, setColorizeMix,
+    photoWiggle, setPhotoWiggle,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;

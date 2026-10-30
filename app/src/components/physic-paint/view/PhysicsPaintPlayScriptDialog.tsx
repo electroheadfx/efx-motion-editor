@@ -311,6 +311,28 @@ export function PhysicsPaintPlayScriptDialog({
     </div>
   );
 
+  // 261030-ey9: the Reveal tab's Photo wiggle — moves photo AND wash as ONE
+  // rigid unit per held frame. Off keeps today's behaviour (only the wash
+  // coverage wiggles). No separate strength: it reuses the Motion wiggle values,
+  // so all values at 0 means no visible motion even when checked.
+  const photoWiggleCard = (
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-photo-wiggle">
+      <div class="physics-paint-play-script-card-heading">
+        <span class="physics-paint-play-script-card-title">Photo wiggle</span>
+      </div>
+      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-photo-wiggle">
+        <input
+          id="physics-play-script-photo-wiggle"
+          type="checkbox"
+          checked={playScript.photoWiggle.value}
+          disabled={busy}
+          onChange={(event) => playScript.setPhotoWiggle((event.currentTarget as HTMLInputElement).checked)}
+        />
+        Wiggle photo and wash together
+      </label>
+    </div>
+  );
+
   return (
     <div
       class={`physics-paint-play-script-dialog${dragging ? ' physics-paint-play-script-dragging' : ''}`}
@@ -565,6 +587,7 @@ export function PhysicsPaintPlayScriptDialog({
           <>
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
+            {photoWiggleCard}
             {colorizeCard}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare

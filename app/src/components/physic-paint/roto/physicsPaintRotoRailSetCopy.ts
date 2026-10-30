@@ -470,6 +470,9 @@ function buildDuplicatedLoopClip(
     ...(clip.colorize !== undefined
       ? { colorize: clip.colorize, colorizeMix: clip.colorizeMix! }
       : {}),
+    // 261030-ey9: a duplicated reveal rail keeps its Photo wiggle — dropping
+    // the flag would silently un-wiggle a pasted rail.
+    ...(clip.photoWiggle !== undefined ? { photoWiggle: clip.photoWiggle } : {}),
     ...(clip.syncState !== undefined
       ? {
           syncState: clip.syncState,
