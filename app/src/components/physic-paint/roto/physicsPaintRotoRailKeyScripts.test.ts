@@ -81,9 +81,11 @@ describe('sliceRailKeyScripts', () => {
     const anchors = [anchor('a', 9), anchor('b', -3)];
     const slices = sliceRailKeyScripts({ anchors, frames: [0, 1, 2], mode: 'progressive' });
 
-    expect(slices[0]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a']);
-    expect(slices[1]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a']);
-    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
+    // -3 clamps to slot 0, 9 clamps to the last slot; the middle slot then
+    // inherits the last stroke that started at or before it (the clamped one).
+    expect(slices[0]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
+    expect(slices[1]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-b']);
+    expect(slices[2]!.strokes.map((stroke) => stroke.brushId)).toEqual(['tip-a']);
   });
 
   it('no anchors yields an empty result — never a fabricated script', () => {
