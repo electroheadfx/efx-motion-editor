@@ -1903,9 +1903,11 @@ export async function rebakeRevealRailKey(
   };
   const merged = [...existingRecords.filter((record) => record.appFrame !== input.targetAppFrame), replacement];
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
-  // Records FIRST: the override members are not canonical terms, so the loop
-  // write below is only effective because this replacement already moved the
-  // revision (replaceRotoPhysicalLoopClips no-ops on an unchanged revision).
+  // Records FIRST: the baked bytes are canonical content. The override members
+  // below never are, and this replacement has already advanced the content
+  // revision — so the loop write's own revision-equality guard can never fire
+  // for an override-only change; it must opt out of that no-op explicitly
+  // (persistNonCanonical) or every key edit after the first is discarded.
   const commitResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, merged, interpolation, capacity);
   if (!commitResult.ok) return { ok: false, reason: 'bake-failed' };
 
@@ -1931,6 +1933,7 @@ export async function rebakeRevealRailKey(
     layerId,
     rail.trackId,
     currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip)),
+    { persistNonCanonical: true },
   );
   if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
 

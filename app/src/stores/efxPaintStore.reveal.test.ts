@@ -1360,6 +1360,52 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(clip.keyScriptEdits).toBe(true);
   });
 
+  it('CR-01: two consecutive key edits on the same reveal rail both persist their overrides', async () => {
+    const layerId = 'layer-reveal';
+    const loopId = await createOptedRail(layerId);
+    const target = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
+      .find((record) => record.appFrame === 11)!;
+
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('k1-a')));
+    const editKey = (motion: { deformation: number; position: number }, overrideColor: string | null) =>
+      rebakeRevealRailKey(layerId, loopId, {
+        slot: 1,
+        targetKeyId: target.keyId,
+        targetAppFrame: 11,
+        motion,
+        overrideColor,
+        colorize: false,
+        colorizeMix: 100,
+        photoWiggle: false,
+        projectSize: TEST_PROJECT_SIZE,
+      });
+
+    const first = await editKey({ deformation: 5, position: 6 }, null);
+    expect(first.ok).toBe(true);
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides).toEqual([
+      { slot: 1, motion: { deformation: 5, position: 6 }, overrideColor: null },
+    ]);
+    const bytesAfterFirst = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
+      .find((record) => record.appFrame === 11)!.payload.bytes;
+
+    // Byte-identical second bake: the same motion and pixels, only the metadata
+    // differs. `syncState` is already 'modified' and the override members are
+    // not canonical terms, so the clip's canonical revision never moves — the
+    // revision-equality guard used to discard exactly this write.
+    const second = await editKey({ deformation: 5, position: 6 }, '#4b6382');
+    expect(second.ok).toBe(true);
+    expect((second as OkRevealMutation).descriptor!.operationKind).toBe('reveal-key-edit');
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
+      .find((record) => record.appFrame === 11)!.payload.bytes).toEqual(bytesAfterFirst);
+    const persisted = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!;
+    expect(persisted.keyScriptOverrides).toEqual([
+      { slot: 1, motion: { deformation: 5, position: 6 }, overrideColor: '#4b6382' },
+    ]);
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!.keyScriptOverrides)
+      .toEqual(persisted.keyScriptOverrides);
+  });
+
   it('rebakeRevealRailKey fails closed on a non-opted rail and on a stale slot/key pair — nothing renders, nothing writes', async () => {
     const offLayer = 'layer-reveal-off';
     const offLoopId = await createOptedRail(offLayer, 2, false);
