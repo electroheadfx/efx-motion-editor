@@ -1256,7 +1256,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           ? Math.min(target.phaseOrigin + cycleDuration * draftRepeat, snapshot.capacity)
           : target.phaseOrigin + cycleDuration * draftRepeat;
       if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
-        fail(new Error('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.'));
+        fail(new Error('Cycle count cannot remove locally painted Rail frames. Regenerate the Rail first.'));
         return false;
       }
       const visibleRanges = target.visibleRanges.flatMap((range) => {
@@ -1276,7 +1276,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
       }
       if (visibleRanges.length === 0) {
-        fail(new Error('Repeat cannot remove every surviving Rail frame.'));
+        fail(new Error('Cycle count cannot remove every surviving Rail frame.'));
         return false;
       }
       rebuiltLifecycle = { originalEndExclusive, visibleRanges };
@@ -2457,7 +2457,7 @@ function parseRepeat(value: string, cycleLength: number | null): { count: number
   // unparseable the frames validation already blocks confirm, so the product check is skipped.
   if (cycleLength !== null && cycleLength > 0) {
     const maxRepeat = Math.floor(Number.MAX_SAFE_INTEGER / cycleLength);
-    if (count > maxRepeat) return { count: null, error: 'Repeat is too large for this cycle length.' };
+    if (count > maxRepeat) return { count: null, error: 'Cycle count is too large for this cycle length.' };
   }
   return { count, error: null };
 }

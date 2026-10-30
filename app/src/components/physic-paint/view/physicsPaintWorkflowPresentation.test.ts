@@ -605,7 +605,7 @@ describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-
     // Fill remains the existing empty treatment; tooltip copy is never Empty.
     expect(getRotoResolutionCellTooltipKind(linked, 'empty')).toBe('empty');
     expect(getRotoResolutionCellTooltipCopy(linked, 'empty', new Map([['L1', 5]])))
-      .toBe('Linked · Repeat 3 · Source frame 2 of 5');
+      .toBe('Linked · Cycle 3 · Source frame 2 of 5');
   });
 
   it('keeps generated and gap interiors in the existing fill vocabulary with explicit source-span copy', () => {
@@ -626,10 +626,10 @@ describe('getRotoResolutionCellTooltipKind — linked frames keep existing cell-
 
     expect(getRotoResolutionCellTooltipKind(generated, 'generated')).toBe('generated');
     expect(getRotoResolutionCellTooltipCopy(generated, 'generated', new Map([['L1', 3]])))
-      .toBe('Linked generated · Repeat 3 · Between source frames 1 and 2 of 3');
+      .toBe('Linked generated · Cycle 3 · Between source frames 1 and 2 of 3');
     expect(getRotoResolutionCellTooltipKind(gap, 'empty')).toBe('empty');
     expect(getRotoResolutionCellTooltipCopy(gap, 'empty', new Map([['L1', 3]])))
-      .toBe('Linked gap · Repeat 3 · Between source frames 1 and 2 of 3');
+      .toBe('Linked gap · Cycle 3 · Between source frames 1 and 2 of 3');
   });
 
   it('uses explicit unresolved linked-loop copy instead of the base Empty copy', () => {

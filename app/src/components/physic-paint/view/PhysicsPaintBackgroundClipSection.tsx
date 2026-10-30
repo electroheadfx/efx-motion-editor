@@ -301,10 +301,10 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
           </button>
         </div>
         <div class="physics-paint-option-row">
-          <span class="physics-paint-right-label">Repeat</span>
+          <span class="physics-paint-right-label">Cycle</span>
           <input
             class="physics-paint-bg-repeat-input"
-            aria-label="Repeat"
+            aria-label="Cycle"
             aria-invalid={Boolean(repeatError.value)}
             aria-describedby="physics-bg-repeat-hint"
             inputMode="numeric"

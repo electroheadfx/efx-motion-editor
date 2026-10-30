@@ -612,10 +612,10 @@ describe('createRotoPlayScriptController', () => {
     test.controller.repeatText.value = '1801439850948198'; // floor(MAX_SAFE_INTEGER / 5) — accepted
     expect(test.controller.repeatError.value).toBeNull();
     test.controller.repeatText.value = '1801439850948199'; // one above the bound
-    expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
+    expect(test.controller.repeatError.value).toBe('Cycle count is too large for this cycle length.');
     test.controller.countText.value = '2';
     test.controller.repeatText.value = '9007199254740991'; // individually safe, but 2 × value is not
-    expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
+    expect(test.controller.repeatError.value).toBe('Cycle count is too large for this cycle length.');
     test.controller.repeatText.value = '1'; // repeat 1 always passes format and bound
     expect(test.controller.repeatError.value).toBeNull();
     test.controller.countText.value = '5';
@@ -2428,7 +2428,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       test.controller.repeatText.value = '1';
       expect(await test.controller.confirm()).toBe(false);
       expect(test.commit).not.toHaveBeenCalled();
-      expect(test.controller.error.value).toBe('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.');
+      expect(test.controller.error.value).toBe('Cycle count cannot remove locally painted Rail frames. Regenerate the Rail first.');
     });
 
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
@@ -3279,7 +3279,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       await test.controller.openLoopEdit('L1');
       // A safe integer beyond floor(MAX_SAFE_INTEGER / 5) trips the product bound.
       test.controller.repeatText.value = '1801439850948199';
-      expect(test.controller.repeatError.value).toBe('Repeat is too large for this cycle length.');
+      expect(test.controller.repeatError.value).toBe('Cycle count is too large for this cycle length.');
       expect(test.controller.loopReadout.value).toBeNull(); // never NaN, never an overflow product
       expect(await test.controller.confirm()).toBe(false);
     });

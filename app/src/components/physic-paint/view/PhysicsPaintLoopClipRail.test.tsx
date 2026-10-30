@@ -1431,8 +1431,8 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
 
     const linkedCells = findAll(workflowTree, (vnode) => String(vnode.props.cellClass ?? '').includes('roto-linked-loop-badge'));
     expect(linkedCells.length).toBeGreaterThan(0);
-    expect(linkedCells[0].props.tooltipCopy).toBe('Linked · Repeat 1 · Source frame 1 of 5');
-    expect(linkedCells[0].props.ariaLabel).toContain('Linked · Repeat 1 · Source frame 1 of 5');
+    expect(linkedCells[0].props.tooltipCopy).toBe('Linked · Cycle 1 · Source frame 1 of 5');
+    expect(linkedCells[0].props.ariaLabel).toContain('Linked · Cycle 1 · Source frame 1 of 5');
     expect(String(linkedCells[0].props.ariaLabel)).not.toContain('No Roto content');
     expect(String(linkedCells[0].props.cellClass)).toContain('roto-linked-source-key');
 

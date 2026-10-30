@@ -2681,7 +2681,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ? null
     : addRotoKeyDisabledReason
       ?? (isCurrentFrameLinkedRepeat
-        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
+        ? 'The current frame is a linked Rail cycle — move to an empty frame to create a Rail.'
         : isCurrentFrameGenerated
           ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
           : 'Creating a Rail is unavailable.');

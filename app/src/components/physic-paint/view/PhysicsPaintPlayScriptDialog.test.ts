@@ -565,10 +565,10 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
   });
 
   it('binds the repeat field aria-invalid and error span to the controller repeatError channel', () => {
-    const { controller } = createFakeController({ repeatError: 'Repeat is too large for this cycle length.' });
+    const { controller } = createFakeController({ repeatError: 'Cycle count is too large for this cycle length.' });
     const tree = renderDialog(controller);
     expect(findOne(tree, byId('physics-play-script-repeat')).props['aria-invalid']).toBe(true);
-    expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Repeat is too large for this cycle length.');
+    expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Cycle count is too large for this cycle length.');
   });
 
   it('wires Max and Infinity through their distinct controller boundaries only', () => {

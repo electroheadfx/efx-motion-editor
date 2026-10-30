@@ -552,7 +552,7 @@ export function PhysicsPaintPlayScriptDialog({
                 {playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{playScript.revealValidationError.value}</span> : null}
               </div>
               <div class="physics-paint-play-script-field">
-                <label for="physics-play-script-repeat">Repeat</label>
+                <label for="physics-play-script-repeat">Cycle</label>
                 <div class="physics-paint-play-script-timing-row">
                   <input
                     id="physics-play-script-repeat"
@@ -617,7 +617,7 @@ export function PhysicsPaintPlayScriptDialog({
                 {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
               </div>
               <div class="physics-paint-play-script-field">
-                <label for="physics-play-script-repeat">Repeat</label>
+                <label for="physics-play-script-repeat">Cycle</label>
                 <div class="physics-paint-play-script-timing-row">
                   <input
                     ref={repeatInputRef}

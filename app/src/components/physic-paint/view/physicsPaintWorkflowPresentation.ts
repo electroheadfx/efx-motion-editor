@@ -442,12 +442,12 @@ export function getRotoResolutionCellTooltipCopy(
       const sourceCopy = sourceFrameCount === undefined
         ? `Source frame ${resolution.sourceIndex + 1}`
         : `Source frame ${resolution.sourceIndex + 1} of ${sourceFrameCount}`;
-      return `Linked · Repeat ${resolution.repeatInstance + 1} · ${sourceCopy}`;
+      return `Linked · Cycle ${resolution.repeatInstance + 1} · ${sourceCopy}`;
     }
     case 'linked-generated':
-      return `Linked generated · Repeat ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
+      return `Linked generated · Cycle ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
     case 'linked-gap':
-      return `Linked gap · Repeat ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
+      return `Linked gap · Cycle ${resolution.repeatInstance + 1} · ${sourceSpanCopy(resolution.loopId, resolution.leftSourceIndex, resolution.rightSourceIndex)}`;
     case 'linked-unresolved': {
       const missingCount = resolution.missingSourceKeyIds.length;
       return `Linked loop unresolved · ${missingCount} source frame${missingCount === 1 ? '' : 's'} missing`;

@@ -283,14 +283,14 @@ describe('PhysicsPaintBackgroundClipSection view (49-06, S5 render + accessibili
     expect(textContent(tree)).toContain('Background Clip');
     expect(textContent(tree)).toContain('Start frame');
     expect(textContent(tree)).toContain('10');
-    expect(textContent(tree)).toContain('Repeat');
+    expect(textContent(tree)).toContain('Cycle');
     // The source fact renders as `{N} image(s)` — the walker joins the number
     // and the label with a space, so assert the two tokens separately.
     expect(textContent(tree)).toContain('3');
     expect(textContent(tree)).toContain('image(s)');
     expect(textContent(tree)).toContain('Enter a positive integer.');
     // Accessibility contract (UI-SPEC): named controls.
-    const repeatInput = findByLabel(tree, 'Repeat');
+    const repeatInput = findByLabel(tree, 'Cycle');
     expect(repeatInput.props['aria-describedby']).toBe('physics-bg-repeat-hint');
     const infinityToggle = findByLabel(tree, 'Loop indefinitely');
     expect(infinityToggle.props['aria-pressed']).toBe(false);
@@ -318,7 +318,7 @@ describe('PhysicsPaintBackgroundClipSection view (49-06, S5 render + accessibili
     const tree = renderSection({ layerId: 'layer-1', selectedBackgroundClipId: harness.selectionSignal, ports: harness.ports });
     const infinityToggle = findByLabel(tree, 'Loop indefinitely');
     expect(infinityToggle.props['aria-pressed']).toBe(true);
-    const repeatInput = findByLabel(tree, 'Repeat');
+    const repeatInput = findByLabel(tree, 'Cycle');
     expect(repeatInput.props.disabled).toBe(true);
   });
 });

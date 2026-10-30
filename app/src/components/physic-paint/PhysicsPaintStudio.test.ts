@@ -1823,7 +1823,7 @@ describe('Physics Paint Background Clip section (49-06, S5 right-panel propertie
   it('keeps the section copy and accessibility contract verbatim from the UI-SPEC table', () => {
     const section = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
     expect(section).toContain('aria-label="Background Clip"');
-    expect(section).toContain('aria-label="Repeat"');
+    expect(section).toContain('aria-label="Cycle"');
     expect(section).toContain('aria-describedby="physics-bg-repeat-hint"');
     expect(section).toContain('aria-label="Loop indefinitely"');
     expect(section).toContain('aria-pressed={isInfinite}');
