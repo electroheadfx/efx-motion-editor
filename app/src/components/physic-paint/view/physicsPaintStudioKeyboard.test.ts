@@ -79,6 +79,8 @@ function actions() {
     dryAquarelleSheet: vi.fn(),
     clearAquarelleFrame: vi.fn(),
     resetFgBg: vi.fn(),
+    // 261030-cnq: the color picker latch.
+    toggleAquarellePicker: vi.fn(),
   };
 }
 
@@ -844,6 +846,42 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     const src = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
     expect(src).toContain("import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';");
     expect(src).toContain('canSelectWater: aquarelleWaterAvailable,');
+  });
+});
+
+describe('261030-cnq color picker shortcut (I)', () => {
+  it('latches the picker on a bare i key and consumes it', () => {
+    const { handlers, preventDefault } = dispatch('i', new TestHTMLElement('canvas') as unknown as EventTarget);
+    expect(handlers.toggleAquarellePicker).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('never fires on Shift+I', () => {
+    const { handlers, preventDefault } = dispatch(
+      'I',
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      { shiftKey: true },
+    );
+    expect(handlers.toggleAquarellePicker).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('never fires on a meta/ctrl chord', () => {
+    for (const overrides of [{ metaKey: true }, { ctrlKey: true }, { altKey: true }, { repeat: true }]) {
+      const { handlers, preventDefault } = dispatch(
+        'i',
+        new TestHTMLElement('canvas') as unknown as EventTarget,
+        overrides,
+      );
+      expect(handlers.toggleAquarellePicker).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
+  it('ignores i typed into a text field', () => {
+    const { handlers, preventDefault } = dispatch('i', new TestHTMLElement('input') as unknown as EventTarget);
+    expect(handlers.toggleAquarellePicker).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });
 

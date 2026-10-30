@@ -10,9 +10,11 @@
 //  No DOM, no Preact components.
 // ============================================================
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
+import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import {
   PICK_MIN_ALPHA,
   aquarellePickerActive,
@@ -178,6 +180,46 @@ describe('picker state — two signals, one active verdict', () => {
   });
 });
 
+describe('disarm laws — a paint tool or Move/Edit leaves the picker', () => {
+  afterEach(() => {
+    setAquarelleSelectMode(false);
+    setAquarelleTool('brush');
+  });
+
+  it('a paint-tool pick disarms a latched picker even when the tool is already active', () => {
+    setAquarelleTool('brush');
+    setAquarellePickerLatched(true);
+    expect(isAquarellePickerArmed()).toBe(true);
+    setAquarelleTool('brush');
+    // The equality early-return must not swallow the disarm.
+    expect(aquarellePickerLatched.value).toBe(false);
+    expect(aquarellePickerActive.value).toBe(false);
+  });
+
+  it('a paint-tool pick keeps the active tool compare-then-write', () => {
+    setAquarelleTool('pen');
+    expect(aquarelleActiveTool.value).toBe('pen');
+    setAquarelleTool('water');
+    expect(aquarelleActiveTool.value).toBe('water');
+  });
+
+  it('entering Move/Edit disarms the picker', () => {
+    setAquarellePickerLatched(true);
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.value).toBe(true);
+    expect(aquarellePickerLatched.value).toBe(false);
+    expect(isAquarellePickerArmed()).toBe(false);
+  });
+
+  it('leaving Move/Edit leaves the picker untouched', () => {
+    setAquarelleSelectMode(true);
+    setAquarelleSelectMode(false);
+    setAquarellePickerLatched(true);
+    setAquarelleSelectMode(false);
+    expect(aquarellePickerLatched.value).toBe(true);
+  });
+});
+
 describe('wiring pins — the pick is consumed at the canvas-stack capture phase', () => {
   it('the Studio view consumes a pick before the Roto edit intent', () => {
     const view = readFileSync(resolve(__dirname, './PhysicsPaintStudioView.tsx'), 'utf8');
@@ -188,5 +230,12 @@ describe('wiring pins — the pick is consumed at the canvas-stack capture phase
   it('the Studio passes the pick handler into the canvas stack', () => {
     const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'utf8');
     expect(studio).toContain('onColorPick: handleAquarelleColorPick');
+  });
+
+  it('the left rail renders the Picker button outside the paint-tool row', () => {
+    const rail = readFileSync(resolve(__dirname, './PhysicsPaintToolRail.tsx'), 'utf8');
+    expect(rail).toContain('data-testid="aquarelle-picker-toggle"');
+    // The picker is a host tool — never a member of the paint-tool union.
+    expect(rail).not.toContain("id: 'picker'");
   });
 });
