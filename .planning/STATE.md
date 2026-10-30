@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-29T22:33:59.413Z"
+last_updated: "2026-10-30T07:23:30.414Z"
 last_activity: 2026-10-29
 last_activity_desc: Quick 261029-lel CLOSED, native UAT APPROVED (all 6 rows) — Water tool greyed while the live sheet has no standing water (script/raster/dry); W silent no-op, Water→Brush fallback
-state_head: 18da7276b79c31af1b5b4ec235a47c568c478e79
+state_head: e5b499e25010ece045c913cb864ad3bded60a0be
 progress:
   total_phases: 3
   completed_phases: 3
@@ -619,6 +619,7 @@ None yet.
 | 261029-uoz | DPR regression: every brush preview thumb cropped to its top-left quarter on all surfaces; blit now matches the visible bitmap to the DPR cache | 2026-10-29 | 4007f144 | [261029-uoz-big-ui-regression-all-the-brush-image-ty](./quick/261029-uoz-big-ui-regression-all-the-brush-image-ty/) |
 | 71 | Remove uppercase labels in Studio top bar, brush dropdown/modal, sidebar Brush tab; fixed-width dropdown thumbs at the sidebar 150:44 ratio | 2026-10-29 | 34a3a57d | — |
 | 261029-vbp | Add an option in reveal for colorize the photo with the stroke with a percent mix: default 100% mix when checked, lens-preserving wash-pigment tint per stroke, persisted on the reveal rail | 2026-10-29 | 18da7276 | [261029-vbp-add-an-option-in-reveal-for-colorize-the](./quick/261029-vbp-add-an-option-in-reveal-for-colorize-the/) |
+| 73 | Studio shortcuts: A toggles Move/Edit (previous tool resumes); Tab cycles Paint → Eraser → All only inside Move/Edit | 2026-10-30 | e5b499e2 | — |
 
 ### Roadmap Evolution
 
