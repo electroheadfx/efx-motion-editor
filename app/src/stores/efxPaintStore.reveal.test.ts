@@ -15,6 +15,7 @@ import {
   createRevealRail,
   deleteRevealRail,
   getDocument,
+  rebakeRevealRailKey,
   registerDocument,
   replayRevealRail,
   reset,
@@ -1275,5 +1276,127 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     // and the persisted document still parsed (resize fails as 'loop-clip-failed'
     // otherwise).
     expect(after.keyScriptOverrides?.map((override) => override.slot)).toEqual([0]);
+  });
+
+  async function createOptedRail(layerId: string, frameCount = 3, keyScriptEdits = true): Promise<string> {
+    seedLayer(layerId);
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, frameCount, PNG_1X1_WEBP));
+    const created = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount,
+      keyScriptEdits,
+    });
+    expect(created.ok).toBe(true);
+    return physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!.loopId;
+  }
+
+  it('rebakeRevealRailKey replaces exactly ONE key, keeps its keyId, and merges the override (D-02)', async () => {
+    const layerId = 'layer-reveal';
+    const loopId = await createOptedRail(layerId);
+    injectOverrides(layerId, loopId, [{ slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null }]);
+    const recordsBefore = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
+    const target = recordsBefore.find((record) => record.appFrame === 11)!;
+    const breaksBefore = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID);
+    const documentBefore = getDocument(layerId)!;
+
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue([
+      { frameIndex: 0, appFrame: 10, bytes: testWebpBytes('k0'), width: 4, height: 3, source: 'real-key' as const },
+      { frameIndex: 1, appFrame: 11, bytes: testWebpBytes('k1-new'), width: 4, height: 3, source: 'real-key' as const },
+    ]);
+    const result = await rebakeRevealRailKey(layerId, loopId, {
+      slot: 1,
+      targetKeyId: target.keyId,
+      targetAppFrame: 11,
+      motion: { deformation: 7, position: 9 },
+      overrideColor: '#4b6382',
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+      projectSize: TEST_PROJECT_SIZE,
+    });
+    expect(result.ok).toBe(true);
+    const descriptor = (result as OkRevealMutation).descriptor!;
+    expect(descriptor.operationKind).toBe('reveal-key-edit');
+    expect(descriptor.before).toBe(documentBefore);
+    expect(getDocument(layerId)!.documentRevision).toBe(documentBefore.documentRevision + 1);
+
+    // ONE renderer call: the accepted O(k) prefix from the placement start.
+    expect(harness.renderReveal).toHaveBeenCalledTimes(1);
+    const options = harness.renderReveal.mock.calls[0]![0];
+    expect(options).toMatchObject({
+      frameCount: 2,
+      canonicalStart: 10,
+      mode: 'progressive',
+      motion: { deformation: 7, position: 9 },
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+    });
+    expect([...options.reference.bytesByAppFrame.keys()]).toEqual([10, 11]);
+
+    // Exactly one record replaced; every sibling key stays byte-identical.
+    const recordsAfter = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
+    expect(recordsAfter.map((record) => record.appFrame)).toEqual([10, 11, 12]);
+    expect(recordsAfter[1]!.keyId).toBe(target.keyId);
+    expect(recordsAfter[1]!.payload.bytes).toEqual(testWebpBytes('k1-new'));
+    expect(recordsAfter[0]!.payload.bytes).toEqual(recordsBefore[0]!.payload.bytes);
+    expect(recordsAfter[2]!.payload.bytes).toEqual(recordsBefore[2]!.payload.bytes);
+    // A mid-rail key never becomes an incoming-interpolation break owner.
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual(breaksBefore);
+
+    // The override merge lands (records were written FIRST — they are the only
+    // fingerprint-changing write) and the untouched slot keeps its address.
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!;
+    expect(clip.keyScriptOverrides).toEqual([
+      { slot: 0, motion: { deformation: 2, position: 3 }, overrideColor: null },
+      { slot: 1, motion: { deformation: 7, position: 9 }, overrideColor: '#4b6382' },
+    ]);
+    expect(clip.syncState).toBe('modified');
+    expect(clip.keyScriptEdits).toBe(true);
+  });
+
+  it('rebakeRevealRailKey fails closed on a non-opted rail and on a stale slot/key pair — nothing renders, nothing writes', async () => {
+    const offLayer = 'layer-reveal-off';
+    const offLoopId = await createOptedRail(offLayer, 2, false);
+    const offBefore = getDocument(offLayer)!;
+    harness.renderReveal.mockReset();
+    const off = await rebakeRevealRailKey(offLayer, offLoopId, {
+      slot: 0,
+      targetKeyId: physicPaintStore.getRotoPhysicalLoopClips(offLayer, TEST_TRACK_ID)[0]!.sourceKeyIds[0]!,
+      targetAppFrame: 10,
+      motion: { deformation: 1, position: 1 },
+      overrideColor: null,
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+      projectSize: TEST_PROJECT_SIZE,
+    });
+    expect(off).toEqual({ ok: false, reason: 'bake-failed' });
+    expect(harness.renderReveal).not.toHaveBeenCalled();
+    expect(getDocument(offLayer)).toBe(offBefore);
+
+    const layerId = 'layer-reveal';
+    const loopId = await createOptedRail(layerId);
+    const docBefore = getDocument(layerId)!;
+    harness.renderReveal.mockReset();
+    const mismatched = await rebakeRevealRailKey(layerId, loopId, {
+      slot: 0,
+      targetKeyId: 'foreign-key',
+      targetAppFrame: 10,
+      motion: { deformation: 1, position: 1 },
+      overrideColor: null,
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+      projectSize: TEST_PROJECT_SIZE,
+    });
+    expect(mismatched).toEqual({ ok: false, reason: 'bake-failed' });
+    expect(harness.renderReveal).not.toHaveBeenCalled();
+    expect(getDocument(layerId)).toBe(docBefore);
   });
 });

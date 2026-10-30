@@ -980,6 +980,97 @@ describe('Physics Paint Actions inspector linked Group navigation (43.2-15)', ()
   });
 });
 
+// 261030-ig0 (D-02/D-03): the selected-rail inspector's per-key entry point. The
+// Edit Keys control renders ONLY for an opted-in rail with a wired handler
+// (never a dead control), and the compact key list is derived from the inspected
+// rail on every render — a selection change never shows a stale key set.
+describe('Physics Paint Scripts panel per-key script editing affordance (261030-ig0)', () => {
+  const selectedRail = {
+    loopId: 'rail-a',
+    displayName: 'Walk Rail',
+    sourceLabel: 'Walk Script',
+    placementLabel: 'F10',
+    cycleLabel: 'Cycle 3f × 1 = 3f',
+    effectiveLabel: '3 frames',
+    mode: 'progressive',
+    modeLabel: 'Motion',
+    groupTypeLabel: 'Motion Rail',
+    lifecycle: 'synchronized',
+    statusLabel: 'Synchronized with Script.',
+    synchronizationDot: 'synchronized',
+    regenerateDisabledReason: 'Already synchronized with Script.',
+    fragmentLabel: null,
+    linkedDescription: null,
+    tooltipLines: [],
+    accessibleName: 'Walk Rail. Motion Rail. Synchronized with Script.',
+    keyScriptEdits: true,
+    sourceKeyCount: 3,
+    editedKeySlots: [1] as readonly number[],
+  };
+
+  it('renders no Edit Keys control for a rail that never opted in', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedLoopClip: { ...selectedRail, keyScriptEdits: false },
+      onOpenRailKeyEdit: vi.fn(async () => undefined),
+    });
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Edit Keys — Walk Rail')).toHaveLength(0);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-key-edit-list'))).toHaveLength(0);
+  });
+
+  it('renders no Edit Keys control without the handler — never a dead control', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), { selectedLoopClip: selectedRail });
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Edit Keys — Walk Rail')).toHaveLength(0);
+  });
+
+  it('opens one row per source key, marks the edited slots, and routes each row to the key-edit handler', () => {
+    const onOpenRailKeyEdit = vi.fn(async () => undefined);
+    const props = { selectedLoopClip: selectedRail, onOpenRailKeyEdit };
+    const closed = renderPanel(createFakePlayScript(), createFakeLibrary(), props);
+    expect(findAll(closed, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-key-edit-list'))).toHaveLength(0);
+
+    const control = findOne(closed, (vnode) => vnode.props?.label === 'Edit Keys — Walk Rail');
+    (control.props.onClick as () => void)();
+
+    const opened = renderPanel(createFakePlayScript(), createFakeLibrary(), props);
+    expect(findAll(opened, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-key-edit-list'))).toHaveLength(1);
+    expect(textOf(opened)).toContain('Keys — 3');
+    const rows = findAll(opened, (vnode) => vnode.type === 'button' && hasClass(vnode, 'physics-paint-loop-clip-key-edit-button'));
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => textOf(row))).toEqual(['Key 1', 'Key 2Edited', 'Key 3']);
+    (rows[1]!.props.onClick as () => void)();
+    expect(onOpenRailKeyEdit).toHaveBeenCalledWith('rail-a', 1);
+  });
+
+  it('derives the open list from the inspected rail every render — no stale key set', () => {
+    const props = { selectedLoopClip: selectedRail, onOpenRailKeyEdit: vi.fn(async () => undefined) };
+    const closed = renderPanel(createFakePlayScript(), createFakeLibrary(), props);
+    (findOne(closed, (vnode) => vnode.props?.label === 'Edit Keys — Walk Rail').props.onClick as () => void)();
+
+    const nextRail = {
+      ...selectedRail,
+      loopId: 'rail-b',
+      displayName: 'Turn Rail',
+      sourceKeyCount: 2,
+      editedKeySlots: [] as readonly number[],
+    };
+    const opened = renderPanel(createFakePlayScript(), createFakeLibrary(), { ...props, selectedLoopClip: nextRail });
+    expect(textOf(opened)).toContain('Keys — 2');
+    const rows = findAll(opened, (vnode) => vnode.type === 'button' && hasClass(vnode, 'physics-paint-loop-clip-key-edit-button'));
+    expect(rows.map((row) => textOf(row))).toEqual(['Key 1', 'Key 2']);
+  });
+
+  it('pins the source wiring and the key-list styling tokens', () => {
+    expect(panel).toContain('onOpenRailKeyEdit(selectedLoopClip.loopId, slot)');
+    expect(panel).toContain('KeyRound size={16}');
+    expect(panel).toContain('selectedLoopClip.keyScriptEdits && onOpenRailKeyEdit');
+    // A signal in a ref (CLAUDE.md: no useState; useSignal would add a hook the
+    // manual-hook harness cannot stub).
+    expect(panel).toContain('useRef(signal(false))');
+    expect(css).toContain('.physics-paint-loop-clip-key-edit-list');
+    expect(css).toContain('.physics-paint-loop-clip-key-edit-edited');
+  });
+});
+
 describe('Physics Paint Scripts panel compact sidebar contract', () => {
   it('keeps generated settings and operation status out of the script library surface', () => {
     const tree = renderPanel(createFakePlayScript());

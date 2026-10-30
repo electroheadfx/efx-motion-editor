@@ -210,6 +210,28 @@ describe('canonical Group presentation copy', () => {
   });
 });
 
+describe('261030-ig0 per-key script editing presentation', () => {
+  it('projects the opt-in, the rail key count, and the edited slots', () => {
+    const off = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
+    expect(off.keyScriptEdits).toBe(false);
+    // The count comes from the CLIP's source cycle, never from the resolver range.
+    expect(off.sourceKeyCount).toBe(1);
+    expect(off.editedKeySlots).toEqual([]);
+
+    const on = projectPhysicsPaintLoopClipPresentation(range(), clip({
+      keyScriptEdits: true,
+      sourceKeyIds: ['k0', 'k1', 'k2'],
+      keyScriptOverrides: [
+        { slot: 0, motion: { deformation: 1, position: 2 }, overrideColor: null },
+        { slot: 2, motion: { deformation: 3, position: 4 }, overrideColor: '#4b6382' },
+      ],
+    }), 'Walk Cycle');
+    expect(on.keyScriptEdits).toBe(true);
+    expect(on.sourceKeyCount).toBe(3);
+    expect(on.editedKeySlots).toEqual([0, 2]);
+  });
+});
+
 describe('capsule presentation — shortened state and partial-cycle facts (TML-06)', () => {
   it('projects a shortened finite loop with the requested badge and the interruption tooltip line', () => {
     const presentation = projectPhysicsPaintLoopClipPresentation(
