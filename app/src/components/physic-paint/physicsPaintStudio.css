@@ -2355,14 +2355,33 @@ button.destructive {
    last card absorbs it when the left column is the shorter one. */
 .physics-paint-play-script-key-column > :last-child { flex: 1 1 auto; }
 
-/* The Motion wiggle card hugs its rows — no stretch, no centered dead space. */
-.physics-paint-play-script-card-motion { flex: 0 0 auto; }
+/* Paint rail: the Motion wiggle card stretches to fill the right stack and
+   centers its rows (unchanged D-16 behaviour). */
+.physics-paint-play-script-card-motion { flex: 1 1 auto; }
 
 .physics-paint-play-script-motion-rows {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  gap: 6px;
+  justify-content: center;
   min-height: 0;
+}
+
+.physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper { margin-top: 10px; }
+
+/* Reveal: the card hugs its rows with a wider 12px rhythm — the extra 18px
+   lands Colorize's bottom on the left column's bottom (the summary rule). */
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion {
+  flex: 0 0 auto;
+}
+
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows {
+  flex: 0 0 auto;
+  justify-content: flex-start;
+}
+
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper {
+  margin-top: 12px;
 }
 
 .physics-paint-play-script-card-title {

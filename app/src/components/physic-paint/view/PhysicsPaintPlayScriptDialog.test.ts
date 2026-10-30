@@ -379,13 +379,25 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const stackRule = playScriptCssRule('.physics-paint-play-script-side-stack');
     expect(stackRule).toContain('display: flex');
     expect(stackRule).toContain('flex-direction: column');
-    // The Motion wiggle card hugs its 6px rows (no stretch/centering dead space);
-    // the summary is a full-width row under both columns.
-    expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 0 0 auto');
+    // Paint keeps the stretched/centered Motion card; Reveal scopes the compact
+    // card to a 12px row rhythm so Colorize meets the left column's bottom.
+    expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 1 1 auto');
     const rowsRule = playScriptCssRule('.physics-paint-play-script-motion-rows');
-    expect(rowsRule).toContain('gap: 6px');
-    expect(rowsRule).not.toContain('justify-content: center');
+    expect(rowsRule).toContain('justify-content: center');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion')).toContain('flex: 0 0 auto');
+    const revealRowsRule = playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows');
+    expect(revealRowsRule).toContain('justify-content: flex-start');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper')).toContain('margin-top: 12px');
     expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).toContain('grid-column: 1 / -1');
+  });
+
+  it('marks the root with the reveal modifier only on the Reveal tab (Paint is untouched)', () => {
+    const paint = renderDialog(createFakeController().controller);
+    const paintRoot = findOne(paint, (vnode) => vnode.props?.role === 'dialog');
+    expect(hasClass(paintRoot, 'physics-paint-play-script-reveal')).toBe(false);
+    const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
+    const revealRoot = findOne(reveal, (vnode) => vnode.props?.role === 'dialog');
+    expect(hasClass(revealRoot, 'physics-paint-play-script-reveal')).toBe(true);
   });
 
   it('splits the infinity readout as Cycle Nf × ∞ left / Effective right, and renders nothing when the readout is null', () => {
