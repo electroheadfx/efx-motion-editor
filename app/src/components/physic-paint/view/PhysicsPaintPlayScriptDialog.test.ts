@@ -308,7 +308,7 @@ beforeEach(() => {
 });
 
 describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
-  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack, then the summary bar (span-2)', () => {
+  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack; Paint keeps the summary in col1, Reveal spans it', () => {
     const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
@@ -355,13 +355,22 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(textOf(heading)).toContain('Motion wiggle');
     expect(textOf(findOne(heading, (vnode) => textOf(vnode) === 'Reset defaults'))).toBe('Reset defaults');
 
-    // (d) Summary bar: Requested left / Effective right, full width after the
-    // main grid row.
+    // (d) Paint: the summary sits inside col1, under Paint seed variation.
     const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(tree, summaryBar)).toBe(content);
-    expect(contentChildren.indexOf(summaryBar)).toBeGreaterThan(contentChildren.indexOf(sideStack));
+    expect(renderedParentOf(tree, summaryBar)).toBe(keyColumn);
+    const keyColumnChildren = [...walk(keyColumn)]
+      .filter((child) => child !== keyColumn && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(keyColumn, child) === keyColumn);
+    const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
+    expect(keyColumnChildren.indexOf(summaryBar)).toBeGreaterThan(keyColumnChildren.indexOf(seedCard));
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
+
+    // Reveal: the summary spans both columns under the main grid row.
+    const revealTree = renderDialog(createFakeController({ railTab: 'reveal', loopReadout: readout }).controller);
+    const revealContent = findOne(revealTree, byClass('physics-paint-play-script-content'));
+    const revealSummary = findOne(revealTree, byClass('physics-paint-play-script-summary-bar'));
+    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealContent);
 
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
@@ -384,20 +393,33 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 1 1 auto');
     const rowsRule = playScriptCssRule('.physics-paint-play-script-motion-rows');
     expect(rowsRule).toContain('justify-content: center');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion')).toContain('flex: 0 0 auto');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion')).toContain('flex: 1 1 auto');
     const revealRowsRule = playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows');
-    expect(revealRowsRule).toContain('justify-content: flex-start');
+    expect(revealRowsRule).toContain('justify-content: space-between');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper')).toContain('flex: 0 0 auto');
     expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper')).toContain('margin-top: 12px');
+    // Paint pins the summary to col1's bottom; Reveal spans it flush under the columns.
+    expect(playScriptCssRule('.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
     expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).toContain('grid-column: 1 / -1');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack')).toContain('justify-content: space-between');
+    // Both creation tabs share the same 96% frame; the columns row absorbs slack.
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-surface')).toContain('height: 96%');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-content')).toContain('grid-template-rows: auto auto minmax(0, 1fr)');
+    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs.physics-paint-play-script-reveal .physics-paint-play-script-content')).toContain('grid-template-rows: auto auto minmax(0, 1fr) auto');
   });
 
-  it('marks the root with the reveal modifier only on the Reveal tab (Paint is untouched)', () => {
+  it('marks the root with apply-tabs on both creation tabs and reveal only on Reveal', () => {
     const paint = renderDialog(createFakeController().controller);
     const paintRoot = findOne(paint, (vnode) => vnode.props?.role === 'dialog');
+    expect(hasClass(paintRoot, 'physics-paint-play-script-apply-tabs')).toBe(true);
     expect(hasClass(paintRoot, 'physics-paint-play-script-reveal')).toBe(false);
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
     const revealRoot = findOne(reveal, (vnode) => vnode.props?.role === 'dialog');
+    expect(hasClass(revealRoot, 'physics-paint-play-script-apply-tabs')).toBe(true);
     expect(hasClass(revealRoot, 'physics-paint-play-script-reveal')).toBe(true);
+    const edit = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
+    const editRoot = findOne(edit, (vnode) => vnode.props?.role === 'dialog');
+    expect(hasClass(editRoot, 'physics-paint-play-script-apply-tabs')).toBe(false);
   });
 
   it('splits the infinity readout as Cycle Nf × ∞ left / Effective right, and renders nothing when the readout is null', () => {
@@ -1472,6 +1494,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         keyScriptInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
         seedInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))),
         photoWiggleInColumn: photoWiggle ? columnChildren.indexOf(photoWiggle) : -1,
+        summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
         summaryInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
         columnInContent: contentChildren.indexOf(column),
         stackInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
@@ -1482,15 +1505,17 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(paintOrder.timingInColumn).toBe(0);
     expect(paintOrder.timingInColumn).toBeLessThan(paintOrder.keyScriptInColumn);
     expect(paintOrder.keyScriptInColumn).toBeLessThan(paintOrder.seedInColumn);
+    expect(paintOrder.seedInColumn).toBeLessThan(paintOrder.summaryInColumn);
     expect(paintOrder.photoWiggleInColumn).toBe(-1);
+    expect(paintOrder.summaryInContent).toBe(-1);
     expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
-    expect(paintOrder.stackInContent).toBeLessThan(paintOrder.summaryInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(revealOrder.timingInColumn).toBe(0);
     expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
     expect(revealOrder.keyScriptInColumn).toBeLessThan(revealOrder.seedInColumn);
     expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.photoWiggleInColumn);
+    expect(revealOrder.summaryInColumn).toBe(-1);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
     expect(revealOrder.stackInContent).toBeLessThan(revealOrder.summaryInContent);
   });

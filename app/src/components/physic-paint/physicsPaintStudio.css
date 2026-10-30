@@ -2369,19 +2369,45 @@ button.destructive {
 
 .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper { margin-top: 10px; }
 
-/* Reveal: the card hugs its rows with a wider 12px rhythm — the extra 18px
-   lands Colorize's bottom on the left column's bottom (the summary rule). */
+/* Reveal: the Motion card fills the right stack and its rows spread with a
+   minimum 12px rhythm — no leftover space under the last stepper, and Colorize
+   lands on the left column's bottom. */
 .physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-card-motion {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
 }
 
 .physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows {
+  flex: 1 1 auto;
+  justify-content: space-between;
+}
+
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper {
   flex: 0 0 auto;
-  justify-content: flex-start;
 }
 
 .physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper {
   margin-top: 12px;
+}
+
+/* Reveal: Colorize is pinned to the stack bottom, and the full-width summary
+   sits flush under the columns (the 14px grid row gap is pulled out). */
+.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack {
+  justify-content: space-between;
+}
+
+/* Both creation tabs share ONE frame height: the modal always fills 96% of the
+   viewport and the columns row absorbs the slack, so switching tabs never
+   resizes the window and the summary keeps its 14px top gap. */
+.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-surface {
+  height: 96%;
+}
+
+.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs .physics-paint-play-script-content {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.physics-paint-play-script-dialog.physics-paint-play-script-apply-tabs.physics-paint-play-script-reveal .physics-paint-play-script-content {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .physics-paint-play-script-card-title {
@@ -2770,6 +2796,13 @@ button.destructive {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* Paint rail: the summary lives under Paint seed variation, pinned to the
+   column bottom so it fills the space the right stack leaves. */
+.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar {
+  flex: 0 0 auto;
+  margin-top: auto;
 }
 
 /* Requested/Effective summary bar (D-13/D-16 Row 4): full-width row under both

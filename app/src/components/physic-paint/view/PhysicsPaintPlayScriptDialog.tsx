@@ -233,6 +233,12 @@ export function PhysicsPaintPlayScriptDialog({
   const effectiveSplitAt = loopReadout ? loopReadout.indexOf(EFFECTIVE_SEPARATOR) : -1;
   const summaryRequested = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
   const summaryEffective = loopReadout && effectiveSplitAt >= 0 ? `Effective: ${loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)}` : null;
+  const summaryBar = summaryRequested ? (
+    <p class="physics-paint-play-script-summary-bar">
+      <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
+      {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
+    </p>
+  ) : null;
 
   // 43-06 S4 (D-05): the apply-time Link/Create choice renders only when the
   // controller reports an identical source cycle — a Paint Rail concept only
@@ -408,7 +414,7 @@ export function PhysicsPaintPlayScriptDialog({
 
   return (
     <div
-      class={`physics-paint-play-script-dialog${revealTab ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
+      class={`physics-paint-play-script-dialog${tabsVisible ? ' physics-paint-play-script-apply-tabs' : ''}${revealTab ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
       role="dialog"
       aria-labelledby="physics-play-script-title"
       onKeyDown={(event) => {
@@ -673,6 +679,7 @@ export function PhysicsPaintPlayScriptDialog({
           ) : null}
           {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           {revealTab ? photoWiggleCard : null}
+          {revealTab ? null : summaryBar}
           </div>
           {revealTab ? (
           <>
@@ -789,12 +796,7 @@ export function PhysicsPaintPlayScriptDialog({
           ) : null}
           </>)}
           </>)}
-          {summaryRequested ? (
-            <p class="physics-paint-play-script-summary-bar">
-              <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
-              {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
-            </p>
-          ) : null}
+          {revealTab ? summaryBar : null}
         </div>
         {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
