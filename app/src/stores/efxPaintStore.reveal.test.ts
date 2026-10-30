@@ -297,6 +297,71 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0].photoWiggle).toBe(true);
   });
 
+  it('261030-v1t: creation threads paintSeedVariation into the bake and writes it on the clip only when on', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'static',
+      startFrame: 10,
+      frameCount: 2,
+      paintSeedVariation: true,
+    });
+    expect(result.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({ paintSeedVariation: true }));
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect(clip.paintSeedVariation).toBe(true);
+
+    // Off: no key on the clip and a false flag reaches the bake.
+    const offLayerId = 'layer-reveal-off';
+    registerDocument(makeTrackDocument(offLayerId));
+    setPhotoReferenceSource(offLayerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    const off = await createRevealRail(offLayerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'static',
+      startFrame: 10,
+      frameCount: 2,
+    });
+    expect(off.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({ paintSeedVariation: false }));
+    const offClip = getDocument(offLayerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect('paintSeedVariation' in offClip).toBe(false);
+  });
+
+  it('261030-v1t: replay forwards the persisted paintSeedVariation back into the bake', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const created = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'static',
+      startFrame: 10,
+      frameCount: 2,
+      paintSeedVariation: true,
+    });
+    expect(created.ok).toBe(true);
+    const loopId = (created as OkRevealMutation).descriptor!.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('replayed')));
+    const replay = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
+    expect(replay.ok).toBe(true);
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({ paintSeedVariation: true }));
+    expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0].paintSeedVariation).toBe(true);
+  });
+
   it('an aborted bake commits no keys, writes no rail, and does not bump the document revision (D-11 abort-mid-bake)', async () => {
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));

@@ -144,6 +144,8 @@ interface FakeControllerSeed {
   photoWiggle?: boolean;
   // 261030-ig0: per-key script editing
   keyScriptEdits?: boolean;
+  // 261030-v1t: per-frame paint-seed variation
+  paintSeedVariation?: boolean;
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -197,6 +199,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     colorizeMix: sig(seed.colorizeMix ?? 100),
     photoWiggle: sig(seed.photoWiggle ?? false),
     keyScriptEdits: sig(seed.keyScriptEdits ?? false),
+    paintSeedVariation: sig(seed.paintSeedVariation ?? false),
   };
   const controller = {
     ...signals,
@@ -226,6 +229,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setColorizeMix: vi.fn(),
     setPhotoWiggle: vi.fn(),
     setKeyScriptEdits: vi.fn(),
+    setPaintSeedVariation: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1437,6 +1441,43 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.summaryInContent);
+  });
+
+  it('261030-v1t: renders the Paint seed variation card on both tabs in apply mode only, routing the checkbox', () => {
+    // Paint tab: present, unchecked, editable, routed to the controller.
+    const { controller, signals } = createFakeController();
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
+    expect(textOf(card)).toContain('Paint seed variation');
+    expect(textOf(card)).toContain("Same strokes, new brush texture each frame. Off keeps today's exact pixels.");
+
+    const checkbox = findOne(card, byId('physics-play-script-paint-seed-variation')) as TestVNode;
+    expect(checkbox.props.type).toBe('checkbox');
+    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.disabled).toBe(false);
+    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    expect(controller.setPaintSeedVariation).toHaveBeenCalledWith(true);
+    // The dialog never writes the signal itself — the controller owns it.
+    expect(signals.paintSeedVariation.value).toBe(false);
+
+    // Reveal tab: the SAME creation opt-in, also present and routed.
+    const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
+    const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
+    expect(revealCheckbox.props.type).toBe('checkbox');
+
+    // A seeded enable renders checked.
+    const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);
+    expect((findOne(seeded, byId('physics-play-script-paint-seed-variation')) as TestVNode).props.checked).toBe(true);
+
+    // Busy (a generation can be cancelled) disables the toggle.
+    const busy = renderDialog(createFakeController({ canCancel: true }).controller);
+    expect((findOne(busy, byId('physics-play-script-paint-seed-variation')) as TestVNode).props.disabled).toBe(true);
+
+    // Edit modes never render the creation opt-in — neither tab.
+    const loopEdit = renderDialog(createFakeController({ dialogMode: 'loop-edit', railTab: 'reveal' }).controller);
+    expect(findAll(loopEdit, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
+    const sourceEdit = renderDialog(createFakeController({ dialogMode: 'source-edit' }).controller);
+    expect(findAll(sourceEdit, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {

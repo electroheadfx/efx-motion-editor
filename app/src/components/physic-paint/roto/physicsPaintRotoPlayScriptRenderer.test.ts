@@ -38,7 +38,17 @@ describe('renderRotoRevealFrames dispatch (watercolor-only, 261027-klx)', () => 
   it('runs the wash through the SAME bake as Play/Apply (paper + growth)', () => {
     expect(renderer).toContain('createAquarelleBake(adapter, {');
     expect(renderer).toContain('...(paper ? { paper: { paperId: paper.paperId, grainStrength: paper.grainStrength, grainScale: paper.grainScale } } : {}),');
-    expect(renderer).toContain('frameCount: isStatic ? 1 : input.frameCount');
+    expect(renderer).toContain('frameCount: isStatic && !paintSeedVariation ? 1 : input.frameCount');
+  });
+
+  it('261030-v1t: the per-frame paint seed re-bakes every output frame and masks its OWN wash', () => {
+    // The ON branch: input flag → bake variant + span-length frameCount; the
+    // static wash selection stops reusing frames[0]; the mismatch guard covers
+    // static ON too (each held frame is a complete replay).
+    expect(renderer).toContain('const paintSeedVariation = input.paintSeedVariation === true;');
+    expect(renderer).toContain("paintSeedVariation: isStatic ? 'static' : 'progressive'");
+    expect(renderer).toContain('const washFrame = isStatic && !paintSeedVariation ? frames[0]! : frames[frameIndex]!;');
+    expect(renderer).toContain('(!isStatic || paintSeedVariation) && frames.length !== input.frameCount');
   });
 
   it('masks with pigment alpha, never the opaque transmittance raster', () => {

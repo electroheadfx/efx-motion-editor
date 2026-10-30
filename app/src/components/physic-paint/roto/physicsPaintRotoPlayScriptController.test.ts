@@ -2751,6 +2751,8 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       cycleLength: 5,
       motion: { deformation: 0, position: 0 },
       overrideColor: null,
+      // 261030-v1t: salted and unsalted cycles are different content.
+      paintSeedVariation: false,
       start: 20,
     };
     const find = (
@@ -2807,6 +2809,17 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const test = loopOpHarness([]);
       const dangling = loopClip('LU', 10, 3, ['S1', 'S2', 'GHOST', 'S4', 'S5']);
       expect(find(test, baseInput, [dangling])).toBeNull();
+    });
+
+    it('261030-v1t: a salted cycle never links to an unsalted draft (different texture = different content)', () => {
+      const test = loopOpHarness([]);
+      const salted = [loopClip('L1', 10, 3)];
+      Object.assign(salted[0], { paintSeedVariation: true });
+      // The unsalted draft must ignore the salted cycle...
+      expect(find(test, baseInput, salted)).toBeNull();
+      // ...and only the salted draft links to it.
+      expect(find(test, { ...baseInput, paintSeedVariation: true }, salted)).not.toBeNull();
+      expect(find(test, { ...baseInput, paintSeedVariation: true }, [loopClip('L1', 10, 3)])).toBeNull();
     });
   });
 
@@ -2989,6 +3002,101 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(await off.controller.confirm()).toBe(true);
       const linkedOff = off.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
       expect('keyScriptEdits' in (linkedOff as object)).toBe(false);
+    });
+
+    // 261030-v1t: the per-frame paint-seed variation is an apply-mode CREATION
+    // setting — it rides the bake on both modes and the new clip only when on.
+    it('261030-v1t: bakes count from-scratch replays and writes the flag on a NEW-loop Apply only when on', async () => {
+      for (const mode of ['progressive', 'static'] as const) {
+        const on = applyHarness([]);
+        await on.controller.openConfirmation();
+        on.controller.mode.value = mode;
+        on.controller.countText.value = '3';
+        on.controller.setPaintSeedVariation(true);
+        expect(on.controller.paintSeedVariation.value).toBe(true);
+        expect(await on.controller.confirm()).toBe(true);
+        // ON re-bakes every output frame in BOTH modes and passes the variant.
+        expect(on.bakeOptions[0]).toMatchObject({ frameCount: 3, paintSeedVariation: mode });
+        // The ON-only cost evidence line; OFF attaches no diagnostics hook.
+        const diagnostics = on.bakeOptions[0].onDiagnostics;
+        expect(typeof diagnostics).toBe('function');
+        on.log.mockClear();
+        diagnostics({ bakeMs: 12.4, encodeMs: 3.6, simulatedTicks: 2028, paintSeedReplays: 6 });
+        expect(on.log).toHaveBeenCalledWith('Paint seed variation · 6 replays · bake 12 ms · encode 4 ms · 2028 simulated ticks');
+        expect(on.commit.mock.calls[0][0].loopClips?.[0]?.paintSeedVariation).toBe(true);
+
+        const off = applyHarness([]);
+        await off.controller.openConfirmation();
+        off.controller.mode.value = mode;
+        off.controller.countText.value = '3';
+        expect(off.controller.paintSeedVariation.value).toBe(false);
+        expect(await off.controller.confirm()).toBe(true);
+        // OFF keeps today's bake: one settled static wash, no option, no log.
+        expect(off.bakeOptions[0]).toMatchObject({ frameCount: mode === 'static' ? 1 : 3 });
+        expect('paintSeedVariation' in off.bakeOptions[0]).toBe(false);
+        expect('onDiagnostics' in off.bakeOptions[0]).toBe(false);
+        off.log.mockClear();
+        expect(off.log).not.toHaveBeenCalled();
+        const committedOff = off.commit.mock.calls[0][0].loopClips?.[0];
+        expect(committedOff).toBeDefined();
+        expect('paintSeedVariation' in (committedOff as object)).toBe(false);
+      }
+    });
+
+    it('261030-v1t: writes the flag on the Link-to-existing-cycle branch too', async () => {
+      // A salted existing cycle: only an ON draft matches it, and the linked
+      // clip is a NEW record that must carry the flag (a later Regenerate or
+      // Source Edit of it re-bakes with the persisted fact).
+      const salted = [loopClip('L1', 10, 3)];
+      Object.assign(salted[0], { paintSeedVariation: true });
+      const test = applyHarness(salted);
+      await test.controller.openConfirmation();
+      test.controller.mode.value = 'static';
+      test.controller.countText.value = '5';
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+      test.controller.repeatText.value = '2';
+      test.controller.setPaintSeedVariation(true);
+      expect(test.controller.identicalSourceCycle.value).not.toBeNull();
+      test.controller.linkChoice.value = 'link';
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
+      const linked = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
+      expect(linked?.paintSeedVariation).toBe(true);
+
+      // OFF draft: the salted cycle is NOT an identical source, so no Link
+      // choice is offered and an ordinary generation creates its own rail
+      // without the flag. (The pre-existing L1 keeps its own member.)
+      const off = applyHarness(salted);
+      await off.controller.openConfirmation();
+      off.controller.mode.value = 'static';
+      off.controller.countText.value = '5';
+      off.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+      off.controller.repeatText.value = '2';
+      expect(off.controller.identicalSourceCycle.value).toBeNull();
+      expect(await off.controller.confirm()).toBe(true);
+      const createdOff = off.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
+      expect(createdOff).toBeDefined();
+      expect('paintSeedVariation' in (createdOff as object)).toBe(false);
+    });
+
+    it('261030-v1t: resets the paint-seed variation on every open — never sticky across rails', async () => {
+      const test = applyHarness([]);
+      await test.controller.openConfirmation();
+      test.controller.setPaintSeedVariation(true);
+      expect(test.controller.paintSeedVariation.value).toBe(true);
+      test.controller.closeConfirmation();
+      await test.controller.openConfirmation();
+      expect(test.controller.paintSeedVariation.value).toBe(false);
+
+      // Compare-then-write: an unchanged write never churns subscribers.
+      const writes: boolean[] = [];
+      const unsubscribe = test.controller.paintSeedVariation.subscribe(() => writes.push(test.controller.paintSeedVariation.value));
+      writes.length = 0; // drop the subscribe-time emission
+      test.controller.setPaintSeedVariation(false);
+      expect(writes).toHaveLength(0);
+      test.controller.setPaintSeedVariation(true);
+      expect(writes).toEqual([true]);
+      unsubscribe();
     });
 
     // 261030-np9 (D-01/D-02/D-05): the bake's OWN start-frame anchors are the
@@ -3299,6 +3407,28 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const edited = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'L1')!;
       expect(edited.keyScriptEdits).toBe(true);
     });
+
+    it('261030-v1t: a legacy Source Edit re-bakes with the TARGET flag and keeps it', async () => {
+      // The dialog draft is never involved — the persisted target fact drives
+      // the re-bake, so a Source Edit can never silently drop the texture.
+      const salted: PhysicPaintRotoLoopClip = { ...loopClip('L1', 10, 3), paintSeedVariation: true };
+      const on = loopOpHarness([salted]);
+      await on.controller.openSourceEdit('L1');
+      expect(on.controller.paintSeedVariation.value).toBe(false);
+      expect(await on.controller.confirm()).toBe(true);
+      expect(on.bakeOptions[0]).toMatchObject({ frameCount: 5, paintSeedVariation: 'static' });
+      const edited = on.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'L1')!;
+      expect(edited.paintSeedVariation).toBe(true);
+
+      // An unsalted target keeps today's one-wash bake and no member.
+      const off = loopOpHarness([loopClip('L1', 10, 3)]);
+      await off.controller.openSourceEdit('L1');
+      expect(await off.controller.confirm()).toBe(true);
+      expect(off.bakeOptions[0]).toMatchObject({ frameCount: 1 });
+      expect('paintSeedVariation' in off.bakeOptions[0]).toBe(false);
+      const editedOff = off.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'L1')!;
+      expect('paintSeedVariation' in (editedOff as object)).toBe(false);
+    });
   });
 
   describe('Group Regenerate preparation and settlement (43.2-09)', () => {
@@ -3320,6 +3450,14 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         readonly gapRanges: string;
         readonly affectedGroups: readonly { readonly groupId: string; readonly name: string; readonly range: string }[];
         readonly sourceCacheEffects: string;
+        // 261030-v1t: the frozen Group fact Regenerate restores.
+        readonly storedSettings: {
+          readonly mode: 'progressive' | 'static';
+          readonly motion: { readonly deformation: number; readonly position: number };
+          readonly overrideColor: string | null;
+          readonly sourceKeyIds: readonly string[];
+          readonly paintSeedVariation: boolean;
+        };
       } | null };
     };
 
@@ -3509,6 +3647,18 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       ]);
       expect(test.controller.phase.value).toBe('complete');
       expect(test.controller.confirmationOpen.value).toBe(false);
+    });
+
+    it('261030-v1t: Regenerate restores the Group paint-seed flag and re-bakes with it', async () => {
+      const test = regenerateHarness([lifecycleGroup('G1', 10, { paintSeedVariation: true })]);
+      expect((await test.controller.openSourceEdit('G1')).ok).toBe(true);
+      // The frozen Group fact rides the disclosed impact...
+      expect(test.controller.regenerateImpact.value?.storedSettings.paintSeedVariation).toBe(true);
+      expect(await test.controller.confirm()).toBe(true);
+      // ...and drives the bake: 3 salted static replays, never the one-wash path.
+      expect(test.bakeOptions[0]).toMatchObject({ frameCount: 3, paintSeedVariation: 'static' });
+      const restored = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'G1');
+      expect(restored?.paintSeedVariation).toBe(true);
     });
   });
 });

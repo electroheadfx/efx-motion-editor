@@ -309,6 +309,38 @@ describe('physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw)'
     expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
   });
 
+  it('261030-v1t: a pasted paint-seed-varied reveal keeps its flag verbatim', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'r1',
+      placementStart: 0,
+      sourceKeyIds: ['k0'],
+      repeat: 3,
+      mode: 'progressive',
+      railKind: 'reveal',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      paintSeedVariation: true,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const document = buildDocument([recordKey('k0', 0)], [clip]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'r1' }] });
+    if (!built.ok) throw new Error('Reveal rail payload must resolve');
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 8 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Reveal rail paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'r1')!;
+    // Dropping the flag would silently re-bake the pasted rail OFF.
+    expect(duplicated.paintSeedVariation).toBe(true);
+    // The original reveal clip is unchanged.
+    expect(pasted.proposal.loopClips.find((candidate) => candidate.loopId === 'r1')).toEqual(clip);
+  });
+
   it('261030-ig0: a pasted opted-in reveal keeps its per-key script option verbatim', () => {
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'r1',

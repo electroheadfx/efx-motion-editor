@@ -20,6 +20,7 @@ import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import type {
   AquarelleBake,
+  AquarelleBakeDiagnostics,
   AquarelleBakeFrame,
   AquarelleBakeOptions,
   AquarelleBakeResult,
@@ -613,5 +614,65 @@ describe('aquarelle bake consume branch (56-08)', () => {
 
     expect(fake.bakeCalls).toBe(1);
     expect(fake.bakeEvents.length).toBeGreaterThan(0);
+  });
+
+  // 261030-v1t: the ON-only option pass-through and the cost evidence line.
+  // OFF must stay byte-identical: one static wash, no option, no diagnostics.
+  it('261030-v1t: forwards paintSeedVariation and logs the ON diagnostics line; OFF forwards neither', async () => {
+    const diagnostics = (overrides: Partial<AquarelleBakeDiagnostics> = {}): AquarelleBakeDiagnostics => ({
+      path: 'timed',
+      timelineTicks: 0,
+      simulatedTicks: 0,
+      skippedGapTicks: 0,
+      gapCount: 0,
+      settleTicks: 0,
+      bakeMs: 0,
+      encodeMs: 0,
+      paintSeedReplays: 0,
+      ...overrides,
+    });
+    const run = async (variation: boolean) => {
+      const committed: AquarelleBakeFrame[] = [];
+      const { bake, harness: fake } = makeFakeBake(committed);
+      fake.framesToReturn = [0, 1, 2].map((index) => ({
+        eventIndex: index, strokeIndex: index, tick: 0, bytes: webpStub(String(index)), width: 10, height: 10,
+      }));
+      let capturedOptions: AquarelleBakeOptions | undefined;
+      const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, options?: AquarelleBakeOptions) => {
+        capturedOptions = options;
+        return bake;
+      });
+      const log = vi.fn();
+      const test = harness({ createAquarelleBake, createAquarelleAdapter: vi.fn(() => makeAdapter()), log });
+      test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+      await test.controller.openConfirmation();
+      test.controller.mode.value = 'static';
+      test.controller.countText.value = '3';
+      if (variation) test.controller.setPaintSeedVariation(true);
+      const confirmPromise = test.controller.confirm();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      fake.bakeGate.resolve();
+      expect(await confirmPromise).toBe(true);
+      return { options: capturedOptions!, log, test };
+    };
+
+    const on = await run(true);
+    expect(on.options.frameCount).toBe(3);
+    expect(on.options.paintSeedVariation).toBe('static');
+    expect(on.options.onDiagnostics).toBeTypeOf('function');
+    on.log.mockClear();
+    on.options.onDiagnostics!(diagnostics({ bakeMs: 9.2, encodeMs: 1.8, simulatedTicks: 2028, paintSeedReplays: 3 }));
+    expect(on.log).toHaveBeenCalledTimes(1);
+    expect(on.log).toHaveBeenCalledWith('Paint seed variation · 3 replays · bake 9 ms · encode 2 ms · 2028 simulated ticks');
+
+    const off = await run(false);
+    expect(off.options.frameCount).toBe(1);
+    expect('paintSeedVariation' in off.options).toBe(false);
+    expect('onDiagnostics' in off.options).toBe(false);
+    // OFF still logs the ordinary completion line — never the cost line.
+    expect(off.log.mock.calls.some(([message]) => String(message).startsWith('Paint seed variation'))).toBe(false);
   });
 });

@@ -854,3 +854,43 @@ describe('renderRotoRevealFrames abort and failure disposal (52-01 D-11)', () =>
     await expect(renderRotoRevealFrames(input({ frameCount: 2 }))).rejects.toThrow('Aquarelle reveal bake produced no frames.');
   });
 });
+
+describe('renderRotoRevealFrames per-frame paint seed variation (261030-v1t)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  it('off parity: no bake option and static still stages ONE settled wash across the span', async () => {
+    stagedBake(['settled']);
+    await renderRotoRevealFrames(input({ mode: 'static', frameCount: 2, canonicalStart: 15 }));
+    expect(harness.bakeOptions[0]!.frameCount).toBe(1);
+    expect('paintSeedVariation' in harness.bakeOptions[0]!).toBe(false);
+    expect(maskCanvasIndices()).toHaveLength(2);
+  });
+
+  it('progressive on: bakes one salted replay per output frame', async () => {
+    stagedBake(['w0', 'w1']);
+    await renderRotoRevealFrames(input({ frameCount: 2, canonicalStart: 15, paintSeedVariation: true }));
+    expect(harness.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'progressive' });
+    expect(maskCanvasIndices()).toHaveLength(2);
+  });
+
+  it('static on: every held frame is a complete replay and masks its OWN wash frame', async () => {
+    stagedBake(['w0', 'w1']);
+    await renderRotoRevealFrames(input({ mode: 'static', frameCount: 2, canonicalStart: 15, paintSeedVariation: true }));
+    expect(harness.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'static' });
+    expect(maskCanvasIndices()).toHaveLength(2);
+    // Two DISTINCT wash payloads were converted to pigment alpha — the static
+    // path did not reuse frames[0] for both held frames.
+    const convertedWashes = harness.canvases.filter((canvas) => canvas.ops.some((op) => op.type === 'putImageData'));
+    expect(convertedWashes).toHaveLength(2);
+  });
+
+  it('static on fails closed when the bake returns fewer frames than the span', async () => {
+    stagedBake(['w0']);
+    await expect(renderRotoRevealFrames(
+      input({ mode: 'static', frameCount: 2, canonicalStart: 15, paintSeedVariation: true }),
+    )).rejects.toThrow('Aquarelle reveal bake frame count mismatch.');
+  });
+});

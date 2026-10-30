@@ -618,6 +618,45 @@ describe('isPhysicPaintRotoLoopClip / parsePhysicPaintRotoLoopClips', () => {
     });
   });
 
+  // 261030-v1t: the per-frame paint-seed variation flag is written only when
+  // true, round-trips verbatim, and a non-boolean is rejected fail-closed.
+  describe('261030-v1t per-frame paint seed variation flag', () => {
+    const provenance = { scriptId: 'script-1', motion: { deformation: 5, position: 10 }, overrideColor: null };
+
+    it('accepts and round-trips paintSeedVariation: true', () => {
+      const record = { ...baseLoop(), ...provenance, paintSeedVariation: true };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(true);
+      const parsed = parsePhysicPaintRotoLoopClips(jsonRoundTrip([record]));
+      expect(parsed[0].paintSeedVariation).toBe(true);
+    });
+
+    it('adds no key when the flag is absent (off is today\'s record)', () => {
+      const parsed = parsePhysicPaintRotoLoopClips([{ ...baseLoop(), ...provenance }]);
+      expect('paintSeedVariation' in parsed[0]).toBe(false);
+    });
+
+    it.each([1, 'true', null, {}])('rejects the non-boolean %j fail-closed', (value) => {
+      const record = { ...baseLoop(), paintSeedVariation: value };
+      expect(isPhysicPaintRotoLoopClip(record)).toBe(false);
+      expect(() => parsePhysicPaintRotoLoopClips([record])).toThrow();
+    });
+
+    it('keeps the canonical revision identical (creation-only, pixel-distinguished)', () => {
+      const records = sourceRecords();
+      const interpolation = { enabled: false, mode: 'duplicate' as const };
+      expect(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [
+        { ...baseLoop(), ...provenance, paintSeedVariation: true },
+      ])).toBe(buildPhysicPaintRotoPhysicalRevision(records, interpolation, [{ ...baseLoop(), ...provenance }]));
+    });
+
+    it('persists the flag through save and reopen', () => {
+      const parsed = parsePhysicPaintRotoPhysicalDocument(
+        baseDocument([{ ...baseLoop(), ...provenance, paintSeedVariation: true }]),
+      );
+      expect(parsed.loopClips[0]!.paintSeedVariation).toBe(true);
+    });
+  });
+
   // The rail-level opt-in only: off is today's record, byte-for-byte.
   describe('261030-ig0 per-key script editing', () => {
     const motion = { deformation: 5, position: 10 };
