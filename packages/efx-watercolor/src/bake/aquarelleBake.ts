@@ -128,6 +128,13 @@ export interface AquarelleBakeDiagnostics {
   readonly settleTicks: number
   readonly bakeMs: number
   readonly encodeMs: number
+  /**
+   * 261030-v1t: how many from-scratch replays the per-frame paint re-pattern
+   * ran — one per output frame when `paintSeedVariation` is set, 0 otherwise.
+   * With it ON, `timelineTicks` sums every window actually walked (a window is
+   * re-walked once per replay that covers it), so ON cost is visible here.
+   */
+  readonly paintSeedReplays: number
 }
 
 /** Non-exported mutable working copy — the per-call accumulator. */
@@ -192,6 +199,23 @@ export interface AquarelleBakeOptions {
    * surfacing.
    */
   onStrokeFrameAnchors?: (anchors: readonly AquarelleStrokeFrameAnchor[]) => void
+  /**
+   * 261030-v1t: per-output-frame paint re-pattern. The aquarelle sheet is
+   * cumulative, so pigment cannot be re-rolled in place — each output frame is
+   * a FROM-SCRATCH replay of the script with the per-stroke render RNG salted
+   * by that frame:
+   *
+   * - `'progressive'`: output frame j replays every window 0..j (the settle
+   *   law only on the final frame), exactly the OFF target state with salt j.
+   * - `'static'`: output frame j replays the WHOLE script (all windows, final
+   *   settle), so each held frame is a complete drawing with its own texture.
+   *
+   * Requires the adapter's optional `setPaintSeedFrame` + `resetSheet` seams
+   * and an explicit `frameCount`; an adapter missing either (or a bake with no
+   * frameCount) fails closed — never a silent deposit-time-only fallback.
+   * ON costs one full replay per output frame: `paintSeedReplays` reports it.
+   */
+  paintSeedVariation?: 'progressive' | 'static'
 }
 
 export type AquarelleBakeResult =
@@ -403,11 +427,24 @@ export function createAquarelleBake(
     const frameSpan = Math.max(1, Math.trunc(frameCount))
     // 261029-bks: the optional adapter seams. `skipTicks` is an optional
     // EXTENSION of the host EngineAdapter (detected by cast) — the host
-    // interface itself is unchanged.
+    // interface itself is unchanged. 261030-v1t: setPaintSeedFrame/resetSheet
+    // join the same family and are REQUIRED by the per-frame paint re-pattern.
     const seams = adapter as EngineAdapter<AquarelleStrokePayload> & {
       isAwake?: () => boolean
       fix?: () => void
       skipTicks?: (fromTick: number, toTick: number) => void
+      setPaintSeedFrame?: (frame: number | null) => void
+      resetSheet?: () => void
+    }
+    const variation = options.paintSeedVariation ?? null
+    // Fail closed BEFORE any adapter work: an adapter without both seams cannot
+    // re-pattern per frame, and a deposit-time-only salt is never an acceptable
+    // substitute (T-quick-261030-v1t-03). No frame is produced in that case.
+    if (
+      variation !== null &&
+      (typeof seams.setPaintSeedFrame !== 'function' || typeof seams.resetSheet !== 'function')
+    ) {
+      return { ok: false, reason: 'failed' }
     }
 
     if (options.paper) {
@@ -472,8 +509,13 @@ export function createAquarelleBake(
     const fedStrokes = new Set<StudioStroke<AquarelleStrokePayload>>()
     let fedStrokeCount = 0
     const strokeTotal = strokes.length
-    const reportFed = async (stroke: StudioStroke<AquarelleStrokePayload>): Promise<void> => {
-      if (!onStrokeFed || fedStrokes.has(stroke)) return
+    const reportFed = async (
+      stroke: StudioStroke<AquarelleStrokePayload>,
+      report: boolean,
+    ): Promise<void> => {
+      // ON replays walk strokes more than once; only the final replay reports,
+      // so the counter stays monotonic and never exceeds the total.
+      if (!onStrokeFed || !report || fedStrokes.has(stroke)) return
       fedStrokes.add(stroke)
       fedStrokeCount += 1
       onStrokeFed(fedStrokeCount, strokeTotal)
@@ -598,135 +640,215 @@ export function createAquarelleBake(
       lastStrokeCuisson - diffusionPerFrame * (frameSpan - lastStrokeStart),
     )
 
-    let previousWindowEnd = 0
+    /**
+     * 261030-v1t: the window table. Every boundary is derived from the script
+     * data alone (recorded timing or the shared point-weight schedule), so the
+     * OFF walk and the ON replays share ONE window law — an ON replay must
+     * reproduce the exact target state of the frame it replaces.
+     */
+    interface FrameWindow {
+      readonly windowStart: number
+      readonly windowEnd: number
+      readonly tickBudget: number
+      readonly frameStrokes: readonly {
+        readonly stroke: StudioStroke<AquarelleStrokePayload>
+        readonly pointCount: number
+      }[]
+    }
+    const windows: FrameWindow[] = []
+    {
+      let previousWindowEnd = 0
+      for (let frameIndex = 0; frameIndex < frameSpan; frameIndex += 1) {
+        const isFinalFrame = frameIndex === frameSpan - 1
+        const windowStart = previousWindowEnd
+        let frameStrokes: FrameWindow['frameStrokes'] = []
+        let tickBudget = 0
+        let windowEnd = previousWindowEnd
+        if (timed) {
+          if (isFinalFrame || sampleTicks.length === 0) {
+            windowEnd = isFinalFrame
+              ? Math.max(previousWindowEnd, timelineEnd)
+              : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
+          } else {
+            const target = Math.min(
+              sampleTicks.length,
+              Math.max(1, Math.ceil(((frameIndex + 1) / drawFrameSpan) * sampleTicks.length)),
+            )
+            // +1 because the window bound is exclusive: a sample at tick T is fed
+            // when windowEnd > T (each tick is simulated exactly once).
+            windowEnd = Math.min(timelineEnd, Math.max(previousWindowEnd, sampleTicks[target - 1]! + 1))
+          }
+          tickBudget = Math.max(0, windowEnd - previousWindowEnd)
+          previousWindowEnd = windowEnd
+        } else {
+          frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
+          tickBudget = isFinalFrame
+            ? diffusionPerFrame + lastStrokeCatchUp
+            : diffusionPerFrame
+        }
+        windows.push({ windowStart, windowEnd, tickBudget, frameStrokes })
+
+        // 261030-np9: mirror the feed law exactly. A timed stroke is first drawn
+        // in the frame whose window END passes its beginTick (a window that has
+        // merely OPENED holds zero of its samples); a scheduled stroke is first
+        // drawn in the frame that lists it.
+        if (timed) {
+          for (const entry of timed) {
+            if (entry.beginTick >= windowEnd) break
+            if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
+          }
+        } else {
+          for (const entry of frameStrokes) {
+            if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
+          }
+        }
+      }
+    }
+
+    /** Running feed state — shared by OFF frames, fresh per ON replay. */
+    interface ReplayState {
+      cursor: number
+      readonly fedCounts: Map<StudioStroke<AquarelleStrokePayload>, number>
+      readonly report: boolean
+    }
     const fedCounts = new Map<StudioStroke<AquarelleStrokePayload>, number>()
 
-    for (let frameIndex = 0; frameIndex < frameSpan; frameIndex += 1) {
-      const isFinalFrame = frameIndex === frameSpan - 1
-      const windowStart = previousWindowEnd
-      let frameStrokes: { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[] = []
-      let tickBudget = 0
-      let windowEnd = previousWindowEnd
+    /**
+     * Walk ONE window on the adapter chain. Shared by the OFF per-frame turn and
+     * the ON from-scratch replays — same tick order, same feed chunking, same
+     * Dry placement; the existing OFF byte pins prove the walk did not move.
+     */
+    const walkWindow = async (
+      frameIndex: number,
+      window: FrameWindow,
+      state: ReplayState,
+    ): Promise<void> => {
+      // Honest accounting: a window re-walked by a replay counts again.
+      diagnostics.timelineTicks += window.tickBudget
       if (timed) {
-        if (isFinalFrame || sampleTicks.length === 0) {
-          windowEnd = isFinalFrame
-            ? Math.max(previousWindowEnd, timelineEnd)
-            : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
-        } else {
-          const target = Math.min(
-            sampleTicks.length,
-            Math.max(1, Math.ceil(((frameIndex + 1) / drawFrameSpan) * sampleTicks.length)),
-          )
-          // +1 because the window bound is exclusive: a sample at tick T is fed
-          // when windowEnd > T (each tick is simulated exactly once).
-          windowEnd = Math.min(timelineEnd, Math.max(previousWindowEnd, sampleTicks[target - 1]! + 1))
-        }
-        tickBudget = Math.max(0, windowEnd - previousWindowEnd)
-        previousWindowEnd = windowEnd
-        diagnostics.timelineTicks += tickBudget
-      } else {
-        for (const dry of drysByFrame.get(frameIndex) ?? []) {
-          void scheduleAdapter(() => {
-            adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
-          })
-        }
-        frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
-        tickBudget = isFinalFrame
-          ? diffusionPerFrame + lastStrokeCatchUp
-          : diffusionPerFrame
-        diagnostics.timelineTicks += tickBudget
-      }
-
-      // 261030-np9: mirror the feed law exactly. A timed stroke is first drawn
-      // in the frame whose window END passes its beginTick (a window that has
-      // merely OPENED holds zero of its samples); a scheduled stroke is first
-      // drawn in the frame that lists it.
-      if (timed) {
+        // TRUE TICK ORDER: a window's samples must land at their recorded
+        // tick — idle fluid time BEFORE a stroke is stepped before its
+        // samples, never after. Feeding a whole window's samples at the
+        // window start (then idling) landed later strokes on a wetter sheet
+        // than the live paint lived, which bloomed Play shapes wider.
+        // Samples are only ever fed between strokes, so interleaving at
+        // stroke-chunk granularity is exact.
+        let cursor = state.cursor
         for (const entry of timed) {
-          if (entry.beginTick >= windowEnd) break
-          if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
-        }
-      } else {
-        for (const entry of frameStrokes) {
-          if (!firstFedFrameOf.has(entry.stroke)) firstFedFrameOf.set(entry.stroke, frameIndex)
-        }
-      }
-
-      const framePromise = scheduleAdapter(async () => {
-        if (timed) {
-          // TRUE TICK ORDER: a window's samples must land at their recorded
-          // tick — idle fluid time BEFORE a stroke is stepped before its
-          // samples, never after. Feeding a whole window's samples at the
-          // window start (then idling) landed later strokes on a wetter sheet
-          // than the live paint lived, which bloomed Play shapes wider.
-          // Samples are only ever fed between strokes, so interleaving at
-          // stroke-chunk granularity is exact.
-          let cursor = windowStart
-          for (const entry of timed) {
-            if (entry.beginTick > windowEnd) break
-            const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick)
-            if (pointCount <= 0) {
-              // A zero-point stroke is fully fed by definition. A window that
-              // has NOT opened yet (beginTick === windowEnd) is not progress.
-              if (entry.stroke.pts.length === 0) await reportFed(entry.stroke)
-              continue
-            }
-            const fed = fedCounts.get(entry.stroke) ?? 0
-            if (pointCount <= fed) continue
-            const firstTick = entry.beginTick + fed
-            stepGap(cursor, firstTick)
-            if (fed === 0) {
-              for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
-                adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
-              }
-            }
-            // The adapter ticks once per fed sample.
-            adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
-            cursor = firstTick + (pointCount - fed)
-            fedCounts.set(entry.stroke, pointCount)
-            if (pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke)
+          if (entry.beginTick > window.windowEnd) break
+          const pointCount = Math.min(entry.stroke.pts.length, window.windowEnd - entry.beginTick)
+          if (pointCount <= 0) {
+            // A zero-point stroke is fully fed by definition. A window that
+            // has NOT opened yet (beginTick === windowEnd) is not progress.
+            if (entry.stroke.pts.length === 0) await reportFed(entry.stroke, state.report)
+            continue
           }
-          // A user Dry after the last stroke settles at the end of the span.
-          if (isFinalFrame && trailingDrys.length > 0) {
-            // The Dry fires AFTER the clock reaches windowEnd (its fix + 30
-            // ticks unchanged) — the gap may skip, the Dry never moves.
-            stepGap(cursor, windowEnd)
-            cursor = windowEnd
-            for (const dry of trailingDrys) {
+          const fed = state.fedCounts.get(entry.stroke) ?? 0
+          if (pointCount <= fed) continue
+          const firstTick = entry.beginTick + fed
+          stepGap(cursor, firstTick)
+          if (fed === 0) {
+            for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
               adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
             }
           }
-          stepGap(cursor, windowEnd)
-        } else {
-          adapter.renderPartialStrokes(frameStrokes)
-          for (const entry of frameStrokes) {
-            if (entry.pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke)
-          }
-          for (let tick = 0; tick < tickBudget; tick += 1) {
-            stepTimeline(tick)
+          // The adapter ticks once per fed sample.
+          adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
+          cursor = firstTick + (pointCount - fed)
+          state.fedCounts.set(entry.stroke, pointCount)
+          if (pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke, state.report)
+        }
+        // A user Dry after the last stroke settles at the end of the span
+        // (the span end — never the replay end, so a static replay re-fires it).
+        if (frameIndex === frameSpan - 1 && trailingDrys.length > 0) {
+          // The Dry fires AFTER the clock reaches windowEnd (its fix + 30
+          // ticks unchanged) — the gap may skip, the Dry never moves.
+          stepGap(cursor, window.windowEnd)
+          cursor = window.windowEnd
+          for (const dry of trailingDrys) {
+            adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
           }
         }
-        // End-frame law: force-dry at the visible settle cap — the same fix()
-        // the live sheet runs at its cap — and bake the fix window. The
-        // resulting state is the live cache's denser capture. Adapters without
-        // the seam (older / test doubles) keep the cook-to-sleep fallback.
-        if (isFinalFrame) {
-          // The settle law is NEVER skipped (truth table row 5).
-          const fixSeam = seams.fix
-          if (settleCapped && typeof fixSeam === 'function') {
-            fixSeam.call(adapter)
-            for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) {
-              stepTimeline(tick)
-              diagnostics.settleTicks += 1
-            }
-          } else if (typeof seams.isAwake === 'function') {
-            const awake = seams.isAwake
-            for (let guard = 0; guard < SETTLE_MAX_TICKS && awake(); guard += 1) {
-              stepTimeline(guard)
-              diagnostics.settleTicks += 1
-            }
-          }
+        stepGap(cursor, window.windowEnd)
+        state.cursor = cursor
+      } else {
+        for (const dry of drysByFrame.get(frameIndex) ?? []) {
+          adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
         }
+        adapter.renderPartialStrokes(
+          window.frameStrokes as { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[],
+        )
+        for (const entry of window.frameStrokes) {
+          if (entry.pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke, state.report)
+        }
+        for (let tick = 0; tick < window.tickBudget; tick += 1) {
+          stepTimeline(tick)
+        }
+      }
+    }
+
+    /**
+     * End-frame law: force-dry at the visible settle cap — the same fix() the
+     * live sheet runs at its cap — and bake the fix window. The resulting state
+     * is the live cache's denser capture. Adapters without the seam (older /
+     * test doubles) keep the cook-to-sleep fallback. NEVER skipped (truth table
+     * row 5).
+     */
+    const applySettle = (): void => {
+      const fixSeam = seams.fix
+      if (settleCapped && typeof fixSeam === 'function') {
+        fixSeam.call(adapter)
+        for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) {
+          stepTimeline(tick)
+          diagnostics.settleTicks += 1
+        }
+      } else if (typeof seams.isAwake === 'function') {
+        const awake = seams.isAwake
+        for (let guard = 0; guard < SETTLE_MAX_TICKS && awake(); guard += 1) {
+          stepTimeline(guard)
+          diagnostics.settleTicks += 1
+        }
+      }
+    }
+
+    for (let frameIndex = 0; frameIndex < frameSpan; frameIndex += 1) {
+      const isFinalFrame = frameIndex === frameSpan - 1
+      const window = windows[frameIndex]!
+      // Frame record `tick`: the span this frame's pixels stand on. OFF keeps
+      // the window budget; ON reports every tick its replay walked.
+      let tickBudget = window.tickBudget
+      if (variation === 'progressive') {
+        tickBudget = 0
+        for (let w = 0; w <= frameIndex; w += 1) tickBudget += windows[w]!.tickBudget
+      } else if (variation === 'static') {
+        tickBudget = windows.reduce((total, w) => total + w.tickBudget, 0)
+      }
+
+      const framePromise = scheduleAdapter(async () => {
+        if (variation === null) {
+          // OFF: today's exact path — one window per output frame on a running
+          // cursor and a shared feed map. The last frame applies the settle law.
+          const state: ReplayState = { cursor: window.windowStart, fedCounts, report: true }
+          await walkWindow(frameIndex, window, state)
+          if (isFinalFrame) applySettle()
+          return adapter.captureFrame()
+        }
+
+        // 261030-v1t ON: ONE from-scratch replay salted with this output frame.
+        // `progressive` replays every window up to this frame's window;
+        // `static` replays the whole script (each held frame is complete).
+        const lastWindow = variation === 'static' ? frameSpan - 1 : frameIndex
+        if (frameIndex > 0) seams.resetSheet!()
+        seams.setPaintSeedFrame!(frameIndex)
+        diagnostics.paintSeedReplays += 1
+        const state: ReplayState = {
+          cursor: 0,
+          fedCounts: new Map(),
+          // Progress reports only from the final replay (monotonic, <= total).
+          report: isFinalFrame,
+        }
+        for (let w = 0; w <= lastWindow; w += 1) await walkWindow(w, windows[w]!, state)
+        if (variation === 'static' || isFinalFrame) applySettle()
         return adapter.captureFrame()
       })
 
@@ -825,10 +947,17 @@ export function createAquarelleBake(
       settleTicks: 0,
       bakeMs: 0,
       encodeMs: 0,
+      paintSeedReplays: 0,
     }
     // The legacy branch's counted step site lives in this scope.
     const stepTimeline = countedStep(diagnostics)
     try {
+      // 261030-v1t: the per-frame re-pattern needs an explicit output span. A
+      // one-frame-per-stroke legacy bake cannot carry it — fail closed rather
+      // than silently dropping the option.
+      if (options.paintSeedVariation && !(options.frameCount && options.frameCount > 0)) {
+        return { ok: false, reason: 'failed' }
+      }
       if (options.frameCount && options.frameCount > 0) {
         return await bakeProgressive(events, Math.floor(options.frameCount), diagnostics)
       }
