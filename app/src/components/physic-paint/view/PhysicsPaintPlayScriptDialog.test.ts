@@ -600,6 +600,15 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(repeat.props.value).toBe('7');
   });
 
+  it('lays Frames and Repeat in two columns with each capacity toggle under its own field', () => {
+    // 261030-v1t UAT: Frames + Repeat share one row; Max/Infinity sit beneath.
+    expect(playScriptCssRule('.physics-paint-play-script-timing-grid')).toContain('grid-template-columns: 1fr 1fr');
+    expect(playScriptCssRule('.physics-paint-play-script-timing-grid > .physics-paint-play-script-field + .physics-paint-play-script-field')).toContain('margin-top: 0');
+    // Both content columns end on the same line — the shorter column's last
+    // card absorbs the shared row height.
+    expect(playScriptCssRule('.physics-paint-play-script-key-column > :last-child')).toContain('flex: 1 1 auto');
+  });
+
   it('reuses the same timing-row and toggle styling contract for Max and Infinity', () => {
     expect(playScriptCssRule('.physics-paint-play-script-timing-row')).toContain('gap: 10px');
     expect(playScriptCssRule('.physics-paint-play-script-timing-row input:not([type="checkbox"])')).toContain('flex: 1 1 auto');
@@ -1386,6 +1395,8 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const card = findOne(tree, byClass('physics-paint-play-script-card-key-script'));
     expect(textOf(card)).toContain('Key Script Editing');
     expect(textOf(card)).toContain('Save script on each key');
+    // 261030-v1t UAT: the long Paint hint is gone — title + toggle only.
+    expect(textOf(card)).not.toContain('Each key of this Rail');
     const checkbox = findOne(card, byId('physics-play-script-key-script-edits')) as TestVNode;
     expect(checkbox.props.type).toBe('checkbox');
     expect(checkbox.props.checked).toBe(false);
@@ -1449,7 +1460,8 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
     expect(textOf(card)).toContain('Paint seed variation');
-    expect(textOf(card)).toContain("Same strokes, new brush texture each frame. Off keeps today's exact pixels.");
+    // 261030-v1t UAT: the long hint is gone — the card is a compact title + toggle.
+    expect(textOf(card)).not.toContain('Same strokes');
 
     const checkbox = findOne(card, byId('physics-play-script-paint-seed-variation')) as TestVNode;
     expect(checkbox.props.type).toBe('checkbox');
@@ -1464,6 +1476,24 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
     const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
     expect(revealCheckbox.props.type).toBe('checkbox');
+
+    // 261030-v1t UAT: the card lives in grid column 1, directly beneath the
+    // Key Script Editing card — on both tabs.
+    const placementOf = (dialog: TestVNode) => {
+      const content = findOne(dialog, byClass('physics-paint-play-script-content'));
+      const column = findOne(content, byClass('physics-paint-play-script-key-column'));
+      const seed = findOne(column, byClass('physics-paint-play-script-card-paint-seed-variation'));
+      const keyScript = findOne(column, byClass('physics-paint-play-script-card-key-script'));
+      const directChildren = [...walk(column)].filter((child) => child !== column
+        && typeof child.type !== 'function'
+        && renderedParentOf(dialog, child) === column);
+      return {
+        seedAfterKeyScript: directChildren.indexOf(seed) > directChildren.indexOf(keyScript),
+        seedInStack: findAll(findOne(content, byClass('physics-paint-play-script-side-stack')), byClass('physics-paint-play-script-card-paint-seed-variation')).length,
+      };
+    };
+    expect(placementOf(tree)).toEqual({ seedAfterKeyScript: true, seedInStack: 0 });
+    expect(placementOf(reveal)).toEqual({ seedAfterKeyScript: true, seedInStack: 0 });
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);

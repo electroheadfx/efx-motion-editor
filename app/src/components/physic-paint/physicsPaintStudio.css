@@ -2350,6 +2350,11 @@ button.destructive {
   min-height: 0;
 }
 
+/* 261030-v1t UAT: the two content columns must END on the same line. The side
+   stack's Motion card already absorbs slack on the right; the left column's
+   last card absorbs it when the left column is the shorter one. */
+.physics-paint-play-script-key-column > :last-child { flex: 1 1 auto; }
+
 .physics-paint-play-script-card-motion { flex: 1 1 auto; }
 
 /* Motion wiggle rows center in the card's remaining space — no inner dead area (D-16). */
@@ -2544,6 +2549,19 @@ button.destructive {
 }
 
 .physics-paint-play-script-field + .physics-paint-play-script-field { margin-top: 12px; }
+
+/* 261030-v1t UAT: Frames + Repeat share one row; each capacity toggle sits
+   directly under its own field. */
+.physics-paint-play-script-timing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-timing-grid > .physics-paint-play-script-field + .physics-paint-play-script-field {
+  margin-top: 0;
+}
 
 .physics-paint-play-script-field label {
   color: var(--ps-muted);

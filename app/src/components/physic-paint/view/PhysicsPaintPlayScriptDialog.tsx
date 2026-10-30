@@ -385,7 +385,6 @@ export function PhysicsPaintPlayScriptDialog({
         />
         Vary the brush texture per frame
       </label>
-      <span class="physics-paint-play-script-hint">Same strokes, new brush texture each frame. Off keeps today's exact pixels.</span>
     </div>
   );
 
@@ -531,40 +530,42 @@ export function PhysicsPaintPlayScriptDialog({
           {revealTab ? (
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <div class="physics-paint-play-script-field">
-              <label for="physics-play-script-reveal-count">Frames</label>
-              <div class="physics-paint-play-script-timing-row">
-                <input
-                  ref={revealInputRef}
-                  id="physics-play-script-reveal-count"
-                  inputMode="numeric"
-                  value={playScript.revealCountText.value}
-                  disabled={busy}
-                  aria-invalid={Boolean(playScript.revealValidationError.value)}
-                  aria-describedby="physics-play-script-reveal-help physics-play-script-reveal-error"
-                  onInput={(event) => {
-                    playScript.revealCountText.value = (event.currentTarget as HTMLInputElement).value;
-                  }}
-                />
+            <div class="physics-paint-play-script-timing-grid">
+              <div class="physics-paint-play-script-field">
+                <label for="physics-play-script-reveal-count">Frames</label>
+                <div class="physics-paint-play-script-timing-row">
+                  <input
+                    ref={revealInputRef}
+                    id="physics-play-script-reveal-count"
+                    inputMode="numeric"
+                    value={playScript.revealCountText.value}
+                    disabled={busy}
+                    aria-invalid={Boolean(playScript.revealValidationError.value)}
+                    aria-describedby="physics-play-script-reveal-help physics-play-script-reveal-error"
+                    onInput={(event) => {
+                      playScript.revealCountText.value = (event.currentTarget as HTMLInputElement).value;
+                    }}
+                  />
+                </div>
                 <span class="physics-paint-play-script-hint">from F{playScript.canonicalStart.value ?? 0}</span>
+                <span id="physics-play-script-reveal-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+                {playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{playScript.revealValidationError.value}</span> : null}
               </div>
-              <span id="physics-play-script-reveal-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
-              {playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{playScript.revealValidationError.value}</span> : null}
-            </div>
-            <div class="physics-paint-play-script-field">
-              <label for="physics-play-script-repeat">Repeat</label>
-              <div class="physics-paint-play-script-timing-row">
-                <input
-                  id="physics-play-script-repeat"
-                  inputMode="numeric"
-                  value={playScript.repeatText.value}
-                  disabled={busy || playScript.infinity.value}
-                  aria-invalid={Boolean(playScript.repeatError.value)}
-                  aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
-                  onInput={(event) => {
-                    playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
-                  }}
-                />
+              <div class="physics-paint-play-script-field">
+                <label for="physics-play-script-repeat">Repeat</label>
+                <div class="physics-paint-play-script-timing-row">
+                  <input
+                    id="physics-play-script-repeat"
+                    inputMode="numeric"
+                    value={playScript.repeatText.value}
+                    disabled={busy || playScript.infinity.value}
+                    aria-invalid={Boolean(playScript.repeatError.value)}
+                    aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
+                    onInput={(event) => {
+                      playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
+                    }}
+                  />
+                </div>
                 <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
                   <input
                     id="physics-play-script-infinity"
@@ -575,29 +576,33 @@ export function PhysicsPaintPlayScriptDialog({
                   />
                   Infinity
                 </label>
+                <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+                {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
               </div>
-              <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
-              {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
             </div>
           </div>
           ) : (
           <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
             <span class="physics-paint-play-script-card-title">Timing</span>
-            <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-              <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
-              <div class="physics-paint-play-script-timing-row">
-                <input
-                  ref={inputRef}
-                  id="physics-play-script-count"
-                  inputMode="numeric"
-                  value={playScript.countText.value}
-                  disabled={busy || loopEdit || playScript.max.value}
-                  aria-invalid={Boolean(playScript.validationError.value)}
-                  aria-describedby="physics-play-script-help physics-play-script-error"
-                  onInput={(event) => {
-                    playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
-                  }}
-                />
+            {/* 261030-v1t UAT: Frames and Repeat share one row; each capacity
+                toggle sits directly under its own field. */}
+            <div class="physics-paint-play-script-timing-grid">
+              <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
+                <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
+                <div class="physics-paint-play-script-timing-row">
+                  <input
+                    ref={inputRef}
+                    id="physics-play-script-count"
+                    inputMode="numeric"
+                    value={playScript.countText.value}
+                    disabled={busy || loopEdit || playScript.max.value}
+                    aria-invalid={Boolean(playScript.validationError.value)}
+                    aria-describedby="physics-play-script-help physics-play-script-error"
+                    onInput={(event) => {
+                      playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
+                    }}
+                  />
+                </div>
                 <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-max">
                   <input
                     id="physics-play-script-max"
@@ -608,25 +613,25 @@ export function PhysicsPaintPlayScriptDialog({
                   />
                   Max
                 </label>
+                <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+                {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
               </div>
-              <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
-              {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
-            </div>
-            <div class="physics-paint-play-script-field">
-              <label for="physics-play-script-repeat">Repeat</label>
-              <div class="physics-paint-play-script-timing-row">
-                <input
-                  ref={repeatInputRef}
-                  id="physics-play-script-repeat"
-                  inputMode="numeric"
-                  value={playScript.repeatText.value}
-                  disabled={busy || playScript.infinity.value}
-                  aria-invalid={Boolean(playScript.repeatError.value)}
-                  aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
-                  onInput={(event) => {
-                    playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
-                  }}
-                />
+              <div class="physics-paint-play-script-field">
+                <label for="physics-play-script-repeat">Repeat</label>
+                <div class="physics-paint-play-script-timing-row">
+                  <input
+                    ref={repeatInputRef}
+                    id="physics-play-script-repeat"
+                    inputMode="numeric"
+                    value={playScript.repeatText.value}
+                    disabled={busy || playScript.infinity.value}
+                    aria-invalid={Boolean(playScript.repeatError.value)}
+                    aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
+                    onInput={(event) => {
+                      playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
+                    }}
+                  />
+                </div>
                 <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
                   <input
                     id="physics-play-script-infinity"
@@ -637,9 +642,9 @@ export function PhysicsPaintPlayScriptDialog({
                   />
                   Infinity
                 </label>
+                <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
+                {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
               </div>
-              <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
-              {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
             </div>
           </div>
           )}
@@ -658,16 +663,16 @@ export function PhysicsPaintPlayScriptDialog({
                 />
                 Save script on each key
               </label>
-              <span class="physics-paint-play-script-hint">{revealTab ? 'Not available on Reveal rails yet.' : 'Each key of this Rail keeps everything painted up to its frame.'}</span>
+              {revealTab ? <span class="physics-paint-play-script-hint">Not available on Reveal rails yet.</span> : null}
             </div>
           ) : null}
+          {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           </div>
           {revealTab ? (
           <>
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
             {photoWiggleCard}
-            {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
             {colorizeCard}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
@@ -739,7 +744,6 @@ export function PhysicsPaintPlayScriptDialog({
               </div>
             </div>
             {motionCard}
-            {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           </div>
           {identicalCycle ? (
             <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">
