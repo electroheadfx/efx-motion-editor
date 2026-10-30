@@ -285,6 +285,12 @@ describe('wiring pins — UAT round 2/3 (visor, photo sampling, slider hit area)
     // the brush ring must step aside while armed.
     const layer = readFileSync(resolve(__dirname, '../engine/AquarelleCanvasLayer.tsx'), 'utf8');
     expect(layer).toContain('if (aquarellePickerActive.value) return null;');
+    // The Alt arming listeners must be CAPTURE-phase: a focused Studio dialog
+    // stops keydown propagation and would otherwise keep Alt from ever arming
+    // the picker.
+    const hook = readFileSync(resolve(__dirname, '../hooks/useAquarelleColorPicker.ts'), 'utf8');
+    expect(hook).toContain("window.addEventListener('keydown', handleKeyDown, true)");
+    expect(hook).toContain("window.addEventListener('keyup', handleKeyUp, true)");
     const css = readFileSync(resolve(__dirname, '../physicsPaintStudio.css'), 'utf8');
     expect(css).toContain('.physics-paint-picker-visor');
     expect(css).not.toContain('data:image/png;base64');

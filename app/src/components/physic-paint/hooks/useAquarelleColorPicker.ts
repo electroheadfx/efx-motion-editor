@@ -25,13 +25,18 @@ export function useAquarelleColorPicker(): void {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') setAquarellePickerAltHeld(false);
     };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
+    // CAPTURE phase: focused dialogs in the Studio (the Photo Reference dialog)
+    // call `event.stopPropagation()` on keydown, which would otherwise keep
+    // Alt from ever reaching a window bubble listener — the picker then never
+    // arms while that dialog has focus. Capture on window runs first, so no
+    // descendant can swallow it.
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
     window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keyup', handleKeyUp, true);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       disarmAquarellePicker();

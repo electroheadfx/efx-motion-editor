@@ -895,11 +895,17 @@ export function AquarelleCanvasLayer(props: {
       style={{ position: 'absolute', inset: '0' }}
       onPointerEnter={(event) => {
         // 261028-k03c D6: the footprint is scaled by the DISPLAYED rect height.
-        const height = (event.currentTarget as HTMLElement).getBoundingClientRect().height;
-        if (height > 0 && cursorLayerHeight !== height) {
-          cursorLayerHeight = height;
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        if (rect.height > 0 && cursorLayerHeight !== rect.height) {
+          cursorLayerHeight = rect.height;
           cursorStateVersion.value += 1;
         }
+        // 261030-cnq: seed the pointer from the ENTER event too, so the ring /
+        // picker visor appears on the first frame over the sheet instead of
+        // waiting for the first pointermove.
+        cursorX.value = event.clientX - rect.left;
+        cursorY.value = event.clientY - rect.top;
+        if (!cursorVisible.value) cursorVisible.value = true;
       }}
       onPointerMove={(event) => {
         const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
