@@ -74,6 +74,7 @@ function actions() {
     duplicateTrack: vi.fn(),
     selectAquarelleTool: vi.fn(),
     toggleAquarelleSelect: vi.fn(),
+    toggleSelectAllAquarelleStrokes: vi.fn(),
     cycleAquarelleSelectFilter: vi.fn(),
     dryAquarelleSheet: vi.fn(),
     clearAquarelleFrame: vi.fn(),
@@ -746,6 +747,28 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
+  it('selects every stroke on Shift+A and refuses every modified variant', () => {
+    const { handlers, preventDefault } = dispatch(
+      'A',
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      { shiftKey: true },
+    );
+    expect(handlers.toggleSelectAllAquarelleStrokes).toHaveBeenCalledOnce();
+    expect(handlers.toggleAquarelleSelect).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+
+    for (const overrides of [
+      { metaKey: true, shiftKey: true },
+      { ctrlKey: true, shiftKey: true },
+      { altKey: true, shiftKey: true },
+      { shiftKey: true, repeat: true },
+    ]) {
+      const modified = dispatch('A', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+      expect(modified.handlers.toggleSelectAllAquarelleStrokes).not.toHaveBeenCalled();
+      expect(modified.preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
   it('cycles the Select filter on Tab only when Move/Edit consumes it', () => {
     const consumedHandlers = actions();
     consumedHandlers.cycleAquarelleSelectFilter.mockReturnValue(true);
@@ -792,7 +815,7 @@ describe('Studio tool shortcuts (B / W / E / A / D)', () => {
   });
 
   it('ignores modified, shifted and repeated tool keys', () => {
-    for (const key of ['b', 'w', 'e', 'p', 'a', 'f', 'c', 'd', 'Tab']) {
+    for (const key of ['b', 'w', 'e', 'p', 'f', 'c', 'd', 'Tab']) {
       for (const overrides of [
         { metaKey: true },
         { ctrlKey: true },

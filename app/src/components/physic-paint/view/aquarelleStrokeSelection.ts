@@ -171,6 +171,26 @@ export function aquarelleStrokesOnFrame(
 }
 
 /**
+ * Shift+A target ids: every recorded, non-deleted stroke of the CURRENT edit
+ * frame that the live filter lists — the same scoping the overlay outlines, so
+ * "select all" can never arm an invisible stroke. Geometry-free on purpose
+ * (the Studio shortcut has no engine pixel size).
+ */
+export function listAquarelleStrokeSelectionIds(
+  playFrame: number,
+  filter: AquarelleStrokeTypeFilter = aquarelleStrokeTypeFilter.peek(),
+): number[] {
+  const out: number[] = [];
+  for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    if (!matchesAquarelleStrokeFilter(stroke, filter)) continue;
+    out.push(mutationId);
+  }
+  return out;
+}
+
+/**
  * quick 261024-p5q: the Water color half of the Stroke Settings hydration.
  * Narrow revision read (a commit re-reads the dialog), frame/deleted filter
  * through `aquarelleStrokesOnFrame`, and the CALLER's id order preserved so

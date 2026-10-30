@@ -235,6 +235,7 @@ import {
   cycleAquarelleStrokeTypeFilter,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
+  listAquarelleStrokeSelectionIds,
   listSelectableAquarelleStrokes,
   readAquarelleStrokeAppearance,
   reanchorAquarelleEditFromLiveContent,
@@ -244,6 +245,7 @@ import {
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
+  setAquarelleStrokeSelection,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
@@ -2414,6 +2416,19 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return false;
     cycleAquarelleStrokeTypeFilter();
     return true;
+  }, []);
+  // Shift+A: enter Move/Edit when needed, then select every stroke the live
+  // filter lists — or clear the selection when that whole list already is.
+  const handleToggleSelectAllAquarelleStrokes = useCallback(() => {
+    if (!aquarelleSelectMode.peek()) {
+      if (!watercolorMoveAvailable.peek()) return;
+      setAquarelleSelectMode(true);
+    }
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const ids = listAquarelleStrokeSelectionIds(playFrame);
+    const selected = scriptSelectedStrokeIds.peek();
+    const allSelected = ids.length > 0 && ids.every((id) => selected.has(id));
+    setAquarelleStrokeSelection(allSelected ? [] : ids);
   }, []);
   // The Water color half of the same law: Select cannot stay armed on a key
   // with no script. Painting the first stroke creates the script and re-arms;
@@ -5480,6 +5495,7 @@ export function PhysicsPaintStudio() {
       },
       selectAquarelleTool: handleSelectAquarelleTool,
       toggleAquarelleSelect: handleToggleAquarelleSelect,
+      toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,
       cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,
       dryAquarelleSheet: () => {
         if (staticControlsLocked) return;

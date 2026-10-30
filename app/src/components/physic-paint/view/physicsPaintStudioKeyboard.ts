@@ -48,6 +48,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   /** Bare A: toggle the Move/Edit (Select) surface; leaving resumes the
    *  previous paint tool, which the surface never replaced. */
   toggleAquarelleSelect?: () => void;
+  /** Shift+A: enter Move/Edit when needed, select every stroke the live filter
+   *  lists, and deselect all when the whole list is already selected. */
+  toggleSelectAllAquarelleStrokes?: () => void;
   /** Bare Tab: cycle Paint → Eraser → All while Move/Edit is on. Returns true
    *  ONLY when Move/Edit consumed the key, so focus navigation survives
    *  everywhere else. */
@@ -202,6 +205,14 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (state.mutationLocked) return;
     event.preventDefault();
     actions.rebakeAquarelleScript();
+    return;
+  }
+  // Shift+A: the Move/Edit select-all switch — enter the surface when needed,
+  // then select/deselect the whole visible stroke set. Selection is display
+  // state, so the mutation lock does not apply.
+  if (!meta && !event.altKey && event.shiftKey && !event.repeat && key === 'a' && actions.toggleSelectAllAquarelleStrokes) {
+    event.preventDefault();
+    actions.toggleSelectAllAquarelleStrokes();
     return;
   }
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {

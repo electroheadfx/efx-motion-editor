@@ -49,6 +49,7 @@ import {
   beginAquarelleTransformEdit,
   cycleAquarelleStrokeTypeFilter,
   hitTestAquarelleStroke,
+  listAquarelleStrokeSelectionIds,
   listSelectableAquarelleStrokes,
   matchesAquarelleStrokeFilter,
   readAquarelleStrokeAppearance,
@@ -237,6 +238,21 @@ describe('261022-pim aquarelle stroke select mode', () => {
     expect(aquarelleStrokesOnFrame([9401, 9402, 9403, 999999], 401)).toEqual([9401]);
     expect(aquarelleStrokesOnFrame([9401, 9402], 402)).toEqual([9402]);
     expect(aquarelleStrokesOnFrame([], 401)).toEqual([]);
+  });
+
+  // Shift+A: "select all" lists the same stroke set the overlay outlines —
+  // current frame, non-deleted, live filter.
+  it('listAquarelleStrokeSelectionIds scopes to frame, tombstones and filter', () => {
+    recordAquarelleStroke(9411, stroke({ points: [point(0.1, 0.5)], playFrame: 411 }));
+    recordAquarelleStroke(9412, stroke({ points: [point(0.2, 0.5)], playFrame: 412 }));
+    recordAquarelleStroke(9413, stroke({ points: [point(0.3, 0.5)], playFrame: 411 }));
+    markAquarelleStrokeDeleted(9413);
+
+    expect(listAquarelleStrokeSelectionIds(411, 'paint')).toEqual([9411]);
+    expect(listAquarelleStrokeSelectionIds(411, 'all')).toEqual([9411]);
+    expect(listAquarelleStrokeSelectionIds(411, 'lift')).toEqual([]);
+    expect(listAquarelleStrokeSelectionIds(412, 'all')).toEqual([9412]);
+    expect(listAquarelleStrokeSelectionIds(413, 'all')).toEqual([]);
   });
 
   it('the selected set is the shared signal by identity', () => {

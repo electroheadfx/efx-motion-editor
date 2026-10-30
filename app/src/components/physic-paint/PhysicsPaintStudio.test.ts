@@ -3053,7 +3053,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(watercolorRail).toContain('Select (A) — click or A toggles Select on/off and returns to the previous tool · Shift+A enters Select and selects every stroke (press again to deselect all) · Tab cycles the filter Paint → Eraser → All while Select is on · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
     // 261027-klx: the Brush module tool set (and its Move tooltip) left with
     // engine 1 — the aquarelle rail is the only tool surface left.
     expect(toolRail).not.toContain('Move — Cmd toggles Move on/off');
@@ -3385,6 +3385,7 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // its filter Paint → Eraser → All only while Move/Edit is on; B / W / E / P
     // pick a tool.
     expect(studio).toContain('toggleAquarelleSelect: handleToggleAquarelleSelect,');
+    expect(studio).toContain('toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,');
     expect(studio).toContain('cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,');
     expect(studio).toContain('selectAquarelleTool: handleSelectAquarelleTool,');
     expect(studio).toContain('if (!aquarelleSelectMode.peek()) return false;');
