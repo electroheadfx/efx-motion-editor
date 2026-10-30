@@ -937,6 +937,8 @@ interface BakeDiagnostics {
   readonly settleTicks: number
   readonly bakeMs: number
   readonly encodeMs: number
+  /** 261030-v1t: from-scratch replays the per-frame paint re-pattern ran. */
+  readonly paintSeedReplays: number
 }
 
 type SkippingAdapter = EngineAdapter<AquarelleStrokePayload> & {
@@ -1359,5 +1361,311 @@ describe('261029-bks idle-gap clock skip', () => {
     expect(on.result.frames).toHaveLength(3)
     expect(on.result.frames.map((frame) => Array.from(frame.bytes)))
       .toEqual(off.result.frames.map((frame) => Array.from(frame.bytes)))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261030-v1t — per-frame paint seed variation.
+//
+// The sheet is cumulative, so a true per-frame re-pattern costs ONE full replay
+// per output frame. The double below carries the two paint-seed seams and
+// counts every stepped tick, so the price is measured, not assumed:
+//   - OFF (option absent): today's exact path, paintSeedReplays 0
+//   - ON progressive: output frame j replays windows 0..j, settle on the last
+//   - ON static: every output frame replays the WHOLE script + settle
+//   - missing seams (or no frameCount): fail closed, never a silent deposit salt
+// ---------------------------------------------------------------------------
+
+interface VariationLog {
+  /** Every salt the bake set, in order. */
+  readonly salts: (number | null)[]
+  /** Accumulated per-stroke max pointCount at each capture (script order). */
+  readonly feedsByCapture: number[][]
+  resets: number
+  captures: number
+  fixes: number
+  steps: number
+}
+
+/**
+ * Paint-seed double. `captureFrame` returns a FRESH canvas carrying the current
+ * salt in its first pixel (same salt => same bytes, adjacent salt => different
+ * bytes), like the real engine's owned `exportCanvas` readback.
+ */
+function makeVariationAdapter(options: { seams?: boolean } = {}): {
+  adapter: EngineAdapter<AquarelleStrokePayload> & {
+    isAwake: () => boolean
+    fix: () => void
+    setPaintSeedFrame?: (frame: number | null) => void
+    resetSheet?: () => void
+  }
+  log: VariationLog
+} {
+  const seams = options.seams ?? true
+  const log: VariationLog = { salts: [], feedsByCapture: [], resets: 0, captures: 0, fixes: 0, steps: 0 }
+  let salt: number | null = null
+  const maxFed = new Map<StudioStroke<AquarelleStrokePayload>, number>()
+  const adapter = {
+    engineId: 'efx-watercolor' as const,
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]) => {
+      for (const entry of entries) {
+        maxFed.set(entry.stroke, Math.max(maxFed.get(entry.stroke) ?? 0, entry.pointCount))
+      }
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      return canvas
+    },
+    applyStroke: () => undefined,
+    stepTick: () => {
+      log.steps += 1
+    },
+    captureFrame: () => {
+      const { canvas } = makeMockCanvas(8, 8)
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      const value = salt === null ? 0 : salt & 0xff
+      const data = new Uint8ClampedArray([value, (value >> 8) & 0xff, 0, 255])
+      ctx?.putImageData?.({ width: 1, height: 1, data } as unknown as ImageData, 0, 0)
+      log.feedsByCapture.push([...maxFed.values()])
+      log.captures += 1
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    fix: () => {
+      log.fixes += 1
+    },
+    isAwake: () => true,
+    ...(seams
+      ? {
+          setPaintSeedFrame: (frame: number | null) => {
+            salt = frame
+            log.salts.push(frame)
+          },
+          resetSheet: () => {
+            log.resets += 1
+            maxFed.clear()
+          },
+        }
+      : {}),
+  }
+  return { adapter, log }
+}
+
+/** A representative timed 6-frame Motion script: three strokes, real gaps. */
+function motionSixFrameScript(): AquarellePayloadEvent[] {
+  return [timedStroke(12, 1000, null), timedStroke(10, 2000, null), timedStroke(8, 3000, null)]
+}
+
+async function runVariationBake(input: {
+  events: readonly AquarellePayloadEvent[]
+  frameCount?: number
+  variation?: 'progressive' | 'static'
+  seams?: boolean
+  onStrokeFed?: (completed: number, total: number) => void
+}): Promise<{
+  result: AquarelleBakeResult
+  log: VariationLog
+  diagnostics: BakeDiagnostics[]
+}> {
+  const { adapter, log } = makeVariationAdapter({ seams: input.seams })
+  const diagnostics: BakeDiagnostics[] = []
+  const bake = createAquarelleBake(adapter, {
+    encodeWebp: pixelEncoder,
+    width: 8,
+    height: 8,
+    ...(input.frameCount === undefined ? {} : { frameCount: input.frameCount }),
+    ...(input.variation === undefined ? {} : { paintSeedVariation: input.variation }),
+    ...(input.onStrokeFed === undefined ? {} : { onStrokeFed: input.onStrokeFed }),
+    onDiagnostics: (record: BakeDiagnostics) => {
+      diagnostics.push(record)
+    },
+  })
+  const result = await bake.bake(input.events)
+  return { result, log, diagnostics }
+}
+
+function frameBytesOf(result: AquarelleBakeResult): number[][] {
+  if (!result.ok) return []
+  return result.frames.map((frame) => Array.from(frame.bytes))
+}
+
+describe('261030-v1t per-frame paint seed variation', () => {
+  it('OFF (option absent) takes today’s path and never touches the salt seams', async () => {
+    const once = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const twice = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+
+    expect(once.result.ok).toBe(true)
+    expect(once.result.ok && once.result.frames).toHaveLength(6)
+    expect(frameBytesOf(once.result)).toEqual(frameBytesOf(twice.result))
+    expect(once.diagnostics[0]!.paintSeedReplays).toBe(0)
+    expect(once.diagnostics[0]!.settleTicks).toBe(72)
+    expect(once.log.salts).toEqual([])
+    expect(once.log.resets).toBe(0)
+  })
+
+  it('OFF bytes are identical with or without the optional seams', async () => {
+    const withSeams = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, seams: true })
+    const withoutSeams = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, seams: false })
+    expect(frameBytesOf(withSeams.result)).toEqual(frameBytesOf(withoutSeams.result))
+  })
+
+  it('progressive ON: frame j is salted with j and replays only its window prefix', async () => {
+    const off = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const on = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+    })
+
+    expect(on.result.ok).toBe(true)
+    expect(on.result.ok && on.result.frames).toHaveLength(6)
+    expect(on.log.salts).toEqual([0, 1, 2, 3, 4, 5])
+    // The first replay starts on the fresh sheet; every later one resets it.
+    expect(on.log.resets).toBe(5)
+    expect(on.diagnostics[0]!.paintSeedReplays).toBe(6)
+
+    // Per-frame prefix law: replay j walks windows 0..j, so its timeline span is
+    // the sum of the OFF frame budgets up to j. Its BAKE step count is that
+    // prefix MINUS the sample ticks: each fed sample advances the adapter once
+    // (renderPartialStrokes), never through a bake `stepTick`. Only the last
+    // replay settles. (Measured: budgets [6,6,56,58,6,164], samples per replay
+    // [6,12,18,24,30,30] → 640 − 120 + 72 = 592.)
+    const budgets = off.result.ok ? off.result.frames.map((frame) => frame.tick) : []
+    const prefix = budgets.map((_, j) => budgets.slice(0, j + 1).reduce((total, b) => total + b, 0))
+    const samplesPerReplay = on.log.feedsByCapture.map((fed) => fed.reduce((total, n) => total + n, 0))
+    expect(samplesPerReplay).toHaveLength(6)
+    const settlePerReplay = off.diagnostics[0]!.settleTicks
+    expect(on.diagnostics[0]!.timelineTicks).toBe(prefix.reduce((total, ticks) => total + ticks, 0))
+    expect(on.diagnostics[0]!.simulatedTicks).toBe(
+      prefix.reduce((total, ticks, j) => total + ticks - samplesPerReplay[j]!, 0) + settlePerReplay,
+    )
+    expect(on.diagnostics[0]!.settleTicks).toBe(settlePerReplay)
+    // Every replay starts from scratch: only a from-scratch replays costs more.
+    expect(on.diagnostics[0]!.simulatedTicks)
+      .toBeGreaterThan(off.diagnostics[0]!.simulatedTicks)
+  })
+
+  it('progressive ON is deterministic and adjacent frames differ', async () => {
+    const first = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+    const again = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+
+    const bytes = frameBytesOf(first.result)
+    expect(bytes).toEqual(frameBytesOf(again.result))
+    for (let frame = 1; frame < bytes.length; frame += 1) {
+      expect(bytes[frame]).not.toEqual(bytes[frame - 1])
+    }
+  })
+
+  it('static ON replays the WHOLE script per held frame and emits N complete frames', async () => {
+    const script = motionSixFrameScript()
+    const strokeLengths = script.map((event) =>
+      isAquarelleDryEvent(event) ? 0 : (event as StudioStroke<AquarelleStrokePayload>).pts.length,
+    )
+    const on = await runVariationBake({ events: script, frameCount: 4, variation: 'static' })
+
+    expect(on.result.ok).toBe(true)
+    expect(on.result.ok && on.result.frames).toHaveLength(4)
+    expect(on.log.salts).toEqual([0, 1, 2, 3])
+    expect(on.log.resets).toBe(3)
+    expect(on.diagnostics[0]!.paintSeedReplays).toBe(4)
+    expect(on.diagnostics[0]!.settleTicks).toBe(72 * 4)
+    // Each held frame is a complete drawing: every stroke is fully fed.
+    expect(on.log.feedsByCapture).toHaveLength(4)
+    for (const fed of on.log.feedsByCapture) expect(fed).toEqual(strokeLengths)
+    // Adjacent held frames differ; the same bake twice is identical.
+    const bytes = frameBytesOf(on.result)
+    for (let frame = 1; frame < bytes.length; frame += 1) expect(bytes[frame]).not.toEqual(bytes[frame - 1])
+    const again = await runVariationBake({ events: script, frameCount: 4, variation: 'static' })
+    expect(frameBytesOf(again.result)).toEqual(bytes)
+  })
+
+  it('prints the deterministic cost measurement (replay count, OFF/ON ticks, ratio)', async () => {
+    const off = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6 })
+    const progressive = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+    })
+    const staticOn = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'static' })
+
+    const offTicks = off.diagnostics[0]!.simulatedTicks
+    const progressiveTicks = progressive.diagnostics[0]!.simulatedTicks
+    const staticTicks = staticOn.diagnostics[0]!.simulatedTicks
+    const ratio = (value: number) => (value / offTicks).toFixed(2)
+
+    // Deterministic: a second run yields the same numbers.
+    const rerun = await runVariationBake({ events: motionSixFrameScript(), frameCount: 6, variation: 'progressive' })
+    expect(rerun.diagnostics[0]!.simulatedTicks).toBe(progressiveTicks)
+
+    // The static price is exactly one whole replay per output frame.
+    expect(staticOn.diagnostics[0]!.paintSeedReplays).toBe(6)
+    expect(staticTicks).toBe(6 * (offTicks))
+
+    console.log(
+      `[261030-v1t] paint seed variation cost — 6-frame Motion: ` +
+        `replays=${progressive.diagnostics[0]!.paintSeedReplays} ` +
+        `OFF simulatedTicks=${offTicks} ` +
+        `ON(progressive) simulatedTicks=${progressiveTicks} ratio=${ratio(progressiveTicks)}x ` +
+        `ON(static) simulatedTicks=${staticTicks} ratio=${ratio(staticTicks)}x ` +
+        `| Static (1 frame/settled drawing): replays=${staticOn.diagnostics[0]!.paintSeedReplays} ` +
+        `simulatedTicks=${staticTicks} ratio=${ratio(staticTicks)}x`,
+    )
+
+    expect(off.diagnostics[0]!.paintSeedReplays).toBe(0)
+    expect(progressiveTicks).toBeGreaterThan(offTicks)
+    expect(staticTicks).toBeGreaterThan(progressiveTicks)
+  })
+
+  it('fails closed when the adapter lacks either paint-seed seam', async () => {
+    const seamless = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'progressive',
+      seams: false,
+    })
+    const noSeamsStatic = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 6,
+      variation: 'static',
+      seams: false,
+    })
+
+    expect(seamless.result).toEqual({ ok: false, reason: 'failed' })
+    expect(noSeamsStatic.result).toEqual({ ok: false, reason: 'failed' })
+    // Not a single frame was produced or captured.
+    expect(seamless.log.captures).toBe(0)
+    expect(noSeamsStatic.log.captures).toBe(0)
+    expect(seamless.diagnostics).toHaveLength(1)
+    expect(seamless.diagnostics[0]!.paintSeedReplays).toBe(0)
+  })
+
+  it('fails closed when the per-frame option arrives without an output span', async () => {
+    const noSpan = await runVariationBake({ events: motionSixFrameScript(), variation: 'progressive' })
+    expect(noSpan.result).toEqual({ ok: false, reason: 'failed' })
+    expect(noSpan.log.captures).toBe(0)
+    expect(noSpan.log.salts).toEqual([])
+  })
+
+  it('reports onStrokeFed only during the final replay', async () => {
+    const reports: [number, number][] = []
+    const on = await runVariationBake({
+      events: motionSixFrameScript(),
+      frameCount: 4,
+      variation: 'static',
+      onStrokeFed: (completed, total) => {
+        reports.push([completed, total])
+      },
+    })
+
+    expect(on.result.ok).toBe(true)
+    expect(reports).toEqual([[1, 3], [2, 3], [3, 3]])
   })
 })
