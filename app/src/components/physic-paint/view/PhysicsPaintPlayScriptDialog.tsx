@@ -1,5 +1,6 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { SliderStepper } from '../../shared/SliderStepper';
 import type { RotoPlayScriptController, RotoPlayScriptMode } from '../roto/physicsPaintRotoPlayScriptController';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -53,6 +54,41 @@ const ORIGINAL_COLOR_DOTS = ['#d2654d', '#2d9d6c', '#5a7bd4', '#d4699e'];
 function clampMotionValue(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, Math.trunc(value)));
+}
+
+// Integer fields hand SliderStepper a number; an empty/invalid draft falls back
+// to the floor (the controller's error channel still reports the real problem).
+function dialogIntegerValue(text: string, floor: number): number {
+  const trimmed = text.trim();
+  const parsed = Number(trimmed);
+  return trimmed !== '' && Number.isSafeInteger(parsed) && parsed >= floor ? parsed : floor;
+}
+
+// The top-bar Script switch's visuals, compacted for the dialog cards. Inline
+// markup (not a component) so this dialog's node-tree tests see the label text.
+function dialogSwitch(props: {
+  id: string;
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      id={props.id}
+      class={`physics-paint-script-switch physics-paint-play-script-switch${props.checked ? ' is-on' : ''}`}
+      role="switch"
+      aria-checked={props.checked ? 'true' : 'false'}
+      disabled={props.disabled}
+      onClick={props.onClick}
+    >
+      <span class="physics-paint-script-switch-track" aria-hidden="true">
+        <span class="physics-paint-script-switch-knob" />
+      </span>
+      <span class="physics-paint-script-switch-label">{props.label}</span>
+    </button>
+  );
 }
 
 export function PhysicsPaintPlayScriptDialog({
@@ -244,66 +280,58 @@ export function PhysicsPaintPlayScriptDialog({
         </button>
       </div>
       <div class="physics-paint-play-script-motion-rows">
-        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-deformation">
-          <span>Deformation</span>
-          <input
-            id="physics-play-script-motion-deformation"
-            type="range"
-            min={0}
-            max={100}
-            value={playScript.dialogMotion.value.deformation}
-            disabled={busy || loopEdit}
-            onInput={(event) => {
-              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-            }}
-          />
-          <output>{playScript.dialogMotion.value.deformation}</output>
-        </label>
-        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-position">
-          <span>Position</span>
-          <input
-            id="physics-play-script-motion-position"
-            type="range"
-            min={0}
-            max={100}
-            value={playScript.dialogMotion.value.position}
-            disabled={busy || loopEdit}
-            onInput={(event) => {
-              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-            }}
-          />
-          <output>{playScript.dialogMotion.value.position}</output>
-        </label>
-        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-rotation">
-          <span>Rotation</span>
-          <input
-            id="physics-play-script-motion-rotation"
-            type="range"
-            min={0}
-            max={100}
-            value={playScript.dialogMotion.value.rotation}
-            disabled={busy || loopEdit}
-            onInput={(event) => {
-              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, rotation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-            }}
-          />
-          <output>{playScript.dialogMotion.value.rotation}</output>
-        </label>
-        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-scale">
-          <span>Scale</span>
-          <input
-            id="physics-play-script-motion-scale"
-            type="range"
-            min={0}
-            max={100}
-            value={playScript.dialogMotion.value.scale}
-            disabled={busy || loopEdit}
-            onInput={(event) => {
-              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, scale: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
-            }}
-          />
-          <output>{playScript.dialogMotion.value.scale}</output>
-        </label>
+        <SliderStepper
+          id="physics-play-script-motion-deformation"
+          label="Deformation"
+          ariaLabel="Deformation"
+          value={playScript.dialogMotion.value.deformation}
+          onChange={(value) => {
+            playScript.dialogMotion.value = { ...playScript.dialogMotion.value, deformation: clampMotionValue(value) };
+          }}
+          min={0}
+          max={100}
+          step={1}
+          disabled={busy || loopEdit}
+        />
+        <SliderStepper
+          id="physics-play-script-motion-position"
+          label="Position"
+          ariaLabel="Position"
+          value={playScript.dialogMotion.value.position}
+          onChange={(value) => {
+            playScript.dialogMotion.value = { ...playScript.dialogMotion.value, position: clampMotionValue(value) };
+          }}
+          min={0}
+          max={100}
+          step={1}
+          disabled={busy || loopEdit}
+        />
+        <SliderStepper
+          id="physics-play-script-motion-rotation"
+          label="Rotation"
+          ariaLabel="Rotation"
+          value={playScript.dialogMotion.value.rotation}
+          onChange={(value) => {
+            playScript.dialogMotion.value = { ...playScript.dialogMotion.value, rotation: clampMotionValue(value) };
+          }}
+          min={0}
+          max={100}
+          step={1}
+          disabled={busy || loopEdit}
+        />
+        <SliderStepper
+          id="physics-play-script-motion-scale"
+          label="Scale"
+          ariaLabel="Scale"
+          value={playScript.dialogMotion.value.scale}
+          onChange={(value) => {
+            playScript.dialogMotion.value = { ...playScript.dialogMotion.value, scale: clampMotionValue(value) };
+          }}
+          min={0}
+          max={100}
+          step={1}
+          disabled={busy || loopEdit}
+        />
       </div>
     </div>
   );
@@ -318,16 +346,13 @@ export function PhysicsPaintPlayScriptDialog({
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Colorize</span>
       </div>
-      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-colorize">
-        <input
-          id="physics-play-script-colorize"
-          type="checkbox"
-          checked={playScript.colorize.value}
-          disabled={busy}
-          onChange={(event) => playScript.setColorize((event.currentTarget as HTMLInputElement).checked)}
-        />
-        Colorize with wash color
-      </label>
+      {dialogSwitch({
+        id: 'physics-play-script-colorize',
+        label: 'Colorize with wash color',
+        checked: playScript.colorize.value,
+        disabled: busy,
+        onClick: () => playScript.setColorize(!playScript.colorize.value),
+      })}
       <label class="physics-paint-play-script-slider-row" for="physics-play-script-colorize-mix">
         <span>Mix</span>
         <input
@@ -353,16 +378,13 @@ export function PhysicsPaintPlayScriptDialog({
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Photo wiggle</span>
       </div>
-      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-photo-wiggle">
-        <input
-          id="physics-play-script-photo-wiggle"
-          type="checkbox"
-          checked={playScript.photoWiggle.value}
-          disabled={busy}
-          onChange={(event) => playScript.setPhotoWiggle((event.currentTarget as HTMLInputElement).checked)}
-        />
-        Wiggle photo and wash together
-      </label>
+      {dialogSwitch({
+        id: 'physics-play-script-photo-wiggle',
+        label: 'Wiggle photo and wash together',
+        checked: playScript.photoWiggle.value,
+        disabled: busy,
+        onClick: () => playScript.setPhotoWiggle(!playScript.photoWiggle.value),
+      })}
     </div>
   );
 
@@ -375,16 +397,13 @@ export function PhysicsPaintPlayScriptDialog({
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Paint seed variation</span>
       </div>
-      <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-paint-seed-variation">
-        <input
-          id="physics-play-script-paint-seed-variation"
-          type="checkbox"
-          checked={playScript.paintSeedVariation.value}
-          disabled={busy}
-          onChange={(event) => playScript.setPaintSeedVariation((event.currentTarget as HTMLInputElement).checked)}
-        />
-        Vary the brush texture per frame
-      </label>
+      {dialogSwitch({
+        id: 'physics-play-script-paint-seed-variation',
+        label: 'Vary the brush texture per frame',
+        checked: playScript.paintSeedVariation.value,
+        disabled: busy,
+        onClick: () => playScript.setPaintSeedVariation(!playScript.paintSeedVariation.value),
+      })}
     </div>
   );
 
@@ -532,51 +551,49 @@ export function PhysicsPaintPlayScriptDialog({
             <span class="physics-paint-play-script-card-title">Timing</span>
             <div class="physics-paint-play-script-timing-grid">
               <div class="physics-paint-play-script-field">
-                <label for="physics-play-script-reveal-count">Frames</label>
-                <div class="physics-paint-play-script-timing-row">
-                  <input
-                    ref={revealInputRef}
-                    id="physics-play-script-reveal-count"
-                    inputMode="numeric"
-                    value={playScript.revealCountText.value}
-                    disabled={busy}
-                    aria-invalid={Boolean(playScript.revealValidationError.value)}
-                    aria-describedby="physics-play-script-reveal-help physics-play-script-reveal-error"
-                    onInput={(event) => {
-                      playScript.revealCountText.value = (event.currentTarget as HTMLInputElement).value;
-                    }}
-                  />
+                <SliderStepper
+                  id="physics-play-script-reveal-count"
+                  inputRef={revealInputRef}
+                  label="Frames"
+                  ariaLabel="Frames"
+                  value={dialogIntegerValue(playScript.revealCountText.value, 1)}
+                  onChange={(value) => { playScript.revealCountText.value = String(value); }}
+                  min={1}
+                  max={Math.max(1, playScript.capacity.value)}
+                  sliderMax={Math.max(1, playScript.capacity.value)}
+                  step={1}
+                  disabled={busy}
+                  ariaInvalid={Boolean(playScript.revealValidationError.value)}
+                  ariaDescribedBy={playScript.revealValidationError.value ? 'physics-play-script-reveal-error' : undefined}
+                />
+                <div class="physics-paint-play-script-timing-foot">
+                  <span class="physics-paint-play-script-hint">from F{playScript.canonicalStart.value ?? 0}</span>
                 </div>
-                <span class="physics-paint-play-script-hint">from F{playScript.canonicalStart.value ?? 0}</span>
-                <span id="physics-play-script-reveal-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
                 {playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{playScript.revealValidationError.value}</span> : null}
               </div>
               <div class="physics-paint-play-script-field">
-                <label for="physics-play-script-repeat">Cycle</label>
-                <div class="physics-paint-play-script-timing-row">
-                  <input
-                    id="physics-play-script-repeat"
-                    inputMode="numeric"
-                    value={playScript.repeatText.value}
-                    disabled={busy || playScript.infinity.value}
-                    aria-invalid={Boolean(playScript.repeatError.value)}
-                    aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
-                    onInput={(event) => {
-                      playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
-                    }}
-                  />
+                <SliderStepper
+                  id="physics-play-script-repeat"
+                  label="Cycle"
+                  ariaLabel="Cycle"
+                  value={dialogIntegerValue(playScript.repeatText.value, 1)}
+                  onChange={(value) => { playScript.repeatText.value = String(value); }}
+                  min={1}
+                  sliderMax={16}
+                  step={1}
+                  disabled={busy || playScript.infinity.value}
+                  ariaInvalid={Boolean(playScript.repeatError.value)}
+                  ariaDescribedBy={playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+                />
+                <div class="physics-paint-play-script-timing-foot">
+                  {dialogSwitch({
+                    id: 'physics-play-script-infinity',
+                    label: 'Infinity',
+                    checked: playScript.infinity.value,
+                    disabled: busy,
+                    onClick: () => playScript.setInfinity(!playScript.infinity.value),
+                  })}
                 </div>
-                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
-                  <input
-                    id="physics-play-script-infinity"
-                    type="checkbox"
-                    checked={playScript.infinity.value}
-                    disabled={busy}
-                    onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
-                  />
-                  Infinity
-                </label>
-                <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
                 {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
               </div>
             </div>
@@ -588,61 +605,56 @@ export function PhysicsPaintPlayScriptDialog({
                 toggle sits directly under its own field. */}
             <div class="physics-paint-play-script-timing-grid">
               <div class={`physics-paint-play-script-field${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
-                <label for="physics-play-script-count">{playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}</label>
-                <div class="physics-paint-play-script-timing-row">
-                  <input
-                    ref={inputRef}
-                    id="physics-play-script-count"
-                    inputMode="numeric"
-                    value={playScript.countText.value}
-                    disabled={busy || loopEdit || playScript.max.value}
-                    aria-invalid={Boolean(playScript.validationError.value)}
-                    aria-describedby="physics-play-script-help physics-play-script-error"
-                    onInput={(event) => {
-                      playScript.countText.value = (event.currentTarget as HTMLInputElement).value;
-                    }}
-                  />
+                <SliderStepper
+                  id="physics-play-script-count"
+                  inputRef={inputRef}
+                  label={playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}
+                  ariaLabel={playScript.mode.value === 'static' || loopEdit ? 'Frames per cycle' : 'Frames'}
+                  value={dialogIntegerValue(playScript.countText.value, 1)}
+                  onChange={(value) => { playScript.countText.value = String(value); }}
+                  min={1}
+                  max={Math.max(1, playScript.capacity.value)}
+                  sliderMax={Math.max(1, playScript.capacity.value)}
+                  step={1}
+                  disabled={busy || loopEdit || playScript.max.value}
+                  ariaInvalid={Boolean(playScript.validationError.value)}
+                  ariaDescribedBy={playScript.validationError.value ? 'physics-play-script-error' : undefined}
+                />
+                <div class="physics-paint-play-script-timing-foot">
+                  {dialogSwitch({
+                    id: 'physics-play-script-max',
+                    label: 'Max',
+                    checked: playScript.max.value,
+                    disabled: busy || loopEdit,
+                    onClick: () => playScript.setMax(!playScript.max.value),
+                  })}
                 </div>
-                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-max">
-                  <input
-                    id="physics-play-script-max"
-                    type="checkbox"
-                    checked={playScript.max.value}
-                    disabled={busy || loopEdit}
-                    onChange={(event) => playScript.setMax((event.currentTarget as HTMLInputElement).checked)}
-                  />
-                  Max
-                </label>
-                <span id="physics-play-script-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
                 {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
               </div>
               <div class="physics-paint-play-script-field">
-                <label for="physics-play-script-repeat">Cycle</label>
-                <div class="physics-paint-play-script-timing-row">
-                  <input
-                    ref={repeatInputRef}
-                    id="physics-play-script-repeat"
-                    inputMode="numeric"
-                    value={playScript.repeatText.value}
-                    disabled={busy || playScript.infinity.value}
-                    aria-invalid={Boolean(playScript.repeatError.value)}
-                    aria-describedby="physics-play-script-repeat-help physics-play-script-repeat-error"
-                    onInput={(event) => {
-                      playScript.repeatText.value = (event.currentTarget as HTMLInputElement).value;
-                    }}
-                  />
+                <SliderStepper
+                  id="physics-play-script-repeat"
+                  inputRef={repeatInputRef}
+                  label="Cycle"
+                  ariaLabel="Cycle"
+                  value={dialogIntegerValue(playScript.repeatText.value, 1)}
+                  onChange={(value) => { playScript.repeatText.value = String(value); }}
+                  min={1}
+                  sliderMax={16}
+                  step={1}
+                  disabled={busy || playScript.infinity.value}
+                  ariaInvalid={Boolean(playScript.repeatError.value)}
+                  ariaDescribedBy={playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+                />
+                <div class="physics-paint-play-script-timing-foot">
+                  {dialogSwitch({
+                    id: 'physics-play-script-infinity',
+                    label: 'Infinity',
+                    checked: playScript.infinity.value,
+                    disabled: busy,
+                    onClick: () => playScript.setInfinity(!playScript.infinity.value),
+                  })}
                 </div>
-                <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-infinity">
-                  <input
-                    id="physics-play-script-infinity"
-                    type="checkbox"
-                    checked={playScript.infinity.value}
-                    disabled={busy}
-                    onChange={(event) => playScript.setInfinity((event.currentTarget as HTMLInputElement).checked)}
-                  />
-                  Infinity
-                </label>
-                <span id="physics-play-script-repeat-help" class="physics-paint-play-script-hint">Enter a positive integer.</span>
                 {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
               </div>
             </div>
@@ -653,16 +665,13 @@ export function PhysicsPaintPlayScriptDialog({
             // the card stays visible, greyed, so the option reads as unavailable.
             <div class={`physics-paint-play-script-card physics-paint-play-script-card-key-script${revealTab ? ' physics-paint-play-script-locked' : ''}`}>
               <span class="physics-paint-play-script-card-title">Key Script Editing</span>
-              <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-key-script-edits">
-                <input
-                  id="physics-play-script-key-script-edits"
-                  type="checkbox"
-                  checked={playScript.keyScriptEdits.value}
-                  disabled={busy || revealTab}
-                  onChange={(event) => playScript.setKeyScriptEdits((event.currentTarget as HTMLInputElement).checked)}
-                />
-                Save script on each key
-              </label>
+              {dialogSwitch({
+                id: 'physics-play-script-key-script-edits',
+                label: 'Save script on each key',
+                checked: playScript.keyScriptEdits.value,
+                disabled: busy || revealTab,
+                onClick: () => playScript.setKeyScriptEdits(!playScript.keyScriptEdits.value),
+              })}
               {revealTab ? <span class="physics-paint-play-script-hint">Not available on Reveal rails yet.</span> : null}
             </div>
           ) : null}

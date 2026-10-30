@@ -2366,6 +2366,8 @@ button.destructive {
   min-height: 0;
 }
 
+.physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper { margin-top: 10px; }
+
 .physics-paint-play-script-card-title {
   margin-bottom: 9px;
   color: var(--ps-fg);
@@ -2591,30 +2593,46 @@ button.destructive {
   font-size: 11px;
 }
 
-/* Timing rows: finite input + Max/Infinity checkbox, gap 10px; 15px accent box. */
-.physics-paint-play-script-timing-row {
+/* Timing footer: both columns end on the same line (Max/Infinity or the
+   Reveal "from F{n}" hint). */
+.physics-paint-play-script-timing-foot {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  min-height: 18px;
 }
 
-.physics-paint-play-script-timing-row input:not([type="checkbox"]) { flex: 1 1 auto; }
-
-.physics-paint-play-script-content input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  flex: 0 0 auto;
-  accent-color: var(--ps-accent);
-}
-
-.physics-paint-play-script-timing-toggle {
-  display: inline-flex;
-  align-items: center;
+/* Create Rail switches: the top-bar Script switch's visuals at card scale. */
+.physics-paint-play-script-dialog .physics-paint-play-script-switch {
+  height: auto;
+  margin-left: 0;
+  padding: 0;
   gap: 7px;
-  white-space: nowrap;
-  cursor: pointer;
+  color: var(--ps-muted);
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-switch:hover:not(:disabled) {
+  background: transparent;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-track {
+  width: 28px;
+  height: 16px;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-knob {
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-switch.is-on .physics-paint-script-switch-knob {
+  transform: translateX(12px);
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-label {
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 /* Color pane (D-08R): centers its compact content — the card never reserves dead space.

@@ -519,13 +519,13 @@ describe('PhysicsPaintPlayScriptDialog frame field (D-03 revised)', () => {
   it("switches the single shared field label between 'Frames' and 'Frames per cycle' with the mode", () => {
     const { controller, signals } = createFakeController();
     let tree = renderDialog(controller);
-    expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Frames');
+    expect(findOne(tree, byId('physics-play-script-count')).props.label).toBe('Frames');
     signals.mode.value = 'static';
     tree = renderDialog(controller);
-    expect(textOf(findOne(tree, (vnode) => vnode.props?.for === 'physics-play-script-count'))).toBe('Frames per cycle');
+    expect(findOne(tree, byId('physics-play-script-count')).props.label).toBe('Frames per cycle');
     // Still ONE shared input — no second field appears in Static / Hold.
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
-    expect(textOf(findOne(tree, byId('physics-play-script-help')))).toBe('Enter a positive integer.');
+    expect(findAll(tree, byId('physics-play-script-help'))).toHaveLength(0);
   });
 
   it('keeps the finite Frames draft unchanged when switching between Motion and Static', () => {
@@ -559,29 +559,29 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
       expect(findOne(timingCard, byId('physics-play-script-max'))).toBeTruthy();
       expect(findOne(timingCard, byId('physics-play-script-repeat'))).toBeTruthy();
       expect(findOne(timingCard, byId('physics-play-script-infinity'))).toBeTruthy();
-      expect(textOf(findOne(timingCard, (vnode) => vnode.props?.for === 'physics-play-script-max'))).toBe('Max');
-      expect(textOf(findOne(timingCard, (vnode) => vnode.props?.for === 'physics-play-script-infinity'))).toBe('Infinity');
+      expect(textOf(findOne(timingCard, byId('physics-play-script-max')))).toBe('Max');
+      expect(textOf(findOne(timingCard, byId('physics-play-script-infinity')))).toBe('Infinity');
     }
   });
 
   it('binds the repeat field aria-invalid and error span to the controller repeatError channel', () => {
     const { controller } = createFakeController({ repeatError: 'Cycle count is too large for this cycle length.' });
     const tree = renderDialog(controller);
-    expect(findOne(tree, byId('physics-play-script-repeat')).props['aria-invalid']).toBe(true);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.ariaInvalid).toBe(true);
     expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Cycle count is too large for this cycle length.');
   });
 
   it('wires Max and Infinity through their distinct controller boundaries only', () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
-    handler(findOne(tree, byId('physics-play-script-max')), 'onChange')({ currentTarget: { checked: true } });
+    handler(findOne(tree, byId('physics-play-script-max')), 'onClick')();
     expect(controller.setMax).toHaveBeenCalledTimes(1);
     expect(controller.setMax).toHaveBeenCalledWith(true);
     expect(controller.setInfinity).not.toHaveBeenCalled();
     expect(signals.max.value).toBe(false);
     expect(signals.lastFiniteCount.value).toBe('3');
 
-    handler(findOne(tree, byId('physics-play-script-infinity')), 'onChange')({ currentTarget: { checked: true } });
+    handler(findOne(tree, byId('physics-play-script-infinity')), 'onClick')();
     expect(controller.setInfinity).toHaveBeenCalledTimes(1);
     expect(controller.setInfinity).toHaveBeenCalledWith(true);
     expect(controller.setMax).toHaveBeenCalledTimes(1);
@@ -595,9 +595,9 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     const count = findOne(tree, byId('physics-play-script-count'));
     const repeat = findOne(tree, byId('physics-play-script-repeat'));
     expect(count.props.disabled).toBe(true);
-    expect(count.props.value).toBe('5');
+    expect(count.props.value).toBe(5);
     expect(repeat.props.disabled).toBe(true);
-    expect(repeat.props.value).toBe('7');
+    expect(repeat.props.value).toBe(7);
   });
 
   it('lays Frames and Repeat in two columns with each capacity toggle under its own field', () => {
@@ -609,16 +609,18 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(playScriptCssRule('.physics-paint-play-script-key-column > :last-child')).toContain('flex: 1 1 auto');
   });
 
-  it('reuses the same timing-row and toggle styling contract for Max and Infinity', () => {
-    expect(playScriptCssRule('.physics-paint-play-script-timing-row')).toContain('gap: 10px');
-    expect(playScriptCssRule('.physics-paint-play-script-timing-row input:not([type="checkbox"])')).toContain('flex: 1 1 auto');
-    const toggleRule = playScriptCssRule('.physics-paint-play-script-timing-toggle');
-    expect(toggleRule).toContain('gap: 7px');
-    expect(toggleRule).toContain('white-space: nowrap');
-    expect(toggleRule).toContain('cursor: pointer');
-    const checkboxRule = playScriptCssRule('.physics-paint-play-script-content input[type="checkbox"]');
-    expect(checkboxRule).toContain('width: 15px');
-    expect(checkboxRule).toContain('accent-color: var(--ps-accent)');
+  it('uses the compact top-bar Script switch styling and aligned timing footers', () => {
+    const footRule = playScriptCssRule('.physics-paint-play-script-timing-foot');
+    expect(footRule).toContain('min-height: 18px');
+    expect(footRule).toContain('align-items: center');
+    const switchRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch');
+    expect(switchRule).toContain('gap: 7px');
+    expect(switchRule).toContain('height: auto');
+    const trackRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-track');
+    expect(trackRule).toContain('width: 28px');
+    expect(trackRule).toContain('height: 16px');
+    const knobRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch.is-on .physics-paint-script-switch-knob');
+    expect(knobRule).toContain('translateX(12px)');
   });
 });
 
@@ -712,9 +714,9 @@ describe('PhysicsPaintPlayScriptDialog application-time Motion controls (D-06)',
   it('writes slider edits to the controller dialogMotion signals with the 0-100 clamp', () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
-    handler(findOne(tree, byId('physics-play-script-motion-deformation')), 'onInput')({ currentTarget: { value: '42' } });
+    handler(findOne(tree, byId('physics-play-script-motion-deformation')), 'onChange')(42);
     expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 40, rotation: 0, scale: 0 });
-    handler(findOne(tree, byId('physics-play-script-motion-position')), 'onInput')({ currentTarget: { value: '260' } });
+    handler(findOne(tree, byId('physics-play-script-motion-position')), 'onChange')(260);
     expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 100, rotation: 0, scale: 0 });
   });
 
@@ -726,15 +728,13 @@ describe('PhysicsPaintPlayScriptDialog application-time Motion controls (D-06)',
     expect(ids.indexOf('physics-play-script-motion-rotation')).toBeGreaterThan(ids.indexOf('physics-play-script-motion-position'));
     expect(ids.indexOf('physics-play-script-motion-scale')).toBeGreaterThan(ids.indexOf('physics-play-script-motion-rotation'));
     const rotationRow = findOne(tree, byId('physics-play-script-motion-rotation'));
-    const rotationLabel = findOne(tree, (vnode) => vnode.type === 'label' && vnode.props?.for === 'physics-play-script-motion-rotation');
-    expect(textOf(rotationLabel)).toContain('Rotation');
+    expect(rotationRow.props.label).toBe('Rotation');
     expect(rotationRow.props.disabled).toBe(false);
-    handler(rotationRow, 'onInput')({ currentTarget: { value: '73' } });
+    handler(rotationRow, 'onChange')(73);
     expect(signals.dialogMotion.value).toEqual({ deformation: 25, position: 40, rotation: 73, scale: 0 });
     const scaleRow = findOne(tree, byId('physics-play-script-motion-scale'));
-    const scaleLabel = findOne(tree, (vnode) => vnode.type === 'label' && vnode.props?.for === 'physics-play-script-motion-scale');
-    expect(textOf(scaleLabel)).toContain('Scale');
-    handler(scaleRow, 'onInput')({ currentTarget: { value: '130' } });
+    expect(scaleRow.props.label).toBe('Scale');
+    handler(scaleRow, 'onChange')(130);
     expect(signals.dialogMotion.value).toEqual({ deformation: 25, position: 40, rotation: 73, scale: 100 });
   });
 
@@ -1071,7 +1071,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
 
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 3f');
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 21f (7f × 3)');
-    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe('3');
+    expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe(3);
   });
 
   it('locks Frames-per-cycle and every source field at reduced opacity with values preserved; ONLY Repeat + Infinity stay editable', () => {
@@ -1080,12 +1080,12 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     // Frames-per-cycle input: disabled, value preserved.
     const countInput = findOne(tree, byId('physics-play-script-count'));
     expect(countInput.props.disabled).toBe(true);
-    expect(countInput.props.value).toBe('5');
+    expect(countInput.props.value).toBe(5);
     // Mode/Color/Motion cards + the count field carry the locked treatment.
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-mode')), 'physics-paint-play-script-locked')).toBe(true);
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-color')), 'physics-paint-play-script-locked')).toBe(true);
     expect(hasClass(findOne(tree, byClass('physics-paint-play-script-card-motion')), 'physics-paint-play-script-locked')).toBe(true);
-    expect(hasClass(parentOf(tree, parentOf(tree, countInput)!)!, 'physics-paint-play-script-locked')).toBe(true);
+    expect(hasClass(parentOf(tree, countInput)!, 'physics-paint-play-script-locked')).toBe(true);
     // Every mode/color radio is disabled; the Motion sliders and Reset defaults are disabled.
     for (const radio of findAll(tree, (vnode) => vnode.props?.role === 'radio')) {
       expect(radio.props['aria-disabled']).toBe(true);
@@ -1308,7 +1308,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-mode-helper')))).toBe('The reveal extends frame after frame across the span.');
     // Frames defaults + the playhead-snapshot hint.
     const frames = findOne(tree, byId('physics-play-script-reveal-count'));
-    expect(frames.props.value).toBe('3');
+    expect(frames.props.value).toBe(3);
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-card-timing')))).toContain('from F4');
     // Repeat + Infinity ride the same mutation law as the Paint Rail.
     expect(findOne(tree, byId('physics-play-script-repeat'))).toBeDefined();
@@ -1328,10 +1328,10 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(textOf(card)).toContain('Colorize');
 
     const checkbox = findOne(card, byId('physics-play-script-colorize')) as TestVNode;
-    expect(checkbox.props.type).toBe('checkbox');
-    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.role).toBe('switch');
+    expect(checkbox.props['aria-checked']).toBe('false');
     expect(checkbox.props.disabled).toBe(false);
-    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    handler(checkbox, 'onClick')();
     expect(controller.setColorize).toHaveBeenCalledWith(true);
 
     const mix = findOne(card, byId('physics-play-script-colorize-mix')) as TestVNode;
@@ -1356,7 +1356,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-colorize'));
     const checkbox = findOne(card, byId('physics-play-script-colorize')) as TestVNode;
-    expect(checkbox.props.checked).toBe(true);
+    expect(checkbox.props['aria-checked']).toBe('true');
     const mix = findOne(card, byId('physics-play-script-colorize-mix')) as TestVNode;
     expect(mix.props.value).toBe(40);
     expect(mix.props.disabled).toBe(false);
@@ -1372,17 +1372,17 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(textOf(card)).toContain('Wiggle photo and wash together');
 
     const checkbox = findOne(card, byId('physics-play-script-photo-wiggle')) as TestVNode;
-    expect(checkbox.props.type).toBe('checkbox');
-    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.role).toBe('switch');
+    expect(checkbox.props['aria-checked']).toBe('false');
     expect(checkbox.props.disabled).toBe(false);
-    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    handler(checkbox, 'onClick')();
     expect(controller.setPhotoWiggle).toHaveBeenCalledWith(true);
     // The dialog never writes the signal itself — the controller owns it.
     expect(signals.photoWiggle.value).toBe(false);
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', photoWiggle: true }).controller);
-    expect((findOne(seeded, byId('physics-play-script-photo-wiggle')) as TestVNode).props.checked).toBe(true);
+    expect((findOne(seeded, byId('physics-play-script-photo-wiggle')) as TestVNode).props['aria-checked']).toBe('true');
 
     // The Paint tab renders no Photo wiggle card.
     const paintTree = renderDialog(createFakeController().controller);
@@ -1398,17 +1398,17 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     // 261030-v1t UAT: the long Paint hint is gone — title + toggle only.
     expect(textOf(card)).not.toContain('Each key of this Rail');
     const checkbox = findOne(card, byId('physics-play-script-key-script-edits')) as TestVNode;
-    expect(checkbox.props.type).toBe('checkbox');
-    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.role).toBe('switch');
+    expect(checkbox.props['aria-checked']).toBe('false');
     expect(checkbox.props.disabled).toBe(false);
-    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    handler(checkbox, 'onClick')();
     expect(controller.setKeyScriptEdits).toHaveBeenCalledWith(true);
     // The dialog never writes the signal itself — the controller owns it.
     expect(signals.keyScriptEdits.value).toBe(false);
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ keyScriptEdits: true }).controller);
-    expect((findOne(seeded, byId('physics-play-script-key-script-edits')) as TestVNode).props.checked).toBe(true);
+    expect((findOne(seeded, byId('physics-play-script-key-script-edits')) as TestVNode).props['aria-checked']).toBe('true');
 
     // The Reveal tab greys the opt-in out: visible, greyed, disabled.
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
@@ -1464,10 +1464,10 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(textOf(card)).not.toContain('Same strokes');
 
     const checkbox = findOne(card, byId('physics-play-script-paint-seed-variation')) as TestVNode;
-    expect(checkbox.props.type).toBe('checkbox');
-    expect(checkbox.props.checked).toBe(false);
+    expect(checkbox.props.role).toBe('switch');
+    expect(checkbox.props['aria-checked']).toBe('false');
     expect(checkbox.props.disabled).toBe(false);
-    handler(checkbox, 'onChange')({ currentTarget: { checked: true } });
+    handler(checkbox, 'onClick')();
     expect(controller.setPaintSeedVariation).toHaveBeenCalledWith(true);
     // The dialog never writes the signal itself — the controller owns it.
     expect(signals.paintSeedVariation.value).toBe(false);
@@ -1475,7 +1475,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     // Reveal tab: the SAME creation opt-in, also present and routed.
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
     const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
-    expect(revealCheckbox.props.type).toBe('checkbox');
+    expect(revealCheckbox.props.role).toBe('switch');
 
     // 261030-v1t UAT: the card lives in grid column 1, directly beneath the
     // Key Script Editing card — on both tabs.
@@ -1497,7 +1497,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);
-    expect((findOne(seeded, byId('physics-play-script-paint-seed-variation')) as TestVNode).props.checked).toBe(true);
+    expect((findOne(seeded, byId('physics-play-script-paint-seed-variation')) as TestVNode).props['aria-checked']).toBe('true');
 
     // Busy (a generation can be cancelled) disables the toggle.
     const busy = renderDialog(createFakeController({ canCancel: true }).controller);
@@ -1513,7 +1513,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {
     const { controller, signals } = createFakeController({ railTab: 'reveal' });
     const tree = renderDialog(controller);
-    handler(findOne(tree, byId('physics-play-script-reveal-count')), 'onInput')({ currentTarget: { value: '7' } });
+    handler(findOne(tree, byId('physics-play-script-reveal-count')), 'onChange')(7);
     expect(signals.revealCountText.value).toBe('7');
     const invalid = renderDialog(createFakeController({ railTab: 'reveal', revealValidationError: 'Enter a positive integer.' }).controller);
     const createButton = findOne(invalid, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail');

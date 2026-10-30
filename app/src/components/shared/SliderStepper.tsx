@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import type { ComponentChildren, CSSProperties, JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import {
   commitStepperInput,
@@ -47,6 +47,11 @@ export interface SliderStepperProps {
   ariaLabel: string;
   disabled?: boolean;
   ariaDisabled?: boolean;
+  /** The editable value box — dialogs focus it on open. */
+  inputRef?: Ref<HTMLInputElement>;
+  /** Marks the value box invalid; the error text itself lives outside the field. */
+  ariaInvalid?: boolean;
+  ariaDescribedBy?: string;
   onFocus?: (event?: FocusEvent) => void;
   onBlur?: () => void;
   /**
@@ -262,6 +267,9 @@ export function SliderStepper({
   ariaLabel,
   disabled = false,
   ariaDisabled,
+  inputRef,
+  ariaInvalid,
+  ariaDescribedBy,
   onFocus,
   onBlur,
   commitOnRelease,
@@ -444,6 +452,12 @@ export function SliderStepper({
     className ?? null,
   ].filter((token): token is string => token !== null).join(' ');
 
+  const assignValueInput = (element: HTMLInputElement | null) => {
+    valueRef.current = element;
+    if (typeof inputRef === 'function') inputRef(element);
+    else if (inputRef) (inputRef as { current: HTMLInputElement | null }).current = element;
+  };
+
   return (
     <div id={id} class={rootClass} style={FIELD_STYLE} data-testid="slider-stepper">
       <div class="slider-stepper-label-row" style={LABEL_ROW_STYLE}>
@@ -451,7 +465,7 @@ export function SliderStepper({
           <span class="slider-stepper-label" style={LABEL_STYLE}>{label}</span>
         </div>
         <input
-          ref={valueRef}
+          ref={assignValueInput}
           type="text"
           inputMode="decimal"
           class="slider-stepper-value"
@@ -460,6 +474,8 @@ export function SliderStepper({
           disabled={disabled}
           aria-label={ariaLabel}
           aria-disabled={ariaDisabled ? 'true' : undefined}
+          aria-invalid={ariaInvalid ? 'true' : undefined}
+          aria-describedby={ariaDescribedBy}
           data-testid="slider-stepper-value"
           onFocus={(event) => {
             startCoalescing();
