@@ -334,6 +334,8 @@ const DEFAULT_ROTO_INTERPOLATION_SETTINGS: PhysicPaintRotoInterpolationSettings 
   mode: 'duplicate',
   position: 0,
   deform: 0,
+  rotation: 0,
+  scale: 0,
 };
 
 /**
@@ -2200,6 +2202,8 @@ function _normalizeRotoInterpolationSettings(settings: Partial<PhysicPaintRotoIn
     mode: mode === 'blend' || mode === 'alpha-blend' ? 'blend' : 'duplicate',
     position: clampPercentLikeCount(source.position),
     deform: clampPercentLikeCount(source.deform),
+    rotation: clampPercentLikeCount(source.rotation),
+    scale: clampPercentLikeCount(source.scale),
   };
   const overrides = normalizeRotoSegmentSpacingOverrides(source.segmentSpacingOverrides, realKeys);
   if (overrides.length > 0) normalized.segmentSpacingOverrides = overrides;

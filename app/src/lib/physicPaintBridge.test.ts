@@ -3616,7 +3616,7 @@ describe('physicPaintBridge', async () => {
     const projection = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID);
     expect(projection.rotoPhysical).toBeNull();
     expect(Array.from(projection.frames.keys()).sort((a, b) => a - b)).toEqual([1, 4]);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 0, position: 0, rotation: 0, scale: 0 });
   });
 
   it('syncs metadata-only Roto interpolation settings from standalone into parent preview/export state', async () => {
@@ -3647,7 +3647,7 @@ describe('physicPaintBridge', async () => {
     });
 
     expect(result).toMatchObject({ ok: true, kind: 'update-roto-interpolation-settings', appliedFrameCount: 6 });
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0, rotation: 0, scale: 0 });
     expect(physicPaintStore.getRotoFrame('phys-layer-1', TEST_TRACK_ID, 8)).toEqual(expect.objectContaining({
       appFrame: 8,
       source: 'real-key',
@@ -3658,7 +3658,7 @@ describe('physicPaintBridge', async () => {
     const projection = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID);
     expect(projection.rotoPhysical).toBeNull();
     expect(Array.from(projection.frames.keys()).sort((a, b) => a - b)).toEqual([0, 1, 2]);
-    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('phys-layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0, rotation: 0, scale: 0 });
   });
 
   it('updates an existing projected real key by durable source identity when its source number is a generated display', async () => {

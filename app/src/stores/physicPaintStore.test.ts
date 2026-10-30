@@ -101,11 +101,23 @@ describe('physicPaintStore', () => {
   });
 
   it('defaults Roto interpolation mode to duplicate', () => {
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1 });
 
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
+  });
+
+  it('261030-ey9: keeps the rotation and scale channels through the store normalizer', () => {
+    physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, deform: 10, position: 5, rotation: 40, scale: 25 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 10, position: 5, rotation: 40, scale: 25 });
+  });
+
+  it('261030-ey9: clamps rotation and scale to integer 0-100', () => {
+    physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, rotation: 140.9, scale: -3 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0, rotation: 100, scale: 0 });
+    physicPaintStore.setRotoInterpolationSettings('layer-1', 'track-2', { enabled: true, inBetweenCount: 1 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', 'track-2')).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0, rotation: 0, scale: 0 });
   });
 
   it('stores a still apply payload at the start frame only', () => {
@@ -413,7 +425,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 1)?.bytes).toEqual(one.bytes);
     expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 2)?.bytes).toEqual(two.bytes);
     expect(physicPaintStore.getFrame('custom-layer', TEST_TRACK_ID, 9)?.bytes).toEqual(custom.bytes);
-    expect(physicPaintStore.getRotoInterpolationSettings('custom-layer', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('custom-layer', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
   });
 
   it('UAT keeps a far-empty saved key at display #14 with a custom previous segment', () => {
@@ -506,7 +518,7 @@ describe('physicPaintStore', () => {
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(payloads.get(0)!.bytes);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 14)?.bytes).toEqual(payloads.get(14)!.bytes);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 15)?.bytes).toEqual(payloads.get(15)!.bytes);
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: false });
     const projectionOff = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
@@ -553,7 +565,7 @@ describe('physicPaintStore', () => {
     // v1.0 persists rendered frames; runtime interpolation settings reset to defaults.
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(makeAlphaFrame(0, 0, 'independent-0').bytes);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 26)?.bytes).toEqual(makeAlphaFrame(0, 26, 'independent-26').bytes);
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
   });
 
   it('appends a distant real key saved while interpolation is enabled into compact source order through disable and projection round-trip', () => {
@@ -590,7 +602,7 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 0)?.bytes).toEqual(circle.bytes);
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, appendedSourceFrame)?.bytes).toEqual(distant.bytes);
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: false, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
   });
 
   it('duplicates each source key across expanded display frames and deletes shifted display keys by source frame', () => {
@@ -648,7 +660,7 @@ describe('physicPaintStore', () => {
       expect.objectContaining({ appFrame: 1, source: 'generated-interpolation', nearestRealKeyFrame: 0 }),
       expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', nearestRealKeyFrame: 3 }),
     ]);
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 2, mode: 'blend', deform: 10, position: 20, rotation: 0, scale: 0 });
 
     physicPaintStore.replaceGeneratedRotoCache('layer-1', TEST_TRACK_ID, [
       { ...makeFrame(0, 4), source: 'generated-interpolation', nearestRealKeyFrame: 3 },
@@ -804,6 +816,8 @@ describe('physicPaintStore', () => {
       mode: 'duplicate',
       deform: 0,
       position: 0,
+      rotation: 0,
+      scale: 0,
       segmentSpacingOverrides: [{ fromSourceFrame: 2, toSourceFrame: 6, inBetweenCount: 4 }],
     });
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toEqual(expect.arrayContaining([
@@ -1030,7 +1044,7 @@ describe('physicPaintStore', () => {
 
       expect(physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID)).toEqual(outputBefore);
       expect(physicPaintStore.getRotoCacheFrames('target-layer', TEST_TRACK_ID)).toEqual(cacheBefore);
-      expect(physicPaintStore.getRotoInterpolationSettings('target-layer', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+      expect(physicPaintStore.getRotoInterpolationSettings('target-layer', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
       expect(physicPaintStore.getRotoBackgroundMetadata('target-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65 });
       drawCalls.length = 0;
       expect(renderBlendedRotoInterpolationFrame(targetOnly, shared, 1, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.bytes).toEqual(testPngBytes('restored-alpha-blend'));
@@ -1128,7 +1142,7 @@ describe('physicPaintStore', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 4, next);
 
     physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'hold' as never, position: 0, deform: 0 });
-    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
+    expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0, rotation: 0, scale: 0 });
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(previous.bytes);
 
     const originalDocument = globalThis.document;
@@ -1156,7 +1170,7 @@ describe('physicPaintStore', () => {
 
     try {
       physicPaintStore.setRotoInterpolationSettings('layer-1', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'alpha-blend' as never, position: 0, deform: 0 });
-      expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 });
+      expect(physicPaintStore.getRotoInterpolationSettings('layer-1', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0, rotation: 0, scale: 0 });
       expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).toEqual(testPngBytes('blend(previous-canvas|next-canvas)'));
       expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 2)?.bytes).not.toBe(previous.bytes);
       expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID)).toContainEqual(expect.objectContaining({ appFrame: 2, source: 'generated-interpolation', fromSourceFrame: 1, toSourceFrame: 4, interpolationT: 0.5 }));

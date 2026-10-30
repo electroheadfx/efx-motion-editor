@@ -128,7 +128,7 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     // exercise size.
     onBrushSizeChange: vi.fn(),
     onion: { enabled: true, previous: true, next: true, count: 1, opacity: 50 },
-    playWiggle: { strokeDeformation: 0, strokePosition: 0 },
+    playWiggle: { strokeDeformation: 0, strokePosition: 0, strokeRotation: 0, strokeScale: 0 },
     onColorChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),

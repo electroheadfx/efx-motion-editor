@@ -603,7 +603,7 @@ export interface RotoInterpolationToggleTransaction {
   failureStatus: string | null;
 }
 
-function toPhysicPaintRotoInterpolationSettingsLegacy(
+export function toPhysicPaintRotoInterpolationSettingsLegacy(
   settings: RotoSourceDisplayModel['settings'],
   fallback: PhysicPaintRotoInterpolationSettings,
 ): PhysicPaintRotoInterpolationSettings {
@@ -614,6 +614,8 @@ function toPhysicPaintRotoInterpolationSettingsLegacy(
     mode: settings.mode === 'blend' ? 'blend' : 'duplicate',
     deform: settings.deform ?? fallback.deform,
     position: settings.position ?? fallback.position,
+    ...(typeof settings.rotation === 'number' ? { rotation: settings.rotation } : typeof fallback.rotation === 'number' ? { rotation: fallback.rotation } : {}),
+    ...(typeof settings.scale === 'number' ? { scale: settings.scale } : typeof fallback.scale === 'number' ? { scale: fallback.scale } : {}),
     ...(settings.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides.map((override) => ({ ...override })) } : {}),
   };
 }

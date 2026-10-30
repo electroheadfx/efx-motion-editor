@@ -45,6 +45,7 @@ import {
   mapRotoPushProductReason,
   mapRotoRailSetMoveProductReason,
   buildKeyRailDragProposalVersion,
+  toPhysicPaintRotoInterpolationSettings,
   useRotoTimelineActions,
   type RotoDeleteTarget,
   type RotoInsertTarget,
@@ -258,6 +259,19 @@ function keyRailMember(prefix: string, count: number): Readonly<{
     keyIds: Object.freeze(Array.from({ length: count }, (_, index) => `${prefix}${index}`)),
   });
 }
+
+describe('useRotoTimelineActions settings mapper (261030-ey9)', () => {
+  it('toPhysicPaintRotoInterpolationSettings keeps the rotation and scale channels', () => {
+    const settings = toPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 10, position: 5, rotation: 40, scale: 25 });
+    expect(settings).toMatchObject({ deform: 10, position: 5, rotation: 40, scale: 25 });
+  });
+
+  it('toPhysicPaintRotoInterpolationSettings leaves rotation and scale absent when the source omits them', () => {
+    const settings = toPhysicPaintRotoInterpolationSettings({ enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 10, position: 5 });
+    expect('rotation' in settings).toBe(false);
+    expect('scale' in settings).toBe(false);
+  });
+});
 
 describe('useRotoTimelineActions selection-scoped Delete activation', () => {
   const records = [realKeyRecord('A', 0), realKeyRecord('B', 3), realKeyRecord('ordinary', 20)];

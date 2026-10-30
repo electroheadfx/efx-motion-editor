@@ -8,6 +8,7 @@ import {
   resolveRotoVisibleSpacingProxies,
   selectProjectedRealCachedRotoFrames,
   selectRealCachedRotoFrames,
+  selectRotoLegacyTimelineStructuralView,
   selectRotoPhysicalTimelineStructuralView,
   selectRotoTimelineView,
 } from './rotoTimelineSelectors';
@@ -136,6 +137,14 @@ describe('rotoTimelineSelectors', () => {
     expect(model.currentFrameSelectionKind.value).toBe('generated-interpolation');
     expect(model.currentFrameOwnerSourceFrame.value).toBe(1);
     expect(model.currentFrameIsGenerated.value).toBe(true);
+  });
+
+  it('261030-ey9: normalizeTimelineSettings keeps the rotation and scale channels', () => {
+    const view = selectRotoLegacyTimelineStructuralView({
+      interpolationSettings: { enabled: true, inBetweenCount: 2, mode: 'duplicate', deform: 10, position: 5, rotation: 40, scale: 25 },
+    });
+    expect(view.model.settings.rotation).toBe(40);
+    expect(view.model.settings.scale).toBe(25);
   });
 });
 

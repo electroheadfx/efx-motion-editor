@@ -23,6 +23,8 @@ import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings'
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
   strokePosition: number;
+  strokeRotation: number;
+  strokeScale: number;
 }
 
 export interface PhysicsPaintRightPanelProps {

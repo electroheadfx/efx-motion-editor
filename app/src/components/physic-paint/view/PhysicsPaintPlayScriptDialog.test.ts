@@ -157,7 +157,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     capacity: sig(4),
     mode: sig<RotoPlayScriptMode>(seed.mode ?? 'progressive'),
     overrideEnabled: sig(seed.overrideEnabled ?? false),
-    dialogMotion: sig({ deformation: 25, position: 40 }),
+    dialogMotion: sig({ deformation: 25, position: 40, rotation: 0, scale: 0 }),
     repeatText: sig(seed.repeatText ?? '1'),
     infinity: sig(seed.infinity ?? false),
     lastFiniteRepeat: sig('1'),
@@ -694,9 +694,38 @@ describe('PhysicsPaintPlayScriptDialog application-time Motion controls (D-06)',
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
     handler(findOne(tree, byId('physics-play-script-motion-deformation')), 'onInput')({ currentTarget: { value: '42' } });
-    expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 40 });
+    expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 40, rotation: 0, scale: 0 });
     handler(findOne(tree, byId('physics-play-script-motion-position')), 'onInput')({ currentTarget: { value: '260' } });
-    expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 100 });
+    expect(signals.dialogMotion.value).toEqual({ deformation: 42, position: 100, rotation: 0, scale: 0 });
+  });
+
+  it('261030-ey9: renders Rotation and Scale rows after Position and routes them into dialogMotion with the clamp', () => {
+    const { controller, signals } = createFakeController();
+    const tree = renderDialog(controller);
+    const card = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-card-motion'));
+    const ids = findAll(card, (vnode) => vnode.props?.id !== undefined).map((vnode) => String(vnode.props.id));
+    expect(ids.indexOf('physics-play-script-motion-rotation')).toBeGreaterThan(ids.indexOf('physics-play-script-motion-position'));
+    expect(ids.indexOf('physics-play-script-motion-scale')).toBeGreaterThan(ids.indexOf('physics-play-script-motion-rotation'));
+    const rotationRow = findOne(tree, byId('physics-play-script-motion-rotation'));
+    const rotationLabel = findOne(tree, (vnode) => vnode.type === 'label' && vnode.props?.for === 'physics-play-script-motion-rotation');
+    expect(textOf(rotationLabel)).toContain('Rotation');
+    expect(rotationRow.props.disabled).toBe(false);
+    handler(rotationRow, 'onInput')({ currentTarget: { value: '73' } });
+    expect(signals.dialogMotion.value).toEqual({ deformation: 25, position: 40, rotation: 73, scale: 0 });
+    const scaleRow = findOne(tree, byId('physics-play-script-motion-scale'));
+    const scaleLabel = findOne(tree, (vnode) => vnode.type === 'label' && vnode.props?.for === 'physics-play-script-motion-scale');
+    expect(textOf(scaleLabel)).toContain('Scale');
+    handler(scaleRow, 'onInput')({ currentTarget: { value: '130' } });
+    expect(signals.dialogMotion.value).toEqual({ deformation: 25, position: 40, rotation: 73, scale: 100 });
+  });
+
+  it('261030-ey9: a prefill source that omits rotation/scale renders 0, never undefined', () => {
+    const { controller, signals } = createFakeController();
+    signals.dialogMotion.value = { deformation: 5, position: 10, rotation: 0, scale: 0 };
+    const tree = renderDialog(controller);
+    expect(findOne(tree, byId('physics-play-script-motion-rotation')).props.value).toBe(0);
+    expect(findOne(tree, byId('physics-play-script-motion-scale')).props.value).toBe(0);
+    expect(findOne(tree, byId('physics-play-script-motion-rotation')).props.value).not.toBeUndefined();
   });
 
   it("'Reset defaults' calls ONLY the controller resetDialogMotion operation", () => {

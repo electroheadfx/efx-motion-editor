@@ -277,7 +277,7 @@ export interface RotoPlayScriptController {
   canonicalStart: ReadonlySignal<number | null>;
   mode: Signal<RotoPlayScriptMode>;
   overrideEnabled: Signal<boolean>;
-  dialogMotion: Signal<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+  dialogMotion: Signal<{ deformation: number; position: number; rotation: number; scale: number }>;
   repeatText: Signal<string>;
   infinity: Signal<boolean>;
   lastFiniteRepeat: Signal<string>;
@@ -378,7 +378,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
   const overrideEnabled = signal(false);
-  const dialogMotion = signal<{ deformation: number; position: number; rotation?: number; scale?: number }>({ deformation: 0, position: 0 });
+  const dialogMotion = signal<{ deformation: number; position: number; rotation: number; scale: number }>({ deformation: 0, position: 0, rotation: 0, scale: 0 });
   const repeatText = signal('1');
   const infinity = signal(false);
   const lastFiniteRepeat = signal('1');
@@ -663,7 +663,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
   function resetDialogMotion(): void {
-    dialogMotion.value = { ...ports.getMotion() };
+    dialogMotion.value = toDialogMotion(ports.getMotion());
   }
 
   /* 52-05 (G-52-3): switching to the Reveal Photo Rail tab re-defaults the span
@@ -718,7 +718,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       countText.value = '3';
       lastFiniteCount.value = '3';
       max.value = false;
-      dialogMotion.value = { ...ports.getMotion() };
+      dialogMotion.value = toDialogMotion(ports.getMotion());
       // 52-05 (G-52-3): the open entry picks the tab — the track rail-creation
       // flow's Reveal item opens directly on the Reveal Photo Rail tab. The
       // reveal span defaults to the selected script's natural duration (D-20).
@@ -791,7 +791,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     countText.value = String(loop.sourceKeyIds.length);
     lastFiniteCount.value = countText.value;
     max.value = false;
-    if (loop.motion) dialogMotion.value = { ...loop.motion };
+    if (loop.motion) dialogMotion.value = toDialogMotion(loop.motion);
     overrideEnabled.value = (loop.overrideColor ?? null) !== null;
     if (loop.repeat === 'infinity') {
       infinity.value = true; // repeatText keeps the preserved finite draft (Pitfall 7)
@@ -2223,6 +2223,17 @@ export function mapRevealRailRejectionReason(reason: string): string {
 // (empty, named colors, short hex, non-string junk) is treated as no override.
 function normalizeBrushColor(value: unknown): string | null {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value.trim()) ? value.trim().toLowerCase() : null;
+}
+
+// 261030-ey9: every dialogMotion write funnels through here so the signal always
+// carries four numeric channels, even when the source is a compact persisted record.
+function toDialogMotion(motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>): { deformation: number; position: number; rotation: number; scale: number } {
+  return {
+    deformation: motion.deformation ?? 0,
+    position: motion.position ?? 0,
+    rotation: motion.rotation ?? 0,
+    scale: motion.scale ?? 0,
+  };
 }
 
 function composeSummaryLine1(mode: RotoPlayScriptMode, overrideColor: string | null, motion: Readonly<{ deformation: number; position: number }>): string {  const modeLabel = mode === 'static' ? 'Static / Hold' : 'Progressive';

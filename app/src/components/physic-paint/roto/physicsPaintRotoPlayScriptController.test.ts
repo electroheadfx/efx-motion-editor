@@ -337,7 +337,7 @@ describe('createRotoPlayScriptController', () => {
     ]);
     expect(bakePose.poser).toHaveBeenCalledWith(
       { width: 10, height: 10 },
-      { deformation: 25, position: 40 },
+      { deformation: 25, position: 40, rotation: 0, scale: 0 },
       4,
       'white',
     );
@@ -471,12 +471,12 @@ describe('createRotoPlayScriptController', () => {
     const test = harness();
     await test.controller.openConfirmation();
     // Dialog Motion initializes from the Motion defaults port at open (D-06).
-    expect(test.controller.dialogMotion.value).toEqual({ deformation: 25, position: 40 });
+    expect(test.controller.dialogMotion.value).toEqual({ deformation: 25, position: 40, rotation: 0, scale: 0 });
 
     test.controller.mode.value = 'static';
     test.controller.countText.value = '4'; // re-set after the Static / Hold first-time default applies
     test.controller.overrideEnabled.value = true;
-    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.controller.dialogMotion.value = { deformation: 5, position: 10, rotation: 0, scale: 0 };
     test.setMotion({ deformation: 90, position: 90 }); // Motion port changed after open — must NOT be re-read at confirm
     test.setBrushColor('#3366ff');
     expect(await test.controller.confirm()).toBe(true);
@@ -485,7 +485,7 @@ describe('createRotoPlayScriptController', () => {
     // Motion port's 90/90.
     expect(test.controller.appliedSummary.line1.value).toBe('Static / Hold · Override #3366ff · Motion 5/10');
     expect(bakePose.deform).toHaveBeenCalledWith(
-      expect.anything(), 10, 10, expect.any(Number), { deformation: 5, position: 10 }, 'white',
+      expect.anything(), 10, 10, expect.any(Number), { deformation: 5, position: 10, rotation: 0, scale: 0 }, 'white',
     );
 
     resetBakeBehavior();
@@ -537,7 +537,7 @@ describe('createRotoPlayScriptController', () => {
     expect(untouched.bakeOptions[0]).toMatchObject({ frameCount: 3 });
     expect(bakePose.poser).toHaveBeenCalledWith(
       { width: 10, height: 10 },
-      { deformation: 25, position: 40 },
+      { deformation: 25, position: 40, rotation: 0, scale: 0 },
       4,
       'white',
     );
@@ -751,7 +751,7 @@ describe('createRotoPlayScriptController', () => {
     test.requestAuthority.mockClear();
     test.stopPlayback.mockClear();
     test.log.mockClear();
-    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.controller.dialogMotion.value = { deformation: 5, position: 10, rotation: 0, scale: 0 };
     expect(test.getMotion).not.toHaveBeenCalled();
     expect(test.requestAuthority).not.toHaveBeenCalled();
     expect(test.commit).not.toHaveBeenCalled();
@@ -762,11 +762,11 @@ describe('createRotoPlayScriptController', () => {
   it('resetDialogMotion re-reads the CURRENT Motion defaults port at call time and writes nowhere', async () => {
     const test = harness();
     await test.controller.openConfirmation();
-    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.controller.dialogMotion.value = { deformation: 5, position: 10, rotation: 0, scale: 0 };
     test.setMotion({ deformation: 70, position: 15 });
     test.getMotion.mockClear();
     test.controller.resetDialogMotion();
-    expect(test.controller.dialogMotion.value).toEqual({ deformation: 70, position: 15 });
+    expect(test.controller.dialogMotion.value).toEqual({ deformation: 70, position: 15, rotation: 0, scale: 0 });
     expect(test.getMotion).toHaveBeenCalledTimes(1);
     expect(test.commit).not.toHaveBeenCalled();
     expect(test.requestAuthority).toHaveBeenCalledTimes(1); // only the open call
@@ -902,7 +902,7 @@ describe('createRotoPlayScriptController', () => {
     await test.controller.openConfirmation();
     test.controller.mode.value = 'static';
     test.controller.overrideEnabled.value = true;
-    test.controller.dialogMotion.value = { deformation: 1, position: 2 };
+    test.controller.dialogMotion.value = { deformation: 1, position: 2, rotation: 0, scale: 0 };
     test.controller.repeatText.value = '9';
     expect(test.controller.appliedSummary.line1.value).toBe(line1);
     expect(test.controller.appliedSummary.line2.value).toBe(line2);
@@ -951,7 +951,7 @@ describe('createRotoPlayScriptController', () => {
     await test.controller.openConfirmation();
     test.controller.mode.value = 'progressive';
     test.controller.overrideEnabled.value = false;
-    test.controller.dialogMotion.value = { deformation: 5, position: 10 };
+    test.controller.dialogMotion.value = { deformation: 5, position: 10, rotation: 0, scale: 0 };
     test.controller.countText.value = '2';
     expect(await test.controller.confirm()).toBe(true);
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Original colors · Motion 5/10');
@@ -2780,6 +2780,16 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(find(test, { ...baseInput, start: 33 }, [loopClip('L1', 10, 3)])).not.toBeNull();
     });
 
+    it('261030-ey9: a rotation-only cycle does NOT match at a different start, and a different rotation never matches', () => {
+      const test = loopOpHarness([]);
+      const loops = [loopClip('L1', 10, 3)];
+      Object.assign(loops[0], { motion: { deformation: 0, position: 0, rotation: 30 } });
+      const rotating = { ...baseInput, motion: { deformation: 0, position: 0, rotation: 30 } };
+      expect(find(test, rotating, loops)).toBeNull(); // start 20: held rotation poses would differ
+      expect(find(test, { ...rotating, start: 10 }, loops)).not.toBeNull();
+      expect(find(test, { ...rotating, start: 10, motion: { deformation: 0, position: 0, rotation: 40 } }, loops)).toBeNull();
+    });
+
     it('never offers a link to an unresolved source cycle', () => {
       const test = loopOpHarness([]);
       const dangling = loopClip('LU', 10, 3, ['S1', 'S2', 'GHOST', 'S4', 'S5']);
@@ -2888,7 +2898,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
-      test.controller.dialogMotion.value = { deformation: 0, position: 0 }; // match the cycle provenance
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 }; // match the cycle provenance
       test.controller.repeatText.value = '1';
       expect(test.controller.loopIntentActive.value).toBe(true);
       expect(test.controller.identicalSourceCycle.value).toMatchObject({
@@ -2903,7 +2913,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
-      test.controller.dialogMotion.value = { deformation: 0, position: 0 };
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
       test.controller.repeatText.value = '2';
       expect(test.controller.identicalSourceCycle.value).not.toBeNull();
       test.controller.linkChoice.value = 'link';
@@ -2922,7 +2932,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
-      test.controller.dialogMotion.value = { deformation: 0, position: 0 };
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
       test.controller.repeatText.value = '2';
       test.controller.linkChoice.value = 'create';
       expect(await test.controller.confirm()).toBe(true);
@@ -3001,7 +3011,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.countText.value).toBe('5'); // Frames per cycle from the source cycle
       expect(test.controller.max.value).toBe(false);
       expect(test.controller.destinationRange.value).toBe('F10–F14');
-      expect(test.controller.dialogMotion.value).toEqual({ deformation: 0, position: 0 }); // from provenance, not the defaults port
+      expect(test.controller.dialogMotion.value).toEqual({ deformation: 0, position: 0, rotation: 0, scale: 0 }); // from provenance, not the defaults port
       expect(test.controller.overrideEnabled.value).toBe(false); // overrideColor null
       expect(test.controller.sourceEditSharedLoopCount.value).toBe(2);
       expect(test.controller.repeatText.value).toBe('3'); // the target loop's own repeat, preserved
@@ -3439,7 +3449,7 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
     await test.controller.openConfirmation({ railTab: 'reveal' });
     test.controller.repeatText.value = '2';
-    test.controller.dialogMotion.value = { deformation: 10, position: 20 };
+    test.controller.dialogMotion.value = { deformation: 10, position: 20, rotation: 0, scale: 0 };
     expect(await test.controller.confirm()).toBe(true);
     expect(createReveal).toHaveBeenCalledTimes(1);
     const input = createReveal.mock.calls[0][0];

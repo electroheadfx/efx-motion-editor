@@ -60,8 +60,8 @@ function clampWiggleValue(value: unknown): number {
 }
 
 export function RightPanelMotionTab(props: {
-  playWiggle: { strokeDeformation: number; strokePosition: number };
-  onPlayWiggleChange: (wiggle: { strokeDeformation: number; strokePosition: number }) => void;
+  playWiggle: { strokeDeformation: number; strokePosition: number; strokeRotation: number; strokeScale: number };
+  onPlayWiggleChange: (wiggle: { strokeDeformation: number; strokePosition: number; strokeRotation: number; strokeScale: number }) => void;
 }) {
   // SliderStepper rows mirror PanelSlider's rendered markup
   // (physics-paint-option-row > SliderStepper, clamp 0..100).
@@ -89,6 +89,30 @@ export function RightPanelMotionTab(props: {
           min={0}
           max={100}
           ariaLabel="Move"
+        />
+      </div>
+      <div class="physics-paint-option-row">
+        <SliderStepper
+          id="physics-play-rotate"
+          label="Rotate"
+          value={clampWiggleValue(props.playWiggle.strokeRotation)}
+          onChange={(value) => props.onPlayWiggleChange({ ...props.playWiggle, strokeRotation: clampWiggleValue(value) })}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Rotate"
+        />
+      </div>
+      <div class="physics-paint-option-row">
+        <SliderStepper
+          id="physics-play-scale"
+          label="Scale"
+          value={clampWiggleValue(props.playWiggle.strokeScale)}
+          onChange={(value) => props.onPlayWiggleChange({ ...props.playWiggle, strokeScale: clampWiggleValue(value) })}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Scale"
         />
       </div>
     </div>

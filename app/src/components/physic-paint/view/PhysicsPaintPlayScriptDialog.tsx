@@ -271,6 +271,36 @@ export function PhysicsPaintPlayScriptDialog({
           />
           <output>{playScript.dialogMotion.value.position}</output>
         </label>
+        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-rotation">
+          <span>Rotation</span>
+          <input
+            id="physics-play-script-motion-rotation"
+            type="range"
+            min={0}
+            max={100}
+            value={playScript.dialogMotion.value.rotation}
+            disabled={busy || loopEdit}
+            onInput={(event) => {
+              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, rotation: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+            }}
+          />
+          <output>{playScript.dialogMotion.value.rotation}</output>
+        </label>
+        <label class="physics-paint-play-script-slider-row" for="physics-play-script-motion-scale">
+          <span>Scale</span>
+          <input
+            id="physics-play-script-motion-scale"
+            type="range"
+            min={0}
+            max={100}
+            value={playScript.dialogMotion.value.scale}
+            disabled={busy || loopEdit}
+            onInput={(event) => {
+              playScript.dialogMotion.value = { ...playScript.dialogMotion.value, scale: clampMotionValue(Number((event.currentTarget as HTMLInputElement).value)) };
+            }}
+          />
+          <output>{playScript.dialogMotion.value.scale}</output>
+        </label>
       </div>
     </div>
   );

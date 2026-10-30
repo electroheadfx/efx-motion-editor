@@ -1874,6 +1874,8 @@ export interface PhysicPaintRotoInterpolationSettings {
   mode: PhysicPaintRotoInterpolationMode;
   deform: number;
   position: number;
+  rotation?: number;
+  scale?: number;
   segmentSpacingOverrides?: PhysicPaintRotoSegmentSpacingOverride[];
 }
 
@@ -2450,6 +2452,8 @@ export function isPhysicPaintRotoInterpolationSettings(value: unknown): value is
     (value.mode === 'duplicate' || value.mode === 'blend') &&
     isPercentInteger(value.deform) &&
     isPercentInteger(value.position) &&
+    (value.rotation === undefined || isPercentInteger(value.rotation)) &&
+    (value.scale === undefined || isPercentInteger(value.scale)) &&
     optionalRotoSegmentSpacingOverrides(value.segmentSpacingOverrides)
   );
 }

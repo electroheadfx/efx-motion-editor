@@ -19,6 +19,8 @@ export interface RotoInterpolationSettings {
   mode?: RotoInterpolationMode;
   position?: number;
   deform?: number;
+  rotation?: number;
+  scale?: number;
   segmentSpacingOverrides?: readonly (RotoSegmentSpacingOverride | PhysicPaintRotoSegmentSpacingOverride)[];
 }
 

@@ -1904,6 +1904,8 @@ export function PhysicsPaintStudio() {
     getMotion: () => ({
       deformation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).deform : 0,
       position: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).position : 0,
+      rotation: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).rotation ?? 0 : 0,
+      scale: launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, trackIdOfLaunch(launchContext)).scale ?? 0 : 0,
     }),
     getPublicationIdentity: () => launchContext ? {
       operationId: launchContext.operationId,
@@ -3002,7 +3004,7 @@ export function PhysicsPaintStudio() {
   const rotoTimelineActions = useRotoTimelineActions({
     getModel: () => rotoTimelineModel.view.value.model,
     getStoreRealKeyFrames: () => launchContext ? selectRealCachedRotoSourceFrameNumbers(latestRotoFramesRef.current) : [],
-    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    getCurrentSettings: () => launchContext ? physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()) : { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0, rotation: 0, scale: 0 },
     setInterpolationSettings: (settings) => {
       if (!launchContext) return settings;
       physicPaintStore.setRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId(), settings);
@@ -3880,7 +3882,9 @@ export function PhysicsPaintStudio() {
     getMotion: () => launchContext ? {
       deformation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).deform,
       position: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).position,
-    } : { deformation: 0, position: 0 },
+      rotation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).rotation ?? 0,
+      scale: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).scale ?? 0,
+    } : { deformation: 0, position: 0, rotation: 0, scale: 0 },
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
     getBrushColor: () => settings.color,
@@ -5907,11 +5911,11 @@ export function PhysicsPaintStudio() {
   // contract, never merged into interpolation enabled state.
   // 38-11: stable identity via launchContextRef — launchContext identity
   // changes on every navigation while the live values read are identical.
-  const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number }) => {
+  const updatePanelMotion = useCallback((motion: { strokeDeformation: number; strokePosition: number; strokeRotation: number; strokeScale: number }) => {
     const launch = launchContextRef.current;
     if (!launch) return;
     const current = physicPaintStore.getRotoInterpolationSettings(launch.layerId, studioActiveTrackId());
-    physicPaintStore.setRotoInterpolationSettings(launch.layerId, studioActiveTrackId(), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition });
+    physicPaintStore.setRotoInterpolationSettings(launch.layerId, studioActiveTrackId(), { ...current, deform: motion.strokeDeformation, position: motion.strokePosition, rotation: motion.strokeRotation, scale: motion.strokeScale });
   }, []);
   const layout = layoutPropsMemo.resolve([rightPanelCollapsed, handlePhysicsPaintKeyDown, handleSetRightPanelCollapsed], () => ({
     rightPanelCollapsed,
@@ -6191,8 +6195,8 @@ export function PhysicsPaintStudio() {
     onionDisabled: isPlaying,
     engineControlsDisabled: staticControlsLocked,
     playWiggle: rotoLegacyInterpolationSettings
-      ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position }
-      : { strokeDeformation: 0, strokePosition: 0 },
+      ? { strokeDeformation: rotoLegacyInterpolationSettings.deform, strokePosition: rotoLegacyInterpolationSettings.position, strokeRotation: rotoLegacyInterpolationSettings.rotation ?? 0, strokeScale: rotoLegacyInterpolationSettings.scale ?? 0 }
+      : { strokeDeformation: 0, strokePosition: 0, strokeRotation: 0, strokeScale: 0 },
     trackName: activeTrack?.name ?? 'Paint 1',
     trackOpacity: activeTrack?.opacity ?? 1,
     trackBlendMode: activeTrack?.blendMode ?? 'normal',

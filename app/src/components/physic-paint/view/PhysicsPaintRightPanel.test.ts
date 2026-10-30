@@ -141,7 +141,7 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     color: '#103c65',
     onBrushSizeChange: vi.fn(),
     onion: { enabled: true, previous: true, next: true, count: 1, opacity: 50 },
-    playWiggle: { strokeDeformation: 0, strokePosition: 0 },
+    playWiggle: { strokeDeformation: 0, strokePosition: 0, strokeRotation: 0, strokeScale: 0 },
     onColorChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
@@ -633,6 +633,39 @@ describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
     expect(scrollAreaVnode).toBeDefined();
     const content = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-right-pane-content'));
     expect(content).toBeDefined();
+  });
+});
+
+describe('Physics Paint right panel Motion tab Rotation/Scale (261030-ey9)', () => {
+  function renderMotionTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+    const tree = renderPanel(props);
+    const motionTab = findByClass(tree, 'physics-paint-tab-motion');
+    (motionTab.props.onClick as () => void)();
+    return renderPanel(props);
+  }
+
+  it('renders Rotate and Scale after Deform and Move, reading the four-member wiggle record', () => {
+    const props = baseProps({ playWiggle: { strokeDeformation: 12, strokePosition: 34, strokeRotation: 56, strokeScale: 78 } });
+    const tree = renderMotionTab(props);
+    expect(findStepper(tree, 'physics-play-deform').props.value).toBe(12);
+    expect(findStepper(tree, 'physics-play-move').props.value).toBe(34);
+    expect(findStepper(tree, 'physics-play-rotate').props.value).toBe(56);
+    expect(findStepper(tree, 'physics-play-scale').props.value).toBe(78);
+    expect(findStepper(tree, 'physics-play-rotate').props.label).toBe('Rotate');
+    expect(findStepper(tree, 'physics-play-scale').props.label).toBe('Scale');
+  });
+
+  it('writes Rotate and Scale through onPlayWiggleChange with the other members preserved and clamped', () => {
+    const onPlayWiggleChange = vi.fn();
+    const props = baseProps({
+      playWiggle: { strokeDeformation: 12, strokePosition: 34, strokeRotation: 56, strokeScale: 78 },
+      onPlayWiggleChange,
+    });
+    const tree = renderMotionTab(props);
+    (findStepper(tree, 'physics-play-rotate').props.onChange as (value: number) => void)(250);
+    expect(onPlayWiggleChange).toHaveBeenLastCalledWith({ strokeDeformation: 12, strokePosition: 34, strokeRotation: 100, strokeScale: 78 });
+    (findStepper(tree, 'physics-play-scale').props.onChange as (value: number) => void)(-5);
+    expect(onPlayWiggleChange).toHaveBeenLastCalledWith({ strokeDeformation: 12, strokePosition: 34, strokeRotation: 56, strokeScale: 0 });
   });
 });
 

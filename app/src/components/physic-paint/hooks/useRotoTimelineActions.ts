@@ -3978,13 +3978,15 @@ function computeForceSpacingAvailability(input: RotoTimelineActionsInput): Actio
   return { eligible: true, reason: null };
 }
 
-function toPhysicPaintRotoInterpolationSettings(settings: RotoSourceDisplayModel['settings']): PhysicPaintRotoInterpolationSettings {
+export function toPhysicPaintRotoInterpolationSettings(settings: RotoSourceDisplayModel['settings']): PhysicPaintRotoInterpolationSettings {
   return {
     enabled: settings.enabled === true,
     inBetweenCount: settings.inBetweenCount ?? 1,
     mode: settings.mode === 'blend' ? 'blend' : 'duplicate',
     deform: settings.deform ?? 0,
     position: settings.position ?? 0,
+    ...(typeof settings.rotation === 'number' ? { rotation: settings.rotation } : {}),
+    ...(typeof settings.scale === 'number' ? { scale: settings.scale } : {}),
     ...(settings.segmentSpacingOverrides ? { segmentSpacingOverrides: settings.segmentSpacingOverrides.map((override) => ({ ...override })) } : {}),
   };
 }
