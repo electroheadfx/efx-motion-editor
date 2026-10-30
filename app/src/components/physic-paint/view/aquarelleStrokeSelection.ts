@@ -48,6 +48,7 @@ import {
   type ScriptStrokeEditionPort,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
+import { disarmAquarellePicker } from './aquarelleColorPicker';
 import {
   buildLiftRibbonCached,
   liftRibbonBoundsPx,
@@ -277,6 +278,9 @@ export function setAquarelleSelectMode(
   filter: AquarelleStrokeTypeFilter = AQUARELLE_STROKE_FILTER_DEFAULT,
 ): void {
   const was = scriptSelectMode.peek();
+  // 261030-cnq: entering Move/Edit leaves the color picker (Select owns Alt —
+  // the Alt+click stroke-delete law). Exiting does not arm it.
+  if (on) disarmAquarellePicker();
   setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {

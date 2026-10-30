@@ -33,6 +33,7 @@ import {
   buildKeyIdentityFrameMap,
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
+import { disarmAquarellePicker } from './aquarelleColorPicker';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
@@ -201,7 +202,14 @@ export function setAquarelleParam(key: AquarelleGlobalKey, value: number): void 
   aquarelleParams.value = { ...current, [key]: value };
 }
 
+/**
+ * 261030-cnq: picking a paint tool leaves the color picker — the disarm runs
+ * BEFORE the equality early-return, so a pick of the already-active tool still
+ * leaves the picker (re-arming the same brush must not stay in sampling mode).
+ * The active-tool write itself stays compare-then-write.
+ */
 export function setAquarelleTool(tool: AquarelleTool): void {
+  disarmAquarellePicker();
   if (aquarelleActiveTool.value === tool) return;
   aquarelleActiveTool.value = tool;
 }

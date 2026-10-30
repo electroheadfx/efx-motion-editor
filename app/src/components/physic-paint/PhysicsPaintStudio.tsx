@@ -77,7 +77,11 @@ import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintPr
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
-import { isAquarellePickerArmed, sampleAquarelleStackColor } from './view/aquarelleColorPicker';
+import {
+  isAquarellePickerArmed,
+  sampleAquarelleStackColor,
+  toggleAquarellePickerLatched,
+} from './view/aquarelleColorPicker';
 import { useAquarelleColorPicker } from './hooks/useAquarelleColorPicker';
 import { aquarelleWaterAvailable } from './view/aquarelleWetPaintGate';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
@@ -2436,6 +2440,12 @@ export function PhysicsPaintStudio() {
     }
     return true;
   }, [handleActiveColorChanged, isPlaying]);
+  // 261030-cnq: the `I` shortcut and the rail Picker button drive the SAME
+  // latch; both leave Move/Edit first (Select owns Alt).
+  const handleToggleAquarellePicker = useCallback(() => {
+    setAquarelleSelectMode(false);
+    toggleAquarellePickerLatched();
+  }, []);
   const handleToggleAquarelleSelect = useCallback(() => {
     if (aquarelleSelectMode.peek()) {
       setAquarelleSelectMode(false);
@@ -5528,6 +5538,7 @@ export function PhysicsPaintStudio() {
         handleActiveColorChanged(paintStore.foregroundColor.peek());
       },
       selectAquarelleTool: handleSelectAquarelleTool,
+      toggleAquarellePicker: handleToggleAquarellePicker,
       toggleAquarelleSelect: handleToggleAquarelleSelect,
       toggleSelectAllAquarelleStrokes: handleToggleSelectAllAquarelleStrokes,
       cycleAquarelleSelectFilter: handleCycleAquarelleSelectFilter,

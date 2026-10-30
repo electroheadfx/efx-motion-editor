@@ -63,6 +63,8 @@ export interface PhysicsPaintStudioKeyboardActions {
   rebakeAquarelleScript?: () => void;
   /** Bare D: reset the swatch to a black foreground and white background. */
   resetFgBg?: () => void;
+  /** Bare I: latch/unlatch the color picker (261030-cnq). */
+  toggleAquarellePicker?: () => void;
   deleteRotoKey?: () => void;
   /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
   deleteBackgroundClip?: () => void;
@@ -348,7 +350,8 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // Bare tool keys: B / W / E / P pick a painting tool and leave Select mode,
     // A toggles the Move/Edit surface (leaving resumes the previous paint
     // tool), Tab cycles its stroke filter Paint → Eraser → All while Move/Edit
-    // is on; F flash-dries, C clears the frame, D resets the swatch.
+    // is on; F flash-dries, C clears the frame, D resets the swatch, I
+    // latches/unlatches the color picker.
     // Modifier chords (Cmd+A select-all, Cmd+Shift+D duplicate track, …) are
     // owned by the branches above, so these fire only on a bare keypress.
     if (!meta && !event.altKey && !event.shiftKey && !event.repeat) {
@@ -367,6 +370,11 @@ export function dispatchPhysicsPaintStudioKeyDown(
         actions.selectAquarelleTool(
           key === 'b' ? 'brush' : key === 'w' ? 'water' : key === 'p' ? 'pen' : 'lift',
         );
+        return;
+      }
+      if (key === 'i' && actions.toggleAquarellePicker) {
+        event.preventDefault();
+        actions.toggleAquarellePicker();
         return;
       }
       if (key === 'a' && actions.toggleAquarelleSelect) {

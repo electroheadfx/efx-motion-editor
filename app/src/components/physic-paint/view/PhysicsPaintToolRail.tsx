@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, RefreshCcwDot, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -15,6 +15,7 @@ import {
   setAquarelleSelectMode,
   toggleAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
+import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
@@ -90,6 +91,10 @@ function WatercolorRail({
   // Select/Move is the ONLY active tool while select mode is on; the previous
   // paint tool is shown deselected.
   const selectActive = aquarelleSelectMode.value;
+  // 261030-cnq: the armed picker is the active surface too — the paint-tool row
+  // renders deselected while it is on, and comes back on release (the picker
+  // never changes the paint tool itself).
+  const pickerActive = aquarellePickerActive.value;
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
@@ -97,7 +102,7 @@ function WatercolorRail({
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
-        const isActive = !selectActive && active === id;
+        const isActive = !selectActive && !pickerActive && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
@@ -120,6 +125,25 @@ function WatercolorRail({
           </button>
         );
       })}
+      {/* 261030-cnq: the color picker. A HOST tool — deliberately outside
+          WATERCOLOR_RAIL_TOOLS and the `AquarelleTool` union, so latching it
+          never changes the paint tool and unlatching is "back to the previous
+          tool". A paint-tool key (B/W/E/P) or Select entry disarms it. */}
+      <button
+        type="button"
+        class={`physics-paint-icon-button${pickerActive ? ' active' : ''}`}
+        data-testid="aquarelle-picker-toggle"
+        disabled={disabled}
+        title="Picker (I) — click the canvas to sample the color under the cursor · hold Alt for a temporary picker"
+        aria-label="Picker"
+        aria-pressed={pickerActive}
+        onClick={() => {
+          setAquarelleSelectMode(false);
+          toggleAquarellePickerLatched();
+        }}
+      >
+        <Pipette size={18} />
+      </button>
       {/* 261022-pim: Move/Select toggle. While on, an overlay above the sheet
           outlines every recorded stroke of the frame and blocks painting. */}
       <button
