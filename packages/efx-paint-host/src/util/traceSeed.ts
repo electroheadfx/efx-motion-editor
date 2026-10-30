@@ -45,6 +45,24 @@ export function hashMutationId(mutationId: number | string | undefined): number 
 }
 
 /**
+ * 261030-v1t: per-output-frame paint salt. The aquarelle engine draws every
+ * stochastic paint channel (dab scatter, tip angle/jitter, spatter, granulation)
+ * from ONE per-stroke RNG; mixing the stroke seed with the local output frame
+ * re-patterns that texture frame to frame while the deposited geometry (points,
+ * pressure, timing) stays untouched.
+ *
+ * Pure and total: a domain-separated FNV-1a over (uint32 base, truncated frame),
+ * avalanched. Same script + option + frame always reproduces the pixels — never
+ * Math.random, never the clock, never module state, and the salted seed is never
+ * persisted (the persisted flag is the plain boolean).
+ */
+export function mixStrokeSeed(strokeSeed: number, frame: number): number {
+  const base = Number.isFinite(strokeSeed) ? strokeSeed >>> 0 : 0
+  const local = Number.isFinite(frame) ? Math.trunc(frame) : 0
+  return avalanche(fnv1a(`paint-seed:${base}:${local}`))
+}
+
+/**
  * Deterministic sequential rng (mulberry32) keyed by (strokeSeed, streamKey).
  * R10 (260930-detail): the deform path's ONLY randomness source — the
  * held-pose determinism law forbids `Math.random` there. The stream key

@@ -6,6 +6,7 @@
 export {
   fnv1a,
   hashMutationId,
+  mixStrokeSeed,
   seededRng,
   arcSlot,
   seededDraw,

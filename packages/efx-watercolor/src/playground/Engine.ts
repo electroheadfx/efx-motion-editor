@@ -1283,6 +1283,25 @@ export class WatercolorEngine {
     this.schedule();
   }
 
+  /**
+   * 261030-v1t: wipe pigment and water while KEEPING the sheet — the replay
+   * seam a per-output-frame re-pattern bake needs (the aquarelle sheet is
+   * cumulative, so each salted replay must start from the same naked paper).
+   *
+   * Unlike clear() this is not an undo step: bakes never travel history. It
+   * must never re-roll `paperSeed`, redraw the paper or recreate targets — the
+   * sheet and its seeded grain are the constant across replays. The caller
+   * re-arms the virtual clock and the RNG stream.
+   */
+  resetSheet() {
+    this.stroke = null;
+    this.queue = [];
+    this.dropFill();
+    for (const t of this.docTargets()) if (t !== this.paper) this.g.clearTarget(t);
+    this.resetPaintState();
+    this.notifyHistory();
+  }
+
   /** Take back the stroke in progress as if it never happened (a touch that became a pinch). */
   abortStroke() {
     const s = this.stroke;

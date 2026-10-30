@@ -22,6 +22,7 @@
 //  mapped 0..1 bag.
 // ============================================================
 
+import { mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type {
   EngineAdapter,
   EngineId,
@@ -126,6 +127,18 @@ export function createAquarelleEngineAdapter(
    * tick so the virtual clock stays bit-identical to per-tick stepping.
    */
   skipTicks(fromTick: number, toTick: number): void
+  /**
+   * 261030-v1t: salt every stroke's render RNG with (traceSeed, frame) so the
+   * same script paints a different brush texture on each output frame. `null`
+   * (the default) keeps today's exact stream — seededRandom(traceSeed || 1).
+   */
+  setPaintSeedFrame(frame: number | null): void
+  /**
+   * 261030-v1t: wipe pigment/water back to the naked sheet (paper kept) and
+   * re-arm the virtual clock, the feed cursors and the RNG for one salted
+   * replay. The per-frame re-pattern bake calls this between output frames.
+   */
+  resetSheet(): void
 } {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
@@ -161,6 +174,10 @@ export function createAquarelleEngineAdapter(
   }
   engine?.setClock(() => virtualNow)
   engine?.setRandom(seededRandom(1))
+
+  // 261030-v1t: per-output-frame paint salt. `null` = today's exact stream.
+  // A negative or fractional frame is not a frame — clamp to an integer >= 0.
+  let paintSeedFrame: number | null = null
 
   // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
   // replayed deposit carries the Studio paper's tooth / granulation.
@@ -204,8 +221,16 @@ export function createAquarelleEngineAdapter(
     const hex = stroke.color ?? payload.color
     if (typeof hex === 'string' && hex.length > 0) engine.setPigment(pigmentFromHex(hex))
     engine.setTool(asTool(payload.tool))
-    // traceSeed is the D-20 per-stroke determinism key.
-    engine.setRandom(seededRandom(stroke.traceSeed || 1))
+    // traceSeed is the D-20 per-stroke determinism key. With a paint-seed
+    // frame set, the key is mixed with that frame (pure host mix) so the same
+    // stroke re-patterns per output frame without touching its geometry.
+    engine.setRandom(
+      seededRandom(
+        paintSeedFrame === null
+          ? stroke.traceSeed || 1
+          : mixStrokeSeed(stroke.traceSeed || 1, paintSeedFrame),
+      ),
+    )
   }
 
   /** User-initiated Dry (D-15) — wet-state fix at the event's tick. */
@@ -277,6 +302,25 @@ export function createAquarelleEngineAdapter(
         advanceClock(1000 * HOST_DT)
         remaining -= 1
       }
+    },
+    // 261030-v1t: the per-frame paint salt + the sheet reset that makes a
+    // from-scratch replay start on the same naked paper. Both are optional
+    // EXTENSION seams — the host EngineAdapter interface is unchanged.
+    setPaintSeedFrame(frame: number | null): void {
+      paintSeedFrame =
+        typeof frame === 'number' && Number.isFinite(frame)
+          ? Math.max(0, Math.trunc(frame))
+          : null
+    },
+    resetSheet(): void {
+      if (disposed || !engine) return
+      engine.resetSheet()
+      virtualNow = 0
+      active = null
+      feedStates.clear()
+      strokes.length = 0
+      // Same construction-time stream: the sheet is constant across replays.
+      engine.setRandom(seededRandom(1))
     },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host
