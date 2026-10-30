@@ -1396,6 +1396,33 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     // Edit modes never render the creation opt-in.
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
     expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
+
+    // 261030-np9 (D-08): the card renders AFTER the Timing/side-stack row and
+    // BEFORE the summary bar so the 1fr/1fr auto-placement puts it in column 1,
+    // directly under Timing — on both the Paint and the Reveal tab.
+    const orderOf = (tree: TestVNode) => {
+      const content = findOne(tree, byClass('physics-paint-play-script-content'));
+      const children = [...walk(content)]
+        .filter((child) => child !== content && typeof child.type !== 'function')
+        .filter((child) => renderedParentOf(tree, child) === content);
+      return {
+        keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
+        timing: children.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
+        stack: children.indexOf(findOne(tree, byClass('physics-paint-play-script-side-stack'))),
+        keyScript: children.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
+        summary: children.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
+      };
+    };
+    const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
+    expect(hasClass(paintOrder.keyScriptCard, 'physics-paint-play-script-card-wide')).toBe(false);
+    expect(paintOrder.timing).toBeLessThan(paintOrder.stack);
+    expect(paintOrder.stack).toBeLessThan(paintOrder.keyScript);
+    expect(paintOrder.keyScript).toBeLessThan(paintOrder.summary);
+
+    const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
+    expect(revealOrder.timing).toBeLessThan(revealOrder.stack);
+    expect(revealOrder.stack).toBeLessThan(revealOrder.keyScript);
+    expect(revealOrder.keyScript).toBeLessThan(revealOrder.summary);
   });
 
   it('writes the Reveal Frames draft to revealCountText and disables Create on a validation error', () => {

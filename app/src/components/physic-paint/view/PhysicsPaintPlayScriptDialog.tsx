@@ -497,26 +497,6 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
             <span id="physics-play-script-mode-helper" class="physics-paint-play-script-mode-helper">{activeMode.helper}</span>
           </div>
-          {/* 261030-ig0 (D-03): the per-key script-editing opt-in. Apply-mode
-              creation only — never on an existing rail (its flag is fixed at
-              creation). Sits between the span-2 Rail Type card and the
-              Timing/side-stack pair so the content-order pins hold. */}
-          {playScript.dialogMode.value === 'apply' ? (
-            <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-key-script">
-              <span class="physics-paint-play-script-card-title">Key Script Editing</span>
-              <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-key-script-edits">
-                <input
-                  id="physics-play-script-key-script-edits"
-                  type="checkbox"
-                  checked={playScript.keyScriptEdits.value}
-                  disabled={busy}
-                  onChange={(event) => playScript.setKeyScriptEdits((event.currentTarget as HTMLInputElement).checked)}
-                />
-                Save script on each key
-              </label>
-              <span class="physics-paint-play-script-hint">Each key of this Rail can be reopened and re-baked from its own script settings.</span>
-            </div>
-          ) : null}
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
@@ -753,6 +733,27 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           ) : null}
           </>)}
+          {/* 261030-np9 (D-08): the per-key script-editing opt-in. Apply-mode
+              creation only — never on an existing rail (its flag is fixed at
+              creation). Renders AFTER the Timing/side-stack row so the 1fr/1fr
+              auto-placement puts it in column 1, directly under Timing; the
+              content-order pins hold on both the Paint and Reveal tabs. */}
+          {playScript.dialogMode.value === 'apply' ? (
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-key-script">
+              <span class="physics-paint-play-script-card-title">Key Script Editing</span>
+              <label class="physics-paint-play-script-timing-toggle" for="physics-play-script-key-script-edits">
+                <input
+                  id="physics-play-script-key-script-edits"
+                  type="checkbox"
+                  checked={playScript.keyScriptEdits.value}
+                  disabled={busy}
+                  onChange={(event) => playScript.setKeyScriptEdits((event.currentTarget as HTMLInputElement).checked)}
+                />
+                Save script on each key
+              </label>
+              <span class="physics-paint-play-script-hint">Each key of this Rail can be reopened and re-baked from its own script settings.</span>
+            </div>
+          ) : null}
           {summaryRequested ? (
             <p class="physics-paint-play-script-summary-bar">
               <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
