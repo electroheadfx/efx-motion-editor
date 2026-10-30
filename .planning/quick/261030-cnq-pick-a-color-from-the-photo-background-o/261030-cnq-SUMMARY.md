@@ -298,3 +298,14 @@ None — no external service configuration required.
 | Photo Reference "Overlay opacity" slider could not be dragged | CSS specificity: the global `input[type="range"] { width: 80px; height: 6px }` out-specified `.physics-paint-photo-reference-slider-input`, leaving the invisible input an 80px stub on a ~228px track — the thumb past ~35% was outside its hit area | selector raised to `input[type="range"].physics-paint-photo-reference-slider-input` (plus `padding: 0`). |
 
 Commits `41b41eaf`, `b27f729e`. Gates: typecheck clean; focused suites 324 selected / picker 29; **full app suite 356 files passed / 6,435 tests passed / 0 failures**. Native rows for the three findings remain PENDING until the user re-tests live.
+
+## UAT round 3 (2026-10-30) — pointer visor + photo colour law
+
+| Finding | Decision |
+|---|---|
+| Why a base64 cursor | Dropped. The sheet sets `cursor: none` (the brush ring IS the pointer), so no CSS cursor could ever show. The picker now renders the **lucide `Pipette` component** as a stack-level visor (`AquarellePickerVisor`) following the shell-relative pointer, with a 1px tip dot at the sampled pixel. |
+| Pointer stayed the paint brush | The brush ring is a DOM element inside the isolated tracks group; it now returns null while `aquarellePickerActive`, and the visor (z 60, **outside** the group) takes over. |
+| At 100% overlay the pointer vanished behind the photo | Same stacking cause: the group's `isolation: isolate` confines the ring below the reference ghost (z 5). The visor is a sibling of the ghost, so it stays visible. |
+| Pick returned "photo transparency mixed with paint" | A pick over a photo layer is now read from the **source image**: `createPhotoPickSampler(layerId, frame, projectW, projectH)` samples the Photo Reference first, then the Background clip, with the exact placement math of each draw path (`photoPixelAt` inverse-maps translate→rotate→scale). The result is the photo's full-strength pixel — overlay opacity and translucent paint are both ignored. |
+
+Commit `430442ef`. Gates: typecheck clean; picker suite 33; **full app suite 356 files / 6,439 tests passed**. The three native rows remain PENDING until re-tested live.
