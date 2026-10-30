@@ -2355,18 +2355,15 @@ button.destructive {
    last card absorbs it when the left column is the shorter one. */
 .physics-paint-play-script-key-column > :last-child { flex: 1 1 auto; }
 
-.physics-paint-play-script-card-motion { flex: 1 1 auto; }
+/* The Motion wiggle card hugs its rows — no stretch, no centered dead space. */
+.physics-paint-play-script-card-motion { flex: 0 0 auto; }
 
-/* Motion wiggle rows center in the card's remaining space — no inner dead area (D-16). */
 .physics-paint-play-script-motion-rows {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
-  justify-content: center;
+  gap: 6px;
   min-height: 0;
 }
-
-.physics-paint-play-script-motion-rows > .slider-stepper + .slider-stepper { margin-top: 10px; }
 
 .physics-paint-play-script-card-title {
   margin-bottom: 9px;
@@ -2756,16 +2753,11 @@ button.destructive {
   text-align: right;
 }
 
-/* Requested/Effective summary bar (D-13/D-16 Row 4): sits under Paint seed
-   variation inside the left column; Requested left / Effective right; renders
-   the controller loopReadout — informational only (D-14). Pinned to the column
-   bottom so it aligns with the right stack without stretching the seed card. */
-.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar {
-  flex: 0 0 auto;
-  margin-top: auto;
-}
-
+/* Requested/Effective summary bar (D-13/D-16 Row 4): full-width row under both
+   columns; Requested left / Effective right; renders the controller loopReadout
+   — informational only (D-14). */
 .physics-paint-play-script-summary-bar {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
