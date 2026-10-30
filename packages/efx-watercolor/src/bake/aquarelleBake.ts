@@ -533,6 +533,19 @@ export function createAquarelleBake(
     } else {
       for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
     }
+    // 261030-np9: report the mapping BOTH branches just filled, in script
+    // order — the rail's per-key slices can never disagree with the pixels.
+    // A throwing consumer is swallowed (T-bks-02), exactly like onDiagnostics.
+    if (options.onStrokeFrameAnchors) {
+      try {
+        options.onStrokeFrameAnchors(strokes.map((stroke) => ({
+          stroke,
+          startFrame: startFrameOf.get(stroke) ?? 0,
+        })))
+      } catch {
+        // The bake owns the pixels; the consumer's errors are its own.
+      }
+    }
     const drysByFrame = new Map<number, AquarelleDryEvent[]>()
     // Timed path: a Dry rides with the stroke that follows it in recorded
     // order and fires at that stroke's first SAMPLE (not the frame start).
