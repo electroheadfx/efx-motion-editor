@@ -117,6 +117,15 @@ export function PhysicsPaintPlayScriptDialog({
   const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact;
   const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit;
 
+  /* 261031-i54: Run Script stacking onto an existing Paint rail. The target is
+     resolved by the controller; the dialog only renders its surface. */
+  const stacking = !loopEdit && !sourceEdit && !revealTab && playScript.runDestination.value.kind === 'stack';
+  const stackReadout = stacking ? playScript.stackReadout.value : null;
+  const stackCollision = stacking ? playScript.stackCollision.value : null;
+  const collisionOffers = stacking ? playScript.collisionOffers.value : [];
+  const keepScriptVisible = stacking && playScript.keepScriptVisible.value;
+  const keepScriptReason = stacking ? playScript.keepScriptDisabledReason.value : null;
+
   useEffect(() => {
     // Focus follows the visible dialog state: G3a starts on its non-destructive
     // action, while returning to Edit Rail restores the Regenerate trigger.
@@ -228,7 +237,10 @@ export function PhysicsPaintPlayScriptDialog({
 
   // D-13/D-16 Row 4: the loop readout splits into Requested (left) and Effective (right)
   // inside the summary bar. Infinity reads 'Cycle {N}f × ∞' on the left (D-12).
-  const loopReadout = playScript.loopReadout.value;
+  // 261031-i54: a stack reports its resolved span/offset/outcome — prefer it over
+  // the creation readout so the bar never mixes the two laws.
+  const stackSummary = stackReadout ? `${stackReadout.spanLabel} · ${stackReadout.offsetLabel} · ${stackReadout.outcomeLabel}` : null;
+  const loopReadout = stackSummary ?? playScript.loopReadout.value;
   const EFFECTIVE_SEPARATOR = ' · Effective: ';
   const effectiveSplitAt = loopReadout ? loopReadout.indexOf(EFFECTIVE_SEPARATOR) : -1;
   const summaryRequested = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
@@ -245,7 +257,9 @@ export function PhysicsPaintPlayScriptDialog({
   // (the Reveal tab always bakes a fresh cycle through the reveal mutation).
   // 261030-ig0: linking is a creation choice — a key edit never rewrites
   // sourceKeyIds, so no Source cycle card renders in source-edit.
-  const identicalCycle = !loopEdit && !sourceEdit && !revealTab ? playScript.identicalSourceCycle.value : null;
+  // 261031-i54: a stack destination reuses the rail's own cycle — linking is a
+  // creation choice, so the Source cycle card never renders for a stack.
+  const identicalCycle = !loopEdit && !sourceEdit && !revealTab && !stacking ? playScript.identicalSourceCycle.value : null;
   const activeSourceChoice = PLAY_SCRIPT_SOURCE_CHOICES.find((option) => option.value === playScript.linkChoice.value) ?? PLAY_SCRIPT_SOURCE_CHOICES[0];
 
   // Same APG radio pattern as Mode/Color for the S4 segmented control.
@@ -426,6 +440,13 @@ export function PhysicsPaintPlayScriptDialog({
           return;
         }
         if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value) {
+          // 261031-i54: an open collision owns Enter — Truncate is its default.
+          if (stackCollision !== null) {
+            if (!collisionOffers.includes('truncate')) return;
+            event.preventDefault();
+            void playScript.confirmStackCollision('truncate');
+            return;
+          }
           const tabValidationError = revealTab ? playScript.revealValidationError.value : playScript.validationError.value;
           if (tabValidationError || playScript.repeatError.value) return;
           event.preventDefault();
@@ -456,7 +477,7 @@ export function PhysicsPaintPlayScriptDialog({
             ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
             : loopEdit && editTarget
               ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
-              : <span class="physics-paint-play-script-header-range">Max {playScript.capacity.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+              : <span class="physics-paint-play-script-header-range">Max {playScript.framesMax.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
         </div>
         <div class="physics-paint-play-script-content">
           {regenerateImpact ? (
@@ -616,9 +637,10 @@ export function PhysicsPaintPlayScriptDialog({
                   value={dialogIntegerValue(playScript.countText.value, 1)}
                   onChange={(value) => { playScript.countText.value = String(value); }}
                   min={1}
-                  max={Math.max(1, playScript.capacity.value)}
-                  sliderMax={Math.max(1, playScript.capacity.value)}
+                  max={Math.max(1, playScript.framesMax.value)}
+                  sliderMax={Math.max(1, playScript.framesMax.value)}
                   step={1}
+                  {...(stacking ? { allowOutOfRangeEntry: true } : {})}
                   disabled={busy || loopEdit || playScript.max.value}
                   ariaInvalid={Boolean(playScript.validationError.value)}
                   ariaDescribedBy={playScript.validationError.value ? 'physics-play-script-error' : undefined}
@@ -634,6 +656,9 @@ export function PhysicsPaintPlayScriptDialog({
                 </div>
                 {playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{playScript.validationError.value}</span> : null}
               </div>
+              {/* 261031-i54: a stack destination never edits the rail's repeat —
+                  its Cycle / Infinity controls are hidden. */}
+              {stacking ? null : (
               <div class="physics-paint-play-script-field">
                 <SliderStepper
                   id="physics-play-script-repeat"
@@ -660,9 +685,32 @@ export function PhysicsPaintPlayScriptDialog({
                 </div>
                 {playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{playScript.repeatError.value}</span> : null}
               </div>
+              )}
             </div>
           </div>
           )}
+          {/* 261031-i54: the run span resolved from the rail itself — the dialog
+              shows what the stack writes, never a creation Requested/Effective pair. */}
+          {stacking && stackReadout ? (
+            <div id="physics-play-script-stack-readout" class="physics-paint-play-script-card physics-paint-play-script-card-stack">
+              <span class="physics-paint-play-script-card-title">Run span</span>
+              <span class="physics-paint-play-script-stack-span">{stackReadout.spanLabel}</span>
+              <span class="physics-paint-play-script-stack-meta">{`${stackReadout.offsetLabel} · ${stackReadout.outcomeLabel}`}</span>
+            </div>
+          ) : null}
+          {keepScriptVisible ? (
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-keep-script">
+              <span class="physics-paint-play-script-card-title">Keep script</span>
+              {dialogSwitch({
+                id: 'physics-play-script-keep-script',
+                label: 'Keep this rail’s per-key scripts',
+                checked: playScript.keepScriptEffective.value,
+                disabled: busy || keepScriptReason !== null,
+                onClick: () => playScript.setKeepScript(!playScript.keepScript.value),
+              })}
+              {keepScriptReason ? <span id="physics-play-script-keep-script-reason" class="physics-paint-play-script-mode-helper">{keepScriptReason}</span> : null}
+            </div>
+          ) : null}
           {playScript.dialogMode.value === 'apply' && !revealTab ? (
             <div class="physics-paint-play-script-card physics-paint-play-script-card-key-script">
               <span class="physics-paint-play-script-card-title">Key Script Editing</span>
@@ -677,6 +725,44 @@ export function PhysicsPaintPlayScriptDialog({
           ) : null}
           {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           {revealTab ? photoWiggleCard : null}
+          {/* 261031-i54: an explicit collision prompt — Truncate is the default
+              action and the Enter target; Overwrite exists only when offered. */}
+          {stacking && stackCollision !== null ? (
+            <div id="physics-play-script-collision" class="physics-paint-play-script-card physics-paint-play-script-card-collision">
+              <span class="physics-paint-play-script-card-title">Extends past a boundary</span>
+              <span class="physics-paint-play-script-collision-copy">
+                {`The run reaches past ${stackCollision.victimClipId ? 'another rail' : stackCollision.blocker === 'parent-end' ? 'the parent range end' : stackCollision.blocker === 'real-key' ? 'an existing key' : 'the rail end'} at F${stackCollision.boundaryExclusive}. Truncate writes only the free span.`}
+              </span>
+              <div class="physics-paint-play-script-actions">
+                <button
+                  id="physics-play-script-collision-cancel"
+                  type="button"
+                  class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                  onClick={() => { void playScript.confirmStackCollision('cancel'); }}
+                >
+                  Cancel
+                </button>
+                <button
+                  id="physics-play-script-collision-truncate"
+                  type="button"
+                  class="physics-paint-play-script-button physics-paint-play-script-button-primary"
+                  onClick={() => { void playScript.confirmStackCollision('truncate'); }}
+                >
+                  Truncate
+                </button>
+                {collisionOffers.includes('overwrite') ? (
+                  <button
+                    id="physics-play-script-collision-overwrite"
+                    type="button"
+                    class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                    onClick={() => { void playScript.confirmStackCollision('overwrite'); }}
+                  >
+                    Overwrite
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {summaryBar}
           </div>
           {revealTab ? (

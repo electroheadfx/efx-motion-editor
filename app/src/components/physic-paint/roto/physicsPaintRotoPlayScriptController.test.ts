@@ -202,7 +202,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     commitRename: vi.fn(), cancelRename: vi.fn(), requestDelete: vi.fn(), confirmDelete: vi.fn(), cancelDelete: vi.fn(),
     select: vi.fn(), updateProjectContext: vi.fn(), enterScripts: vi.fn(), refresh: vi.fn(),
   } as unknown as RotoPlayScriptControllerPorts['library'];
-  const requestAuthority = vi.fn(async () => authority());
+  const requestAuthority = vi.fn(async (_operationId: string, _start: number) => authority());
   const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
     ok: true,
     operationId: 'accepted-operation',
@@ -248,16 +248,24 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
       dispose: vi.fn(),
     } as never;
   });
+  // 261031-i54: the stack destination resolves from the availability revision
+  // and the union re-bake seam is a port — both are observable defaults here so
+  // a stack case only has to swap the collection and the selection.
+  const availabilityRevision = signal(0);
+  const recordRailKeyScripts = vi.fn();
+  const bakeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-union') }));
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
     getBackgroundMetadata,
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log,
-    createAquarelleAdapter, createAquarelleBake, ...overrides,
+    createAquarelleAdapter, createAquarelleBake,
+    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey,
+    ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 function expectPlayScriptPublication(
@@ -4108,5 +4116,431 @@ describe('createRotoPlayScriptController identity-only publication guards (26103
     expect(test.requestAuthority.mock.calls[0]).toEqual([expect.any(String), 4, { identitiesOnly: true }]);
     expect(test.requestAuthority.mock.calls[1]).toHaveLength(2);
     expect(test.requestAuthority.mock.calls[2]).toHaveLength(2);
+  });
+});
+
+// 261031-i54 (Quick A): Run Script stacking onto an EXISTING Paint rail. The
+// destination resolves live from the ports (no dialog snapshot), the run is
+// re-anchored to the source-cycle frame, and the collision boundary decides
+// between the silent stack, the explicit Truncate and the Overwrite removal.
+describe('createRotoPlayScriptController run-script stacking (261031-i54)', () => {
+  const CYCLE_IDS = ['S1', 'S2', 'S3', 'S4'] as const; // source cycle at frames 10..13
+
+  const stackClip = (
+    repeat: number | 'infinity',
+    overrides: Partial<PhysicPaintRotoLoopClip> = {},
+  ): PhysicPaintRotoLoopClip => ({
+    loopId: 'L1',
+    placementStart: 10,
+    sourceKeyIds: [...CYCLE_IDS],
+    repeat,
+    mode: 'static',
+    scriptId: 'script-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    ...overrides,
+  });
+
+  const stackAuthority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): PhysicPaintRotoAuthorityResult => authority({
+    canonicalStart: 11,
+    layerEndExclusive: 60,
+    capacity: 49,
+    physicalCapacity: 600,
+    physicalRecords: CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+    ...overrides,
+  });
+
+  const stackHarness = (
+    loopClips: readonly PhysicPaintRotoLoopClip[],
+    authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+    portOverrides: Partial<RotoPlayScriptControllerPorts> = {},
+    selection: ReturnType<RotoPlayScriptControllerPorts['getSelection']> = { kind: 'empty', keyId: null, appFrame: 11 },
+  ) => {
+    const localAuthority = stackAuthority(authorityOverrides);
+    const requestAuthority = vi.fn(async (_operationId: string, _start: number) => localAuthority);
+    const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+      ok: true,
+      operationId: 'accepted-operation',
+      acceptedRevision: 'revision-2',
+      records: publication.records,
+      interpolationMode: publication.interpolationMode,
+      selectedKeyId: publication.selectedKeyId,
+      selectedAppFrame: publication.selectedAppFrame,
+      ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+    }));
+    const getLoopEditSnapshot = vi.fn((placementStart: number) => ({
+      identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      physicalCapacity: localAuthority.layerEndExclusive,
+      layerEndExclusive: localAuthority.layerEndExclusive,
+      remainingCapacity: Math.max(0, localAuthority.layerEndExclusive - placementStart),
+      interpolationEnabled: localAuthority.interpolationEnabled,
+    }));
+    const test = harness({
+      requestAuthority,
+      commit,
+      getRotoLoopClips: () => loopClips,
+      getLoopEditSnapshot,
+      ...portOverrides,
+    });
+    test.setSelection(selection);
+    const bumpAvailability = () => { test.availabilityRevision.value += 1; };
+    bumpAvailability();
+    return { ...test, requestAuthority, commit, getLoopEditSnapshot, bumpAvailability };
+  };
+
+  const reportAnchors = (options: Record<string, any>) => {
+    const anchors = [
+      { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-a', points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 1 } as AquarelleStroke), startFrame: 0 },
+      { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-b', points: [{ x: 2, y: 2, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 2 } as AquarelleStroke), startFrame: 1 },
+    ];
+    options.onStrokeFrameAnchors?.(anchors);
+    return Promise.resolve({
+      ok: true,
+      frames: Array.from({ length: options.frameCount ?? 1 }, (_, index) => ({
+        frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
+      })),
+    });
+  };
+
+  it('resolves the stack destination from live ports before open and re-resolves on the availability revision', () => {
+    // A repeated occurrence: phaseOrigin 10, cycleLength 4, playhead 17 maps to
+    // source-cycle offset 3 / runStart 13 in repeat instance 1.
+    const test = stackHarness([stackClip(2)], {}, {}, { kind: 'generated-interpolation', keyId: null, appFrame: 17 });
+    const destination = test.controller.runDestination.value;
+    expect(destination.kind).toBe('stack');
+    if (destination.kind !== 'stack') throw new Error('Expected a stack destination.');
+    expect(destination.rail.clipId).toBe('L1');
+    expect(destination.cycleOffset).toBe(3);
+    expect(destination.runStartAppFrame).toBe(13);
+    expect(destination.repeatInstance).toBe(1);
+    expect(test.controller.disabledReason.value).toBeNull();
+
+    // The playhead leaves every rail: nothing reads a dialog snapshot, the next
+    // availability revision flips the destination back to the create path.
+    test.setSelection({ kind: 'empty', keyId: null, appFrame: 30 });
+    test.bumpAvailability();
+    expect(test.controller.runDestination.value.kind).toBe('create');
+  });
+
+  it('keeps the generated-interpolation refusal outside every rail and degrades a malformed derivation to it', () => {
+    const outside = stackHarness([stackClip(1)], {}, {}, { kind: 'generated-interpolation', keyId: null, appFrame: 30 });
+    expect(outside.controller.disabledReason.value).toContain('render-only');
+
+    const broken = stackHarness(
+      [stackClip(1)],
+      {},
+      { getLoopEditSnapshot: () => { throw new Error('boom'); } },
+      { kind: 'generated-interpolation', keyId: null, appFrame: 11 },
+    );
+    expect(broken.controller.runDestination.value.kind).toBe('create');
+    expect(broken.controller.disabledReason.value).toContain('render-only');
+  });
+
+  it('stacks a repeated occurrence at its source-cycle frame with no new Loop Clip and no materialized occurrence', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder, getScriptNaturalDuration: () => 3 },
+      { kind: 'real-key', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.canonicalStart.value).toBe(13);
+    // Frames default to the selected script's natural duration for stack targets.
+    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.destinationRange.value).toBe('F13–F15');
+    expect(test.controller.loopReadout.value).toContain('F13–F15');
+    expect(test.controller.stackReadout.value?.offsetLabel).toBe('Source cycle +3');
+
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.records.map((record) => record.appFrame)).toEqual([10, 11, 12, 13, 14, 15]);
+    expect(publication.semanticDelta).toMatchObject({
+      kind: 'play-script',
+      preserveSelection: true,
+      affectedStartAppFrame: 13,
+      affectedEndAppFrame: 15,
+    });
+    // No new Loop Clip, no materialized occurrence: the SAME rail references the
+    // written source-cycle frames and the cycle grows extend-only.
+    const loops = publication.loopClips ?? [];
+    expect(loops).toHaveLength(1);
+    const target = loops[0]!;
+    expect(target.loopId).toBe('L1');
+    expect(target.placementStart).toBe(10);
+    expect(target.repeat).toBe(2);
+    expect(target.phaseOrigin).toBe(10);
+    expect(target.originalEndExclusive).toBe(22);
+    expect(target.visibleRanges).toEqual([{ start: 10, endExclusive: 22 }]);
+    expect(target.sourceKeyIds).toHaveLength(6);
+    expect(target.sourceKeyIds.slice(0, 4)).toEqual([...CYCLE_IDS]);
+    // The authority is asked at the RUN START, never at the occurrence frame.
+    expect(test.requestAuthority.mock.calls.map((call) => call[1])).toEqual([13, 13, 13]);
+    expect(recorder).toHaveBeenCalledTimes(1);
+    expect(recorder.mock.calls[0]![0]).toMatchObject({ recordMode: 'replace' });
+  });
+
+  it('keeps the create path byte-identical when the playhead is outside every rail', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 30 }, { getScriptNaturalDuration: () => 9 }, { kind: 'empty', keyId: null, appFrame: 30 });
+    await test.controller.openConfirmation();
+    // Creation keeps today's default of 3 frames regardless of natural duration.
+    expect(test.controller.countText.value).toBe('3');
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.semanticDelta.preserveSelection).toBeUndefined();
+    expect(publication.loopClips).toHaveLength(2); // the untouched L1 + the new clip
+    expect(publication.incomingInterpolationBreakKeyIds).toBeDefined();
+    expect(test.controller.keepScriptVisible.value).toBe(false);
+  });
+
+  it('resolves Max and the dialog bound to the free span before the collision boundary', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 11, capacity: 49 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    expect(test.controller.stackMaxCount.value).toBe(49);
+    expect(test.controller.framesMax.value).toBe(49);
+    test.controller.setMax(true);
+    expect(test.controller.validationError.value).toBeNull();
+    expect(test.controller.destinationRange.value).toBe('F11–F59');
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 49 });
+  });
+
+  it('parses a typed count above the free span so confirm raises the collision prompt instead of clamping', async () => {
+    const test = stackHarness(
+      [stackClip(1)],
+      { canonicalStart: 11, layerEndExclusive: 30, capacity: 20 },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.stackMaxCount.value).toBe(19);
+    test.controller.countText.value = '20';
+    expect(test.controller.validationError.value).toBeNull();
+    expect(test.controller.stackCollision.value).not.toBeNull();
+    expect(test.controller.collisionOffers.value).toEqual(['cancel', 'truncate']);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(await test.controller.confirmStackCollision('cancel')).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.records.map((record) => record.appFrame)).toEqual([
+      10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    ]);
+    expect(publication.semanticDelta).toMatchObject({ affectedStartAppFrame: 11, affectedEndAppFrame: 29 });
+  });
+
+  it('records the touched keys with recordMode replace and never writes keyScriptEdits', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    // The dialog's render mode is the bake mode: Static puts the full run on
+    // every written key (the rail's own static law), Progressive grows it.
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+    const recorded = recorder.mock.calls[0]![0] as {
+      keyIds: readonly string[];
+      recordMode: string;
+      slices: readonly { frame: number; strokes: readonly AquarelleStroke[] }[];
+    };
+    expect(recorded.recordMode).toBe('replace');
+    expect(recorded.keyIds).toHaveLength(3);
+    expect(recorded.slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
+    expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
+      ['tip-a', 'tip-b'],
+      ['tip-a', 'tip-b'],
+      ['tip-a', 'tip-b'],
+    ]);
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect('keyScriptEdits' in target).toBe(false);
+  });
+
+  it('gates the Keep script switch on the stack target, the persisted flag and the union port', () => {
+    const flagOff = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    expect(flagOff.controller.keepScriptVisible.value).toBe(true);
+    expect(flagOff.controller.keepScript.value).toBe(false);
+    expect(flagOff.controller.keepScriptEffective.value).toBe(false);
+    expect(flagOff.controller.keepScriptDisabledReason.value).toContain('replaces the touched span');
+
+    const flagOn = stackHarness([stackClip(2, { keyScriptEdits: true })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    expect(flagOn.controller.keepScriptVisible.value).toBe(true);
+    expect(flagOn.controller.keepScript.value).toBe(true);
+    expect(flagOn.controller.keepScriptEffective.value).toBe(true);
+    expect(flagOn.controller.keepScriptDisabledReason.value).toBeNull();
+
+    const noPort = stackHarness(
+      [stackClip(2, { keyScriptEdits: true })],
+      {},
+      { bakeStackedRailKey: undefined },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    expect(noPort.controller.keepScriptVisible.value).toBe(false);
+    expect(noPort.controller.keepScriptEffective.value).toBe(false);
+
+    const create = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 30 });
+    expect(create.controller.keepScriptVisible.value).toBe(false);
+  });
+
+  it('refuses the intermediate Keep-script ON path with zero writes (Task 3 supplies the union bake)', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2, { keyScriptEdits: true })],
+      {},
+      { recordRailKeyScripts: recorder },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.keepScriptEffective.value).toBe(true);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+  });
+
+  it('offers overwrite only across another rail and removes the victim clip in the same commit', async () => {
+    const victim: PhysicPaintRotoLoopClip = {
+      loopId: 'L2',
+      placementStart: 22,
+      sourceKeyIds: ['V1', 'V2'],
+      repeat: 1,
+      mode: 'static',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const test = stackHarness(
+      [stackClip(2), victim],
+      {
+        canonicalStart: 11,
+        layerEndExclusive: 60,
+        capacity: 49,
+        physicalRecords: [
+          ...CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+          physicalRecord('V1', 22, 'victim-1'),
+          physicalRecord('V2', 23, 'victim-2'),
+        ],
+      },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '15';
+    expect(test.controller.stackCollision.value).toMatchObject({ blocker: 'other-rail', victimClipId: 'L2' });
+    expect(test.controller.collisionOffers.value).toEqual(['cancel', 'truncate', 'overwrite']);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(await test.controller.confirmStackCollision('overwrite')).toBe(true);
+
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    // The victim Loop Clip leaves in the SAME commit; its keys survive as
+    // ordinary keys of the extended cycle.
+    expect(publication.loopClips?.map((clip) => clip.loopId)).toEqual(['L1']);
+    const target = publication.loopClips![0]!;
+    expect(target.sourceKeyIds).toHaveLength(16);
+    expect(target.sourceKeyIds).toEqual(expect.arrayContaining(['V1', 'V2']));
+    expect(publication.records.map((record) => record.appFrame)).toContain(25);
+  });
+
+  it('offers truncate and cancel only at the parent end and caps the lifecycle on explicit truncate', async () => {
+    const test = stackHarness(
+      [stackClip(3)],
+      { canonicalStart: 11, layerEndExclusive: 20, capacity: 9 },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    // The run fits; the repeat-extended lifecycle span is what crosses the parent end.
+    expect(test.controller.stackCollision.value).toMatchObject({ runCollision: false, lifecycleOverflow: true });
+    expect(test.controller.collisionOffers.value).toEqual(['cancel', 'truncate']);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(true);
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(target.repeat).toBe(3);
+    expect(target.originalEndExclusive).toBe(20);
+    expect(target.visibleRanges).toEqual([{ start: 10, endExclusive: 20 }]);
+  });
+
+  it('refuses a run whose span contains a frame override with zero writes and no offers', async () => {
+    const recorder = vi.fn();
+    // A frame override is a lifecycle member: the clip must carry the full
+    // durable lifecycle or the strict model guard rejects it.
+    const clip = stackClip(2, {
+      frameOverrides: [{ appFrame: 11, keyId: 'S2' }],
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+    });
+    const test = stackHarness([clip], {}, { recordRailKeyScripts: recorder }, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBe('frame-override');
+    expect(test.controller.collisionOffers.value).toEqual([]);
+    expect(test.controller.stackReadout.value?.outcomeLabel).toContain('refused');
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Reveal rail target without opening the dialog', async () => {
+    const revealClip = stackClip(2, { railKind: 'reveal' });
+    const test = stackHarness([revealClip], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(test.controller.error.value).toContain('Reveal');
+    expect(test.requestAuthority).not.toHaveBeenCalled();
+  });
+
+  it('never offers the creation Source cycle choice on a stack destination', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 10 }, {}, { kind: 'empty', keyId: null, appFrame: 10 });
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+    test.controller.countText.value = '4';
+    // The identical-cycle finder WOULD match this rail ...
+    expect(test.controller.findIdenticalSourceCycle({
+      scriptId: 'script-1',
+      mode: 'static',
+      cycleLength: 4,
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      paintSeedVariation: false,
+      start: 10,
+      loopClips: [stackClip(1)],
+      identities: CYCLE_IDS.map((keyId, index) => ({ keyId, appFrame: 10 + index })),
+    })).not.toBeNull();
+    // ... but a stack destination never surfaces the creation-only card.
+    expect(test.controller.identicalSourceCycle.value).toBeNull();
+    test.controller.linkChoice.value = 'link';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit.mock.calls[0]![0].loopClips).toHaveLength(1);
+  });
+
+  it('rejects a commit when the playhead leaves the target rail during the bake', async () => {
+    const test = stackHarness([stackClip(2)], { canonicalStart: 13 }, {}, { kind: 'empty', keyId: null, appFrame: 17 });
+    await test.controller.openConfirmation();
+    nextBakeBehavior((options) => {
+      test.setSelection({ kind: 'empty', keyId: null, appFrame: 40 });
+      test.bumpAvailability();
+      return reportAnchors(options);
+    });
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('changed before commit');
   });
 });

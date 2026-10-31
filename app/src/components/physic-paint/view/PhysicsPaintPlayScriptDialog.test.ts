@@ -114,6 +114,22 @@ interface FakeControllerSeed {
   keyScriptEdits?: boolean;
   // 261030-v1t: per-frame paint-seed variation
   paintSeedVariation?: boolean;
+  // 261031-i54: Run Script stacking onto an existing Paint rail
+  runDestination?: { kind: 'stack'; clipId: string } | { kind: 'create' } | { kind: 'refuse'; reason: 'ambiguous-rail' | 'reveal-target' };
+  repeatLocked?: boolean;
+  framesMax?: number;
+  destinationRange?: string | null;
+  stackReadout?: { spanLabel: string; offsetLabel: string; outcomeLabel: string } | null;
+  keepScript?: boolean;
+  keepScriptVisible?: boolean;
+  keepScriptEffective?: boolean;
+  keepScriptDisabledReason?: string | null;
+  stackCollision?: {
+    boundaryExclusive: number;
+    blocker: 'other-rail' | 'real-key' | 'parent-end' | 'target-end';
+    victimClipId: string | null;
+  } | null;
+  collisionOffers?: readonly ('cancel' | 'truncate' | 'overwrite')[];
 }
 
 // Fake controller harness exposing the post-revision 42-05 interface — plain { value } cells
@@ -137,7 +153,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     parsedRepeat: sig<{ count: number | null; error: string | null }>({ count: 1, error: null }),
     repeatError: sig<string | null>(seed.repeatError ?? null),
     loopReadout: sig<string | null>(seed.loopReadout ?? null),
-    destinationRange: sig<string | null>('F4–F7'),
+    destinationRange: sig<string | null>(seed.destinationRange ?? 'F4–F7'),
     validationError: sig<string | null>(seed.validationError ?? null),
     disabledReason: sig<string | null>(null),
     phase: sig(seed.phase ?? 'idle'),
@@ -168,6 +184,17 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     photoWiggle: sig(seed.photoWiggle ?? false),
     keyScriptEdits: sig(seed.keyScriptEdits ?? false),
     paintSeedVariation: sig(seed.paintSeedVariation ?? false),
+    // 261031-i54: Run Script stacking onto an existing Paint rail
+    runDestination: sig(seed.runDestination ?? { kind: 'create' as const }),
+    repeatLocked: sig(seed.repeatLocked ?? false),
+    framesMax: sig(seed.framesMax ?? 4),
+    stackReadout: sig(seed.stackReadout ?? null),
+    keepScript: sig(seed.keepScript ?? false),
+    keepScriptVisible: sig(seed.keepScriptVisible ?? false),
+    keepScriptEffective: sig(seed.keepScriptEffective ?? false),
+    keepScriptDisabledReason: sig<string | null>(seed.keepScriptDisabledReason ?? null),
+    stackCollision: sig(seed.stackCollision ?? null),
+    collisionOffers: sig<readonly ('cancel' | 'truncate' | 'overwrite')[]>(seed.collisionOffers ?? []),
   };
   const controller = {
     ...signals,
@@ -198,6 +225,8 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setPhotoWiggle: vi.fn(),
     setKeyScriptEdits: vi.fn(),
     setPaintSeedVariation: vi.fn(),
+    setKeepScript: vi.fn(),
+    confirmStackCollision: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
 }
@@ -1468,5 +1497,170 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const tree = renderDialog(controller);
     handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script'), 'onClick')();
     expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => {
+  const STACK_READOUT = {
+    spanLabel: 'F13–F15',
+    offsetLabel: 'Source cycle +3',
+    outcomeLabel: 'Stacks onto the existing cycle.',
+  };
+  const stackSeed = (overrides: Partial<FakeControllerSeed> = {}): FakeControllerSeed => ({
+    runDestination: { kind: 'stack', clipId: 'L1' },
+    repeatLocked: true,
+    framesMax: 6,
+    stackReadout: STACK_READOUT,
+    destinationRange: 'F13–F15',
+    ...overrides,
+  });
+
+  it('renders no stack surface for a create destination and keeps the repeat controls', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-collision'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(1);
+    expect(findOne(tree, byClass('physics-paint-play-script-header')).props.children).toBeDefined();
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-header')))).toBe('Run ScriptMax 4 · F4–F7');
+  });
+
+  it('renders the stack readout, hides the repeat controls and the Source cycle card, and bounds the header from framesMax', () => {
+    const { controller } = createFakeController(stackSeed({
+      identicalSourceCycle: { sourceKeyIds: ['S1', 'S2', 'S3', 'S4'], loopCount: 1, sourceStart: 10 },
+    }));
+    const tree = renderDialog(controller);
+    const readout = findOne(tree, byId('physics-play-script-stack-readout'));
+    expect(textOf(readout)).toContain('F13–F15');
+    expect(textOf(readout)).toContain('Source cycle +3');
+    expect(textOf(readout)).toContain('Stacks onto the existing cycle.');
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
+    // Header bound follows framesMax, not capacity.
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-header')))).toBe('Run ScriptMax 6 · F13–F15');
+  });
+
+  it('passes the framesMax bound and allowOutOfRangeEntry to the Frames stepper for stack destinations', () => {
+    const stack = renderDialog(createFakeController(stackSeed()).controller);
+    const stepper = findOne(stack, byId('physics-play-script-count'));
+    expect(stepper.props.max).toBe(6);
+    expect(stepper.props.sliderMax).toBe(6);
+    expect(stepper.props.allowOutOfRangeEntry).toBe(true);
+    // Creation keeps today's capacity clamp and no out-of-range entry.
+    const create = renderDialog(createFakeController().controller);
+    const createStepper = findOne(create, byId('physics-play-script-count'));
+    expect(createStepper.props.max).toBe(4);
+    expect(createStepper.props.sliderMax).toBe(4);
+    expect(createStepper.props.allowOutOfRangeEntry).toBeUndefined();
+  });
+
+  it('uses the stack readout in the summary bar when the loop readout is absent', () => {
+    const { controller } = createFakeController(stackSeed({ loopReadout: null }));
+    const tree = renderDialog(controller);
+    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
+    expect(textOf(bar)).toContain('F13–F15');
+    expect(textOf(bar)).toContain('Source cycle +3');
+    expect(textOf(bar)).toContain('Stacks onto the existing cycle.');
+  });
+
+  it('renders the Keep script switch ON for a flag-on stack destination and writes through setKeepScript', () => {
+    const { controller } = createFakeController(stackSeed({
+      keepScript: true,
+      keepScriptVisible: true,
+      keepScriptEffective: true,
+      keepScriptDisabledReason: null,
+    }));
+    const tree = renderDialog(controller);
+    const toggle = findOne(tree, byId('physics-play-script-keep-script'));
+    expect(toggle.props.role).toBe('switch');
+    expect(toggle.props['aria-checked']).toBe('true');
+    expect(toggle.props.disabled).toBe(false);
+    expect(findAll(tree, byId('physics-play-script-keep-script-reason'))).toHaveLength(0);
+    handler(toggle, 'onClick')();
+    expect(controller.setKeepScript).toHaveBeenCalledWith(false);
+  });
+
+  it('renders the flag-off Keep script switch OFF and disabled with the replace reason', () => {
+    const reason = 'This rail cannot record per-key scripts, so this run replaces the touched span.';
+    const { controller } = createFakeController(stackSeed({
+      keepScript: false,
+      keepScriptVisible: true,
+      keepScriptEffective: false,
+      keepScriptDisabledReason: reason,
+    }));
+    const tree = renderDialog(controller);
+    const toggle = findOne(tree, byId('physics-play-script-keep-script'));
+    expect(toggle.props['aria-checked']).toBe('false');
+    expect(toggle.props.disabled).toBe(true);
+    expect(textOf(findOne(tree, byId('physics-play-script-keep-script-reason')))).toBe(reason);
+  });
+
+  it('renders Cancel then the default Truncate and offers Overwrite only when the boundary allows it', () => {
+    const { controller } = createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 22, blocker: 'other-rail', victimClipId: 'L2' },
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    }));
+    const tree = renderDialog(controller);
+    const card = findOne(tree, byId('physics-play-script-collision'));
+    const cancel = findOne(tree, byId('physics-play-script-collision-cancel'));
+    const truncate = findOne(tree, byId('physics-play-script-collision-truncate'));
+    const overwrite = findOne(tree, byId('physics-play-script-collision-overwrite'));
+    const ordered = [...walk(card)].filter((node) => node === cancel || node === truncate || node === overwrite);
+    expect(ordered).toEqual([cancel, truncate, overwrite]);
+    expect(hasClass(truncate, 'physics-paint-play-script-button-primary')).toBe(true);
+    expect(hasClass(cancel, 'physics-paint-play-script-button-primary')).toBe(false);
+    expect(hasClass(overwrite, 'physics-paint-play-script-button-primary')).toBe(false);
+    handler(cancel, 'onClick')();
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('cancel');
+    handler(truncate, 'onClick')();
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('truncate');
+    handler(overwrite, 'onClick')();
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('overwrite');
+
+    // The parent end offers Truncate / Cancel only.
+    const parent = renderDialog(createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 20, blocker: 'parent-end', victimClipId: null },
+      collisionOffers: ['cancel', 'truncate'],
+    })).controller);
+    expect(findAll(parent, byId('physics-play-script-collision-overwrite'))).toHaveLength(0);
+    expect(findAll(parent, byId('physics-play-script-collision-cancel'))).toHaveLength(1);
+    expect(findAll(parent, byId('physics-play-script-collision-truncate'))).toHaveLength(1);
+  });
+
+  it('routes Enter on an open collision to Truncate instead of the primary confirm', () => {
+    const { controller } = createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 22, blocker: 'other-rail', victimClipId: 'L2' },
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    }));
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    handler(root, 'onKeyDown')({ key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('truncate');
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('does nothing on Enter for a frame-override refusal', () => {
+    const { controller } = createFakeController(stackSeed({
+      validationError: 'Run refused: a frame override sits inside this span.',
+    }));
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    handler(root, 'onKeyDown')({ key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+    expect(controller.confirm).not.toHaveBeenCalled();
+    expect(controller.confirmStackCollision).not.toHaveBeenCalled();
+  });
+
+  it('routes the collision Cancel to the controller without confirming the run', () => {
+    const { controller } = createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 22, blocker: 'other-rail', victimClipId: 'L2' },
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    }));
+    const tree = renderDialog(controller);
+    handler(findOne(tree, byId('physics-play-script-collision-cancel')), 'onClick')();
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('cancel');
+    expect(controller.confirm).not.toHaveBeenCalled();
   });
 });

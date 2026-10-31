@@ -13,6 +13,7 @@ import {
   compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  type PhysicPaintRotoGroupVisibleRange,
   type PhysicPaintRotoKeyIdentity,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
@@ -43,6 +44,22 @@ import {
 import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
 import { applyAquarelleSheetRigidWiggle, createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
 import { sliceRailKeyScripts, type RailKeyScriptResult } from './physicsPaintRotoRailKeyScripts';
+import {
+  buildRunScriptStackReadout,
+  mergeStackedSourceKeyIds,
+  planRunScriptStackExtension,
+  planRunScriptStackLifecycle,
+  resolveRunScriptDestination,
+  resolveRunScriptStackBoundary,
+  toRunScriptRailViews,
+  RUN_SCRIPT_KEEP_SCRIPT_DEFAULT,
+  type RunScriptCollisionOffer,
+  type RunScriptDestination,
+  type RunScriptRailView,
+  type RunScriptStackBoundary,
+  type RunScriptStackLifecycle,
+  type RunScriptStackReadout,
+} from './physicsPaintRotoRunScriptStacking';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -112,6 +129,22 @@ export interface RotoPlayScriptIdenticalSourceCycle {
   readonly sourceKeyIds: readonly string[];
   readonly loopCount: number;
   readonly sourceStart: number;
+}
+
+/**
+ * 261031-i54: the open stack collision — the run crosses another rail's start
+ * or the repeat-extended lifecycle crosses the parent end, so an explicit
+ * Cancel / Truncate (default) / Overwrite choice is required. `null` when the
+ * run is free or the boundary refuses outright (frame override).
+ */
+export interface RotoPlayScriptStackCollision {
+  readonly boundaryExclusive: number;
+  readonly blocker: RunScriptStackBoundary['blocker'];
+  readonly victimClipId: string | null;
+  /** The written span would cross the boundary. */
+  readonly runCollision: boolean;
+  /** The repeat-extended lifecycle would cross the parent end. */
+  readonly lifecycleOverflow: boolean;
 }
 
 export interface RotoPlayScriptRegenerateAffectedGroup {
@@ -275,7 +308,25 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   recordRailKeyScripts?: (input: {
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
+    /**
+     * 261031-i54: how the slice strokes land on the key. 'replace' is the
+     * creation / Keep-script-OFF law (purge the frame and pin the known-empty
+     * base); 'append' records the strokes on top of the key's existing script
+     * (Keep script ON — the raw-union re-bake path).
+     */
+    readonly recordMode: 'append' | 'replace';
   }) => void;
+  /**
+   * 261031-i54: the Keep-script-ON union re-bake. Bakes the key's recorded
+   * events plus this run's slice strokes over the known-empty base and returns
+   * the raw frame bytes (Task 3 supplies the Studio implementation). `keyId` is
+   * carried for Quick B's base authority; Quick A orders nothing by it.
+   */
+  bakeStackedRailKey?: (input: {
+    readonly keyId: string;
+    readonly appFrame: number;
+    readonly strokes: readonly AquarelleStroke[];
+  }) => Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }>;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (
@@ -408,6 +459,35 @@ export interface RotoPlayScriptController {
   paintSeedVariation: Signal<boolean>;
   /** Write the flag; an unchanged write is a no-op (efx-preact-reactivity rule 3). */
   setPaintSeedVariation: (enabled: boolean) => void;
+  /* ---- 261031-i54: Run Script stacking onto an existing Paint rail ---- */
+  /**
+   * The live stacking target: resolved from the ports on every availability
+   * revision (never from the dialog snapshot), so it is already correct before
+   * the dialog opens and flips back to 'create' when the playhead leaves.
+   */
+  runDestination: ReadonlySignal<RunScriptDestination>;
+  /** First written source-cycle frame; null when the destination is not a stack. */
+  runStartAppFrame: ReadonlySignal<number | null>;
+  /** The Task 1 boundary for the current draft count (null off the stack path). */
+  stackBoundary: ReadonlySignal<RunScriptStackBoundary | null>;
+  /** Free frames before the next boundary — Max and the Frames bound never use capacity. */
+  stackMaxCount: ReadonlySignal<number>;
+  /** The Frames stepper / header bound: stackMaxCount on a stack, capacity on creation. */
+  framesMax: ReadonlySignal<number>;
+  /** Resolved span, source-cycle offset and extension/truncation copy. */
+  stackReadout: ReadonlySignal<RunScriptStackReadout | null>;
+  /** Keep script draft — seeded ON only for a flag-on stack target, then user-owned. */
+  keepScript: Signal<boolean>;
+  keepScriptVisible: ReadonlySignal<boolean>;
+  keepScriptEffective: ReadonlySignal<boolean>;
+  keepScriptDisabledReason: ReadonlySignal<string | null>;
+  /** The open collision prompt; null when the run is free or refused. */
+  stackCollision: ReadonlySignal<RotoPlayScriptStackCollision | null>;
+  collisionOffers: ReadonlySignal<readonly RunScriptCollisionOffer[]>;
+  /** A stack destination never edits the rail's repeat — its Cycle/Never controls are hidden. */
+  repeatLocked: ReadonlySignal<boolean>;
+  setKeepScript: (enabled: boolean) => void;
+  confirmStackCollision: (choice: RunScriptCollisionOffer) => Promise<boolean>;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
   requestPhotoReference: () => void;
   openConfirmation: (options?: { railTab?: RotoPlayScriptRailTab }) => Promise<void>;
@@ -483,15 +563,36 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const context = ports.getLaunchContext();
     if (!context?.project?.saved) return 'Save the project first.';
     const selection = ports.getSelection();
-    if (selection.kind === 'generated-interpolation') return `Generated frame ${selection.appFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
+    // 261031-i54: a generated frame INSIDE a rail is a valid stack start; outside
+    // every rail the render-only refusal stands (destination 'create' or 'refuse').
+    if (selection.kind === 'generated-interpolation' && runDestination.peek().kind !== 'stack') {
+      return `Generated frame ${selection.appFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
+    }
     return null;
   });
-  const parsedCount = computed(() => max.value
-    ? capacity.value > 0
-      ? { count: capacity.value, error: null }
-      : { count: null, error: 'No real-key capacity remains.' }
-    : parseCount(countText.value, capacity.value));
-  const validationError = computed(() => parsedCount.value.error);
+  /* 261031-i54: a stack run is bounded by the FREE SPAN before the next boundary
+     (never the physical capacity), and a typed count above it must still parse so
+     confirmStack raises the collision prompt instead of silently clamping. */
+  const parsedCount = computed(() => {
+    const destination = runDestination.value;
+    if (destination.kind === 'stack') {
+      if (max.value) {
+        return stackMaxCount.value > 0
+          ? { count: stackMaxCount.value, error: null }
+          : { count: null, error: 'No free span remains before the next boundary.' };
+      }
+      return parseCount(countText.value, Math.max(stackMaxCount.value, capacity.value, 1));
+    }
+    return max.value
+      ? capacity.value > 0
+        ? { count: capacity.value, error: null }
+        : { count: null, error: 'No real-key capacity remains.' }
+      : parseCount(countText.value, capacity.value);
+  });
+  const validationError = computed(() => parsedCount.value.error
+    ?? (stackBoundary.value?.frameOverrideRefusal === 'frame-override'
+      ? 'Run refused: a frame override sits inside this span.'
+      : null));
   /* 52-05 (G-52-3): the active tab's cycle length drives the shared repeat
      parsing, the destination range, and the Requested/Effective summary. */
   const parsedRevealCount = computed(() => parseCount(revealCountText.value, capacity.value));
@@ -535,6 +636,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   });
   const repeatError = computed(() => (infinity.value ? null : parsedRepeat.value.error));
   const loopShortenPreflight = computed(() => {
+    // 261031-i54: a stack run has its own explicit collision surface — the
+    // creation-time shorten advisory would describe a rail it never creates.
+    if (runDestination.value.kind === 'stack') return null;
     const snapshot = loopPreflightSnapshot.value;
     const start = canonicalStart.value;
     const count = parsedCount.value.count;
@@ -555,6 +659,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return `This operation will shorten ${preflight.affectedLoopCount} linked loop(s), starting at frame ${preflight.earliestShortenFrame}.`;
   });
   const loopReadout = computed(() => {
+    // 261031-i54: a stack destination reports the RESOLVED span and the
+    // source-cycle offset instead of the creation Requested/Effective pair.
+    if (runDestination.value.kind === 'stack') {
+      const stack = stackReadout.value;
+      return stack === null ? null : `${stack.spanLabel} · ${stack.offsetLabel} · ${stack.outcomeLabel}`;
+    }
     // 43-06 (Pitfall 4): loop-edit mode derives Requested/Effective from the
     // shared 43-02 interval derivation with the DRAFT repeat substituted —
     // never controller-local boundary math.
@@ -617,6 +727,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const loopIntentActive = computed(() => dialogMode.value === 'apply');
   const identicalSourceCycle = computed<RotoPlayScriptIdenticalSourceCycle | null>(() => {
     if (dialogMode.value !== 'apply' || !loopIntentActive.value) return null;
+    // 261031-i54: linking is a CREATION choice — a stack destination never
+    // creates a cycle, so the Source cycle card must never surface.
+    if (runDestination.value.kind === 'stack') return null;
     const selectedId = ports.library.selectedId.value;
     const start = canonicalStart.value;
     const cycleLength = parsedCount.value.count;
@@ -635,6 +748,274 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       identities: snapshot.identities,
     });
   });
+
+  /* ---- 261031-i54: the live stack destination (Quick A — Paint rails only) ----
+     Everything below reads the LIVE ports behind `availabilityRevision`; nothing
+     consults `loopPreflightSnapshot`, which is null until the dialog opens. A
+     malformed derivation degrades to the create path — today's behaviour. */
+  const CREATE_DESTINATION: RunScriptDestination = Object.freeze({ kind: 'create' }) as RunScriptDestination;
+
+  interface RunScriptStackLiveContext {
+    readonly destination: RunScriptDestination;
+    readonly rails: readonly RunScriptRailView[];
+    readonly parentEndExclusive: number;
+    readonly realKeyAppFrames: readonly { readonly keyId: string; readonly appFrame: number }[];
+  }
+
+  const stackContext = computed<RunScriptStackLiveContext | null>(() => {
+    // The availability revision is the only change signal for the playhead: the
+    // selection and the loop collection are plain port reads, so without a
+    // signal read in front none of this re-evaluates when the user scrubs.
+    ports.availabilityRevision?.value;
+    if (dialogMode.value !== 'apply') return null;
+    try {
+      const loopClips = currentLoopClips();
+      if (loopClips.length === 0) return null;
+      const appFrame = ports.getSelection().appFrame;
+      const snapshot = ports.getLoopEditSnapshot?.(appFrame) ?? null;
+      const document = snapshot === null ? (ports.getPhysicalDocument?.() ?? null) : null;
+      const identities: readonly PhysicPaintRotoKeyIdentity[] = snapshot !== null
+        ? snapshot.identities
+        : (document?.realKeyRecords ?? []).map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
+      const derivationCapacity = snapshot !== null ? snapshot.physicalCapacity : document?.capacity ?? 0;
+      const interpolationEnabled = snapshot !== null ? snapshot.interpolationEnabled : document?.interpolation.enabled ?? false;
+      if (identities.length === 0 || !Number.isInteger(derivationCapacity) || derivationCapacity <= 0) return null;
+      const parentEndExclusive = snapshot !== null ? snapshot.layerEndExclusive : derivationCapacity;
+      const derivation = derivePhysicPaintRotoLoopRanges({
+        identities,
+        loopClips,
+        capacity: derivationCapacity,
+        interpolationEnabled,
+      });
+      const rails = toRunScriptRailViews({ clips: loopClips, context: derivation });
+      if (rails.length === 0) return null;
+      return Object.freeze({
+        destination: resolveRunScriptDestination({ appFrame, rails }),
+        rails,
+        parentEndExclusive,
+        realKeyAppFrames: identities,
+      }) as RunScriptStackLiveContext;
+    } catch {
+      return null;
+    }
+  });
+
+  const runDestination = computed<RunScriptDestination>(() => stackContext.value?.destination ?? CREATE_DESTINATION);
+
+  /**
+   * The run start: pinned at open while the dialog is up (the readout and the
+   * write must agree), the live playhead's source-cycle frame otherwise.
+   */
+  const stackRailStart = computed<number | null>(() => {
+    const context = stackContext.value;
+    if (context === null || context.destination.kind !== 'stack') return null;
+    const pinned = canonicalStart.value;
+    return confirmationOpen.value && pinned !== null ? pinned : context.destination.runStartAppFrame;
+  });
+
+  function normalizeCycleOffset(value: number, cycleLength: number): number {
+    if (cycleLength <= 0) return 0;
+    return ((value % cycleLength) + cycleLength) % cycleLength;
+  }
+
+  function resolveStackBoundaryFor(
+    context: RunScriptStackLiveContext,
+    runStartAppFrame: number,
+    requestedCount: number,
+    options?: { readonly excludeClipId?: string | null; readonly ownedKeyIds?: readonly string[] },
+  ): RunScriptStackBoundary {
+    const destination = context.destination;
+    if (destination.kind !== 'stack') throw new Error('No stack destination to bound.');
+    const target = destination.rail;
+    const cycleOffset = normalizeCycleOffset(runStartAppFrame - target.phaseOrigin, target.cycleLength);
+    const count = Math.max(0, requestedCount);
+    const newCycleLength = Math.max(target.cycleLength, cycleOffset + count);
+    const excluded = options?.excludeClipId ?? null;
+    return resolveRunScriptStackBoundary({
+      runStartAppFrame,
+      requestedCount: count,
+      newCycleEndExclusive: target.phaseOrigin + newCycleLength,
+      targetClipId: target.clipId,
+      rails: excluded === null
+        ? context.rails
+        : Object.freeze(context.rails.filter((rail) => rail.clipId !== excluded)),
+      parentEndExclusive: context.parentEndExclusive,
+      ownedKeyIds: [...target.sourceKeyIds, ...(options?.ownedKeyIds ?? [])],
+      frameOverrideAppFrames: target.frameOverrideAppFrames,
+      realKeyAppFrames: context.realKeyAppFrames,
+    });
+  }
+
+  const stackMaxCount = computed(() => {
+    const context = stackContext.value;
+    const start = stackRailStart.value;
+    if (context === null || start === null) return 0;
+    return Math.max(0, resolveStackBoundaryFor(context, start, 0).freeCount);
+  });
+
+  const stackBoundary = computed<RunScriptStackBoundary | null>(() => {
+    const context = stackContext.value;
+    const start = stackRailStart.value;
+    if (context === null || start === null) return null;
+    return resolveStackBoundaryFor(context, start, parsedCount.value.count ?? 0);
+  });
+
+  function stackTargetClip(context: RunScriptStackLiveContext): PhysicPaintRotoLoopClip | null {
+    if (context.destination.kind !== 'stack') return null;
+    const clipId = context.destination.rail.clipId;
+    return currentLoopClips().find((clip) => clip.loopId === clipId) ?? null;
+  }
+
+  /** The extend-only lifecycle for the current draft count, before any explicit Truncate clamp. */
+  function planStackLifecycle(
+    context: RunScriptStackLiveContext,
+    start: number,
+    count: number,
+  ): { extension: ReturnType<typeof planRunScriptStackExtension>; plan: ReturnType<typeof planRunScriptStackLifecycle> } {
+    const destination = context.destination;
+    if (destination.kind !== 'stack') throw new Error('No stack destination to plan.');
+    const target = destination.rail;
+    const cycleOffset = normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength);
+    const extension = planRunScriptStackExtension({
+      runStartAppFrame: start,
+      cycleLength: target.cycleLength,
+      cycleOffset,
+      count,
+    });
+    const plan = planRunScriptStackLifecycle({
+      existing: stackTargetClip(context),
+      phaseOrigin: target.phaseOrigin,
+      newCycleLength: extension.newCycleLength,
+      repeat: target.repeat,
+    });
+    return { extension, plan };
+  }
+
+  const stackCollision = computed<RotoPlayScriptStackCollision | null>(() => {
+    const context = stackContext.value;
+    const start = stackRailStart.value;
+    const boundary = stackBoundary.value;
+    const count = parsedCount.value.count;
+    if (context === null || context.destination.kind !== 'stack' || start === null || boundary === null || count === null) return null;
+    // A frame override inside the written span refuses outright — no offers.
+    if (boundary.frameOverrideRefusal !== null) return null;
+    const { plan } = planStackLifecycle(context, start, count);
+    // An infinity clip is already parent-bounded and stays lifecycle-less, so its
+    // repeat-extended span can never overflow — the rails table owns that bound.
+    const lifecycleOverflow = context.destination.rail.repeat !== 'infinity'
+      && plan.requestedRailEndExclusive > context.parentEndExclusive;
+    if (!boundary.collision && !lifecycleOverflow) return null;
+    return Object.freeze({
+      boundaryExclusive: boundary.boundaryExclusive,
+      blocker: boundary.blocker,
+      victimClipId: boundary.victimClipId,
+      runCollision: boundary.collision,
+      lifecycleOverflow,
+    }) as RotoPlayScriptStackCollision;
+  });
+
+  const NO_COLLISION_OFFERS: readonly RunScriptCollisionOffer[] = Object.freeze([] as RunScriptCollisionOffer[]);
+  const collisionOffers = computed<readonly RunScriptCollisionOffer[]>(() => {
+    const boundary = stackBoundary.value;
+    if (boundary === null || boundary.frameOverrideRefusal !== null) return NO_COLLISION_OFFERS;
+    const collision = stackCollision.value;
+    if (collision === null) return NO_COLLISION_OFFERS;
+    // A lifecycle-only overflow is a parent-end case: Cancel / Truncate, never
+    // Overwrite — an unrelated rail further down must not be removable for it.
+    if (!collision.runCollision) return Object.freeze(boundary.offers.filter((offer) => offer !== 'overwrite'));
+    return boundary.offers;
+  });
+
+  const stackReadout = computed<RunScriptStackReadout | null>(() => {
+    const context = stackContext.value;
+    const start = stackRailStart.value;
+    if (context === null || context.destination.kind !== 'stack' || start === null) return null;
+    const target = context.destination.rail;
+    const count = parsedCount.value.count ?? 0;
+    const { extension } = planStackLifecycle(context, start, count);
+    return buildRunScriptStackReadout({
+      runStartAppFrame: start,
+      count,
+      cycleOffset: normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength),
+      grew: extension.grew,
+      truncated: stackCollision.value !== null,
+      frameOverrideRefusal: stackBoundary.value?.frameOverrideRefusal ?? null,
+    });
+  });
+
+  const framesMax = computed(() => Math.max(1, runDestination.value.kind === 'stack' ? stackMaxCount.value : capacity.value));
+
+  const repeatLocked = computed(() => runDestination.value.kind === 'stack');
+
+  /* Keep script: a draft signal the user owns, re-seeded only when the TARGET
+     changes (rail identity + its persisted flag), never on an unrelated
+     revision bump — so a user toggle survives the next scrub. */
+  const keepScript = signal(false);
+  const unionPortPresent = (): boolean => typeof ports.bakeStackedRailKey === 'function';
+  const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && unionPortPresent());
+  const keepScriptEffective = computed(() => {
+    const destination = runDestination.value;
+    return destination.kind === 'stack' && destination.rail.keyScriptEdits === true && unionPortPresent() && keepScript.value;
+  });
+  const keepScriptDisabledReason = computed(() => {
+    const destination = runDestination.value;
+    if (destination.kind !== 'stack' || !unionPortPresent() || destination.rail.keyScriptEdits === true) return null;
+    return 'This rail cannot record per-key scripts, so this run replaces the touched span.';
+  });
+  let keepScriptSeedKey: string | null = null;
+  const seedKeepScript = effect(() => {
+    const destination = runDestination.value;
+    const key = destination.kind === 'stack'
+      ? `${destination.rail.clipId}:${destination.rail.keyScriptEdits === true ? 1 : 0}`
+      : null;
+    if (key === keepScriptSeedKey) return;
+    keepScriptSeedKey = key;
+    const next = destination.kind === 'stack' && destination.rail.keyScriptEdits === true
+      ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT
+      : false;
+    if (keepScript.peek() !== next) keepScript.value = next;
+  });
+
+  /** 261031-i54: compare-then-write (efx-preact-reactivity rule 3). */
+  function setKeepScript(enabled: boolean): void {
+    if (keepScript.peek() === enabled) return;
+    keepScript.value = enabled;
+  }
+
+  /* The explicit collision answer. Null while the prompt is open — `confirm`
+     writes nothing until the user picks one of the offered choices. */
+  const collisionChoice = signal<RunScriptCollisionOffer | null>(null);
+
+  /** Explicit Truncate: clamp the lifecycle span, never a silent capacity cap. */
+  function truncateStackLifecycle(
+    lifecycle: RunScriptStackLifecycle,
+    endExclusive: number,
+    phaseOrigin: number,
+  ): RunScriptStackLifecycle {
+    const previousEnd = lifecycle.originalEndExclusive ?? phaseOrigin;
+    const originalEndExclusive = Math.max(phaseOrigin + 1, Math.min(previousEnd, endExclusive));
+    const clamped = (lifecycle.visibleRanges ?? [])
+      .map((range) => ({
+        start: Math.max(phaseOrigin, range.start),
+        endExclusive: Math.min(originalEndExclusive, range.endExclusive),
+      }))
+      .filter((range) => range.endExclusive > range.start);
+    const visibleRanges = clamped.length > 0 ? clamped : [{ start: phaseOrigin, endExclusive: originalEndExclusive }];
+    return Object.freeze({
+      ...lifecycle,
+      originalEndExclusive,
+      visibleRanges: Object.freeze(visibleRanges.map((range) => Object.freeze({ start: range.start, endExclusive: range.endExclusive }) as PhysicPaintRotoGroupVisibleRange)),
+    }) as RunScriptStackLifecycle;
+  }
+
+  /** The live playhead must still resolve to the SAME rail at the SAME source frame. */
+  function stackDestinationStillCurrent(clipId: string, start: number): boolean {
+    const context = stackContext.peek();
+    return context !== null
+      && context.destination.kind === 'stack'
+      && context.destination.rail.clipId === clipId
+      && context.destination.runStartAppFrame === start;
+  }
 
   function currentLoopClips(): readonly PhysicPaintRotoLoopClip[] {
     return ports.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
@@ -698,6 +1079,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   function setInfinity(enabled: boolean): void {
+    // 261031-i54: a stack run never edits the rail's repeat — the controls are
+    // hidden and this setter stays inert so no stray write can change it.
+    if (repeatLocked.peek()) return;
     if (enabled) {
       // Preserve the last VALID finite repeat; an invalid draft never overwrites it (Pitfall 7).
       if (parseRepeat(repeatText.peek(), activeParsedCount.peek().count).count !== null) lastFiniteRepeat.value = repeatText.peek();
@@ -774,14 +1158,30 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   async function openConfirmation(options?: { railTab?: RotoPlayScriptRailTab }): Promise<void> {
     if (disposed || disabledReason.peek()) return;
+    // 261031-i54: a refused destination never opens the dialog and never asks
+    // for authority. Reveal rail stacking is the follow-up quick; an ambiguous
+    // overlap fails closed instead of writing to a guessed rail.
+    const destination = runDestination.peek();
+    if (destination.kind === 'refuse') {
+      phase.value = 'idle';
+      status.value = null;
+      error.value = destination.reason === 'reveal-target'
+        ? 'Reveal rails stack in a later update. Run Script onto a Paint rail, or place the playhead outside every rail.'
+        : 'Two or more rails cover this frame. Move the playhead onto exactly one rail and try again.';
+      ports.log(error.peek()!, true);
+      return;
+    }
     ports.stopPlayback();
     const selected = ports.getSelection();
+    const stackStart = destination.kind === 'stack' ? destination.runStartAppFrame : null;
     const operationId = nextOperationId('authority');
     phase.value = 'preparing'; status.value = 'Preparing Play Script…'; error.value = null;
     try {
       // 261031-dm1: opening the dialog reads only scalars plus {keyId, appFrame},
       // so it asks for identities only — no WebP bytes cross the bridge.
-      const authority = await ports.requestAuthority(operationId, selected.appFrame, { identitiesOnly: true });
+      // 261031-i54: a stack run asks at its SOURCE-CYCLE start, never at the
+      // occurrence frame the playhead happens to sit on.
+      const authority = await ports.requestAuthority(operationId, stackStart ?? selected.appFrame, { identitiesOnly: true });
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;
@@ -826,6 +1226,22 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
         // override color resolved live from the brush-color port — D-08R).
         appliedSummaryLine1.value = composeSummaryLine1(mode.peek(), resolveOverrideColor(), dialogMotion.peek());
+      }
+      if (destination.kind === 'stack') {
+        // 261031-i54: a stack run defaults its span to the selected script's
+        // natural duration (creation keeps today's 3). No silent clamp — an
+        // over-span count still parses and confirm raises the collision prompt.
+        collisionChoice.value = null;
+        const natural = selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null;
+        const seeded = String(natural ?? 3);
+        if (countText.peek() !== seeded) countText.value = seeded;
+        lastFiniteCount.value = seeded;
+        confirmationOpen.value = true;
+        const runStart = stackStart ?? authority.canonicalStart;
+        const seededCount = parsedCount.peek().count ?? (typeof natural === 'number' ? natural : 3);
+        phase.value = 'idle';
+        status.value = `Run Script onto ${destination.rail.clipId} · F${runStart}–F${runStart + seededCount - 1}`;
+        return;
       }
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
@@ -1635,7 +2051,228 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     } finally { if (generation === acceptedGeneration) abortController = null; }
   }
 
+  /**
+   * 261031-i54 (Quick A): the stack confirm. Writes the run at its canonical
+   * source-cycle frames onto the EXISTING rail, merges the cycle extend-only
+   * and commits the rail's lifecycle — plus, on an explicit Overwrite, the
+   * victim Loop Clip's removal — in ONE atomic publication. Nothing here reads
+   * `linkChoice`, creates a Loop Clip, materializes an occurrence or writes
+   * `keyScriptEdits`.
+   */
+  async function confirmStack(): Promise<boolean> {
+    const context = stackContext.peek();
+    if (context === null || context.destination.kind !== 'stack') return false;
+    const target = context.destination.rail;
+    const selectedId = ports.library.selectedId.peek();
+    const launch = ports.getLaunchContext();
+    const requested = parsedCount.peek().count;
+    const start = canonicalStart.peek() ?? context.destination.runStartAppFrame;
+    if (disposed || !selectedId || !launch?.project || requested === null) return false;
+    if (disabledReason.peek()) return false;
+    // Quick A ships the OFF path: pixels AND records are replaced together. A
+    // checked-ON control must never execute that destructive path, so the union
+    // request refuses with zero writes until the follow-up supplies the port.
+    if (keepScriptEffective.peek()) {
+      phase.value = 'idle'; status.value = null;
+      error.value = 'Keep script is not available on this rail yet. Turn it off to run this script.';
+      return false;
+    }
+    const boundary = resolveStackBoundaryFor(context, start, requested);
+    if (boundary.frameOverrideRefusal !== null) {
+      phase.value = 'idle'; status.value = null;
+      error.value = 'Run refused: a frame override sits inside this span. Nothing changed.';
+      return false;
+    }
+    const requestedPlan = planStackLifecycle(context, start, requested).plan;
+    const lifecycleOverflow = target.repeat !== 'infinity'
+      && requestedPlan.requestedRailEndExclusive > context.parentEndExclusive;
+    const needsChoice = boundary.collision || lifecycleOverflow;
+    let victimClipId: string | null = null;
+    let effectiveCount = requested;
+    let lifecycleEnd: number | null = null;
+    if (needsChoice) {
+      const choice = collisionChoice.peek();
+      if (choice === null) {
+        phase.value = 'idle';
+        status.value = 'Choose Cancel, Truncate or Overwrite to continue.';
+        error.value = null;
+        return false;
+      }
+      if (choice === 'cancel') {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = 'Run Script cancelled.'; error.value = null;
+        return false;
+      }
+      if (choice === 'overwrite' && boundary.blocker === 'other-rail' && boundary.victimClipId !== null) {
+        // Overwrite removes the victim rail in this same commit; its keys stay
+        // as ordinary keys, so they must not block the rerun either.
+        victimClipId = boundary.victimClipId;
+        const victim = context.rails.find((rail) => rail.clipId === victimClipId) ?? null;
+        const rerun = resolveStackBoundaryFor(context, start, requested, {
+          excludeClipId: victimClipId,
+          ownedKeyIds: victim?.sourceKeyIds ?? [],
+        });
+        if (rerun.frameOverrideRefusal !== null) {
+          collisionChoice.value = null;
+          phase.value = 'idle'; status.value = null;
+          error.value = 'Run refused: a frame override sits inside this span. Nothing changed.';
+          return false;
+        }
+        effectiveCount = Math.min(requested, rerun.freeCount);
+      } else {
+        // Truncate (the default): clip the run at the boundary. The lifecycle
+        // clamp applies ONLY to an explicit parent-end overflow — never a silent cap.
+        effectiveCount = Math.min(requested, boundary.freeCount);
+      }
+      const clampedPlan = planStackLifecycle(context, start, effectiveCount).plan;
+      if (target.repeat !== 'infinity' && clampedPlan.requestedRailEndExclusive > context.parentEndExclusive) {
+        lifecycleEnd = context.parentEndExclusive;
+      }
+      if (effectiveCount <= 0) {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = 'No free span remains before the next boundary. Nothing changed.';
+        return false;
+      }
+    }
+
+    const acceptedGeneration = ++generation;
+    abortController = new AbortController();
+    ports.stopPlayback();
+    phase.value = 'preparing'; progress.value = null; status.value = 'Preparing Run Script…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
+      assertCurrent(acceptedGeneration);
+      if (!authority.ok || effectiveCount > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
+      const motion = { ...dialogMotion.peek() };
+      const renderMode = mode.peek();
+      const renderPaintSeedVariation = paintSeedVariation.peek();
+      const rotoBackground = { ...ports.getBackgroundMetadata() };
+      const snapshot = await ports.library.loadSnapshot(selectedId);
+      assertCurrent(acceptedGeneration);
+      if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
+      phase.value = 'rendering'; progress.value = { completed: 0, total: effectiveCount }; status.value = `Rendering 0 / ${effectiveCount}`;
+      const baked = await bakeAquarelleScript({
+        snapshot, count: effectiveCount, start, size: ports.getSize(),
+        acceptedGeneration, motion, mode: renderMode, paintSeedVariation: renderPaintSeedVariation,
+      });
+      const staged = baked.staged;
+      const anchors = baked.anchors;
+      assertCurrent(acceptedGeneration);
+      const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
+      assertCurrent(acceptedGeneration);
+      if (!commitAuthority.ok
+        || commitAuthority.capacity < effectiveCount
+        || commitAuthority.physicalRevision !== authority.physicalRevision
+        || commitAuthority.physicalCapacity !== authority.physicalCapacity
+        || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
+      loopPreflightSnapshot.value = {
+        identities: commitAuthority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        parentEndExclusive: commitAuthority.layerEndExclusive,
+        capacity: commitAuthority.physicalCapacity,
+        interpolationEnabled: commitAuthority.interpolationEnabled,
+      };
+      // The playhead must still sit in the SAME rail at the SAME source frame:
+      // a scrub during the bake re-targets the dialog and must not commit.
+      if (!stackDestinationStillCurrent(target.clipId, start)) {
+        throw new Error('Play Script destination changed before commit.');
+      }
+      const destinationAppFrames = Array.from({ length: effectiveCount }, (_, index) => start + index);
+      const basePublication = buildPhysicalPublication({
+        authority: commitAuthority,
+        staged,
+        start,
+        count: effectiveCount,
+        destinationAppFrames,
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        rotoBackground,
+      });
+      const recordByAppFrame = new Map(basePublication.records.map((record) => [record.appFrame, record]));
+      const touchedKeyIds = destinationAppFrames.map((appFrame) => {
+        const record = recordByAppFrame.get(appFrame);
+        if (!record) throw new Error(`Committed run is missing frame ${appFrame}.`);
+        return record.keyId;
+      });
+      const currentTarget = stackTargetClip(context);
+      if (currentTarget === null) throw new Error('The target Loop Clip disappeared before commit.');
+      const existingEntries = target.sourceKeyIds.map((keyId, index) => ({ keyId, offset: target.sourceOffsets[index] ?? index }));
+      const incomingEntries = destinationAppFrames.map((appFrame, index) => ({
+        keyId: touchedKeyIds[index]!,
+        offset: appFrame - target.phaseOrigin,
+      }));
+      const mergedSourceKeyIds = mergeStackedSourceKeyIds(existingEntries, incomingEntries).map((entry) => entry.keyId);
+      const cycleOffset = normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength);
+      const extension = planRunScriptStackExtension({
+        runStartAppFrame: start,
+        cycleLength: target.cycleLength,
+        cycleOffset,
+        count: effectiveCount,
+      });
+      const lifecyclePlan = planRunScriptStackLifecycle({
+        existing: currentTarget,
+        phaseOrigin: target.phaseOrigin,
+        newCycleLength: extension.newCycleLength,
+        repeat: target.repeat,
+      });
+      const lifecycle = lifecyclePlan.lifecycle === null || lifecycleEnd === null
+        ? lifecyclePlan.lifecycle
+        : truncateStackLifecycle(lifecyclePlan.lifecycle, lifecycleEnd, target.phaseOrigin);
+      const updatedTarget: PhysicPaintRotoLoopClip = {
+        ...currentTarget,
+        sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
+        ...(lifecycle ?? {}),
+      };
+      const nextClips = Object.freeze(currentLoopClips()
+        .filter((clip) => victimClipId === null || clip.loopId !== victimClipId)
+        .map((clip) => (clip.loopId === currentTarget.loopId ? updatedTarget : clip)));
+      const publication: RotoGeneratedPhysicalPublication = {
+        ...basePublication,
+        semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
+        ...resolvePublicationSelection(commitAuthority),
+        loopClips: nextClips,
+      };
+      phase.value = 'committing'; status.value = 'Committing Run Script…'; abortController = null;
+      const result = await ports.commit(publication);
+      assertCurrent(acceptedGeneration);
+      if (!result.ok) throw new Error(result.error || 'Parent rejected the Run Script batch.');
+      assertPublicationAck(publication, result);
+      // OFF: this run's slices REPLACE the touched keys' records (an empty anchor
+      // set therefore purges them). The recorded mode and the visible switch
+      // state are the same fact — a flag-off target never renders ON.
+      const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
+      ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: 'replace' });
+      collisionChoice.value = null;
+      hasSuccessfulGeneration = true;
+      const appliedSummary = composeAppliedSummary({
+        mode: renderMode,
+        overrideColor: currentTarget.overrideColor ?? null,
+        motion,
+        start,
+        count: effectiveCount,
+      });
+      appliedSummaryLine1.value = appliedSummary.line1;
+      appliedSummaryLine2.value = `F${start}–F${start + effectiveCount - 1} · Stacked onto the existing rail · Cycle ${extension.newCycleLength}f × ${target.repeat === 'infinity' ? '∞' : target.repeat}`;
+      phase.value = 'complete'; progress.value = { completed: effectiveCount, total: effectiveCount };
+      status.value = `Run Script complete · ${effectiveCount} frames`;
+      confirmationOpen.value = false; ports.log(status.value);
+      return true;
+    } catch (cause) {
+      if (isAbort(cause)) { phase.value = 'cancelled'; status.value = 'Run Script cancelled'; error.value = null; ports.log(status.value); }
+      else fail(cause);
+      return false;
+    } finally { if (generation === acceptedGeneration) abortController = null; }
+  }
+
+  /** 261031-i54: write the explicit choice and re-run the same confirm. */
+  async function confirmStackCollision(choice: RunScriptCollisionOffer): Promise<boolean> {
+    if (collisionChoice.peek() !== choice) collisionChoice.value = choice;
+    return confirmStack();
+  }
+
   async function confirmGeneration(): Promise<boolean> {
+    // 261031-i54: the playhead sits in an existing Paint rail — stack onto it.
+    // Every creation branch below stays gated on the 'create' destination.
+    if (runDestination.peek().kind === 'stack') return confirmStack();
     const isSourceEdit = dialogMode.peek() === 'source-edit';
     const editTarget = isSourceEdit ? loopEditTarget.peek() : null;
     const repairId = isSourceEdit ? sourceEditRepairId.peek() : null;
@@ -1763,6 +2400,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             ports.recordRailKeyScripts?.({
               keyIds: linkedLoop.sourceKeyIds,
               slices: sliceRailKeyScripts({ anchors, frames: linkedFrames, mode: renderMode }),
+              recordMode: 'replace',
             });
           }
         }
@@ -2034,7 +2672,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             strokes: slice.strokes.length,
           })),
         });
-        ports.recordRailKeyScripts?.({ keyIds: cycleKeyIds, slices: keyScriptSlices });
+        ports.recordRailKeyScripts?.({ keyIds: cycleKeyIds, slices: keyScriptSlices, recordMode: 'replace' });
       }
       // Single appliedSummary assignment site: composed atomically from the options snapshot and
       // destination actually committed for THIS generation — never from live dialog draft values.
@@ -2088,11 +2726,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     photoWiggle, setPhotoWiggle,
     keyScriptEdits, setKeyScriptEdits,
     paintSeedVariation, setPaintSeedVariation,
+    /* 261031-i54: Run Script stacking onto an existing Paint rail. */
+    runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout,
+    keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked,
+    setKeepScript, confirmStackCollision,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;
       generation += 1;
       stopStaticDefaults();
+      seedKeepScript();
       // AQUA-07 / D-21: a long aquarelle cuisson SURVIVES dispose(). Settle
       // in-flight turns through the bake host's flush — never abort them and
       // never discard already-committed frames. The engine-1 abort below is
