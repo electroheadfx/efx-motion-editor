@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
+import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
   BRUSH_SETTINGS_FIELDS,
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -31,10 +32,12 @@ import {
   WATERCOLOR_SETTINGS_FIELDS,
   buildAppearancePatch,
   buildColorPatch,
+  buildPaintSeedVariationPatch,
   geometryMoveDelta,
   geometryTransform,
   readColorField,
   readNumericField,
+  readPaintSeedVariation,
   resolveStrokeSettingsOpen,
   shouldMarkSawEmpty,
   strokeSettingsFields,
@@ -66,6 +69,10 @@ const dialogSource = readFileSync(
 );
 const modelSource = readFileSync(
   fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
+  'utf8',
+);
+const cssSource = readFileSync(
+  fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
   'utf8',
 );
 
@@ -1699,5 +1706,191 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     expect(dialogSource).toContain('aquarelleStrokeSettingsDismissed.value');
     expect(dialogSource).toContain('aquarelleStrokeTypeFilter.value');
     expect(dialogSource).not.toContain('dismissedRef');
+  });
+});
+
+// ============================================================
+//  261031-cf9 — the Paint seed variation switch row. The salt
+//  lives inside the stroke params, so the row reads ON only when
+//  EVERY selected appearance carries a finite non-negative salt;
+//  one click writes the flag for the whole selection through the
+//  same applyAppearance commit path as the Opacity row.
+// ============================================================
+
+describe('261031-cf9 readPaintSeedVariation and its patch builder', () => {
+  it('reads ON only when the selection is non-empty and EVERY appearance carries a finite non-negative salt', () => {
+    expect(readPaintSeedVariation([])).toBe(false);
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: 0 }),
+      appearance(9, { size: 12, [PAINT_SEED_SALT_PARAM]: 4 }),
+    ])).toBe(true);
+
+    // Mixed or absent reads OFF.
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: 0 }),
+      appearance(9, { size: 12 }),
+    ])).toBe(false);
+
+    // Fail-closed on malformed salts.
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: Number.NaN }),
+    ])).toBe(false);
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: Number.POSITIVE_INFINITY }),
+    ])).toBe(false);
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: -1 }),
+    ])).toBe(false);
+
+    // A fractional non-negative salt is still ON (the projection truncates).
+    expect(readPaintSeedVariation([
+      appearance(7, { size: 12, [PAINT_SEED_SALT_PARAM]: 4.7 }),
+    ])).toBe(true);
+  });
+
+  it('builds the explicit true/false patch', () => {
+    expect(buildPaintSeedVariationPatch(true)).toEqual({ paintSeedVariation: true });
+    expect(buildPaintSeedVariationPatch(false)).toEqual({ paintSeedVariation: false });
+  });
+});
+
+describe('261031-cf9 the Paint seed variation switch row', () => {
+  const SALTED_PARAMS = (salt?: number): Record<string, number> => {
+    const base = {
+      size: 12,
+      load: 50,
+      water: 50,
+      flow: 50,
+      bleed: 50,
+      edge: 50,
+      granulation: 50,
+      dry: 50,
+    };
+    return salt === undefined ? base : { ...base, [PAINT_SEED_SALT_PARAM]: salt };
+  };
+
+  function watercolorSwitchBundle(
+    appearancesFor: (id: number) => ScriptStrokeAppearance,
+    overrides: Partial<StrokeSettingsDialogBundle> = {},
+  ) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      listStrokes: () => [
+        selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 }),
+        selectableStroke(9, { x: 20, y: 20, width: 60, height: 60 }),
+      ],
+      readAppearance: (ids) => ids.map(appearancesFor),
+      ...overrides,
+    });
+  }
+
+  function switchButton(tree: unknown): AnyVNode {
+    const row = findByTestId(tree, 'stroke-settings-paint-seed-variation');
+    expect(row, 'paint seed variation row').toBeDefined();
+    const button = childrenOf(row).find((node) => (node as AnyVNode).type === 'button');
+    expect(button, 'switch button').toBeDefined();
+    return button as AnyVNode;
+  }
+
+  it('is the FIRST Geometry child on water color, with the shared switch chrome', () => {
+    const { bundle } = watercolorSwitchBundle((id) => appearance(id, SALTED_PARAMS()));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialogTab(bundle, 'geometry');
+
+    const row = findByTestId(tree, 'stroke-settings-paint-seed-variation')!;
+    expect(row.props.style).toEqual({ paddingTop: '15px', paddingBottom: '15px' });
+
+    const button = switchButton(tree);
+    expect(button.props.type).toBe('button');
+    expect(button.props.role).toBe('switch');
+    expect(button.props['aria-checked']).toBe('false');
+    expect(button.props.class).toContain('physics-paint-script-switch');
+    expect(button.props.class).not.toContain('is-on');
+    expect(button.props.title).toBeTruthy();
+
+    const track = childrenOf(button).find(
+      (node) => typeof (node as AnyVNode).props?.class === 'string'
+        && (node as AnyVNode).props.class.includes('physics-paint-script-switch-track'),
+    )!;
+    expect(track).toBeDefined();
+    expect(
+      childrenOf(track).some(
+        (node) => typeof (node as AnyVNode).props?.class === 'string'
+          && (node as AnyVNode).props.class.includes('physics-paint-script-switch-knob'),
+      ),
+    ).toBe(true);
+    const label = childrenOf(button).find(
+      (node) => typeof (node as AnyVNode).props?.class === 'string'
+        && (node as AnyVNode).props.class.includes('physics-paint-script-switch-label'),
+    )!;
+    expect(label.props.children).toBe('Paint seed variation');
+
+    // First child of the geometry section, above X/Y/Scale/Rotation.
+    const geometry = findByTestId(tree, 'stroke-settings-geometry')!;
+    const flat = childrenOf(geometry);
+    const indexOf = (testId: string) => flat.findIndex(
+      (node) => (node as AnyVNode).props?.['data-testid'] === testId,
+    );
+    const switchIndex = indexOf('stroke-settings-paint-seed-variation');
+    expect(switchIndex).toBeGreaterThan(-1);
+    expect(switchIndex).toBeLessThan(indexOf('stroke-settings-geometry-x'));
+    expect(switchIndex).toBeLessThan(indexOf('stroke-settings-geometry-y'));
+    expect(switchIndex).toBeLessThan(indexOf('stroke-settings-geometry-scale'));
+    expect(switchIndex).toBeLessThan(indexOf('stroke-settings-geometry-rotation'));
+  });
+
+  it('reads ON when every appearance carries a salt and clicking sends OFF for the whole selection', () => {
+    const { bundle, calls } = watercolorSwitchBundle(
+      (id) => appearance(id, SALTED_PARAMS(id === 7 ? 0 : 4)),
+    );
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialogTab(bundle, 'geometry');
+
+    const button = switchButton(tree);
+    expect(button.props['aria-checked']).toBe('true');
+    expect(button.props.class).toContain('is-on');
+
+    (button.props.onClick as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { paintSeedVariation: false } }]);
+  });
+
+  it('clicking from OFF sends the true flag once for the whole selection', () => {
+    const { bundle, calls } = watercolorSwitchBundle((id) => appearance(id, SALTED_PARAMS()));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialogTab(bundle, 'geometry');
+
+    (switchButton(tree).props.onClick as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { paintSeedVariation: true } }]);
+  });
+
+  it('is absent for the brush module and reads OFF on a mixed/saltless selection', () => {
+    const brush = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+    });
+    setScriptStrokeSelection([7]);
+    expect(
+      findByTestId(renderDialog(brush.bundle), 'stroke-settings-paint-seed-variation'),
+    ).toBeUndefined();
+
+    // Water color, one salted and one unsalted: OFF.
+    const mixed = watercolorSwitchBundle((id) => appearance(id, SALTED_PARAMS(id === 7 ? 2 : undefined)));
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+    expect(switchButton(renderDialogTab(mixed.bundle, 'geometry')).props['aria-checked']).toBe('false');
+  });
+
+  it('structural pins: the row constant and only the in-sheet switch margin reset', () => {
+    expect(dialogSource).toContain('PAINT_SEED_VARIATION_ROW_STYLE');
+    expect(dialogSource).toContain('data-testid="stroke-settings-paint-seed-variation"');
+    expect(dialogSource).toContain('readPaintSeedVariation(appearances)');
+    expect(modelSource).toContain('readPaintSeedVariation');
+    expect(modelSource).toContain('buildPaintSeedVariationPatch');
+    expect(cssSource).toMatch(
+      /\.physics-paint-stroke-settings-scroll \.physics-paint-script-switch\s*\{\s*margin-left:\s*0;/,
+    );
   });
 });
