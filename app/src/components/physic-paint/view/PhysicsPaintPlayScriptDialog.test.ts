@@ -1586,8 +1586,8 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(controller.setKeepScript).toHaveBeenCalledWith(false);
   });
 
-  it('renders the flag-off Keep script switch OFF and disabled with the replace reason', () => {
-    const reason = 'This rail cannot record per-key scripts, so this run replaces the touched span.';
+  it('renders the pixel-only Keep script switch OFF and disabled with the composite reason', () => {
+    const reason = 'This rail stores pixels, not per-key scripts. The run is composited over its existing pixels.';
     const { controller } = createFakeController(stackSeed({
       keepScript: false,
       keepScriptVisible: true,

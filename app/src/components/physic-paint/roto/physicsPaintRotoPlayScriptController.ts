@@ -336,6 +336,18 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
     readonly appFrame: number;
     readonly strokes: readonly AquarelleStroke[];
   }) => Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }>;
+  /**
+   * 261031-i54 UAT: the pixel-only stack composite. A rail created without
+   * per-key scripts stores PIXELS, not a script; its touched keys must be
+   * composited over their CURRENT payload instead of being replaced (the old
+   * replace path pinned the base empty and erased the picture). Absent port or
+   * a refusal fails the whole run closed before commit.
+   */
+  composeStackedRailKey?: (input: {
+    readonly keyId: string;
+    readonly appFrame: number;
+    readonly strokes: readonly AquarelleStroke[];
+  }) => Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }>;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (
@@ -1031,7 +1043,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const keepScriptDisabledReason = computed(() => {
     const destination = runDestination.value;
     if (destination.kind !== 'stack' || !unionPortPresent() || destination.rail.keyScriptEdits === true) return null;
-    return 'This rail cannot record per-key scripts, so this run replaces the touched span.';
+    return 'This rail stores pixels, not per-key scripts. The run is composited over its existing pixels.';
   });
   let keepScriptSeedKey: string | null = null;
   const seedKeepScript = effect(() => {
@@ -2181,8 +2193,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
     // Keep script ON (261031-i54 task 3): a flag-on rail records this run's
     // slices as an APPEND and re-bakes the raw union over its known-empty base.
-    // Every other path — OFF, a flag-off target, or no union port — keeps the
-    // replace mode, so the executed mode always matches the visible switch.
+    // A flag-on rail with the switch OFF replaces its scripts. A flag-off rail
+    // stores pixels instead — it is composited over its existing picture and
+    // records nothing (see the composite branch below).
     const unionBake = ports.bakeStackedRailKey;
     const useUnion = unionBake !== undefined && keepScriptEffective.peek();
     const boundary = resolveStackBoundaryFor(surface, start, requested);
@@ -2292,6 +2305,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       return false;
     }
 
+    // A flag-on rail owns its picture through per-key scripts; a flag-off rail
+    // stores the picture itself. The two post-bake paths are mutually exclusive.
+    const recordScripts = currentTarget.keyScriptEdits === true;
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
     ports.stopPlayback();
@@ -2377,7 +2393,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const nextClips = Object.freeze(currentLoopClips()
         .filter((clip) => victimClipId === null || clip.loopId !== victimClipId)
         .map((clip) => (clip.loopId === currentTarget.loopId ? updatedTarget : clip)));
-      let publication: RotoGeneratedPhysicalPublication = {
+      let publication: RotoPlayScriptPhysicalPublication = {
         ...basePublication,
         semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
         ...resolvePublicationSelection(commitAuthority),
@@ -2386,7 +2402,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // The per-key slices drive BOTH the union re-bake and the post-commit
       // recording; slots align with the committed destination frames.
       const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
-      if (useUnion && unionBake !== undefined && slices.length > 0) {
+      if (recordScripts && useUnion && unionBake !== undefined && slices.length > 0) {
         const unionBytesByFrame = new Map<number, Uint8Array>();
         for (const slice of slices) {
           const keyId = touchedKeyIds[slice.slot];
@@ -2396,28 +2412,35 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           if (bakedUnion.kind !== 'baked') throw new Error(`Keep script re-bake refused: ${bakedUnion.reason}`);
           unionBytesByFrame.set(slice.frame, bakedUnion.bytes);
         }
-        if (unionBytesByFrame.size > 0) {
-          const unionRecords = publication.records.map((record) => {
-            const bytes = unionBytesByFrame.get(record.appFrame);
-            return bytes === undefined ? record : { ...record, payload: { ...record.payload, bytes } };
-          });
-          publication = {
-            ...publication,
-            records: unionRecords,
-            semanticDelta: { ...publication.semanticDelta, proposedRecords: unionRecords.map(toPhysicalEditRecord) },
-          };
+        if (unionBytesByFrame.size > 0) publication = withRecordBytes(publication, unionBytesByFrame);
+      } else if (!recordScripts && slices.length > 0) {
+        // Pixel-only target: draw the run over the key's CURRENT payload. The
+        // old replace path pinned the durable base empty, so this publication
+        // erased the rail's existing render (UAT 261031-i54).
+        const compose = ports.composeStackedRailKey;
+        if (!compose) throw new Error('This rail saves pixels, but this build cannot composite the run. Nothing changed.');
+        const compositeBytesByFrame = new Map<number, Uint8Array>();
+        for (const slice of slices) {
+          const keyId = touchedKeyIds[slice.slot];
+          if (keyId === undefined) continue;
+          const composed = await compose({ keyId, appFrame: slice.frame, strokes: slice.strokes });
+          assertCurrent(acceptedGeneration);
+          if (composed.kind !== 'baked') throw new Error(`Pixel composite refused: ${composed.reason}`);
+          compositeBytesByFrame.set(slice.frame, composed.bytes);
         }
+        if (compositeBytesByFrame.size > 0) publication = withRecordBytes(publication, compositeBytesByFrame);
       }
       phase.value = 'committing'; status.value = 'Committing Run Script…'; abortController = null;
       const result = await ports.commit(publication);
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Run Script batch.');
       assertPublicationAck(publication, result);
-      // ON appends this run's slices to the keys' recorded scripts; OFF replaces
-      // them (an empty anchor set therefore purges). The recorded mode and the
-      // visible switch state are the same fact — a flag-off target never
-      // renders ON, and `keyScriptEdits` is never flipped here.
-      ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: useUnion ? 'append' : 'replace' });
+      // ON appends this run's slices to a flag-on rail's recorded scripts; OFF
+      // replaces them. A pixel-only rail records nothing — its picture already
+      // carries the run, and `keyScriptEdits` is never flipped here.
+      if (recordScripts) {
+        ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: useUnion ? 'append' : 'replace' });
+      }
       collisionChoice.value = null;
       hasSuccessfulGeneration = true;
       const appliedSummary = composeAppliedSummary({
@@ -3467,6 +3490,22 @@ function toPhysicalEditRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaint
     keyId: record.keyId,
     appFrame: record.appFrame,
     payload: clonePhysicalPayload(record.payload),
+  };
+}
+
+/** Publish the post-bake bytes for the touched frames (Keep-script union or pixel composite). */
+function withRecordBytes(
+  publication: RotoPlayScriptPhysicalPublication,
+  bytesByFrame: ReadonlyMap<number, Uint8Array>,
+): RotoPlayScriptPhysicalPublication {
+  const records = publication.records.map((record) => {
+    const bytes = bytesByFrame.get(record.appFrame);
+    return bytes === undefined ? record : { ...record, payload: { ...record.payload, bytes } };
+  });
+  return {
+    ...publication,
+    records,
+    semanticDelta: { ...publication.semanticDelta, proposedRecords: records.map(toPhysicalEditRecord) },
   };
 }
 

@@ -19,6 +19,7 @@ import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridg
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
 type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
+type StackedRailKeyComposeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['composeStackedRailKey']>>[0];
 
 interface RotoPlayScriptCoordinatorPort<EngineState> {
   executePhysicalEdit: (
@@ -78,6 +79,11 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       // gate (`keepScriptVisible`) stays honest.
       ...(ports.bakeStackedRailKey
         ? { bakeStackedRailKey: (input: StackedRailKeyBakeInput) => portsRef.current.bakeStackedRailKey!(input) }
+        : {}),
+      // 261031-i54 UAT: the pixel-only stack composite port, forwarded only when
+      // the Studio supplies it (a missing port fails the run closed).
+      ...(ports.composeStackedRailKey
+        ? { composeStackedRailKey: (input: StackedRailKeyComposeInput) => portsRef.current.composeStackedRailKey!(input) }
         : {}),
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),

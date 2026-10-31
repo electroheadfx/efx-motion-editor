@@ -5029,15 +5029,31 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     const unionPort = slice(
       studio,
       'const bakeStackedRailKey = async (input: {',
-      'const recordRailKeyScripts = (input: {',
+      'const composeStackedRailKey = async (input: {',
     );
     // 261031-i54 (Quick A): a flag-on rail's base is known-empty, so the raw
-    // union is the whole picture. The durable-base / composite seam is Quick B.
+    // union is the whole picture.
     expect(unionPort).toContain('getAquarelleEventsForFrame(input.appFrame)');
     expect(unionPort).toContain('toStudioStroke(stroke)');
     expect(unionPort).toContain('bakeAquarelleEventsToFrame({');
     expect(unionPort).not.toContain('composeRotoScriptRebakeFrame');
     expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
+  });
+
+  it('pins the pixel-only stack composite: the current payload plus this run, never a purge or base pin (UAT 261031-i54)', () => {
+    const compositePort = slice(
+      studio,
+      'const composeStackedRailKey = async (input: {',
+      'const recordRailKeyScripts = (input: {',
+    );
+    expect(compositePort).toContain('getRotoRealKeyRecord(');
+    expect(compositePort).toContain('requirePhysicPaintRotoInlineBytes(record.payload)');
+    expect(compositePort).toContain('composeRotoScriptRebakeFrame({');
+    // A missing record is a newly appended key — its base is blank, so the
+    // sheet is the complete content.
+    expect(compositePort).toContain("if (!record) return { kind: 'baked', bytes: baked.bytes };");
+    expect(compositePort).not.toContain('purgeAquarelleFrameScript');
+    expect(compositePort).not.toContain('aquarelleDurableBaseByKeyRef');
   });
 
   it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {

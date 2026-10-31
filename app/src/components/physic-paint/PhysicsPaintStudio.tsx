@@ -3910,6 +3910,41 @@ export function PhysicsPaintStudio() {
     if (!baked) return { kind: 'refused', reason: 'bake-failed' };
     return { kind: 'baked', bytes: baked.bytes };
   };
+  // 261031-i54 UAT: a pixel-only rail stores the picture itself, so a stack run
+  // draws the new sheet over each touched key's CURRENT payload. A missing
+  // record is a newly appended key — its base is blank, so the sheet is the
+  // complete content. Never purges or pins: there is no script to replace.
+  const composeStackedRailKey = async (input: {
+    readonly keyId: string;
+    readonly appFrame: number;
+    readonly strokes: readonly AquarelleStroke[];
+  }): Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }> => {
+    const launch = launchContextRef.current;
+    if (!launch) return { kind: 'refused', reason: 'launch-unavailable' };
+    const baked = await bakeAquarelleEventsToFrame({
+      events: input.strokes.map((stroke) => toStudioStroke(stroke)),
+      size: { width: canvasWidth, height: canvasHeight },
+      paper: aquarelleLiftPaperRef.current,
+    });
+    if (!baked) return { kind: 'refused', reason: 'bake-failed' };
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), input.keyId);
+    if (!record) return { kind: 'baked', bytes: baked.bytes };
+    let baseBytes: Uint8Array;
+    try {
+      baseBytes = requirePhysicPaintRotoInlineBytes(record.payload);
+    } catch {
+      return { kind: 'refused', reason: 'durable-base-unknown' };
+    }
+    const composed = await composeRotoScriptRebakeFrame({
+      durableBaseBytes: baseBytes,
+      sheetBytes: baked.bytes,
+      appFrame: input.appFrame,
+      size: { width: canvasWidth, height: canvasHeight },
+    });
+    return composed === null
+      ? { kind: 'refused', reason: 'composite-failed' }
+      : { kind: 'baked', bytes: composed.bytes };
+  };
   // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
   // timeline the live sheet writes, with mutation ids from the ONE ledger. A
   // replace REPLACES a key's script (purge + known-empty pin); an append adds
@@ -4036,6 +4071,8 @@ export function PhysicsPaintStudio() {
     recordRailKeyScripts,
     // 261031-i54 (Quick A): Keep script ON's raw union re-bake port.
     bakeStackedRailKey,
+    // 261031-i54 UAT: the pixel-only rail's composite-over-picture port.
+    composeStackedRailKey,
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,

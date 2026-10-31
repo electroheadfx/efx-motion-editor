@@ -256,6 +256,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   const availabilityRevision = signal(0);
   const recordRailKeyScripts = vi.fn();
   const bakeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-union') }));
+  const composeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-composite') }));
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
@@ -263,11 +264,11 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log,
     createAquarelleAdapter, createAquarelleBake,
-    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey,
+    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey,
     ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 function expectPlayScriptPublication(
@@ -4239,11 +4240,10 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
   });
 
   it('stacks a repeated occurrence at its source-cycle frame with no new Loop Clip and no materialized occurrence', async () => {
-    const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2)],
       { canonicalStart: 13 },
-      { recordRailKeyScripts: recorder, getScriptNaturalDuration: () => 3 },
+      { getScriptNaturalDuration: () => 3 },
       { kind: 'real-key', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
@@ -4279,8 +4279,6 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(target.sourceKeyIds.slice(0, 4)).toEqual([...CYCLE_IDS]);
     // The authority is asked at the RUN START, never at the occurrence frame.
     expect(test.requestAuthority.mock.calls.map((call) => call[1])).toEqual([13, 13, 13]);
-    expect(recorder).toHaveBeenCalledTimes(1);
-    expect(recorder.mock.calls[0]![0]).toMatchObject({ recordMode: 'replace' });
   });
 
   it('keeps the create path byte-identical when the playhead is outside every rail', async () => {
@@ -4341,15 +4339,16 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(publication.semanticDelta).toMatchObject({ affectedStartAppFrame: 11, affectedEndAppFrame: 29 });
   });
 
-  it('records the touched keys with recordMode replace and never writes keyScriptEdits', async () => {
+  it('records the touched keys with recordMode replace on a flag-on rail with Keep OFF and never flips keyScriptEdits', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
-      [stackClip(2)],
+      [stackClip(2, { keyScriptEdits: true })],
       { canonicalStart: 13 },
       { recordRailKeyScripts: recorder },
       { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
+    test.controller.setKeepScript(false);
     // The dialog's render mode is the bake mode: Static puts the full run on
     // every written key (the rail's own static law), Progressive grows it.
     test.controller.mode.value = 'static';
@@ -4370,7 +4369,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       ['tip-a', 'tip-b'],
     ]);
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
-    expect('keyScriptEdits' in target).toBe(false);
+    expect(target.keyScriptEdits).toBe(true);
   });
 
   it('gates the Keep script switch on the stack target, the persisted flag and the union port', () => {
@@ -4378,7 +4377,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(flagOff.controller.keepScriptVisible.value).toBe(true);
     expect(flagOff.controller.keepScript.value).toBe(false);
     expect(flagOff.controller.keepScriptEffective.value).toBe(false);
-    expect(flagOff.controller.keepScriptDisabledReason.value).toContain('replaces the touched span');
+    expect(flagOff.controller.keepScriptDisabledReason.value).toContain('composited over its existing pixels');
 
     const flagOn = stackHarness([stackClip(2, { keyScriptEdits: true })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
     expect(flagOn.controller.keepScriptVisible.value).toBe(true);
@@ -4472,7 +4471,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.error.value).toContain('bake-failed');
   });
 
-  it('keeps the union branch unreachable on a flag-off rail, so OFF always replaces', async () => {
+  it('composites a pixel-only rail over its existing frames and records nothing (UAT 261031-i54)', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2)],
@@ -4488,8 +4487,45 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     test.controller.countText.value = '3';
     nextBakeBehavior(reportAnchors);
     expect(await test.controller.confirm()).toBe(true);
+
+    // One composite per touched key over its CURRENT payload; no union bake,
+    // no script recording, no base pin — the picture stays authoritative.
     expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
-    expect((recorder.mock.calls[0]![0] as { recordMode: string }).recordMode).toBe('replace');
+    expect(test.composeStackedRailKey).toHaveBeenCalledTimes(3);
+    const composeCalls = test.composeStackedRailKey.mock.calls as unknown as Array<[{
+      keyId: string;
+      appFrame: number;
+      strokes: readonly { brushId: string }[];
+    }]>;
+    expect(composeCalls.map((call) => call[0].appFrame)).toEqual([13, 14, 15]);
+    expect(recorder).not.toHaveBeenCalled();
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const compositeBytes = testWebpBytes('stacked-composite');
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([compositeBytes, compositeBytes, compositeBytes]);
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(target.keyScriptEdits).toBeUndefined();
+  });
+
+  it('fails a pixel-only stack run closed when the composite refuses', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      {
+        recordRailKeyScripts: recorder,
+        composeStackedRailKey: vi.fn(async () => ({ kind: 'refused' as const, reason: 'durable-base-unknown' })),
+      },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('durable-base-unknown');
   });
 
   it('offers overwrite only across another rail and removes the victim clip in the same commit', async () => {
@@ -4956,7 +4992,6 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
   /* ---- Final remediation: CR-07, WR-02, WR-05, WR-12, WR-14 ---- */
 
   it('accepts a coordinator-normalized ack for a lifecycle-less infinity clip (CR-07)', async () => {
-    const recorder = vi.fn();
     // The coordinator's capture snapshot runs every clip through the wire
     // normalizer, which synthesizes a one-cycle lifecycle for an infinity clip
     // that the store deliberately keeps lifecycle-less.
@@ -4973,7 +5008,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const test = stackHarness(
       [stackClip('infinity')],
       { canonicalStart: 11 },
-      { recordRailKeyScripts: recorder, commit: coordinatorCommit },
+      { commit: coordinatorCommit },
       { kind: 'empty', keyId: null, appFrame: 11 },
     );
     await test.controller.openConfirmation();
@@ -4987,10 +5022,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(published.syncState).toBeUndefined();
     expect(published.phaseOrigin).toBeUndefined();
     // ...while the ack carried the synthesized one. The canonical comparison
-    // recognises them as the same clip, so the run settles and records instead
-    // of reporting failure after the edit landed.
+    // recognises them as the same clip, so the run settles instead of
+    // reporting failure after the edit landed.
     expect(test.controller.error.value).toBeNull();
-    expect(recorder).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a normalized ack whose synthesized lifecycle differs from the canonical publication (CR-07)', async () => {

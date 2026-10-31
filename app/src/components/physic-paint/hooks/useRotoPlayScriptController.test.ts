@@ -310,6 +310,15 @@ describe('useRotoPlayScriptController', () => {
     expect(getPhysicalDocument).not.toHaveBeenCalled();
   });
 
+  it('261031-i54: forwards the pixel-only stack composite port verbatim', async () => {
+    const composeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: new Uint8Array([1]) }));
+    renderHook({ ...ports(1), composeStackedRailKey });
+    const stablePorts = captured.ports!;
+    expect(stablePorts.composeStackedRailKey).toBeTypeOf('function');
+    await stablePorts.composeStackedRailKey!({ keyId: 'key-1', appFrame: 4, strokes: [] });
+    expect(composeStackedRailKey).toHaveBeenCalledWith({ keyId: 'key-1', appFrame: 4, strokes: [] });
+  });
+
   it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {
     vi.useFakeTimers();
     try {
