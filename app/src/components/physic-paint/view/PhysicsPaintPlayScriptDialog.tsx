@@ -199,6 +199,15 @@ export function PhysicsPaintPlayScriptDialog({
   if (!confirmationOpen) return null;
 
   const busy = playScript.canCancel.value;
+  // UAT 261031-i54: the footer reports the WHOLE operation, not only the bake's
+  // frame counter — preparing, the post-bake rebuild/commit and the synchronous
+  // key-script recording all keep the user informed instead of a full, silent bar.
+  const progressValue = playScript.progress.value;
+  const progressBusy = playScript.canCancel.value
+    || playScript.phase.value === 'preparing'
+    || playScript.phase.value === 'committing'
+    || playScript.phase.value === 'regenerating';
+  const progressLabel = playScript.status.value ?? (progressValue ? `${progressValue.completed}/${progressValue.total}` : '');
   // 52-05 (G-52-3): the Rail Type control renders the Paint labels on the Paint
   // tab and the Reveal labels on the Reveal tab — both write the same mode union.
   const activeModeOptions = revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
@@ -921,8 +930,12 @@ export function PhysicsPaintPlayScriptDialog({
         {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
           <div class="physics-paint-play-script-progress-line">
-            {playScript.progress.value ? <progress max={playScript.progress.value.total} value={playScript.progress.value.completed}>{playScript.progress.value.completed}/{playScript.progress.value.total}</progress> : null}
-            <span class="physics-paint-play-script-progress-status">{playScript.progress.value ? `${playScript.progress.value.completed}/${playScript.progress.value.total}` : ''}</span>
+            {progressValue ? (
+              <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
+            ) : progressBusy ? (
+              <progress aria-label={progressLabel} />
+            ) : null}
+            <span class="physics-paint-play-script-progress-status">{progressLabel}</span>
           </div>
           <div class="physics-paint-play-script-actions">
             {regenerateImpact ? (<>

@@ -1047,13 +1047,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   });
   let keepScriptSeedKey: string | null = null;
   const seedKeepScript = effect(() => {
-    const destination = runDestination.value;
-    const key = destination.kind === 'stack'
+    // UAT 261031-i54: seed ONLY while the dialog is open. Reading the live
+    // destination unconditionally re-derived every rail's ranges on each
+    // playhead tick (one effect subscription per frame), which made playback
+    // and scrubbing sluggish for no visible result.
+    const destination = confirmationOpen.value && dialogMode.value === 'apply'
+      ? runDestination.value
+      : null;
+    const key = destination?.kind === 'stack'
       ? `${destination.rail.clipId}:${destination.rail.keyScriptEdits === true ? 1 : 0}`
       : null;
     if (key === keepScriptSeedKey) return;
     keepScriptSeedKey = key;
-    const next = destination.kind === 'stack' && destination.rail.keyScriptEdits === true
+    const next = destination?.kind === 'stack' && destination.rail.keyScriptEdits === true
       ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT
       : false;
     if (keepScript.peek() !== next) keepScript.value = next;
@@ -1263,7 +1269,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const stackSurfaceAtOpen = destination.kind === 'stack' ? stackSurfaceFrom(stackContext.peek()) : null;
     const stackStart = destination.kind === 'stack' ? destination.runStartAppFrame : null;
     const operationId = nextOperationId('authority');
-    phase.value = 'preparing'; status.value = 'Preparing Play Script…'; error.value = null;
+    phase.value = 'preparing'; progress.value = null; status.value = 'Preparing Play Script…'; error.value = null;
     try {
       // 261031-dm1: opening the dialog reads only scalars plus {keyId, appFrame},
       // so it asks for identities only — no WebP bytes cross the bridge.
@@ -2403,6 +2409,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // recording; slots align with the committed destination frames.
       const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
       if (recordScripts && useUnion && unionBake !== undefined && slices.length > 0) {
+        status.value = 'Rebuilding key scripts…';
         const unionBytesByFrame = new Map<number, Uint8Array>();
         for (const slice of slices) {
           const keyId = touchedKeyIds[slice.slot];
@@ -2417,6 +2424,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // Pixel-only target: draw the run over the key's CURRENT payload. The
         // old replace path pinned the durable base empty, so this publication
         // erased the rail's existing render (UAT 261031-i54).
+        status.value = 'Compositing the run…';
         const compose = ports.composeStackedRailKey;
         if (!compose) throw new Error('This rail saves pixels, but this build cannot composite the run. Nothing changed.');
         const compositeBytesByFrame = new Map<number, Uint8Array>();
@@ -2439,6 +2447,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // replaces them. A pixel-only rail records nothing — its picture already
       // carries the run, and `keyScriptEdits` is never flipped here.
       if (recordScripts) {
+        if (slices.length > 0) {
+          status.value = 'Recording key scripts…';
+          // The recording loop is synchronous: let the footer paint the phase
+          // before it starts instead of leaving the bar silently full.
+          await yieldToPaint();
+        }
         ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: useUnion ? 'append' : 'replace' });
       }
       collisionChoice.value = null;
@@ -2878,6 +2892,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             strokes: slice.strokes.length,
           })),
         });
+        status.value = 'Recording key scripts…';
+        // Let the footer paint this phase before the synchronous recording loop.
+        await yieldToPaint();
         ports.recordRailKeyScripts?.({ keyIds: cycleKeyIds, slices: keyScriptSlices, recordMode: 'replace' });
       }
       // Single appliedSummary assignment site: composed atomically from the options snapshot and
@@ -3291,6 +3308,15 @@ function normalizeBrushColor(value: unknown): string | null {
 
 // 261030-ey9: every dialogMotion write funnels through here so the signal always
 // carries four numeric channels, even when the source is a compact persisted record.
+/** Give the dialog one paint turn before a synchronous post-commit loop. */
+function yieldToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    const raf = (globalThis as { requestAnimationFrame?: (callback: () => void) => number }).requestAnimationFrame;
+    if (typeof raf === 'function') raf(() => resolve());
+    else globalThis.setTimeout(resolve, 0);
+  });
+}
+
 function toDialogMotion(motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>): { deformation: number; position: number; rotation: number; scale: number } {
   return {
     deformation: motion.deformation ?? 0,

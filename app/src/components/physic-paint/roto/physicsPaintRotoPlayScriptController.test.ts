@@ -2934,7 +2934,9 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     it('reports an identical Static / Hold source cycle at repeat 1 because Hold always has loop intent', async () => {
-      const test = applyHarness([loopClip('L1', 10, 3)]);
+      // UAT 261031-i54: a rail under the playhead is a STACK destination, so
+      // these creation cases keep L1 short of the frame-20 apply start.
+      const test = applyHarness([loopClip('L1', 10, 1)]);
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
@@ -2949,7 +2951,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     it('Link to existing cycle: ONE loop-only commit, NO render, the new loop shares the existing sourceKeyIds', async () => {
-      const test = applyHarness([loopClip('L1', 10, 3)]);
+      const test = applyHarness([loopClip('L1', 10, 1)]);
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
@@ -2970,7 +2972,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     // 261031-dm1: a lean authority carries no raster bytes; the loop-only
     // builder must refuse it before any payload clone or commit.
     it('261031-dm1: a lean authority fails the link-to-existing-cycle path closed', async () => {
-      const test = applyHarness([loopClip('L1', 10, 3)], {
+      const test = applyHarness([loopClip('L1', 10, 1)], {
         identitiesOnly: true,
         physicalRecords: CYCLE_IDS.map((keyId, index) => ({
           keyId,
@@ -3018,7 +3020,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     it('261030-ig0: writes keyScriptEdits on the Link-to-existing-cycle branch too', async () => {
-      const test = applyHarness([loopClip('L1', 10, 3)]);
+      const test = applyHarness([loopClip('L1', 10, 1)]);
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
@@ -3031,7 +3033,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       const linked = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId !== 'L1');
       expect(linked?.keyScriptEdits).toBe(true);
 
-      const off = applyHarness([loopClip('L1', 10, 3)]);
+      const off = applyHarness([loopClip('L1', 10, 1)]);
       await off.controller.openConfirmation();
       off.controller.mode.value = 'static';
       off.controller.countText.value = '5';
@@ -3086,7 +3088,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       // A salted existing cycle: only an ON draft matches it, and the linked
       // clip is a NEW record that must carry the flag (a later Regenerate or
       // Source Edit of it re-bakes with the persisted fact).
-      const salted = [loopClip('L1', 10, 3)];
+      const salted = [loopClip('L1', 10, 1)];
       Object.assign(salted[0], { paintSeedVariation: true });
       const test = applyHarness(salted);
       await test.controller.openConfirmation();
@@ -3215,7 +3217,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
     });
 
     it('Create new cycle: generation proceeds and the new loop references the NEW committed keyIds', async () => {
-      const test = applyHarness([loopClip('L1', 10, 3)]);
+      const test = applyHarness([loopClip('L1', 10, 1)]);
       await test.controller.openConfirmation();
       test.controller.mode.value = 'static';
       test.controller.countText.value = '5';
@@ -4372,7 +4374,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(target.keyScriptEdits).toBe(true);
   });
 
-  it('gates the Keep script switch on the stack target, the persisted flag and the union port', () => {
+  it('gates the Keep script switch on the stack target, the persisted flag and the union port', async () => {
     const flagOff = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
     expect(flagOff.controller.keepScriptVisible.value).toBe(true);
     expect(flagOff.controller.keepScript.value).toBe(false);
@@ -4380,6 +4382,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(flagOff.controller.keepScriptDisabledReason.value).toContain('composited over its existing pixels');
 
     const flagOn = stackHarness([stackClip(2, { keyScriptEdits: true })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    // UAT 261031-i54: the switch is seeded only while the dialog is open.
+    await flagOn.controller.openConfirmation();
     expect(flagOn.controller.keepScriptVisible.value).toBe(true);
     expect(flagOn.controller.keepScript.value).toBe(true);
     expect(flagOn.controller.keepScriptEffective.value).toBe(true);
@@ -4526,6 +4530,49 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.commit).not.toHaveBeenCalled();
     expect(recorder).not.toHaveBeenCalled();
     expect(test.controller.error.value).toContain('durable-base-unknown');
+  });
+
+  it('reports the post-bake composite phase before the commit (UAT 261031-i54)', async () => {
+    let releaseAll!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseAll = resolve; });
+    const composeStackedRailKey = vi.fn(async (): Promise<{ kind: 'baked'; bytes: Uint8Array }> => {
+      await gate;
+      return { kind: 'baked', bytes: testWebpBytes('composite-later') };
+    });
+    const test = stackHarness(
+      [stackClip(1)],
+      { canonicalStart: 11 },
+      { composeStackedRailKey },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    nextBakeBehavior(reportAnchors);
+    const run = test.controller.confirm();
+    await vi.waitFor(() => expect(composeStackedRailKey).toHaveBeenCalled());
+    // The bar already reads 2/2 from the bake; the footer names the work that
+    // is still running instead of leaving a full, silent bar.
+    expect(test.controller.status.value).toBe('Compositing the run…');
+    releaseAll();
+    expect(await run).toBe(true);
+  });
+
+  it('clears the previous progress when the dialog opens (UAT 261031-i54)', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    test.controller.progress.value = { completed: 5, total: 5 };
+    await test.controller.openConfirmation();
+    expect(test.controller.progress.value).toBeNull();
+  });
+
+  it('does not re-derive rail ranges on availability ticks while the dialog is closed (UAT 261031-i54)', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 11 }, {}, { kind: 'real-key', keyId: null, appFrame: 11 });
+    test.getLoopEditSnapshot.mockClear();
+    test.bumpAvailability();
+    await Promise.resolve();
+    expect(test.getLoopEditSnapshot).not.toHaveBeenCalled();
+    // Opening the dialog is the moment the destination must resolve.
+    await test.controller.openConfirmation();
+    expect(test.getLoopEditSnapshot).toHaveBeenCalled();
   });
 
   it('offers overwrite only across another rail and removes the victim clip in the same commit', async () => {

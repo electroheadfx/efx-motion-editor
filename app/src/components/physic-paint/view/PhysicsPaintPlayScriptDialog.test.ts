@@ -68,6 +68,7 @@ interface FakeControllerSeed {
   loopReadout?: string | null;
   error?: string | null;
   progress?: { completed: number; total: number } | null;
+  status?: string | null;
   canCancel?: boolean;
   validationError?: string | null;
   phase?: string;
@@ -161,7 +162,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     disabledReason: sig<string | null>(null),
     phase: sig(seed.phase ?? 'idle'),
     progress: sig<{ completed: number; total: number } | null>(seed.progress ?? null),
-    status: sig<string | null>(null),
+    status: sig<string | null>(seed.status ?? null),
     error: sig<string | null>(seed.error ?? null),
     canCancel: sig(seed.canCancel ?? false),
     // 43-06 loop modes
@@ -758,6 +759,36 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(findOne(footer, (vnode) => vnode.type === 'progress')).toBeTruthy();
     expect(textOf(tree)).toContain('Cancel generation');
+  });
+
+  it('starts the progress bar during preparing with the phase label (UAT 261031-i54)', () => {
+    const { controller } = createFakeController({
+      canCancel: true,
+      phase: 'preparing',
+      progress: null,
+      status: 'Preparing Run Script…',
+    });
+    const tree = renderDialog(controller);
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    const bar = findOne(footer, (vnode) => vnode.type === 'progress');
+    // No value = indeterminate: the bar exists before the first frame commits.
+    expect(bar.props.value).toBeUndefined();
+    expect(textOf(footer)).toContain('Preparing Run Script…');
+  });
+
+  it('keeps the full bar but names the post-bake phase while committing (UAT 261031-i54)', () => {
+    const { controller } = createFakeController({
+      canCancel: false,
+      phase: 'committing',
+      progress: { completed: 10, total: 10 },
+      status: 'Committing Run Script…',
+    });
+    const tree = renderDialog(controller);
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    const bar = findOne(footer, (vnode) => vnode.type === 'progress');
+    expect(bar.props.value).toBe(10);
+    expect(bar.props.max).toBe(10);
+    expect(textOf(footer)).toContain('Committing Run Script…');
   });
 });
 
