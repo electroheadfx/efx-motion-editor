@@ -2271,6 +2271,7 @@ button.destructive {
   font-size: 12.5px;
   font-weight: 600;
   text-align: center;
+  text-transform: none;
   cursor: pointer;
   user-select: none;
   transition: background 120ms ease, color 120ms ease;
@@ -2282,8 +2283,8 @@ button.destructive {
 }
 
 .physics-paint-play-script-tab[aria-selected="true"] {
-  background: var(--ps-accent);
-  color: oklch(0.99 0 0);
+  background: #f59e0b;
+  color: #241a05;
   box-shadow: 0 1px 4px oklch(0 0 0 / 0.35);
 }
 
