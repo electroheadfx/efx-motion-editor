@@ -1,6 +1,10 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import {
+  isStandardMergedLoopClip,
+  STANDARD_RAIL_REGENERATE_REASON,
+} from '../roto/physicsPaintRotoRunScriptStacking';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import {
   CollisionCard,
@@ -51,6 +55,10 @@ export function PhysicsPaintPlayScriptDialog({
   const loopEdit = dialogMode === 'loop-edit';
   const sourceEdit = dialogMode === 'source-edit';
   const editTarget = playScript.loopEditTarget.value;
+  /* 261031-vbo (Quick C1): a merged Standard Rail has no single-script
+     provenance, so it has no editable Motion/Static rail type and no
+     Regenerate path. The stored `mode` stays internal. */
+  const standardEditTarget = loopEdit && editTarget !== null && isStandardMergedLoopClip(editTarget);
   const regenerateImpact = sourceEdit ? playScript.regenerateImpact.value : null;
   const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
   const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
@@ -308,6 +316,7 @@ export function PhysicsPaintPlayScriptDialog({
               busy={busy}
               locked={loopEdit}
               stacking={stacking}
+              standard={standardEditTarget}
             />
           )}
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
@@ -448,6 +457,9 @@ export function PhysicsPaintPlayScriptDialog({
                   ref={regenerateTriggerRef}
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
+                  disabled={standardEditTarget}
+                  title={standardEditTarget ? STANDARD_RAIL_REGENERATE_REASON : undefined}
+                  aria-disabled={standardEditTarget ? 'true' : undefined}
                   onClick={() => {
                     const targetId = playScript.loopEditTargetId.value;
                     if (targetId) void playScript.openSourceEdit(targetId);
@@ -464,7 +476,9 @@ export function PhysicsPaintPlayScriptDialog({
                   onClick={() => { void playScript.confirm(); }}
                 >
                   {loopEdit
-                    ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
+                    ? standardEditTarget
+                      ? 'Update Rail'
+                      : playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
                     : sourceEdit ? 'Regenerate source cycle' : 'Run Script'}
                 </button>
               ) : null}

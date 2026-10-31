@@ -342,6 +342,9 @@ export type RotoGroupDragProductReasonInput =
   | {
       readonly kind: 'accepted';
       readonly mode: PhysicPaintRotoLoopClip['mode'];
+      /** 261031-vbo (Quick C1): the effective rail kind — a merged Standard Rail
+       *  keeps its stored `mode`, so only this classification can say Standard. */
+      readonly railKind?: RotoRailKind;
       readonly destinationPlacementStart: number;
       /** The Group's original half-open interval when source-attached; null for duplicated placements (D-11). */
       readonly vacatedInterval: { readonly phaseOrigin: number; readonly effectiveEnd: number } | null;
@@ -359,7 +362,9 @@ export function mapRotoGroupDragProductReason(input: RotoGroupDragProductReasonI
         ? 'No empty space in that direction.'
         : (input.failureText || 'The Group move is invalid.');
     case 'accepted': {
-      const railType = input.mode === 'static' ? 'Static Rail' : 'Motion Rail';
+      const railType = input.railKind === 'standard'
+        ? 'Standard Rail'
+        : input.mode === 'static' ? 'Static Rail' : 'Motion Rail';
       const moved = `Moved ${railType} to frame ${input.destinationPlacementStart}.`;
       if (input.vacatedInterval === null) return moved;
       // D-07: inclusive product range derived from the canonical half-open
@@ -2729,11 +2734,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       selectedAppFrame: publication.proposal.selectedAppFrame,
     });
     if (accepted) {
-      const mode = input.getRotoLoopClips?.().find((clip) => clip.loopId === publication.loopId)?.mode
-        ?? 'progressive';
+      const clip = input.getRotoLoopClips?.().find((candidate) => candidate.loopId === publication.loopId);
       input.publishStatus?.(mapRotoGroupDragProductReason({
         kind: 'accepted',
-        mode,
+        mode: clip?.mode ?? 'progressive',
+        railKind: classifyLoopClipRailKind(clip),
         destinationPlacementStart: publication.clampedDestinationPlacementStart,
         vacatedInterval: publication.vacatedInterval,
       }));

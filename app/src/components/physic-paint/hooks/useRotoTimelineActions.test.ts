@@ -2281,6 +2281,39 @@ describe('useRotoTimelineActions Group-drag status, busy gate, and post-commit s
     expect(publishStatus).toHaveBeenCalledWith('Moved Static Rail to frame 12.');
   });
 
+  it('reports an accepted merged-clip drag as a Standard Rail, never Motion/Static (261031-vbo)', async () => {
+    // A merged rail keeps its stored `mode`; only the provenance-free
+    // classification can name it Standard.
+    const mergedGroup = lifecycleGroup({
+      loopId: 'group-merged',
+      placementStart: 10,
+      sourceKeyIds: Object.freeze(['A', 'C']),
+      mode: 'static',
+      scriptId: undefined,
+      motion: undefined,
+      overrideColor: undefined,
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: Object.freeze([
+        Object.freeze({ start: 10, endExclusive: 13 }),
+        Object.freeze({ start: 14, endExclusive: 18 }),
+      ]),
+    });
+    const { actions, publishStatus } = createHarness({
+      records: [realKeyRecord('A', 1), realKeyRecord('C', 5)],
+      loopClips: [mergedGroup],
+      capacity: 24,
+    });
+    const preparation = actions.physicalActions.prepareRotoGroupDrag('group-merged', 12);
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Merged group drag must prepare');
+
+    const accepted = await actions.physicalActions.commitRotoGroupDrag(preparation.publication);
+    expect(accepted).toBe(true);
+    expect(publishStatus).toHaveBeenCalledWith('Moved Standard Rail to frame 12.');
+    expect(publishStatus).not.toHaveBeenCalledWith('Moved Static Rail to frame 12.');
+  });
+
   it('appends the inclusive vacated-gap range when a source-attached move opens a gap (D-07)', async () => {
     const { actions, publishStatus } = createHarness({ records: groupRecords, loopClips: [group], capacity: 16 });
     const preparation = actions.physicalActions.prepareRotoGroupDrag('group-1', 4);

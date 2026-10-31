@@ -61,6 +61,7 @@ import {
   type RotoPlayScriptMode,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
+import { STANDARD_RAIL_REGENERATE_REASON } from '../roto/physicsPaintRotoRunScriptStacking';
 
 const source = [
   readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8'),
@@ -94,7 +95,7 @@ interface FakeControllerSeed {
   // 43-06 loop modes
   dialogMode?: 'apply' | 'loop-edit' | 'source-edit';
   loopEditTargetId?: string | null;
-  loopEditTarget?: { loopId: string; placementStart: number; sourceKeyIds: string[]; repeat: number | 'infinity'; mode: 'progressive' | 'static' } | null;
+  loopEditTarget?: PhysicPaintRotoLoopClip | null;
   loopEditSourceStart?: number | null;
   sourceEditSharedLoopCount?: number;
   regenerateDisabledReason?: string | null;
@@ -1067,7 +1068,9 @@ describe('PhysicsPaintPlayScriptDialog pending Loop Clip authority transition', 
 // 43-06 Task 2 (D-01/D-02/D-05): loop-edit (S2), source-edit (S3), and the
 // apply-time Link/Create choice (S4) on the SAME Phase 42 modal shell.
 describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
-  const target = { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const };
+  // 261031-vbo: a TYPED rail carries single-script provenance; a provenance-free
+  // non-Reveal clip now classifies as a merged Standard Rail.
+  const target = { loopId: 'L1', placementStart: 10, sourceKeyIds: ['S1', 'S2', 'S3', 'S4', 'S5'], repeat: 3 as const, mode: 'static' as const, scriptId: 'script-1' };
   const loopEditSeed = {
     dialogMode: 'loop-edit' as const,
     loopEditTargetId: 'L1',
@@ -1162,6 +1165,56 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const { controller } = createFakeController({ ...loopEditSeed, repeatError: 'Enter a positive integer.' });
     const tree = renderDialog(controller);
     expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Static').props.disabled).toBe(true);
+  });
+});
+
+// 261031-vbo (Quick C1): a merged Standard Rail is a merge of RESULTS, not a
+// rail type — the dialog never presents the stored `mode` as Motion/Static.
+describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-vbo)', () => {
+  const mergedTarget = {
+    loopId: 'M1',
+    placementStart: 10,
+    sourceKeyIds: ['S1', 'S2', 'S3'],
+    repeat: 2 as const,
+    mode: 'static' as const,
+  };
+  const mergedSeed = {
+    dialogMode: 'loop-edit' as const,
+    loopEditTargetId: 'M1',
+    loopEditTarget: mergedTarget,
+    loopEditSourceStart: 10,
+    mode: 'static' as const,
+    countText: '3',
+    repeatText: '2',
+  };
+
+  it('shows a read-only Standard rail type and no Motion/Static rail-type radios', () => {
+    const { controller } = createFakeController(mergedSeed);
+    const tree = renderDialog(controller);
+    const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Rail Type');
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-standard-rail-value')))).toBe('Standard');
+    expect(findAll(modeCard, byRadioGroup('Rail Type'))).toHaveLength(0);
+    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Motion')).toHaveLength(0);
+    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Static')).toHaveLength(0);
+  });
+
+  it('labels the primary action Update Rail', () => {
+    const { controller } = createFakeController(mergedSeed);
+    const tree = renderDialog(controller);
+    const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Rail'))).toBe('Update Rail');
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Static')).toHaveLength(0);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
+  });
+
+  it('disables Regenerate Rail with the merged-rail reason as its title', () => {
+    const { controller } = createFakeController(mergedSeed);
+    const tree = renderDialog(controller);
+    const trigger = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail');
+    expect(trigger.props.disabled).toBe(true);
+    expect(trigger.props.title).toBe(STANDARD_RAIL_REGENERATE_REASON);
+    expect(trigger.props['aria-disabled']).toBe('true');
   });
 });
 
@@ -1296,10 +1349,9 @@ describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)'
 
 describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
   it('ships the revised Rail action labels in normal casing and never the prohibited terms', () => {
-    for (const locked of ['Edit Rail', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Regenerate Rail', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
+    for (const locked of ['Edit Rail', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Update Rail', 'Regenerate Rail', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
       expect(source).toContain(locked);
     }
-    expect(source).not.toContain('Update Rail');
     expect(source).not.toContain('clip bloquant');
     expect((source.match(/clip bloquant/g) ?? []).length).toBe(0);
   });

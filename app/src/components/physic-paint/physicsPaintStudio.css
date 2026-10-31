@@ -2525,6 +2525,19 @@ button.destructive {
   background: var(--ps-inset);
 }
 
+/* 261031-vbo (Quick C1): the merged Standard Rail's read-only Rail Type value.
+   The stored `mode` stays internal — it is never presented as Motion/Static. */
+.physics-paint-play-script-standard-rail-value {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--ps-border);
+  border-radius: var(--ps-radius);
+  background: var(--ps-inset);
+  color: var(--ps-fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 .physics-paint-play-script-mode-option {
   min-width: 0;
   padding: 7px 10px;
@@ -3675,6 +3688,13 @@ button.destructive {
   background: #a7b0b9;
 }
 
+/* 261031-vbo (Quick C1): a merged Standard Rail previews neutral gray in every
+   drag surface — never purple/cyan. Placed after the mode-static rule so the
+   equal-specificity standard rule wins on a merged rail that keeps `mode`. */
+.physics-paint-push-hover-rail.rail-kind-standard {
+  background: #D1D5DB;
+}
+
 .physics-paint-push-pivot-tick {
   position: absolute;
   top: 4px;
@@ -3712,6 +3732,10 @@ button.destructive {
   background: #8a939c;
 }
 
+.physics-paint-push-ghost.rail-kind-standard {
+  background: #9CA3AF;
+}
+
 .physics-paint-push-blocked-edge {
   position: absolute;
   top: 0;
@@ -3747,6 +3771,10 @@ button.destructive {
 
 .physics-paint-rail-set-ghost.key-rail {
   background: #8a939c;
+}
+
+.physics-paint-rail-set-ghost.rail-kind-standard {
+  background: #9CA3AF;
 }
 
 .physics-paint-rail-set-blocked-edge {

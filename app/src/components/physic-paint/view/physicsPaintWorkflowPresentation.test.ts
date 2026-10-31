@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
   classifyLoopClipRailKind,
-  classifyRotoRailKind,
   collectRotoGroupDragGapPreviewAppFrames,
   getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
   getRotoCellPresentationViewModel,
@@ -746,13 +745,7 @@ describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43
 });
 
 describe('rail-kind classification (52-04, D-03/D-19 — the reveal rail is the 4th rail kind)', () => {
-  it('classifies an absent railKind as playscript (no migration)', () => {
-    expect(classifyRotoRailKind(undefined)).toBe('playscript');
-    expect(classifyRotoRailKind('playscript')).toBe('playscript');
-  });
-
-  it('classifies the reveal rail kind (D-03)', () => {
-    expect(classifyRotoRailKind('reveal')).toBe('reveal');
+  it('recognises the reveal rail kind (D-03)', () => {
     expect(isRevealRotoRail('reveal')).toBe(true);
     expect(isRevealRotoRail(undefined)).toBe(false);
     expect(isRevealRotoRail('playscript')).toBe(false);

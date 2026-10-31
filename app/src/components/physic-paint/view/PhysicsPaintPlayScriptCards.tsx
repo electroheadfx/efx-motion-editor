@@ -138,19 +138,26 @@ export function RailTypeCard(props: {
   busy: boolean;
   locked: boolean;
   stacking: boolean;
+  /** 261031-vbo (Quick C1): a merged edit target has no editable rail type —
+   *  the stored `mode` is internal and must never render as Motion/Static. */
+  standard?: boolean;
 }) {
   const options = props.revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
   return (
     <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
       <span class="physics-paint-play-script-card-title">Rail Type</span>
-      <DialogRadioGroup
-        ariaLabel="Rail Type"
-        options={options}
-        value={props.playScript.mode.value}
-        getValue={() => props.playScript.mode.value}
-        disabled={props.busy || props.locked}
-        onSelect={(value) => { props.playScript.mode.value = value; }}
-      />
+      {props.standard ? (
+        <span class="physics-paint-play-script-standard-rail-value">Standard</span>
+      ) : (
+        <DialogRadioGroup
+          ariaLabel="Rail Type"
+          options={options}
+          value={props.playScript.mode.value}
+          getValue={() => props.playScript.mode.value}
+          disabled={props.busy || props.locked}
+          onSelect={(value) => { props.playScript.mode.value = value; }}
+        />
+      )}
       {props.stacking ? (
         <span class="physics-paint-play-script-mode-helper">
           This run merges into the rail — the result is one Standard Rail.

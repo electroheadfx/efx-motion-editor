@@ -23,6 +23,7 @@ import {
   type RotoCellSemanticTooltipKind,
   type RotoCellViewModel, type RotoMissingFrameStatusKind,
   type RotoDragPreviewViewModel,
+  type RotoRailKind,
 } from './physicsPaintWorkflowPresentation';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
@@ -3648,6 +3649,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       readonly id: string;
       readonly kind: 'key-rail' | 'loop';
       readonly mode: 'motion' | 'static' | 'progressive' | null;
+      readonly railKind: RotoRailKind | null;
       readonly intervalStart: number;
       readonly intervalEndExclusive: number;
     }[] = [];
@@ -3659,6 +3661,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           id: segment.firstKeyId,
           kind: 'key-rail',
           mode: null,
+          railKind: null,
           intervalStart: segment.firstKeyFrame,
           intervalEndExclusive: segment.lastKeyFrame + 1,
         });
@@ -3670,6 +3673,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           id: member.loopId,
           kind: 'loop',
           mode: clip?.mode ?? 'motion',
+          // 261031-vbo (Quick C1): a merged Standard Rail keeps `mode`; the
+          // classification is what paints its ghost gray instead of purple/cyan.
+          railKind: classifyLoopClipRailKind(clip),
           intervalStart: range.placementStart,
           intervalEndExclusive: range.effectiveEnd,
         });
@@ -4722,22 +4728,30 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // that direction only, and the other direction stays available (tool armed).
   const pushHoverInvalid = pushDragBlocked.value !== null;
   const pushHoverGuardCopy = pushDragBlocked.value?.reason ?? '';
+  // 261031-vbo (Quick C1): a merged Standard Rail previews neutral gray — the
+  // stored `mode` class is kept (it still drives the typed rails) and the
+  // standard class is appended so the gray CSS rule wins.
   const pushHoverRailKindClass = (rail: PushPreviewRail): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
-    return rail.clip?.mode === 'static' ? ' mode-static' : '';
+    const standard = classifyLoopClipRailKind(rail.clip) === 'standard' ? ' rail-kind-standard' : '';
+    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}`;
   };
   const pushGhostRailKindClass = (rail: PushPreviewRail): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
-    return rail.clip?.mode === 'static' ? ' mode-static' : '';
+    const standard = classifyLoopClipRailKind(rail.clip) === 'standard' ? ' rail-kind-standard' : '';
+    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}`;
   };
   // 43.6-03: batch Move ghost kind class — Key Rail gray, Static cyan,
-  // Motion purple (UI-SPEC M3 kind base colors at 55% opacity).
+  // Motion purple (UI-SPEC M3 kind base colors at 55% opacity). A merged
+  // Standard Rail appends its gray classification over the stored mode.
   const railSetGhostRailKindClass = (rail: {
     readonly kind: 'key-rail' | 'loop';
     readonly mode: 'motion' | 'static' | 'progressive' | null;
+    readonly railKind: RotoRailKind | null;
   }): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
-    return rail.mode === 'static' ? ' mode-static' : '';
+    const standard = rail.railKind === 'standard' ? ' rail-kind-standard' : '';
+    return `${rail.mode === 'static' ? ' mode-static' : ''}${standard}`;
   };
   // 43.6-03: the blocked-edge bar paints on the colliding member's ghost
   // blocked edge — left edge of the leftmost blocked ghost for leftward,

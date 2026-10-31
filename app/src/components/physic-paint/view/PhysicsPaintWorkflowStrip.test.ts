@@ -193,6 +193,46 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(source()).toContain('railKind: classifyLoopClipRailKind(clip),');
   });
 
+  it('paints a merged Standard Rail gray in every drag preview surface (261031-vbo)', () => {
+    const code = source();
+    // (a) The push hover + ghost preview helpers classify the rail under the
+    // pointer and append the standard class instead of trusting `mode` alone.
+    for (const helperName of ['pushHoverRailKindClass', 'pushGhostRailKindClass']) {
+      const start = code.indexOf(`const ${helperName} = (rail: PushPreviewRail)`);
+      expect(start).toBeGreaterThan(-1);
+      const block = code.slice(start, code.indexOf('};', start));
+      expect(block).toContain("classifyLoopClipRailKind(rail.clip) === 'standard' ? ' rail-kind-standard'");
+    }
+    // (b) The rail-set ghost row carries the classification and the helper
+    // emits the standard class for it.
+    const ghostRailsStart = code.indexOf('const railSetMoveGhostRails = useMemo(');
+    expect(ghostRailsStart).toBeGreaterThan(-1);
+    const ghostRails = code.slice(ghostRailsStart, code.indexOf('}, [railSetMoveMembers', ghostRailsStart));
+    expect(ghostRails).toContain('railKind: classifyLoopClipRailKind(clip),');
+    const railSetHelperStart = code.indexOf('const railSetGhostRailKindClass = (rail: {');
+    expect(railSetHelperStart).toBeGreaterThan(-1);
+    const railSetHelper = code.slice(railSetHelperStart, code.indexOf('};', railSetHelperStart));
+    expect(railSetHelper).toContain("rail.railKind === 'standard' ? ' rail-kind-standard'");
+
+    // (c) The three ghost surfaces carry a gray standard rule that follows the
+    // mode-static rule (equal specificity → the later rule wins).
+    const styles = css();
+    const ruleBackground = (selector: string): string | null => {
+      const start = styles.indexOf(selector);
+      return start === -1 ? null : styles.slice(start, styles.indexOf('}', start));
+    };
+    expect(ruleBackground('.physics-paint-push-hover-rail.rail-kind-standard {')).toContain('background: #D1D5DB');
+    expect(ruleBackground('.physics-paint-push-ghost.rail-kind-standard {')).toContain('background: #9CA3AF');
+    expect(ruleBackground('.physics-paint-rail-set-ghost.rail-kind-standard {')).toContain('background: #9CA3AF');
+    for (const [standardRule, modeRule] of [
+      ['.physics-paint-push-hover-rail.rail-kind-standard {', '.physics-paint-push-hover-rail.mode-static {'],
+      ['.physics-paint-push-ghost.rail-kind-standard {', '.physics-paint-push-ghost.mode-static {'],
+      ['.physics-paint-rail-set-ghost.rail-kind-standard {', '.physics-paint-rail-set-ghost.mode-static {'],
+    ]) {
+      expect(styles.indexOf(standardRule)).toBeGreaterThan(styles.indexOf(modeRule));
+    }
+  });
+
   it('keeps the onion and key utility controls; the interpolation dropdown no longer renders (260911-s1j follow-up)', () => {
     const code = source();
     // 260911-s1j follow-up: the Interpolation section (mode dropdown + status

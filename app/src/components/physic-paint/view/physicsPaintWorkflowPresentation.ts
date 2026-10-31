@@ -28,14 +28,6 @@ export type RotoMissingFrameStatusKind = 'transparent' | 'background-only-interi
  *  non-Reveal clip, so the persisted schema is unchanged. */
 export type RotoRailKind = 'playscript' | 'reveal' | 'standard';
 
-/** The rail kinds the persisted record can actually carry (no merge state). */
-export type StoredRotoRailKind = Exclude<RotoRailKind, 'standard'>;
-
-/** Classify a STORED rail kind — absent means 'playscript' (no migration). */
-export function classifyRotoRailKind(railKind: StoredRotoRailKind | undefined): StoredRotoRailKind {
-  return railKind === 'reveal' ? 'reveal' : 'playscript';
-}
-
 /** True when the rail is a reveal rail (the 4th rail kind, D-03). */
 export function isRevealRotoRail(railKind: RotoRailKind | undefined): boolean {
   return railKind === 'reveal';
@@ -45,10 +37,13 @@ export function isRevealRotoRail(railKind: RotoRailKind | undefined): boolean {
  * Classify a Loop Clip's EFFECTIVE rail kind for both rail hosts.
  *
  * Quick C1 makes this the ONE classifier the active lane and the non-active
- * rows share: a merged rail (no `scriptId`, not Reveal) is 'standard', a Reveal
- * rail keeps its identity, and every other record — including a legacy
- * PlayScript rail from before Quick C1 that never carried a `scriptId` — is a
- * typed 'playscript' rail.
+ * rows share. The discriminator is absent single-script provenance: ANY
+ * non-Reveal clip whose `scriptId` is undefined classifies as 'standard', while
+ * a Reveal rail keeps its identity. A legacy PlayScript rail recorded before
+ * Quick C1 (which never carried a `scriptId`) therefore ALSO reclassifies as
+ * 'standard' — a direct consequence of the locked no-schema-change model
+ * (Standard is derived from absent provenance; no new stored field), not an
+ * accidental edge case.
  */
 export function classifyLoopClipRailKind(clip: PhysicPaintRotoLoopClip | undefined): RotoRailKind {
   if (clip === undefined) return 'playscript';

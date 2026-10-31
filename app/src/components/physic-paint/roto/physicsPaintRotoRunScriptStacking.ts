@@ -547,8 +547,10 @@ export function isStandardMergedLoopClip(clip: PhysicPaintRotoLoopClip | undefin
  * (`loopId`, `placementStart`), the destination's `repeat` and `mode` (the
  * schema requires `mode`; it stays an internal playback value and is never
  * presented as a rail type), the per-key script opt-in, the paint-seed opt-in
- * the merged rail's re-bake needs, the merged source cycle and the durable
- * lifecycle facts. Dropped — deliberately absent, never `undefined`-valued:
+ * (a merged rail cannot be regenerated; the field is consumed by a LATER stack
+ * run's bake, by identical-cycle matching, and by reveal-stack dialog
+ * seeding), the merged source cycle and the durable lifecycle facts.
+ * Dropped — deliberately absent, never `undefined`-valued:
  * `scriptId`, `motion`, `overrideColor` (single-script provenance Regenerate
  * would rebuild from) and `railKind`, `colorize`, `colorizeMix`, `photoWiggle`
  * (the Reveal identity). A non-null `lifecycle` plan (the run extended the
