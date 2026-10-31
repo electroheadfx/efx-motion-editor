@@ -12,7 +12,7 @@ import {
   buildEfxPaintDocumentRevision,
   buildEfxPaintTrackRevision,
 } from '../efx-paint/document/efxPaintDocumentRevision';
-import { isPhysicPaintRotoAuthorityRequest, type PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
+import { isPhysicPaintRotoAuthorityRequest, type PhysicPaintRotoAuthorityRequest, type PhysicPaintRotoAuthorityResult } from '../types/physicPaint';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoPhysicalDocument,
@@ -117,6 +117,22 @@ function mockParentAuthority(candidate: Layer): void {
     inFrame: 0,
     outFrame: 600,
   }];
+}
+
+/** Mount one track's runtime so the authority + gate read real per-track state. */
+function mountTrackRuntime(trackId: string, records: readonly PhysicPaintRotoRealKeyRecord[]): void {
+  const interpolation = { enabled: false, mode: 'duplicate' as const };
+  const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, {
+    capacity: 100,
+    realKeyRecords: records,
+    interpolation,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], []),
+  });
+  if (!result.ok) throw new Error(result.error);
 }
 
 const originalWindow = globalThis.window;
@@ -295,22 +311,6 @@ describe('three-dimensional Roto authority (46-04 Task 1)', async () => {
 });
 
 describe('three-dimensional commit gate (46-04 Task 2)', async () => {
-  /** Mount one track's runtime so the authority + gate read real per-track state. */
-  function mountTrackRuntime(trackId: string, records: readonly PhysicPaintRotoRealKeyRecord[]): void {
-    const interpolation = { enabled: false, mode: 'duplicate' as const };
-    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, trackId, {
-      capacity: 100,
-      realKeyRecords: records,
-      interpolation,
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: null,
-      cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], []),
-    });
-    if (!result.ok) throw new Error(result.error);
-  }
-
   /** Seed the two-track document + runtimes used by every gate test. */
   function seedTwoTrackState(aRecords: readonly PhysicPaintRotoRealKeyRecord[]): void {
     registerTwoTrackDocument(TRACK_A, aRecords);
@@ -422,5 +422,116 @@ describe('three-dimensional commit gate (46-04 Task 2)', async () => {
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B)).toEqual([
       expect.objectContaining({ keyId: 'key-b-0', appFrame: 0 }),
     ]);
+  });
+});
+
+// 261031-dm1: opening the Create Rail dialog asks for key identities only —
+// no raster bytes cross the bridge — while every scalar the dialog reads stays
+// identical to the full authority on the same state.
+describe('identity-only Roto authority (261031-dm1)', async () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  const rawRequest = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    operationId: 'auth-lean',
+    projectContextId: projectStore.projectContextId.peek(),
+    layerId: LAYER,
+    canonicalStart: 5,
+    trackId: TRACK_A,
+    ...overrides,
+  });
+  const authorityRequest = (overrides: Partial<PhysicPaintRotoAuthorityRequest> = {}): PhysicPaintRotoAuthorityRequest => ({
+    operationId: 'auth-lean',
+    projectContextId: projectStore.projectContextId.peek(),
+    layerId: LAYER,
+    canonicalStart: 5,
+    trackId: TRACK_A,
+    ...overrides,
+  });
+
+  it('accepts an absent flag or the literal true and rejects every other value', () => {
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest())).toBe(true);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: true }))).toBe(true);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: false }))).toBe(false);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: 'true' }))).toBe(false);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: 1 }))).toBe(false);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: null }))).toBe(false);
+    expect(isPhysicPaintRotoAuthorityRequest(rawRequest({ identitiesOnly: true, extraField: true }))).toBe(false);
+  });
+
+  it('returns identities plus every scalar and no raster bytes in lean mode', () => {
+    const aRecords = [makeRecord('key-a-0', 0, 'a@0'), makeRecord('key-a-3', 3, 'a@3')];
+    registerTwoTrackDocument(TRACK_A, aRecords);
+    mockParentAuthority(physicLayer());
+    mountTrackRuntime(TRACK_A, aRecords);
+
+    const full = getPhysicPaintRotoAuthority(authorityRequest({ operationId: 'auth-full' }));
+    const lean = getPhysicPaintRotoAuthority(authorityRequest({ operationId: 'auth-lean', identitiesOnly: true }));
+
+    expect(lean.ok).toBe(true);
+    expect(lean.identitiesOnly).toBe(true);
+    expect(lean.frames).toEqual([]);
+    expect(lean.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame }))).toEqual([
+      { keyId: 'key-a-0', appFrame: 0 },
+      { keyId: 'key-a-3', appFrame: 3 },
+    ]);
+    for (const record of lean.physicalRecords) {
+      expect(Object.keys(record.payload).sort()).toEqual(['appFrame', 'frameIndex']);
+    }
+    expect(lean.physicalRecords[1].payload).toEqual({ frameIndex: 0, appFrame: 3 });
+
+    // Every scalar the dialog reads is identical to the full-mode result.
+    expect(lean.capacity).toBe(full.capacity);
+    expect(lean.layerEndExclusive).toBe(full.layerEndExclusive);
+    expect(lean.physicalCapacity).toBe(full.physicalCapacity);
+    expect(lean.physicalRevision).toBe(full.physicalRevision);
+    expect(lean.rotoRevision).toBe(full.rotoRevision);
+    expect(lean.interpolationEnabled).toBe(full.interpolationEnabled);
+    expect(lean.interpolationMode).toBe(full.interpolationMode);
+    expect(lean.interpolationSettings).toEqual(full.interpolationSettings);
+
+    // The full result stays byte-for-byte the authority every other consumer reads.
+    expect('identitiesOnly' in full).toBe(false);
+    expect(full.frames).toHaveLength(2);
+    expect(full.physicalRecords[0].payload.bytes).toBeInstanceOf(Uint8Array);
+    expect(full.physicalRecords[0].payload.width).toBe(4);
+    expect(full.physicalRecords[0].payload.height).toBe(4);
+  });
+
+  it('keeps a closed lean failure marked lean', () => {
+    registerTwoTrackDocument(TRACK_A, [makeRecord('key-a-0', 0, 'a@0')]);
+    mockParentAuthority(physicLayer());
+
+    const leanFailure = getPhysicPaintRotoAuthority(authorityRequest({ trackId: 'foreign-track', identitiesOnly: true }));
+    expect(leanFailure.ok).toBe(false);
+    expect(leanFailure.identitiesOnly).toBe(true);
+    expect(leanFailure.error).toBe('Track is unavailable.');
+    expect(leanFailure.physicalRecords).toEqual([]);
+    expect(leanFailure.frames).toEqual([]);
   });
 });

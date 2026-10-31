@@ -4037,3 +4037,16 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     expect(test.controller.railTab.value).toBe('reveal');
   });
 });
+
+// 261031-dm1: the Create Rail open is the ONLY authority consumer allowed to
+// ask for identities only — the dialog reads scalars plus {keyId, appFrame}.
+describe('createRotoPlayScriptController identity-only authority (261031-dm1)', () => {
+  it('asks for identities only when the Create Rail dialog opens', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+    expect(test.requestAuthority.mock.calls[0]).toEqual([expect.any(String), 4, { identitiesOnly: true }]);
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    expect(test.controller.phase.value).toBe('idle');
+  });
+});

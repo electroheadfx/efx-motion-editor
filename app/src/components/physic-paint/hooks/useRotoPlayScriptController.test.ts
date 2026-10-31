@@ -41,6 +41,7 @@ vi.mock('../roto/physicsPaintRotoPlayScriptController', async () => {
 });
 
 import { useRotoPlayScriptController } from './useRotoPlayScriptController';
+import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
 
 type HookPorts = Parameters<typeof useRotoPlayScriptController>[0];
 
@@ -285,5 +286,47 @@ describe('useRotoPlayScriptController', () => {
     expect(firstPorts.log).not.toHaveBeenCalled();
     expect(secondPorts.stopPlayback).toHaveBeenCalledOnce();
     expect(secondPorts.log).toHaveBeenCalledWith('current');
+  });
+
+  it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {
+    vi.useFakeTimers();
+    try {
+      const hookPorts = ports(1);
+      renderHook(hookPorts);
+      const stablePorts = captured.ports!;
+
+      const leanPromise = stablePorts.requestAuthority('op-lean', 4, { identitiesOnly: true });
+      const fullPromise = stablePorts.requestAuthority('op-full', 4);
+      await vi.advanceTimersByTimeAsync(15_000);
+      const lean = await leanPromise;
+      const full = await fullPromise;
+
+      const send = vi.mocked(sendPhysicPaintRotoAuthorityRequest);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[0][0]).toEqual({
+        operationId: 'op-lean',
+        projectContextId: 'context-1',
+        layerId: 'layer-1',
+        canonicalStart: 4,
+        trackId: '',
+        identitiesOnly: true,
+      });
+      expect(send.mock.calls[1][0]).toEqual({
+        operationId: 'op-full',
+        projectContextId: 'context-1',
+        layerId: 'layer-1',
+        canonicalStart: 4,
+        trackId: '',
+      });
+      expect('identitiesOnly' in send.mock.calls[1][0]).toBe(false);
+
+      // The 15 s timeout fallback echoes the mode too: only the lean call is marked.
+      expect(lean.ok).toBe(false);
+      expect(lean.identitiesOnly).toBe(true);
+      expect(full.ok).toBe(false);
+      expect('identitiesOnly' in full).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
