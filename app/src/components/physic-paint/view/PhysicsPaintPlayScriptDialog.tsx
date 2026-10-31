@@ -663,30 +663,27 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           </div>
           )}
-          {playScript.dialogMode.value === 'apply' ? (
-            // The per-key script opt-in is disabled on the Reveal tab for now —
-            // the card stays visible, greyed, so the option reads as unavailable.
-            <div class={`physics-paint-play-script-card physics-paint-play-script-card-key-script${revealTab ? ' physics-paint-play-script-locked' : ''}`}>
+          {playScript.dialogMode.value === 'apply' && !revealTab ? (
+            <div class="physics-paint-play-script-card physics-paint-play-script-card-key-script">
               <span class="physics-paint-play-script-card-title">Key Script Editing</span>
               {dialogSwitch({
                 id: 'physics-play-script-key-script-edits',
                 label: 'Save script on each key',
                 checked: playScript.keyScriptEdits.value,
-                disabled: busy || revealTab,
+                disabled: busy,
                 onClick: () => playScript.setKeyScriptEdits(!playScript.keyScriptEdits.value),
               })}
             </div>
           ) : null}
           {playScript.dialogMode.value === 'apply' ? paintSeedVariationCard : null}
           {revealTab ? photoWiggleCard : null}
-          {revealTab ? null : summaryBar}
+          {summaryBar}
           </div>
           {revealTab ? (
           <>
           <div class="physics-paint-play-script-side-stack">
             {motionCard}
             {colorizeCard}
-            {summaryBar}
           </div>
           {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
               error. The action opens the Photo Reference modal so the user places

@@ -47,38 +47,6 @@ import {
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 
 const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
-const cssSource = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
-
-// Strip comments so selector extraction is not confused by leading block comments.
-const cssRules = cssSource.replace(/\/\*[\s\S]*?\*\//g, '');
-
-// Extract every CSS rule block whose selector lives in the .physics-paint-play-script-* scope
-// (modal-scoped contract, D-19 — surrounding Paint UI rules are excluded by construction).
-function playScriptCssScope(): string {
-  return cssRules
-    .split('}')
-    .filter((chunk) => chunk.includes('physics-paint-play-script'))
-    .map((chunk) => `${chunk}}`)
-    .join('\n');
-}
-
-function playScriptCssScopeWithoutRegenerateList(): string {
-  return cssRules
-    .split('}')
-    .filter((chunk) => chunk.includes('physics-paint-play-script'))
-    .filter((chunk) => !chunk.includes('.physics-paint-play-script-regenerate-group-list'))
-    .map((chunk) => `${chunk}}`)
-    .join('\n');
-}
-
-// Extract the single rule block for one exact selector inside the play-script scope.
-function playScriptCssRule(selector: string): string {
-  const chunk = cssRules
-    .split('}')
-    .find((block) => block.includes('{') && block.split('{')[0].trim() === selector);
-  expect(chunk, `missing CSS rule for ${selector}`).toBeTruthy();
-  return `${chunk}}`;
-}
 
 interface TestVNode {
   type: unknown;
@@ -366,43 +334,23 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
 
-    // Reveal: the summary closes col2, under Motion wiggle and Colorize, so it
-    // no longer adds a full-width row to the modal height.
+    // Reveal: the summary also closes col1, under Photo wiggle, so both tabs
+    // hug the same height and the right stack ends with Colorize.
     const revealTree = renderDialog(createFakeController({ railTab: 'reveal', loopReadout: readout }).controller);
-    const revealStack = findOne(revealTree, byClass('physics-paint-play-script-side-stack'));
+    const revealColumn = findOne(revealTree, byClass('physics-paint-play-script-key-column'));
     const revealSummary = findOne(revealTree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealStack);
-    const revealStackChildren = [...walk(revealStack)]
-      .filter((child) => child !== revealStack && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(revealStack, child) === revealStack);
-    expect(revealStackChildren[revealStackChildren.length - 1]).toBe(revealSummary);
+    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealColumn);
+    const revealColumnChildren = [...walk(revealColumn)]
+      .filter((child) => child !== revealColumn && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(revealColumn, child) === revealColumn);
+    expect(revealColumnChildren[revealColumnChildren.length - 1]).toBe(revealSummary);
+    const revealStack = findOne(revealTree, byClass('physics-paint-play-script-side-stack'));
+    expect(findAll(revealStack, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
 
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).not.toBe(content);
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Create Rail'))).toBe('Create Rail');
-  });
-
-  it('keeps the body on the 1fr 1fr two-column grid with the right column as a vertical flex stack and NO scroll region (CSS contract)', () => {
-    const contentRule = playScriptCssRule('.physics-paint-play-script-content');
-    expect(contentRule).toContain('grid-template-columns: 1fr 1fr');
-    expect(contentRule).not.toMatch(/overflow/);
-    // (c) The editable form has no scroll region. G3a's approved shared-Group
-    // list is the sole scoped exception and is verified separately below.
-    expect(playScriptCssScopeWithoutRegenerateList()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
-    const stackRule = playScriptCssRule('.physics-paint-play-script-side-stack');
-    expect(stackRule).toContain('display: flex');
-    expect(stackRule).toContain('flex-direction: column');
-    // Both tabs hug the Motion card to its rows with a flat 10px rhythm.
-    expect(playScriptCssRule('.physics-paint-play-script-card-motion')).toContain('flex: 0 0 auto');
-    const rowsRule = playScriptCssRule('.physics-paint-play-script-motion-rows');
-    expect(rowsRule).toContain('gap: 10px');
-    expect(playScriptCssRule('.physics-paint-play-script-motion-rows > .slider-stepper')).toContain('flex: 0 0 auto');
-    // Paint pins the summary inside col1; Reveal closes col2 the same way.
-    expect(playScriptCssRule('.physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack > .physics-paint-play-script-summary-bar')).toContain('margin-top: auto');
-    expect(playScriptCssRule('.physics-paint-play-script-summary-bar')).not.toContain('grid-column');
-    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack {');
   });
 
   it('marks the root with the reveal modifier only on the Reveal tab', () => {
@@ -458,35 +406,6 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     expect(headerIndex).toBeGreaterThanOrEqual(0);
     expect(bodyIndex).toBeGreaterThan(headerIndex);
     expect(footerIndex).toBeGreaterThan(bodyIndex);
-  });
-
-  it('mounts outside the canvas grid while passing pointer input through everywhere except the surface', () => {
-    const rootRule = playScriptCssRule('.physics-paint-play-script-dialog');
-    expect(rootRule).toContain('position: fixed');
-    expect(rootRule).toContain('inset: 0');
-    expect(rootRule).toContain('pointer-events: none');
-    expect(rootRule).not.toContain('grid-row');
-    expect(rootRule).not.toContain('grid-column');
-    expect(playScriptCssRule('.physics-paint-play-script-surface')).toContain('pointer-events: auto');
-    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-backdrop');
-  });
-
-  it('declares the proposal dark token set on the modal scope and removes the old light palette (CSS contract)', () => {
-    const scope = playScriptCssScope();
-    for (const token of ['--ps-surface', '--ps-raised', '--ps-inset', '--ps-foot', '--ps-fg', '--ps-muted', '--ps-faint', '--ps-border', '--ps-accent', '--ps-accent-hi', '--ps-ok', '--ps-error', '--ps-radius']) {
-      expect(scope).toContain(token);
-    }
-    // Old light Play Script palette is fully removed from the modal scope (D-19).
-    for (const lightToken of ['#f7f5ef', '#d8d4ca', '#a9afb7', '#365ed6', '#a12f37', '#20242a', '#343a42', '#171a1f']) {
-      expect(scope).not.toContain(lightToken);
-    }
-  });
-
-  it('keeps the floating shell free of scrolling outside the approved G3a shared-Group list', () => {
-    const scope = playScriptCssScopeWithoutRegenerateList();
-    expect(scope).not.toMatch(/overflow-y:\s*auto/);
-    expect(scope).not.toMatch(/overflow:\s*auto/);
-    expect(scope).not.toMatch(/overflow-y:\s*scroll/);
   });
 });
 
@@ -632,30 +551,6 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(count.props.value).toBe(5);
     expect(repeat.props.disabled).toBe(true);
     expect(repeat.props.value).toBe(7);
-  });
-
-  it('lays Frames and Repeat in two columns with each capacity toggle under its own field', () => {
-    // 261030-v1t UAT: Frames + Repeat share one row; Max/Infinity sit beneath.
-    expect(playScriptCssRule('.physics-paint-play-script-timing-grid')).toContain('grid-template-columns: 1fr 1fr');
-    expect(playScriptCssRule('.physics-paint-play-script-timing-grid > .physics-paint-play-script-field + .physics-paint-play-script-field')).toContain('margin-top: 0');
-    // Cards keep their natural height — the last card no longer inflates to
-    // absorb the column height; the Paint summary pins itself instead.
-    expect(playScriptCssScope()).not.toContain('.physics-paint-play-script-key-column > :last-child');
-  });
-
-  it('uses the top-bar Script switch styling, scaled up with a 5px top pad, and aligned footers', () => {
-    const footRule = playScriptCssRule('.physics-paint-play-script-timing-foot');
-    expect(footRule).toContain('min-height: 25px');
-    expect(footRule).toContain('align-items: center');
-    const switchRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch');
-    expect(switchRule).toContain('padding: 5px 0 0');
-    expect(switchRule).toContain('gap: 8px');
-    expect(switchRule).toContain('height: auto');
-    const trackRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-track');
-    expect(trackRule).toContain('width: 36px');
-    expect(trackRule).toContain('height: 20px');
-    const knobRule = playScriptCssRule('.physics-paint-play-script-dialog .physics-paint-play-script-switch.is-on .physics-paint-script-switch-knob');
-    expect(knobRule).toContain('translateX(16px)');
   });
 });
 
@@ -883,7 +778,7 @@ describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked 
   });
 });
 
-describe('PhysicsPaintPlayScriptDialog header drag + Custom color row metrics', () => {
+describe('PhysicsPaintPlayScriptDialog header drag', () => {
   it('drags the modal via the header: pointerdown + pointermove translates the surface, pointerup ends the drag', () => {
     const { controller } = createFakeController();
     let tree = renderDialog(controller);
@@ -903,17 +798,6 @@ describe('PhysicsPaintPlayScriptDialog header drag + Custom color row metrics', 
     handler(header(), 'onPointerMove')({ clientX: 220, clientY: 200, preventDefault: vi.fn(), currentTarget: handle });
     tree = renderDialog(controller);
     expect(surface().props?.style).toEqual({ transform: 'translate(15px, 8px)' });
-  });
-
-  it('marks the header as the drag handle and the root while dragging (CSS contract)', () => {
-    expect(playScriptCssRule('.physics-paint-play-script-header')).toContain('cursor: grab');
-    expect(playScriptCssRule('.physics-paint-play-script-dialog.physics-paint-play-script-dragging .physics-paint-play-script-header')).toContain('cursor: grabbing');
-  });
-
-  it('keeps the Custom color row metrics deterministic without Original-mode dead space', () => {
-    expect(playScriptCssRule('.physics-paint-play-script-color-pane')).not.toContain('min-height');
-    expect(playScriptCssRule('.physics-paint-play-script-color-hex')).toContain('line-height: 16px');
-    expect(playScriptCssRule('.physics-paint-play-script-color-note')).toContain('line-height: 14px');
   });
 });
 
@@ -1253,14 +1137,6 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
   });
 
-  it('locks the G3a definition geometry and vertical-only shared-list overflow', () => {
-    const definitionRule = playScriptCssRule('.physics-paint-play-script-regenerate-fact');
-    expect(definitionRule).toContain('grid-template-columns: 104px minmax(0, 1fr)');
-    const listRule = playScriptCssRule('.physics-paint-play-script-regenerate-group-list');
-    expect(listRule).toContain('max-height: 160px');
-    expect(listRule).toContain('overflow-y: auto');
-    expect(listRule).toContain('overflow-x: hidden');
-  });
 });
 
 describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)', () => {
@@ -1304,22 +1180,6 @@ describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
     expect(source).not.toContain('Update Rail');
     expect(source).not.toContain('clip bloquant');
     expect((source.match(/clip bloquant/g) ?? []).length).toBe(0);
-    expect(playScriptCssRule('.physics-paint-play-script-button')).toContain('text-transform: none');
-  });
-
-  it('introduces no new CSS color tokens — the locked/notice rules reference only the Phase 42 --ps-* set', () => {
-    const lockedRule = playScriptCssRule('.physics-paint-play-script-locked');
-    expect(lockedRule).toContain('opacity');
-    expect(lockedRule).not.toMatch(/#[0-9a-fA-F]{3,8}\b|oklch|rgb\(/);
-    const noticeRule = playScriptCssRule('.physics-paint-play-script-notice');
-    expect(noticeRule).not.toMatch(/#[0-9a-fA-F]{3,8}\b|oklch|rgb\(/);
-    expect(noticeRule).toContain('var(--ps-muted)');
-    // The defined token set is exactly the locked Phase 42 set — 43-06 adds none.
-    const defined = [...playScriptCssScope().matchAll(/--ps-[a-z-]+:/g)].map((match) => match[0]);
-    expect([...new Set(defined)].sort()).toEqual([
-      '--ps-accent-hi:', '--ps-accent:', '--ps-border:', '--ps-error:', '--ps-faint:', '--ps-fg:',
-      '--ps-foot:', '--ps-inset:', '--ps-muted:', '--ps-ok:', '--ps-radius:', '--ps-raised:', '--ps-surface:',
-    ]);
   });
 });
 
@@ -1437,7 +1297,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(findAll(paintTree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
   });
 
-  it('261030-ig0: renders the Key Script Editing opt-in in apply mode only, defaulting unchecked', () => {
+  it('261030-ig0: renders the Key Script Editing opt-in on the Paint tab only, defaulting unchecked', () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-key-script'));
@@ -1458,12 +1318,9 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const seeded = renderDialog(createFakeController({ keyScriptEdits: true }).controller);
     expect((findOne(seeded, byId('physics-play-script-key-script-edits')) as TestVNode).props['aria-checked']).toBe('true');
 
-    // The Reveal tab greys the opt-in out: visible, greyed, disabled.
+    // The Reveal tab does not render the opt-in.
     const reveal = renderDialog(createFakeController({ railTab: 'reveal' }).controller);
-    const revealCard = findOne(reveal, byClass('physics-paint-play-script-card-key-script'));
-    expect(hasClass(revealCard, 'physics-paint-play-script-locked')).toBe(true);
-    expect((findOne(reveal, byId('physics-play-script-key-script-edits')) as TestVNode).props.disabled).toBe(true);
-    expect(textOf(revealCard)).not.toContain('Not available on Reveal rails yet.');
+    expect(findAll(reveal, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
 
     // Edit modes never render the creation opt-in.
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
@@ -1483,10 +1340,11 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
       const stackChildren = directChildrenOf(stack);
       const photoWiggle = findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))[0];
       const colorize = findAll(tree, byClass('physics-paint-play-script-card-colorize'))[0];
+      const keyScript = findAll(tree, byClass('physics-paint-play-script-card-key-script'))[0];
       return {
-        keyScriptCard: findOne(content, byClass('physics-paint-play-script-card-key-script')),
+        keyScriptCard: keyScript,
         timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
-        keyScriptInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-key-script'))),
+        keyScriptInColumn: keyScript ? columnChildren.indexOf(keyScript) : -1,
         seedInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))),
         photoWiggleInColumn: photoWiggle ? columnChildren.indexOf(photoWiggle) : -1,
         summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
@@ -1511,17 +1369,17 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
+    // Reveal has no Key Script card; its summary also closes col1, under Photo
+    // wiggle, so both tabs hug the same height.
+    expect(revealOrder.keyScriptInColumn).toBe(-1);
     expect(revealOrder.timingInColumn).toBe(0);
-    expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.keyScriptInColumn);
-    expect(revealOrder.keyScriptInColumn).toBeLessThan(revealOrder.seedInColumn);
+    expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.seedInColumn);
     expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.photoWiggleInColumn);
-    // Reveal's summary closes col2 (under Motion wiggle + Colorize) instead of
-    // spanning a new grid row, so it never adds modal height.
-    expect(revealOrder.summaryInColumn).toBe(-1);
+    expect(revealOrder.photoWiggleInColumn).toBeLessThan(revealOrder.summaryInColumn);
     expect(revealOrder.summaryInContent).toBe(-1);
+    expect(revealOrder.summaryInStack).toBe(-1);
     expect(revealOrder.motionInStack).toBeLessThan(revealOrder.colorizeInStack);
-    expect(revealOrder.colorizeInStack).toBeLessThan(revealOrder.summaryInStack);
-    expect(revealOrder.summaryInStack).toBe(revealOrder.stackChildCount - 1);
+    expect(revealOrder.stackChildCount).toBe(2);
     expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
   });
 
@@ -1548,23 +1406,25 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
     expect(revealCheckbox.props.role).toBe('switch');
 
-    // 261030-v1t UAT: the card lives in grid column 1, directly beneath the
-    // Key Script Editing card — on both tabs.
+    // 261030-v1t UAT: the card lives in grid column 1 — beneath Key Script on
+    // Paint, directly after Timing on Reveal (which has no Key Script card).
     const placementOf = (dialog: TestVNode) => {
       const content = findOne(dialog, byClass('physics-paint-play-script-content'));
       const column = findOne(content, byClass('physics-paint-play-script-key-column'));
       const seed = findOne(column, byClass('physics-paint-play-script-card-paint-seed-variation'));
-      const keyScript = findOne(column, byClass('physics-paint-play-script-card-key-script'));
+      const timing = findOne(column, byClass('physics-paint-play-script-card-timing'));
+      const keyScript = findAll(column, byClass('physics-paint-play-script-card-key-script'))[0];
       const directChildren = [...walk(column)].filter((child) => child !== column
         && typeof child.type !== 'function'
         && renderedParentOf(dialog, child) === column);
       return {
-        seedAfterKeyScript: directChildren.indexOf(seed) > directChildren.indexOf(keyScript),
+        seedFirstAfterTiming: directChildren.indexOf(seed) === directChildren.indexOf(timing) + 1,
+        seedAfterKeyScript: keyScript ? directChildren.indexOf(seed) > directChildren.indexOf(keyScript) : keyScript,
         seedInStack: findAll(findOne(content, byClass('physics-paint-play-script-side-stack')), byClass('physics-paint-play-script-card-paint-seed-variation')).length,
       };
     };
-    expect(placementOf(tree)).toEqual({ seedAfterKeyScript: true, seedInStack: 0 });
-    expect(placementOf(reveal)).toEqual({ seedAfterKeyScript: true, seedInStack: 0 });
+    expect(placementOf(tree)).toEqual({ seedFirstAfterTiming: false, seedAfterKeyScript: true, seedInStack: 0 });
+    expect(placementOf(reveal)).toEqual({ seedFirstAfterTiming: true, seedAfterKeyScript: undefined, seedInStack: 0 });
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);

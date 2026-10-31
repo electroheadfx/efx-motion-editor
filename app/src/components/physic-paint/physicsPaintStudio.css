@@ -2362,13 +2362,9 @@ button.destructive {
 
 .physics-paint-play-script-motion-rows > .slider-stepper { flex: 0 0 auto; }
 
-/* Reveal: the summary closes column 2, pinned to the stack bottom so both
-   column bottoms align without adding a full-width grid row. */
-.physics-paint-play-script-dialog.physics-paint-play-script-reveal .physics-paint-play-script-side-stack > .physics-paint-play-script-summary-bar {
-  flex: 0 0 auto;
-  margin-top: auto;
-}
-
+/* Match Color (93px) to the Reveal Colorize card (95px) so both Create tabs
+   share the same body height. */
+.physics-paint-play-script-card-color { padding-bottom: 14px; }
 
 .physics-paint-play-script-card-title {
   margin-bottom: 9px;
@@ -2758,8 +2754,8 @@ button.destructive {
   text-align: right;
 }
 
-/* Paint rail: the summary lives under Paint seed variation, pinned to the
-   column bottom so it fills the space the right stack leaves. */
+/* Both Create tabs: the summary closes column 1, pinned to the column bottom
+   so it aligns with the right-hand stack. */
 .physics-paint-play-script-key-column > .physics-paint-play-script-summary-bar {
   flex: 0 0 auto;
   margin-top: auto;
