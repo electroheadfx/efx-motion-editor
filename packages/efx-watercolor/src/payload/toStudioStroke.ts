@@ -16,10 +16,20 @@
 //    brushId      ← the selected tip id (stable brush-pack key)
 //    toolOverrides ← the tip's 8 numeric multipliers snapshotted
 //                  at record time (R1.7 / D-08) — {} when absent
-//    traceSeed    ← hashMutationId(mutationId)   (D-20 / D-25)
+//    traceSeed    ← hashMutationId(mutationId)   (D-20 / D-25),
+//                   mixed with `paintSeedSalt` when recorded
 //    recordedOrder ← timestamp (ordering key, never a playback clock)
 //    playFrame    ← playFrame ?? null
 //    engine       ← opaque engine-2 private fields
+//
+//  261031-cf9 — `paintSeedSalt` is a RESERVED HOST KEY inside the open
+//  canonical `engine.params` bag (the persistence carrier, carried by
+//  AQTL's open param record). Engine-2 never reads it: toEngineParams()
+//  is a fixed projection of the canonical keys. `traceSeed` is its only
+//  consumer — a finite, non-negative salt re-keys the per-stroke RNG so a
+//  committed re-bake redraws the stochastic paint texture while points,
+//  pressure, brush params, tool overrides and the paper seed stay fixed.
+//  Absent (or malformed) keeps today's exact seed, byte for byte.
 //
 //  The ONE payload union (D-16) also carries Dry events — see
 //  dryEvent.ts. This module owns the stroke projection; the union
@@ -27,7 +37,7 @@
 //  payload boundary.
 // ============================================================
 
-import { hashMutationId } from '@efxlab/efx-paint-host'
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
 
@@ -65,6 +75,29 @@ export interface AquarelleStrokePayload {
 /** Host cap policy (55 D-20 / D-19) — engine-owned, script-visible. */
 export const DIFFUSION_CAP = 600
 
+/**
+ * 261031-cf9: reserved host param key carrying the persisted paint seed
+ * salt. It lives inside `engine.params` (open canonical bag) and is the
+ * ONLY seed input beyond `mutationId` — never add it to
+ * AQUARELLE_GLOBAL_KEYS (sliders must not write it).
+ */
+export const PAINT_SEED_SALT_PARAM = 'paintSeedSalt'
+
+/**
+ * Read the persisted paint seed salt. Total and fail-closed: only a finite
+ * number is accepted (truncated to its integer part); absent, NaN,
+ * Infinity, a string or a negative value all yield null — the stroke then
+ * keeps today's exact `hashMutationId` seed. 0 is a valid salt.
+ */
+export function paintSeedSaltOf(
+  params: Readonly<Record<string, unknown>> | undefined,
+): number | null {
+  const raw = params?.[PAINT_SEED_SALT_PARAM]
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
+  const salt = Math.trunc(raw)
+  return salt < 0 ? null : salt
+}
+
 /** Raw stylus sample as the engine records it. */
 export interface AquarellePoint {
   x: number
@@ -96,6 +129,8 @@ export interface AquarelleStroke {
 export function toStudioStroke(
   s: Readonly<AquarelleStroke>,
 ): StudioStroke<AquarelleStrokePayload> {
+  const baseSeed = hashMutationId(s.mutationId)
+  const salt = paintSeedSaltOf(s.params)
   const pts: StudioPoint[] = s.points.map((p, i) => ({
     x: p.x,
     y: p.y,
@@ -115,7 +150,7 @@ export function toStudioStroke(
     motion: null,
     brushId: s.brushId,
     toolOverrides: s.toolOverrides ? { ...s.toolOverrides } : {},
-    traceSeed: hashMutationId(s.mutationId),
+    traceSeed: salt === null ? baseSeed : mixStrokeSeed(baseSeed, salt),
     recordedOrder: s.timestamp,
     playFrame: s.playFrame ?? null,
     color: s.color,
