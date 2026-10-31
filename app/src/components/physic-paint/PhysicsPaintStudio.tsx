@@ -3985,6 +3985,9 @@ export function PhysicsPaintStudio() {
         ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
         : null
     ),
+    // WR-13: the scalar content revision signal — the Play Script availability
+    // snapshot reads this instead of parsing the full document on every render.
+    physicalRevision: rotoPhysicalRevision,
     // 52-05 (G-52-3): the Reveal Photo Rail tab ports. The D-12 guard is
     // proactive — no reference → the Photo Reference modal opens directly so the
     // user places a source and returns to the Create Rail dialog. The create

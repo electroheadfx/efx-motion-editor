@@ -88,6 +88,8 @@ function ports(version: number): HookPorts {
       remainingCapacity: 100 + version - placementStart,
     }),
     getPhysicalDocument: () => ({ revision: `document-${version}` } as never),
+    // WR-13: the scalar content revision the availability snapshot reads.
+    physicalRevision: signal(version),
     stopPlayback: vi.fn(),
     log: vi.fn(),
     executePhysicalEdit: vi.fn(async () => true),
@@ -288,16 +290,24 @@ describe('useRotoPlayScriptController', () => {
     expect(secondPorts.log).toHaveBeenCalledWith('current');
   });
 
-  it('bumps availability when the physical document revision changes without a selection move (WR-09)', () => {
-    const base = ports(1);
-    const controller = renderHook({ ...base, getPhysicalDocument: () => ({ revision: 'document-1' } as never) });
+  it('bumps availability from the scalar physical revision without parsing the document (WR-09/WR-13)', () => {
+    const physicalRevision = signal(0);
+    const getPhysicalDocument = vi.fn(() => ({ revision: 'document-1' } as never));
+    const base = { ...ports(1), physicalRevision, getPhysicalDocument };
+    const controller = renderHook(base);
     const stablePorts = captured.ports!;
     const before = stablePorts.availabilityRevision?.value ?? 0;
 
-    // Selection, lock and project state are byte-identical; only the document
+    // The availability snapshot misses nothing without ever touching the full
+    // document — parsing it in the render body was the WR-13 regression.
+    expect(getPhysicalDocument).not.toHaveBeenCalled();
+
+    // Selection, lock and project state are byte-identical; only the physical
     // revision moves — a rail/lifecycle edit must still re-derive the stack.
-    expect(renderHook({ ...base, getPhysicalDocument: () => ({ revision: 'document-2' } as never) })).toBe(controller);
+    physicalRevision.value = 1;
+    expect(renderHook({ ...base, physicalRevision })).toBe(controller);
     expect(stablePorts.availabilityRevision?.value).toBe(before + 1);
+    expect(getPhysicalDocument).not.toHaveBeenCalled();
   });
 
   it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {

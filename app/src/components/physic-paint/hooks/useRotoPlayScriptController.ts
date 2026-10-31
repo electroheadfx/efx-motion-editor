@@ -42,7 +42,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
     if (sameAvailabilitySnapshot(availabilitySnapshot.current, nextAvailabilitySnapshot)) return;
     availabilitySnapshot.current = nextAvailabilitySnapshot;
     availabilityRevision.current.value += 1;
-  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame, nextAvailabilitySnapshot.documentRevision]);
+  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame, nextAvailabilitySnapshot.physicalRevision]);
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
 
@@ -62,6 +62,8 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       getPhysicalDocument: () => portsRef.current.getPhysicalDocument?.() ?? null,
       availabilityRevision: availabilityRevision.current,
+      // WR-13: the scalar revision signal, forwarded verbatim — never a document parse.
+      ...(ports.physicalRevision ? { physicalRevision: ports.physicalRevision } : {}),
       // 52-05 (G-52-3): the Reveal Photo Rail tab ports — the D-12 reference
       // guard (proactive modal open) and the shared create-reveal-rail mutation.
       hasPhotoReference: () => portsRef.current.hasPhotoReference?.() ?? false,
@@ -176,7 +178,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
   return controllerRef.current;
 }
 
-function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection' | 'getOperationLocked' | 'getPhysicalDocument'>) {
+function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection' | 'getOperationLocked' | 'physicalRevision'>) {
   const context = ports.getLaunchContext();
   const selection = ports.getSelection();
   return {
@@ -185,10 +187,11 @@ function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'ge
     selectionKind: selection.kind,
     keyId: selection.keyId,
     appFrame: selection.appFrame,
-    // WR-09: rail/lifecycle edits change the physical document revision without
-    // moving the playhead. The document revision covers the Loop Clip collection
-    // too, so the stack context and boundary must re-derive when it changes.
-    documentRevision: ports.getPhysicalDocument?.()?.revision ?? '',
+    // WR-09: rail/lifecycle edits change the physical content revision without
+    // moving the playhead, so the stack context and boundary must re-derive when
+    // it changes. WR-13: read the scalar signal only — parsing the full physical
+    // document in the render body was avoidable per-render work that could throw.
+    physicalRevision: ports.physicalRevision?.value ?? 0,
   };
 }
 
@@ -198,7 +201,7 @@ function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapsh
     && left.selectionKind === right.selectionKind
     && left.keyId === right.keyId
     && left.appFrame === right.appFrame
-    && left.documentRevision === right.documentRevision;
+    && left.physicalRevision === right.physicalRevision;
 }
 
 function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: (cause?: unknown) => T): Promise<T> {
