@@ -1732,9 +1732,12 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(controller.confirm).not.toHaveBeenCalled();
   });
 
-  it('does nothing on Enter for a frame-override refusal', () => {
+  it('does nothing on Enter while the frame count is invalid', () => {
+    // 261031-qps (Quick B): the frame-override refusal is gone — overrides
+    // inside the written span are legal — so the Enter guard is pinned against
+    // the ordinary count validation instead.
     const { controller } = createFakeController(stackSeed({
-      validationError: 'Run refused: a frame override sits inside this span.',
+      validationError: 'Enter a positive integer.',
     }));
     const tree = renderDialog(controller);
     const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');

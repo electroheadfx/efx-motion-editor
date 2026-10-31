@@ -49,24 +49,25 @@ export interface RotoScriptPhysicalTarget {
    */
   sourceKeyId?: string | null;
   /**
-   * 261026 axis 2: the group SOURCE key whose payload is the durable
-   * pixel-only base for a script re-bake. When set, the publish callback must
-   * multiply-composite the baked sheet over that base before publishing; when
-   * the base cannot be resolved the publish fails closed.
+   * 261031-qps (Quick B): which kind of base the durable-base authority
+   * resolved for this target (see `aquarelleScriptBaseAuthority`).
+   * 'pixels' (the default) = the base travels as bytes (or a proven empty) in
+   * `durableBaseBytes`; 'reveal' = the key is reveal-owned and its picture is
+   * wash × placed reference, never a pixel base. The authority, not this
+   * target, decides which — the target only carries the verdict so the publish
+   * closure can dispatch.
    */
-  durableBaseKeyId?: string | null;
+  durableBaseKind?: 'pixels' | 'reveal';
   /**
-   * 261026 (third pass, ORDINARY KEYS): the key's own durable pixel-only base —
-   * the payload as of the FIRST sheet session in which its watercolor script
-   * began (the "cached key" paint under the wash). Ordinary keys have no
-   * separate source key, so the base travels as BYTES for the publish
-   * composite.
+   * 261031-qps (Quick B): the authority-resolved durable pixel base of the
+   * RESOLUTION key (the source key for occurrences and overrides) — the paint
+   * as of the first sheet session in which its script began. The base always
+   * travels as BYTES so the publish never re-reads a payload after the bake.
    *
-   * Semantics: PRESENT (Uint8Array) = known base, multiply-composite the bake
-   * over it; PRESENT (null) = known to have no base paint, the script is the
-   * key's complete content (raw bake); ABSENT/undefined = base UNKNOWN (e.g. a
-   * scripted key after reopen) → the publish MUST fail closed and never erase
-   * the key's cached paint.
+   * Semantics: PRESENT (Uint8Array) = proven base, multiply-composite the bake
+   * over it; PRESENT (null) = proven to have no base paint, the script is the
+   * key's complete content (raw bake); ABSENT/undefined = base UNKNOWN → the
+   * publish MUST fail closed and never erase the key's cached paint.
    */
   durableBaseBytes?: Uint8Array | null;
 }

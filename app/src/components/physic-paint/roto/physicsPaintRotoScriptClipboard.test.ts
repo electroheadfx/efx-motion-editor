@@ -1612,11 +1612,15 @@ describe('261026 axis 1 lifecycle-aware script target', () => {
   it('accepts an override target when the mounted projection source is unchanged', async () => {
     const port = gatedAquarellePort();
     const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    // 261031-qps (Quick B): the base travels as the authority RESULT — a kind
+    // plus bytes — never as a key id the publish re-reads later.
+    const durableBaseBytes = new Uint8Array([1, 2, 3]);
     test.setPrepareTarget(async () => ({
       keyId: 'override-key',
       appFrame: 4,
       sourceKeyId: 'key-4',
-      durableBaseKeyId: 'key-4',
+      durableBaseKind: 'pixels' as const,
+      durableBaseBytes,
     }));
 
     const applying = test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(81, 900)]);
@@ -1627,7 +1631,8 @@ describe('261026 axis 1 lifecycle-aware script target', () => {
       keyId: 'override-key',
       appFrame: 4,
       sourceKeyId: 'key-4',
-      durableBaseKeyId: 'key-4',
+      durableBaseKind: 'pixels',
+      durableBaseBytes,
     });
 
     port.resolve(true);
@@ -1640,7 +1645,7 @@ describe('261026 axis 1 lifecycle-aware script target', () => {
     const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
     test.setPrepareTarget(async () => {
       test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-5', appFrame: 4 });
-      return { keyId: 'override-key', appFrame: 4, sourceKeyId: 'key-4', durableBaseKeyId: 'key-4' };
+      return { keyId: 'override-key', appFrame: 4, sourceKeyId: 'key-4', durableBaseKind: 'pixels' as const };
     });
 
     await expect(test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(82, 901)])).resolves.toBe(false);
@@ -1657,7 +1662,8 @@ describe('261026 axis 1 lifecycle-aware script target', () => {
     await flushMicrotasks(20);
 
     expect(port.calls).toHaveLength(1);
-    expect(port.calls[0]!.target.durableBaseKeyId).toBeUndefined();
+    expect(port.calls[0]!.target.durableBaseBytes).toBeUndefined();
+    expect(port.calls[0]!.target.durableBaseKind).toBeUndefined();
 
     port.resolve(true);
     await expect(applying).resolves.toBe(true);

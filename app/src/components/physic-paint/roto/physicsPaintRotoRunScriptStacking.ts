@@ -103,8 +103,6 @@ export interface RunScriptStackBoundary {
   readonly collision: boolean;
   readonly freeCount: number;
   readonly offers: readonly RunScriptCollisionOffer[];
-  readonly overrideInSpan: boolean;
-  readonly frameOverrideRefusal: 'frame-override' | null;
   readonly targetEndAtBoundary: boolean;
 }
 
@@ -375,12 +373,14 @@ export function resolveRunScriptStackBoundary(input: {
     consider({ frame: targetEnd, kind: 'target-end', victimClipId: null });
   }
 
-  const overrideInSpan = input.frameOverrideAppFrames.some(
-    (frame) => frame >= input.runStartAppFrame && frame < input.runStartAppFrame + input.requestedCount,
-  );
+  // 261031-qps (Quick B): a frame override inside the written span is LEGAL.
+  // The override's base resolves to its SOURCE key through the durable-base
+  // authority, so it no longer refuses the run or suppresses collision offers;
+  // overrideFrames above still keeps its own real-key candidates out of the
+  // boundary scan.
   const open = winner.frame === Number.POSITIVE_INFINITY;
   const blocker: RunScriptStackBlocker = open ? 'open' : winner.kind;
-  const offers = overrideInSpan || open ? Object.freeze([] as RunScriptCollisionOffer[]) : OFFERS_BY_BLOCKER[winner.kind];
+  const offers = open ? Object.freeze([] as RunScriptCollisionOffer[]) : OFFERS_BY_BLOCKER[winner.kind];
   return Object.freeze({
     boundaryExclusive: winner.frame,
     blocker,
@@ -388,8 +388,6 @@ export function resolveRunScriptStackBoundary(input: {
     collision: input.runStartAppFrame + input.requestedCount > winner.frame,
     freeCount: Math.max(0, winner.frame - input.runStartAppFrame),
     offers,
-    overrideInSpan,
-    frameOverrideRefusal: overrideInSpan ? 'frame-override' : null,
     targetEndAtBoundary: targetEnd !== null && winner.frame === targetEnd,
   }) as RunScriptStackBoundary;
 }
@@ -482,18 +480,15 @@ export function buildRunScriptStackReadout(input: {
   readonly grew: number;
   readonly truncated: boolean;
   readonly parentEndOverflow?: boolean;
-  readonly frameOverrideRefusal?: 'frame-override' | null;
 }): RunScriptStackReadout {
   const lastFrame = input.runStartAppFrame + Math.max(0, input.count - 1);
-  const outcomeLabel = input.frameOverrideRefusal === 'frame-override'
-    ? 'Run refused: a frame override sits inside this span.'
-    : input.truncated
-      ? 'Truncated at the next boundary.'
-      : input.parentEndOverflow === true
-        ? "The rail's end is capped at the parent range end."
-        : input.grew > 0
-          ? `Extends the cycle by ${input.grew} ${input.grew === 1 ? 'frame' : 'frames'}.`
-          : 'Stacks onto the existing cycle.';
+  const outcomeLabel = input.truncated
+    ? 'Truncated at the next boundary.'
+    : input.parentEndOverflow === true
+      ? "The rail's end is capped at the parent range end."
+      : input.grew > 0
+        ? `Extends the cycle by ${input.grew} ${input.grew === 1 ? 'frame' : 'frames'}.`
+        : 'Stacks onto the existing cycle.';
   return Object.freeze({
     spanLabel: `F${input.runStartAppFrame}–F${lastFrame}`,
     offsetLabel: `Source cycle +${input.cycleOffset}`,

@@ -133,9 +133,12 @@ describe('toRunScriptRailViews', () => {
       frameOverrideAppFrames: views[0]!.frameOverrideAppFrames,
       realKeyAppFrames: [],
     });
-    expect(boundary.overrideInSpan).toBe(true);
-    expect(boundary.frameOverrideRefusal).toBe('frame-override');
-    expect(boundary.offers).toEqual([]);
+    // 261031-qps (Quick B): a frame override inside the written span is LEGAL.
+    // The boundary keeps its ordinary blocker and offers; only the override's
+    // own real-key candidates stay out of the scan.
+    expect(boundary.blocker).toBe('parent-end');
+    expect(boundary.collision).toBe(false);
+    expect(boundary.offers).toEqual(['cancel', 'truncate']);
   });
 
   it('keeps one fragment per canonical range so a gap is not rail membership (CR-03)', () => {
@@ -327,8 +330,6 @@ describe('resolveRunScriptStackBoundary', () => {
       collision: false,
       freeCount: Number.POSITIVE_INFINITY,
       offers: [],
-      overrideInSpan: false,
-      frameOverrideRefusal: null,
       targetEndAtBoundary: false,
     });
   });
@@ -496,26 +497,27 @@ describe('resolveRunScriptStackBoundary', () => {
     expect(boundary.collision).toBe(true);
   });
 
-  it('refuses a frame override inside the requested written span', () => {
+  it('keeps a frame override inside the requested written span legal', () => {
+    // 261031-qps (Quick B): the override's base resolves to its SOURCE key, so
+    // an override in the span no longer refuses the run or suppresses offers.
     const boundary = resolveRunScriptStackBoundary({
       ...base,
       rails: [target],
       frameOverrideAppFrames: [15],
     });
-    expect(boundary.overrideInSpan).toBe(true);
-    expect(boundary.frameOverrideRefusal).toBe('frame-override');
-    expect(boundary.offers).toEqual([]);
+    expect(boundary.blocker).toBe('parent-end');
+    expect(boundary.collision).toBe(false);
+    expect(boundary.offers).toEqual(['cancel', 'truncate']);
+    expect(boundary).not.toHaveProperty('frameOverrideRefusal');
   });
 
-  it('does not refuse or truncate for an override before the run start', () => {
+  it('stays open for an override before the run start', () => {
     const boundary = resolveRunScriptStackBoundary({
       ...base,
       rails: [target],
       parentEndExclusive: Number.POSITIVE_INFINITY,
       frameOverrideAppFrames: [9],
     });
-    expect(boundary.overrideInSpan).toBe(false);
-    expect(boundary.frameOverrideRefusal).toBeNull();
     expect(boundary.blocker).toBe('open');
   });
 
@@ -780,17 +782,18 @@ describe('buildRunScriptStackReadout', () => {
     expect(readout.outcomeLabel).toBe('Truncated at the next boundary.');
   });
 
-  it('says a frame-override refusal is refused, never truncated', () => {
+  it('has no frame-override refusal outcome left in the readout', () => {
+    // 261031-qps (Quick B): overrides inside the written span are legal, so a
+    // no-growth run reads as a plain stack instead of a refusal.
     const readout = buildRunScriptStackReadout({
       runStartAppFrame: 13,
       count: 5,
       cycleOffset: 3,
       grew: 0,
       truncated: false,
-      frameOverrideRefusal: 'frame-override',
     });
-    expect(readout.outcomeLabel.toLowerCase()).toContain('refused');
-    expect(readout.outcomeLabel.toLowerCase()).not.toContain('truncated');
+    expect(readout.outcomeLabel).toBe('Stacks onto the existing cycle.');
+    expect(readout.outcomeLabel.toLowerCase()).not.toContain('refused');
   });
 
   it('never describes overwrite as shortening a rail', () => {

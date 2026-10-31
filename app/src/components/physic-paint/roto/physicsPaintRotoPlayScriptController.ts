@@ -618,10 +618,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         : { count: null, error: 'No real-key capacity remains.' }
       : parseCount(countText.value, capacity.value);
   });
-  const validationError = computed(() => parsedCount.value.error
-    ?? (stackBoundary.value?.frameOverrideRefusal === 'frame-override'
-      ? 'Run refused: a frame override sits inside this span.'
-      : null));
+  // 261031-qps (Quick B): a frame override inside the written span is legal —
+  // its base resolves to the SOURCE key through the durable-base authority, so
+  // there is no override validation error left to surface.
+  const validationError = computed(() => parsedCount.value.error);
   /* 52-05 (G-52-3): the active tab's cycle length drives the shared repeat
      parsing, the destination range, and the Requested/Effective summary. */
   const parsedRevealCount = computed(() => parseCount(revealCountText.value, capacity.value));
@@ -964,8 +964,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const boundary = stackBoundary.value;
     const count = parsedCount.value.count;
     if (surface === null || start === null || boundary === null || count === null) return null;
-    // A frame override inside the written span refuses outright — no offers.
-    if (boundary.frameOverrideRefusal !== null) return null;
     const { plan } = planStackLifecycle(surface, start, count);
     // An infinity clip is already parent-bounded and stays lifecycle-less, so its
     // repeat-extended span can never overflow — the rails table owns that bound.
@@ -1003,7 +1001,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const collisionOffers = computed<readonly RunScriptCollisionOffer[]>(() => {
     const surface = stackSurface.value;
     const boundary = stackBoundary.value;
-    if (boundary === null || boundary.frameOverrideRefusal !== null) return NO_COLLISION_OFFERS;
+    if (boundary === null) return NO_COLLISION_OFFERS;
     const collision = stackCollision.value;
     if (collision === null) return NO_COLLISION_OFFERS;
     // A lifecycle-only overflow is a parent-end case: Cancel / Truncate, never
@@ -1030,7 +1028,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // repeat-extended end crossing the parent end is a capping, reported apart.
       truncated: collision?.runCollision === true,
       parentEndOverflow: collision !== null && collision.lifecycleOverflow && !collision.runCollision,
-      frameOverrideRefusal: stackBoundary.value?.frameOverrideRefusal ?? null,
     });
   });
 
@@ -2228,12 +2225,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const unionBake = ports.bakeStackedRailKey;
     const useUnion = unionBake !== undefined && keepScriptEffective.peek();
     const boundary = resolveStackBoundaryFor(surface, start, requested);
-    if (boundary.frameOverrideRefusal !== null) {
-      collisionChoice.value = null;
-      phase.value = 'idle'; status.value = null;
-      error.value = 'Run refused: a frame override sits inside this span. Nothing changed.';
-      return false;
-    }
     const requestedPlan = planStackLifecycle(surface, start, requested).plan;
     const lifecycleOverflow = target.repeat !== 'infinity'
       && requestedPlan.requestedRailEndExclusive > surface.parentEndExclusive;
@@ -2276,12 +2267,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           excludeClipId: victimClipId,
           ownedKeyIds: victim?.sourceKeyIds ?? [],
         });
-        if (rerun.frameOverrideRefusal !== null) {
-          collisionChoice.value = null;
-          phase.value = 'idle'; status.value = null;
-          error.value = 'Run refused: a frame override sits inside this span. Nothing changed.';
-          return false;
-        }
         effectiveCount = Math.min(requested, rerun.freeCount);
         if (rerun.collision) lifecycleCap = Math.min(surface.parentEndExclusive, rerun.boundaryExclusive);
       } else {

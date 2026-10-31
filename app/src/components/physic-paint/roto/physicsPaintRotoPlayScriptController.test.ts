@@ -4642,13 +4642,13 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(target.visibleRanges).toEqual([{ start: 10, endExclusive: 20 }]);
   });
 
-  it('refuses a run whose span contains a frame override with zero writes and no offers', async () => {
+  it('applies a run whose span contains a frame override with zero overrides on the record path', async () => {
     const recorder = vi.fn();
     // A frame override is a lifecycle member: the clip must carry the full
     // durable lifecycle or the strict model guard rejects it.
     const clip = stackClip(2, {
       // CR-01: the override key id is NOT a real source key; its stored appFrame
-      // is authoritative and must drive the refusal on its own.
+      // is authoritative and keeps its real-key candidate out of the scan.
       frameOverrides: [{ appFrame: 11, keyId: 'override:L1:11' }],
       syncState: 'synchronized',
       provenanceState: 'attached',
@@ -4659,11 +4659,13 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const test = stackHarness([clip], {}, { recordRailKeyScripts: recorder }, { kind: 'empty', keyId: null, appFrame: 11 });
     await test.controller.openConfirmation();
     test.controller.countText.value = '3';
-    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBe('frame-override');
-    expect(test.controller.collisionOffers.value).toEqual([]);
-    expect(test.controller.stackReadout.value?.outcomeLabel).toContain('refused');
-    expect(await test.controller.confirm()).toBe(false);
-    expect(test.commit).not.toHaveBeenCalled();
+    // 261031-qps (Quick B): an override inside the written span is LEGAL — the
+    // boundary keeps its ordinary blocker, the readout never refuses, and the
+    // run applies (its base resolves to the SOURCE key, never the composite).
+    expect(test.controller.validationError.value).toBeNull();
+    expect(test.controller.stackReadout.value?.outcomeLabel).not.toContain('refused');
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit).toHaveBeenCalledTimes(1);
     expect(recorder).not.toHaveBeenCalled();
   });
 
@@ -5231,7 +5233,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.commit).not.toHaveBeenCalled();
   });
 
-  it('refuses a frame override added inside the span while the dialog is open (WR-02)', async () => {
+  it('reads a frame override added inside the span on the live rail as legal (WR-02)', async () => {
     const baseClip = (frameOverrides: readonly PhysicPaintRotoGroupFrameOverride[]): PhysicPaintRotoLoopClip => stackClip(1, {
       syncState: 'synchronized',
       provenanceState: 'attached',
@@ -5249,20 +5251,19 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     );
     await test.controller.openConfirmation();
     test.controller.countText.value = '3';
-    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBeNull();
+    expect(test.controller.validationError.value).toBeNull();
 
     // The override lands inside F11–F13 after the session pinned the surface.
     clips = [baseClip([{ appFrame: 12, keyId: 'override:L1:12' }])];
     test.bumpAvailability();
 
-    // The boundary reads the LIVE rail, so the refusal is the frame override —
-    // not a stale pass that would commit over the locally painted key.
-    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBe('frame-override');
-    expect(test.controller.collisionOffers.value).toEqual([]);
-    expect(await test.controller.confirm()).toBe(false);
-    expect(test.controller.error.value).toContain('frame override sits inside this span');
-    expect(test.bakeOptions).toHaveLength(0);
-    expect(test.commit).not.toHaveBeenCalled();
+    // 261031-qps (Quick B): the LIVE rail is read for boundary decisions, and a
+    // frame override inside the span is legal — it neither refuses nor empties
+    // the offers. The target identity (phaseOrigin / source keys / cycle
+    // length / repeat) is what must stay pinned.
+    expect(test.controller.validationError.value).toBeNull();
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the stack session pinned when a bake is cancelled, clearing it only on close (WR-14)', async () => {

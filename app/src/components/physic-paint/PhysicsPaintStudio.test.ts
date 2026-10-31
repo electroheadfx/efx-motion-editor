@@ -4449,17 +4449,20 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     // The override publish key is the override; its currency identity and
     // durable base are the group SOURCE key at the exact cycle offset.
     expect(prepareBlock).toContain('resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset)');
-    expect(prepareBlock).toContain('keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId');
-    expect(prepareBlock).toContain('keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId');
-    // 261026 ordinary-key regression: an ordinary key resolves its durable
-    // base from the launch-scoped map (first-stroke pin), falling back to the
-    // key record ONLY when the frame has no script and no timeline edit is in
-    // flight. An unknown base stays undefined so the publish fails closed.
+    // 261031-qps (Quick B): ONE base decision per target, resolved from the
+    // authority and spread into the target — the resolution key is the SOURCE
+    // key for an occurrence/override, never the composite.
+    expect(prepareBlock).toContain('resolveScriptBase(resolutionKeyId, scriptBaseLookupFor(readScriptBasePayload))');
+    expect(prepareBlock).toContain('...baseFor(target.keyId)');
+    expect(prepareBlock).toContain('...baseFor(target.sourceKeyId)');
+    expect(prepareBlock).toContain('...baseFor(sourceKeyId)');
+    expect(prepareBlock).toContain('...baseFor(promotion.keyId)');
+    expect(prepareBlock).toContain("if (!resolution.ok) return { durableBaseKind: 'pixels' };");
+    expect(prepareBlock).toContain("if (resolution.kind === 'reveal') return { durableBaseKind: 'reveal' };");
+    expect(prepareBlock).toContain("pinScriptBase(resolutionKeyId, resolution, { appFrame: source.appFrame, source: 'prepare-target-key' })");
+    // An authority refusal leaves the base UNDEFINED so the publish fails closed.
+    expect(prepareBlock).not.toContain(retired('durableBase', 'KeyId'));
     expect(prepareBlock).toContain('if (target.keyId !== source.keyId) return null;');
-    expect(prepareBlock).toContain('aquarelleDurableBaseByKeyRef.current.has(target.keyId)');
-    expect(prepareBlock).toContain('!isAquarelleScriptEditInFlight()');
-    expect(prepareBlock).toContain('durableBaseKeyId: null,');
-    expect(prepareBlock).toContain('durableBaseBytes,');
     // Never publish a record's own appFrame — an override record carries the
     // PHASE frame, which refused every repeat instance.
     expect(prepareBlock).not.toContain('record.appFrame');
@@ -4467,13 +4470,16 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     expect(prepareBlock).toContain('return null;');
   });
 
-  it('axis 2: composites the re-bake over the durable base before publishing and fails closed', () => {
+  it('axis 2: composites the re-bake over the authority-resolved base and fails closed', () => {
     const publishBlock = section(studio, 'publish: async (frame) => {', 'return ok;');
-    expect(publishBlock).toContain('target.durableBaseKeyId');
-    expect(publishBlock).toContain('physicPaintStore.getRotoRealKeyRecord(');
-    expect(publishBlock).toContain('requirePhysicPaintRotoInlineBytes(baseRecord.payload)');
+    // 261031-qps (Quick B): the publish closure DISPATCHES on the authority
+    // result carried by the target — it never reads a base record itself.
+    expect(publishBlock).not.toContain(`target.${retired('durableBase', 'KeyId')}`);
+    expect(publishBlock).not.toContain('physicPaintStore.getRotoRealKeyRecord(');
+    expect(publishBlock).toContain("if (target.durableBaseKind === 'reveal') {");
+    expect(publishBlock).toContain("reason: 'reveal-base-unsupported'");
     expect(publishBlock).toContain('composeRotoScriptRebakeFrame({');
-    expect(publishBlock).toContain('durableBaseBytes: baseBytes');
+    expect(publishBlock).toContain('durableBaseBytes: target.durableBaseBytes');
     expect(publishBlock).toContain('sheetBytes: frame.bytes');
     expect(publishBlock).toContain('appFrame: frame.appFrame');
     // Fail closed BEFORE the cache write: no stroke-only sheet on a group base.
@@ -4487,11 +4493,11 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     // The reverted stroke-only publish law is gone.
     expect(publishBlock).not.toContain('REVERTED (2026-10-26)');
     expect(publishBlock).toContain("recordAquarelleRenderSplitEvent('script-bake-composite'");
-    // 261026 ordinary-key regression (run 3): the SAME composite applies to
-    // the launch-scoped durable base. `null` = known-empty → raw bake;
-    // undefined = UNKNOWN → fail closed with no cache write.
+    // `null` = known-empty → raw bake; undefined = UNKNOWN → fail closed with
+    // no cache write.
+    expect(publishBlock).toContain('target.durableBaseBytes === null');
     expect(publishBlock).toContain('target.durableBaseBytes !== undefined');
-    expect(publishBlock).toContain('durableBaseBytes: target.durableBaseBytes');
+    expect(publishBlock).toContain("durableBaseSource = 'known-empty';");
     expect(publishBlock).toContain("reason: 'durable-base-unknown'");
     const unknownFail = publishBlock.indexOf("reason: 'durable-base-unknown'");
     expect(publishBlock.indexOf('return false;', unknownFail)).toBeGreaterThan(unknownFail);
@@ -4687,7 +4693,8 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(studio).toContain('aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
     // Eight pin sites by design (re-derived from the source): promotion,
-    // prepare fallback, first stroke, the 261028-k03 D2 lift-erase durable
+    // the authority's fresh pin (shared by prepare and the raster-key edit
+    // path), first stroke, the 261028-k03 D2 lift-erase durable
     // rewrite, the 261028-k03c D4 recovery's TWO writes (the validated seed,
     // then the single punched base), and the 261028-k03e recoverBase
     // known-empty adoption (`adoptKnownEmpty` — a `null` entry proves there is
@@ -4714,10 +4721,11 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
 
-    // Present bytes compose with the SAME multiply law (group branch + the
-    // ordinary launch-map branch); null is a known-empty raw bake; undefined
-    // fails closed (Option D: a reopened scripted key refuses, never erases).
-    expect(countOccurrences(publishBlock, 'composeRotoScriptRebakeFrame({')).toBe(2);
+    // 261031-qps (Quick B): ONE compose call — every base (group source key,
+    // launch map, occurrence, override) arrives as authority bytes, so the old
+    // key-id branch is gone. null is a known-empty raw bake; undefined fails
+    // closed (a reopened scripted key refuses, never erases).
+    expect(countOccurrences(publishBlock, 'composeRotoScriptRebakeFrame({')).toBe(1);
     expect(publishBlock).toContain('if (target.durableBaseBytes === null) {');
     expect(publishBlock).toContain("durableBaseSource = 'known-empty';");
     expect(publishBlock).toContain('target.durableBaseBytes !== undefined');
@@ -4876,7 +4884,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(countOccurrences(studio, 'resetAquarelleScriptRecording(')).toBe(1);
   });
 
-  it('pins the group-frame lifecycle target and the EXACT-offset source-key composite', () => {
+  it('pins the group-frame lifecycle target and the EXACT-offset source-key base', () => {
     const prepare = between(studio, 'prepareRotoScriptTargetRef.current = async (', '// RARE BLANK-AFTER-PLAY guard');
 
     // Override frames publish to the OVERRIDE key; their currency identity and
@@ -4886,29 +4894,29 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(overrideBranch).toContain('const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);');
     expect(overrideBranch).toContain('if (sourceKeyId === null || sourceKeyId !== source.keyId) return null;');
     expect(overrideBranch).toContain('keyId: target.keyId');
-    expect(overrideBranch).toContain('durableBaseKeyId: sourceKeyId');
+    // 261031-qps (Quick B): the base is the SOURCE key's authority result —
+    // the override composite can never become a base.
+    expect(overrideBranch).toContain('...baseFor(sourceKeyId)');
 
     // A source occurrence publishes to the source key the route turns into a
     // NEW override; its identity must match the mounted projection source.
     const sourceBranch = between(prepare, "if (target.kind === 'source-occurrence') {", "if (target.kind === 'override') {");
     expect(sourceBranch).toContain('if (target.sourceKeyId !== source.keyId) return null;');
     expect(sourceBranch).toContain('keyId: target.sourceKeyId');
-    expect(sourceBranch).toContain('durableBaseKeyId: target.sourceKeyId');
+    expect(sourceBranch).toContain('...baseFor(target.sourceKeyId)');
 
-    // The group composite reads the SOURCE RECORD payload (Rust-owned bytes)
-    // and fails closed BEFORE the cache write when it cannot resolve/compose.
+    // The composite runs on the authority bytes and fails closed BEFORE the
+    // cache write when the bake cannot compose.
     const publish = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
-    const groupBranch = between(publish, 'if (target.durableBaseKeyId) {', '} else if (target.durableBaseBytes !== undefined) {');
-    expect(groupBranch).toContain("durableBaseSource = 'group-source-key';");
-    expect(groupBranch).toContain('getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.durableBaseKeyId)');
-    expect(groupBranch).toContain('requirePhysicPaintRotoInlineBytes(baseRecord.payload)');
-    expect(groupBranch).toContain('composeRotoScriptRebakeFrame({');
-    expect(groupBranch).toContain('durableBaseBytes: baseBytes');
-    expect(groupBranch).toContain("reason: 'durable-base-unavailable'");
-    const failClosed = groupBranch.indexOf('if (!composed) {');
+    const composeBranch = between(publish, '} else if (target.durableBaseBytes !== undefined) {', '} else {');
+    expect(composeBranch).toContain('composeRotoScriptRebakeFrame({');
+    expect(composeBranch).toContain('durableBaseBytes: target.durableBaseBytes');
+    expect(composeBranch).toContain("reason: 'durable-base-unavailable'");
+    const failClosed = composeBranch.indexOf('if (!composed) {');
     expect(failClosed).toBeGreaterThan(-1);
-    expect(groupBranch.indexOf('return false;', failClosed)).toBeGreaterThan(failClosed);
-    expect(groupBranch.indexOf('upsertCachedFrame(')).toBe(-1);
+    expect(composeBranch.indexOf('return false;', failClosed)).toBeGreaterThan(failClosed);
+    expect(publish.indexOf('upsertCachedFrame(')).toBeGreaterThan(-1);
+    expect(publish.slice(0, publish.indexOf('upsertCachedFrame('))).not.toContain(retired('durableBase', 'KeyId'));
   });
 
   it('keeps every debug probe DEV-gated and self-identifying', () => {
@@ -4961,6 +4969,22 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const eraseBake = between(erase, 'bakeAquarelleEventsToFrame({', '});');
     expect(eraseBake).toContain('onDiagnostics:');
     expect(countOccurrences(erase, 'diagnostics: recoveryDiagnostics,')).toBe(3);
+  });
+
+  it('261031-qps delegates the durable-base decision to the authority', () => {
+    const ensureBase = between(
+      studio,
+      'ensureAquarelleDurableBaseRef.current = async (appFrame) => {',
+      'const runAquarelleLiftErase = useCallback(',
+    );
+    // The base verdict is the authority's; the ensure step never decides it.
+    expect(ensureBase).toContain('resolveScriptBase(');
+    // The stroked probe is STROKES-ONLY: a Dry-only frame still counts as
+    // unrecorded, so the probe is hasAquarelleScriptForFrame, never the
+    // Dry-inclusive events reader.
+    expect(ensureBase).toContain('hasAquarelleScriptForFrame(');
+    expect(ensureBase).toContain('recoverAquarelleDurableBase(');
+    expect(ensureBase).not.toContain('getAquarelleEventsForFrame(');
   });
 });
 
@@ -5057,18 +5081,32 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   });
 
   it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {
+    // Rail frames resolve through the GROUP branch, which otherwise reads the
+    // source key's baked payload as the durable base — the script would be
+    // composited over its own baked pixels. The rail's persisted opt-in is the
+    // authority (never session state), so this holds after a reopen too.
+    const lookup = slice(
+      studio,
+      'const scriptBaseLookupFor = (',
+      'const pinScriptBase = (',
+    );
+    expect(lookup).toContain(
+      'if (loopClips().some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId))) {',
+    );
+    expect(lookup).toContain('return { bytes: null };');
+    // 261031-qps: prepare routes EVERY target through the authority — no branch
+    // re-reads a payload or names a base key inline any more.
     const prep = slice(
       studio,
       'prepareRotoScriptTargetRef.current = async (source) => {',
       'if (source.keyId !== null) return null;',
     );
-    // Rail frames resolve through the GROUP branch, which otherwise reads the
-    // source key's baked payload as the durable base — the script would be
-    // composited over its own baked pixels. The rail's persisted opt-in is the
-    // authority (never session state), so this holds after a reopen too.
-    expect(prep).toContain('.some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId));');
-    expect(countOccurrences(prep, 'durableBaseBytes: null')).toBe(2);
-    expect(countOccurrences(prep, 'durableBaseKeyId: null, durableBaseBytes: null')).toBe(2);
+    expect(prep).toContain('resolveScriptBase(resolutionKeyId, scriptBaseLookupFor(readScriptBasePayload))');
+    expect(prep).toContain('...baseFor(target.keyId)');
+    expect(prep).toContain('...baseFor(target.sourceKeyId)');
+    expect(prep).toContain('...baseFor(sourceKeyId)');
+    expect(prep).not.toContain(retired('durableBase', 'KeyId'));
+    expect(prep).not.toContain('durableBaseBytes: null');
   });
 
   it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {

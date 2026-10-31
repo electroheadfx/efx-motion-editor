@@ -223,6 +223,14 @@ import {
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
 import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
+// 261031-qps (Quick B): the ONE durable-base authority every script path
+// resolves through (prepare/publish, raster-key edits, stacking, reveal).
+import {
+  resolveScriptBase,
+  type ScriptBaseEntry,
+  type ScriptBaseLookup,
+  type ScriptBaseResolution,
+} from './roto/aquarelleScriptBaseAuthority';
 // 261029-lsr: the ONE script-replay orchestration (invalidate -> durable base ->
 // prepare -> restore -> reset -> rebake -> notify -> owner publish).
 import {
@@ -1960,55 +1968,57 @@ export function PhysicsPaintStudio() {
           // closed when the base cannot be resolved: a stroke-only sheet must
           // never reach a group base.
           //
-          // 261026 ORDINARY-KEY regression (run 3): an ordinary key can carry
-          // scriptless cached paint too, so the same multiply composite applies
-          // to the launch-scoped durable base pinned at the key's first stroke.
-          // `durableBaseBytes` null = KNOWN empty (blank promotion) → the raw
-          // bake is the key's complete content; undefined = UNKNOWN (e.g. a
-          // reopened scripted key) → fail closed, never a stroke-only replace.
+          // 261031-qps (Quick B): the base decision belongs to the ONE durable-
+          // base authority, resolved by `prepareRotoScriptTarget`; this closure
+          // only DISPATCHES on that result. `durableBaseBytes` null = KNOWN
+          // empty → the raw bake is the key's complete content; bytes = the
+          // proven pre-script cache → multiply-composite; absent = the
+          // authority refused (unprovable base) → fail closed, never a
+          // stroke-only replace. `durableBaseKind: 'reveal'` = a reveal-owned
+          // key whose picture is wash × placed reference, never a pixel base.
           let publishBytes = frame.bytes;
-          let durableBaseSource: 'group-source-key' | 'launch-map' | 'known-empty' | 'unknown' = 'unknown';
-          if (target.durableBaseKeyId) {
-            durableBaseSource = 'group-source-key';
-            const launch = launchContextRef.current;
-            const baseRecord = launch
-              ? physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.durableBaseKeyId)
-              : null;
-            let baseBytes: Uint8Array | null = null;
-            try {
-              baseBytes = baseRecord ? requirePhysicPaintRotoInlineBytes(baseRecord.payload) : null;
-            } catch {
-              baseBytes = null;
-            }
-            const composed = baseBytes
-              ? await composeRotoScriptRebakeFrame({
-                  durableBaseBytes: baseBytes,
-                  sheetBytes: frame.bytes,
-                  appFrame: frame.appFrame,
-                  size: { width: frame.width, height: frame.height },
-                })
-              : null;
+          let durableBaseSource: 'authority-base' | 'known-empty' | 'reveal' | 'unknown' = 'unknown';
+          if (target.durableBaseKind === 'reveal') {
+            // Quick B Task 3 wires the render-only photo-reference port; until
+            // then a reveal-owned key has no pixel base at all, so refusing is
+            // the only non-destructive outcome.
+            recordAquarelleRenderSplitEvent('script-bake-result', {
+              appFrame: frame.appFrame,
+              targetKeyId: frame.keyId,
+              ok: false,
+              reason: 'reveal-base-unsupported',
+            });
+            return false;
+          }
+          if (target.durableBaseBytes === null) {
+            // KNOWN empty base (blank promotion): the script IS the key's
+            // complete content, so the raw bake is complete — no composite.
+            durableBaseSource = 'known-empty';
+          } else if (target.durableBaseBytes !== undefined) {
+            durableBaseSource = 'authority-base';
+            const composed = await composeRotoScriptRebakeFrame({
+              durableBaseBytes: target.durableBaseBytes,
+              sheetBytes: frame.bytes,
+              appFrame: frame.appFrame,
+              size: { width: frame.width, height: frame.height },
+            });
             recordAquarelleRenderSplitEvent('script-bake-composite', {
               appFrame: frame.appFrame,
               targetKeyId: target.keyId,
               targetSourceKeyId: target.sourceKeyId ?? null,
-              durableBaseKeyId: target.durableBaseKeyId,
               durableBase: durableBaseSource,
-              baseResolved: baseBytes !== null,
+              baseResolved: true,
               composed: composed !== null,
               size: { width: frame.width, height: frame.height },
-            }, { baseInk: baseBytes, sheetInk: frame.bytes, composedInk: composed?.bytes ?? null });
-            if (baseBytes) {
-              recordAquarelleAlphaProof('composite-alpha-proof', {
-                appFrame: frame.appFrame,
-                targetKeyId: target.keyId,
-                durableBaseKeyId: target.durableBaseKeyId,
-                durableBase: durableBaseSource,
-                composed: composed !== null,
-              }, { base: baseBytes, sheet: frame.bytes, composed: composed?.bytes ?? null },
-                [{ label: 'base->composed', base: baseBytes, other: composed?.bytes ?? null }],
-                { dumpPng: true });
-            }
+            }, { baseInk: target.durableBaseBytes, sheetInk: frame.bytes, composedInk: composed?.bytes ?? null });
+            recordAquarelleAlphaProof('composite-alpha-proof', {
+              appFrame: frame.appFrame,
+              targetKeyId: target.keyId,
+              durableBase: durableBaseSource,
+              composed: composed !== null,
+            }, { base: target.durableBaseBytes, sheet: frame.bytes, composed: composed?.bytes ?? null },
+              [{ label: 'base->composed', base: target.durableBaseBytes, other: composed?.bytes ?? null }],
+              { dumpPng: true });
             if (!composed) {
               recordAquarelleRenderSplitEvent('script-bake-result', {
                 appFrame: frame.appFrame,
@@ -2019,54 +2029,9 @@ export function PhysicsPaintStudio() {
               return false;
             }
             publishBytes = composed.bytes;
-          } else if (target.durableBaseBytes !== undefined) {
-            if (target.durableBaseBytes === null) {
-              // KNOWN empty base (blank promotion): the script IS the key's
-              // complete content, so the raw bake is complete — no composite.
-              durableBaseSource = 'known-empty';
-            } else {
-              durableBaseSource = 'launch-map';
-              const composed = await composeRotoScriptRebakeFrame({
-                durableBaseBytes: target.durableBaseBytes,
-                sheetBytes: frame.bytes,
-                appFrame: frame.appFrame,
-                size: { width: frame.width, height: frame.height },
-              });
-              recordAquarelleRenderSplitEvent('script-bake-composite', {
-                appFrame: frame.appFrame,
-                targetKeyId: target.keyId,
-                targetSourceKeyId: target.sourceKeyId ?? null,
-                durableBaseKeyId: null,
-                durableBase: durableBaseSource,
-                baseResolved: true,
-                composed: composed !== null,
-                size: { width: frame.width, height: frame.height },
-              }, { baseInk: target.durableBaseBytes, sheetInk: frame.bytes, composedInk: composed?.bytes ?? null });
-              recordAquarelleAlphaProof('composite-alpha-proof', {
-                appFrame: frame.appFrame,
-                targetKeyId: target.keyId,
-                durableBaseKeyId: null,
-                durableBase: durableBaseSource,
-                composed: composed !== null,
-              }, { base: target.durableBaseBytes, sheet: frame.bytes, composed: composed?.bytes ?? null },
-                [{ label: 'base->composed', base: target.durableBaseBytes, other: composed?.bytes ?? null }],
-                { dumpPng: true });
-              if (!composed) {
-                recordAquarelleRenderSplitEvent('script-bake-result', {
-                  appFrame: frame.appFrame,
-                  targetKeyId: frame.keyId,
-                  ok: false,
-                  reason: 'durable-base-unavailable',
-                });
-                return false;
-              }
-              publishBytes = composed.bytes;
-            }
           } else {
-            // Ordinary key with an UNKNOWN base: the key may carry scriptless
-            // cached paint (run 3) and a replace would erase it. Group frames
-            // always carry `durableBaseKeyId`, so this is only the ordinary /
-            // reopened-scripted case.
+            // The authority could not prove a base: the key may carry cached
+            // paint and a replace would erase it.
             recordAquarelleRenderSplitEvent('script-bake-result', {
               appFrame: frame.appFrame,
               targetKeyId: frame.keyId,
@@ -2078,14 +2043,12 @@ export function PhysicsPaintStudio() {
           captureAquarelleRenderSplitDisplay('script-bake-before-publish', frame.appFrame, {
             bakeTargetKeyId: frame.keyId,
             bakeEvents: events.length,
-            durableBaseKeyId: target.durableBaseKeyId ?? null,
             durableBase: durableBaseSource,
           });
           recordAquarelleRenderSplitEvent('script-bake', {
             appFrame: frame.appFrame,
             targetKeyId: frame.keyId,
             target: { keyId: target.keyId, appFrame: target.appFrame },
-            durableBaseKeyId: target.durableBaseKeyId ?? null,
             durableBase: durableBaseSource,
             events: events.length,
             diagnostics: bakeDiagnostics,
@@ -3343,6 +3306,98 @@ export function PhysicsPaintStudio() {
     return promise;
   };
 
+  // 261031-qps (Quick B): ONE durable-base authority wiring shared by every
+  // script path. The persisted/session split mirrors the snapshot: a base
+  // recovered this launch is MARKED and must stay session-only, so it never
+  // answers the persisted arm. `hasRecordedStrokes` is the STROKES-ONLY probe —
+  // the Dry-inclusive frame events must never decide a base (a Dry-only
+  // timeline still pins the raster under it).
+  const toScriptBaseBuffer = (bytes: Uint8Array): ArrayBuffer => {
+    if (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
+      return bytes.buffer as ArrayBuffer;
+    }
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  };
+  const readScriptBaseEntry = (keyId: string): ScriptBaseEntry | undefined => {
+    const map = aquarelleDurableBaseByKeyRef.current;
+    if (!map.has(keyId)) return undefined;
+    const stored = map.get(keyId) ?? null;
+    return { bytes: stored === null ? null : toScriptBaseBuffer(stored) };
+  };
+  const readScriptBasePayload = (keyId: string): ArrayBuffer | null | undefined => {
+    const launch = launchContextRef.current;
+    if (!launch) return undefined;
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), keyId);
+    if (!record) return undefined;
+    // A reference-only payload on a runtime path is a contract violation: let
+    // requirePhysicPaintRotoInlineBytes throw (fail closed) instead of letting
+    // unreadable pixels masquerade as a KNOWN-EMPTY base.
+    return toScriptBaseBuffer(requirePhysicPaintRotoInlineBytes(record.payload));
+  };
+  const scriptBaseLookupFor = (
+    payloadFor: (keyId: string) => ArrayBuffer | null | undefined,
+    // The raster-key edit path already holds the frame's record, so it passes
+    // the STROKES-ONLY probe directly instead of re-reading it by key id.
+    recordedFor?: (keyId: string) => boolean,
+  ): ScriptBaseLookup => {
+    const loopClips = (): readonly PhysicPaintRotoLoopClip[] => {
+      const launch = launchContextRef.current;
+      return launch
+        ? physicPaintStore.getRotoPhysicalLoopClips(launch.layerId, studioActiveTrackId())
+        : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+    };
+    return {
+      persistedDurableBase: (keyId) => {
+        // 261030-np9: a key of a "Save script on each key" rail carries the
+        // WHOLE picture in its script, so its durable base is KNOWN EMPTY. Its
+        // baked source payload must never become the base — replaying the
+        // script over its own baked pixels doubled every stroke.
+        if (loopClips().some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId))) {
+          return { bytes: null };
+        }
+        if (aquarelleRecoveredBaseKeyIdsRef.current.has(keyId)) return undefined;
+        return readScriptBaseEntry(keyId);
+      },
+      sessionDurableBase: (keyId) => (
+        aquarelleRecoveredBaseKeyIdsRef.current.has(keyId) ? readScriptBaseEntry(keyId) : undefined
+      ),
+      hasRecordedStrokes: recordedFor ?? ((keyId) => {
+        const launch = launchContextRef.current;
+        if (!launch) return true;
+        const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), keyId);
+        // A key with no record cannot own a script — this is a newly appended
+        // stack key, whose absent payload proves a known-empty base.
+        return record === null ? false : hasAquarelleScriptForFrame(record.appFrame);
+      }),
+      currentPayload: payloadFor,
+      isRevealKey: (keyId) => loopClips().some(
+        (clip) => clip.railKind === 'reveal' && clip.sourceKeyIds.includes(keyId),
+      ),
+    };
+  };
+  // A FRESH pin (authority `persistPin`) is the durable base recorded at the
+  // key's first scripted stroke: it persists with the snapshot and is never
+  // marked recovered. Recovered bases stay session-only.
+  const pinScriptBase = (
+    keyId: string,
+    resolution: Extract<ScriptBaseResolution, { ok: true }>,
+    event: { readonly appFrame: number; readonly source: string },
+  ): void => {
+    if (!resolution.persistPin) return;
+    const bytes = resolution.kind === 'bytes' ? new Uint8Array(resolution.bytes.slice(0)) : null;
+    aquarelleDurableBaseByKeyRef.current.set(keyId, bytes);
+    aquarelleRecoveredBaseKeyIdsRef.current.delete(keyId);
+    recordAquarelleRenderSplitEvent('durable-base-record', {
+      appFrame: event.appFrame,
+      keyId,
+      recorded: true,
+      source: event.source,
+    }, bytes ? { baseInk: bytes } : undefined);
+    studioScriptSnapshot.markDirty();
+  };
+
   prepareRotoScriptTargetRef.current = async (source) => {
     const launch = launchContextRef.current;
     if (
@@ -3355,15 +3410,23 @@ export function PhysicsPaintStudio() {
     // too — otherwise Apply fails closed on the very same frames Move fixed.
     await ensureAquarelleDurableBaseRef.current(source.appFrame);
 
-    // 261030-np9: a key of a "Save script on each key" rail carries the WHOLE
-    // picture in its script, so its durable base is KNOWN EMPTY. The loop
-    // clip's frames resolve through the group branch, which otherwise reads
-    // the baked source payload as the base — replaying the script over its own
-    // baked pixels doubled every stroke (a moved stroke left its old copy).
-    const railScriptOwnsKey = (keyId: string): boolean =>
-      physicPaintStore
-        .getRotoPhysicalLoopClips(launch.layerId, studioActiveTrackId())
-        .some((clip) => clip.keyScriptEdits === true && clip.sourceKeyIds.includes(keyId));
+    // The ONE base decision. The resolution key is the SOURCE key for a source
+    // occurrence or a frame override — never the occurrence/override composite,
+    // which is unreachable by construction. `ok: false` leaves the base
+    // UNDEFINED so the publish fails closed with zero writes.
+    const baseFor = (resolutionKeyId: string): {
+      readonly durableBaseKind: 'pixels' | 'reveal';
+      readonly durableBaseBytes?: Uint8Array | null;
+    } => {
+      const resolution = resolveScriptBase(resolutionKeyId, scriptBaseLookupFor(readScriptBasePayload));
+      if (!resolution.ok) return { durableBaseKind: 'pixels' };
+      if (resolution.kind === 'reveal') return { durableBaseKind: 'reveal' };
+      pinScriptBase(resolutionKeyId, resolution, { appFrame: source.appFrame, source: 'prepare-target-key' });
+      return {
+        durableBaseKind: 'pixels',
+        durableBaseBytes: resolution.kind === 'bytes' ? new Uint8Array(resolution.bytes) : null,
+      };
+    };
 
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
@@ -3383,65 +3446,31 @@ export function PhysicsPaintStudio() {
       const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: source.appFrame });
       if (target.kind === 'ordinary-key') {
         if (target.keyId !== source.keyId) return null;
-        // 261026 ordinary-key regression: a script edit must never REPLACE a
-        // key that can carry scriptless cached paint. Resolve the launch-scoped
-        // durable base pinned at this key's first recorded stroke. When the map
-        // has no entry yet, a frame with NO script uses its current display
-        // payload as the base — that payload IS the pre-script cache. A frame
-        // that already has a script but no entry (a REOPENED key) stays
-        // UNKNOWN: the publish fails closed rather than erasing unproven paint.
-        let durableBaseBytes: Uint8Array | null | undefined;
-        if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) {
-          durableBaseBytes = aquarelleDurableBaseByKeyRef.current.get(target.keyId) ?? null;
-        } else if (
-          // Timeline edits (move/delete/appearance/transform/reorder) re-bake
-          // the RECORDED script; when the map has no entry their base is
-          // genuinely unknown (a reopened key) and must fail closed — the key
-          // record already holds the flattened composite, not the base.
-          !isAquarelleScriptEditInFlight()
-          && getAquarelleEventsForFrame(source.appFrame).length === 0
-        ) {
-          // The key record payload IS the pre-script cache here: the frame has
-          // no aquarelle events, so nothing has re-baked over it.
-          const baseRecord = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.keyId);
-          let baseBytes: Uint8Array | null = null;
-          try {
-            baseBytes = baseRecord ? requirePhysicPaintRotoInlineBytes(baseRecord.payload) : null;
-          } catch {
-            baseBytes = null;
-          }
-          if (baseBytes) {
-            durableBaseBytes = new Uint8Array(baseBytes);
-            aquarelleDurableBaseByKeyRef.current.set(target.keyId, durableBaseBytes);
-            aquarelleRecoveredBaseKeyIdsRef.current.delete(target.keyId);
-            recordAquarelleRenderSplitEvent('durable-base-record', {
-              appFrame: source.appFrame,
-              keyId: target.keyId,
-              recorded: true,
-              source: 'prepare-target-key-record',
-            }, { baseInk: durableBaseBytes });
-          }
-        }
         return {
           keyId: target.keyId,
           appFrame: source.appFrame,
           sourceKeyId: target.keyId,
-          durableBaseKeyId: null,
-          durableBaseBytes,
+          ...baseFor(target.keyId),
         };
       }
       if (target.kind === 'source-occurrence') {
         if (target.sourceKeyId !== source.keyId) return null;
-        return railScriptOwnsKey(target.sourceKeyId)
-          ? { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: null, durableBaseBytes: null }
-          : { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId };
+        return {
+          keyId: target.sourceKeyId,
+          appFrame: source.appFrame,
+          sourceKeyId: target.sourceKeyId,
+          ...baseFor(target.sourceKeyId),
+        };
       }
       if (target.kind === 'override') {
         const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);
         if (sourceKeyId === null || sourceKeyId !== source.keyId) return null;
-        return railScriptOwnsKey(sourceKeyId)
-          ? { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: null, durableBaseBytes: null }
-          : { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId };
+        return {
+          keyId: target.keyId,
+          appFrame: source.appFrame,
+          sourceKeyId,
+          ...baseFor(sourceKeyId),
+        };
       }
       return null;
     }
@@ -3458,14 +3487,10 @@ export function PhysicsPaintStudio() {
     // The promotion recorded what the new key was seeded with (cloned previous
     // paint, or null for a blank key) — the first script bake must multiply
     // over the SAME base the first capture uses.
-    const promotedBase = aquarelleDurableBaseByKeyRef.current.has(promotion.keyId)
-      ? aquarelleDurableBaseByKeyRef.current.get(promotion.keyId) ?? null
-      : undefined;
     return {
       keyId: promotion.keyId,
       appFrame: promotion.appFrame,
-      durableBaseKeyId: null,
-      durableBaseBytes: promotedBase,
+      ...baseFor(promotion.keyId),
     };
   };
 
@@ -6645,6 +6670,12 @@ export function PhysicsPaintStudio() {
   // over a render's controller object.
   const aquarelleRebakeRef = useRef<((events: ReturnType<typeof getAquarelleEventsForFrame>) => Promise<boolean>) | null>(null);
   aquarelleRebakeRef.current = (events) => rotoScript.applyAquarelleTimeline(events);
+  // 261031-qps (Quick B): the pre-edit recovery bake below replays the frame's
+  // recorded timeline — Dry events INCLUDED — because a script bake must
+  // reproduce every recorded action. That is a BAKE input, never a base
+  // decision: the authority's strokes-only probe alone decides the base, so the
+  // Dry-inclusive probe is kept OUT of the ensure body on purpose.
+  const aquarelleRecoveryEvents = (appFrame: number) => getAquarelleEventsForFrame(appFrame);
   // 261028-k03d: legacy keys carry a script but no durable pre-script base, so
   // every script edit used to fail closed ('durable-base-unknown'). Recover that
   // base ONCE, before the edit mutates the timeline: P is the key payload and S
@@ -6659,32 +6690,53 @@ export function PhysicsPaintStudio() {
     const record = physicPaintStore.getRotoRealKeyRecordByAppFrame(launch.layerId, trackId, appFrame);
     if (!record) return true;
     const map = aquarelleDurableBaseByKeyRef.current;
-    if (map.has(record.keyId)) return true;
-    const events = getAquarelleEventsForFrame(appFrame);
-    if (events.length === 0) return true;
     const payload = aquarelleCompositeRef.current(appFrame);
-    if (!payload) {
-      // 261028-k03e: no committed pixels anywhere. The script IS the key's
-      // complete content, so its pre-script base is the KNOWN-EMPTY base (the
-      // same `null` a blank promotion writes) — never a reason to block the
-      // edit. Adopt it and skip the expensive bake entirely.
-      map.set(record.keyId, null);
-      aquarelleRecoveredBaseKeyIdsRef.current.delete(record.keyId);
+    // 261031-qps: the ONE base decision, shared with every other script path.
+    // `hasAquarelleScriptForFrame` is STROKES ONLY: a Dry-only timeline still
+    // counts as unscripted, so the raster under it is the pre-script cache and
+    // takes the pin path instead of refusing.
+    const resolution = resolveScriptBase(record.keyId, scriptBaseLookupFor(
+      () => (payload ? toScriptBaseBuffer(payload.bytes) : null),
+      () => hasAquarelleScriptForFrame(record.appFrame),
+    ));
+    if (!resolution.ok) {
+      if (!payload) {
+        // 261028-k03e: no committed pixels anywhere. The script IS the key's
+        // complete content, so its pre-script base is the KNOWN-EMPTY base (the
+        // same `null` a blank promotion writes) — never a reason to block the
+        // edit. Adopt it and skip the expensive bake entirely.
+        map.set(record.keyId, null);
+        aquarelleRecoveredBaseKeyIdsRef.current.delete(record.keyId);
+        bumpAquarelleStrokesRevision();
+        studioScriptSnapshot.markDirty();
+        recordAquarelleRenderSplitEvent('lift-erase', {
+          frame: appFrame,
+          trackId,
+          keyId: record.keyId,
+          scripted: true,
+          willPinBase: false,
+          stage: 'base-recovery-ok',
+          source: 'pre-edit',
+          reason: 'no-visible-payload',
+          baseInk: 0,
+          // 261029-bks: no bake ran on this path — the honest value is null.
+          diagnostics: null,
+        });
+        return true;
+      }
+      // The authority refused the base and committed pixels DO exist: the
+      // pre-edit bake plus inversion below is the last-resort recovery step.
+    } else {
+      // A reveal-owned key's picture is wash × placed reference, never a pixel
+      // base — the edit path needs no base at all.
+      if (resolution.kind === 'reveal') return true;
+      // An already-proven base (persisted SNAP v5, or a recovered session base)
+      // needs no pin.
+      if (!resolution.persistPin) return true;
+      // A freshly pinned pre-script cache: the key has no recorded strokes, so
+      // its current payload IS that cache. Persist it; never mark it recovered.
+      pinScriptBase(record.keyId, resolution, { appFrame, source: 'raster-key-edit' });
       bumpAquarelleStrokesRevision();
-      studioScriptSnapshot.markDirty();
-      recordAquarelleRenderSplitEvent('lift-erase', {
-        frame: appFrame,
-        trackId,
-        keyId: record.keyId,
-        scripted: true,
-        willPinBase: false,
-        stage: 'base-recovery-ok',
-        source: 'pre-edit',
-        reason: 'no-visible-payload',
-        baseInk: 0,
-        // 261029-bks: no bake ran on this path — the honest value is null.
-        diagnostics: null,
-      });
       return true;
     }
     // 261029-bks: the pre-edit bake's diagnostics, carried onto every
@@ -6693,7 +6745,7 @@ export function PhysicsPaintStudio() {
     const size = { width: payload.width, height: payload.height };
     try {
       const baked = await bakeAquarelleEventsToFrame({
-        events,
+        events: aquarelleRecoveryEvents(appFrame),
         size,
         paper: aquarelleLiftPaperRef.current,
         onDiagnostics: (diagnostics) => {
