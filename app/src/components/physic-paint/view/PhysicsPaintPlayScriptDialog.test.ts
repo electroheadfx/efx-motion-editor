@@ -1706,7 +1706,7 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(findAll(tree, byId('physics-play-script-collision-overwrite'))).toHaveLength(0);
   });
 
-  it('hides every creation-only control on a stack destination (WR-04)', () => {
+  it('shows the editable Rail Type and Motion wiggle on a stack and hides the remaining creation-only cards (UAT 261031-i54)', () => {
     const { controller } = createFakeController(stackSeed({
       keepScriptVisible: true,
       keyScriptEdits: true,
@@ -1714,16 +1714,18 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
       identicalSourceCycle: { sourceKeyIds: ['S1', 'S2', 'S3', 'S4'], loopCount: 1, sourceStart: 10 },
     }));
     const tree = renderDialog(controller);
-    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
     expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
-    expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
-    expect(findAll(tree, byClass('physics-paint-play-script-side-stack'))).toHaveLength(0);
+    // The right column is filled by the Motion wiggle instead of going empty.
+    expect(findAll(tree, byClass('physics-paint-play-script-side-stack'))).toHaveLength(1);
     // The stack-specific surfaces and the run span stay.
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+    expect(textOf(tree)).toContain('This run updates the rail’s Rail Type and Motion wiggle.');
 
     // Creation keeps every one of them.
     const create = renderDialog(createFakeController({ keyScriptEdits: true, paintSeedVariation: true }).controller);

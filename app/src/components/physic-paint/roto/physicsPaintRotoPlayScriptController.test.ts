@@ -4810,7 +4810,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.bakeOptions).toHaveLength(0);
   });
 
-  it('renders a stack run with the target rail settings, not the dialog drafts (WR-04)', async () => {
+  it('seeds the run from the rail settings, bakes the dialog settings and adopts them on the rail (UAT 261031-i54)', async () => {
+    bakePose.poser.mockClear();
     const target = stackClip(1, {
       mode: 'progressive',
       motion: { deformation: 7, position: 9, rotation: 0, scale: 0 },
@@ -4819,21 +4820,25 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     });
     const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
     await test.controller.openConfirmation();
-    // Creation-only drafts disagree with the rail's stored settings.
+    // The dialog starts from the rail's stored bake settings.
+    expect(test.controller.mode.value).toBe('progressive');
+    expect(test.controller.dialogMotion.value).toEqual({ deformation: 7, position: 9, rotation: 0, scale: 0 });
+    // The user may mix another Rail Type and wiggle into the rail.
     test.controller.mode.value = 'static';
     test.controller.dialogMotion.value = { deformation: 50, position: 50, rotation: 0, scale: 0 };
     test.controller.countText.value = '2';
     expect(await test.controller.confirm()).toBe(true);
 
-    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'progressive' });
-    // The progressive poser receives the target rail's stored motion and the
-    // run start — never the dialog's creation drafts.
-    expect(bakePose.poser).toHaveBeenCalledWith(
-      { width: 10, height: 10 },
-      { deformation: 7, position: 9, rotation: 0, scale: 0 },
-      11,
-      'white',
-    );
+    // The bake follows the NEW settings: static bakes count salted frames, and
+    // no progressive poser receives the old rail wiggle.
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'static' });
+    expect(bakePose.poser).not.toHaveBeenCalled();
+    // The rail adopts the run's mode and wiggle in the same commit.
+    const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
+    expect(committed).toMatchObject({
+      mode: 'static',
+      motion: { deformation: 50, position: 50 },
+    });
     expect(test.controller.appliedSummary.line1.value).toContain('#abcdef');
     const written = test.commit.mock.calls[0]![0].records.map((record) => record.appFrame);
     expect(written).toContain(11);

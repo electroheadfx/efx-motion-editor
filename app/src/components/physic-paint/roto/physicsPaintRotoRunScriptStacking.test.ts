@@ -35,6 +35,8 @@ function rail(overrides: Partial<RunScriptRailView> & { readonly clipId: string 
     phaseOrigin: 10,
     cycleLength: 4,
     repeat: 3,
+    mode: 'progressive',
+    motion: undefined,
     sourceKeyIds: [],
     sourceOffsets: [],
     frameOverrideAppFrames: [],

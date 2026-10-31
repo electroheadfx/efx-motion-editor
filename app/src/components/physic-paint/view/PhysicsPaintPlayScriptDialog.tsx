@@ -534,9 +534,8 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
-          {/* 261031-i54 (WR-04): a stack reuses the target rail's stored mode —
-              the creation-only Rail Type control is hidden. */}
-          {stacking ? null : (
+          {/* 261031-i54 UAT: a stack seeds Rail Type from the target rail and
+              lets the user change it — the rail adopts the run's mode on confirm. */}
           <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
             <span class="physics-paint-play-script-card-title">Rail Type</span>
             <div
@@ -566,8 +565,12 @@ export function PhysicsPaintPlayScriptDialog({
                 );
               })}
             </div>
+            {stacking ? (
+              <span class="physics-paint-play-script-mode-helper">
+                This run updates the rail’s Rail Type and Motion wiggle.
+              </span>
+            ) : null}
           </div>
-          )}
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
@@ -819,10 +822,11 @@ export function PhysicsPaintPlayScriptDialog({
           </>
           ) : (
           <>
-          {/* 261031-i54 (WR-04): Color and Motion come from the target rail on a
-              stack — the creation-only side stack is hidden. */}
-          {stacking ? null : (
+          {/* 261031-i54 UAT: the Motion wiggle is editable on a stack and the
+              rail adopts the run's values. Color stays the rail's stored
+              setting, so its card remains creation-only. */}
           <div class="physics-paint-play-script-side-stack">
+            {stacking ? null : (
             <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <div class="physics-paint-play-script-card-heading">
                 <span class="physics-paint-play-script-card-title">Color</span>
@@ -869,9 +873,9 @@ export function PhysicsPaintPlayScriptDialog({
                 </div>
               ) : null}
             </div>
+            )}
             {motionCard}
           </div>
-          )}
           {identicalCycle ? (
             <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">
               <span class="physics-paint-play-script-card-title">Source cycle</span>

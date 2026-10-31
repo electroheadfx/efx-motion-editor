@@ -1189,9 +1189,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     paintSeedVariation.value = enabled;
   }
 
-  // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion defaults port; never writes anywhere.
+  // D-06: the ONLY reset path the dialog calls — re-reads the CURRENT Motion default port; never writes anywhere.
+  // 261031-i54 UAT: a stack session resets to the TARGET RAIL's stored wiggle,
+  // not the group defaults — the rail is the reference the run starts from.
   function resetDialogMotion(): void {
-    dialogMotion.value = toDialogMotion(ports.getMotion());
+    const destination = runDestination.peek();
+    dialogMotion.value = destination.kind === 'stack' && destination.rail.motion !== undefined
+      ? toDialogMotion(destination.rail.motion)
+      : toDialogMotion(ports.getMotion());
   }
 
   /* 52-05 (G-52-3): switching to the Reveal Photo Rail tab re-defaults the span
@@ -1304,6 +1309,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // over-span count still parses and confirm raises the collision prompt.
         collisionChoice.value = null;
         pinnedStackDestination.value = stackSurfaceAtOpen;
+        // UAT 261031-i54: the run's Rail Type and Motion wiggle start from the
+        // rail's stored settings; the user may change them and the rail adopts
+        // the run's values on confirm. Creation keeps the group defaults.
+        mode.value = destination.rail.mode;
+        dialogMotion.value = toDialogMotion(
+          destination.rail.motion ?? { deformation: 0, position: 0 },
+        );
         // WR-06: a stack destination is Paint-only — the Reveal tab must never
         // stay selected from an earlier open.
         if (railTab.peek() !== 'paint') railTab.value = 'paint';
@@ -2272,8 +2284,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         return false;
       }
     }
-    // WR-04: a stack run renders with the TARGET RAIL's stored settings, never
-    // the creation-only drafts in the dialog.
     const currentTarget = stackTargetClip(surface);
     if (currentTarget === null) {
       collisionChoice.value = null;
@@ -2290,13 +2300,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
       assertCurrent(acceptedGeneration);
       if (!authority.ok || effectiveCount > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
-      // WR-04: the target rail's persisted settings drive this run — its mode,
-      // its motion (zeros when absent) and its paint-seed flag. The dialog's
-      // creation drafts are irrelevant on a stack.
-      const motion = currentTarget.motion === undefined
-        ? { deformation: 0, position: 0 }
-        : { ...currentTarget.motion };
-      const renderMode = currentTarget.mode;
+      // UAT 261031-i54: a stack run bakes with the dialog's Rail Type and Motion
+      // wiggle — seeded from the rail at open, editable by the user. The target
+      // adopts them below so its label, interpolation policy and Regenerate all
+      // describe what was just run. Paint seed and color stay the rail's own.
+      const motion = { ...dialogMotion.peek() };
+      const renderMode = mode.peek();
       const renderPaintSeedVariation = currentTarget.paintSeedVariation === true;
       const rotoBackground = { ...ports.getBackgroundMetadata() };
       const snapshot = await ports.library.loadSnapshot(selectedId);
@@ -2361,6 +2370,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const updatedTarget: PhysicPaintRotoLoopClip = {
         ...currentTarget,
         sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
+        mode: renderMode,
+        motion: compactPhysicPaintRotoMotion(motion),
         ...(lifecycle ?? {}),
       };
       const nextClips = Object.freeze(currentLoopClips()

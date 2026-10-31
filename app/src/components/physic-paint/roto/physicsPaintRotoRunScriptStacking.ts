@@ -2,6 +2,7 @@ import type {
   PhysicPaintRotoGroupFrameOverride,
   PhysicPaintRotoGroupVisibleRange,
   PhysicPaintRotoLoopClip,
+  PhysicPaintRotoScriptMotionSettings,
 } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolver';
 
@@ -40,6 +41,10 @@ export interface RunScriptRailView {
   readonly phaseOrigin: number;
   readonly cycleLength: number;
   readonly repeat: number | 'infinity';
+  /** The rail's stored bake mode — the stack dialog seeds its Rail Type from it. */
+  readonly mode: 'progressive' | 'static';
+  /** The rail's stored Motion wiggle — the stack dialog seeds its sliders from it. */
+  readonly motion: PhysicPaintRotoScriptMotionSettings | undefined;
   readonly sourceKeyIds: readonly string[];
   readonly sourceOffsets: readonly number[];
   /** Physical app frames of the rail's locally painted override keys. */
@@ -195,6 +200,8 @@ export function toRunScriptRailViews(input: {
       phaseOrigin: anchor.phaseOrigin,
       cycleLength: anchor.cycleLength,
       repeat: anchor.repeat,
+      mode: clip.mode,
+      motion: clip.motion === undefined ? undefined : Object.freeze({ ...clip.motion }),
       sourceKeyIds: Object.freeze([...anchor.sourceKeyIds]),
       sourceOffsets: Object.freeze([...anchor.sourceOffsets]),
       frameOverrideAppFrames: Object.freeze(overrideFrames),
