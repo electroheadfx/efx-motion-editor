@@ -5049,19 +5049,40 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(recordRail).not.toContain('enqueueRecordedStroke');
   });
 
-  it('pins the raw union re-bake port: recorded events plus this run, never a composite', () => {
+  it('pins the authority-backed union re-bake port: known-empty raw, bytes composed, refusal before commit', () => {
     const unionPort = slice(
       studio,
       'const bakeStackedRailKey = async (input: {',
       'const composeStackedRailKey = async (input: {',
     );
-    // 261031-i54 (Quick A): a flag-on rail's base is known-empty, so the raw
-    // union is the whole picture.
-    expect(unionPort).toContain('getAquarelleEventsForFrame(input.appFrame)');
-    expect(unionPort).toContain('toStudioStroke(stroke)');
-    expect(unionPort).toContain('bakeAquarelleEventsToFrame({');
-    expect(unionPort).not.toContain('composeRotoScriptRebakeFrame');
+    // One batch: keyIds slot-aligned with the slices.
+    expect(unionPort).toContain('readonly keyIds: readonly string[];');
+    expect(unionPort).toContain('readonly slices: readonly RailKeyScriptResult[];');
+    // The base decision is the authority's, resolved per touched key.
+    expect(unionPort).toContain('resolveScriptBase(keyId, lookup)');
+    expect(unionPort).toContain('if (!resolution.ok) return { kind: \'refused\', reason: resolution.reason };');
+    // Known-empty publishes the raw union; bytes multiply-composite it.
+    expect(unionPort).toContain('if (entry.resolution.kind === \'known-empty\') {');
+    expect(unionPort).toContain('composeRotoScriptRebakeFrame({');
+    expect(unionPort).toContain('durableBaseBytes: new Uint8Array(entry.resolution.bytes)');
+    expect(unionPort).toContain('if (!composed) return { kind: \'refused\', reason: \'composite-failed\' };');
+    // Eager pins land BEFORE the frames are baked/returned.
+    const pinAt = unionPort.indexOf('pinScriptBase(entry.keyId, entry.resolution,');
+    expect(pinAt).toBeGreaterThan(-1);
+    expect(unionPort.indexOf('bakeAquarelleEventsToFrame({', pinAt)).toBeGreaterThan(pinAt);
+    expect(unionPort.indexOf('return { kind: \'baked\', frames };')).toBeGreaterThan(pinAt);
+    expect(unionPort).toContain('scriptBaseLookupFor(readScriptBasePayload)');
     expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
+
+    // The persist-vs-session split: a recovered base answers ONLY the session
+    // arm, while a fresh pin drops the recovered marker so it persists.
+    const lookup = slice(studio, 'const scriptBaseLookupFor = (', 'const pinScriptBase = (');
+    expect(lookup).toContain('if (aquarelleRecoveredBaseKeyIdsRef.current.has(keyId)) return undefined;');
+    expect(lookup).toContain('aquarelleRecoveredBaseKeyIdsRef.current.has(keyId) ? readScriptBaseEntry(keyId) : undefined');
+    const pin = slice(studio, 'const pinScriptBase = (', 'prepareRotoScriptTargetRef.current = async (source) => {');
+    expect(pin).toContain('aquarelleDurableBaseByKeyRef.current.set(keyId, bytes);');
+    expect(pin).toContain('aquarelleRecoveredBaseKeyIdsRef.current.delete(keyId);');
+    expect(pin).toContain('studioScriptSnapshot.markDirty();');
   });
 
   it('pins the pixel-only stack composite: the current payload plus this run, never a purge or base pin (UAT 261031-i54)', () => {

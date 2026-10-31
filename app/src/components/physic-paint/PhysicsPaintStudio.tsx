@@ -226,6 +226,7 @@ import { recoverAquarelleDurableBase } from './roto/aquarelleBaseRecovery';
 // 261031-qps (Quick B): the ONE durable-base authority every script path
 // resolves through (prepare/publish, raster-key edits, stacking, reveal).
 import {
+  SCRIPT_BASE_UNKNOWN_REASON,
   resolveScriptBase,
   type ScriptBaseEntry,
   type ScriptBaseLookup,
@@ -3913,27 +3914,77 @@ export function PhysicsPaintStudio() {
       .then(({ getCurrentWindow }) => getCurrentWindow().close())
       .catch(() => { window.close(); });
   }, []);
-  // 261031-i54 (Quick A): Keep script ON re-bakes a stack-touched key's RAW
-  // union — the events already recorded for that frame plus this run's strokes
-  // over the flag-on rail's known-empty base. It never composites, never reads
-  // a durable base and never calls composeRotoScriptRebakeFrame; the
-  // base-authority seam is Quick B. A null bake refuses the whole run.
+  // 261031-qps (Quick B): the Keep-script-ON union re-bake, authority-backed.
+  // ONE batch for the whole written span: each touched key's durable base is
+  // resolved through resolveScriptBase (a flag-on rail resolves KNOWN EMPTY; a
+  // pixel-only key with no recorded strokes resolves its CURRENT picture and
+  // pins it). Known-empty publishes the raw union (recorded events + this run);
+  // bytes multiply-composite the same union over the pinned base. Fresh pins
+  // land here, BEFORE the caller's single commit, and persist with the
+  // snapshot; recovered bases stay session-only. Any refusal aborts the run.
   const bakeStackedRailKey = async (input: {
-    readonly keyId: string;
-    readonly appFrame: number;
-    readonly strokes: readonly AquarelleStroke[];
-  }): Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }> => {
-    const events = [
-      ...getAquarelleEventsForFrame(input.appFrame),
-      ...input.strokes.map((stroke) => toStudioStroke(stroke)),
-    ];
-    const baked = await bakeAquarelleEventsToFrame({
-      events,
-      size: { width: canvasWidth, height: canvasHeight },
-      paper: aquarelleLiftPaperRef.current,
-    });
-    if (!baked) return { kind: 'refused', reason: 'bake-failed' };
-    return { kind: 'baked', bytes: baked.bytes };
+    readonly keyIds: readonly string[];
+    readonly slices: readonly RailKeyScriptResult[];
+  }): Promise<
+    | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
+    | { kind: 'refused'; reason: string }
+  > => {
+    const lookup = scriptBaseLookupFor(readScriptBasePayload);
+    // Resolve EVERY key before any pin or bake: one refusal stops the run with
+    // zero writes (no half-pinned span, no committed frame).
+    const planned: Array<{
+      readonly keyId: string;
+      readonly slice: RailKeyScriptResult;
+      readonly resolution: Exclude<Extract<ScriptBaseResolution, { ok: true }>, { kind: 'reveal' }>;
+    }> = [];
+    for (const slice of input.slices) {
+      const keyId = input.keyIds[slice.slot];
+      if (keyId === undefined) continue;
+      let resolution: ScriptBaseResolution;
+      try {
+        resolution = resolveScriptBase(keyId, lookup);
+      } catch {
+        // A reference-only payload cannot be read on a runtime path: the base
+        // is unprovable, so refuse with the authority's own reason (zero writes).
+        return { kind: 'refused', reason: SCRIPT_BASE_UNKNOWN_REASON };
+      }
+      if (!resolution.ok) return { kind: 'refused', reason: resolution.reason };
+      // A reveal-owned key's picture is wash × placed reference, never a pixel
+      // base — the reveal stacking path owns it (Quick B Task 3).
+      if (resolution.kind === 'reveal') return { kind: 'refused', reason: 'reveal-base-unsupported' };
+      planned.push({ keyId, slice, resolution });
+    }
+    const pinned = planned.some((entry) => entry.resolution.persistPin);
+    for (const entry of planned) {
+      pinScriptBase(entry.keyId, entry.resolution, { appFrame: entry.slice.frame, source: 'stack-keep-script' });
+    }
+    if (pinned) bumpAquarelleStrokesRevision();
+    const frames: Array<{ appFrame: number; bytes: Uint8Array }> = [];
+    for (const entry of planned) {
+      const events = [
+        ...getAquarelleEventsForFrame(entry.slice.frame),
+        ...entry.slice.strokes.map((stroke) => toStudioStroke(stroke)),
+      ];
+      const baked = await bakeAquarelleEventsToFrame({
+        events,
+        size: { width: canvasWidth, height: canvasHeight },
+        paper: aquarelleLiftPaperRef.current,
+      });
+      if (!baked) return { kind: 'refused', reason: 'bake-failed' };
+      if (entry.resolution.kind === 'known-empty') {
+        frames.push({ appFrame: entry.slice.frame, bytes: baked.bytes });
+        continue;
+      }
+      const composed = await composeRotoScriptRebakeFrame({
+        durableBaseBytes: new Uint8Array(entry.resolution.bytes),
+        sheetBytes: baked.bytes,
+        appFrame: entry.slice.frame,
+        size: { width: canvasWidth, height: canvasHeight },
+      });
+      if (!composed) return { kind: 'refused', reason: 'composite-failed' };
+      frames.push({ appFrame: entry.slice.frame, bytes: composed.bytes });
+    }
+    return { kind: 'baked', frames };
   };
   // 261031-i54 UAT: a pixel-only rail stores the picture itself, so a stack run
   // draws the new sheet over each touched key's CURRENT payload. A missing
@@ -3977,9 +4028,12 @@ export function PhysicsPaintStudio() {
   const recordRailKeyScripts = (input: {
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
-    readonly recordMode: 'append' | 'replace';
+    readonly recordMode: 'append' | 'replace' | 'none';
   }) => {
     const launch = launchContextRef.current;
+    // 261031-qps: a pixel-only rail's Keep-OFF publication records nothing —
+    // no purge, no null pin; its picture already carries the run.
+    if (input.recordMode === 'none') return;
     if (!launch) return;
     for (const slice of input.slices) {
       const keyId = input.keyIds[slice.slot];

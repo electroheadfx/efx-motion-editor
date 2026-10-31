@@ -1673,8 +1673,11 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(controller.setKeepScript).toHaveBeenCalledWith(false);
   });
 
-  it('renders the pixel-only Keep script switch OFF and disabled with the composite reason', () => {
-    const reason = 'This rail stores pixels, not per-key scripts. The run is composited over its existing pixels.';
+  it('renders a disabled Keep script switch with its build reason when the re-bake port is absent', () => {
+    // 261031-qps: the pixel-only "stores pixels" reason is gone — every stack
+    // destination with the port is enabled. The dialog still renders a reason
+    // when the controller reports one (a build without the re-bake port).
+    const reason = 'This build cannot re-bake per-key scripts on an existing rail. The run is composited over its existing pixels.';
     const { controller } = createFakeController(stackSeed({
       keepScript: false,
       keepScriptVisible: true,

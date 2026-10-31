@@ -255,7 +255,12 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   // a stack case only has to swap the collection and the selection.
   const availabilityRevision = signal(0);
   const recordRailKeyScripts = vi.fn();
-  const bakeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-union') }));
+  // 261031-qps: ONE batch union call for the whole span; the fake echoes one
+  // frame per slice so the publication pins the port's bytes per appFrame.
+  const bakeStackedRailKey = vi.fn(async (input: { slices: readonly { frame: number }[] }) => ({
+    kind: 'baked' as const,
+    frames: input.slices.map((slice) => ({ appFrame: slice.frame, bytes: testWebpBytes('stacked-union') })),
+  }));
   const composeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-composite') }));
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
@@ -4374,15 +4379,23 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(target.keyScriptEdits).toBe(true);
   });
 
-  it('gates the Keep script switch on the stack target, the persisted flag and the union port', async () => {
-    const flagOff = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
-    expect(flagOff.controller.keepScriptVisible.value).toBe(true);
-    expect(flagOff.controller.keepScript.value).toBe(false);
-    expect(flagOff.controller.keepScriptEffective.value).toBe(false);
-    expect(flagOff.controller.keepScriptDisabledReason.value).toContain('composited over its existing pixels');
-
-    const flagOn = stackHarness([stackClip(2, { keyScriptEdits: true })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+  it('exposes an enabled Keep script switch on every stack destination and seeds it ON (Quick B 2x2)', async () => {
+    // Pixel-only: visible, enabled, seeded ON once the dialog opens and NEVER
+    // disabled — Quick B's authority pins the pre-run picture, so ON is safe.
+    const pixelOnly = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    expect(pixelOnly.controller.keepScriptVisible.value).toBe(true);
     // UAT 261031-i54: the switch is seeded only while the dialog is open.
+    expect(pixelOnly.controller.keepScript.value).toBe(false);
+    await pixelOnly.controller.openConfirmation();
+    expect(pixelOnly.controller.keepScript.value).toBe(true);
+    expect(pixelOnly.controller.keepScriptEffective.value).toBe(true);
+    expect(pixelOnly.controller.keepScriptDisabledReason.value).toBeNull();
+    pixelOnly.controller.setKeepScript(false);
+    expect(pixelOnly.controller.keepScriptEffective.value).toBe(false);
+    expect(pixelOnly.controller.keepScriptDisabledReason.value).toBeNull();
+
+    // Flag-on: unchanged Quick A behavior.
+    const flagOn = stackHarness([stackClip(2, { keyScriptEdits: true })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
     await flagOn.controller.openConfirmation();
     expect(flagOn.controller.keepScriptVisible.value).toBe(true);
     expect(flagOn.controller.keepScript.value).toBe(true);
@@ -4419,20 +4432,20 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.keepScriptEffective.value).toBe(true);
     expect(await test.controller.confirm()).toBe(true);
 
-    // ONE union bake per touched key at its canonical physical frame, with
-    // exactly that key's slice strokes.
-    expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(3);
+    // ONE batch union call for the whole span: keyIds slot-aligned with the
+    // slices, each slice carrying exactly that key's run strokes.
+    expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(1);
     const unionCalls = test.bakeStackedRailKey.mock.calls as unknown as Array<[{
-      keyId: string;
-      appFrame: number;
-      strokes: readonly { brushId: string }[];
+      keyIds: readonly string[];
+      slices: readonly { frame: number; slot: number; strokes: readonly { brushId: string }[] }[];
     }]>;
-    expect(unionCalls.map((call) => call[0].appFrame)).toEqual([13, 14, 15]);
-    expect(unionCalls.map((call) => call[0].strokes.map((stroke) => stroke.brushId))).toEqual([
+    expect(unionCalls[0]![0].slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
+    expect(unionCalls[0]![0].slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
       ['tip-a', 'tip-b'],
       ['tip-a', 'tip-b'],
       ['tip-a', 'tip-b'],
     ]);
+    expect(unionCalls[0]![0].keyIds).toHaveLength(3);
     // The committed frames carry the RAW union bytes, not the staged bake.
     const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
     const unionBytes = testWebpBytes('stacked-union');
@@ -4475,7 +4488,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.error.value).toContain('bake-failed');
   });
 
-  it('composites a pixel-only rail over its existing frames and records nothing (UAT 261031-i54)', async () => {
+  it('pixel-only Keep ON: unions over the authority base and appends, without flipping keyScriptEdits (Quick B)', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2)],
@@ -4484,8 +4497,49 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
-    // A checked-ON draft cannot reach the union path without the persisted flag.
-    test.controller.setKeepScript(true);
+    // Quick B: a pixel-only destination seeds ON and the draft is EFFECTIVE —
+    // the authority pins the rail's pre-run picture as the durable base.
+    expect(test.controller.keepScriptEffective.value).toBe(true);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+
+    // ON never composites: the authority-backed union is the published picture.
+    expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(1);
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const unionBytes = testWebpBytes('stacked-union');
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([unionBytes, unionBytes, unionBytes]);
+    const recorded = recorder.mock.calls[0]![0] as {
+      keyIds: readonly string[];
+      recordMode: string;
+      slices: readonly { frame: number }[];
+    };
+    expect(recorded.recordMode).toBe('append');
+    expect(recorded.slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
+    expect(recorded.keyIds).toHaveLength(3);
+    // The publication never grows its own persisted flag property.
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(Object.prototype.hasOwnProperty.call(target, 'keyScriptEdits')).toBe(false);
+  });
+
+  it('pixel-only Keep OFF: composites over the existing frames and records nothing (UAT 261031-i54)', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      // The union port refuses loudly: reaching it at all would fail the run,
+      // so a passing confirm also proves Keep OFF never touched it (no record,
+      // no authority pin).
+      { recordRailKeyScripts: recorder, bakeStackedRailKey: vi.fn(async () => ({ kind: 'refused' as const, reason: 'must-not-run' })) },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    // OFF is an explicit user choice: the seeded ON draft is turned off.
+    test.controller.setKeepScript(false);
     expect(test.controller.keepScriptEffective.value).toBe(false);
     test.controller.mode.value = 'static';
     test.controller.countText.value = '3';
@@ -4524,6 +4578,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
+    test.controller.setKeepScript(false);
     test.controller.countText.value = '3';
     nextBakeBehavior(reportAnchors);
     expect(await test.controller.confirm()).toBe(false);
@@ -4546,6 +4601,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       { kind: 'empty', keyId: null, appFrame: 11 },
     );
     await test.controller.openConfirmation();
+    // Quick B seeds pixel-only rails ON; this test owns the Keep-OFF path.
+    test.controller.setKeepScript(false);
     test.controller.countText.value = '2';
     nextBakeBehavior(reportAnchors);
     const run = test.controller.confirm();
@@ -4666,7 +4723,11 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.stackReadout.value?.outcomeLabel).not.toContain('refused');
     expect(await test.controller.confirm()).toBe(true);
     expect(test.commit).toHaveBeenCalledTimes(1);
-    expect(recorder).not.toHaveBeenCalled();
+    // Keep ON (the seeded default) appends the run; the override composite is
+    // never recorded — only the destination keys' slices are.
+    const recorded = recorder.mock.calls[0]![0] as { recordMode: string; keyIds: readonly string[] };
+    expect(recorded.recordMode).toBe('append');
+    expect(recorded.keyIds).not.toContain('override:L1:11');
   });
 
   it('refuses a Reveal rail target without opening the dialog', async () => {

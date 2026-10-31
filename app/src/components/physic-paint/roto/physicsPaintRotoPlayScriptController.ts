@@ -318,24 +318,30 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
     /**
-     * 261031-i54: how the slice strokes land on the key. 'replace' is the
-     * creation / Keep-script-OFF law (purge the frame and pin the known-empty
+     * 261031-i54/261031-qps: how the slice strokes land on the key. 'replace' is
+     * the flag-on Keep-script-OFF law (purge the frame and pin the known-empty
      * base); 'append' records the strokes on top of the key's existing script
-     * (Keep script ON — the raw-union re-bake path).
+     * (Keep script ON — the authority-backed union re-bake path); 'none' writes
+     * nothing (a pixel-only rail with Keep OFF flattens the run over its
+     * picture and never records, purges or pins).
      */
-    readonly recordMode: 'append' | 'replace';
+    readonly recordMode: 'append' | 'replace' | 'none';
   }) => void;
   /**
-   * 261031-i54: the Keep-script-ON union re-bake. Bakes the key's recorded
-   * events plus this run's slice strokes over the known-empty base and returns
-   * the raw frame bytes (Task 3 supplies the Studio implementation). `keyId` is
-   * carried for Quick B's base authority; Quick A orders nothing by it.
-   */
+     * 261031-i54/261031-qps: the Keep-script-ON union re-bake. One batch call
+     * for the whole written span — `keyIds` is slot-aligned with `slices`.
+     * Each touched key's durable base resolves through the ONE authority: a
+     * known-empty base publishes the raw union (recorded events + this run), a
+     * bytes base multiply-composites it, and a refusal aborts the run before
+     * the single commit. Fresh bases are pinned by the port before it returns.
+     */
   bakeStackedRailKey?: (input: {
-    readonly keyId: string;
-    readonly appFrame: number;
-    readonly strokes: readonly AquarelleStroke[];
-  }) => Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }>;
+    readonly keyIds: readonly string[];
+    readonly slices: readonly RailKeyScriptResult[];
+  }) => Promise<
+    | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
+    | { kind: 'refused'; reason: string }
+  >;
   /**
    * 261031-i54 UAT: the pixel-only stack composite. A rail created without
    * per-key scripts stores PIXELS, not a script; its touched keys must be
@@ -1041,14 +1047,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const keepScript = signal(false);
   const unionPortPresent = (): boolean => typeof ports.bakeStackedRailKey === 'function';
   const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && unionPortPresent());
+  // 261031-qps (Quick B): Keep script applies to EVERY existing-rail destination.
+  // The persisted keyScriptEdits flag no longer gates it — a pixel-only rail is
+  // seeded ON and its pre-run picture is pinned as the authority's durable base,
+  // so ON appends scripts and OFF flattens, both without flipping the flag.
   const keepScriptEffective = computed(() => {
     const destination = runDestination.value;
-    return destination.kind === 'stack' && destination.rail.keyScriptEdits === true && unionPortPresent() && keepScript.value;
+    return destination.kind === 'stack' && unionPortPresent() && keepScript.value;
   });
   const keepScriptDisabledReason = computed(() => {
     const destination = runDestination.value;
-    if (destination.kind !== 'stack' || !unionPortPresent() || destination.rail.keyScriptEdits === true) return null;
-    return 'This rail stores pixels, not per-key scripts. The run is composited over its existing pixels.';
+    // Only the never-a-stack case (no bake port in this build) disables the
+    // switch; every stack destination with the port can keep its scripts.
+    if (destination.kind !== 'stack' || unionPortPresent()) return null;
+    return 'This build cannot re-bake per-key scripts on an existing rail. The run is composited over its existing pixels.';
   });
   let keepScriptSeedKey: string | null = null;
   const seedKeepScript = effect(() => {
@@ -1064,9 +1076,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       : null;
     if (key === keepScriptSeedKey) return;
     keepScriptSeedKey = key;
-    const next = destination?.kind === 'stack' && destination.rail.keyScriptEdits === true
-      ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT
-      : false;
+    // Quick B: pixel-only rails seed ON exactly like flag-on rails — the
+    // authority pins their pre-run picture, so ON is non-destructive.
+    const next = destination?.kind === 'stack' ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT : false;
     if (keepScript.peek() !== next) keepScript.value = next;
   });
 
@@ -2217,13 +2229,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       error.value = 'The target rail changed while the dialog was open. Nothing changed.';
       return false;
     }
-    // Keep script ON (261031-i54 task 3): a flag-on rail records this run's
-    // slices as an APPEND and re-bakes the raw union over its known-empty base.
-    // A flag-on rail with the switch OFF replaces its scripts. A flag-off rail
-    // stores pixels instead — it is composited over its existing picture and
-    // records nothing (see the composite branch below).
-    const unionBake = ports.bakeStackedRailKey;
-    const useUnion = unionBake !== undefined && keepScriptEffective.peek();
     const boundary = resolveStackBoundaryFor(surface, start, requested);
     const requestedPlan = planStackLifecycle(surface, start, requested).plan;
     const lifecycleOverflow = target.repeat !== 'infinity'
@@ -2319,9 +2324,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       return false;
     }
 
-    // A flag-on rail owns its picture through per-key scripts; a flag-off rail
-    // stores the picture itself. The two post-bake paths are mutually exclusive.
-    const recordScripts = currentTarget.keyScriptEdits === true;
+    // 261031-qps (Quick B) — the Keep-script 2x2. ON unions over the
+    // authority-resolved durable base and APPENDS this run's slices on both
+    // rail kinds (a pixel-only key's pre-run picture is pinned first, so ON is
+    // non-destructive). OFF flattens a pixel-only rail (composite over its
+    // current picture, record nothing, no purge, no pin) and keeps Quick A's
+    // purge-then-replace law on a flag-on rail. No branch writes the persisted
+    // keyScriptEdits flag — it is read here and never adopted below.
+    const flagOn = currentTarget.keyScriptEdits === true;
+    const unionBake = ports.bakeStackedRailKey;
+    const useUnion = unionBake !== undefined && keepScriptEffective.peek();
+    const recordMode: 'append' | 'replace' | 'none' = useUnion ? 'append' : flagOn ? 'replace' : 'none';
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
     ports.stopPlayback();
@@ -2418,22 +2431,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // The per-key slices drive BOTH the union re-bake and the post-commit
       // recording; slots align with the committed destination frames.
       const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
-      if (recordScripts && useUnion && unionBake !== undefined && slices.length > 0) {
+      if (useUnion && unionBake !== undefined && slices.length > 0) {
         status.value = 'Rebuilding key scripts…';
-        const unionBytesByFrame = new Map<number, Uint8Array>();
-        for (const slice of slices) {
-          const keyId = touchedKeyIds[slice.slot];
-          if (keyId === undefined) continue;
-          const bakedUnion = await unionBake({ keyId, appFrame: slice.frame, strokes: slice.strokes });
-          assertCurrent(acceptedGeneration);
-          if (bakedUnion.kind !== 'baked') throw new Error(`Keep script re-bake refused: ${bakedUnion.reason}`);
-          unionBytesByFrame.set(slice.frame, bakedUnion.bytes);
+        // ONE batch call: the port resolves every touched key's base through
+        // the authority and pins the fresh ones before returning the frames.
+        const union = await unionBake({ keyIds: touchedKeyIds, slices });
+        assertCurrent(acceptedGeneration);
+        if (union.kind !== 'baked') throw new Error(`Keep script re-bake refused: ${union.reason}`);
+        if (union.frames.length > 0) {
+          publication = withRecordBytes(publication, new Map(union.frames.map((entry) => [entry.appFrame, entry.bytes])));
         }
-        if (unionBytesByFrame.size > 0) publication = withRecordBytes(publication, unionBytesByFrame);
-      } else if (!recordScripts && slices.length > 0) {
-        // Pixel-only target: draw the run over the key's CURRENT payload. The
-        // old replace path pinned the durable base empty, so this publication
-        // erased the rail's existing render (UAT 261031-i54).
+      } else if (recordMode === 'none' && slices.length > 0) {
+        // Pixel-only target with Keep OFF: draw the run over the key's CURRENT
+        // payload. Nothing is recorded or pinned, so the picture stays the
+        // rail's own (UAT 261031-i54).
         status.value = 'Compositing the run…';
         const compose = ports.composeStackedRailKey;
         if (!compose) throw new Error('This rail saves pixels, but this build cannot composite the run. Nothing changed.');
@@ -2453,17 +2464,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Run Script batch.');
       assertPublicationAck(publication, result);
-      // ON appends this run's slices to a flag-on rail's recorded scripts; OFF
-      // replaces them. A pixel-only rail records nothing — its picture already
-      // carries the run, and `keyScriptEdits` is never flipped here.
-      if (recordScripts) {
+      // ON appends this run's slices on both rail kinds; a flag-on rail with OFF
+      // replaces them; a pixel-only rail with OFF records NOTHING (recordMode
+      // 'none' skips the port entirely). `keyScriptEdits` is never written here.
+      if (recordMode !== 'none') {
         if (slices.length > 0) {
           status.value = 'Recording key scripts…';
           // The recording loop is synchronous: let the footer paint the phase
           // before it starts instead of leaving the bar silently full.
           await yieldToPaint();
         }
-        ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: useUnion ? 'append' : 'replace' });
+        ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode });
       }
       collisionChoice.value = null;
       hasSuccessfulGeneration = true;
