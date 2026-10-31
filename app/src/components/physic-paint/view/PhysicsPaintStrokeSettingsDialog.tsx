@@ -7,22 +7,30 @@ import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
 import {
+  ALL_TIP_FILTER_LABEL,
+  ALL_TOOL_FILTER_LABEL,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
   buildAppearancePatch,
   buildPaintSeedVariationPatch,
+  filterStrokeListRows,
   geometryMoveDelta,
   geometryTransform,
+  listStrokeTipOptions,
+  listStrokeToolOptions,
   matchesStrokeTypeFilter,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeTipFilter,
   resolveStrokeTipName,
+  resolveStrokeToolFilter,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
+  strokeListSummary,
   strokeSettingsFields,
   strokeToolLabel,
   type StrokeGeometryControl,
@@ -41,9 +49,14 @@ import {
 } from './floatingSheetStack';
 import {
   aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTipFilter,
+  aquarelleStrokeToolFilter,
   aquarelleStrokeTypeFilter,
   selectAquarelleStroke,
+  setAquarelleStrokeTipFilter,
+  setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
+  type AquarelleStrokeToolFilter,
   type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 
@@ -237,6 +250,34 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   color: '#ffffff',
 };
 
+/**
+ * 261031-euf: the type-filter row is sentence case — the global button rule
+ * uppercases every other segmented control, so the filter row gets its own
+ * copy instead of changing Stack/Paint.
+ */
+const FILTER_SEGMENT_STYLE: CSSProperties = {
+  ...SEGMENT_STYLE,
+  textTransform: 'none',
+};
+
+const FILTER_SEGMENT_ACTIVE_STYLE: CSSProperties = {
+  ...SEGMENT_ACTIVE_STYLE,
+  textTransform: 'none',
+};
+
+const FINE_FILTERS_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  gap: '6px',
+  padding: '0 12px 10px',
+};
+
+const LIST_SUMMARY_STYLE: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10px',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
 const COLOR_BLOCK_STYLE: CSSProperties = {
   width: '100%',
   height: '48px',
@@ -345,6 +386,11 @@ export function PhysicsPaintStrokeSettingsDialog({
   // keeps the sheet open on an empty selection (filter row + caption).
   const dismissed = aquarelleStrokeSettingsDismissed.value;
   const strokeTypeFilter = aquarelleStrokeTypeFilter.value;
+  // 261031-euf: the list's finer filters (display-only). Render-body READS
+  // only — the EFFECTIVE values below are derived, never written back, so a
+  // stored filter the rows do not offer renders All without a state write.
+  const strokeToolFilter = aquarelleStrokeToolFilter.value;
+  const strokeTipFilter = aquarelleStrokeTipFilter.value;
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
@@ -433,7 +479,21 @@ export function PhysicsPaintStrokeSettingsDialog({
   // dialog applies the shared type filter itself and shows the rows
   // topmost-first. Pure derivations — no state, no signal writes.
   const typeRows = strokes.filter((stroke) => matchesStrokeTypeFilter(stroke, strokeTypeFilter));
-  const sortedRows = sortStrokesTopmostFirst(typeRows);
+  // Tool options come from the TYPE-filtered rows and tip options from the
+  // TOOL-filtered rows (checker advisory): the dropdowns can never offer a
+  // combination that yields zero rows.
+  const toolOptions = listStrokeToolOptions(typeRows);
+  const effectiveTool = resolveStrokeToolFilter(strokeToolFilter, toolOptions);
+  const toolRows = filterStrokeListRows(typeRows, { tool: effectiveTool, tip: 'all' });
+  const tipOptions = listStrokeTipOptions(toolRows);
+  const effectiveTip = resolveStrokeTipFilter(
+    strokeTipFilter,
+    tipOptions.map((option) => option.brushId),
+  );
+  const listRows = sortStrokesTopmostFirst(
+    filterStrokeListRows(typeRows, { tool: effectiveTool, tip: effectiveTip }),
+  );
+  const listSummary = strokeListSummary(bundle.playFrame, strokes);
   // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
   // either the filter is Eraser, or a lift sits in the selection (a lift has
   // no paint rows). A requested Paint falls back to Geometry while hidden.
@@ -676,13 +736,57 @@ export function PhysicsPaintStrokeSettingsDialog({
                 type="button"
                 data-testid={`stroke-settings-filter-${option.key}`}
                 aria-pressed={active}
-                style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                style={active
+                  ? { ...FILTER_SEGMENT_STYLE, ...FILTER_SEGMENT_ACTIVE_STYLE }
+                  : FILTER_SEGMENT_STYLE}
                 onClick={() => setAquarelleStrokeTypeFilter(option.filter)}
               >
                 {option.label}
               </button>
             );
           })}
+        </div>
+      ) : null}
+
+      {engineModule === 'watercolor' && selectionEmpty ? (
+        <div data-testid="stroke-settings-fine-filters" style={FINE_FILTERS_ROW_STYLE}>
+          <select
+            class="physics-paint-stroke-settings-select"
+            data-testid="stroke-settings-tool-filter"
+            aria-label="Tool filter"
+            value={effectiveTool}
+            onChange={(event) => {
+              const nextTool = event.currentTarget.value as AquarelleStrokeToolFilter;
+              // The tip is judged against the NEW tool's rows, so an orphaned
+              // recorded tip falls back to All in the same gesture.
+              const nextTipIds = listStrokeTipOptions(
+                filterStrokeListRows(typeRows, { tool: nextTool, tip: 'all' }),
+              ).map((option) => option.brushId);
+              setAquarelleStrokeTipFilter(
+                resolveStrokeTipFilter(aquarelleStrokeTipFilter.value, nextTipIds),
+              );
+              setAquarelleStrokeToolFilter(nextTool);
+            }}
+          >
+            <option value="all">{ALL_TOOL_FILTER_LABEL}</option>
+            {toolOptions.map((tool) => (
+              <option key={tool} value={tool}>{strokeToolLabel(tool)}</option>
+            ))}
+          </select>
+          {tipOptions.length > 1 ? (
+            <select
+              class="physics-paint-stroke-settings-select"
+              data-testid="stroke-settings-tip-filter"
+              aria-label="Tip filter"
+              value={effectiveTip}
+              onChange={(event) => setAquarelleStrokeTipFilter(event.currentTarget.value)}
+            >
+              <option value="all">{ALL_TIP_FILTER_LABEL}</option>
+              {tipOptions.map((option) => (
+                <option key={option.brushId} value={option.brushId}>{option.name}</option>
+              ))}
+            </select>
+          ) : null}
         </div>
       ) : null}
 
@@ -723,7 +827,18 @@ export function PhysicsPaintStrokeSettingsDialog({
               data-testid="stroke-settings-list"
               class="physics-paint-stroke-settings-list"
             >
-              {sortedRows.map((stroke) => {
+              <span data-testid="stroke-settings-list-summary" style={LIST_SUMMARY_STYLE}>
+                {listSummary}
+              </span>
+              {strokes.length === 0 ? (
+                <span data-testid="stroke-settings-list-empty-frame" style={PAINT_ROW_LABEL_STYLE}>
+                  No strokes on this frame.
+                </span>
+              ) : listRows.length === 0 ? (
+                <span data-testid="stroke-settings-list-empty-filter" style={PAINT_ROW_LABEL_STYLE}>
+                  No strokes match this filter.
+                </span>
+              ) : listRows.map((stroke) => {
                 const typeLabel = strokeToolLabel(stroke.tool);
                 const tipName = resolveStrokeTipName(stroke.brushId);
                 return (
@@ -738,16 +853,40 @@ export function PhysicsPaintStrokeSettingsDialog({
                   >
                     <span
                       data-testid="stroke-settings-stroke-dot"
+                      class="physics-paint-stroke-settings-list-dot"
                       style={{ backgroundColor: stroke.color }}
                     />
-                    <span data-testid="stroke-settings-stroke-type">{typeLabel}</span>
-                    <span data-testid="stroke-settings-stroke-serial">{`#${stroke.serial}`}</span>
-                    <span data-testid="stroke-settings-stroke-position">
+                    <span
+                      data-testid="stroke-settings-stroke-type"
+                      class="physics-paint-stroke-settings-list-type"
+                    >
+                      {typeLabel}
+                    </span>
+                    <span
+                      data-testid="stroke-settings-stroke-serial"
+                      class="physics-paint-stroke-settings-list-serial"
+                    >
+                      {`#${stroke.serial}`}
+                    </span>
+                    <span
+                      data-testid="stroke-settings-stroke-position"
+                      class="physics-paint-stroke-settings-list-position"
+                    >
                       {`${stroke.stackPosition}/${stroke.stackTotal}`}
                     </span>
-                    <span data-testid="stroke-settings-stroke-tip">{tipName}</span>
+                    <span
+                      data-testid="stroke-settings-stroke-tip"
+                      class="physics-paint-stroke-settings-list-tip"
+                    >
+                      {tipName}
+                    </span>
                     {stroke.customResponse ? (
-                      <span data-testid="stroke-settings-stroke-custom">Custom response</span>
+                      <span
+                        data-testid="stroke-settings-stroke-custom"
+                        class="physics-paint-stroke-settings-list-custom"
+                      >
+                        Custom response
+                      </span>
                     ) : null}
                   </button>
                 );

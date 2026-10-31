@@ -20,10 +20,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { effect } from '@preact/signals';
 import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import {
+  ALL_TIP_FILTER_LABEL,
+  ALL_TOOL_FILTER_LABEL,
   BRUSH_SETTINGS_FIELDS,
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
@@ -33,16 +36,22 @@ import {
   buildAppearancePatch,
   buildColorPatch,
   buildPaintSeedVariationPatch,
+  filterStrokeListRows,
   geometryMoveDelta,
   geometryTransform,
+  listStrokeTipOptions,
+  listStrokeToolOptions,
   matchesStrokeTypeFilter,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeTipFilter,
   resolveStrokeTipName,
+  resolveStrokeToolFilter,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
+  strokeListSummary,
   strokeSettingsFields,
   strokeToolLabel,
   type ScriptStrokeAppearance,
@@ -61,8 +70,13 @@ import {
 } from './scriptStrokeEdition';
 import {
   aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTipFilter,
+  aquarelleStrokeToolFilter,
   aquarelleStrokeTypeFilter,
+  resetAquarelleStrokeFineFilters,
   setAquarelleSelectMode,
+  setAquarelleStrokeTipFilter,
+  setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 import { resetFloatingSheetStack } from './floatingSheetStack';
@@ -74,6 +88,10 @@ const dialogSource = readFileSync(
 );
 const modelSource = readFileSync(
   fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
+  'utf8',
+);
+const cssSource = readFileSync(
+  fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
   'utf8',
 );
 
@@ -144,6 +162,9 @@ beforeEach(() => {
   // signals now — an un-reset case would leak into the next one.
   aquarelleStrokeSettingsDismissed.value = false;
   setAquarelleStrokeTypeFilter('all');
+  // 261031-euf: the finer filters are module signals too — reset them by the
+  // production choke point so no case leaks into the next one.
+  resetAquarelleStrokeFineFilters();
   // The sheet order is module-global; the Escape gate reads it.
   resetFloatingSheetStack();
 });
@@ -1980,6 +2001,200 @@ describe('261031-euf stroke list model', () => {
   });
 });
 
+// ============================================================
+//  261031-euf Task 2 — the finer filters. Tool options derive
+//  from the TYPE-filtered rows; tip options from the
+//  TOOL-filtered rows (checker advisory: no offered combination
+//  may yield zero rows). State is two module signals with the
+//  existing select-mode / type-filter reset choke points.
+// ============================================================
+
+describe('261031-euf fine-filter state', () => {
+  it('defaults both fine filters to All', () => {
+    expect(aquarelleStrokeToolFilter.value).toBe('all');
+    expect(aquarelleStrokeTipFilter.value).toBe('all');
+  });
+
+  it('both setters are compare-then-write — 1000 identical writes notify zero times', () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      void aquarelleStrokeToolFilter.value;
+      void aquarelleStrokeTipFilter.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      for (let index = 0; index < 1000; index += 1) {
+        setAquarelleStrokeToolFilter('all');
+        setAquarelleStrokeTipFilter('all');
+      }
+      expect(runs).toBe(before);
+      setAquarelleStrokeToolFilter('lift');
+      expect(runs).toBe(before + 1);
+      setAquarelleStrokeTipFilter('wc/flat-wash');
+      expect(runs).toBe(before + 2);
+      expect(aquarelleStrokeToolFilter.value).toBe('lift');
+      expect(aquarelleStrokeTipFilter.value).toBe('wc/flat-wash');
+    } finally {
+      dispose();
+      resetAquarelleStrokeFineFilters();
+    }
+  });
+
+  it('every select-mode call resets both — entry, re-entry while ON and exit', () => {
+    setAquarelleSelectMode(false);
+    try {
+      setAquarelleStrokeToolFilter('lift');
+      setAquarelleStrokeTipFilter('round');
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+
+      // A re-entry while already ON: setScriptSelectMode early-returns, so the
+      // reset must happen BEFORE the delegation or it would be skipped.
+      setAquarelleStrokeToolFilter('brush');
+      setAquarelleStrokeTipFilter('wc/flat-wash');
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+
+      setAquarelleStrokeToolFilter('pen');
+      setAquarelleStrokeTipFilter('wc/round-medium');
+      setAquarelleSelectMode(false);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+    } finally {
+      setAquarelleSelectMode(false);
+      resetAquarelleStrokeFineFilters();
+    }
+  });
+
+  it('the type filter resets both only when its value actually changes', () => {
+    setAquarelleStrokeTypeFilter('all');
+    setAquarelleStrokeToolFilter('lift');
+    setAquarelleStrokeTipFilter('round');
+    // No change: an idempotent type write keeps the finer filters.
+    setAquarelleStrokeTypeFilter('all');
+    expect(aquarelleStrokeToolFilter.value).toBe('lift');
+    expect(aquarelleStrokeTipFilter.value).toBe('round');
+    // A real change re-scopes the list: both go back to All.
+    setAquarelleStrokeTypeFilter('paint');
+    expect(aquarelleStrokeToolFilter.value).toBe('all');
+    expect(aquarelleStrokeTipFilter.value).toBe('all');
+    setAquarelleStrokeTypeFilter('all');
+  });
+});
+
+describe('261031-euf finer filter model', () => {
+  function listStroke(
+    mutationId: number,
+    tool: SelectableScriptStroke['tool'],
+    brushId: string,
+  ): SelectableScriptStroke {
+    return {
+      ...selectableStroke(
+        mutationId,
+        { x: 0, y: 0, width: 10, height: 10 },
+        tool === 'lift' ? 'lift' : 'paint',
+      ),
+      tool,
+      brushId,
+    };
+  }
+
+  const MIXED_ROWS: readonly SelectableScriptStroke[] = [
+    listStroke(7, 'brush', 'wc/round-medium'),
+    listStroke(9, 'brush', 'wc/flat-wash'),
+    listStroke(8, 'lift', 'round'),
+  ];
+
+  it('lists only the present tools in the canonical brush/water/pen/lift order', () => {
+    expect(listStrokeToolOptions([])).toEqual([]);
+    expect(listStrokeToolOptions(MIXED_ROWS)).toEqual(['brush', 'lift']);
+    expect(listStrokeToolOptions([
+      listStroke(1, 'lift', 'round'),
+      listStroke(2, 'pen', 'wc/flat-dry'),
+      listStroke(3, 'water', 'water-mop'),
+      listStroke(4, 'brush', 'wc/round-medium'),
+      listStroke(5, 'water', 'water-mop'),
+    ])).toEqual(['brush', 'water', 'pen', 'lift']);
+  });
+
+  it('dedupes tips in first-appearance order with their resolved names', () => {
+    expect(listStrokeTipOptions([])).toEqual([]);
+    expect(listStrokeTipOptions([
+      listStroke(1, 'brush', 'wc/flat-wash'),
+      listStroke(2, 'brush', 'wc/round-medium'),
+      listStroke(3, 'lift', 'round'),
+      listStroke(4, 'brush', 'wc/flat-wash'),
+    ])).toEqual([
+      { brushId: 'wc/flat-wash', name: 'Flat wash' },
+      { brushId: 'wc/round-medium', name: 'Round medium' },
+      // A preset id is not a tip: the raw recorded string is the name.
+      { brushId: 'round', name: 'round' },
+    ]);
+  });
+
+  it('filters rows by tool and tip, with All matching everything', () => {
+    const ids = (rows: readonly SelectableScriptStroke[]) => rows.map((row) => row.mutationId);
+    expect(ids(filterStrokeListRows(MIXED_ROWS, { tool: 'all', tip: 'all' }))).toEqual([7, 9, 8]);
+    expect(ids(filterStrokeListRows(MIXED_ROWS, { tool: 'lift', tip: 'all' }))).toEqual([8]);
+    expect(ids(filterStrokeListRows(MIXED_ROWS, { tool: 'brush', tip: 'wc/flat-wash' }))).toEqual([9]);
+    expect(ids(filterStrokeListRows(MIXED_ROWS, { tool: 'all', tip: 'round' }))).toEqual([8]);
+    expect(filterStrokeListRows(MIXED_ROWS, { tool: 'lift', tip: 'wc/flat-wash' })).toEqual([]);
+    // A NEW array; the input keeps its order and its objects.
+    const filtered = filterStrokeListRows(MIXED_ROWS, { tool: 'all', tip: 'all' });
+    expect(filtered).not.toBe(MIXED_ROWS);
+    expect(MIXED_ROWS.map((row) => row.mutationId)).toEqual([7, 9, 8]);
+    expect(filtered[0]).toBe(MIXED_ROWS[0]);
+  });
+
+  it('resolves a stored filter to itself only while it is offered', () => {
+    expect(resolveStrokeToolFilter('all', ['brush', 'lift'])).toBe('all');
+    expect(resolveStrokeToolFilter('brush', ['brush', 'lift'])).toBe('brush');
+    expect(resolveStrokeToolFilter('lift', ['brush'])).toBe('all');
+    expect(resolveStrokeToolFilter('pen', [])).toBe('all');
+    expect(resolveStrokeTipFilter('all', ['round'])).toBe('all');
+    expect(resolveStrokeTipFilter('round', ['round'])).toBe('round');
+    expect(resolveStrokeTipFilter('wc/flat-wash', ['round'])).toBe('all');
+    expect(resolveStrokeTipFilter('round', [])).toBe('all');
+  });
+
+  it('summarizes the FULL frame listing with the exact string', () => {
+    expect(strokeListSummary(12, MIXED_ROWS)).toBe('F12 · 3 strokes · 2 paint · 1 erasers');
+    expect(strokeListSummary(0, [])).toBe('F0 · 0 strokes · 0 paint · 0 erasers');
+    expect(strokeListSummary(3, [listStroke(1, 'lift', 'round')])).toBe(
+      'F3 · 1 strokes · 0 paint · 1 erasers',
+    );
+  });
+
+  it('no offered tool/tip combination yields zero rows', () => {
+    const tools = listStrokeToolOptions(MIXED_ROWS);
+    expect(tools.length).toBeGreaterThan(0);
+    for (const tool of tools) {
+      const toolRows = filterStrokeListRows(MIXED_ROWS, { tool, tip: 'all' });
+      expect(toolRows.length, `tool ${tool}`).toBeGreaterThan(0);
+      const tips = listStrokeTipOptions(toolRows);
+      expect(tips.length, `tools of ${tool}`).toBeGreaterThan(0);
+      for (const tip of tips) {
+        expect(
+          filterStrokeListRows(MIXED_ROWS, { tool, tip: tip.brushId }).length,
+          `${tool}/${tip.brushId}`,
+        ).toBeGreaterThan(0);
+      }
+    }
+    // The All-tools tip list never offers an orphan either.
+    const allTips = listStrokeTipOptions(filterStrokeListRows(MIXED_ROWS, { tool: 'all', tip: 'all' }));
+    expect(allTips.length).toBeGreaterThan(0);
+    for (const tip of allTips) {
+      expect(
+        filterStrokeListRows(MIXED_ROWS, { tool: 'all', tip: tip.brushId }).length,
+        tip.brushId,
+      ).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('261031-euf empty-selection stroke list dialog', () => {
   function frameStroke(
     mutationId: number,
@@ -2129,5 +2344,269 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-type')!.props.children).toBe('Eraser');
     // The preset id (not a tip) falls back to the raw string.
     expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-tip')!.props.children).toBe('round');
+  });
+
+  it('renders the finer filters on an empty selection: present tools only, resolved tip names', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-fine-filters')).toBeDefined();
+
+    const toolSelect = findByTestId(tree, 'stroke-settings-tool-filter')!;
+    expect(toolSelect.props.type).toBeUndefined();
+    expect(toolSelect.props['aria-label']).toBe('Tool filter');
+    expect(toolSelect.props.class).toContain('physics-paint-stroke-settings-select');
+    expect(toolSelect.props.value).toBe('all');
+    const toolOptions = childrenOf(toolSelect)
+      .filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[];
+    expect(toolOptions.map((option) => option.props.value)).toEqual(['all', 'brush', 'lift']);
+    expect(toolOptions.map((option) => option.props.children)).toEqual([
+      ALL_TOOL_FILTER_LABEL,
+      'Brush',
+      'Eraser',
+    ]);
+
+    const tipSelect = findByTestId(tree, 'stroke-settings-tip-filter')!;
+    expect(tipSelect.props['aria-label']).toBe('Tip filter');
+    expect(tipSelect.props.class).toContain('physics-paint-stroke-settings-select');
+    expect(tipSelect.props.value).toBe('all');
+    const tipOptions = childrenOf(tipSelect)
+      .filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[];
+    // First-appearance order over the tool-filtered rows.
+    expect(tipOptions.map((option) => option.props.value)).toEqual([
+      'all',
+      'wc/round-medium',
+      'wc/flat-wash',
+      'round',
+    ]);
+    expect(tipOptions.map((option) => option.props.children)).toEqual([
+      ALL_TIP_FILTER_LABEL,
+      'Round medium',
+      'Flat wash',
+      'round',
+    ]);
+  });
+
+  it('hides the tip select when only one tip is present', () => {
+    const { bundle } = watercolorListBundle({
+      listStrokes: () => [FRAME_STROKES[0]!],
+    });
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-tool-filter')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tip-filter')).toBeUndefined();
+  });
+
+  it('the tool select filters the rows through the module signal', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+
+    const tree = renderDialog(bundle);
+    expect(strokeRows(tree).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+      'stroke-settings-stroke-8',
+    ]);
+
+    (findByTestId(tree, 'stroke-settings-tool-filter')!.props.onChange as (
+      event: unknown,
+    ) => void)({ currentTarget: { value: 'lift' } });
+    expect(aquarelleStrokeToolFilter.value).toBe('lift');
+
+    const filtered = renderDialog(bundle);
+    expect(strokeRows(filtered).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-8',
+    ]);
+    // One tip under the Eraser tool: the second dropdown leaves.
+    expect(findByTestId(filtered, 'stroke-settings-tip-filter')).toBeUndefined();
+    expect(findByTestId(filtered, 'stroke-settings-tool-filter')!.props.value).toBe('lift');
+
+    (findByTestId(filtered, 'stroke-settings-tool-filter')!.props.onChange as (
+      event: unknown,
+    ) => void)({ currentTarget: { value: 'brush' } });
+    expect(aquarelleStrokeToolFilter.value).toBe('brush');
+    expect(strokeRows(renderDialog(bundle)).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+    ]);
+  });
+
+  it('the tip select narrows rows and an orphaned tip resets to All on a tool change', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+    const tree = renderDialog(bundle);
+
+    (findByTestId(tree, 'stroke-settings-tip-filter')!.props.onChange as (
+      event: unknown,
+    ) => void)({ currentTarget: { value: 'wc/flat-wash' } });
+    expect(aquarelleStrokeTipFilter.value).toBe('wc/flat-wash');
+    expect(strokeRows(renderDialog(bundle)).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+    ]);
+
+    // Brush -> Eraser: wc/flat-wash is not offered under the lift tool.
+    (findByTestId(renderDialog(bundle), 'stroke-settings-tool-filter')!.props.onChange as (
+      event: unknown,
+    ) => void)({ currentTarget: { value: 'lift' } });
+    expect(aquarelleStrokeToolFilter.value).toBe('lift');
+    expect(aquarelleStrokeTipFilter.value).toBe('all');
+
+    const liftTree = renderDialog(bundle);
+    expect(strokeRows(liftTree).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-8',
+    ]);
+    expect(findByTestId(liftTree, 'stroke-settings-tip-filter')).toBeUndefined();
+  });
+
+  it('a stored filter the rows do not offer renders as All and writes nothing', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+    // A stale tool from a previous frame (this frame has no pen stroke).
+    aquarelleStrokeToolFilter.value = 'pen';
+
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-tool-filter')!.props.value).toBe('all');
+    // The render body only DERIVES the effective value — it never normalizes.
+    expect(aquarelleStrokeToolFilter.value).toBe('pen');
+    expect(strokeRows(tree).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+      'stroke-settings-stroke-8',
+    ]);
+  });
+
+  it('shows the frame summary over the full listing, unaffected by the filters', () => {
+    const { bundle } = watercolorListBundle({ playFrame: 12 });
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-list-summary')!.props.children).toBe(
+      'F12 · 3 strokes · 2 paint · 1 erasers',
+    );
+    // The default Paint filter hides the lift, but the summary counts it.
+    expect(strokeRows(tree).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+    ]);
+  });
+
+  it('distinguishes an empty frame from a filter with no match', () => {
+    const empty = watercolorListBundle({ playFrame: 12, listStrokes: () => [] });
+    setAquarelleSelectMode(true);
+    const emptyTree = renderDialog(empty.bundle);
+    expect(findByTestId(emptyTree, 'stroke-settings-list-empty-frame')!.props.children).toBe(
+      'No strokes on this frame.',
+    );
+    expect(findByTestId(emptyTree, 'stroke-settings-list-empty-filter')).toBeUndefined();
+    expect(findByTestId(emptyTree, 'stroke-settings-list-summary')!.props.children).toBe(
+      'F12 · 0 strokes · 0 paint · 0 erasers',
+    );
+    expect(strokeRows(emptyTree)).toEqual([]);
+
+    // A paints-only frame under the Eraser filter: nothing matches.
+    const paintsOnly = watercolorListBundle({
+      playFrame: 12,
+      listStrokes: () => [FRAME_STROKES[0]!, FRAME_STROKES[1]!],
+    });
+    setAquarelleStrokeTypeFilter('lift');
+    const noMatchTree = renderDialog(paintsOnly.bundle);
+    expect(findByTestId(noMatchTree, 'stroke-settings-list-empty-filter')!.props.children).toBe(
+      'No strokes match this filter.',
+    );
+    expect(findByTestId(noMatchTree, 'stroke-settings-list-empty-frame')).toBeUndefined();
+    expect(strokeRows(noMatchTree)).toEqual([]);
+  });
+
+  it('no offered tool/tip combination in the dialog yields zero rows', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeTypeFilter('all');
+
+    const toolOptionValues = (): string[] => {
+      const select = findByTestId(renderDialog(bundle), 'stroke-settings-tool-filter')!;
+      return (childrenOf(select).filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[])
+        .map((option) => option.props.value as string);
+    };
+
+    for (const tool of toolOptionValues()) {
+      (findByTestId(renderDialog(bundle), 'stroke-settings-tool-filter')!.props.onChange as (
+        event: unknown,
+      ) => void)({ currentTarget: { value: tool } });
+      const toolTree = renderDialog(bundle);
+      expect(strokeRows(toolTree).length, `tool ${tool}`).toBeGreaterThan(0);
+
+      const tipSelect = findByTestId(toolTree, 'stroke-settings-tip-filter');
+      if (!tipSelect) continue;
+      const tipOptionValues = (childrenOf(tipSelect)
+        .filter((node) => (node as AnyVNode).type === 'option') as AnyVNode[])
+        .map((option) => option.props.value as string);
+      for (const tip of tipOptionValues) {
+        (findByTestId(renderDialog(bundle), 'stroke-settings-tip-filter')!.props.onChange as (
+          event: unknown,
+        ) => void)({ currentTarget: { value: tip } });
+        expect(strokeRows(renderDialog(bundle)).length, `tip ${tip} under ${tool}`).toBeGreaterThan(0);
+      }
+      // Reset the tip before the next tool iteration (a plain user move).
+      (findByTestId(renderDialog(bundle), 'stroke-settings-tip-filter')!.props.onChange as (
+        event: unknown,
+      ) => void)({ currentTarget: { value: 'all' } });
+    }
+  });
+
+  it('lives inside the app scroll area and keeps the chrome sentence case', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    const scroll = findComponent(
+      tree,
+      (props) => props.class === 'physics-paint-stroke-settings-scroll',
+    );
+    expect(scroll).toBeDefined();
+    expect(findByTestId(scroll, 'stroke-settings-list')).toBeDefined();
+
+    for (const key of ['paint', 'eraser', 'all']) {
+      const button = findByTestId(tree, `stroke-settings-filter-${key}`)!;
+      expect(
+        (button.props.style as Record<string, unknown>).textTransform,
+        `filter ${key}`,
+      ).toBe('none');
+    }
+    const rows = strokeRows(tree);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect((row.props.style as Record<string, unknown>).textTransform).toBe('none');
+    }
+
+    // The finer filters belong to the LIST: a non-empty selection has none.
+    setScriptStrokeSelection([7]);
+    const editing = renderDialog(bundle);
+    expect(findByTestId(editing, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(editing, 'stroke-settings-tool-filter')).toBeUndefined();
+  });
+
+  it('the brush sheet renders none of the finer-filter chrome', () => {
+    const { bundle } = createBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tool-filter')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tip-filter')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-list-summary')).toBeUndefined();
+  });
+
+  it('pins the sentence-case CSS for the selects and the rows', () => {
+    expect(cssSource).toMatch(
+      /\.physics-paint-stroke-settings-select\s*\{[^}]*text-transform:\s*none/s,
+    );
+    expect(cssSource).toMatch(
+      /\.physics-paint-stroke-settings-list-row\s*\{[^}]*text-transform:\s*none/s,
+    );
   });
 });

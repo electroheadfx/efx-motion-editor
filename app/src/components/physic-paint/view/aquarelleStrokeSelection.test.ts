@@ -8,7 +8,7 @@
 //  No DOM, no Preact components.
 // ============================================================
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
 import {
@@ -49,6 +49,8 @@ import {
   aquarelleStrokeBoundsPx,
   aquarelleStrokePointsPx,
   aquarelleStrokeSettingsDismissed,
+  aquarelleStrokeTipFilter,
+  aquarelleStrokeToolFilter,
   aquarelleStrokesOnFrame,
   aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
@@ -67,11 +69,14 @@ import {
   readAquarelleStrokeAppearance,
   reanchorAquarelleEditFromLiveContent,
   reanchorAquarelleEditRevision,
+  resetAquarelleStrokeFineFilters,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   selectAquarelleStroke,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
+  setAquarelleStrokeTipFilter,
+  setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
 import {
@@ -84,6 +89,12 @@ import {
 } from './scriptStrokeEdition';
 
 const SHEET = { width: 400, height: 200 };
+
+// 261031-euf: the finer list filters are module signals — reset them through
+// the production choke point so no case leaks into the next one.
+beforeEach(() => {
+  resetAquarelleStrokeFineFilters();
+});
 
 function point(x: number, y: number): AquarellePoint {
   return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
@@ -1387,5 +1398,104 @@ describe('261031-euf selectable listing metadata', () => {
       [10103, 'lift', 'round', true],
       [10104, 'brush', 'wc/flat-dry', false],
     ]);
+  });
+});
+
+// ============================================================
+//  quick 261031-euf Task 2 — the finer list filters. State
+//  only: two module signals, their compare-then-write setters
+//  and the existing select-mode / type-filter reset choke
+//  points. The overlay/hit-test port keeps the type law.
+// ============================================================
+
+describe('261031-euf stroke list fine-filter state', () => {
+  it('defaults both fine filters to All', () => {
+    expect(aquarelleStrokeToolFilter.value).toBe('all');
+    expect(aquarelleStrokeTipFilter.value).toBe('all');
+  });
+
+  it('both setters are compare-then-write — 1000 identical writes notify zero times', () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      void aquarelleStrokeToolFilter.value;
+      void aquarelleStrokeTipFilter.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      for (let index = 0; index < 1000; index += 1) {
+        setAquarelleStrokeToolFilter('all');
+        setAquarelleStrokeTipFilter('all');
+      }
+      expect(runs).toBe(before);
+      setAquarelleStrokeToolFilter('brush');
+      expect(runs).toBe(before + 1);
+      setAquarelleStrokeTipFilter('round');
+      expect(runs).toBe(before + 2);
+      expect(aquarelleStrokeToolFilter.value).toBe('brush');
+      expect(aquarelleStrokeTipFilter.value).toBe('round');
+    } finally {
+      dispose();
+      resetAquarelleStrokeFineFilters();
+    }
+  });
+
+  it('every select-mode call resets both, including a re-entry while ON and an exit', () => {
+    setAquarelleSelectMode(false);
+    try {
+      setAquarelleStrokeToolFilter('lift');
+      setAquarelleStrokeTipFilter('round');
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+
+      // setScriptSelectMode early-returns here — the reset must precede it.
+      setAquarelleStrokeToolFilter('water');
+      setAquarelleStrokeTipFilter('water-mop');
+      setAquarelleSelectMode(true);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+
+      setAquarelleStrokeToolFilter('pen');
+      setAquarelleStrokeTipFilter('wc/round-medium');
+      setAquarelleSelectMode(false);
+      expect(aquarelleStrokeToolFilter.value).toBe('all');
+      expect(aquarelleStrokeTipFilter.value).toBe('all');
+    } finally {
+      setAquarelleSelectMode(false);
+      clearScriptStrokeSelection();
+    }
+  });
+
+  it('an actual type-filter change resets both; an idempotent write keeps them', () => {
+    setAquarelleStrokeTypeFilter('all');
+    setAquarelleStrokeToolFilter('lift');
+    setAquarelleStrokeTipFilter('round');
+    setAquarelleStrokeTypeFilter('all');
+    expect(aquarelleStrokeToolFilter.value).toBe('lift');
+    expect(aquarelleStrokeTipFilter.value).toBe('round');
+    setAquarelleStrokeTypeFilter('paint');
+    expect(aquarelleStrokeToolFilter.value).toBe('all');
+    expect(aquarelleStrokeTipFilter.value).toBe('all');
+    setAquarelleStrokeTypeFilter('all');
+  });
+
+  it('the fine filters never touch the type filter, the selection or the edition port', () => {
+    recordAquarelleStroke(10201, stroke({ points: [point(0.2, 0.5)], playFrame: 960 }));
+    setAquarelleSelectMode(true);
+    try {
+      setScriptStrokeSelection([10201]);
+      setAquarelleStrokeToolFilter('lift');
+      setAquarelleStrokeTipFilter('round');
+      expect(aquarelleStrokeTypeFilter.value).toBe('paint');
+      expect([...aquarelleSelectedStrokeMutationIds.value]).toEqual([10201]);
+      // The overlay/hit-test port keeps the TYPE filter law only.
+      expect(
+        aquarelleScriptStrokeEditionPort.listStrokes(960, SHEET).map((entry) => entry.mutationId),
+      ).toEqual([10201]);
+    } finally {
+      clearScriptStrokeSelection();
+      setAquarelleSelectMode(false);
+    }
   });
 });

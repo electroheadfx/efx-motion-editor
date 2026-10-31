@@ -27,6 +27,7 @@ import {
   type AquarellePayloadEvent,
   type AquarelleStroke,
   type AquarelleStrokePayload,
+  type AquarelleTool,
 } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
@@ -125,6 +126,37 @@ export const AQUARELLE_STROKE_FILTER_DEFAULT: AquarelleStrokeTypeFilter = 'paint
 export const aquarelleStrokeTypeFilter = signal<AquarelleStrokeTypeFilter>(
   AQUARELLE_STROKE_FILTER_DEFAULT,
 );
+
+/**
+ * quick 261031-euf: the Stroke settings list's finer filters. DISPLAY-ONLY —
+ * they narrow the dialog's stroke list and never the overlay, the hit-test or
+ * the rendered artwork (that stays the type filter's law). Each value is
+ * 'all' or one recorded value; the dialog derives an EFFECTIVE value read-only
+ * so a stored tool/tip the current rows do not offer renders as All without a
+ * render-body write.
+ */
+export type AquarelleStrokeToolFilter = AquarelleTool | 'all';
+
+export const aquarelleStrokeToolFilter = signal<AquarelleStrokeToolFilter>('all');
+
+/** 'all' or a recorded `brushId`. */
+export const aquarelleStrokeTipFilter = signal<string>('all');
+
+export function setAquarelleStrokeToolFilter(next: AquarelleStrokeToolFilter): void {
+  if (aquarelleStrokeToolFilter.value === next) return;
+  aquarelleStrokeToolFilter.value = next;
+}
+
+export function setAquarelleStrokeTipFilter(next: string): void {
+  if (aquarelleStrokeTipFilter.value === next) return;
+  aquarelleStrokeTipFilter.value = next;
+}
+
+/** Both finer filters back to All, idempotently (the reset choke points). */
+export function resetAquarelleStrokeFineFilters(): void {
+  setAquarelleStrokeToolFilter('all');
+  setAquarelleStrokeTipFilter('all');
+}
 
 /**
  * 261029-eur: the Stroke Settings dialog's sticky-dismissal flag — the FALLBACK
@@ -231,6 +263,7 @@ export function readAquarelleStrokeAppearance(
  * delete paths already prune those. 1000 identical calls notify zero times.
  */
 export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): void {
+  const prior = aquarelleStrokeTypeFilter.peek();
   const selected = scriptSelectedStrokeIds.value;
   if (selected.size > 0) {
     const entries = getRecordedAquarelleStrokeEntries();
@@ -250,7 +283,13 @@ export function setAquarelleStrokeTypeFilter(next: AquarelleStrokeTypeFilter): v
     }
     if (changed) setScriptStrokeSelection(kept);
   }
-  if (aquarelleStrokeTypeFilter.value !== next) aquarelleStrokeTypeFilter.value = next;
+  if (prior !== next) {
+    aquarelleStrokeTypeFilter.value = next;
+    // 261031-euf: a REAL type change re-scopes the list, so the finer filters
+    // never carry a stale tool/tip pair across it. An idempotent write keeps
+    // them (compare-then-write, event path only — never a render body).
+    resetAquarelleStrokeFineFilters();
+  }
 }
 
 /**
@@ -289,6 +328,11 @@ export function setAquarelleSelectMode(
   // the Alt+click stroke-delete law). Exiting does not arm it.
   if (on) disarmAquarellePicker();
   setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
+  // 261031-euf: the finer list filters never survive a select-mode
+  // transition (entry, re-entry while ON, exit). This reset must also precede
+  // the delegation below — `setScriptSelectMode` early-returns on an unchanged
+  // value, which would otherwise skip it on a re-entry.
+  resetAquarelleStrokeFineFilters();
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
     aquarelleStrokeSettingsDismissed.value = false;

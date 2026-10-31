@@ -1475,6 +1475,92 @@ button.destructive {
   border-bottom-color: #1c1e22 !important;
 }
 
+/* quick 261031-euf: the empty-selection stroke list — finer-filter selects,
+   the summary and the scrollable rows. The global button rule uppercases
+   every button, so the selects and the row buttons restore sentence case. */
+.physics-paint-stroke-settings-fine-filters {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.physics-paint-stroke-settings-select {
+  flex: 1 1 0;
+  min-width: 0;
+  background: #2a3036;
+  color: #c9d1d9;
+  border: 1px solid #3a424a;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 4px;
+  text-transform: none;
+}
+
+.physics-paint-stroke-settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.physics-paint-stroke-settings-list-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid #565b61;
+  border-radius: 6px;
+  background: transparent;
+  color: #eef1f4;
+  text-align: left;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.physics-paint-stroke-settings-list-row:hover {
+  border-color: #747b83;
+  background: #414447;
+}
+
+.physics-paint-stroke-settings-list-row:focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+}
+
+.physics-paint-stroke-settings-list-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.physics-paint-stroke-settings-list-type {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.physics-paint-stroke-settings-list-serial,
+.physics-paint-stroke-settings-list-position {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: #9aa5b1;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-stroke-settings-list-tip {
+  font-size: 10px;
+  color: #9aa5b1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physics-paint-stroke-settings-list-custom {
+  font-size: 9px;
+  font-style: italic;
+  color: #9aa5b1;
+}
+
 /* 261031-cf9: the 12px switch margin belongs to the top bar; inside the
    Stroke settings sheet the switch aligns to the 12px content edge. */
 .physics-paint-stroke-settings-scroll .physics-paint-script-switch {

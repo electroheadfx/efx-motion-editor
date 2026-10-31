@@ -277,6 +277,109 @@ export function sortStrokesTopmostFirst(
   ));
 }
 
+// ============================================================
+//  Finer list filters (quick 261031-euf Task 2). Pure option
+//  derivation, row filtering, effective-filter resolution and
+//  the summary string. The OPTION lists are deliberately
+//  derived from the rows that will actually be filtered: tools
+//  from the type-filtered rows, tips from the tool-filtered
+//  rows, so the dropdowns never offer an empty combination.
+// ============================================================
+
+export const ALL_TOOL_FILTER_LABEL = 'All tools';
+export const ALL_TIP_FILTER_LABEL = 'All tips';
+
+/** The engine's closed tool union, in its canonical display order. */
+const STROKE_TOOL_ORDER: readonly ScriptStrokeTool[] = Object.freeze([
+  'brush',
+  'water',
+  'pen',
+  'lift',
+]);
+
+export type StrokeToolFilterValue = ScriptStrokeTool | 'all';
+
+/** The tools PRESENT in the given rows, in canonical order. */
+export function listStrokeToolOptions(
+  strokes: readonly Pick<SelectableScriptStroke, 'tool'>[],
+): ScriptStrokeTool[] {
+  const present = new Set<ScriptStrokeTool>();
+  for (const stroke of strokes) present.add(stroke.tool);
+  return STROKE_TOOL_ORDER.filter((tool) => present.has(tool));
+}
+
+/** One tip dropdown entry: the recorded id and its resolved display name. */
+export interface StrokeTipOption {
+  readonly brushId: string;
+  readonly name: string;
+}
+
+/**
+ * Distinct tips in FIRST-APPEARANCE order with resolved names (the raw id is
+ * the fail-closed fallback for a preset or a deleted custom tip).
+ */
+export function listStrokeTipOptions(
+  strokes: readonly Pick<SelectableScriptStroke, 'brushId'>[],
+): StrokeTipOption[] {
+  const out: StrokeTipOption[] = [];
+  const seen = new Set<string>();
+  for (const stroke of strokes) {
+    if (seen.has(stroke.brushId)) continue;
+    seen.add(stroke.brushId);
+    out.push({ brushId: stroke.brushId, name: resolveStrokeTipName(stroke.brushId) });
+  }
+  return out;
+}
+
+export interface StrokeListFilter {
+  readonly tool: StrokeToolFilterValue;
+  readonly tip: string;
+}
+
+/** Rows matching the finer filters; 'all' matches everything. NEW array. */
+export function filterStrokeListRows(
+  strokes: readonly SelectableScriptStroke[],
+  filter: StrokeListFilter,
+): SelectableScriptStroke[] {
+  return strokes.filter((stroke) => (
+    (filter.tool === 'all' || stroke.tool === filter.tool)
+    && (filter.tip === 'all' || stroke.brushId === filter.tip)
+  ));
+}
+
+/** The stored tool when the current rows offer it, else 'all' (read-only). */
+export function resolveStrokeToolFilter(
+  stored: StrokeToolFilterValue,
+  options: readonly ScriptStrokeTool[],
+): StrokeToolFilterValue {
+  return stored !== 'all' && options.includes(stored) ? stored : 'all';
+}
+
+/** The stored tip when the current rows offer it, else 'all' (read-only). */
+export function resolveStrokeTipFilter(
+  stored: string,
+  optionIds: readonly string[],
+): string {
+  return stored !== 'all' && optionIds.includes(stored) ? stored : 'all';
+}
+
+/**
+ * The list's summary line over the FULL frame listing (the filters never
+ * change the counts): `F<frame> · N strokes · P paint · E erasers`.
+ */
+export function strokeListSummary(
+  playFrame: number,
+  strokes: readonly Pick<SelectableScriptStroke, 'kind'>[],
+): string {
+  let paint = 0;
+  let erasers = 0;
+  for (const stroke of strokes) {
+    if (stroke.kind === 'lift') erasers += 1;
+    else paint += 1;
+  }
+  return `F${playFrame} · ${strokes.length} strokes · ${paint} paint · ${erasers} erasers`;
+}
+
 export interface StrokeSettingsOpenArgs {
   readonly surfaceActive: boolean;
   readonly selectionSize: number;
