@@ -153,7 +153,7 @@ export function RailTypeCard(props: {
       />
       {props.stacking ? (
         <span class="physics-paint-play-script-mode-helper">
-          This run updates the rail’s Rail Type, Motion wiggle and Color.
+          This run merges into the rail — the result is one Standard Rail.
         </span>
       ) : null}
     </div>

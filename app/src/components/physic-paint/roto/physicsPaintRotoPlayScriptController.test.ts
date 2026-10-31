@@ -33,6 +33,8 @@ import type {
 import {
   buildPhysicPaintRotoPhysicalRevision,
   canonicalizePhysicPaintRotoLoopClips,
+  isPhysicPaintRotoLoopClip,
+  parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   requirePhysicPaintRotoInlineBytes,
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
@@ -45,7 +47,7 @@ import {
   type PhysicPaintRotoPhysicalEditProposal,
 } from './physicsPaintRotoPhysicalResolver';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
-import { STANDARD_RAIL_REGENERATE_REASON } from './physicsPaintRotoRunScriptStacking';
+import { isStandardMergedLoopClip, STANDARD_RAIL_REGENERATE_REASON } from './physicsPaintRotoRunScriptStacking';
 import { projectPhysicsPaintLoopClipPresentation } from '../view/physicsPaintLoopClipPresentation';
 import type {
   RotoPhysicalEditAcceptedOutput,
@@ -4456,6 +4458,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     ]);
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
     expect(target.keyScriptEdits).toBe(true);
+    // 261031-vbo: Keep OFF changes the picture, never the merged rail's identity.
+    expect(isStandardMergedLoopClip(target)).toBe(true);
   });
 
   it('exposes an enabled Keep script switch on every stack destination and seeds it ON (Quick B 2x2)', async () => {
@@ -4647,6 +4651,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     // The publication never grows its own persisted flag property.
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
     expect(Object.prototype.hasOwnProperty.call(target, 'keyScriptEdits')).toBe(false);
+    // 261031-vbo: Keep ON appends the run's slices and still commits Standard.
+    expect(isStandardMergedLoopClip(target)).toBe(true);
   });
 
   it('pixel-only Keep OFF: composites over the existing frames and records nothing (UAT 261031-i54)', async () => {
@@ -4687,6 +4693,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       .map((record) => record.payload.bytes)).toEqual([compositeBytes, compositeBytes, compositeBytes]);
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
     expect(target.keyScriptEdits).toBeUndefined();
+    // 261031-vbo: pixel-only Keep OFF writes nothing and still commits Standard.
+    expect(isStandardMergedLoopClip(target)).toBe(true);
   });
 
   it('fails a stack run closed before commit when the recording port is absent (WR-02)', async () => {
@@ -5467,6 +5475,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       frameOverrides: [],
     });
     const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    // One-undo pin (261031-vbo): snapshot the pre-run collection before anything
+    // the dialog does, so a mutation of the destination would fail below.
+    const preRunClips = JSON.parse(JSON.stringify([target])) as unknown[];
     await test.controller.openConfirmation();
     // The run's Rail Type is a RUN setting: it shapes this bake only.
     test.controller.mode.value = 'progressive';
@@ -5493,6 +5504,49 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     for (const field of ['scriptId', 'motion', 'overrideColor', 'railKind', 'colorize', 'colorizeMix', 'photoWiggle']) {
       expect(Object.prototype.hasOwnProperty.call(committed, field), field).toBe(false);
     }
+    // One-undo pin (261031-vbo): the publication carries a NEW record and the
+    // destination rail is byte-identically untouched, so the history entry's
+    // undo restores the typed rail exactly.
+    expect(committed).not.toBe(target);
+    expect([target]).toEqual(preRunClips);
+
+    // Reload pin (261031-vbo): no schema change — the committed Standard record
+    // is a provenance-free playscript clip the existing parser accepts as-is.
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const revision = buildPhysicPaintRotoPhysicalRevision(
+      publication.records,
+      interpolation,
+      publication.loopClips ?? [],
+    );
+    const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip({
+      capacity: 600,
+      realKeyRecords: publication.records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 11,
+      loopClips: publication.loopClips ?? [],
+      incomingInterpolationBreakKeyIds: [],
+      revision,
+    }));
+    expect(isPhysicPaintRotoLoopClip(committed)).toBe(true);
+    expect(parsePhysicPaintRotoLoopClips([committed])).toEqual([committed]);
+    expect(reopened.loopClips[0]).toEqual(committed);
+    const reopenedContext = derivePhysicPaintRotoLoopRanges({
+      identities: reopened.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: reopened.loopClips,
+      capacity: 600,
+      interpolationEnabled: false,
+    });
+    const reopenedPresentation = projectPhysicsPaintLoopClipPresentation(
+      reopenedContext.ranges[0]!,
+      reopened.loopClips[0]!,
+      null,
+    );
+    expect(reopenedPresentation.groupTypeLabel).toBe('Standard Rail');
+    expect(reopenedPresentation.lifecycle).toBe('standard');
 
     // The published record projects as a gray-labeled Standard Rail.
     const context = derivePhysicPaintRotoLoopRanges({
@@ -5507,6 +5561,37 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(presentation.lifecycle).toBe('standard');
     expect(presentation.synchronizationDot).toBeNull();
     expect(presentation.regenerateDisabledReason).toContain('merges multiple scripts');
+  });
+
+  it('keeps the destination lifecycle members when the lifecycle plan is null (Quick C1)', async () => {
+    // An infinite rail is the only null lifecycle plan (planRunScriptStackLifecycle
+    // returns one cycle for every finite repeat). When it still carries members,
+    // the merge must PRESERVE them — a null plan means "no extension", not "drop".
+    const target = stackClip('infinity', {
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [],
+    });
+    const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    const committed = (test.commit.mock.calls[0]![0].loopClips ?? []).find((clip) => clip.loopId === 'L1')!;
+    expect(committed).toMatchObject({
+      repeat: 'infinity',
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [],
+    });
+    expect(isStandardMergedLoopClip(committed)).toBe(true);
   });
 
   it('never routes a stack confirm to the Reveal tab (WR-06)', async () => {

@@ -1821,15 +1821,17 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
-    expect(textOf(tree)).toContain('This run updates the rail’s Rail Type, Motion wiggle and Color.');
+    // 261031-vbo (Quick C1): the stack is a merge of results, not a Rail Type edit.
+    expect(textOf(tree)).toContain('This run merges into the rail — the result is one Standard Rail.');
 
-    // Creation keeps every one of them.
+    // Creation keeps every one of them, and a plain Apply never promises a merge.
     const create = renderDialog(createFakeController({ keyScriptEdits: true, paintSeedVariation: true }).controller);
     expect(findAll(create, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(1);
+    expect(textOf(create)).not.toContain('This run merges into the rail');
   });
 
   it('seeds the stack Color from the rail and adopts the brush color only on request (UAT 261031-i54)', () => {
