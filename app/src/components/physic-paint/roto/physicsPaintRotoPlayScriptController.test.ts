@@ -4647,6 +4647,43 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(target.keyScriptEdits).toBeUndefined();
   });
 
+  it('fails a stack run closed before commit when the recording port is absent (WR-02)', async () => {
+    const test = stackHarness(
+      [stackClip(2, { keyScriptEdits: true })],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: undefined },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    // Flag-on Keep OFF = the 'replace' record mode: the run cannot be reported
+    // complete without the recording seam.
+    test.controller.setKeepScript(false);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('This build cannot record key scripts. Nothing changed.');
+  });
+
+  it('allows a pixel-only Keep-OFF stack run without a recording port (WR-02)', async () => {
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: undefined },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setKeepScript(false);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    // recordMode 'none' writes no script, so the absent port is not a failure.
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    expect(test.composeStackedRailKey).toHaveBeenCalledTimes(3);
+  });
+
   it('fails a pixel-only stack run closed when the composite refuses', async () => {
     const recorder = vi.fn();
     const test = stackHarness(

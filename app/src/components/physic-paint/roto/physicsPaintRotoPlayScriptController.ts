@@ -2614,6 +2614,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
         if (compositeBytesByFrame.size > 0) publication = withRecordBytes(publication, compositeBytesByFrame);
       }
+      // WR-02: a run that must record can never be reported complete without
+      // the recording port. Fail BEFORE the commit — never publish a run whose
+      // append/replace was silently skipped.
+      const recordRailKeyScripts = ports.recordRailKeyScripts;
+      if (recordMode !== 'none' && recordRailKeyScripts === undefined) {
+        throw new Error('This build cannot record key scripts. Nothing changed.');
+      }
       phase.value = 'committing'; status.value = 'Committing Run Script…'; abortController = null;
       const result = await ports.commit(publication);
       assertCurrent(acceptedGeneration);
@@ -2629,7 +2636,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           // before it starts instead of leaving the bar silently full.
           await yieldToPaint();
         }
-        ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode });
+        recordRailKeyScripts!({ keyIds: touchedKeyIds, slices, recordMode });
       }
       collisionChoice.value = null;
       hasSuccessfulGeneration = true;

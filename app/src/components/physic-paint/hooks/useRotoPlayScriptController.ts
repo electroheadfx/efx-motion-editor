@@ -18,6 +18,7 @@ import type {
 import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
+type RailKeyScriptRecordInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['recordRailKeyScripts']>>[0];
 type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
 type StackedRailKeyComposeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['composeStackedRailKey']>>[0];
 type RevealStackTailInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeRevealStackTail']>>[0];
@@ -72,9 +73,14 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       photoReferenceRevision: ports.photoReferenceRevision,
       openPhotoReference: () => portsRef.current.openPhotoReference?.(),
       createReveal: (input) => portsRef.current.createReveal?.(input) ?? Promise.resolve({ ok: false, reason: 'Reveal unavailable — create-reveal port is not wired.' }),
-      // 261030-np9 (D-04): forwarded verbatim — the Studio's ledger is the ONE
-      // source of stroke mutation ids.
-      recordRailKeyScripts: (input) => portsRef.current.recordRailKeyScripts?.(input),
+      // 261030-np9 (D-04): the Studio's ledger is the ONE source of stroke
+      // mutation ids. WR-02: forwarded only when the Studio supplies it, like
+      // the bake ports below — a host without the port must reach the
+      // controller's presence gate instead of a wrapper that resolves to
+      // `undefined` and silently skips the recording.
+      ...(ports.recordRailKeyScripts
+        ? { recordRailKeyScripts: (input: RailKeyScriptRecordInput) => portsRef.current.recordRailKeyScripts!(input) }
+        : {}),
       // 261031-i54 (Quick A): Keep script ON's raw union re-bake port — only
       // forwarded when the Studio supplies it, so the controller's presence
       // gate (`keepScriptVisible`) stays honest.

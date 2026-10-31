@@ -345,6 +345,21 @@ describe('useRotoPlayScriptController', () => {
     expect(captured.ports!.bakeRevealStackTail).toBeUndefined();
   });
 
+  it('WR-02: omits recordRailKeyScripts when the Studio does not supply it', () => {
+    renderHook(ports(1));
+    expect(captured.ports!.recordRailKeyScripts).toBeUndefined();
+  });
+
+  it('WR-02: forwards recordRailKeyScripts verbatim only when supplied', () => {
+    const recordRailKeyScripts = vi.fn();
+    renderHook({ ...ports(1), recordRailKeyScripts });
+    const stablePorts = captured.ports!;
+    expect(stablePorts.recordRailKeyScripts).toBeTypeOf('function');
+    const input = { keyIds: ['key-1'], slices: [], recordMode: 'append' as const };
+    stablePorts.recordRailKeyScripts!(input);
+    expect(recordRailKeyScripts).toHaveBeenCalledWith(input);
+  });
+
   it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {
     vi.useFakeTimers();
     try {
