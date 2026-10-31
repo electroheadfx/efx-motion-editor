@@ -145,8 +145,8 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Automated work is complete; live Studio UAT rows 1-9 from the plan remain pending (the executor never starts the dev server). Row 8 (toggle OFF -> pixel-for-pixel pre-change paint) is the OFF-regression gate; rows 4-6 are the re-roll gate.
-- The three `red-evidence-task*.json` files sit untracked in this quick directory for the orchestrator's docs commit.
+- Live Studio UAT rows 1-9 approved 2026-10-31 (OFF pixel parity, the re-roll gate, and save/reopen parity included).
+- Post-UAT adjustment (`f09f1a633`): the 15px padding above/below the switch row was removed on the user's request — the section gap alone spaces the row. Tests updated to pin the row style absent.
 
 ---
 *Plan: quick 261031-cf9*
