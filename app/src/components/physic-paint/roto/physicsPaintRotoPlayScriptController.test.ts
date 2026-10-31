@@ -2824,8 +2824,11 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
   });
 
   describe('apply-time loop persistence + S4 Link/Create (D-05/D-09)', () => {
-    const applyHarness = (loopClips: readonly PhysicPaintRotoLoopClip[]) => {
-      const test = loopOpHarness(loopClips);
+    const applyHarness = (
+      loopClips: readonly PhysicPaintRotoLoopClip[],
+      authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+    ) => {
+      const test = loopOpHarness(loopClips, authorityOverrides);
       test.setSelection({ kind: 'empty', keyId: null, appFrame: 20 });
       return test;
     };
@@ -2951,6 +2954,31 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(loopAuthority().physicalRecords)));
       const linked = publication.loopClips?.find((entry) => entry.loopId !== 'L1');
       expect(linked).toMatchObject({ placementStart: 20, sourceKeyIds: [...CYCLE_IDS], repeat: 2, mode: 'static' });
+    });
+
+    // 261031-dm1: a lean authority carries no raster bytes; the loop-only
+    // builder must refuse it before any payload clone or commit.
+    it('261031-dm1: a lean authority fails the link-to-existing-cycle path closed', async () => {
+      const test = applyHarness([loopClip('L1', 10, 3)], {
+        identitiesOnly: true,
+        physicalRecords: CYCLE_IDS.map((keyId, index) => ({
+          keyId,
+          appFrame: 10 + index,
+          payload: { frameIndex: 0, appFrame: 10 + index },
+        })),
+        frames: [],
+      });
+      await test.controller.openConfirmation();
+      test.controller.mode.value = 'static';
+      test.controller.countText.value = '5';
+      test.controller.dialogMotion.value = { deformation: 0, position: 0, rotation: 0, scale: 0 };
+      test.controller.repeatText.value = '2';
+      expect(test.controller.identicalSourceCycle.value).not.toBeNull();
+      test.controller.linkChoice.value = 'link';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.controller.phase.value).toBe('failed');
+      expect(test.controller.error.value).toContain('identity-only');
     });
 
     // 261030-ig0 (D-03/D-04): the per-key opt-in is written on BOTH creation
@@ -4048,5 +4076,37 @@ describe('createRotoPlayScriptController identity-only authority (261031-dm1)', 
     expect(test.requestAuthority.mock.calls[0]).toEqual([expect.any(String), 4, { identitiesOnly: true }]);
     expect(test.controller.confirmationOpen.value).toBe(true);
     expect(test.controller.phase.value).toBe('idle');
+  });
+});
+
+// 261031-dm1: a lean authority never becomes a publication. Both builders
+// throw before any payload clone, the phase fails closed, and no commit runs.
+describe('createRotoPlayScriptController identity-only publication guards (261031-dm1)', () => {
+  const leanAuthority = (overrides: Partial<PhysicPaintRotoAuthorityResult> = {}): PhysicPaintRotoAuthorityResult => authority({
+    identitiesOnly: true,
+    physicalRecords: [{ keyId: 'key-1', appFrame: 1, payload: { frameIndex: 0, appFrame: 1 } }],
+    frames: [],
+    ...overrides,
+  });
+
+  it('fails the standard apply path closed before any commit', async () => {
+    const test = harness({ requestAuthority: vi.fn(async () => leanAuthority()) });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.controller.phase.value).toBe('failed');
+    expect(test.controller.error.value).toContain('identity-only');
+  });
+
+  it('keeps confirm and commit-check on the full two-argument request', async () => {
+    const test = harness();
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.requestAuthority).toHaveBeenCalledTimes(3);
+    expect(test.requestAuthority.mock.calls[0]).toEqual([expect.any(String), 4, { identitiesOnly: true }]);
+    expect(test.requestAuthority.mock.calls[1]).toHaveLength(2);
+    expect(test.requestAuthority.mock.calls[2]).toHaveLength(2);
   });
 });
