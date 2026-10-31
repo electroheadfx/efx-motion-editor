@@ -194,13 +194,13 @@ describe('native-approved Physics Paint right sidebar', () => {
   it('keeps full-row load-only activation and contextual Actions behavior', () => {
     // 261022-o2a: ONE row of four actions — Delete moved into the row
     // confirmation surface, so it is no longer a toolbar token.
-    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Refresh Scripts"']);
+    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load + Apply to Frame"', 'label="Run Script…"', 'label="Refresh Scripts"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
     expect(scriptsPanel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Script')}`}");
-    expect(scriptsPanel).toMatch(/label="Create Rail…"[^>]*onClick=/);
+    expect(scriptsPanel).toContain("label=\"Run Script…\" title={`Run Script… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Run the selected Script to create or update a Motion or Static Rail')}`}");
+    expect(scriptsPanel).toMatch(/label="Run Script…"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Action"');
     expect(scriptsPanel).toContain('role="option"');
     expect(scriptsPanel).toContain('tabIndex={0}');
@@ -226,7 +226,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-options-tabs')).toMatch(/min-width:\s*0[\s\S]*overflow:\s*hidden/);
     expect(rule('.physics-paint-options-tab')).toMatch(/min-width:\s*0[\s\S]*white-space:\s*nowrap/);
     // 261022-o2a: the toolbar is ONE row of four actions (Save / Apply /
-    // Create Rail / Refresh); Delete and Copy moved out.
+    // Run Script / Refresh); Delete and Copy moved out.
     expect(rule('.physics-paint-scripts-toolbar')).toMatch(/grid-template-columns:\s*repeat\(4,\s*auto\)[\s\S]*min-width:\s*0/);
     expect(rule('.physics-paint-scripts-list')).toMatch(/min-width:\s*0[\s\S]*overflow-x:\s*hidden/);
 

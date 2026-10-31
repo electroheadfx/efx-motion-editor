@@ -1679,7 +1679,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 <button
                   type="button"
                   class="physics-paint-roto-key-icon-button"
-                  aria-label="Create Rail"
+                  aria-label="Run Script"
                   aria-disabled={!props.canCreateRailFromScript ? 'true' : undefined}
                   aria-describedby={!props.canCreateRailFromScript && props.createRailFromScriptDisabledReason ? 'roto-key-action-reason-create-rail-script' : undefined}
                   onFocus={createRailScriptTooltip.onFocus}
@@ -1694,13 +1694,13 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   }}
                 >
                   <Play size={15} aria-hidden="true" />
-                  <span class="physics-paint-roto-key-icon-label">Create Rail</span>
+                  <span class="physics-paint-roto-key-icon-label">Run Script</span>
                 </button>
                 {!props.canCreateRailFromScript && props.createRailFromScriptDisabledReason ? (
                   <span id="roto-key-action-reason-create-rail-script" class="physics-paint-sr-only">{props.createRailFromScriptDisabledReason}</span>
                 ) : null}
                 <PhysicsPaintStyledTooltip visible={createRailScriptTooltip.visible} region="bottom">
-                  {buildGuardedActionTooltipCopy('Create Rail from Script', props.createRailFromScriptDisabledReason)}
+                  {buildGuardedActionTooltipCopy('Run Script', props.createRailFromScriptDisabledReason)}
                 </PhysicsPaintStyledTooltip>
               </span>
             </div>

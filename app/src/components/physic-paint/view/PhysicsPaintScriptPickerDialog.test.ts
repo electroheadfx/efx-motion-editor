@@ -158,7 +158,7 @@ describe('PhysicsPaintScriptPickerDialog contract (261022-o2a)', () => {
   it('flips the title with the intent', () => {
     const library = createFakeLibrary([makeRow('a', 'Alpha')]);
     expect(textOf(renderDialog({ intent: 'load-apply', library }))).toContain('Load + Apply');
-    expect(textOf(renderDialog({ intent: 'create-rail', library }))).toContain('Create Rail');
+    expect(textOf(renderDialog({ intent: 'create-rail', library }))).toContain('Run Script');
     // The subtitle stays intent-independent (the two titles are the only flip).
     expect(textOf(renderDialog({ intent: 'load-apply', library }))).toContain('Pick a project Script.');
     expect(textOf(renderDialog({ intent: 'create-rail', library }))).toContain('Pick a project Script.');

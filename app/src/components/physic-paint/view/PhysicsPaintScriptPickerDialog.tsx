@@ -111,7 +111,7 @@ export function PhysicsPaintScriptPickerDialog({
       >
         <div class="physics-paint-script-picker-header">
           <ListChecks size={15} class="physics-paint-script-picker-header-icon" aria-hidden="true" />
-          <strong id={TITLE_ID}>{intent === 'load-apply' ? 'Load + Apply' : 'Create Rail'}</strong>
+          <strong id={TITLE_ID}>{intent === 'load-apply' ? 'Load + Apply' : 'Run Script'}</strong>
           <span class="physics-paint-script-picker-header-spacer" aria-hidden="true" />
           <button
             type="button"

@@ -123,25 +123,25 @@ describe('Physics Paint SCRIPTS panel contract', () => {
 
   it('keeps ordered accessible controls while swapping Play to contextual Loop Edit', () => {
     // 261022-o2a: four labeled actions — Delete and Copy left the toolbar.
-    const labels = ['Save Script', 'Load + Apply to Frame', 'Create Rail…', 'Refresh Scripts'];
+    const labels = ['Save Script', 'Load + Apply to Frame', 'Run Script…', 'Refresh Scripts'];
     for (const label of labels) expect(panel).toContain(`label="${label}"`);
     expect(panel.indexOf('label="Save Script"')).toBeLessThan(panel.indexOf('label="Load + Apply to Frame"'));
     expect(panel).toContain('if (selectedLoopClip)');
     expect(panel).toContain('aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}');
     expect(panel).toContain('<dt>Source Script</dt>');
     expect(panel).toContain('<dt>Rail Type</dt>');
-    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Create Rail…"'));
-    expect(panel.indexOf('label="Create Rail…"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
+    expect(panel.indexOf('label="Load + Apply to Frame"')).toBeLessThan(panel.indexOf('label="Run Script…"'));
+    expect(panel.indexOf('label="Run Script…"')).toBeLessThan(panel.indexOf('label="Refresh Scripts"'));
     expect(panel).not.toContain('label="Delete Script"');
     expect(panel).not.toContain('aria-label="Copy Script"');
     expect(panel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
-    expect(panel).toContain('label="Create Rail…"');
+    expect(panel).toContain('label="Run Script…"');
     expect(panel).not.toContain('label="Rename Script"');
     expect(panel).toContain('aria-label={props.label}');
     expect(panel).toContain('PhysicsPaintStyledTooltip visible={tooltip.visible}');
     expect(controller).toContain("saveDisabledReason: !projectSaved.value ? 'Save the project first.'");
     expect(panel).toContain('availability.saveDisabledReason');
-    expect(panel).toContain("playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Script'");
+    expect(panel).toContain("playScript.disabledReason.value ?? 'Run the selected Script to create or update a Motion or Static Rail'");
     expect(panel).not.toContain('Import Script');
     expect(panel).toContain('aria-label="Project Scripts"');
     expect(panel).toContain('aria-label="Saved Roto Scripts"');
@@ -149,7 +149,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(panel).toContain('Save the current real Roto frame as a Script to create a Rail.');
   });
 
-  it('provides an accessible Create Rail… dialog distinct from cached Roto playback', () => {
+  it('provides an accessible Run Script… dialog distinct from cached Roto playback', () => {
     expect(studioView).toContain('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).not.toContain('aria-modal="true"');
@@ -401,11 +401,11 @@ describe('Physics Paint Scripts panel per-row trash contract (261022-o2a)', () =
 });
 
 describe('Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar)', () => {
-  it('labels only Apply and Create Rail; Save and Refresh stay icon-only', () => {
+  it('labels only Apply and Run Script; Save and Refresh stay icon-only', () => {
     const toolbar = getScriptsToolbarBlock(panel);
     const expectations = [
       ['Load + Apply to Frame', '<Paintbrush size={16}', 'Apply'],
-      ['Create Rail…', '<Play size={16}', 'Create Rail'],
+      ['Run Script…', '<Play size={16}', 'Run Script'],
     ] as const;
     for (const [label, icon, visible] of expectations) {
       const block = getIconButtonBlock(toolbar, label);
@@ -443,7 +443,7 @@ describe('Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UA
     expect(rule).toContain('text-transform: none');
     // 261022-o2a UAT: two labels; Save and Refresh are icon-only.
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const visible of ['Apply', 'Create Rail']) {
+    for (const visible of ['Apply', 'Run Script']) {
       expect(toolbar).toContain(`<span class="physics-paint-roto-key-icon-label">${visible}</span>`);
     }
     for (const gone of ['Save', 'Load + Apply', 'Refresh', 'Copy']) {
@@ -490,7 +490,7 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     // Buttons no longer stretch to fill fixed-fraction cells.
     expect(css).not.toContain('.physics-paint-script-icon-button { width: 100% }');
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const visible of ['Apply', 'Create Rail']) {
+    for (const visible of ['Apply', 'Run Script']) {
       expect(toolbar).toContain(`<span class="physics-paint-roto-key-icon-label">${visible}</span>`);
     }
     for (const gone of ['Save', 'Load + Apply', 'Refresh', 'Copy']) {
@@ -511,7 +511,7 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
 describe('Physics Paint Scripts panel guarded toolbar contract (260905-f3v)', () => {
   // 261022-o2a: Delete left the toolbar for a per-row trash; Copy moved to the
   // Tools Living Script row. Four guarded actions remain.
-  const toolbarButtonLabels = ['Save Script', 'Load + Apply to Frame', 'Create Rail…', 'Refresh Scripts'];
+  const toolbarButtonLabels = ['Save Script', 'Load + Apply to Frame', 'Run Script…', 'Refresh Scripts'];
 
   it('routes every toolbar button through the guarded IconButton idiom with no native title', () => {
     const toolbar = getScriptsToolbarBlock(panel);
@@ -838,7 +838,7 @@ describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
 
     expect(findAll(tree, (vnode) => vnode.props.role === 'option')).toHaveLength(1);
     expect(findAll(tree, (vnode) => vnode.props.role === 'dialog')).toHaveLength(1);
-    for (const label of ['Save Script', 'Load + Apply to Frame', 'Create Rail…', 'Refresh Scripts']) {
+    for (const label of ['Save Script', 'Load + Apply to Frame', 'Run Script…', 'Refresh Scripts']) {
       expect(findOne(tree, (vnode) => vnode.props.label === label).props.disabled).toBe(true);
     }
     for (const label of ['Keep Rails', 'Delete Script and Rails']) {
@@ -1001,10 +1001,10 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
     expect(scrollAreaIndex).toBe(toolbarIndex + 1);
   });
 
-  it('keeps the Create Rail… tooltip fallback covering both modes', () => {
+  it('keeps the Run Script… tooltip fallback covering both modes', () => {
     const tree = renderPanel(createFakePlayScript());
-    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Create Rail…');
-    expect(playButton.props.title).toBe('Create Rail… — Create a Motion or Static Rail from the selected Script');
+    const playButton = findOne(tree, (vnode) => vnode.props?.label === 'Run Script…');
+    expect(playButton.props.title).toBe('Run Script… — Run the selected Script to create or update a Motion or Static Rail');
     expect(String(playButton.props.title)).not.toContain('Progressive');
   });
 });

@@ -451,7 +451,7 @@ export function PhysicsPaintPlayScriptDialog({
               ? 'Edit Rail'
               : sourceEdit
                 ? 'Edit Source Cycle'
-                : 'Create Rail'}</strong>
+                : 'Run Script'}</strong>
           {regenerateImpact
             ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
             : loopEdit && editTarget
@@ -852,7 +852,7 @@ export function PhysicsPaintPlayScriptDialog({
                 >
                   {loopEdit
                     ? playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
-                    : sourceEdit ? 'Regenerate source cycle' : 'Create Rail'}
+                    : sourceEdit ? 'Regenerate source cycle' : 'Run Script'}
                 </button>
               ) : null}
             </>)}

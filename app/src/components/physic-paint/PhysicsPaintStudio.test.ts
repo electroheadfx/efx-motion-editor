@@ -99,10 +99,10 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain('PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT');
   });
 
-  it('keeps Save, Load/Paintbrush, Create Rail, and cached Roto playback distinct', () => {
+  it('keeps Save, Load/Paintbrush, Run Script, and cached Roto playback distinct', () => {
     const save = scriptsPanel.indexOf('label="Save Script"');
     const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
-    const playScript = scriptsPanel.indexOf('label="Create Rail…"');
+    const playScript = scriptsPanel.indexOf('label="Run Script…"');
     expect(save).toBeGreaterThan(-1);
     expect(paintbrush).toBeGreaterThan(save);
     expect(playScript).toBeGreaterThan(paintbrush);
@@ -1451,7 +1451,7 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
     // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
-    // (261022-o2a: the Tools Create Rail / Load + Apply picker is owned by the
+    // (261022-o2a: the Tools Run Script / Load + Apply picker is owned by the
     // Studio and rendered by the view), strokeSettingsDialog
     // (261024-p5q: the active module's Stroke Settings callback bundle).
     expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(10);
@@ -2126,7 +2126,7 @@ describe('Physics Paint photo reference dialog structural lock (WR-03)', () => {
   it('keeps the retired timeline + Rail dropdown entry point retired while the Tools picker returns (261022-cfn superseded by 261022-o2a)', () => {
     // 261022-cfn removed the AM-3 picker whose only entry point was the
     // timeline + Rail dropdown. 261022-o2a reintroduces the picker through a
-    // NEW entry point (the Tools popover's Create Rail / Load + Apply
+    // NEW entry point (the Tools popover's Run Script / Load + Apply
     // buttons); the retired entry point must stay retired. The picker is
     // owned by the Studio (intent signal + identity memo) and rendered by the
     // view — the strip's action row only opens it, it never renders it.
@@ -2147,7 +2147,7 @@ describe('Physics Paint photo reference dialog structural lock (WR-03)', () => {
   });
 
   // WR-03 structural lock (260920-kov): the reveal-creation entry reaches the
-  // Create Rail dialog through the Scripts tab's Create Rail flow and NOTHING
+  // Run Script dialog through the Scripts tab's Run Script flow and NOTHING
   // else. The photo reference dialog stays a pure reference control surface —
   // its props carry no reveal member, so it cannot receive reveal state without
   // this test failing. Pairs with the behavioural legs in
@@ -4705,7 +4705,7 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // never advances to the composed output, and each erase path is specified
     // with EXACTLY ONE `set(` statement of its own. One more (261028-k03h):
     // the recorder pins the KNOWN-EMPTY entry for a fresh blank key whose two
-    // caches hold only placeholders. One more (261030-np9): the Create Rail
+    // caches hold only placeholders. One more (261030-np9): the Run Script
     // per-key script recorder pins KNOWN-EMPTY for every rail key, because a
     // rail key's picture is ENTIRELY its script while its baked cache already
     // holds the strokes — replaying over that cache duplicated every stroke.
@@ -5030,7 +5030,7 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
 
   it('delivers exactly one completion per allocation and routes it through the ONE memoized port', () => {
     // Three accepted-stroke paths (live stroke end, duplicate copy, and the
-    // 261030-np9 Create Rail per-key script recorder) — no other site may
+    // 261030-np9 Run Script per-key script recorder) — no other site may
     // invent an id, or a stroke would complete twice.
     const allocations = studio.match(/paintMutationLedger\.allocateStrokeMutation\(/g) ?? [];
     expect(allocations).toHaveLength(3);

@@ -2189,7 +2189,7 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
     expect(code).toContain('isLinkedRepeatFrameResolution');
     expect(code).not.toContain('railCreateMenuOpen');
     // Motion/Static/Reveal stay retired from the timeline; they live in the
-    // sidebar Scripts tab's Create Rail dialog. The + Rail prop is alive again.
+    // sidebar Scripts tab's Run Script dialog. The + Rail prop is alive again.
     for (const deadProp of ['onCreate' + 'PlayScriptRail', 'onCreate' + 'RevealRail']) {
       expect(code).not.toContain(deadProp);
     }
@@ -2489,7 +2489,7 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
     expect(actionsIndex).toBeGreaterThan(livingHeadingIndex);
 
     const row = header.slice(scriptsRowIndex, livingHeadingIndex);
-    const order = ['aria-label="Save Script"', 'aria-label="Load + Apply to Frame"', 'aria-label="Create Rail"'];
+    const order = ['aria-label="Save Script"', 'aria-label="Load + Apply to Frame"', 'aria-label="Run Script"'];
     const indices = order.map((token) => row.indexOf(token));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
@@ -2498,7 +2498,7 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
     const guards: ReadonlyArray<readonly [string, string]> = [
       ['Save Script', 'canSaveScript'],
       ['Load + Apply to Frame', 'canLoadAndApplyScript'],
-      ['Create Rail', 'canCreateRailFromScript'],
+      ['Run Script', 'canCreateRailFromScript'],
     ];
     for (const [label, guard] of guards) {
       const block = getButtonBlock(row, label);
@@ -2508,16 +2508,16 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
       expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
       expect(block).toContain("(event.key === 'Enter' || event.key === ' ')");
     }
-    // 261022-o2a UAT: Save is icon-only; Apply and Create Rail keep labels and
+    // 261022-o2a UAT: Save is icon-only; Apply and Run Script keep labels and
     // the three actions stay on one line.
     const saveBlock = getButtonBlock(row, 'Save Script');
     expect(saveBlock).not.toContain('physics-paint-roto-key-icon-label');
     expect(row).toContain('physics-paint-roto-key-icon-label">Apply<');
     expect(row).not.toContain('physics-paint-roto-key-icon-label">Load + Apply<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Create Rail<');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Run Script<');
     expect(row).toContain("buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)");
     expect(row).toContain("buildGuardedActionTooltipCopy('Load + Apply to Frame', props.loadAndApplyScriptDisabledReason)");
-    expect(row).toContain("buildGuardedActionTooltipCopy('Create Rail from Script', props.createRailFromScriptDisabledReason)");
+    expect(row).toContain("buildGuardedActionTooltipCopy('Run Script', props.createRailFromScriptDisabledReason)");
     expect(row).toContain('id="roto-key-action-reason-save-script"');
     expect(row).toContain('id="roto-key-action-reason-load-apply"');
     // Both selection-dependent actions route through the picker.

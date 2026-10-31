@@ -99,7 +99,7 @@ interface FakeControllerSeed {
   loopIntentActive?: boolean;
   identicalSourceCycle?: { sourceKeyIds: readonly string[]; loopCount: number; sourceStart: number } | null;
   linkChoice?: 'link' | 'create';
-  // 52-05 (G-52-3): the Create Rail tabs
+  // 52-05 (G-52-3): the Run Script tabs
   railTab?: 'paint' | 'reveal';
   revealCountText?: string;
   revealValidationError?: string | null;
@@ -156,7 +156,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     loopIntentActive: sig(seed.loopIntentActive ?? false),
     identicalSourceCycle: sig(seed.identicalSourceCycle ?? null),
     linkChoice: sig<'link' | 'create'>(seed.linkChoice ?? 'link'),
-    // 52-05 (G-52-3): the Create Rail tabs
+    // 52-05 (G-52-3): the Run Script tabs
     railTab: sig<'paint' | 'reveal'>(seed.railTab ?? 'paint'),
     canonicalStart: sig<number | null>(seed.canonicalStart ?? 4),
     revealCountText: sig(seed.revealCountText ?? '3'),
@@ -350,7 +350,7 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     // Footer stays outside the body grid, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).not.toBe(content);
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Create Rail'))).toBe('Create Rail');
+    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Run Script'))).toBe('Run Script');
   });
 
   it('marks the root with the reveal modifier only on the Reveal tab', () => {
@@ -393,7 +393,7 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     // Title is the first header child; the range readout is the second (right-aligned via CSS).
     const headerChildren = childrenOf(header).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
-    expect(textOf(headerChildren[0])).toBe('Create Rail');
+    expect(textOf(headerChildren[0])).toBe('Run Script');
     expect(textOf(headerChildren[1])).toBe('Max 4 · F4–F7');
     // Footer (progress + Cancel/Generate) renders inside the modal surface, after the body.
     const footer = findOne(surface, byClass('physics-paint-play-script-footer'));
@@ -699,7 +699,7 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const error = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-inline-error') && hasClass(vnode, 'physics-paint-play-script-dialog-error'));
     expect(textOf(error)).toBe('Parent rejected the Play Script batch.');
     expect(findAll(tree, (vnode) => vnode.type === 'progress')).toHaveLength(0);
-    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail').props.disabled).toBe(false);
+    expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script').props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
   });
@@ -966,7 +966,7 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Static'))).toBe('Update Static');
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Regenerate Rail'))).toBe('Regenerate Rail');
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
-    expect(findAll(footer, (vnode) => textOf(vnode) === 'Create Rail')).toHaveLength(0);
+    expect(findAll(footer, (vnode) => textOf(vnode) === 'Run Script')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
   });
 
@@ -1447,7 +1447,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     handler(findOne(tree, byId('physics-play-script-reveal-count')), 'onChange')(7);
     expect(signals.revealCountText.value).toBe('7');
     const invalid = renderDialog(createFakeController({ railTab: 'reveal', revealValidationError: 'Enter a positive integer.' }).controller);
-    const createButton = findOne(invalid, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail');
+    const createButton = findOne(invalid, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script');
     expect(createButton.props.disabled).toBe(true);
   });
 
@@ -1466,7 +1466,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
   it('routes the Reveal tab Create through the same confirm entry (creation IS the first bake — D-11)', () => {
     const { controller } = createFakeController({ railTab: 'reveal' });
     const tree = renderDialog(controller);
-    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Create Rail'), 'onClick')();
+    handler(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script'), 'onClick')();
     expect(controller.confirm).toHaveBeenCalledTimes(1);
   });
 });
