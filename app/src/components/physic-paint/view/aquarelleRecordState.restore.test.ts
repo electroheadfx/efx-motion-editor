@@ -9,11 +9,13 @@
 // ============================================================
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
 import type {
   AquarelleDryEvent,
   AquarelleStroke,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
+import { PAINT_SEED_SALT_PARAM } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   aquarelleRecordClock,
@@ -266,5 +268,42 @@ describe('261027 watercolor key anchors', () => {
   it('never stamps an anchor for a stroke recorded without a key id', () => {
     recordAquarelleStroke(601, recordableStroke(601, 10));
     expect(getAquarelleStrokeKeyAnchors().has(601)).toBe(false);
+  });
+});
+
+// ============================================================
+//  261031-cf9 — the persisted paint seed salt rides inside
+//  `engine.params`, so the restore path rebuilds the same
+//  traceSeed through the ONE projection with no format change.
+// ============================================================
+function saltedFixtureStroke(
+  playFrame: number,
+  mutationId: number,
+  salt: number,
+): StudioStroke<AquarelleStrokePayload> {
+  const base = fixtureStroke(playFrame, mutationId);
+  return {
+    ...base,
+    engine: {
+      ...base.engine,
+      params: { size: 10, [PAINT_SEED_SALT_PARAM]: salt },
+    },
+  };
+}
+
+describe('261031-cf9 restored paint seed salt', () => {
+  it('rebuilds the salted traceSeed from engine.params on restore', () => {
+    restoreAquarelleRecordTimeline([saltedFixtureStroke(7, 42, 3)]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.params[PAINT_SEED_SALT_PARAM]).toBe(3);
+    expect(entry.traceSeed).toBe(mixStrokeSeed(hashMutationId(42), 3));
+    expect(getRecordedAquarelleStroke(42)!.params[PAINT_SEED_SALT_PARAM]).toBe(3);
+  });
+
+  it('keeps an unsalted restore byte-identical to hashMutationId', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(7, 42)]);
+    const entry = getRecordedAquarellePayloadTimeline()[0] as StudioStroke<AquarelleStrokePayload>;
+    expect(entry.engine.params[PAINT_SEED_SALT_PARAM]).toBeUndefined();
+    expect(entry.traceSeed).toBe(hashMutationId(42));
   });
 });

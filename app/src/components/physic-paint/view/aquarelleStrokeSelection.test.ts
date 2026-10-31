@@ -10,9 +10,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
+import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
 import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
+  PAINT_SEED_SALT_PARAM,
   isAquarelleDryEvent,
+  paintSeedSaltOf,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
@@ -20,6 +23,8 @@ import {
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
 import {
   aquarelleStrokesRevision,
+  bumpAquarellePaintSeedSalts,
+  bumpAquarellePaintSeedSaltsForFrame,
   bumpAquarelleStrokesRevision,
   clearAquarelleStrokeDeletion,
   deleteAquarelleStrokesFromScript,
@@ -45,6 +50,10 @@ import {
   aquarelleStrokeTypeFilter,
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
+  beginAquarelleMoveEdit,
+  beginAquarellePaintSeedRerollEdit,
+  beginAquarellePlaceEdit,
+  beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
   beginAquarelleTransformEdit,
   cycleAquarelleStrokeTypeFilter,
@@ -1034,5 +1043,287 @@ describe('261029-lsr script-authoritative stroke undo edit', () => {
     recordAquarelleStroke(9772, stroke({ points: [point(0.9, 0.5)], playFrame: 907 }));
     expect(reanchorAquarelleEditFromLiveContent(deleteFirst, 'undo')).toBe(false);
     expect(restoreAquarelleEditSnapshot(deleteFirst, 'undo')).toBeNull();
+  });
+});
+
+// ============================================================
+//  261031-cf9 — the persisted paint seed salt.
+//
+//  The salt is stroke state (`engine.params.paintSeedSalt`), so a
+//  committed re-bake re-rolls the stochastic texture while points,
+//  pressure, brush params and the paper seed stay fixed. OFF carries
+//  no key and is byte-identical to today. Every write rides the
+//  edit ledger: undo restores the pre-commit salt (and its
+//  traceSeed) by reference.
+// ============================================================
+
+function saltedStroke(options: {
+  points: readonly AquarellePoint[];
+  playFrame: number;
+  salt: number;
+  size?: number;
+  timestamp?: number;
+}): AquarelleStroke {
+  const base = stroke(options);
+  return {
+    ...base,
+    params: { ...base.params, [PAINT_SEED_SALT_PARAM]: options.salt },
+  };
+}
+
+function entrySeed(mutationId: number): number {
+  return strokeEntryAt(getRecordedAquarellePayloadTimeline(), mutationId).traceSeed;
+}
+
+function expectedSaltedSeed(mutationId: number, salt: number): number {
+  return mixStrokeSeed(hashMutationId(mutationId), salt);
+}
+
+describe('261031-cf9 the paint seed variation flag on the script write', () => {
+  it('the flag alone writes salt 0 and re-projects the entry at the same index', () => {
+    recordAquarelleStroke(9801, stroke({ points: [point(0.1, 0.5)], playFrame: 801 }));
+    const before = getRecordedAquarelleStroke(9801)!;
+    const beforeEntry = strokeEntryAt(getRecordedAquarellePayloadTimeline(), 9801);
+    const beforeIndex = entryIndexOf(getRecordedAquarellePayloadTimeline(), 9801);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(updateAquarelleStrokesInScript([9801], { paintSeedVariation: true })).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(9801)!;
+    expect(after).not.toBe(before);
+    expect(before.params[PAINT_SEED_SALT_PARAM]).toBeUndefined();
+    expect(paintSeedSaltOf(after.params)).toBe(0);
+    expect(after.points).toBe(before.points);
+
+    const events = getRecordedAquarellePayloadTimeline();
+    expect(entryIndexOf(events, 9801)).toBe(beforeIndex);
+    expect(strokeEntryAt(events, 9801)).not.toBe(beforeEntry);
+    expect(strokeEntryAt(events, 9801).engine.params[PAINT_SEED_SALT_PARAM]).toBe(0);
+    expect(entrySeed(9801)).toBe(expectedSaltedSeed(9801, 0));
+  });
+
+  it('skips targets already ON and deletes the key on OFF', () => {
+    recordAquarelleStroke(9802, stroke({ points: [point(0.2, 0.5)], playFrame: 802 }));
+    expect(updateAquarelleStrokesInScript([9802], { paintSeedVariation: true })).toBe(1);
+    const revisionOn = aquarelleStrokesRevision.value;
+    expect(updateAquarelleStrokesInScript([9802], { paintSeedVariation: true })).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionOn);
+
+    expect(updateAquarelleStrokesInScript([9802], { paintSeedVariation: false })).toBe(1);
+    expect(getRecordedAquarelleStroke(9802)!.params[PAINT_SEED_SALT_PARAM]).toBeUndefined();
+    expect(entrySeed(9802)).toBe(hashMutationId(9802));
+
+    const revisionOff = aquarelleStrokesRevision.value;
+    expect(updateAquarelleStrokesInScript([9802], { paintSeedVariation: false })).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionOff);
+  });
+
+  it('refuses a params patch carrying the salt directly and a non-boolean flag', () => {
+    recordAquarelleStroke(9803, stroke({ points: [point(0.3, 0.5)], playFrame: 803 }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(
+      updateAquarelleStrokesInScript([9803], {
+        params: { [PAINT_SEED_SALT_PARAM]: 3 },
+      }),
+    ).toBe(0);
+    expect(
+      updateAquarelleStrokesInScript([9803], {
+        paintSeedVariation: 'yes' as unknown as boolean,
+      }),
+    ).toBe(0);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarelleStroke(9803)!.params).toEqual({ size: 12 });
+  });
+});
+
+describe('261031-cf9 bumpAquarellePaintSeedSalts', () => {
+  it('the OFF path is free — no salt, no revision bump, no count', () => {
+    recordAquarelleStroke(9810, stroke({ points: [point(0.1, 0.5)], playFrame: 810 }));
+    markAquarelleStrokeDeleted(9811);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(bumpAquarellePaintSeedSalts([9810, 9811, 999999])).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(entrySeed(9810)).toBe(hashMutationId(9810));
+  });
+
+  it('increments only salted strokes, once per batch, at the same timeline index', () => {
+    recordAquarelleStroke(9812, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 811, salt: 2 }));
+    recordAquarelleStroke(9813, stroke({ points: [point(0.2, 0.5)], playFrame: 811 }));
+    const before = getRecordedAquarelleStroke(9812)!;
+    const offBefore = getRecordedAquarelleStroke(9813)!;
+    const index = entryIndexOf(getRecordedAquarellePayloadTimeline(), 9812);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(bumpAquarellePaintSeedSalts([9812, 9812, 9813])).toBe(1);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+
+    const after = getRecordedAquarelleStroke(9812)!;
+    expect(after).not.toBe(before);
+    expect(paintSeedSaltOf(after.params)).toBe(3);
+    expect(after.points).toBe(before.points);
+    expect(entryIndexOf(getRecordedAquarellePayloadTimeline(), 9812)).toBe(index);
+    expect(entrySeed(9812)).toBe(expectedSaltedSeed(9812, 3));
+
+    // An OFF stroke in the same batch keeps its object and its exact seed.
+    expect(getRecordedAquarelleStroke(9813)).toBe(offBefore);
+    expect(entrySeed(9813)).toBe(hashMutationId(9813));
+  });
+
+  it('bumpAquarellePaintSeedSaltsForFrame scopes to the frame and skips tombstones', () => {
+    recordAquarelleStroke(9814, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 812, salt: 4 }));
+    recordAquarelleStroke(9815, saltedStroke({ points: [point(0.2, 0.5)], playFrame: 813, salt: 7 }));
+    recordAquarelleStroke(9816, saltedStroke({ points: [point(0.3, 0.5)], playFrame: 812, salt: 9 }));
+    markAquarelleStrokeDeleted(9816);
+
+    expect(bumpAquarellePaintSeedSaltsForFrame(812)).toBe(1);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9814)!.params)).toBe(5);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9815)!.params)).toBe(7);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9816)!.params)).toBe(9);
+  });
+});
+
+describe('261031-cf9 every commit door re-rolls the ON strokes inside its edit', () => {
+  it('move', () => {
+    recordAquarelleStroke(9820, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 820, salt: 2 }));
+    recordAquarelleStroke(9821, stroke({ points: [point(0.5, 0.5)], playFrame: 820 }));
+    const onBefore = getRecordedAquarelleStroke(9820)!;
+    const offBefore = getRecordedAquarelleStroke(9821)!;
+
+    const editId = beginAquarelleMoveEdit([9820, 9821], 0.1, 0);
+    expect(editId).not.toBeNull();
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9820)!.params)).toBe(3);
+    expect(entrySeed(9820)).toBe(expectedSaltedSeed(9820, 3));
+    expect(getRecordedAquarelleStroke(9821)).not.toBe(offBefore);
+    expect(getRecordedAquarelleStroke(9821)!.params[PAINT_SEED_SALT_PARAM]).toBeUndefined();
+    expect(entrySeed(9821)).toBe(hashMutationId(9821));
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9820)).toBe(onBefore);
+    expect(entrySeed(9820)).toBe(expectedSaltedSeed(9820, 2));
+    expect(entrySeed(9821)).toBe(hashMutationId(9821));
+  });
+
+  it('appearance (params commit re-rolls only an ON stroke)', () => {
+    recordAquarelleStroke(9822, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 821, salt: 5 }));
+    const before = getRecordedAquarelleStroke(9822)!;
+
+    const editId = beginAquarelleAppearanceEdit([9822], { params: { load: 70 } });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9822)!.params.load).toBe(70);
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9822)!.params)).toBe(6);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9822)).toBe(before);
+    expect(entrySeed(9822)).toBe(expectedSaltedSeed(9822, 5));
+  });
+
+  it('appearance (the switch itself turns an OFF stroke ON inside one edit)', () => {
+    recordAquarelleStroke(9823, stroke({ points: [point(0.2, 0.5)], playFrame: 822 }));
+
+    const editId = beginAquarelleAppearanceEdit([9823], { paintSeedVariation: true });
+    expect(editId).not.toBeNull();
+    // The door's own bump raises the freshly written 0 to the first re-roll.
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9823)!.params)).toBe(1);
+    expect(entrySeed(9823)).toBe(expectedSaltedSeed(9823, 1));
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9823)!.params[PAINT_SEED_SALT_PARAM]).toBeUndefined();
+    expect(entrySeed(9823)).toBe(hashMutationId(9823));
+  });
+
+  it('transform', () => {
+    recordAquarelleStroke(9824, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 823, salt: 1 }));
+
+    const editId = beginAquarelleTransformEdit([9824], {
+      kind: 'scale',
+      centerUvX: 0.5,
+      centerUvY: 0.5,
+      anchorUvX: 0.5,
+      anchorUvY: 0.5,
+      angleRad: 0,
+      scaleX: 2,
+      scaleY: 2,
+    });
+    expect(editId).not.toBeNull();
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9824)!.params)).toBe(2);
+    expect(entrySeed(9824)).toBe(expectedSaltedSeed(9824, 2));
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(entrySeed(9824)).toBe(expectedSaltedSeed(9824, 1));
+  });
+
+  it('stack step re-rolls the stepped stroke only', () => {
+    recordAquarelleStroke(9825, stroke({ points: [point(0.1, 0.5)], playFrame: 824 }));
+    recordAquarelleStroke(9826, saltedStroke({ points: [point(0.2, 0.5)], playFrame: 824, salt: 8 }));
+    const partnerBefore = getRecordedAquarelleStroke(9825)!;
+
+    const editId = beginAquarelleReorderEdit(9826, 'back');
+    expect(editId).not.toBeNull();
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9826)!.params)).toBe(9);
+    expect(entrySeed(9826)).toBe(expectedSaltedSeed(9826, 9));
+    // The swap partner keeps its exact seed (only its recording slot moved).
+    expect(entrySeed(9825)).toBe(hashMutationId(9825));
+    expect(getRecordedAquarelleStroke(9825)!.params).toEqual(partnerBefore.params);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(entrySeed(9826)).toBe(expectedSaltedSeed(9826, 8));
+  });
+
+  it('stack place re-rolls the placed stroke only', () => {
+    recordAquarelleStroke(9827, stroke({ points: [point(0.1, 0.5)], playFrame: 825 }));
+    recordAquarelleStroke(9828, saltedStroke({ points: [point(0.2, 0.5)], playFrame: 825, salt: 3 }));
+
+    const editId = beginAquarellePlaceEdit(9828, 2);
+    expect(editId).not.toBeNull();
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9828)!.params)).toBe(4);
+    expect(entrySeed(9828)).toBe(expectedSaltedSeed(9828, 4));
+    expect(entrySeed(9827)).toBe(hashMutationId(9827));
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(entrySeed(9828)).toBe(expectedSaltedSeed(9828, 3));
+  });
+});
+
+describe('261031-cf9 beginAquarellePaintSeedRerollEdit', () => {
+  it('re-rolls only the ON strokes of the edited frame inside one undoable edit', () => {
+    recordAquarelleStroke(9830, saltedStroke({ points: [point(0.1, 0.5)], playFrame: 830, salt: 2 }));
+    recordAquarelleStroke(9831, saltedStroke({ points: [point(0.2, 0.5)], playFrame: 831, salt: 5 }));
+    recordAquarelleStroke(9832, stroke({ points: [point(0.3, 0.5)], playFrame: 830 }));
+    const before = getRecordedAquarelleStroke(9830)!;
+
+    const editId = beginAquarellePaintSeedRerollEdit(830);
+    expect(editId).not.toBeNull();
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9830)!.params)).toBe(3);
+    expect(entrySeed(9830)).toBe(expectedSaltedSeed(9830, 3));
+    // Other frames are untouched.
+    expect(paintSeedSaltOf(getRecordedAquarelleStroke(9831)!.params)).toBe(5);
+    // OFF strokes of the frame keep their exact seed.
+    expect(entrySeed(9832)).toBe(hashMutationId(9832));
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9830)).toBe(before);
+    expect(entrySeed(9830)).toBe(expectedSaltedSeed(9830, 2));
+  });
+
+  it('refuses an OFF-only frame, and the in-flight gate unless owned', () => {
+    recordAquarelleStroke(9833, stroke({ points: [point(0.1, 0.5)], playFrame: 832 }));
+    const revisionBefore = aquarelleStrokesRevision.value;
+    expect(beginAquarellePaintSeedRerollEdit(832)).toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+
+    recordAquarelleStroke(9834, saltedStroke({ points: [point(0.2, 0.5)], playFrame: 833, salt: 0 }));
+    setAquarelleScriptEditInFlight(true);
+    try {
+      expect(beginAquarellePaintSeedRerollEdit(833)).toBeNull();
+      const owned = beginAquarellePaintSeedRerollEdit(833, true);
+      expect(owned).not.toBeNull();
+      expect(paintSeedSaltOf(getRecordedAquarelleStroke(9834)!.params)).toBe(1);
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
   });
 });
