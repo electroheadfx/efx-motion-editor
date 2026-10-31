@@ -288,6 +288,18 @@ describe('useRotoPlayScriptController', () => {
     expect(secondPorts.log).toHaveBeenCalledWith('current');
   });
 
+  it('bumps availability when the physical document revision changes without a selection move (WR-09)', () => {
+    const base = ports(1);
+    const controller = renderHook({ ...base, getPhysicalDocument: () => ({ revision: 'document-1' } as never) });
+    const stablePorts = captured.ports!;
+    const before = stablePorts.availabilityRevision?.value ?? 0;
+
+    // Selection, lock and project state are byte-identical; only the document
+    // revision moves — a rail/lifecycle edit must still re-derive the stack.
+    expect(renderHook({ ...base, getPhysicalDocument: () => ({ revision: 'document-2' } as never) })).toBe(controller);
+    expect(stablePorts.availabilityRevision?.value).toBe(before + 1);
+  });
+
   it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {
     vi.useFakeTimers();
     try {

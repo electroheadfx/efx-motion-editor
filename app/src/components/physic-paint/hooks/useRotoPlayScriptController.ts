@@ -42,7 +42,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
     if (sameAvailabilitySnapshot(availabilitySnapshot.current, nextAvailabilitySnapshot)) return;
     availabilitySnapshot.current = nextAvailabilitySnapshot;
     availabilityRevision.current.value += 1;
-  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame]);
+  }, [nextAvailabilitySnapshot.operationLocked, nextAvailabilitySnapshot.projectSaved, nextAvailabilitySnapshot.selectionKind, nextAvailabilitySnapshot.keyId, nextAvailabilitySnapshot.appFrame, nextAvailabilitySnapshot.documentRevision]);
   const authorityPending = useRef(new Map<string, (result: PhysicPaintRotoAuthorityResult) => void>());
   usePhysicsPaintRotoAuthorityResultBridge((result) => { authorityPending.current.get(result.operationId)?.(result); authorityPending.current.delete(result.operationId); });
 
@@ -176,7 +176,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
   return controllerRef.current;
 }
 
-function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection' | 'getOperationLocked'>) {
+function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getSelection' | 'getOperationLocked' | 'getPhysicalDocument'>) {
   const context = ports.getLaunchContext();
   const selection = ports.getSelection();
   return {
@@ -185,6 +185,10 @@ function readAvailabilitySnapshot(ports: Pick<RotoPlayScriptControllerPorts, 'ge
     selectionKind: selection.kind,
     keyId: selection.keyId,
     appFrame: selection.appFrame,
+    // WR-09: rail/lifecycle edits change the physical document revision without
+    // moving the playhead. The document revision covers the Loop Clip collection
+    // too, so the stack context and boundary must re-derive when it changes.
+    documentRevision: ports.getPhysicalDocument?.()?.revision ?? '',
   };
 }
 
@@ -193,7 +197,8 @@ function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapsh
     && left.projectSaved === right.projectSaved
     && left.selectionKind === right.selectionKind
     && left.keyId === right.keyId
-    && left.appFrame === right.appFrame;
+    && left.appFrame === right.appFrame
+    && left.documentRevision === right.documentRevision;
 }
 
 function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: (cause?: unknown) => T): Promise<T> {
