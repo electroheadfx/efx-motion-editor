@@ -71,10 +71,6 @@ const modelSource = readFileSync(
   fileURLToPath(new URL('./strokeSettingsModel.ts', import.meta.url)),
   'utf8',
 );
-const cssSource = readFileSync(
-  fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
-  'utf8',
-);
 
 // ── Component harness (ref-stable hooks, real signal core) ──────────
 
@@ -1883,14 +1879,14 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
     expect(switchButton(renderDialogTab(mixed.bundle, 'geometry')).props['aria-checked']).toBe('false');
   });
 
-  it('structural pins: the row constant and only the in-sheet switch margin reset', () => {
+  it('structural pins: the row constant and the shared switch chrome', () => {
     expect(dialogSource).toContain('PAINT_SEED_VARIATION_ROW_STYLE');
     expect(dialogSource).toContain('data-testid="stroke-settings-paint-seed-variation"');
     expect(dialogSource).toContain('readPaintSeedVariation(appearances)');
+    expect(dialogSource).toContain('physics-paint-script-switch-track');
+    expect(dialogSource).toContain('physics-paint-script-switch-knob');
+    expect(dialogSource).toContain('physics-paint-script-switch-label');
     expect(modelSource).toContain('readPaintSeedVariation');
     expect(modelSource).toContain('buildPaintSeedVariationPatch');
-    expect(cssSource).toMatch(
-      /\.physics-paint-stroke-settings-scroll \.physics-paint-script-switch\s*\{\s*margin-left:\s*0;/,
-    );
   });
 });
