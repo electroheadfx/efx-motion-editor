@@ -637,7 +637,7 @@ None yet.
 | 261031-cf9 | Add a Paint seed variation switch to the Move/Edit Stroke settings Geometry tab: ON re-rolls each watercolor stroke's persisted paint seed (paintSeedSalt in engine.params, folded into traceSeed via mixStrokeSeed) on every committed re-bake, undoable; OFF byte-identical to today | 2026-10-31 | 2a4c764af | [261031-cf9-add-a-paint-seed-variation-switch-to-the](./quick/261031-cf9-add-a-paint-seed-variation-switch-to-the/) |
 | 83 | bump preact 11.0.2 to 11.1.1 — CLOSED, UAT approved 2026-10-31 | 2026-10-31 | 3bc344718 | — |
 | 261031-dm1 | Lean Roto authority open: the Create Rail dialog opens on identities only (no raster bytes over the bridge) | 2026-10-31 | 208e513d5 | [261031-dm1-lean-roto-authority-open-make-the-create](./quick/261031-dm1-lean-roto-authority-open-make-the-create/) |
-| 85 | Rename the Physic Paint 'Create Rail' label to 'Run Script' across the Scripts panel, Tools strip, picker and play dialog | 2026-10-31 | 0266a199d | — |
+| 85 | Rename the Physic Paint 'Create Rail' label to 'Run Script' across the Scripts panel, Tools strip, picker and play dialog — CLOSED, UAT approved 2026-10-31 | 2026-10-31 | 0266a199d | — |
 
 ### Roadmap Evolution
 
