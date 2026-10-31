@@ -105,6 +105,8 @@ export interface ScriptStrokeAppearance {
 export interface ScriptStrokeAppearancePatch {
   readonly params?: Readonly<Record<string, number>>;
   readonly color?: string;
+  /** 261031-cf9: the Paint seed variation flag (see the appearance door). */
+  readonly paintSeedVariation?: boolean;
 }
 
 export interface NumericFieldReading {

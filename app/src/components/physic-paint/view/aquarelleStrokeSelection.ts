@@ -58,6 +58,8 @@ import {
 import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
+  bumpAquarellePaintSeedSalts,
+  bumpAquarellePaintSeedSaltsForFrame,
   bumpAquarelleStrokesRevision,
   captureAquarelleStrokeRegistry,
   clearAquarelleStrokeDeletion,
@@ -716,6 +718,9 @@ export function beginAquarelleMoveEdit(
   if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
   if (translateAquarelleStrokesInScript(ids, dxUv, dyUv) === 0) return null;
+  // 261031-cf9: the ON strokes of the batch re-roll INSIDE this edit, so undo
+  // restores the pre-commit salt (and its traceSeed) with the pre-move points.
+  bumpAquarellePaintSeedSalts(ids);
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
@@ -739,6 +744,11 @@ export function beginAquarelleAppearanceEdit(
   if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
   if (updateAquarelleStrokesInScript(ids, patch) === 0) return null;
+  // 261031-cf9: the switch's own write lands salt 0; this bump performs the
+  // first re-roll (0 -> 1) so enabling the switch is immediately visible, and
+  // any other appearance commit on an ON stroke re-rolls it too. OFF strokes
+  // skip inside the bump and keep their exact seed.
+  bumpAquarellePaintSeedSalts(ids);
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
@@ -761,6 +771,9 @@ export function beginAquarelleTransformEdit(
   if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
   if (transformAquarelleStrokesInScript(ids, transform) === 0) return null;
+  // 261031-cf9: ON strokes re-roll inside the stored edit (undo restores the
+  // old salt AND the old geometry from the same `before` side).
+  bumpAquarellePaintSeedSalts(ids);
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
@@ -780,6 +793,9 @@ export function beginAquarelleReorderEdit(
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!stepAquarelleStrokeInScript(mutationId, direction)) return null;
+  // 261031-cf9: only the stepped stroke re-rolls; its swap partner keeps the
+  // exact seed it had (only the recording slot moved).
+  bumpAquarellePaintSeedSalts([mutationId]);
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
@@ -799,6 +815,29 @@ export function beginAquarellePlaceEdit(
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!placeAquarelleStrokeInScript(mutationId, positionFromTop)) return null;
+  // 261031-cf9: only the placed stroke re-rolls.
+  bumpAquarellePaintSeedSalts([mutationId]);
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 261031-cf9: the Rebake action's edit. A committed re-bake re-rolls every
+ * live ON stroke of the edited frame as ONE undoable command, so Cmd+Z
+ * restores the previous salt and the displayed texture it produced.
+ *
+ * Refuses an in-flight script edit unless the caller owns the gate (the
+ * Rebake handler holds it for the whole apply), and mints nothing when the
+ * frame has no ON stroke — the OFF path stays free and writes no ledger entry.
+ */
+export function beginAquarellePaintSeedRerollEdit(
+  playFrame: number,
+  ownedInFlight = false,
+): number | null {
+  if (!ownedInFlight && aquarelleScriptEditInFlight) return null;
+  if (!Number.isFinite(playFrame)) return null;
+  const before = captureAquarelleSnapshot();
+  if (bumpAquarellePaintSeedSaltsForFrame(playFrame) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

@@ -13,8 +13,10 @@
 import { signal } from '@preact/signals';
 import {
   DIFFUSION_CAP,
+  PAINT_SEED_SALT_PARAM,
   createDryEvent,
   isAquarelleDryEvent,
+  paintSeedSaltOf,
   toStudioStroke,
   type AquarelleDryEvent,
   type AquarellePayloadEvent,
@@ -674,6 +676,13 @@ export function translateAquarelleStrokeInScript(
 export interface AquarelleStrokeAppearancePatch {
   readonly params?: Readonly<Record<string, number>>;
   readonly color?: string;
+  /**
+   * 261031-cf9: the Paint seed variation switch. ON seeds the reserved
+   * `paintSeedSalt` key at 0 (the door's own bump then performs the first
+   * re-roll); OFF deletes it. The key is never writable through `params` —
+   * `AQUARELLE_GLOBAL_KEYS` (the slider set) does not contain it.
+   */
+  readonly paintSeedVariation?: boolean;
 }
 
 /**
@@ -690,6 +699,12 @@ export interface AquarelleStrokeAppearancePatch {
  * already equal are skipped; one revision bump per effective batch. Unknown
  * keys, non-finite values, an empty colour, unknown/deleted ids and a no-op
  * patch are refused with 0 and bump nothing.
+ *
+ * 261031-cf9: `paintSeedVariation` is the one flag door for the reserved
+ * `paintSeedSalt` key. ON writes 0 only when the stroke does not already
+ * carry a finite non-negative salt (already-ON targets are skipped); OFF
+ * deletes the key. The key still may not arrive through `params` — the
+ * unknown-key guard above refuses it, which keeps the sliders out of it.
  */
 export function updateAquarelleStrokesInScript(
   mutationIds: readonly number[],
@@ -698,6 +713,7 @@ export function updateAquarelleStrokesInScript(
   const params = patch.params;
   const paramEntries = params ? Object.entries(params) : [];
   const hasColor = patch.color !== undefined;
+  const hasFlag = patch.paintSeedVariation !== undefined;
   // Validate the WHOLE patch first: one unknown key or non-finite value
   // refuses the batch before anything is drained or touched.
   for (const [key, value] of paramEntries) {
@@ -705,7 +721,9 @@ export function updateAquarelleStrokesInScript(
     if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
   }
   if (hasColor && (typeof patch.color !== 'string' || patch.color.length === 0)) return 0;
-  if (paramEntries.length === 0 && !hasColor) return 0;
+  if (hasFlag && typeof patch.paintSeedVariation !== 'boolean') return 0;
+  if (paramEntries.length === 0 && !hasColor && !hasFlag) return 0;
+  const seedVariation = patch.paintSeedVariation;
 
   const targets: Array<{
     mutationId: number;
@@ -732,6 +750,13 @@ export function updateAquarelleStrokesInScript(
     }
     const nextColor: string | null = hasColor ? (patch.color as string) : stroke.color;
     if (hasColor && nextColor !== stroke.color) changed = true;
+    if (seedVariation === true && paintSeedSaltOf(nextParams) === null) {
+      nextParams[PAINT_SEED_SALT_PARAM] = 0;
+      changed = true;
+    } else if (seedVariation === false && PAINT_SEED_SALT_PARAM in nextParams) {
+      delete nextParams[PAINT_SEED_SALT_PARAM];
+      changed = true;
+    }
     if (!changed) continue;
     targets.push({ mutationId, stroke, index, nextParams, nextColor });
   }
@@ -750,6 +775,80 @@ export function updateAquarelleStrokesInScript(
   }
   bumpAquarelleStrokesRevision();
   return targets.length;
+}
+
+/**
+ * 261031-cf9: advance the persisted paint-seed salt of every stroke that
+ * carries one. This is the re-roll half of the Paint seed variation switch:
+ * the salt is folded into `traceSeed` by the ONE projection, so a committed
+ * re-bake redraws the stochastic texture while points, pressure, brush params,
+ * tool overrides and the paper seed stay fixed.
+ *
+ * The translate/transform law applies: validate and resolve every target
+ * BEFORE mutating, REPLACE the stroke and its entry (never mutate in place —
+ * snapshots hold the live objects), regenerate the entry with `toStudioStroke`
+ * and write it at the SAME timeline index. OFF strokes (no finite salt),
+ * unknown/deleted/out-of-timeline ids and duplicate ids are skipped; the
+ * revision bumps ONCE and only when at least one salt changed. Returns the
+ * number of re-rolled strokes — 0 means the OFF path, which must stay free.
+ */
+export function bumpAquarellePaintSeedSalts(mutationIds: readonly number[]): number {
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    index: number;
+    nextParams: Record<string, number>;
+  }> = [];
+  const seen = new Set<number>();
+  for (const mutationId of mutationIds) {
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    const salt = paintSeedSaltOf(stroke.params);
+    if (salt === null) continue;
+    targets.push({
+      mutationId,
+      stroke,
+      index,
+      nextParams: { ...stroke.params, [PAINT_SEED_SALT_PARAM]: (salt + 1) >>> 0 },
+    });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, index, nextParams } of targets) {
+    const nextStroke: AquarelleStroke = { ...stroke, params: nextParams };
+    const nextEntry = toStudioStroke(nextStroke);
+    recordedStrokes.set(mutationId, nextStroke);
+    recordedStrokeEntries.set(mutationId, nextEntry);
+    // SAME index — replay order is preserved (replace only, never splice).
+    payloadTimeline[index] = nextEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
+}
+
+/**
+ * 261031-cf9: re-roll every live ON stroke anchored to one edit frame. The
+ * Rebake action and nothing else calls this; the frame scope keeps the re-bake
+ * deterministic (the same frame re-rolls the same strokes). Tombstoned strokes
+ * are excluded before delegating, so an undo stack never re-rolls a removed
+ * stroke.
+ */
+export function bumpAquarellePaintSeedSaltsForFrame(playFrame: number): number {
+  const ids: number[] = [];
+  for (let index = 0; index < payloadTimeline.length; index += 1) {
+    const event = payloadTimeline[index]!;
+    if (isAquarelleDryEvent(event)) continue;
+    if (event.playFrame !== playFrame) continue;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId === undefined || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    ids.push(mutationId);
+  }
+  return bumpAquarellePaintSeedSalts(ids);
 }
 
 /**

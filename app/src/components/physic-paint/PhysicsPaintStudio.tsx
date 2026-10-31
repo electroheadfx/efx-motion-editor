@@ -237,6 +237,7 @@ import {
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
+  beginAquarellePaintSeedRerollEdit,
   beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
   beginAquarelleStrokeUndoEdit,
@@ -707,6 +708,10 @@ export function PhysicsPaintStudio() {
   const aquarelleAppearanceCommitRef = useRef<
     ((ids: readonly number[], patch: ScriptStrokeAppearancePatch) => Promise<boolean>) | null
   >(null);
+  // 261031-cf9: the Rebake handler is declared above the history hook it must
+  // record through (TDZ), so the ledger recorder travels by ref (the same
+  // render-body write convention as `aquarelleAppearanceCommitRef`).
+  const aquarelleScriptEditRecorderRef = useRef<((editId: number) => void) | null>(null);
   /* ---------------------------------------------------------------------------
    * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2 + 261008-ryq: the Document
    * sound signals. They live HERE, ABOVE the keyboard hook — its state object
@@ -4967,9 +4972,20 @@ export function PhysicsPaintStudio() {
     try {
       rotoPersistence.invalidateLivePixels(playFrame);
       await ensureAquarelleDurableBaseRef.current(playFrame);
+      // 261031-cf9: mint the re-roll edit AFTER the durable-base recovery (which
+      // can bump the revision) and while this handler owns the in-flight gate.
+      // A committed re-bake re-rolls every ON stroke of the frame as ONE
+      // undoable command; OFF frames mint nothing.
+      const rerollEditId = beginAquarellePaintSeedRerollEdit(playFrame, true);
       aquarelleResetSheetRef.current?.();
       const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-      if (!ok) return;
+      if (!ok) {
+        // Roll the re-roll back with the failed re-bake (authority-checked).
+        if (rerollEditId !== null) restoreAquarelleEditSnapshot(rerollEditId, 'undo');
+        return;
+      }
+      // Record only a SUCCESSFUL re-bake (the displayed texture changed).
+      if (rerollEditId !== null) aquarelleScriptEditRecorderRef.current?.(rerollEditId);
       rotoScript.notifySourceRevision();
       applyFrameModuleState(playFrame);
     } finally {
@@ -5171,6 +5187,10 @@ export function PhysicsPaintStudio() {
     undoPaint: () => rotoFrameEditing.undo(),
     redoPaint: () => rotoFrameEditing.redo(),
   });
+  // 261031-cf9: render-body ref write (the handleAquarelleAppearanceStrokes
+  // precedent) — the Rebake handler above records its re-roll edit through it
+  // once the re-bake succeeded, without depending on the hook in its dep array.
+  aquarelleScriptEditRecorderRef.current = rotoMoveHistory.recordAquarelleScriptEdit;
 
   // 38-11: the history hook returns a fresh wrapper object per render, but
   // its inner undo/redo callbacks are stable (useCallback over the stable
