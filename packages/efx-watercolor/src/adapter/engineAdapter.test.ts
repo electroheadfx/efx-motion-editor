@@ -411,6 +411,30 @@ describe('paint seed salt seams (261030-v1t)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// 7. 261031-cf9 — the persisted per-stroke paint seed salt.
+//    The salt rides `engine.params` and is folded into `traceSeed` by the ONE
+//    projection, so the adapter keeps reading a single host field. OFF (no
+//    key) is byte-identical to today.
+// ---------------------------------------------------------------------------
+
+describe('persisted paint seed salt (261031-cf9)', () => {
+  it('keeps a salted traceSeed through the adapter payload acceptance', () => {
+    const adapter = createAquarelleEngineAdapter()
+    const salted = toStudioStroke(
+      makeStrokePayload({ params: { size: 12, water: 50, flow: 50, paintSeedSalt: 3 } }),
+    )
+
+    expect(salted.traceSeed).toBe(mixStrokeSeed(hashMutationId(42), 3))
+
+    const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(salted))
+    expect(reparsed).not.toBeNull()
+    expect(reparsed?.traceSeed).toBe(mixStrokeSeed(hashMutationId(42), 3))
+    expect(reparsed?.engine.params['paintSeedSalt']).toBe(3)
+    adapter.dispose()
+  })
+})
+
 describe.skipIf(!gpu)('per-frame paint salt GPU (WebGL2 required)', () => {
   const width = 64
   const height = 64
