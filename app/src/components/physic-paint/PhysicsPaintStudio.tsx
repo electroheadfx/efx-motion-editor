@@ -1549,6 +1549,16 @@ export function PhysicsPaintStudio() {
   // become the file's truth on the next reopen (the k03c–k03h inversion could
   // forge a base out of the script's own wash fringe).
   const aquarelleRecoveredBaseKeyIdsRef = useRef<Set<string>>(new Set());
+  // WR-01: a stack run's fresh durable-base pins are STAGED here at bake time —
+  // the bytes are copied from the PRE-RUN picture before the publication can
+  // overwrite the payload — and land in the live map only from
+  // `recordRailKeyScripts`, i.e. after the controller's single commit
+  // succeeded. A refused bake or a pre-commit abort therefore leaves no pin
+  // and no snapshot dirty state behind.
+  const pendingStackedScriptBasePinsRef = useRef<Map<string, {
+    readonly resolution: Extract<ScriptBaseResolution, { ok: true }>;
+    readonly appFrame: number;
+  }>>(new Map());
   const recordAquarelleOrdinaryDurableBaseRef = useRef<(appFrame: number) => void>(() => {});
   // A replaced launch is a different document/session: a pinned base from the
   // previous launch must never composite into it. The launch key lets the
@@ -1561,6 +1571,7 @@ export function PhysicsPaintStudio() {
     aquarelleDurableBaseLaunchKeyRef.current = launchKey;
     aquarelleDurableBaseByKeyRef.current = new Map();
     aquarelleRecoveredBaseKeyIdsRef.current = new Set();
+    pendingStackedScriptBasePinsRef.current = new Map();
     // 261027-k6j — the Script switch is session state; every Studio launch
     // starts On.
     resetAquarelleScriptRecording();
@@ -4007,10 +4018,12 @@ export function PhysicsPaintStudio() {
   // ONE batch for the whole written span: each touched key's durable base is
   // resolved through resolveScriptBase (a flag-on rail resolves KNOWN EMPTY; a
   // pixel-only key with no recorded strokes resolves its CURRENT picture and
-  // pins it). Known-empty publishes the raw union (recorded events + this run);
-  // bytes multiply-composite the same union over the pinned base. Fresh pins
-  // land here, BEFORE the caller's single commit, and persist with the
-  // snapshot; recovered bases stay session-only. Any refusal aborts the run.
+  // stages it as the fresh pin). Known-empty publishes the raw union (recorded
+  // events + this run); bytes multiply-composite the same union over that base.
+  // WR-01: the fresh pins are STAGED (copied from the PRE-RUN picture) here and
+  // land only from recordRailKeyScripts after the single commit — a refusal or
+  // a pre-commit abort writes nothing. Recovered bases stay session-only. Any
+  // refusal aborts the run.
   const bakeStackedRailKey = async (input: {
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
@@ -4018,6 +4031,10 @@ export function PhysicsPaintStudio() {
     | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
     | { kind: 'refused'; reason: string }
   > => {
+    const stagedPins = pendingStackedScriptBasePinsRef.current;
+    // A new bake owns the stage: any pins left by a previously aborted run are
+    // discarded here (they were never applied).
+    stagedPins.clear();
     const lookup = scriptBaseLookupFor(readScriptBasePayload);
     // Resolve EVERY key before any pin or bake: one refusal stops the run with
     // zero writes (no half-pinned span, no committed frame).
@@ -4043,11 +4060,19 @@ export function PhysicsPaintStudio() {
       if (resolution.kind === 'reveal') return { kind: 'refused', reason: 'reveal-base-unsupported' };
       planned.push({ keyId, slice, resolution });
     }
-    const pinned = planned.some((entry) => entry.resolution.persistPin);
+    // WR-01: stage the fresh pins — the base bytes are copied from the PRE-RUN
+    // picture here, before this run's publication can overwrite the payload —
+    // but never write the live map, the recovered markers or the dirty flag.
+    // They land only from `recordRailKeyScripts`, after the single commit.
     for (const entry of planned) {
-      pinScriptBase(entry.keyId, entry.resolution, { appFrame: entry.slice.frame, source: 'stack-keep-script' });
+      if (!entry.resolution.persistPin) continue;
+      stagedPins.set(entry.keyId, {
+        resolution: entry.resolution.kind === 'bytes'
+          ? { ok: true, kind: 'bytes', bytes: entry.resolution.bytes.slice(0), persistPin: true }
+          : { ok: true, kind: 'known-empty', persistPin: true },
+        appFrame: entry.slice.frame,
+      });
     }
-    if (pinned) bumpAquarelleStrokesRevision();
     const frames: Array<{ appFrame: number; bytes: Uint8Array }> = [];
     for (const entry of planned) {
       const events = [
@@ -4059,7 +4084,10 @@ export function PhysicsPaintStudio() {
         size: { width: canvasWidth, height: canvasHeight },
         paper: aquarelleLiftPaperRef.current,
       });
-      if (!baked) return { kind: 'refused', reason: 'bake-failed' };
+      if (!baked) {
+        stagedPins.clear();
+        return { kind: 'refused', reason: 'bake-failed' };
+      }
       if (entry.resolution.kind === 'known-empty') {
         frames.push({ appFrame: entry.slice.frame, bytes: baked.bytes });
         continue;
@@ -4070,7 +4098,10 @@ export function PhysicsPaintStudio() {
         appFrame: entry.slice.frame,
         size: { width: canvasWidth, height: canvasHeight },
       });
-      if (!composed) return { kind: 'refused', reason: 'composite-failed' };
+      if (!composed) {
+        stagedPins.clear();
+        return { kind: 'refused', reason: 'composite-failed' };
+      }
       frames.push({ appFrame: entry.slice.frame, bytes: composed.bytes });
     }
     return { kind: 'baked', frames };
@@ -4137,6 +4168,9 @@ export function PhysicsPaintStudio() {
     }
     | { kind: 'refused'; reason: string }
   > => {
+    // A reveal tail never pins a pixel base: discard any stage a previously
+    // aborted union run left behind so this run's append record applies none.
+    pendingStackedScriptBasePinsRef.current.clear();
     const frames = input.frames;
     const start = frames[0];
     if (start === undefined) return { kind: 'refused', reason: 'empty-span' };
@@ -4205,7 +4239,8 @@ export function PhysicsPaintStudio() {
   // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
   // timeline the live sheet writes, with mutation ids from the ONE ledger. A
   // replace REPLACES a key's script (purge + known-empty pin); an append adds
-  // this run's strokes to the key's existing script and never purges or pins.
+  // this run's strokes to the key's existing script, never purges, and applies
+  // the staged PRE-RUN base pin (WR-01) once the controller's commit succeeded.
   const recordRailKeyScripts = (input: {
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
@@ -4215,7 +4250,14 @@ export function PhysicsPaintStudio() {
     // 261031-qps: a pixel-only rail's Keep-OFF publication records nothing —
     // no purge, no null pin; its picture already carries the run.
     if (input.recordMode === 'none') return;
-    if (!launch) return;
+    // WR-01: the append recording is the ONLY consumer of a staged union pin,
+    // and it runs strictly after the controller's successful commit. A refused
+    // bake or a pre-commit abort never reaches this seam, so no pin lands.
+    const stagedPins = input.recordMode === 'append' ? pendingStackedScriptBasePinsRef.current : null;
+    if (!launch) {
+      stagedPins?.clear();
+      return;
+    }
     for (const slice of input.slices) {
       const keyId = input.keyIds[slice.slot];
       if (keyId === undefined) continue;
@@ -4234,7 +4276,12 @@ export function PhysicsPaintStudio() {
         });
         recordAquarelleStroke(mutationId, stroke, keyId);
       }
+      const stagedPin = stagedPins?.get(keyId);
+      if (stagedPin !== undefined) {
+        pinScriptBase(keyId, stagedPin.resolution, { appFrame: stagedPin.appFrame, source: 'stack-keep-script' });
+      }
     }
+    stagedPins?.clear();
   };
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,

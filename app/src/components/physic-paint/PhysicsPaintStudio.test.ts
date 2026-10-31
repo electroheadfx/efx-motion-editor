@@ -5058,11 +5058,14 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(replaceBranch).toContain('purgeAquarelleFrameScript(slice.frame);');
     expect(replaceBranch).toContain('aquarelleDurableBaseByKeyRef.current.set(keyId, null);');
     expect(replaceBranch).not.toContain('recordAquarelleStroke(');
-    // The append branch records the slice strokes only — no purge, no base pin.
+    // The append branch records the slice strokes, never purges, and applies
+    // the STAGED pre-run base pin (WR-01) after the controller's commit.
     const appendBranch = recordRail.slice(replaceEnd);
     expect(appendBranch).toContain('recordAquarelleStroke(mutationId, stroke, keyId);');
     expect(appendBranch).not.toContain('purgeAquarelleFrameScript(');
-    // Exactly ONE pin site: append must never advance the durable base map.
+    expect(appendBranch).toContain("pinScriptBase(keyId, stagedPin.resolution, { appFrame: stagedPin.appFrame, source: 'stack-keep-script' })");
+    // Exactly ONE DIRECT map write: only the replace branch pins known-empty
+    // inline; append pins through the staged pinScriptBase seam.
     expect(countOccurrences(recordRail, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(1);
     expect(recordRail).not.toContain('enqueueRecordedStroke');
   });
@@ -5083,14 +5086,22 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(unionPort).toContain('if (entry.resolution.kind === \'known-empty\') {');
     expect(unionPort).toContain('composeRotoScriptRebakeFrame({');
     expect(unionPort).toContain('durableBaseBytes: new Uint8Array(entry.resolution.bytes)');
-    expect(unionPort).toContain('if (!composed) return { kind: \'refused\', reason: \'composite-failed\' };');
-    // Eager pins land BEFORE the frames are baked/returned.
-    const pinAt = unionPort.indexOf('pinScriptBase(entry.keyId, entry.resolution,');
-    expect(pinAt).toBeGreaterThan(-1);
-    expect(unionPort.indexOf('bakeAquarelleEventsToFrame({', pinAt)).toBeGreaterThan(pinAt);
-    expect(unionPort.indexOf('return { kind: \'baked\', frames };')).toBeGreaterThan(pinAt);
-    expect(unionPort).toContain('scriptBaseLookupFor(readScriptBasePayload)');
+    expect(unionPort).toContain("reason: 'composite-failed'");
+    // WR-01: the port NEVER writes the live durable-base map, the recovered
+    // markers or the snapshot dirty state — a refused bake leaves all three
+    // untouched.
+    expect(unionPort).not.toContain('pinScriptBase(');
     expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
+    expect(unionPort).not.toContain('aquarelleRecoveredBaseKeyIdsRef');
+    expect(unionPort).not.toContain('markDirty');
+    // The fresh base is resolved from the PRE-RUN picture and STAGED (copied)
+    // before the bake, so the publication can never overwrite it.
+    const stagedAt = unionPort.indexOf('stagedPins.set(entry.keyId, {');
+    expect(stagedAt).toBeGreaterThan(-1);
+    expect(unionPort.indexOf('resolveScriptBase(keyId, lookup)')).toBeLessThan(stagedAt);
+    expect(unionPort.indexOf('bytes: entry.resolution.bytes.slice(0)')).toBeGreaterThan(stagedAt);
+    expect(unionPort.indexOf('bakeAquarelleEventsToFrame({', stagedAt)).toBeGreaterThan(stagedAt);
+    expect(unionPort).toContain('scriptBaseLookupFor(readScriptBasePayload)');
 
     // The persist-vs-session split: a recovered base answers ONLY the session
     // arm, while a fresh pin drops the recovered marker so it persists.
@@ -5101,6 +5112,37 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(pin).toContain('aquarelleDurableBaseByKeyRef.current.set(keyId, bytes);');
     expect(pin).toContain('aquarelleRecoveredBaseKeyIdsRef.current.delete(keyId);');
     expect(pin).toContain('studioScriptSnapshot.markDirty();');
+  });
+
+  it('leaves the durable-base map and the snapshot dirty state untouched on every union-bake refusal (WR-01)', () => {
+    const unionPort = slice(
+      studio,
+      'const bakeStackedRailKey = async (input: {',
+      'const composeStackedRailKey = async (input: {',
+    );
+    // The whole port writes neither the live map, the recovered markers nor the
+    // dirty flag: resolution only STAGES a copied pre-run base.
+    expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
+    expect(unionPort).not.toContain('aquarelleRecoveredBaseKeyIdsRef');
+    expect(unionPort).not.toContain('pinScriptBase(');
+    expect(unionPort).not.toContain('markDirty');
+    // Both post-staging refusal returns clear the stage: nothing is left that a
+    // later append record could apply.
+    for (const reason of ["reason: 'bake-failed'", "reason: 'composite-failed'"]) {
+      const refusal = unionPort.indexOf(reason);
+      expect(refusal).toBeGreaterThan(-1);
+      expect(unionPort.slice(refusal - 80, refusal)).toContain('stagedPins.clear();');
+    }
+    // The staged pin lands ONLY through the append recording seam, which the
+    // controller calls after the single successful commit.
+    const recordRail = slice(
+      studio,
+      'const recordRailKeyScripts = (input: {',
+      'const rotoPlayScript = useRotoPlayScriptController({',
+    );
+    expect(recordRail).toContain("const stagedPins = input.recordMode === 'append' ? pendingStackedScriptBasePinsRef.current : null;");
+    expect(recordRail).toContain("pinScriptBase(keyId, stagedPin.resolution, { appFrame: stagedPin.appFrame, source: 'stack-keep-script' })");
+    expect(recordRail).toContain('stagedPins?.clear();');
   });
 
   it('pins the pixel-only stack composite: the current payload plus this run, never a purge or base pin (UAT 261031-i54)', () => {
