@@ -136,7 +136,7 @@ export interface RotoPlayScriptIdenticalSourceCycle {
  * 261031-i54: the open stack collision — the run crosses another rail's start
  * or the repeat-extended lifecycle crosses the parent end, so an explicit
  * Cancel / Truncate (default) / Overwrite choice is required. `null` when the
- * run is free or the boundary refuses outright (frame override).
+ * run is free. (A frame override inside the span is legal since 261031-qps.)
  */
 export interface RotoPlayScriptStackCollision {
   readonly boundaryExclusive: number;
@@ -930,9 +930,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   /**
    * WR-02: the LIVE view of the pinned target rail. The pinned surface keeps the
    * rail identity and run start stable while the dialog is open, but every
-   * boundary/commit decision must read the live row: an override added while the
-   * dialog was open must refuse `frame-override`, not be silently overwritten.
-   * Falls back to the pinned view when the live table is unavailable.
+   * boundary/base/commit decision must read the live row, including an override
+   * added while the dialog was open. Falls back to the pinned view when the live
+   * table is unavailable.
    */
   function liveRailForTarget(surface: RunScriptStackSurface): RunScriptRailView {
     const clipId = surface.destination.rail.clipId;
