@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-31T08:22:51.306Z"
+last_updated: "2026-10-31T08:31:11.547Z"
 last_activity: 2026-10-31
 last_activity_desc: Create Rail layout CLOSED, UAT approved — both tabs share one height, Reveal without Key Script, summary closes column 1, orange selected tab
-state_head: 2a4c764af0a97e6138296e4dbebd2911e2d8861a
+state_head: 3bc344718e3e960ad615653c1f545273c6eafcbe
 progress:
   total_phases: 3
   completed_phases: 3
@@ -634,6 +634,7 @@ None yet.
 | 261030-v1t | Create Rail 'Paint seed variation' toggle (Paint/Reveal × Motion/Static): ON salts each stroke's render seed by output frame via the pure mixStrokeSeed(traceSeed, frame) and replays the bake once per frame (cost gate accepted: Motion 1.75x, Static frameCount×); OFF byte-identical. Boolean-only persistence, excluded from the canonical fingerprint; wired through Replay, Regenerate, Source Edit, Link matcher and rail copy. | 2026-10-30 | cfc7b3eab | [261030-v1t-per-frame-paint-seed-variation-for-rails](./quick/261030-v1t-per-frame-paint-seed-variation-for-rails/) |
 | 81 | Create Rail dialog: both tabs share one content-hugging height; Reveal drops Key Script Editing; Requested/Effective summary closes column 1 on both tabs (pinned bottom); Color card matched to Colorize (95px); title-case tab labels; selected tab orange #d97706, hover #f59e0b, Motion/Static stays blue — CLOSED, UAT approved 2026-10-31 | 2026-10-31 | 3336cd0b7 | — |
 | 261031-cf9 | Add a Paint seed variation switch to the Move/Edit Stroke settings Geometry tab: ON re-rolls each watercolor stroke's persisted paint seed (paintSeedSalt in engine.params, folded into traceSeed via mixStrokeSeed) on every committed re-bake, undoable; OFF byte-identical to today | 2026-10-31 | 2a4c764af | [261031-cf9-add-a-paint-seed-variation-switch-to-the](./quick/261031-cf9-add-a-paint-seed-variation-switch-to-the/) |
+| 83 | bump preact 11.0.2 to 11.1.1 | 2026-10-31 | 3bc344718 | — |
 
 ### Roadmap Evolution
 
