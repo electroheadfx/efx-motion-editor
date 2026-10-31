@@ -4392,19 +4392,97 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(create.controller.keepScriptVisible.value).toBe(false);
   });
 
-  it('refuses the intermediate Keep-script ON path with zero writes (Task 3 supplies the union bake)', async () => {
+  it('re-bakes the raw union per touched key and appends the records on a flag-on rail', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2, { keyScriptEdits: true })],
-      {},
+      { canonicalStart: 13 },
       { recordRailKeyScripts: recorder },
-      { kind: 'empty', keyId: null, appFrame: 11 },
+      { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
+    // Static: the full run lands on every written key, so every union bake
+    // carries both strokes.
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
     expect(test.controller.keepScriptEffective.value).toBe(true);
+    expect(await test.controller.confirm()).toBe(true);
+
+    // ONE union bake per touched key at its canonical physical frame, with
+    // exactly that key's slice strokes.
+    expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(3);
+    const unionCalls = test.bakeStackedRailKey.mock.calls as unknown as Array<[{
+      keyId: string;
+      appFrame: number;
+      strokes: readonly { brushId: string }[];
+    }]>;
+    expect(unionCalls.map((call) => call[0].appFrame)).toEqual([13, 14, 15]);
+    expect(unionCalls.map((call) => call[0].strokes.map((stroke) => stroke.brushId))).toEqual([
+      ['tip-a', 'tip-b'],
+      ['tip-a', 'tip-b'],
+      ['tip-a', 'tip-b'],
+    ]);
+    // The committed frames carry the RAW union bytes, not the staged bake.
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const unionBytes = testWebpBytes('stacked-union');
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([unionBytes, unionBytes, unionBytes]);
+    // After the commit: append, keyIds aligned to the committed slice slots.
+    const recorded = recorder.mock.calls[0]![0] as {
+      keyIds: readonly string[];
+      recordMode: string;
+      slices: readonly { frame: number; strokes: readonly AquarelleStroke[] }[];
+    };
+    expect(recorded.recordMode).toBe('append');
+    expect(recorded.keyIds).toHaveLength(3);
+    expect(recorded.slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
+    expect(recorded.keyIds[0]).toBe('S4');
+    // keyScriptEdits is never flipped by a stack run — it persists unchanged.
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(target.keyScriptEdits).toBe(true);
+  });
+
+  it('aborts the whole stack run with zero writes when the union re-bake refuses', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2, { keyScriptEdits: true })],
+      { canonicalStart: 13 },
+      {
+        recordRailKeyScripts: recorder,
+        bakeStackedRailKey: vi.fn(async () => ({ kind: 'refused' as const, reason: 'bake-failed' })),
+      },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
     expect(await test.controller.confirm()).toBe(false);
     expect(test.commit).not.toHaveBeenCalled();
     expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('bake-failed');
+  });
+
+  it('keeps the union branch unreachable on a flag-off rail, so OFF always replaces', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    // A checked-ON draft cannot reach the union path without the persisted flag.
+    test.controller.setKeepScript(true);
+    expect(test.controller.keepScriptEffective.value).toBe(false);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect((recorder.mock.calls[0]![0] as { recordMode: string }).recordMode).toBe('replace');
   });
 
   it('offers overwrite only across another rail and removes the victim clip in the same commit', async () => {

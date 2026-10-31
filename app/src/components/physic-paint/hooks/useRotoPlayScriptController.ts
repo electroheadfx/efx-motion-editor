@@ -18,6 +18,8 @@ import type {
 import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 
+type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
+
 interface RotoPlayScriptCoordinatorPort<EngineState> {
   executePhysicalEdit: (
     input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput,
@@ -69,6 +71,12 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       // 261030-np9 (D-04): forwarded verbatim — the Studio's ledger is the ONE
       // source of stroke mutation ids.
       recordRailKeyScripts: (input) => portsRef.current.recordRailKeyScripts?.(input),
+      // 261031-i54 (Quick A): Keep script ON's raw union re-bake port — only
+      // forwarded when the Studio supplies it, so the controller's presence
+      // gate (`keepScriptVisible`) stays honest.
+      ...(ports.bakeStackedRailKey
+        ? { bakeStackedRailKey: (input: StackedRailKeyBakeInput) => portsRef.current.bakeStackedRailKey!(input) }
+        : {}),
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),

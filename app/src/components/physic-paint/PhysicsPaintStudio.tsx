@@ -269,7 +269,7 @@ import type {
   StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
-import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, toStudioStroke } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -3888,26 +3888,51 @@ export function PhysicsPaintStudio() {
       .then(({ getCurrentWindow }) => getCurrentWindow().close())
       .catch(() => { window.close(); });
   }, []);
+  // 261031-i54 (Quick A): Keep script ON re-bakes a stack-touched key's RAW
+  // union — the events already recorded for that frame plus this run's strokes
+  // over the flag-on rail's known-empty base. It never composites, never reads
+  // a durable base and never calls composeRotoScriptRebakeFrame; the
+  // base-authority seam is Quick B. A null bake refuses the whole run.
+  const bakeStackedRailKey = async (input: {
+    readonly keyId: string;
+    readonly appFrame: number;
+    readonly strokes: readonly AquarelleStroke[];
+  }): Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }> => {
+    const events = [
+      ...getAquarelleEventsForFrame(input.appFrame),
+      ...input.strokes.map((stroke) => toStudioStroke(stroke)),
+    ];
+    const baked = await bakeAquarelleEventsToFrame({
+      events,
+      size: { width: canvasWidth, height: canvasHeight },
+      paper: aquarelleLiftPaperRef.current,
+    });
+    if (!baked) return { kind: 'refused', reason: 'bake-failed' };
+    return { kind: 'baked', bytes: baked.bytes };
+  };
   // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
   // timeline the live sheet writes, with mutation ids from the ONE ledger. A
-  // re-bake REPLACES a key's script, so each slice purges its frame first. The
-  // OFF path is byte-identical: the controller never calls this port.
+  // replace REPLACES a key's script (purge + known-empty pin); an append adds
+  // this run's strokes to the key's existing script and never purges or pins.
   const recordRailKeyScripts = (input: {
     readonly keyIds: readonly string[];
     readonly slices: readonly RailKeyScriptResult[];
+    readonly recordMode: 'append' | 'replace';
   }) => {
     const launch = launchContextRef.current;
     if (!launch) return;
     for (const slice of input.slices) {
       const keyId = input.keyIds[slice.slot];
       if (keyId === undefined) continue;
-      purgeAquarelleFrameScript(slice.frame);
-      // 261030-np9: a rail key's picture is ENTIRELY its script — the baked
-      // cache already holds the strokes, so replaying the script over it
-      // duplicated every stroke (a moved stroke left its old copy behind).
-      // Pin the known-empty base so the rebake reconstructs the frame from
-      // blank paper, exactly like a freshly painted key.
-      aquarelleDurableBaseByKeyRef.current.set(keyId, null);
+      if (input.recordMode === 'replace') {
+        purgeAquarelleFrameScript(slice.frame);
+        // 261030-np9: a rail key's picture is ENTIRELY its script — the baked
+        // cache already holds the strokes, so replaying the script over it
+        // duplicated every stroke (a moved stroke left its old copy behind).
+        // Pin the known-empty base so the rebake reconstructs the frame from
+        // blank paper, exactly like a freshly painted key.
+        aquarelleDurableBaseByKeyRef.current.set(keyId, null);
+      }
       for (const stroke of slice.strokes) {
         const mutationId = paintMutationLedger.allocateStrokeMutation({
           primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
@@ -3992,8 +4017,9 @@ export function PhysicsPaintStudio() {
           grainScale: backgroundMetadata.grainScale ?? 1,
         },
         // 261030-np9 (D-04): creation records each key's own script through the
-        // SAME ledger-backed seam the Paint Rail uses.
-        recordRailKeyScripts,
+        // SAME ledger-backed seam the Paint Rail uses — a reveal creation is
+        // always a replace (261031-i54: only a stack run can append).
+        recordRailKeyScripts: (entry) => recordRailKeyScripts({ ...entry, recordMode: 'replace' }),
       });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
@@ -4005,6 +4031,8 @@ export function PhysicsPaintStudio() {
       return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
     },
     recordRailKeyScripts,
+    // 261031-i54 (Quick A): Keep script ON's raw union re-bake port.
+    bakeStackedRailKey,
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,

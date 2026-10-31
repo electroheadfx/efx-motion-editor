@@ -2069,14 +2069,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const start = canonicalStart.peek() ?? context.destination.runStartAppFrame;
     if (disposed || !selectedId || !launch?.project || requested === null) return false;
     if (disabledReason.peek()) return false;
-    // Quick A ships the OFF path: pixels AND records are replaced together. A
-    // checked-ON control must never execute that destructive path, so the union
-    // request refuses with zero writes until the follow-up supplies the port.
-    if (keepScriptEffective.peek()) {
-      phase.value = 'idle'; status.value = null;
-      error.value = 'Keep script is not available on this rail yet. Turn it off to run this script.';
-      return false;
-    }
+    // Keep script ON (261031-i54 task 3): a flag-on rail records this run's
+    // slices as an APPEND and re-bakes the raw union over its known-empty base.
+    // Every other path — OFF, a flag-off target, or no union port — keeps the
+    // replace mode, so the executed mode always matches the visible switch.
+    const unionBake = ports.bakeStackedRailKey;
+    const useUnion = unionBake !== undefined && keepScriptEffective.peek();
     const boundary = resolveStackBoundaryFor(context, start, requested);
     if (boundary.frameOverrideRefusal !== null) {
       phase.value = 'idle'; status.value = null;
@@ -2225,22 +2223,47 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const nextClips = Object.freeze(currentLoopClips()
         .filter((clip) => victimClipId === null || clip.loopId !== victimClipId)
         .map((clip) => (clip.loopId === currentTarget.loopId ? updatedTarget : clip)));
-      const publication: RotoGeneratedPhysicalPublication = {
+      let publication: RotoGeneratedPhysicalPublication = {
         ...basePublication,
         semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
         ...resolvePublicationSelection(commitAuthority),
         loopClips: nextClips,
       };
+      // The per-key slices drive BOTH the union re-bake and the post-commit
+      // recording; slots align with the committed destination frames.
+      const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
+      if (useUnion && unionBake !== undefined && slices.length > 0) {
+        const unionBytesByFrame = new Map<number, Uint8Array>();
+        for (const slice of slices) {
+          const keyId = touchedKeyIds[slice.slot];
+          if (keyId === undefined) continue;
+          const bakedUnion = await unionBake({ keyId, appFrame: slice.frame, strokes: slice.strokes });
+          assertCurrent(acceptedGeneration);
+          if (bakedUnion.kind !== 'baked') throw new Error(`Keep script re-bake refused: ${bakedUnion.reason}`);
+          unionBytesByFrame.set(slice.frame, bakedUnion.bytes);
+        }
+        if (unionBytesByFrame.size > 0) {
+          const unionRecords = publication.records.map((record) => {
+            const bytes = unionBytesByFrame.get(record.appFrame);
+            return bytes === undefined ? record : { ...record, payload: { ...record.payload, bytes } };
+          });
+          publication = {
+            ...publication,
+            records: unionRecords,
+            semanticDelta: { ...publication.semanticDelta, proposedRecords: unionRecords.map(toPhysicalEditRecord) },
+          };
+        }
+      }
       phase.value = 'committing'; status.value = 'Committing Run Script…'; abortController = null;
       const result = await ports.commit(publication);
       assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Run Script batch.');
       assertPublicationAck(publication, result);
-      // OFF: this run's slices REPLACE the touched keys' records (an empty anchor
-      // set therefore purges them). The recorded mode and the visible switch
-      // state are the same fact — a flag-off target never renders ON.
-      const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
-      ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: 'replace' });
+      // ON appends this run's slices to the keys' recorded scripts; OFF replaces
+      // them (an empty anchor set therefore purges). The recorded mode and the
+      // visible switch state are the same fact — a flag-off target never
+      // renders ON, and `keyScriptEdits` is never flipped here.
+      ports.recordRailKeyScripts?.({ keyIds: touchedKeyIds, slices, recordMode: useUnion ? 'append' : 'replace' });
       collisionChoice.value = null;
       hasSuccessfulGeneration = true;
       const appliedSummary = composeAppliedSummary({

@@ -4998,19 +4998,46 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(recordCopy).not.toContain('enqueueRecordedStroke');
   });
 
-  it('pins a KNOWN-EMPTY durable base for every rail key it records a script onto', () => {
+  it('pins KNOWN-EMPTY only on the replace branch of the rail script recorder', () => {
     const recordRail = slice(
       studio,
       'const recordRailKeyScripts = (input: {',
       'const rotoPlayScript = useRotoPlayScriptController({',
     );
-    // A rail key's picture IS its script. The baked cache already holds the
-    // strokes, so replaying the script over it duplicated every one of them —
-    // a moved stroke left its old copy behind in the cache.
-    const pin = recordRail.indexOf('aquarelleDurableBaseByKeyRef.current.set(keyId, null);');
-    expect(pin).toBeGreaterThan(-1);
-    expect(pin).toBeLessThan(recordRail.indexOf('recordAquarelleStroke(mutationId, stroke, keyId);'));
+    // 261031-i54: the replace branch is today's body verbatim — purge, pin the
+    // known-empty base, then record. A rail key's picture IS its script; the
+    // baked cache already holds the strokes, so replaying over it duplicated
+    // every one of them (a moved stroke left its old copy behind in the cache).
+    const replaceStart = recordRail.indexOf("if (input.recordMode === 'replace') {");
+    const replaceEnd = recordRail.indexOf('for (const stroke of slice.strokes) {');
+    expect(replaceStart).toBeGreaterThan(-1);
+    expect(replaceEnd).toBeGreaterThan(replaceStart);
+    const replaceBranch = recordRail.slice(replaceStart, replaceEnd);
+    expect(replaceBranch).toContain('purgeAquarelleFrameScript(slice.frame);');
+    expect(replaceBranch).toContain('aquarelleDurableBaseByKeyRef.current.set(keyId, null);');
+    expect(replaceBranch).not.toContain('recordAquarelleStroke(');
+    // The append branch records the slice strokes only — no purge, no base pin.
+    const appendBranch = recordRail.slice(replaceEnd);
+    expect(appendBranch).toContain('recordAquarelleStroke(mutationId, stroke, keyId);');
+    expect(appendBranch).not.toContain('purgeAquarelleFrameScript(');
+    // Exactly ONE pin site: append must never advance the durable base map.
+    expect(countOccurrences(recordRail, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(1);
     expect(recordRail).not.toContain('enqueueRecordedStroke');
+  });
+
+  it('pins the raw union re-bake port: recorded events plus this run, never a composite', () => {
+    const unionPort = slice(
+      studio,
+      'const bakeStackedRailKey = async (input: {',
+      'const recordRailKeyScripts = (input: {',
+    );
+    // 261031-i54 (Quick A): a flag-on rail's base is known-empty, so the raw
+    // union is the whole picture. The durable-base / composite seam is Quick B.
+    expect(unionPort).toContain('getAquarelleEventsForFrame(input.appFrame)');
+    expect(unionPort).toContain('toStudioStroke(stroke)');
+    expect(unionPort).toContain('bakeAquarelleEventsToFrame({');
+    expect(unionPort).not.toContain('composeRotoScriptRebakeFrame');
+    expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
   });
 
   it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {
