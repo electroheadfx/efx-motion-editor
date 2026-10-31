@@ -189,16 +189,6 @@ const SECTION_STYLE: CSSProperties = {
   gap: '15px',
 };
 
-/**
- * 261031-cf9: the Paint seed variation row. The section gap already spaces it
- * from the row below; the padding gives it its own 15px above and below so the
- * switch reads as its own block above Geometry. No other properties.
- */
-const PAINT_SEED_VARIATION_ROW_STYLE: CSSProperties = {
-  paddingTop: '15px',
-  paddingBottom: '15px',
-};
-
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
   fontSize: '11px',
   fontWeight: 600,
@@ -723,10 +713,7 @@ export function PhysicsPaintStrokeSettingsDialog({
             liveCenter ? (
               <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
               {engineModule === 'watercolor' ? (
-                <div
-                  data-testid="stroke-settings-paint-seed-variation"
-                  style={PAINT_SEED_VARIATION_ROW_STYLE}
-                >
+                <div data-testid="stroke-settings-paint-seed-variation">
                   <button
                     type="button"
                     class={`physics-paint-script-switch${paintSeedVariationActive ? ' is-on' : ''}`}

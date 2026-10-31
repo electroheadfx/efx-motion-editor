@@ -1796,7 +1796,7 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
     const tree = renderDialogTab(bundle, 'geometry');
 
     const row = findByTestId(tree, 'stroke-settings-paint-seed-variation')!;
-    expect(row.props.style).toEqual({ paddingTop: '15px', paddingBottom: '15px' });
+    expect(row.props.style).toBeUndefined();
 
     const button = switchButton(tree);
     expect(button.props.type).toBe('button');
@@ -1879,8 +1879,8 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
     expect(switchButton(renderDialogTab(mixed.bundle, 'geometry')).props['aria-checked']).toBe('false');
   });
 
-  it('structural pins: the row constant and the shared switch chrome', () => {
-    expect(dialogSource).toContain('PAINT_SEED_VARIATION_ROW_STYLE');
+  it('structural pins: no row padding constant and the shared switch chrome', () => {
+    expect(dialogSource).not.toContain('PAINT_SEED_VARIATION_ROW_STYLE');
     expect(dialogSource).toContain('data-testid="stroke-settings-paint-seed-variation"');
     expect(dialogSource).toContain('readPaintSeedVariation(appearances)');
     expect(dialogSource).toContain('physics-paint-script-switch-track');
