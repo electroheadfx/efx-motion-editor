@@ -307,5 +307,5 @@ Baseline to hold: **363 files (361 passed, 2 skipped), 6,783 passed, 1 skipped, 
 
 ## Open Questions
 
-1. **Should the merged rail keep `syncState`/`provenanceState`?** They ride `...lifecycle` and are parser-required for finite groups, so they must stay — but classification ignores them. No action; noted so the planner does not strip lifecycle.
-2. **Incoming Reveal on a Motion/Static destination: what `mode` bakes?** Recommendation: the destination's `mode` (no Rail Type card for a reveal run). Confirm at UAT if the wash looks wrong.
+1. **Should the merged rail keep `syncState`/`provenanceState`?** **RESOLVED:** they ride `...lifecycle` and are parser-required for finite groups, so the whitelist preserves them (the target's lifecycle is the fallback when the plan is null); classification ignores them. No action.
+2. **Incoming Reveal on a Motion/Static destination: what `mode` bakes?** **RESOLVED (C2):** incoming Reveal on any destination is C2 and is not implemented in C1; C1 keeps the existing Reveal-destination path and Motion/Static incoming only.
