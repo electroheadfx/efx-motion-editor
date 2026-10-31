@@ -43,7 +43,10 @@ import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScript
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 
 const panel = readFileSync(fileURLToPath(new URL('./PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
-const playScriptDialog = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const playScriptDialog = [
+  readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8'),
+  readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptCards.tsx', import.meta.url)), 'utf8'),
+].join('\n');
 const studioView = readFileSync(fileURLToPath(new URL('./PhysicsPaintStudioView.tsx', import.meta.url)), 'utf8');
 const rightPanel = readFileSync(fileURLToPath(new URL('./PhysicsPaintRightPanel.tsx', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');

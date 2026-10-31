@@ -39,6 +39,22 @@ vi.mock('preact/hooks', () => ({
 
 import { PhysicsPaintPlayScriptDialog } from './PhysicsPaintPlayScriptDialog';
 import {
+  CollisionCard,
+  ColorCard,
+  ColorizeCard,
+  DialogRadioGroup,
+  KeepScriptCard,
+  KeyScriptCard,
+  MotionWiggleCard,
+  PaintSeedCard,
+  PaintTimingCard,
+  PhotoWiggleCard,
+  RailTypeCard,
+  RevealTimingCard,
+  SourceCycleCard,
+  StackReadoutCard,
+} from './PhysicsPaintPlayScriptCards';
+import {
   createRotoPlayScriptController,
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
@@ -46,7 +62,10 @@ import {
 } from '../roto/physicsPaintRotoPlayScriptController';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 
-const source = readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8');
+const source = [
+  readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8'),
+  readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptCards.tsx', import.meta.url)), 'utf8'),
+].join('\n');
 
 interface TestVNode {
   type: unknown;
@@ -251,6 +270,34 @@ function childrenOf(vnode: TestVNode): unknown[] {
   return Array.isArray(children) ? children : [children];
 }
 
+// The dialog composes its cards as function components. This harness renders
+// the dialog function directly (no Preact runtime), so it expands the card
+// components explicitly; SliderStepper stays opaque and is matched by its props.
+const EXPANDABLE = new Set<unknown>([
+  CollisionCard, ColorCard, ColorizeCard, DialogRadioGroup, KeepScriptCard,
+  KeyScriptCard, MotionWiggleCard, PaintSeedCard, PaintTimingCard,
+  PhotoWiggleCard, RailTypeCard, RevealTimingCard, SourceCycleCard,
+  StackReadoutCard,
+]);
+
+const renderedByVNode = new WeakMap<object, unknown>();
+
+function renderFunctionVNode(vnode: TestVNode): unknown {
+  const cached = renderedByVNode.get(vnode as object);
+  if (cached !== undefined) return cached;
+  const rendered = (vnode.type as (props: Record<string, unknown>) => unknown)(vnode.props);
+  renderedByVNode.set(vnode as object, rendered);
+  return rendered;
+}
+
+function renderedChildren(vnode: TestVNode): unknown[] {
+  const children = childrenOf(vnode);
+  if (typeof vnode.type === 'function' && EXPANDABLE.has(vnode.type)) {
+    return [...children, renderFunctionVNode(vnode)];
+  }
+  return children;
+}
+
 function* walk(node: unknown): Generator<TestVNode> {
   if (node === null || node === undefined || typeof node === 'boolean') return;
   if (Array.isArray(node)) {
@@ -260,7 +307,7 @@ function* walk(node: unknown): Generator<TestVNode> {
   if (typeof node !== 'object') return;
   const vnode = node as TestVNode;
   yield vnode;
-  for (const child of childrenOf(vnode)) yield* walk(child);
+  for (const child of renderedChildren(vnode)) yield* walk(child);
 }
 
 function findAll(root: unknown, predicate: (vnode: TestVNode) => boolean): TestVNode[] {
@@ -277,7 +324,8 @@ function textOf(node: unknown): string {
   if (node === null || node === undefined || typeof node === 'boolean') return '';
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(textOf).join('');
-  return textOf(childrenOf(node as TestVNode));
+  const vnode = node as TestVNode;
+  return textOf(renderedChildren(vnode));
 }
 
 function hasClass(vnode: TestVNode, name: string): boolean {
@@ -292,7 +340,7 @@ function handler(vnode: TestVNode, name: string): (...args: unknown[]) => unknow
 
 function parentOf(root: unknown, target: TestVNode): TestVNode | null {
   for (const vnode of walk(root)) {
-    if (childrenOf(vnode).includes(target)) return vnode;
+    if (renderedChildren(vnode).includes(target)) return vnode;
   }
   return null;
 }
@@ -349,7 +397,12 @@ describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
     const motionCard = findOne(tree, byClass('physics-paint-play-script-card-motion'));
     expect(renderedParentOf(tree, colorCard)).toBe(sideStack);
     expect(renderedParentOf(tree, motionCard)).toBe(sideStack);
-    const stackChildren = childrenOf(sideStack).filter((child): child is TestVNode =>
+    const stackChildren = childrenOf(sideStack).map((child) => (
+      typeof child === 'object' && child !== null
+      && typeof (child as TestVNode).type === 'function'
+        ? renderFunctionVNode(child as TestVNode)
+        : child
+    )).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
     expect(stackChildren.indexOf(colorCard)).toBeLessThan(stackChildren.indexOf(motionCard));
     expect(hasClass(motionCard, 'physics-paint-play-script-card-wide')).toBe(false);
