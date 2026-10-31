@@ -1662,6 +1662,12 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       sourceKeyIds: ['H1', 'H2', 'H3'],
       repeat: 1,
       mode: 'static',
+      // 261031-vbo (Quick C1): a typed fixture needs its provenance — a
+      // scriptless playscript clip is now a merged Standard Rail. Provenance is
+      // all-or-nothing on the persisted record.
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
     };
     const context = derivePhysicPaintRotoLoopRanges({
       identities: clip.sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
@@ -1706,6 +1712,50 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       .toContain('border-left: 1px solid #f8fafc');
     expect(cssRule('.physics-paint-rail-target.boundary-cell-end {'))
       .toContain('border-right: 1px solid #f8fafc');
+  });
+
+  it('261031-vbo: paints a merged Standard Rail neutral gray with no typed identity', () => {
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'merged-loop',
+      placementStart: 0,
+      sourceKeyIds: ['M1', 'M2'],
+      repeat: 1,
+      mode: 'progressive',
+    };
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: clip.sourceKeyIds.map((keyId, appFrame) => ({ keyId, appFrame })),
+      loopClips: [clip],
+      capacity: 120,
+      interpolationEnabled: false,
+    });
+    const presentations = new Map([[
+      clip.loopId,
+      projectPhysicsPaintLoopClipPresentation(context.ranges[0], clip, null),
+    ]]);
+
+    hooks.reset();
+    const tree = materializeNamedComponents(PhysicsPaintLoopClipRail({
+      ranges: context.ranges,
+      presentations,
+      visibleFrameWindow: { startFrame: 0, endFrameExclusive: 6 },
+      framePitch: 18,
+      selectedLoopClipIds: [],
+      onSelectLoopClip: vi.fn(),
+      onOpenLoopEdit: vi.fn(async () => {}),
+    }), new Set(['PhysicsPaintLoopClipRailTarget']));
+    const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+
+    expect(hasClass(target, 'rail-kind-standard')).toBe(true);
+    expect(hasClass(target, 'mode-progressive')).toBe(true);
+    expect(hasClass(target, 'rail-kind-reveal')).toBe(false);
+    expect(String(target.props['aria-label'])).toContain('Standard Rail');
+    expect(String(target.props['aria-label'])).not.toContain('Motion Rail');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment,'))
+      .toContain('background: #9CA3AF');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.selected .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #f59e0b');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.unresolved .physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: #ff6b6b');
   });
 
   it('renders source-cycle generated cells blue and their repeated counterparts dark', () => {

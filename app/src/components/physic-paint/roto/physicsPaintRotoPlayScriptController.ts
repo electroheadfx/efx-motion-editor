@@ -48,6 +48,7 @@ import { applyAquarelleSheetRigidWiggle, createAquarelleDeformPoser, drawAquarel
 import { sliceRailKeyScripts, type RailKeyScriptResult } from './physicsPaintRotoRailKeyScripts';
 import {
   buildRunScriptStackReadout,
+  buildStandardStackedLoopClip,
   mergeStackedSourceKeyIds,
   planRunScriptStackExtension,
   planRunScriptStackLifecycle,
@@ -2509,20 +2510,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         ...(lifecycleCap === null ? {} : { cap: lifecycleCap }),
       });
       const lifecycle = lifecyclePlan.lifecycle;
-      const updatedTarget: PhysicPaintRotoLoopClip = {
-        // 261031-qps (Quick B): a Reveal stack replaces its stored knobs with
-        // the run's (each written only when enabled); a Paint stack keeps them
-        // untouched. `keyScriptEdits` is never part of this metadata.
-        ...(isRevealTarget ? omitStoredRevealKnobs(currentTarget) : currentTarget),
-        sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
-        mode: renderMode,
-        motion: compactPhysicPaintRotoMotion(motion),
-        overrideColor: renderOverrideColor,
-        ...(isRevealTarget && colorize.peek() ? { colorize: true as const, colorizeMix: colorizeMix.peek() } : {}),
-        ...(isRevealTarget && photoWiggle.peek() ? { photoWiggle: true as const } : {}),
-        ...(isRevealTarget && paintSeedVariation.peek() ? { paintSeedVariation: true as const } : {}),
-        ...(lifecycle ?? {}),
-      };
+      // 261031-vbo (Quick C1): a stack is a MERGE OF RESULTS, not a rail type.
+      // ONE whitelist record is published: the destination's cached picture,
+      // repeat and cycle survive, the run composites over them, and the
+      // single-script provenance plus Reveal identity are dropped in this same
+      // atomic commit. `renderMode`/`motion`/`renderOverrideColor`/
+      // `renderPaintSeedVariation` still feed the BAKE; they are never stored
+      // on the merged rail.
+      const updatedTarget: PhysicPaintRotoLoopClip = buildStandardStackedLoopClip({
+        target: currentTarget,
+        mergedSourceKeyIds,
+        lifecycle,
+      });
       const nextClips = Object.freeze(currentLoopClips()
         .filter((clip) => victimClipId === null || clip.loopId !== victimClipId)
         .map((clip) => (clip.loopId === currentTarget.loopId ? updatedTarget : clip)));
@@ -3702,19 +3701,6 @@ function toPhysicalEditRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaint
     appFrame: record.appFrame,
     payload: clonePhysicalPayload(record.payload),
   };
-}
-
-/**
- * 261031-qps (Quick B): a Reveal stack ADOPTS its four knobs from the run,
- * persisting each only when enabled (the existing field precedent). The rail's
- * previous values are dropped first, so toggling a knob OFF clears the stored
- * flag instead of keeping it, and an all-off run persists no knob at all —
- * byte-identical to a pre-quick rail.
- */
-function omitStoredRevealKnobs(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
-  const { colorize, colorizeMix, photoWiggle, paintSeedVariation, ...rest } = clip;
-  void colorize; void colorizeMix; void photoWiggle; void paintSeedVariation;
-  return rest;
 }
 
 /** Publish the post-bake bytes for the touched frames (Keep-script union or pixel composite). */

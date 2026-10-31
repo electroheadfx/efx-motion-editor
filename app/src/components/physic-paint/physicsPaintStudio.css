@@ -4372,6 +4372,36 @@ button.destructive {
   background: var(--rail-color-hover, #8FCFD9);
 }
 
+/* 261031-vbo (Quick C1): the merged Standard Rail's neutral gray line. A
+   merged rail has no typed identity and no per-rail overrideColor; the block
+   restates the shared selected/unresolved/action-linked colors at reveal-block
+   specificity so the mode rules above never repaint a merged rail purple/cyan
+   (one color system, not three). */
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-static .physics-paint-loop-clip-rail-segment {
+  background: #9CA3AF;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-static:focus-visible:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: #D1D5DB;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-standard.selected .physics-paint-loop-clip-rail-segment {
+  background: #f59e0b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-standard.unresolved .physics-paint-loop-clip-rail-segment {
+  background: #ff6b6b;
+}
+
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment,
+.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-static.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {
+  background: #D1D5DB;
+}
+
 /* Shared rail boundary treatment (43.4 follow-up): every rail family
    (Motion/Static Loop Clip and Key Rail) draws the same boundary edges on its
    first and last covered cells — the 2px x 4px band cap on the rail segment

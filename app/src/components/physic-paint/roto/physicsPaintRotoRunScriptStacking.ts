@@ -24,6 +24,13 @@ import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolve
  * tail bake through the photo reference and adopt them. The durable-base
  * authority owns every base decision; an override inside the written span is
  * legal and resolves through its SOURCE key.
+ *
+ * 261031-vbo (Quick C1): a stack is a MERGE OF RESULTS, not a rail type. Every
+ * stack run publishes ONE Standard Rail through `buildStandardStackedLoopClip`:
+ * the destination's cached picture, repeat and cycle survive, the run composites
+ * over them, and single-script provenance plus Reveal identity are dropped in
+ * the same atomic commit so Regenerate/Replay can never rebuild one script over
+ * the blend. The `mode` field stays only because the schema requires it.
  */
 
 /** One visible fragment of a resolved Paint rail (a deleted frame splits the rail). */
@@ -146,6 +153,15 @@ export const RUN_SCRIPT_KEEP_SCRIPT_DEFAULT = true;
 
 /** Overwrite copy: the victim rail is removed, never "shortened". */
 export const RUN_SCRIPT_OVERWRITE_COPY = 'Removes the other rail; its keys stay as ordinary keys.';
+
+/** Quick C1: the one-line status a merged Standard Rail reports. */
+export const STANDARD_RAIL_STATUS_COPY = 'Merged rail — multiple scripts.';
+
+/** Quick C1: Regenerate needs ONE script's provenance; a merge has several. */
+export const STANDARD_RAIL_REGENERATE_REASON = 'Regenerate unavailable — this rail merges multiple scripts.';
+
+/** Quick C1: Replay needs the same single-script provenance; a merge has none. */
+export const STANDARD_RAIL_REPLAY_REASON = 'Replay unavailable — this rail merges multiple scripts.';
 
 const BLOCKER_RANK: Readonly<Record<Exclude<RunScriptStackBlocker, 'open'>, number>> = {
   'other-rail': 0,
@@ -506,4 +522,59 @@ export function buildRunScriptStackReadout(input: {
     offsetLabel: `Source cycle +${input.cycleOffset}`,
     outcomeLabel,
   }) as RunScriptStackReadout;
+}
+
+/**
+ * Quick C1: is this Loop Clip a merged Standard Rail?
+ *
+ * The merged rail's ONLY discriminator is absent single-script provenance on a
+ * non-Reveal clip: the parser already accepts a provenance-free playscript
+ * record, so no new field and no schema change is needed. A Reveal rail keeps
+ * its own identity even without a `scriptId`, and an undefined clip is not a
+ * rail at all.
+ */
+export function isStandardMergedLoopClip(clip: PhysicPaintRotoLoopClip | undefined): boolean {
+  if (clip === undefined) return false;
+  if (clip.railKind === 'reveal') return false;
+  return clip.scriptId === undefined;
+}
+
+/**
+ * Quick C1: the merged record a stack run publishes.
+ *
+ * A stack is a merge of RESULTS, not a rail type, so this literal is a strict
+ * whitelist — the destination record is never spread. Kept: identity
+ * (`loopId`, `placementStart`), the destination's `repeat` and `mode` (the
+ * schema requires `mode`; it stays an internal playback value and is never
+ * presented as a rail type), the per-key script opt-in, the paint-seed opt-in
+ * the merged rail's re-bake needs, the merged source cycle and the durable
+ * lifecycle facts. Dropped — deliberately absent, never `undefined`-valued:
+ * `scriptId`, `motion`, `overrideColor` (single-script provenance Regenerate
+ * would rebuild from) and `railKind`, `colorize`, `colorizeMix`, `photoWiggle`
+ * (the Reveal identity). A non-null `lifecycle` plan (the run extended the
+ * rail) wins over the target's copied lifecycle; a null plan (infinity) keeps
+ * the target's own lifecycle members instead of dropping them.
+ */
+export function buildStandardStackedLoopClip(input: {
+  readonly target: PhysicPaintRotoLoopClip;
+  readonly mergedSourceKeyIds: readonly string[];
+  readonly lifecycle: RunScriptStackLifecycle | null;
+}): PhysicPaintRotoLoopClip {
+  const { target, mergedSourceKeyIds, lifecycle } = input;
+  return {
+    loopId: target.loopId,
+    placementStart: target.placementStart,
+    repeat: target.repeat,
+    sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
+    mode: target.mode,
+    ...(target.keyScriptEdits === true ? { keyScriptEdits: true as const } : {}),
+    ...(target.paintSeedVariation === true ? { paintSeedVariation: true as const } : {}),
+    ...(target.syncState === undefined ? {} : { syncState: target.syncState }),
+    ...(target.provenanceState === undefined ? {} : { provenanceState: target.provenanceState }),
+    ...(target.phaseOrigin === undefined ? {} : { phaseOrigin: target.phaseOrigin }),
+    ...(target.originalEndExclusive === undefined ? {} : { originalEndExclusive: target.originalEndExclusive }),
+    ...(target.visibleRanges === undefined ? {} : { visibleRanges: target.visibleRanges }),
+    ...(target.frameOverrides === undefined ? {} : { frameOverrides: target.frameOverrides }),
+    ...(lifecycle ?? {}),
+  };
 }

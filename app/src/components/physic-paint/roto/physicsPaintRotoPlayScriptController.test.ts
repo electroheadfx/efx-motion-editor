@@ -45,6 +45,7 @@ import {
   type PhysicPaintRotoPhysicalEditProposal,
 } from './physicsPaintRotoPhysicalResolver';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
+import { projectPhysicsPaintLoopClipPresentation } from '../view/physicsPaintLoopClipPresentation';
 import type {
   RotoPhysicalEditAcceptedOutput,
   RotoPhysicalEditExecuteInput,
@@ -4952,16 +4953,14 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(recorded.recordMode).toBe('append');
     expect(recorded.keyIds).toHaveLength(3);
 
-    // The rail adopts the run's knobs in the SAME commit; mode/motion/color
-    // stay the rail's own and the flag is never written.
+    // 261031-vbo (Quick C1): the knobs shaped THIS run's bake only — the merged
+    // rail carries no single-script provenance and no reveal identity at all.
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
-    expect(target.colorize).toBe(true);
-    expect(target.colorizeMix).toBe(35);
-    expect(target.photoWiggle).toBe(true);
-    expect(target.paintSeedVariation).toBeUndefined();
     expect(target.mode).toBe('static');
-    expect(target.motion).toEqual({ deformation: 0, position: 0 });
-    expect(target.overrideColor).toBeNull();
+    expect(target.paintSeedVariation).toBeUndefined();
+    for (const field of ['scriptId', 'motion', 'overrideColor', 'railKind', 'colorize', 'colorizeMix', 'photoWiggle']) {
+      expect(Object.prototype.hasOwnProperty.call(target, field), field).toBe(false);
+    }
     expect(Object.prototype.hasOwnProperty.call(target, 'keyScriptEdits')).toBe(false);
   });
 
@@ -4997,11 +4996,13 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       revision,
     }));
 
-    // The extended rail survives the snapshot byte-for-byte — including the
-    // reveal knobs adopted by the run and the untouched repeat.
+    // 261031-vbo (Quick C1): the merged rail survives the snapshot
+    // byte-for-byte — provenance-free and railKind-free, with the untouched
+    // repeat and merged source cycle.
     const target = (publication.loopClips ?? [])[0]!;
     expect(reopened.loopClips[0]).toEqual(target);
-    expect(reopened.loopClips[0].railKind).toBe('reveal');
+    expect(reopened.loopClips[0].railKind).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(reopened.loopClips[0], 'scriptId')).toBe(false);
     expect(reopened.loopClips[0].repeat).toBe(2);
     expect(reopened.loopClips[0].sourceKeyIds).toEqual(target.sourceKeyIds);
 
@@ -5352,7 +5353,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     test.controller.countText.value = '1';
     expect(await test.controller.confirm()).toBe(true);
     const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
-    expect(committed?.overrideColor).toBe('#103c65');
+    // 261031-vbo (Quick C1): the merged rail drops the color override — the run
+    // color shaped THIS bake only (the dialog seeding assertions above stay).
+    expect(Object.prototype.hasOwnProperty.call(committed, 'overrideColor')).toBe(false);
   });
 
   it('clears the rail color when the stack switches back to Original colors (UAT 261031-i54)', async () => {
@@ -5363,10 +5366,11 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     test.controller.countText.value = '1';
     expect(await test.controller.confirm()).toBe(true);
     const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
-    expect(committed?.overrideColor).toBeNull();
+    // 261031-vbo (Quick C1): a merged rail stores no overrideColor either way.
+    expect(Object.prototype.hasOwnProperty.call(committed, 'overrideColor')).toBe(false);
   });
 
-  it('seeds the run from the rail settings, bakes the dialog settings and adopts them on the rail (UAT 261031-i54)', async () => {
+  it('seeds the run from the rail settings and bakes the dialog settings (UAT 261031-i54)', async () => {
     bakePose.poser.mockClear();
     const target = stackClip(1, {
       mode: 'progressive',
@@ -5391,17 +5395,77 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     // no progressive poser receives the old rail wiggle.
     expect(test.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'static' });
     expect(bakePose.poser).not.toHaveBeenCalled();
-    // The rail adopts the run's mode and wiggle in the same commit.
+    // 261031-vbo (Quick C1): the run's mode/wiggle shaped THIS bake only — the
+    // merged rail keeps the destination's stored mode and never stores motion
+    // or a color override.
     const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
     expect(committed).toMatchObject({
-      mode: 'static',
-      motion: { deformation: 50, position: 50 },
-      overrideColor: '#abcdef',
+      mode: 'progressive',
+      paintSeedVariation: true,
     });
+    expect(Object.prototype.hasOwnProperty.call(committed, 'motion')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(committed, 'overrideColor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(committed, 'scriptId')).toBe(false);
     expect(test.controller.appliedSummary.line1.value).toContain('#abcdef');
     const written = test.commit.mock.calls[0]![0].records.map((record) => record.appFrame);
     expect(written).toContain(11);
     expect(written).toContain(12);
+  });
+
+  it('commitStack publishes ONE Standard Rail for a Motion run on a Static destination (Quick C1)', async () => {
+    const target = stackClip(2, {
+      mode: 'static',
+      overrideColor: '#abcdef',
+      paintSeedVariation: true,
+      keyScriptEdits: true,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [],
+    });
+    const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    // The run's Rail Type is a RUN setting: it shapes this bake only.
+    test.controller.mode.value = 'progressive';
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.loopClips).toHaveLength(1);
+    const committed = publication.loopClips![0]!;
+    // The whitelist record: identity + repeat + the DESTINATION's stored mode +
+    // the run's merged source cycle + the per-key/paint options + lifecycle.
+    expect(committed).toMatchObject({
+      loopId: 'L1',
+      placementStart: 10,
+      repeat: 2,
+      mode: 'static',
+      keyScriptEdits: true,
+      paintSeedVariation: true,
+      sourceKeyIds: [...CYCLE_IDS],
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+    });
+    for (const field of ['scriptId', 'motion', 'overrideColor', 'railKind', 'colorize', 'colorizeMix', 'photoWiggle']) {
+      expect(Object.prototype.hasOwnProperty.call(committed, field), field).toBe(false);
+    }
+
+    // The published record projects as a gray-labeled Standard Rail.
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: publication.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: publication.loopClips ?? [],
+      capacity: 600,
+      interpolationEnabled: false,
+    });
+    const presentation = projectPhysicsPaintLoopClipPresentation(context.ranges[0]!, committed, null);
+    expect(presentation.groupTypeLabel).toBe('Standard Rail');
+    expect(presentation.railKind).toBe('standard');
+    expect(presentation.lifecycle).toBe('standard');
+    expect(presentation.synchronizationDot).toBeNull();
+    expect(presentation.regenerateDisabledReason).toContain('merges multiple scripts');
   });
 
   it('never routes a stack confirm to the Reveal tab (WR-06)', async () => {
@@ -5579,7 +5643,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(recorder).not.toHaveBeenCalled();
   });
 
-  it('compares the reveal colorize pair in the acknowledgement (WR-12)', async () => {
+  it('compares the kept merged-rail fields in the acknowledgement (WR-12)', async () => {
     const runAck = async (mutate: (clip: PhysicPaintRotoLoopClip) => PhysicPaintRotoLoopClip) => {
       const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
         ok: true,
@@ -5592,7 +5656,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
         loopClips: (publication.loopClips ?? []).map((clip) => mutate({ ...clip })),
       }));
       const test = stackHarness(
-        [stackClip(1, { colorize: true, colorizeMix: 100 })],
+        [stackClip(1, { keyScriptEdits: true })],
         { canonicalStart: 11 },
         { commit },
         { kind: 'empty', keyId: null, appFrame: 11 },
@@ -5603,18 +5667,20 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       return { test, completed };
     };
 
-    // The pair is published and echoed verbatim — the ack passes.
+    // 261031-vbo (Quick C1): the colorize pair is no longer persisted on a stack
+    // result, so the ack comparison is pinned on the fields a merged rail KEEPS.
+    // The whitelist record is published and echoed verbatim — the ack passes.
     expect((await runAck((clip) => clip)).completed).toBe(true);
 
-    // A dropped colorize flag silently loses the reveal tint — rejected.
-    const dropped = await runAck((clip) => ({ ...clip, colorize: undefined }));
-    expect(dropped.completed).toBe(false);
-    expect(dropped.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+    // A converted playback mode does not match the accepted collection — rejected.
+    const converted = await runAck((clip) => ({ ...clip, mode: 'progressive' }));
+    expect(converted.completed).toBe(false);
+    expect(converted.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
 
-    // A mutated mix does not match the accepted collection — rejected too.
-    const mutated = await runAck((clip) => ({ ...clip, colorizeMix: 40 }));
-    expect(mutated.completed).toBe(false);
-    expect(mutated.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+    // A dropped per-key flag is a different record — rejected too.
+    const droppedFlag = await runAck((clip) => ({ ...clip, keyScriptEdits: undefined }));
+    expect(droppedFlag.completed).toBe(false);
+    expect(droppedFlag.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
   });
 
   it('refuses when the target source cycle changes while the dialog is open (WR-02)', async () => {

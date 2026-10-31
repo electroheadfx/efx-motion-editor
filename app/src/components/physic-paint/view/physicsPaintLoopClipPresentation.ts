@@ -1,14 +1,24 @@
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  STANDARD_RAIL_REGENERATE_REASON,
+  STANDARD_RAIL_REPLAY_REASON,
+  STANDARD_RAIL_STATUS_COPY,
+} from '../roto/physicsPaintRotoRunScriptStacking';
+import { classifyLoopClipRailKind, type RotoRailKind } from './physicsPaintWorkflowPresentation';
 
 export type PhysicsPaintGroupLifecycle =
   | 'synchronized'
   | 'modified'
   | 'detached'
   | 'unavailable'
-  | 'unresolved';
+  | 'unresolved'
+  /** 261031-vbo (Quick C1): a MERGED Standard Rail — several scripts, no
+   *  single-script provenance, so Regenerate/Replay cannot run and no
+   *  synchronization dot is shown. */
+  | 'standard';
 
-export type PhysicsPaintGroupSynchronizationDot = Exclude<PhysicsPaintGroupLifecycle, 'unresolved'>;
+export type PhysicsPaintGroupSynchronizationDot = Exclude<PhysicsPaintGroupLifecycle, 'unresolved' | 'standard'>;
 
 export interface PhysicsPaintGroupFragmentContext {
   readonly index: number;
@@ -67,10 +77,11 @@ export interface PhysicsPaintLoopClipPresentation {
   /** 'next clip — interrupts the loop' when shortened, else null (D-14). */
   readonly interruptionTooltipLine: string | null;
   readonly mode: PhysicPaintRotoLoopClip['mode'];
-  readonly modeLabel: 'Motion' | 'Static';
-  readonly groupTypeLabel: 'Motion Rail' | 'Static Rail';
-  /** Rail-kind discriminator (52-01 D-03): 'reveal' marks a reveal rail. */
-  readonly railKind: 'playscript' | 'reveal';
+  readonly modeLabel: 'Motion' | 'Static' | 'Standard';
+  readonly groupTypeLabel: 'Motion Rail' | 'Static Rail' | 'Standard Rail';
+  /** Rail-kind discriminator (52-01 D-03): 'reveal' marks a reveal rail;
+   *  'standard' (261031-vbo) marks a merged rail with no typed identity. */
+  readonly railKind: RotoRailKind;
   /** The rail line color (D-22): the reveal rail's variant color is the
    *  DEFAULT overrideColor, overridable per rail via the 43-06 mechanism. */
   readonly overrideColor: string | null;
@@ -128,14 +139,24 @@ export function projectPhysicsPaintLoopClipPresentation(
   const effectiveEnd = range.effectiveEnd;
   const effectiveDuration = Math.max(0, effectiveEnd - range.phaseOrigin);
   const mode = clip?.mode ?? 'progressive';
-  const modeLabel = mode === 'static' ? 'Static' : 'Motion';
-  const groupTypeLabel = `${modeLabel} Rail` as const;
+  // 261031-vbo (Quick C1): a merged Standard Rail has no typed identity, so its
+  // labels never claim Motion/Static. `mode` stays the stored playback value and
+  // is never presented as a rail type.
+  const railKind = classifyLoopClipRailKind(clip);
+  const isStandard = railKind === 'standard';
+  const isReveal = railKind === 'reveal';
+  const modeLabel: PhysicsPaintLoopClipPresentation['modeLabel'] = isStandard
+    ? 'Standard'
+    : (mode === 'static' ? 'Static' : 'Motion');
+  const groupTypeLabel: PhysicsPaintLoopClipPresentation['groupTypeLabel'] = isStandard
+    ? 'Standard Rail'
+    : (mode === 'static' ? 'Static Rail' : 'Motion Rail');
   const groupDisplayName = options.groupDisplayName?.trim();
   const displayName = groupDisplayName
     || (sourceActionName ? `${sourceActionName} Rail` : `${groupTypeLabel} at F${range.phaseOrigin}`);
   const lifecycle = resolveGroupLifecycle(range, clip);
   const statusLabel = statusLabelFor(lifecycle);
-  const synchronizationDot = lifecycle === 'unresolved' ? null : lifecycle;
+  const synchronizationDot = lifecycle === 'unresolved' || lifecycle === 'standard' ? null : lifecycle;
   const regenerateDisabledReason = regenerateDisabledReasonFor(lifecycle);
   // 52-03 (D-22/D-23/D-24): the reveal rail surface. The variant color is the
   // DEFAULT overrideColor (blue, AM-1), overridable per rail
@@ -143,8 +164,6 @@ export function projectPhysicsPaintLoopClipPresentation(
   // whether the script or reference changed since the bake (D-23 prohibition:
   // a stale bake is never presented as fresh). The Replay disabled reason
   // mirrors `regenerateDisabledReasonFor` (D-24).
-  const railKind = clip?.railKind ?? 'playscript';
-  const isReveal = railKind === 'reveal';
   const overrideColor = isReveal
     ? (clip?.overrideColor ?? (mode === 'static' ? REVEAL_STATIC_COLOR : REVEAL_MOTION_COLOR))
     : (clip?.overrideColor ?? null);
@@ -152,7 +171,7 @@ export function projectPhysicsPaintLoopClipPresentation(
   const scriptExists = options.scriptExists;
   const isFresh = lifecycle === 'synchronized' && scriptExists !== false && referencePlaced !== false;
   const freshnessLine = isReveal ? (isFresh ? REVEAL_FRESH_LINE : REVEAL_STALE_LINE) : null;
-  const replayDisabledReason = isReveal
+  const replayDisabledReason = isReveal || isStandard
     ? replayDisabledReasonFor(lifecycle, referencePlaced, scriptExists)
     : null;
   const fragment = options.fragment ?? null;
@@ -203,7 +222,9 @@ export function projectPhysicsPaintLoopClipPresentation(
   return {
     loopId: range.loopId,
     displayName,
-    sourceLabel: sourceActionName ?? 'Source Script unavailable',
+    // 261031-vbo (Quick C1): a merged rail's "source" is the merge itself —
+    // there is no single script to name.
+    sourceLabel: sourceActionName ?? (isStandard ? 'Merged rail — multiple scripts' : 'Source Script unavailable'),
     placementLabel: `F${range.phaseOrigin}`,
     cycleLabel,
     effectiveLabel: `Effective ${effectiveDuration}f`,
@@ -298,6 +319,10 @@ function resolveGroupLifecycle(
   clip: PhysicPaintRotoLoopClip | undefined,
 ): PhysicsPaintGroupLifecycle {
   if (range.unresolved) return 'unresolved';
+  // 261031-vbo (Quick C1): a merged rail is classified BEFORE the detached /
+  // provenance branches — waiting on provenance state would report the old
+  // single-script vocabulary for a rail that no longer has one.
+  if (classifyLoopClipRailKind(clip) === 'standard') return 'standard';
   if (clip?.provenanceState === 'detached') return 'detached';
   // The lifecycle reads the clip's own scriptId — never the resolved library
   // name — so a rail linked to an Action stays Synchronized/Modified even when
@@ -314,6 +339,7 @@ function statusLabelFor(lifecycle: PhysicsPaintGroupLifecycle): string {
     case 'detached': return 'Script detached.';
     case 'unavailable': return 'Source Script unavailable.';
     case 'unresolved': return 'Source missing';
+    case 'standard': return STANDARD_RAIL_STATUS_COPY;
   }
 }
 
@@ -324,6 +350,7 @@ function regenerateDisabledReasonFor(lifecycle: PhysicsPaintGroupLifecycle): str
     case 'detached': return 'Regenerate unavailable — Script detached.';
     case 'unavailable': return 'Regenerate unavailable — Source Script unavailable.';
     case 'unresolved': return 'Source missing';
+    case 'standard': return STANDARD_RAIL_REGENERATE_REASON;
   }
 }
 
@@ -340,6 +367,10 @@ function replayDisabledReasonFor(
   referencePlaced: boolean | undefined,
   scriptExists: boolean | undefined,
 ): string | null {
+  // 261031-vbo (Quick C1): the merged-rail reason WINS over the reveal
+  // reference/script pre-checks — a merged rail has no single script to replay
+  // even when a document reference happens to be placed.
+  if (lifecycle === 'standard') return STANDARD_RAIL_REPLAY_REASON;
   if (referencePlaced === false) return REVEAL_REPLAY_DISABLED_NO_REFERENCE;
   if (scriptExists === false) return REVEAL_REPLAY_DISABLED_SCRIPT_DELETED;
   switch (lifecycle) {

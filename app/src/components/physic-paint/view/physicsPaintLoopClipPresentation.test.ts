@@ -126,13 +126,15 @@ describe('canonical Group presentation copy', () => {
       regenerate: 'Regenerate unavailable — Script detached.',
     },
     {
-      name: 'no source action',
+      // 261031-vbo (Quick C1): a provenance-free playscript clip is no longer
+      // "Source Script unavailable" — it is a MERGED Standard Rail.
+      name: 'merged Standard Rail (no single-script provenance)',
       clip: clip({ scriptId: undefined }),
       sourceName: null,
-      lifecycle: 'unavailable',
-      status: 'Source Script unavailable.',
-      dot: 'unavailable',
-      regenerate: 'Regenerate unavailable — Source Script unavailable.',
+      lifecycle: 'standard',
+      status: 'Merged rail — multiple scripts.',
+      dot: null,
+      regenerate: 'Regenerate unavailable — this rail merges multiple scripts.',
     },
     {
       // 47 close-out: the lifecycle reads the clip's own scriptId, never the
@@ -459,6 +461,110 @@ describe('reveal rail presentation (52-03 D-22/D-23/D-24)', () => {
       replayDisabledReason: null,
     });
     expect(presentation.tooltipLines).not.toContain('baked from current script & reference');
+  });
+});
+
+describe('261031-vbo Standard merged-rail presentation', () => {
+  function mergedClip(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+    return {
+      loopId: 'merged-loop',
+      placementStart: 12,
+      sourceKeyIds: ['M1', 'M2'],
+      repeat: 1,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      ...overrides,
+    };
+  }
+
+  it('presents a merged rail as Standard with no typed identity and no dot', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(range(), mergedClip(), null);
+    expect(presentation).toMatchObject({
+      displayName: 'Standard Rail at F12',
+      sourceLabel: 'Merged rail — multiple scripts',
+      modeLabel: 'Standard',
+      groupTypeLabel: 'Standard Rail',
+      railKind: 'standard',
+      lifecycle: 'standard',
+      statusLabel: 'Merged rail — multiple scripts.',
+      synchronizationDot: null,
+      regenerateDisabledReason: 'Regenerate unavailable — this rail merges multiple scripts.',
+      replayDisabledReason: 'Replay unavailable — this rail merges multiple scripts.',
+      freshnessLine: null,
+      overrideColor: null,
+    });
+    expect(presentation.tooltipLines.slice(0, 5)).toEqual([
+      'Standard Rail at F12',
+      'Type: Standard',
+      'Cycle 4f × 3 = 12f',
+      'Effective 12f',
+      'Status: Merged rail — multiple scripts.',
+    ]);
+    expect(presentation.tooltipLines).toContain('Replay unavailable — this rail merges multiple scripts.');
+    expect(presentation.accessibleName).toContain('Standard Rail.');
+  });
+
+  it('keeps the stored mode as an internal value while never presenting it as the rail type', () => {
+    const progressive = projectPhysicsPaintLoopClipPresentation(range(), mergedClip({ mode: 'progressive' }), null);
+    const staticValue = projectPhysicsPaintLoopClipPresentation(range(), mergedClip({ mode: 'static' }), null);
+    expect(progressive.mode).toBe('progressive');
+    expect(staticValue.mode).toBe('static');
+    expect(staticValue.modeLabel).toBe('Standard');
+    expect(staticValue.groupTypeLabel).toBe('Standard Rail');
+  });
+
+  it('wins the Replay reason over the reveal reference pre-checks', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      mergedClip(),
+      null,
+      { referencePlaced: true, scriptExists: true },
+    );
+    expect(presentation.replayDisabledReason).toBe('Replay unavailable — this rail merges multiple scripts.');
+  });
+
+  it('keeps reveal precedence: a scriptless reveal rail stays Reveal, not Standard', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      mergedClip({ railKind: 'reveal', scriptId: undefined }),
+      null,
+    );
+    expect(presentation.railKind).toBe('reveal');
+    expect(presentation.lifecycle).toBe('unavailable');
+    expect(presentation.statusLabel).toBe('Source Script unavailable.');
+  });
+
+  it('keeps unresolved precedence over the standard classification', () => {
+    const presentation = projectPhysicsPaintLoopClipPresentation(
+      range({ unresolved: { missingSourceKeyIds: ['gone'] } }),
+      mergedClip(),
+      null,
+    );
+    expect(presentation.lifecycle).toBe('unresolved');
+    expect(presentation.statusLabel).toBe('Source missing');
+    expect(presentation.synchronizationDot).toBeNull();
+  });
+
+  it('leaves typed rails on their Motion/Static labels and typed reasons', () => {
+    const motion = projectPhysicsPaintLoopClipPresentation(range(), clip(), 'Walk Cycle');
+    expect(motion).toMatchObject({
+      railKind: 'playscript',
+      modeLabel: 'Motion',
+      groupTypeLabel: 'Motion Rail',
+      lifecycle: 'synchronized',
+      regenerateDisabledReason: 'Already synchronized with Script.',
+    });
+    const staticTyped = projectPhysicsPaintLoopClipPresentation(
+      range(),
+      clip({ mode: 'static' }),
+      null,
+    );
+    expect(staticTyped).toMatchObject({
+      modeLabel: 'Static',
+      groupTypeLabel: 'Static Rail',
+      lifecycle: 'synchronized',
+    });
   });
 });
 

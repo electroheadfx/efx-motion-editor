@@ -4,7 +4,12 @@ import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolve
 import {
   RUN_SCRIPT_KEEP_SCRIPT_DEFAULT,
   RUN_SCRIPT_OVERWRITE_COPY,
+  STANDARD_RAIL_REGENERATE_REASON,
+  STANDARD_RAIL_REPLAY_REASON,
+  STANDARD_RAIL_STATUS_COPY,
   buildRunScriptStackReadout,
+  buildStandardStackedLoopClip,
+  isStandardMergedLoopClip,
   mergeStackedSourceKeyIds,
   planRunScriptStackExtension,
   planRunScriptStackLifecycle,
@@ -12,6 +17,7 @@ import {
   resolveRunScriptStackBoundary,
   toRunScriptRailViews,
   type RunScriptRailView,
+  type RunScriptStackLifecycle,
 } from './physicsPaintRotoRunScriptStacking';
 
 /**
@@ -837,5 +843,206 @@ describe('buildRunScriptStackReadout', () => {
 
   it('defaults Keep script ON for a flag-on stack destination', () => {
     expect(RUN_SCRIPT_KEEP_SCRIPT_DEFAULT).toBe(true);
+  });
+});
+
+/**
+ * Quick 261031-vbo (Quick C1): a Run Script stack is a MERGE OF RESULTS.
+ *
+ * The destination rail's cached picture, repeat and cycle stay; the merged
+ * record keeps only the fields a flat Standard Rail can legally carry. Provenance
+ * (`scriptId`, `motion`, `overrideColor`) and the Reveal identity (`railKind`,
+ * `colorize`, `colorizeMix`, `photoWiggle`) are DROPPED in this same projection —
+ * they are exactly what would let Regenerate rebuild a single-script rail and
+ * wipe the blend. `mode` stays because the schema requires it; it is an internal
+ * playback value, never a rail type.
+ */
+
+const FULL_REVEAL_LIFECYCLE: RunScriptStackLifecycle = {
+  syncState: 'synchronized',
+  provenanceState: 'attached',
+  phaseOrigin: 10,
+  originalEndExclusive: 22,
+  visibleRanges: [{ start: 10, endExclusive: 22 }],
+  frameOverrides: [{ appFrame: 15, keyId: 'k15' }],
+};
+
+describe('buildStandardStackedLoopClip', () => {
+  it('keeps only the whitelist fields and drops the destination’s full provenance and reveal identity', () => {
+    const destination = makeClip('L1', {
+      scriptId: 'script-1',
+      motion: { deformation: 0.5, position: 0.25 },
+      overrideColor: '#ff0000',
+      railKind: 'reveal',
+      colorize: true,
+      colorizeMix: 40,
+      photoWiggle: true,
+      paintSeedVariation: true,
+      keyScriptEdits: true,
+      repeat: 5,
+      mode: 'static',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 22,
+      visibleRanges: [{ start: 10, endExclusive: 22 }],
+      frameOverrides: [{ appFrame: 15, keyId: 'k15' }],
+    });
+    const merged = buildStandardStackedLoopClip({
+      target: destination,
+      mergedSourceKeyIds: ['k10', 'k12', 'k14'],
+      lifecycle: null,
+    });
+
+    expect(merged).toEqual({
+      loopId: 'L1',
+      placementStart: 10,
+      repeat: 5,
+      sourceKeyIds: ['k10', 'k12', 'k14'],
+      mode: 'static',
+      keyScriptEdits: true,
+      paintSeedVariation: true,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 22,
+      visibleRanges: [{ start: 10, endExclusive: 22 }],
+      frameOverrides: [{ appFrame: 15, keyId: 'k15' }],
+    });
+  });
+
+  it('carries no own property for any dropped provenance or reveal field', () => {
+    const destination = makeClip('L2', {
+      scriptId: 'script-1',
+      motion: { deformation: 0.5, position: 0.25 },
+      overrideColor: '#ff0000',
+      railKind: 'reveal',
+      colorize: true,
+      colorizeMix: 40,
+      photoWiggle: true,
+    });
+    const merged = buildStandardStackedLoopClip({
+      target: destination,
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+
+    for (const field of ['scriptId', 'motion', 'overrideColor', 'railKind', 'colorize', 'colorizeMix', 'photoWiggle']) {
+      expect(Object.prototype.hasOwnProperty.call(merged, field)).toBe(false);
+    }
+  });
+
+  it('omits the optional flags unless the destination carried them as true', () => {
+    const bare = buildStandardStackedLoopClip({
+      target: makeClip('L3'),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+    expect(Object.prototype.hasOwnProperty.call(bare, 'keyScriptEdits')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(bare, 'paintSeedVariation')).toBe(false);
+
+    const flagged = buildStandardStackedLoopClip({
+      target: makeClip('L3', { keyScriptEdits: true, paintSeedVariation: true }),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+    expect(flagged.keyScriptEdits).toBe(true);
+    expect(flagged.paintSeedVariation).toBe(true);
+  });
+
+  it('keeps the destination’s stored mode instead of converting the rail', () => {
+    const merged = buildStandardStackedLoopClip({
+      target: makeClip('L4', { mode: 'progressive' }),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+    expect(merged.mode).toBe('progressive');
+  });
+
+  it('copies the merged source keys into a frozen array without mutating the input', () => {
+    const mergedIds = ['k10', 'k12', 'k14'];
+    const merged = buildStandardStackedLoopClip({
+      target: makeClip('L5'),
+      mergedSourceKeyIds: mergedIds,
+      lifecycle: null,
+    });
+    expect(merged.sourceKeyIds).not.toBe(mergedIds);
+    expect(Object.isFrozen(merged.sourceKeyIds)).toBe(true);
+    mergedIds.push('k16');
+    expect(merged.sourceKeyIds).toEqual(['k10', 'k12', 'k14']);
+  });
+
+  it('preserves the destination’s lifecycle members when the plan is null', () => {
+    const merged = buildStandardStackedLoopClip({
+      target: makeClip('L6', FULL_REVEAL_LIFECYCLE),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+    expect(merged.syncState).toBe('synchronized');
+    expect(merged.provenanceState).toBe('attached');
+    expect(merged.phaseOrigin).toBe(10);
+    expect(merged.originalEndExclusive).toBe(22);
+    expect(merged.visibleRanges).toEqual([{ start: 10, endExclusive: 22 }]);
+    expect(merged.frameOverrides).toEqual([{ appFrame: 15, keyId: 'k15' }]);
+  });
+
+  it('lets a non-null plan lifecycle win over the destination’s lifecycle', () => {
+    const planLifecycle: RunScriptStackLifecycle = {
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 30 }],
+      frameOverrides: [],
+    };
+    const merged = buildStandardStackedLoopClip({
+      target: makeClip('L7', FULL_REVEAL_LIFECYCLE),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: planLifecycle,
+    });
+    expect(merged.syncState).toBe('modified');
+    expect(merged.originalEndExclusive).toBe(30);
+    expect(merged.visibleRanges).toEqual([{ start: 10, endExclusive: 30 }]);
+    expect(merged.frameOverrides).toEqual([]);
+    expect(planLifecycle.provenanceState).toBe('attached');
+  });
+
+  it('invents no lifecycle members for a destination that carried none', () => {
+    const merged = buildStandardStackedLoopClip({
+      target: makeClip('L8'),
+      mergedSourceKeyIds: ['k10'],
+      lifecycle: null,
+    });
+    for (const field of ['syncState', 'provenanceState', 'phaseOrigin', 'originalEndExclusive', 'visibleRanges', 'frameOverrides']) {
+      expect(Object.prototype.hasOwnProperty.call(merged, field)).toBe(false);
+    }
+  });
+});
+
+describe('isStandardMergedLoopClip', () => {
+  it('is false for an undefined clip', () => {
+    expect(isStandardMergedLoopClip(undefined)).toBe(false);
+  });
+
+  it('is false for a typed rail that still carries a scriptId', () => {
+    expect(isStandardMergedLoopClip(makeClip('typed', { scriptId: 'script-1' }))).toBe(false);
+  });
+
+  it('is false for a reveal rail, scripted or not', () => {
+    expect(isStandardMergedLoopClip(makeClip('reveal', { railKind: 'reveal' }))).toBe(false);
+    expect(isStandardMergedLoopClip(makeClip('reveal', { railKind: 'reveal', scriptId: 'script-1' }))).toBe(false);
+  });
+
+  it('is true for a provenance-free playscript rail', () => {
+    expect(isStandardMergedLoopClip(makeClip('merged'))).toBe(true);
+    expect(isStandardMergedLoopClip(makeClip('merged', { railKind: 'playscript' }))).toBe(true);
+  });
+});
+
+describe('Standard merged-rail copy', () => {
+  it('names the merge as the reason Regenerate and Replay are unavailable', () => {
+    expect(STANDARD_RAIL_STATUS_COPY).toBe('Merged rail — multiple scripts.');
+    expect(STANDARD_RAIL_REGENERATE_REASON).toBe('Regenerate unavailable — this rail merges multiple scripts.');
+    expect(STANDARD_RAIL_REPLAY_REASON).toBe('Replay unavailable — this rail merges multiple scripts.');
   });
 });

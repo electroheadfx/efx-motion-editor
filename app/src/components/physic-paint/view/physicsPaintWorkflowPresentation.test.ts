@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampOnionCount, clampOnionOpacity,
+  classifyLoopClipRailKind,
   classifyRotoRailKind,
   collectRotoGroupDragGapPreviewAppFrames,
   getPhysicsPaintEngineStatusTone, getRotoAcceptedCellFillClass, getRotoCellFill,
@@ -761,5 +762,39 @@ describe('rail-kind classification (52-04, D-03/D-19 — the reveal rail is the 
     expect(getRotoRailKindLabel('reveal')).toBe('Reveal');
     expect(getRotoRailKindLabel(undefined)).toBe('Play Script');
     expect(getRotoRailKindLabel('playscript')).toBe('Play Script');
+    // 261031-vbo (Quick C1): the merged rail's label is 'Standard'.
+    expect(getRotoRailKindLabel('standard')).toBe('Standard');
+    expect(isRevealRotoRail('standard')).toBe(false);
+  });
+});
+
+describe('Loop Clip rail-kind classification (261031-vbo, Quick C1)', () => {
+  function loopClip(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+    return {
+      loopId: 'L1',
+      placementStart: 10,
+      sourceKeyIds: ['k10'],
+      repeat: 1,
+      mode: 'progressive',
+      ...overrides,
+    };
+  }
+
+  it('classifies a merged (provenance-free) clip as standard', () => {
+    expect(classifyLoopClipRailKind(loopClip())).toBe('standard');
+    expect(classifyLoopClipRailKind(loopClip({ railKind: 'playscript' }))).toBe('standard');
+  });
+
+  it('keeps a scripted clip on its typed playscript kind', () => {
+    expect(classifyLoopClipRailKind(loopClip({ scriptId: 'script-1' }))).toBe('playscript');
+  });
+
+  it('keeps reveal rails reveal, scripted or not', () => {
+    expect(classifyLoopClipRailKind(loopClip({ railKind: 'reveal', scriptId: 'script-1' }))).toBe('reveal');
+    expect(classifyLoopClipRailKind(loopClip({ railKind: 'reveal' }))).toBe('reveal');
+  });
+
+  it('classifies an absent clip as playscript', () => {
+    expect(classifyLoopClipRailKind(undefined)).toBe('playscript');
   });
 });

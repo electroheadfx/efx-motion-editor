@@ -1,6 +1,7 @@
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
+import { isStandardMergedLoopClip } from '../roto/physicsPaintRotoRunScriptStacking';
 import type {
   PhysicPaintRotoFrameResolution,
   PhysicPaintRotoPhysicalCell,
@@ -20,21 +21,44 @@ export type RotoMissingFrameStatusKind = 'transparent' | 'background-only-interi
 /* ---- 52-04 (D-03/D-19): the rail-kind classification for the track surface ---- */
 
 /** The Loop Clip rail kinds on the single track type (D-03): the reveal rail is
- *  the 4th rail kind alongside the PlayScript motion/static rails. */
-export type RotoRailKind = 'playscript' | 'reveal';
+ *  the 4th rail kind alongside the PlayScript motion/static rails.
+ *
+ *  261031-vbo (Quick C1): 'standard' is a MERGED-rail classification, never a
+ *  stored field — it is derived from absent provenance (`scriptId`) on a
+ *  non-Reveal clip, so the persisted schema is unchanged. */
+export type RotoRailKind = 'playscript' | 'reveal' | 'standard';
 
-/** Classify a Loop Clip's rail kind — absent means 'playscript' (no migration). */
-export function classifyRotoRailKind(railKind: RotoRailKind | undefined): RotoRailKind {
+/** The rail kinds the persisted record can actually carry (no merge state). */
+export type StoredRotoRailKind = Exclude<RotoRailKind, 'standard'>;
+
+/** Classify a STORED rail kind — absent means 'playscript' (no migration). */
+export function classifyRotoRailKind(railKind: StoredRotoRailKind | undefined): StoredRotoRailKind {
   return railKind === 'reveal' ? 'reveal' : 'playscript';
 }
 
 /** True when the rail is a reveal rail (the 4th rail kind, D-03). */
 export function isRevealRotoRail(railKind: RotoRailKind | undefined): boolean {
-  return classifyRotoRailKind(railKind) === 'reveal';
+  return railKind === 'reveal';
+}
+
+/**
+ * Classify a Loop Clip's EFFECTIVE rail kind for both rail hosts.
+ *
+ * Quick C1 makes this the ONE classifier the active lane and the non-active
+ * rows share: a merged rail (no `scriptId`, not Reveal) is 'standard', a Reveal
+ * rail keeps its identity, and every other record — including a legacy
+ * PlayScript rail from before Quick C1 that never carried a `scriptId` — is a
+ * typed 'playscript' rail.
+ */
+export function classifyLoopClipRailKind(clip: PhysicPaintRotoLoopClip | undefined): RotoRailKind {
+  if (clip === undefined) return 'playscript';
+  if (clip.railKind === 'reveal') return 'reveal';
+  return isStandardMergedLoopClip(clip) ? 'standard' : 'playscript';
 }
 
 /** The rail-kind label for the track surface and rail set copy. */
 export function getRotoRailKindLabel(railKind: RotoRailKind | undefined): string {
+  if (railKind === 'standard') return 'Standard';
   return isRevealRotoRail(railKind) ? 'Reveal' : 'Play Script';
 }
 
