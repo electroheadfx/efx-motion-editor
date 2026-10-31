@@ -4483,6 +4483,9 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     expect(publishBlock).toContain('const revealClip = revealClipForKey(target.sourceKeyId ?? target.keyId);');
     expect(publishBlock).toContain("error: 'reveal-rail-not-found'");
     expect(publishBlock).toContain('await renderRevealTail({');
+    // IN-01: identity-check the rendered frame before publishing its bytes,
+    // exactly like the stack slow path.
+    expect(publishBlock).toContain('if (!rendered.ok || !revealFrame || revealFrame.appFrame !== frame.appFrame) {');
     expect(publishBlock).toContain('motion: revealClip.motion ?? { deformation: 0, position: 0 },');
     expect(publishBlock).toContain('mode: revealClip.mode,');
     expect(publishBlock).toContain('colorize: revealClip.colorize === true,');
@@ -4491,8 +4494,8 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     expect(publishBlock).toContain('paintSeedVariation: revealClip.paintSeedVariation === true,');
     expect(publishBlock).toContain("durableBaseSource = 'reveal';");
     expect(publishBlock).toContain('publishBytes = revealFrame.bytes;');
-    // A failed reveal render fails closed before the cache write.
-    const revealFail = publishBlock.indexOf('if (!rendered.ok || !revealFrame) {');
+    // A failed or mismatched reveal render fails closed before the cache write.
+    const revealFail = publishBlock.indexOf('if (!rendered.ok || !revealFrame || revealFrame.appFrame !== frame.appFrame) {');
     expect(revealFail).toBeGreaterThan(-1);
     expect(publishBlock.indexOf('return false;', revealFail)).toBeGreaterThan(revealFail);
     expect(publishBlock.indexOf('upsertCachedFrame(')).toBeGreaterThan(revealFail);

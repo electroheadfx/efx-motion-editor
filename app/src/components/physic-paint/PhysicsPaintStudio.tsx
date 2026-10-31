@@ -2015,7 +2015,10 @@ export function PhysicsPaintStudio() {
                 });
             const revealFrame = rendered.ok ? rendered.frames[0] : undefined;
             const revealReason = rendered.ok ? 'reveal-frame-missing' : rendered.error;
-            if (!rendered.ok || !revealFrame) {
+            // IN-01: identity-check the rendered frame exactly like the stack
+            // slow path — a clamped or off-by-one span must never publish
+            // another frame's bytes onto this key.
+            if (!rendered.ok || !revealFrame || revealFrame.appFrame !== frame.appFrame) {
               recordAquarelleRenderSplitEvent('script-bake-result', {
                 appFrame: frame.appFrame,
                 targetKeyId: frame.keyId,
