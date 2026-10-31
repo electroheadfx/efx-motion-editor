@@ -1155,6 +1155,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     rotoBackground: PhysicPaintRotoBackgroundMetadata;
   }): RotoPlayScriptPhysicalPublication {
     const { authority, anchor, loopClips, expectedLaunch, rotoBackground } = input;
+    assertAuthorityPayloads(authority, 'Loop Clip publication');
     const records = authority.physicalRecords.map((record) => ({
       kind: 'real-key' as const,
       keyId: record.keyId,
@@ -2516,6 +2517,7 @@ function buildPhysicalPublication(input: {
   readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
 }): RotoPlayScriptPhysicalPublication {
   const { authority, staged, start, count, destinationAppFrames, expectedLaunch, rotoBackground } = input;
+  assertAuthorityPayloads(authority, 'Play Script publication');
   const targetAppFrames = destinationAppFrames ?? Array.from({ length: count }, (_, index) => start + index);
   const affectedStartAppFrame = targetAppFrames[0] ?? start;
   const affectedEndAppFrame = targetAppFrames[targetAppFrames.length - 1] ?? start + count - 1;
@@ -2601,6 +2603,18 @@ function buildPhysicalPublication(input: {
     selectedKeyId: selected.keyId,
     selectedAppFrame: affectedStartAppFrame,
   };
+}
+
+/**
+ * 261031-dm1: the two publication builders carry authority payloads into a
+ * `ports.commit`. A lean result holds `{ frameIndex, appFrame }` only, so it
+ * must be refused BEFORE any payload clone or record map — `clonePhysicalPayload`
+ * is a shallow spread and would let the minimal payload survive silently.
+ */
+function assertAuthorityPayloads(authority: PhysicPaintRotoAuthorityResult, operation: string): void {
+  if (authority.identitiesOnly === true) {
+    throw new Error(`${operation} requires the full Roto authority; the result was identity-only.`);
+  }
 }
 
 function clonePhysicalPayload(payload: PhysicPaintRotoPhysicalEditRecord['payload']): PhysicPaintRotoPhysicalEditRecord['payload'] {
