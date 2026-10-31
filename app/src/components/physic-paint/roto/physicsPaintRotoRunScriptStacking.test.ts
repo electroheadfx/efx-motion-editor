@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  PhysicPaintRotoLoopClip,
-  PhysicPaintRotoKeyIdentity,
-} from './physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoLoopClip } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolver';
 import {
   RUN_SCRIPT_KEEP_SCRIPT_DEFAULT,
@@ -28,10 +25,13 @@ import {
  */
 
 function rail(overrides: Partial<RunScriptRailView> & { readonly clipId: string }): RunScriptRailView {
+  const placementStart = overrides.placementStart ?? 10;
+  const effectiveEnd = overrides.effectiveEnd ?? 22;
   return {
     railKind: 'playscript',
-    placementStart: 10,
-    effectiveEnd: 22,
+    placementStart,
+    effectiveEnd,
+    placementFragments: [{ start: placementStart, endExclusive: effectiveEnd }],
     phaseOrigin: 10,
     cycleLength: 4,
     repeat: 3,
@@ -78,19 +78,13 @@ function makeClip(loopId: string, overrides: Partial<PhysicPaintRotoLoopClip> = 
 
 describe('toRunScriptRailViews', () => {
   it('groups the canonical ranges by loopId into one view per rail', () => {
-    const identities: readonly PhysicPaintRotoKeyIdentity[] = [
-      { keyId: 'k10', appFrame: 10 },
-      { keyId: 'k12', appFrame: 12 },
-      { keyId: 'k15', appFrame: 15 },
-    ];
     const views = toRunScriptRailViews({
-      clips: [makeClip('a', { keyScriptEdits: true, frameOverrides: [{ appFrame: 15, keyId: 'k15' }] })],
+      clips: [makeClip('a', { keyScriptEdits: true, frameOverrides: [{ appFrame: 15, keyId: 'override:L1:15' }] })],
       context: {
         ranges: [
           makeRange({ loopId: 'a', placementStart: 10, effectiveEnd: 22 }),
           makeRange({ loopId: 'a', placementStart: 22, effectiveEnd: 34 }),
         ],
-        identities,
       },
     });
     expect(views).toHaveLength(1);
@@ -98,6 +92,10 @@ describe('toRunScriptRailViews', () => {
     expect(view.clipId).toBe('a');
     expect(view.placementStart).toBe(10);
     expect(view.effectiveEnd).toBe(34);
+    expect(view.placementFragments).toEqual([
+      { start: 10, endExclusive: 22 },
+      { start: 22, endExclusive: 34 },
+    ]);
     expect(view.phaseOrigin).toBe(10);
     expect(view.cycleLength).toBe(4);
     expect(view.repeat).toBe(3);
@@ -107,20 +105,52 @@ describe('toRunScriptRailViews', () => {
     expect(view.keyScriptEdits).toBe(true);
   });
 
-  it('resolves frame-override key ids through the real-key index and skips unknown ids', () => {
+  it('reads frame-override app frames directly, even for a key id absent from the real-key index (CR-01)', () => {
+    // The override key id is deliberately NOT a real source key: the physical
+    // appFrame stored on the override is authoritative and must still map.
     const views = toRunScriptRailViews({
       clips: [makeClip('a', {
         frameOverrides: [
-          { appFrame: 15, keyId: 'k15' },
-          { appFrame: 99, keyId: 'missing' },
+          { appFrame: 15, keyId: 'override:L1:15' },
+          { appFrame: 15, keyId: 'override:L1:15:dup' },
+          { appFrame: 12, keyId: 'k12' },
         ],
       })],
+      context: { ranges: [makeRange({ loopId: 'a' })] },
+    });
+    expect(views[0]!.frameOverrideAppFrames).toEqual([12, 15]);
+
+    const boundary = resolveRunScriptStackBoundary({
+      runStartAppFrame: 13,
+      requestedCount: 5,
+      targetClipId: 'a',
+      rails: views,
+      parentEndExclusive: 50,
+      ownedKeyIds: [],
+      frameOverrideAppFrames: views[0]!.frameOverrideAppFrames,
+      realKeyAppFrames: [],
+    });
+    expect(boundary.overrideInSpan).toBe(true);
+    expect(boundary.frameOverrideRefusal).toBe('frame-override');
+    expect(boundary.offers).toEqual([]);
+  });
+
+  it('keeps one fragment per canonical range so a gap is not rail membership (CR-03)', () => {
+    const views = toRunScriptRailViews({
+      clips: [makeClip('a')],
       context: {
-        ranges: [makeRange({ loopId: 'a' })],
-        keyIdByAppFrame: new Map([[10, 'k10'], [15, 'k15']]),
+        ranges: [
+          makeRange({ loopId: 'a', placementStart: 10, effectiveEnd: 14 }),
+          makeRange({ loopId: 'a', placementStart: 18, effectiveEnd: 22 }),
+        ],
       },
     });
-    expect(views[0]!.frameOverrideAppFrames).toEqual([15]);
+    expect(views[0]!.placementFragments).toEqual([
+      { start: 10, endExclusive: 14 },
+      { start: 18, endExclusive: 22 },
+    ]);
+    expect(resolveRunScriptDestination({ appFrame: 16, rails: views }).kind).toBe('create');
+    expect(resolveRunScriptDestination({ appFrame: 19, rails: views }).kind).toBe('stack');
   });
 
   it('skips a clip whose ranges are all unresolved (dangling source keys)', () => {
@@ -131,7 +161,6 @@ describe('toRunScriptRailViews', () => {
           loopId: 'broken',
           unresolved: { missingSourceKeyIds: ['gone'] },
         })],
-        identities: [],
       },
     });
     expect(views).toEqual([]);
@@ -142,7 +171,6 @@ describe('toRunScriptRailViews', () => {
       clips: [makeClip('b'), makeClip('a')],
       context: {
         ranges: [makeRange({ loopId: 'b', placementStart: 30, effectiveEnd: 40 }), makeRange({ loopId: 'a', placementStart: 10, effectiveEnd: 20 })],
-        identities: [],
       },
     });
     expect(views.map((view) => view.clipId)).toEqual(['a', 'b']);
@@ -276,7 +304,6 @@ describe('resolveRunScriptStackBoundary', () => {
   const base = {
     runStartAppFrame: 13,
     requestedCount: 5,
-    newCycleEndExclusive: 18,
     targetClipId: 'target',
     parentEndExclusive: 50,
     ownedKeyIds: [] as readonly string[],
@@ -315,11 +342,78 @@ describe('resolveRunScriptStackBoundary', () => {
       offers: ['cancel', 'truncate', 'overwrite'],
       targetEndAtBoundary: false,
     });
+    // WR-03: the collision is the RUN crossing the boundary, not the cycle end.
     expect(resolveRunScriptStackBoundary({
       ...base,
-      newCycleEndExclusive: 30,
+      requestedCount: 20,
       rails: [target, other],
     }).collision).toBe(true);
+    expect(resolveRunScriptStackBoundary({
+      ...base,
+      requestedCount: 16,
+      rails: [target, other],
+    }).collision).toBe(false);
+  });
+
+  it('does not prompt when the run fits inside the truncated target (WR-03/WR-05)', () => {
+    const truncatedTarget = rail({ clipId: 'target', effectiveEnd: 22, truncated: true });
+    const boundary = resolveRunScriptStackBoundary({
+      ...base,
+      runStartAppFrame: 13,
+      requestedCount: 2,
+      rails: [truncatedTarget],
+      parentEndExclusive: 50,
+      ownedKeyIds: ['k10', 'k12'],
+    });
+    expect(boundary.boundaryExclusive).toBe(22);
+    expect(boundary.blocker).toBe('target-end');
+    expect(boundary.collision).toBe(false);
+  });
+
+  it('bounds at a later fragment start of another fragment-split rail (CR-03)', () => {
+    const split = rail({
+      clipId: 'other',
+      placementStart: 6,
+      effectiveEnd: 22,
+      placementFragments: [
+        { start: 6, endExclusive: 9 },
+        { start: 18, endExclusive: 22 },
+      ],
+    });
+    const boundary = resolveRunScriptStackBoundary({ ...base, rails: [target, split] });
+    expect(boundary.boundaryExclusive).toBe(18);
+    expect(boundary.blocker).toBe('other-rail');
+    expect(boundary.victimClipId).toBe('other');
+  });
+
+  it('bounds at the run start when another rail covers it (CR-06)', () => {
+    const covering = rail({
+      clipId: 'other',
+      placementStart: 12,
+      effectiveEnd: 16,
+      placementFragments: [{ start: 12, endExclusive: 16 }],
+    });
+    const boundary = resolveRunScriptStackBoundary({ ...base, rails: [target, covering] });
+    expect(boundary.boundaryExclusive).toBe(13);
+    expect(boundary.freeCount).toBe(0);
+    expect(boundary.collision).toBe(true);
+    expect(boundary.blocker).toBe('other-rail');
+    expect(boundary.victimClipId).toBe('other');
+    expect(boundary.offers).toContain('overwrite');
+  });
+
+  it('ignores a fragment that ends exactly at the run start', () => {
+    const before = rail({
+      clipId: 'other',
+      placementStart: 10,
+      effectiveEnd: 16,
+      placementFragments: [
+        { start: 10, endExclusive: 13 },
+        { start: 18, endExclusive: 22 },
+      ],
+    });
+    const boundary = resolveRunScriptStackBoundary({ ...base, rails: [target, before] });
+    expect(boundary.boundaryExclusive).toBe(18);
   });
 
   it('skips the target rail\'s own later occurrence fragments', () => {
@@ -375,9 +469,9 @@ describe('resolveRunScriptStackBoundary', () => {
   it('bounds at the parent end with cancel/truncate only', () => {
     const boundary = resolveRunScriptStackBoundary({
       ...base,
+      requestedCount: 10,
       rails: [target],
       parentEndExclusive: 20,
-      newCycleEndExclusive: 21,
     });
     expect(boundary).toMatchObject({
       boundaryExclusive: 20,
@@ -606,6 +700,33 @@ describe('buildRunScriptStackReadout', () => {
     });
     expect(readout.spanLabel).toBe('F13–F13');
     expect(readout.outcomeLabel.toLowerCase()).not.toContain('extend');
+  });
+
+  it('names the RAIL capping for a parent-end overflow, never a run truncation (WR-03)', () => {
+    const readout = buildRunScriptStackReadout({
+      runStartAppFrame: 13,
+      count: 2,
+      cycleOffset: 3,
+      grew: 1,
+      truncated: false,
+      parentEndOverflow: true,
+    });
+    expect(readout.spanLabel).toBe('F13–F14');
+    expect(readout.outcomeLabel.toLowerCase()).toContain('rail');
+    expect(readout.outcomeLabel.toLowerCase()).toContain('parent range end');
+    expect(readout.outcomeLabel.toLowerCase()).not.toContain('truncated');
+  });
+
+  it('prefers the run truncation wording when the run itself crosses a boundary', () => {
+    const readout = buildRunScriptStackReadout({
+      runStartAppFrame: 13,
+      count: 10,
+      cycleOffset: 3,
+      grew: 4,
+      truncated: true,
+      parentEndOverflow: true,
+    });
+    expect(readout.outcomeLabel).toBe('Truncated at the next boundary.');
   });
 
   it('says a frame-override refusal is refused, never truncated', () => {

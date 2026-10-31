@@ -1,7 +1,6 @@
 import type {
   PhysicPaintRotoGroupFrameOverride,
   PhysicPaintRotoGroupVisibleRange,
-  PhysicPaintRotoKeyIdentity,
   PhysicPaintRotoLoopClip,
 } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolver';
@@ -24,12 +23,20 @@ import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolve
  * by design — an override inside the written span REFUSES with zero writes.
  */
 
+/** One visible fragment of a resolved Paint rail (a deleted frame splits the rail). */
+export interface RunScriptRailFragment {
+  readonly start: number;
+  readonly endExclusive: number;
+}
+
 /** One resolved Paint rail, grouped from its canonical per-fragment ranges. */
 export interface RunScriptRailView {
   readonly clipId: string;
   readonly railKind: 'playscript' | 'reveal';
   readonly placementStart: number;
   readonly effectiveEnd: number;
+  /** Every canonical visible fragment: a gap is NOT part of the rail. */
+  readonly placementFragments: readonly RunScriptRailFragment[];
   readonly phaseOrigin: number;
   readonly cycleLength: number;
   readonly repeat: number | 'infinity';
@@ -41,16 +48,9 @@ export interface RunScriptRailView {
   readonly truncated: boolean;
 }
 
-/**
- * The canonical derivation context plus the real-key index used to resolve
- * `frameOverrides` key ids to physical app frames. Either index shape is
- * accepted (`identities` from the edit snapshot, `keyIdByAppFrame` from the
- * derived resolution context).
- */
+/** The canonical derivation context (ranges come from the physical resolver). */
 export interface RunScriptRailContext {
   readonly ranges: readonly PhysicPaintRotoLoopRange[];
-  readonly identities?: readonly PhysicPaintRotoKeyIdentity[];
-  readonly keyIdByAppFrame?: ReadonlyMap<number, string>;
 }
 
 export type RunScriptDestination =
@@ -146,25 +146,22 @@ const OFFERS_BY_BLOCKER: Readonly<Record<Exclude<RunScriptStackBlocker, 'open'>,
   'target-end': Object.freeze(['cancel', 'truncate'] as const),
 };
 
-function buildAppFrameByKeyId(context: RunScriptRailContext): Map<string, number> {
-  const map = new Map<string, number>();
-  for (const identity of context.identities ?? []) map.set(identity.keyId, identity.appFrame);
-  if (context.keyIdByAppFrame) {
-    for (const [appFrame, keyId] of context.keyIdByAppFrame) map.set(keyId, appFrame);
-  }
-  return map;
-}
-
 /**
  * Group the canonical ranges into one view per Loop Clip. Unresolved ranges
  * (dangling source keys) are skipped, so an unrepairable rail degrades to the
  * create path instead of accepting a write it cannot re-resolve.
+ *
+ * CR-01: `frameOverrides` already carries its physical `appFrame` — it is read
+ * directly, never re-resolved through a real-key index (which is empty for the
+ * locally painted override keys themselves, so the mapping used to be dead).
+ *
+ * CR-03: each canonical range is one visible fragment. Deleted frames split a
+ * rail into fragments and the gap between them is NOT rail membership.
  */
 export function toRunScriptRailViews(input: {
   readonly clips: readonly PhysicPaintRotoLoopClip[];
   readonly context: RunScriptRailContext;
 }): readonly RunScriptRailView[] {
-  const appFrameByKeyId = buildAppFrameByKeyId(input.context);
   const views: RunScriptRailView[] = [];
   for (const clip of input.clips) {
     const resolved = input.context.ranges
@@ -177,9 +174,16 @@ export function toRunScriptRailViews(input: {
       (max, range) => Math.max(max, range.effectiveEnd),
       resolved[0]!.effectiveEnd,
     );
+    const placementFragments = resolved
+      .map((range) => ({ start: range.placementStart, endExclusive: range.effectiveEnd }))
+      .filter((fragment) => fragment.endExclusive > fragment.start)
+      .sort((left, right) => left.start - right.start || left.endExclusive - right.endExclusive)
+      .filter((fragment, index, fragments) => index === 0
+        || fragment.start !== fragments[index - 1]!.start
+        || fragment.endExclusive !== fragments[index - 1]!.endExclusive)
+      .map((fragment) => Object.freeze(fragment));
     const overrideFrames = (clip.frameOverrides ?? [])
-      .map((override) => appFrameByKeyId.get(override.keyId))
-      .filter((frame): frame is number => frame !== undefined)
+      .map((override) => override.appFrame)
       .sort((left, right) => left - right)
       .filter((frame, index, frames) => index === 0 || frames[index - 1] !== frame);
     views.push(Object.freeze({
@@ -187,6 +191,7 @@ export function toRunScriptRailViews(input: {
       railKind: clip.railKind === 'reveal' ? 'reveal' : 'playscript',
       placementStart: anchor.placementStart,
       effectiveEnd,
+      placementFragments: Object.freeze(placementFragments),
       phaseOrigin: anchor.phaseOrigin,
       cycleLength: anchor.cycleLength,
       repeat: anchor.repeat,
@@ -202,16 +207,20 @@ export function toRunScriptRailViews(input: {
 }
 
 /**
- * Playhead membership only. Exactly one containing rail resolves to 'stack';
- * two or more fail closed ('ambiguous-rail') before the reveal refusal.
- * Outside every rail the create path stays byte-identical to today.
+ * Playhead membership only, evaluated against the visible FRAGMENTS: a deleted
+ * frame splits the rail and the gap between fragments is not part of it (CR-03).
+ * Exactly one containing rail resolves to 'stack'; two or more fail closed
+ * ('ambiguous-rail') before the reveal refusal. Outside every rail the create
+ * path stays byte-identical to today.
  */
 export function resolveRunScriptDestination(input: {
   readonly appFrame: number;
   readonly rails: readonly RunScriptRailView[];
 }): RunScriptDestination {
   const containing = input.rails.filter(
-    (rail) => rail.placementStart <= input.appFrame && input.appFrame < rail.effectiveEnd,
+    (rail) => rail.placementFragments.some(
+      (fragment) => fragment.start <= input.appFrame && input.appFrame < fragment.endExclusive,
+    ),
   );
   if (containing.length === 0) return Object.freeze({ kind: 'create' }) as RunScriptDestination;
   if (containing.length > 1) {
@@ -293,16 +302,23 @@ interface BoundaryCandidate {
 
 /**
  * The next boundary from the canonical blocker list. The target's own later
- * occurrence fragments never block. Its own truncated effectiveEnd is a
- * lowest-rank candidate: an other-rail / real-key / parent-end candidate on the
- * same frame keeps its classification (and Overwrite offer); 'target-end' wins
- * only when nothing canonical sits there. A frame override inside the requested
- * written span refuses outright with no offers.
+ * occurrence fragments never block. Every visible fragment start of EVERY other
+ * rail is an 'other-rail' candidate (CR-03); a rail whose fragment covers the
+ * run start bounds it immediately at the run start (CR-06). The target's own
+ * truncated effectiveEnd is a lowest-rank candidate: an other-rail / real-key /
+ * parent-end candidate on the same frame keeps its classification (and Overwrite
+ * offer); 'target-end' wins only when nothing canonical sits there. A frame
+ * override inside the requested written span refuses outright with no offers.
+ *
+ * WR-03: `collision` is the RUN crossing the boundary (`runStart + requestedCount
+ * > boundary`), not the cycle end. A run that fits inside a truncated target
+ * therefore never prompts. Lifecycle overflow past the parent end is reported
+ * separately by the caller (`parentEndOverflow`), which routes rail-end capping
+ * through the same explicit Truncate offer.
  */
 export function resolveRunScriptStackBoundary(input: {
   readonly runStartAppFrame: number;
   readonly requestedCount: number;
-  readonly newCycleEndExclusive: number;
   readonly targetClipId: string;
   readonly rails: readonly RunScriptRailView[];
   readonly parentEndExclusive: number;
@@ -328,8 +344,14 @@ export function resolveRunScriptStackBoundary(input: {
   };
   for (const rail of input.rails) {
     if (rail.clipId === input.targetClipId) continue;
-    if (rail.placementStart < input.runStartAppFrame) continue;
-    consider({ frame: rail.placementStart, kind: 'other-rail', victimClipId: rail.clipId });
+    for (const fragment of rail.placementFragments) {
+      if (fragment.endExclusive <= input.runStartAppFrame) continue;
+      if (fragment.start >= input.runStartAppFrame) {
+        consider({ frame: fragment.start, kind: 'other-rail', victimClipId: rail.clipId });
+      } else {
+        consider({ frame: input.runStartAppFrame, kind: 'other-rail', victimClipId: rail.clipId });
+      }
+    }
   }
   for (const key of input.realKeyAppFrames) {
     if (key.appFrame < input.runStartAppFrame) continue;
@@ -353,7 +375,7 @@ export function resolveRunScriptStackBoundary(input: {
     boundaryExclusive: winner.frame,
     blocker,
     victimClipId: open ? null : winner.victimClipId,
-    collision: input.newCycleEndExclusive > winner.frame,
+    collision: input.runStartAppFrame + input.requestedCount > winner.frame,
     freeCount: Math.max(0, winner.frame - input.runStartAppFrame),
     offers,
     overrideInSpan,
@@ -426,13 +448,21 @@ export function planRunScriptStackLifecycle(input: {
   }) as RunScriptStackLifecyclePlan;
 }
 
-/** Dialog readout: resolved span, source-cycle offset, extension/truncation. */
+/**
+ * Dialog readout: resolved span, source-cycle offset, extension/truncation.
+ *
+ * WR-03/WR-05: `truncated` is the RUN crossing a boundary. `parentEndOverflow`
+ * is the lifecycle-only case (the run fits, but the repeat-extended rail end
+ * reaches past the parent range end) — it must name the RAIL's capping, never
+ * claim the run was truncated.
+ */
 export function buildRunScriptStackReadout(input: {
   readonly runStartAppFrame: number;
   readonly count: number;
   readonly cycleOffset: number;
   readonly grew: number;
   readonly truncated: boolean;
+  readonly parentEndOverflow?: boolean;
   readonly frameOverrideRefusal?: 'frame-override' | null;
 }): RunScriptStackReadout {
   const lastFrame = input.runStartAppFrame + Math.max(0, input.count - 1);
@@ -440,9 +470,11 @@ export function buildRunScriptStackReadout(input: {
     ? 'Run refused: a frame override sits inside this span.'
     : input.truncated
       ? 'Truncated at the next boundary.'
-      : input.grew > 0
-        ? `Extends the cycle by ${input.grew} ${input.grew === 1 ? 'frame' : 'frames'}.`
-        : 'Stacks onto the existing cycle.';
+      : input.parentEndOverflow === true
+        ? "The rail's end is capped at the parent range end."
+        : input.grew > 0
+          ? `Extends the cycle by ${input.grew} ${input.grew === 1 ? 'frame' : 'frames'}.`
+          : 'Stacks onto the existing cycle.';
   return Object.freeze({
     spanLabel: `F${input.runStartAppFrame}–F${lastFrame}`,
     offsetLabel: `Source cycle +${input.cycleOffset}`,

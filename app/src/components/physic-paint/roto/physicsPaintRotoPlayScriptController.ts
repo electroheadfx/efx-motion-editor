@@ -13,6 +13,7 @@ import {
   compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  type PhysicPaintRotoGroupFrameOverride,
   type PhysicPaintRotoGroupVisibleRange,
   type PhysicPaintRotoKeyIdentity,
   type PhysicPaintRotoLoopClip,
@@ -145,6 +146,8 @@ export interface RotoPlayScriptStackCollision {
   readonly runCollision: boolean;
   /** The repeat-extended lifecycle would cross the parent end. */
   readonly lifecycleOverflow: boolean;
+  /** The parent range end the RAIL would cross (lifecycle overflow only). */
+  readonly parentEndExclusive: number | null;
 }
 
 export interface RotoPlayScriptRegenerateAffectedGroup {
@@ -762,6 +765,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     readonly realKeyAppFrames: readonly { readonly keyId: string; readonly appFrame: number }[];
   }
 
+  /** A resolved stack destination plus the live facts the decision helpers need. */
+  interface RunScriptStackSurface {
+    readonly destination: Extract<RunScriptDestination, { kind: 'stack' }>;
+    readonly rails: readonly RunScriptRailView[];
+    readonly parentEndExclusive: number;
+    readonly realKeyAppFrames: readonly { readonly keyId: string; readonly appFrame: number }[];
+  }
+
   const stackContext = computed<RunScriptStackLiveContext | null>(() => {
     // The availability revision is the only change signal for the playhead: the
     // selection and the loop collection are plain port reads, so without a
@@ -800,18 +811,44 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   });
 
-  const runDestination = computed<RunScriptDestination>(() => stackContext.value?.destination ?? CREATE_DESTINATION);
-
-  /**
-   * The run start: pinned at open while the dialog is up (the readout and the
-   * write must agree), the live playhead's source-cycle frame otherwise.
-   */
-  const stackRailStart = computed<number | null>(() => {
-    const context = stackContext.value;
+  function stackSurfaceFrom(context: RunScriptStackLiveContext | null): RunScriptStackSurface | null {
     if (context === null || context.destination.kind !== 'stack') return null;
-    const pinned = canonicalStart.value;
-    return confirmationOpen.value && pinned !== null ? pinned : context.destination.runStartAppFrame;
+    return Object.freeze({
+      destination: context.destination,
+      rails: context.rails,
+      parentEndExclusive: context.parentEndExclusive,
+      realKeyAppFrames: context.realKeyAppFrames,
+    }) as RunScriptStackSurface;
+  }
+
+  /* WR-01/WR-02/IN-03: the stack session is PINNED at open. Scrubbing out of the
+     rail while the dialog is up must not flip the surface back to creation; the
+     target rail and the run start stay the pinned ones. The live context still
+     supplies the rails table and the parent end, so a concurrent edit is seen. */
+  const pinnedStackDestination = signal<RunScriptStackSurface | null>(null);
+
+  const stackSurface = computed<RunScriptStackSurface | null>(() => {
+    const pinned = confirmationOpen.value && dialogMode.value === 'apply' ? pinnedStackDestination.value : null;
+    const live = stackSurfaceFrom(stackContext.value);
+    if (pinned === null) return live;
+    return Object.freeze({
+      destination: pinned.destination,
+      rails: live?.rails ?? pinned.rails,
+      parentEndExclusive: live?.parentEndExclusive ?? pinned.parentEndExclusive,
+      realKeyAppFrames: live?.realKeyAppFrames ?? pinned.realKeyAppFrames,
+    }) as RunScriptStackSurface;
   });
+
+  const runDestination = computed<RunScriptDestination>(() => {
+    const pinned = confirmationOpen.value && dialogMode.value === 'apply' ? pinnedStackDestination.value : null;
+    if (pinned !== null) return pinned.destination;
+    // Live destination INCLUDING the refuse states — only the stack helpers use
+    // the narrowed surface.
+    return stackContext.value?.destination ?? CREATE_DESTINATION;
+  });
+
+  /** First written source-cycle frame: the pinned one while the stack dialog is open. */
+  const stackRailStart = computed<number | null>(() => stackSurface.value?.destination.runStartAppFrame ?? null);
 
   function normalizeCycleOffset(value: number, cycleLength: number): number {
     if (cycleLength <= 0) return 0;
@@ -819,62 +856,54 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   function resolveStackBoundaryFor(
-    context: RunScriptStackLiveContext,
+    surface: RunScriptStackSurface,
     runStartAppFrame: number,
     requestedCount: number,
     options?: { readonly excludeClipId?: string | null; readonly ownedKeyIds?: readonly string[] },
   ): RunScriptStackBoundary {
-    const destination = context.destination;
-    if (destination.kind !== 'stack') throw new Error('No stack destination to bound.');
-    const target = destination.rail;
-    const cycleOffset = normalizeCycleOffset(runStartAppFrame - target.phaseOrigin, target.cycleLength);
+    const target = surface.destination.rail;
     const count = Math.max(0, requestedCount);
-    const newCycleLength = Math.max(target.cycleLength, cycleOffset + count);
     const excluded = options?.excludeClipId ?? null;
     return resolveRunScriptStackBoundary({
       runStartAppFrame,
       requestedCount: count,
-      newCycleEndExclusive: target.phaseOrigin + newCycleLength,
       targetClipId: target.clipId,
       rails: excluded === null
-        ? context.rails
-        : Object.freeze(context.rails.filter((rail) => rail.clipId !== excluded)),
-      parentEndExclusive: context.parentEndExclusive,
+        ? surface.rails
+        : Object.freeze(surface.rails.filter((rail) => rail.clipId !== excluded)),
+      parentEndExclusive: surface.parentEndExclusive,
       ownedKeyIds: [...target.sourceKeyIds, ...(options?.ownedKeyIds ?? [])],
       frameOverrideAppFrames: target.frameOverrideAppFrames,
-      realKeyAppFrames: context.realKeyAppFrames,
+      realKeyAppFrames: surface.realKeyAppFrames,
     });
   }
 
   const stackMaxCount = computed(() => {
-    const context = stackContext.value;
+    const surface = stackSurface.value;
     const start = stackRailStart.value;
-    if (context === null || start === null) return 0;
-    return Math.max(0, resolveStackBoundaryFor(context, start, 0).freeCount);
+    if (surface === null || start === null) return 0;
+    return Math.max(0, resolveStackBoundaryFor(surface, start, 0).freeCount);
   });
 
   const stackBoundary = computed<RunScriptStackBoundary | null>(() => {
-    const context = stackContext.value;
+    const surface = stackSurface.value;
     const start = stackRailStart.value;
-    if (context === null || start === null) return null;
-    return resolveStackBoundaryFor(context, start, parsedCount.value.count ?? 0);
+    if (surface === null || start === null) return null;
+    return resolveStackBoundaryFor(surface, start, parsedCount.value.count ?? 0);
   });
 
-  function stackTargetClip(context: RunScriptStackLiveContext): PhysicPaintRotoLoopClip | null {
-    if (context.destination.kind !== 'stack') return null;
-    const clipId = context.destination.rail.clipId;
+  function stackTargetClip(surface: RunScriptStackSurface): PhysicPaintRotoLoopClip | null {
+    const clipId = surface.destination.rail.clipId;
     return currentLoopClips().find((clip) => clip.loopId === clipId) ?? null;
   }
 
   /** The extend-only lifecycle for the current draft count, before any explicit Truncate clamp. */
   function planStackLifecycle(
-    context: RunScriptStackLiveContext,
+    surface: RunScriptStackSurface,
     start: number,
     count: number,
   ): { extension: ReturnType<typeof planRunScriptStackExtension>; plan: ReturnType<typeof planRunScriptStackLifecycle> } {
-    const destination = context.destination;
-    if (destination.kind !== 'stack') throw new Error('No stack destination to plan.');
-    const target = destination.rail;
+    const target = surface.destination.rail;
     const cycleOffset = normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength);
     const extension = planRunScriptStackExtension({
       runStartAppFrame: start,
@@ -883,7 +912,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       count,
     });
     const plan = planRunScriptStackLifecycle({
-      existing: stackTargetClip(context),
+      existing: stackTargetClip(surface),
       phaseOrigin: target.phaseOrigin,
       newCycleLength: extension.newCycleLength,
       repeat: target.repeat,
@@ -892,18 +921,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   const stackCollision = computed<RotoPlayScriptStackCollision | null>(() => {
-    const context = stackContext.value;
+    const surface = stackSurface.value;
     const start = stackRailStart.value;
     const boundary = stackBoundary.value;
     const count = parsedCount.value.count;
-    if (context === null || context.destination.kind !== 'stack' || start === null || boundary === null || count === null) return null;
+    if (surface === null || start === null || boundary === null || count === null) return null;
     // A frame override inside the written span refuses outright — no offers.
     if (boundary.frameOverrideRefusal !== null) return null;
-    const { plan } = planStackLifecycle(context, start, count);
+    const { plan } = planStackLifecycle(surface, start, count);
     // An infinity clip is already parent-bounded and stays lifecycle-less, so its
     // repeat-extended span can never overflow — the rails table owns that bound.
-    const lifecycleOverflow = context.destination.rail.repeat !== 'infinity'
-      && plan.requestedRailEndExclusive > context.parentEndExclusive;
+    const lifecycleOverflow = surface.destination.rail.repeat !== 'infinity'
+      && plan.requestedRailEndExclusive > surface.parentEndExclusive;
     if (!boundary.collision && !lifecycleOverflow) return null;
     return Object.freeze({
       boundaryExclusive: boundary.boundaryExclusive,
@@ -911,34 +940,58 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       victimClipId: boundary.victimClipId,
       runCollision: boundary.collision,
       lifecycleOverflow,
+      parentEndExclusive: lifecycleOverflow ? surface.parentEndExclusive : null,
     }) as RotoPlayScriptStackCollision;
   });
 
   const NO_COLLISION_OFFERS: readonly RunScriptCollisionOffer[] = Object.freeze([] as RunScriptCollisionOffer[]);
+
+  /** CR-05: a victim rail carrying frame overrides cannot be removed — its overrides would dangle. */
+  function victimHasFrameOverrides(surface: RunScriptStackSurface | null, victimClipId: string | null): boolean {
+    if (surface === null || victimClipId === null) return false;
+    const victim = surface.rails.find((rail) => rail.clipId === victimClipId) ?? null;
+    return victim !== null && victim.frameOverrideAppFrames.length > 0;
+  }
+
+  /** CR-04: Overwrite is accepted ONLY for a live other-rail victim without frame overrides. */
+  function overwriteChoiceValid(boundary: RunScriptStackBoundary, surface: RunScriptStackSurface | null): boolean {
+    return boundary.collision
+      && boundary.offers.includes('overwrite')
+      && boundary.blocker === 'other-rail'
+      && boundary.victimClipId !== null
+      && !victimHasFrameOverrides(surface, boundary.victimClipId);
+  }
+
   const collisionOffers = computed<readonly RunScriptCollisionOffer[]>(() => {
+    const surface = stackSurface.value;
     const boundary = stackBoundary.value;
     if (boundary === null || boundary.frameOverrideRefusal !== null) return NO_COLLISION_OFFERS;
     const collision = stackCollision.value;
     if (collision === null) return NO_COLLISION_OFFERS;
     // A lifecycle-only overflow is a parent-end case: Cancel / Truncate, never
     // Overwrite — an unrelated rail further down must not be removable for it.
-    if (!collision.runCollision) return Object.freeze(boundary.offers.filter((offer) => offer !== 'overwrite'));
-    return boundary.offers;
+    // CR-05 filters Overwrite out when the victim rail has frame overrides.
+    return Object.freeze(boundary.offers.filter((offer) => offer !== 'overwrite'
+      || (collision.runCollision && !victimHasFrameOverrides(surface, boundary.victimClipId))));
   });
 
   const stackReadout = computed<RunScriptStackReadout | null>(() => {
-    const context = stackContext.value;
+    const surface = stackSurface.value;
     const start = stackRailStart.value;
-    if (context === null || context.destination.kind !== 'stack' || start === null) return null;
-    const target = context.destination.rail;
+    if (surface === null || start === null) return null;
+    const target = surface.destination.rail;
     const count = parsedCount.value.count ?? 0;
-    const { extension } = planStackLifecycle(context, start, count);
+    const { extension } = planStackLifecycle(surface, start, count);
+    const collision = stackCollision.value;
     return buildRunScriptStackReadout({
       runStartAppFrame: start,
       count,
       cycleOffset: normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength),
       grew: extension.grew,
-      truncated: stackCollision.value !== null,
+      // WR-03: only the RUN crossing a boundary is a truncation; the rail's own
+      // repeat-extended end crossing the parent end is a capping, reported apart.
+      truncated: collision?.runCollision === true,
+      parentEndOverflow: collision !== null && collision.lifecycleOverflow && !collision.runCollision,
       frameOverrideRefusal: stackBoundary.value?.frameOverrideRefusal ?? null,
     });
   });
@@ -986,21 +1039,29 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
      writes nothing until the user picks one of the offered choices. */
   const collisionChoice = signal<RunScriptCollisionOffer | null>(null);
 
-  /** Explicit Truncate: clamp the lifecycle span, never a silent capacity cap. */
+  /**
+   * Explicit Truncate: clamp the lifecycle span, never a silent capacity cap.
+   * WR-03: the clamp is strictly bounded by the explicit end — visibleRanges can
+   * never extend past it, not even through the last-range fallback.
+   */
   function truncateStackLifecycle(
     lifecycle: RunScriptStackLifecycle,
     endExclusive: number,
     phaseOrigin: number,
   ): RunScriptStackLifecycle {
     const previousEnd = lifecycle.originalEndExclusive ?? phaseOrigin;
-    const originalEndExclusive = Math.max(phaseOrigin + 1, Math.min(previousEnd, endExclusive));
+    const originalEndExclusive = Math.max(phaseOrigin, Math.min(previousEnd, endExclusive));
     const clamped = (lifecycle.visibleRanges ?? [])
       .map((range) => ({
         start: Math.max(phaseOrigin, range.start),
         endExclusive: Math.min(originalEndExclusive, range.endExclusive),
       }))
       .filter((range) => range.endExclusive > range.start);
-    const visibleRanges = clamped.length > 0 ? clamped : [{ start: phaseOrigin, endExclusive: originalEndExclusive }];
+    const visibleRanges = clamped.length > 0
+      ? clamped
+      : originalEndExclusive > phaseOrigin
+        ? [{ start: phaseOrigin, endExclusive: originalEndExclusive }]
+        : [];
     return Object.freeze({
       ...lifecycle,
       originalEndExclusive,
@@ -1173,6 +1234,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
     ports.stopPlayback();
     const selected = ports.getSelection();
+    // WR-01/WR-02/IN-03: capture the resolved stack surface BEFORE any await, so
+    // the dialog session is pinned to this rail + run start even if the playhead
+    // moves while the authority round-trip is in flight.
+    const stackSurfaceAtOpen = destination.kind === 'stack' ? stackSurfaceFrom(stackContext.peek()) : null;
     const stackStart = destination.kind === 'stack' ? destination.runStartAppFrame : null;
     const operationId = nextOperationId('authority');
     phase.value = 'preparing'; status.value = 'Preparing Play Script…'; error.value = null;
@@ -1232,6 +1297,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // natural duration (creation keeps today's 3). No silent clamp — an
         // over-span count still parses and confirm raises the collision prompt.
         collisionChoice.value = null;
+        pinnedStackDestination.value = stackSurfaceAtOpen;
+        // WR-06: a stack destination is Paint-only — the Reveal tab must never
+        // stay selected from an earlier open.
+        if (railTab.peek() !== 'paint') railTab.value = 'paint';
         const natural = selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null;
         const seeded = String(natural ?? 3);
         if (countText.peek() !== seeded) countText.value = seeded;
@@ -1243,6 +1312,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         status.value = `Run Script onto ${destination.rail.clipId} · F${runStart}–F${runStart + seededCount - 1}`;
         return;
       }
+      pinnedStackDestination.value = null;
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
     } catch (cause) { fail(cause); }
@@ -1790,6 +1860,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   async function confirm(): Promise<boolean> {
+    // WR-06: a stack destination outranks the tab — the Reveal branch must never
+    // consume a stack confirm (the dialog hides Reveal on a stack anyway).
+    if (runDestination.peek().kind === 'stack') return confirmStack();
     if (dialogMode.peek() === 'loop-edit') return updateLoop();
     if (railTab.peek() === 'reveal') return confirmReveal();
     return confirmGeneration();
@@ -2060,34 +2133,55 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
    * `keyScriptEdits`.
    */
   async function confirmStack(): Promise<boolean> {
-    const context = stackContext.peek();
-    if (context === null || context.destination.kind !== 'stack') return false;
-    const target = context.destination.rail;
+    // WR-10: a confirm while a bake/commit is already in flight is a no-op.
+    if (isBusyPhase(phase.peek())) return false;
+    const surface = stackSurface.peek();
+    if (surface === null) return false;
+    const target = surface.destination.rail;
     const selectedId = ports.library.selectedId.peek();
     const launch = ports.getLaunchContext();
     const requested = parsedCount.peek().count;
-    const start = canonicalStart.peek() ?? context.destination.runStartAppFrame;
+    const start = surface.destination.runStartAppFrame;
     if (disposed || !selectedId || !launch?.project || requested === null) return false;
     if (disabledReason.peek()) return false;
+    // WR-01/WR-02/IN-03: re-resolve the live playhead. An open session is pinned;
+    // if the playhead no longer sits on the same rail at the same source frame,
+    // refuse with zero writes instead of writing to a guessed destination.
+    if (confirmationOpen.peek() && !stackDestinationStillCurrent(target.clipId, start)) {
+      collisionChoice.value = null;
+      phase.value = 'idle'; status.value = null;
+      error.value = 'Play Script destination changed before commit. Nothing changed.';
+      return false;
+    }
     // Keep script ON (261031-i54 task 3): a flag-on rail records this run's
     // slices as an APPEND and re-bakes the raw union over its known-empty base.
     // Every other path — OFF, a flag-off target, or no union port — keeps the
     // replace mode, so the executed mode always matches the visible switch.
     const unionBake = ports.bakeStackedRailKey;
     const useUnion = unionBake !== undefined && keepScriptEffective.peek();
-    const boundary = resolveStackBoundaryFor(context, start, requested);
+    const boundary = resolveStackBoundaryFor(surface, start, requested);
     if (boundary.frameOverrideRefusal !== null) {
+      collisionChoice.value = null;
       phase.value = 'idle'; status.value = null;
       error.value = 'Run refused: a frame override sits inside this span. Nothing changed.';
       return false;
     }
-    const requestedPlan = planStackLifecycle(context, start, requested).plan;
+    const requestedPlan = planStackLifecycle(surface, start, requested).plan;
     const lifecycleOverflow = target.repeat !== 'infinity'
-      && requestedPlan.requestedRailEndExclusive > context.parentEndExclusive;
+      && requestedPlan.requestedRailEndExclusive > surface.parentEndExclusive;
     const needsChoice = boundary.collision || lifecycleOverflow;
     let victimClipId: string | null = null;
     let effectiveCount = requested;
     let lifecycleEnd: number | null = null;
+    // CR-04/CR-05: a stale or disallowed Overwrite choice refuses with zero writes.
+    if (collisionChoice.peek() === 'overwrite' && !overwriteChoiceValid(boundary, surface)) {
+      collisionChoice.value = null;
+      phase.value = 'idle'; status.value = null;
+      error.value = victimHasFrameOverrides(surface, boundary.victimClipId)
+        ? 'Overwrite is unavailable: the other rail has frame overrides. Choose Truncate or Cancel.'
+        : 'Overwrite is no longer available for this run. Choose Truncate or Cancel.';
+      return false;
+    }
     if (needsChoice) {
       const choice = collisionChoice.peek();
       if (choice === null) {
@@ -2101,12 +2195,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         phase.value = 'idle'; status.value = 'Run Script cancelled.'; error.value = null;
         return false;
       }
-      if (choice === 'overwrite' && boundary.blocker === 'other-rail' && boundary.victimClipId !== null) {
+      if (choice === 'overwrite' && overwriteChoiceValid(boundary, surface)) {
         // Overwrite removes the victim rail in this same commit; its keys stay
         // as ordinary keys, so they must not block the rerun either.
         victimClipId = boundary.victimClipId;
-        const victim = context.rails.find((rail) => rail.clipId === victimClipId) ?? null;
-        const rerun = resolveStackBoundaryFor(context, start, requested, {
+        const victim = surface.rails.find((rail) => rail.clipId === victimClipId) ?? null;
+        const rerun = resolveStackBoundaryFor(surface, start, requested, {
           excludeClipId: victimClipId,
           ownedKeyIds: victim?.sourceKeyIds ?? [],
         });
@@ -2122,9 +2216,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // clamp applies ONLY to an explicit parent-end overflow — never a silent cap.
         effectiveCount = Math.min(requested, boundary.freeCount);
       }
-      const clampedPlan = planStackLifecycle(context, start, effectiveCount).plan;
-      if (target.repeat !== 'infinity' && clampedPlan.requestedRailEndExclusive > context.parentEndExclusive) {
-        lifecycleEnd = context.parentEndExclusive;
+      const clampedPlan = planStackLifecycle(surface, start, effectiveCount).plan;
+      if (target.repeat !== 'infinity' && clampedPlan.requestedRailEndExclusive > surface.parentEndExclusive) {
+        lifecycleEnd = surface.parentEndExclusive;
       }
       if (effectiveCount <= 0) {
         collisionChoice.value = null;
@@ -2132,6 +2226,36 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         error.value = 'No free span remains before the next boundary. Nothing changed.';
         return false;
       }
+    }
+
+    // WR-08: extending a cycle that another rail links to would silently detach
+    // that rail from the shared source cycle. Refuse BEFORE the bake.
+    const writeCycleOffset = normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength);
+    const writeExtension = planRunScriptStackExtension({
+      runStartAppFrame: start,
+      cycleLength: target.cycleLength,
+      cycleOffset: writeCycleOffset,
+      count: effectiveCount,
+    });
+    if (writeExtension.grew > 0) {
+      const linkedRails = currentLoopClips().filter((clip) => clip.loopId !== target.clipId
+        && clip.loopId !== victimClipId
+        && sameOrderedIds(clip.sourceKeyIds, target.sourceKeyIds));
+      if (linkedRails.length > 0) {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = `This rail shares its source cycle with ${linkedRails.length} linked rail(s). Extending the cycle would break the link. Nothing changed.`;
+        return false;
+      }
+    }
+    // WR-04: a stack run renders with the TARGET RAIL's stored settings, never
+    // the creation-only drafts in the dialog.
+    const currentTarget = stackTargetClip(surface);
+    if (currentTarget === null) {
+      collisionChoice.value = null;
+      phase.value = 'idle'; status.value = null;
+      error.value = 'The target Loop Clip disappeared before commit. Nothing changed.';
+      return false;
     }
 
     const acceptedGeneration = ++generation;
@@ -2142,9 +2266,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
       assertCurrent(acceptedGeneration);
       if (!authority.ok || effectiveCount > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
-      const motion = { ...dialogMotion.peek() };
-      const renderMode = mode.peek();
-      const renderPaintSeedVariation = paintSeedVariation.peek();
+      // WR-04: the target rail's persisted settings drive this run — its mode,
+      // its motion (zeros when absent) and its paint-seed flag. The dialog's
+      // creation drafts are irrelevant on a stack.
+      const motion = currentTarget.motion === undefined
+        ? { deformation: 0, position: 0 }
+        : { ...currentTarget.motion };
+      const renderMode = currentTarget.mode;
+      const renderPaintSeedVariation = currentTarget.paintSeedVariation === true;
       const rotoBackground = { ...ports.getBackgroundMetadata() };
       const snapshot = await ports.library.loadSnapshot(selectedId);
       assertCurrent(acceptedGeneration);
@@ -2191,25 +2320,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         if (!record) throw new Error(`Committed run is missing frame ${appFrame}.`);
         return record.keyId;
       });
-      const currentTarget = stackTargetClip(context);
-      if (currentTarget === null) throw new Error('The target Loop Clip disappeared before commit.');
       const existingEntries = target.sourceKeyIds.map((keyId, index) => ({ keyId, offset: target.sourceOffsets[index] ?? index }));
       const incomingEntries = destinationAppFrames.map((appFrame, index) => ({
         keyId: touchedKeyIds[index]!,
         offset: appFrame - target.phaseOrigin,
       }));
       const mergedSourceKeyIds = mergeStackedSourceKeyIds(existingEntries, incomingEntries).map((entry) => entry.keyId);
-      const cycleOffset = normalizeCycleOffset(start - target.phaseOrigin, target.cycleLength);
-      const extension = planRunScriptStackExtension({
-        runStartAppFrame: start,
-        cycleLength: target.cycleLength,
-        cycleOffset,
-        count: effectiveCount,
-      });
       const lifecyclePlan = planRunScriptStackLifecycle({
         existing: currentTarget,
         phaseOrigin: target.phaseOrigin,
-        newCycleLength: extension.newCycleLength,
+        newCycleLength: writeExtension.newCycleLength,
         repeat: target.repeat,
       });
       const lifecycle = lifecyclePlan.lifecycle === null || lifecycleEnd === null
@@ -2274,12 +2394,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         count: effectiveCount,
       });
       appliedSummaryLine1.value = appliedSummary.line1;
-      appliedSummaryLine2.value = `F${start}–F${start + effectiveCount - 1} · Stacked onto the existing rail · Cycle ${extension.newCycleLength}f × ${target.repeat === 'infinity' ? '∞' : target.repeat}`;
+      appliedSummaryLine2.value = `F${start}–F${start + effectiveCount - 1} · Stacked onto the existing rail · Cycle ${writeExtension.newCycleLength}f × ${target.repeat === 'infinity' ? '∞' : target.repeat}`;
       phase.value = 'complete'; progress.value = { completed: effectiveCount, total: effectiveCount };
       status.value = `Run Script complete · ${effectiveCount} frames`;
-      confirmationOpen.value = false; ports.log(status.value);
+      confirmationOpen.value = false;
+      pinnedStackDestination.value = null;
+      ports.log(status.value);
       return true;
     } catch (cause) {
+      // CR-04: a stale explicit choice never survives a failed confirm.
+      collisionChoice.value = null;
       if (isAbort(cause)) { phase.value = 'cancelled'; status.value = 'Run Script cancelled'; error.value = null; ports.log(status.value); }
       else fail(cause);
       return false;
@@ -2288,6 +2412,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   /** 261031-i54: write the explicit choice and re-run the same confirm. */
   async function confirmStackCollision(choice: RunScriptCollisionOffer): Promise<boolean> {
+    // WR-10: a second click while a bake/commit is in flight is a no-op.
+    if (isBusyPhase(phase.peek())) return false;
     if (collisionChoice.peek() !== choice) collisionChoice.value = choice;
     return confirmStack();
   }
@@ -2733,8 +2859,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   }
 
-  function closeConfirmation(): void { if (!isBusyPhase(phase.peek())) confirmationOpen.value = false; }
-  function cancel(): void { if (canCancel.peek()) { generation += 1; abortController?.abort(); abortController = null; } else closeConfirmation(); }
+  function closeConfirmation(): void {
+    if (isBusyPhase(phase.peek())) return;
+    pinnedStackDestination.value = null;
+    confirmationOpen.value = false;
+  }
+  function cancel(): void {
+    if (canCancel.peek()) {
+      generation += 1;
+      abortController?.abort();
+      abortController = null;
+      pinnedStackDestination.value = null;
+    } else closeConfirmation();
+  }
   function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; progress.value = null; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
   function nextOperationId(kind: string): string { return `roto-play-script-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
@@ -3322,7 +3459,37 @@ function sameOrderedIds(left: readonly string[], right: readonly string[]): bool
   return left.length === right.length && left.every((keyId, index) => keyId === right[index]);
 }
 
-/** Field-exact Loop Clip collection comparison for the commit acknowledgement. */
+/** Ordered visible-range equality — order is meaningful (fragments read left to right). */
+function sameVisibleRanges(
+  left: readonly PhysicPaintRotoGroupVisibleRange[] | undefined,
+  right: readonly PhysicPaintRotoGroupVisibleRange[] | undefined,
+): boolean {
+  const leftRanges = left ?? [];
+  const rightRanges = right ?? [];
+  return leftRanges.length === rightRanges.length && leftRanges.every((range, index) => {
+    const candidate = rightRanges[index];
+    return candidate !== undefined && range.start === candidate.start && range.endExclusive === candidate.endExclusive;
+  });
+}
+
+/** Ordered frame-override equality — the override key ids and frames must both match. */
+function sameFrameOverrides(
+  left: readonly PhysicPaintRotoGroupFrameOverride[] | undefined,
+  right: readonly PhysicPaintRotoGroupFrameOverride[] | undefined,
+): boolean {
+  const leftOverrides = left ?? [];
+  const rightOverrides = right ?? [];
+  return leftOverrides.length === rightOverrides.length && leftOverrides.every((override, index) => {
+    const candidate = rightOverrides[index];
+    return candidate !== undefined && override.appFrame === candidate.appFrame && override.keyId === candidate.keyId;
+  });
+}
+
+/**
+ * Field-exact Loop Clip collection comparison for the commit acknowledgement.
+ * WR-07: the lifecycle frame fields participate too — an ack that silently
+ * rewrites phaseOrigin/visibleRanges/frameOverrides is a mismatch, not a pass.
+ */
 function sameLoopClipCollections(
   left: readonly PhysicPaintRotoLoopClip[] | undefined,
   right: readonly PhysicPaintRotoLoopClip[],
@@ -3337,6 +3504,7 @@ function sameLoopClipCollections(
       && clip.repeat === candidate.repeat
       && clip.mode === candidate.mode
       && clip.scriptId === candidate.scriptId
+      && (clip.railKind ?? null) === (candidate.railKind ?? null)
       && (clip.motion === undefined) === (candidate.motion === undefined)
       && (clip.motion === undefined
         || (clip.motion.deformation === candidate.motion!.deformation
@@ -3346,6 +3514,12 @@ function sameLoopClipCollections(
       && (clip.photoWiggle ?? false) === (candidate.photoWiggle ?? false)
       && (clip.keyScriptEdits ?? false) === (candidate.keyScriptEdits ?? false)
       && (clip.paintSeedVariation ?? false) === (candidate.paintSeedVariation ?? false)
-      && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null);
+      && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null)
+      && (clip.syncState ?? null) === (candidate.syncState ?? null)
+      && (clip.provenanceState ?? null) === (candidate.provenanceState ?? null)
+      && (clip.phaseOrigin ?? null) === (candidate.phaseOrigin ?? null)
+      && (clip.originalEndExclusive ?? null) === (candidate.originalEndExclusive ?? null)
+      && sameVisibleRanges(clip.visibleRanges, candidate.visibleRanges)
+      && sameFrameOverrides(clip.frameOverrides, candidate.frameOverrides);
   });
 }

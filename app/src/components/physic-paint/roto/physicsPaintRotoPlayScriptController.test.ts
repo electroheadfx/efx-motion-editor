@@ -4304,7 +4304,12 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.validationError.value).toBeNull();
     expect(test.controller.destinationRange.value).toBe('F11–F59');
     expect(await test.controller.confirm()).toBe(true);
-    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 49 });
+    // WR-04: the TARGET RAIL is static, so the bake settles ONE wash (today's
+    // static law) and derives the 49 output frames from it.
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 1 });
+    const written = test.commit.mock.calls[0]![0].records.map((record) => record.appFrame);
+    expect(written).toContain(11);
+    expect(written).toContain(59);
   });
 
   it('parses a typed count above the free span so confirm raises the collision prompt instead of clamping', async () => {
@@ -4557,7 +4562,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     // A frame override is a lifecycle member: the clip must carry the full
     // durable lifecycle or the strict model guard rejects it.
     const clip = stackClip(2, {
-      frameOverrides: [{ appFrame: 11, keyId: 'S2' }],
+      // CR-01: the override key id is NOT a real source key; its stored appFrame
+      // is authoritative and must drive the refusal on its own.
+      frameOverrides: [{ appFrame: 11, keyId: 'override:L1:11' }],
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 10,
@@ -4620,5 +4627,322 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(await test.controller.confirm()).toBe(false);
     expect(test.commit).not.toHaveBeenCalled();
     expect(test.controller.error.value).toContain('changed before commit');
+  });
+
+  /* ---- Review remediation: WR-01/WR-02/IN-03, CR-04..CR-06, WR-04, WR-06..WR-10 ---- */
+
+  const otherRail = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip => ({
+    loopId: 'L2',
+    placementStart: 20,
+    sourceKeyIds: ['K20', 'K21'],
+    repeat: 1,
+    mode: 'static',
+    scriptId: 'script-2',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    ...overrides,
+  });
+
+  const withOtherRailRecords = () => [
+    ...CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+  ];
+
+  it('pins the stack session while the dialog is open and refuses a moved playhead (WR-01/WR-02)', async () => {
+    const test = stackHarness([stackClip(2)], { canonicalStart: 13 }, {}, { kind: 'real-key', keyId: null, appFrame: 17 });
+    await test.controller.openConfirmation();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    expect(test.controller.runStartAppFrame.value).toBe(13);
+    const pinnedSpan = test.controller.stackReadout.value?.spanLabel;
+
+    // Scrub out of every rail while the dialog stays open: the pinned session
+    // must not flip to the creation surface.
+    test.setSelection({ kind: 'empty', keyId: null, appFrame: 40 });
+    test.bumpAvailability();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    expect(test.controller.runStartAppFrame.value).toBe(13);
+    expect(test.controller.stackReadout.value?.spanLabel).toBe(pinnedSpan);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('destination changed before commit');
+    // Only the open-time authority request; the refused confirm asked for none.
+    expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('treats gaps between fragments as outside the rail (CR-03)', async () => {
+    const fragmented = stackClip(1, {
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 22,
+      visibleRanges: [{ start: 10, endExclusive: 14 }, { start: 18, endExclusive: 22 }],
+      frameOverrides: [],
+    });
+    const insideGap = stackHarness([fragmented], {}, {}, { kind: 'empty', keyId: null, appFrame: 16 });
+    expect(insideGap.controller.runDestination.value.kind).toBe('create');
+    const onFragment = stackHarness([fragmented], {}, {}, { kind: 'empty', keyId: null, appFrame: 19 });
+    expect(onFragment.controller.runDestination.value.kind).toBe('stack');
+    if (onFragment.controller.runDestination.value.kind === 'stack') {
+      // The run re-anchors to the fragment's source-cycle frame, not the playhead.
+      expect(onFragment.controller.runDestination.value.runStartAppFrame).toBe(11);
+    }
+  });
+
+  it('refuses a stale Overwrite when the run no longer reaches the other rail (CR-04)', async () => {
+    const test = stackHarness(
+      [stackClip(5), otherRail()],
+      {
+        canonicalStart: 11,
+        layerEndExclusive: 24,
+        capacity: 49,
+        physicalRecords: [
+          ...withOtherRailRecords(),
+          physicalRecord('K20', 20, 'k20'),
+          physicalRecord('K21', 21, 'k21'),
+        ],
+      },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '12';
+    expect(test.controller.stackCollision.value).toMatchObject({ runCollision: true, lifecycleOverflow: true });
+    expect(test.controller.collisionOffers.value).toContain('overwrite');
+
+    // Shrink the run: it now fits before the other rail, only the rail's
+    // repeat-extended end overflows the parent range. Overwrite is gone.
+    test.controller.countText.value = '2';
+    expect(test.controller.stackCollision.value).toMatchObject({ runCollision: false, lifecycleOverflow: true });
+    expect(test.controller.collisionOffers.value).not.toContain('overwrite');
+
+    expect(await test.controller.confirmStackCollision('overwrite')).toBe(false);
+    expect(test.controller.error.value).toContain('Overwrite is no longer available');
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.bakeOptions).toHaveLength(0);
+  });
+
+  it('filters Overwrite out when the victim rail carries frame overrides (CR-05)', async () => {
+    const victim = otherRail({
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 20,
+      originalEndExclusive: 22,
+      visibleRanges: [{ start: 20, endExclusive: 22 }],
+      frameOverrides: [{ appFrame: 20, keyId: 'override:L2:20' }],
+    });
+    const test = stackHarness(
+      [stackClip(5), victim],
+      {
+        canonicalStart: 11,
+        layerEndExclusive: 24,
+        capacity: 49,
+        physicalRecords: [
+          ...withOtherRailRecords(),
+          physicalRecord('K20', 20, 'k20'),
+          physicalRecord('K21', 21, 'k21'),
+        ],
+      },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '12';
+    expect(test.controller.stackCollision.value?.runCollision).toBe(true);
+    expect(test.controller.collisionOffers.value).not.toContain('overwrite');
+
+    expect(await test.controller.confirmStackCollision('overwrite')).toBe(false);
+    expect(test.controller.error.value).toBe('Overwrite is unavailable: the other rail has frame overrides. Choose Truncate or Cancel.');
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.bakeOptions).toHaveLength(0);
+  });
+
+  it('bounds at the run start when another rail covers it, with Truncate aborting (CR-06)', async () => {
+    // The covering rail starts BEFORE the target and only exposes the [12,16)
+    // lifecycle fragment. Its placementStart never truncates the target's
+    // range, and it shares the source cycle so no foreign real-key boundary
+    // cuts its own fragment short.
+    const covering: PhysicPaintRotoLoopClip = {
+      loopId: 'L2',
+      placementStart: 8,
+      sourceKeyIds: [...CYCLE_IDS],
+      repeat: 2,
+      mode: 'static',
+      scriptId: 'script-2',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 8,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 12, endExclusive: 16 }],
+      frameOverrides: [],
+    };
+    const test = stackHarness(
+      [stackClip(2), covering],
+      {
+        canonicalStart: 13,
+        layerEndExclusive: 60,
+        capacity: 49,
+        physicalRecords: withOtherRailRecords(),
+      },
+      {},
+      { kind: 'real-key', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    // The playhead 17 is on the target; the run re-anchors at 13, which the
+    // other rail's fragment [12,16) covers.
+    expect(test.controller.runStartAppFrame.value).toBe(13);
+    expect(test.controller.stackBoundary.value).toMatchObject({
+      boundaryExclusive: 13,
+      blocker: 'other-rail',
+      victimClipId: 'L2',
+      freeCount: 0,
+      collision: true,
+    });
+    expect(test.controller.collisionOffers.value).toContain('overwrite');
+
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(false);
+    expect(test.controller.error.value).toContain('No free span remains');
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.bakeOptions).toHaveLength(0);
+  });
+
+  it('renders a stack run with the target rail settings, not the dialog drafts (WR-04)', async () => {
+    const target = stackClip(1, {
+      mode: 'progressive',
+      motion: { deformation: 7, position: 9, rotation: 0, scale: 0 },
+      paintSeedVariation: true,
+      overrideColor: '#abcdef',
+    });
+    const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    // Creation-only drafts disagree with the rail's stored settings.
+    test.controller.mode.value = 'static';
+    test.controller.dialogMotion.value = { deformation: 50, position: 50, rotation: 0, scale: 0 };
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 2, paintSeedVariation: 'progressive' });
+    // The progressive poser receives the target rail's stored motion and the
+    // run start — never the dialog's creation drafts.
+    expect(bakePose.poser).toHaveBeenCalledWith(
+      { width: 10, height: 10 },
+      { deformation: 7, position: 9, rotation: 0, scale: 0 },
+      11,
+      'white',
+    );
+    expect(test.controller.appliedSummary.line1.value).toContain('#abcdef');
+    const written = test.commit.mock.calls[0]![0].records.map((record) => record.appFrame);
+    expect(written).toContain(11);
+    expect(written).toContain(12);
+  });
+
+  it('never routes a stack confirm to the Reveal tab (WR-06)', async () => {
+    const createReveal = vi.fn(async () => ({ ok: true } as const));
+    const test = stackHarness([stackClip(1)], { canonicalStart: 11 }, { createReveal }, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation({ railTab: 'reveal' });
+    // The stack branch forces the Paint tab regardless of the open option.
+    expect(test.controller.railTab.value).toBe('paint');
+    test.controller.railTab.value = 'reveal'; // stale tab, defensively ignored
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(createReveal).not.toHaveBeenCalled();
+    expect(test.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a second confirm while a bake is in flight (WR-10)', async () => {
+    let release!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      release = () => resolve({
+        ok: true,
+        frames: Array.from({ length: 2 }, (_, index) => ({
+          frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
+        })),
+      });
+    }));
+    const test = stackHarness([stackClip(1, { mode: 'progressive' })], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    const first = test.controller.confirm();
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(1));
+    expect(await test.controller.confirm()).toBe(false);
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(test.bakeOptions).toHaveLength(1);
+    expect(test.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to extend a cycle another rail links to, then allows a fitting run (WR-08)', async () => {
+    const linked = otherRail({ placementStart: 30, sourceKeyIds: [...CYCLE_IDS] });
+    const test = stackHarness(
+      [stackClip(1), linked],
+      { canonicalStart: 11, layerEndExclusive: 60, capacity: 49 },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '6'; // offset 1 + 6 = 7 > cycle 4 → grows
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('shares its source cycle with 1 linked rail(s)');
+    expect(test.controller.error.value).toContain('Nothing changed');
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.commit).not.toHaveBeenCalled();
+
+    // A run that stays inside the cycle does not break the link.
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    expect(test.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['phaseOrigin', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, phaseOrigin: (clip.phaseOrigin ?? 0) + 1 })],
+    ['originalEndExclusive', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, originalEndExclusive: (clip.originalEndExclusive ?? 0) + 1 })],
+    ['visibleRanges', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, visibleRanges: [{ start: 10, endExclusive: 11 }] })],
+    ['frameOverrides', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, frameOverrides: [{ appFrame: 10, keyId: 'override:ack' }] })],
+    ['syncState', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, syncState: 'modified' as const })],
+    ['provenanceState', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, provenanceState: 'detached' as const })],
+    ['railKind', (clip: PhysicPaintRotoLoopClip) => ({ ...clip, railKind: 'reveal' as const })],
+  ])('rejects a mismatched acknowledgement that rewrites %s (WR-07)', async (_field, mutate) => {
+    const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+      ok: true,
+      operationId: 'accepted-operation',
+      acceptedRevision: 'revision-2',
+      records: publication.records,
+      interpolationMode: publication.interpolationMode,
+      selectedKeyId: publication.selectedKeyId,
+      selectedAppFrame: publication.selectedAppFrame,
+      loopClips: (publication.loopClips ?? []).map((clip) => mutate(clip)),
+    }));
+    const test = stackHarness(
+      [stackClip(1, { mode: 'progressive' })],
+      { canonicalStart: 11 },
+      { commit },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+  });
+
+  it('reports a lifecycle-only overflow as the rail capping, never a run truncation (WR-03/WR-05)', async () => {
+    const test = stackHarness(
+      [stackClip(3)],
+      { canonicalStart: 11, layerEndExclusive: 20, capacity: 9 },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    expect(test.controller.stackCollision.value).toMatchObject({
+      runCollision: false,
+      lifecycleOverflow: true,
+      parentEndExclusive: 20,
+    });
+    const outcome = test.controller.stackReadout.value?.outcomeLabel ?? '';
+    expect(outcome).toContain('parent range end');
+    expect(outcome).not.toContain('Truncated at the next boundary');
   });
 });
