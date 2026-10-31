@@ -117,6 +117,7 @@ interface FakeControllerSeed {
   paintSeedVariation?: boolean;
   // 261031-i54: Run Script stacking onto an existing Paint rail
   runDestination?: { kind: 'stack'; clipId: string } | { kind: 'create' } | { kind: 'refuse'; reason: 'ambiguous-rail' | 'reveal-target' };
+  stackOverrideColor?: string | null;
   repeatLocked?: boolean;
   framesMax?: number;
   destinationRange?: string | null;
@@ -190,6 +191,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     paintSeedVariation: sig(seed.paintSeedVariation ?? false),
     // 261031-i54: Run Script stacking onto an existing Paint rail
     runDestination: sig(seed.runDestination ?? { kind: 'create' as const }),
+    stackOverrideColor: sig<string | null>(seed.stackOverrideColor ?? null),
     repeatLocked: sig(seed.repeatLocked ?? false),
     framesMax: sig(seed.framesMax ?? 4),
     stackReadout: sig(seed.stackReadout ?? null),
@@ -229,6 +231,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setPhotoWiggle: vi.fn(),
     setKeyScriptEdits: vi.fn(),
     setPaintSeedVariation: vi.fn(),
+    useBrushColor: vi.fn(),
     setKeepScript: vi.fn(),
     confirmStackCollision: vi.fn(),
   } as unknown as RotoPlayScriptController;
@@ -1747,16 +1750,16 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     const tree = renderDialog(controller);
     expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
     expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
-    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
     expect(findAll(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
-    // The right column is filled by the Motion wiggle instead of going empty.
+    // The right column is filled by Color over Motion instead of going empty.
     expect(findAll(tree, byClass('physics-paint-play-script-side-stack'))).toHaveLength(1);
     // The stack-specific surfaces and the run span stay.
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
-    expect(textOf(tree)).toContain('This run updates the rail’s Rail Type and Motion wiggle.');
+    expect(textOf(tree)).toContain('This run updates the rail’s Rail Type, Motion wiggle and Color.');
 
     // Creation keeps every one of them.
     const create = renderDialog(createFakeController({ keyScriptEdits: true, paintSeedVariation: true }).controller);
@@ -1765,6 +1768,21 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(findAll(create, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(1);
     expect(findAll(create, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(1);
+  });
+
+  it('seeds the stack Color from the rail and adopts the brush color only on request (UAT 261031-i54)', () => {
+    const { controller } = createFakeController(stackSeed({
+      overrideEnabled: true,
+      stackOverrideColor: '#abcdef',
+    }));
+    const tree = renderDialog(controller);
+    const colorCard = findOne(tree, byClass('physics-paint-play-script-card-color'));
+    // The rail's stored color is shown, not the app's current brush color.
+    expect(textOf(colorCard)).toContain('#abcdef');
+    expect(textOf(colorCard)).not.toContain('Picked from the app\'s brush color panel');
+    const link = findOne(colorCard, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Use brush color');
+    handler(link, 'onClick')();
+    expect(controller.useBrushColor).toHaveBeenCalled();
   });
 
   it('hides the Rail kind tabs and never renders the Reveal surface on a stack (WR-06)', () => {

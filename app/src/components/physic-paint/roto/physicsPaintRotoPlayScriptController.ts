@@ -507,6 +507,10 @@ export interface RotoPlayScriptController {
   collisionOffers: ReadonlySignal<readonly RunScriptCollisionOffer[]>;
   /** A stack destination never edits the rail's repeat — its Cycle/Never controls are hidden. */
   repeatLocked: ReadonlySignal<boolean>;
+  /** The stack's seeded override color; null falls back to the live brush color. */
+  stackOverrideColor: ReadonlySignal<string | null>;
+  /** Adopt the app's current brush color as the stack's Custom color (no-op off a stack). */
+  useBrushColor: () => void;
   setKeepScript: (enabled: boolean) => void;
   confirmStackCollision: (choice: RunScriptCollisionOffer) => Promise<boolean>;
   /** Guard action: open the Photo Reference modal so the user places a source, then return. */
@@ -530,6 +534,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
   const overrideEnabled = signal(false);
+  // UAT 261031-i54: the stack's color seed. The dialog owns the live brush
+  // color for CREATION; a stack starts from the rail's stored color instead, so
+  // opening and confirming without changes never recolors the rail by accident.
+  const stackOverrideColor = signal<string | null>(null);
   const dialogMotion = signal<{ deformation: number; position: number; rotation: number; scale: number }>({ deformation: 0, position: 0, rotation: 0, scale: 0 });
   const repeatText = signal('1');
   const infinity = signal(false);
@@ -1241,9 +1249,22 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // D-08R single resolution path: Original colors (override disabled) → null; Custom color →
   // the CURRENT brush-color port value, validated defensively (T-42-05-01) — a malformed port
   // value falls back to null (Original-colors behavior), mirroring existing input discipline.
+  // UAT 261031-i54: a stack resolves its seeded rail color first, so an untouched
+  // Custom color keeps the rail's stored value; "Use brush color" reseeds it.
   function resolveOverrideColor(): string | null {
     if (!overrideEnabled.peek()) return null;
+    if (runDestination.peek().kind === 'stack') {
+      return stackOverrideColor.peek() ?? normalizeBrushColor(ports.getBrushColor());
+    }
     return normalizeBrushColor(ports.getBrushColor());
+  }
+
+  /** UAT 261031-i54: adopt the live brush color as the stack's Custom color. */
+  function useBrushColor(): void {
+    if (runDestination.peek().kind !== 'stack') return;
+    const next = normalizeBrushColor(ports.getBrushColor());
+    if (stackOverrideColor.peek() !== next) stackOverrideColor.value = next;
+    if (!overrideEnabled.peek()) overrideEnabled.value = true;
   }
 
   async function openConfirmation(options?: { railTab?: RotoPlayScriptRailTab }): Promise<void> {
@@ -1334,6 +1355,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         dialogMotion.value = toDialogMotion(
           destination.rail.motion ?? { deformation: 0, position: 0 },
         );
+        overrideEnabled.value = destination.rail.overrideColor !== null;
+        stackOverrideColor.value = destination.rail.overrideColor;
         // WR-06: a stack destination is Paint-only — the Reveal tab must never
         // stay selected from an earlier open.
         if (railTab.peek() !== 'paint') railTab.value = 'paint';
@@ -2328,6 +2351,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // describe what was just run. Paint seed and color stay the rail's own.
       const motion = { ...dialogMotion.peek() };
       const renderMode = mode.peek();
+      const renderOverrideColor = resolveOverrideColor();
       const renderPaintSeedVariation = currentTarget.paintSeedVariation === true;
       const rotoBackground = { ...ports.getBackgroundMetadata() };
       const snapshot = await ports.library.loadSnapshot(selectedId);
@@ -2394,6 +2418,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
         mode: renderMode,
         motion: compactPhysicPaintRotoMotion(motion),
+        overrideColor: renderOverrideColor,
         ...(lifecycle ?? {}),
       };
       const nextClips = Object.freeze(currentLoopClips()
@@ -2459,7 +2484,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       hasSuccessfulGeneration = true;
       const appliedSummary = composeAppliedSummary({
         mode: renderMode,
-        overrideColor: currentTarget.overrideColor ?? null,
+        overrideColor: renderOverrideColor,
         motion,
         start,
         count: effectiveCount,
@@ -2965,6 +2990,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     /* 261031-i54: Run Script stacking onto an existing Paint rail. */
     runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout,
     keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked,
+    stackOverrideColor, useBrushColor,
     setKeepScript, confirmStackCollision,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {

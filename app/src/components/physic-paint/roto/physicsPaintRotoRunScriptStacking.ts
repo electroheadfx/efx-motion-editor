@@ -45,6 +45,8 @@ export interface RunScriptRailView {
   readonly mode: 'progressive' | 'static';
   /** The rail's stored Motion wiggle — the stack dialog seeds its sliders from it. */
   readonly motion: PhysicPaintRotoScriptMotionSettings | undefined;
+  /** The rail's stored color override (null = Original colors). */
+  readonly overrideColor: string | null;
   readonly sourceKeyIds: readonly string[];
   readonly sourceOffsets: readonly number[];
   /** Physical app frames of the rail's locally painted override keys. */
@@ -202,6 +204,7 @@ export function toRunScriptRailViews(input: {
       repeat: anchor.repeat,
       mode: clip.mode,
       motion: clip.motion === undefined ? undefined : Object.freeze({ ...clip.motion }),
+      overrideColor: clip.overrideColor ?? null,
       sourceKeyIds: Object.freeze([...anchor.sourceKeyIds]),
       sourceOffsets: Object.freeze([...anchor.sourceOffsets]),
       frameOverrideAppFrames: Object.freeze(overrideFrames),

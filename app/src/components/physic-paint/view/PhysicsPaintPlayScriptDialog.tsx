@@ -127,6 +127,12 @@ export function PhysicsPaintPlayScriptDialog({
   const collisionOffers = stacking ? playScript.collisionOffers.value : [];
   const keepScriptVisible = stacking && playScript.keepScriptVisible.value;
   const keepScriptReason = stacking ? playScript.keepScriptDisabledReason.value : null;
+  // UAT 261031-i54: a stack starts from the rail's stored color; null falls back
+  // to the live brush color (the creation behavior), so "Custom color" on a
+  // rail that had none picks up the app's current brush color.
+  const colorValue = stacking
+    ? (playScript.stackOverrideColor.value ?? brushColor)
+    : brushColor;
 
   useEffect(() => {
     // Focus follows the visible dialog state: G3a starts on its non-destructive
@@ -576,7 +582,7 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
             {stacking ? (
               <span class="physics-paint-play-script-mode-helper">
-                This run updates the rail’s Rail Type and Motion wiggle.
+                This run updates the rail’s Rail Type, Motion wiggle and Color.
               </span>
             ) : null}
           </div>
@@ -831,11 +837,10 @@ export function PhysicsPaintPlayScriptDialog({
           </>
           ) : (
           <>
-          {/* 261031-i54 UAT: the Motion wiggle is editable on a stack and the
-              rail adopts the run's values. Color stays the rail's stored
-              setting, so its card remains creation-only. */}
+          {/* 261031-i54 UAT: the Motion wiggle and the Color are editable on a
+              stack and the rail adopts the run's values; the Color card seeds
+              from the rail, with an explicit "Use brush color" opt-in. */}
           <div class="physics-paint-play-script-side-stack">
-            {stacking ? null : (
             <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${loopEdit ? ' physics-paint-play-script-locked' : ''}`}>
               <div class="physics-paint-play-script-card-heading">
                 <span class="physics-paint-play-script-card-title">Color</span>
@@ -873,16 +878,27 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.overrideEnabled.value ? (
                 <div class="physics-paint-play-script-color-pane">
                   <div class="physics-paint-play-script-color-custom-row">
-                    <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: brushColor }} />
+                    <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: colorValue }} />
                     <div class="physics-paint-play-script-color-meta">
-                      <span class="physics-paint-play-script-color-hex">{brushColor}</span>
-                      <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
+                      <span class="physics-paint-play-script-color-hex">{colorValue}</span>
+                      {stacking ? (
+                        <button
+                          type="button"
+                          class="physics-paint-play-script-heading-link"
+                          title="Use the app's current brush color"
+                          disabled={busy}
+                          onClick={playScript.useBrushColor}
+                        >
+                          Use brush color
+                        </button>
+                      ) : (
+                        <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
+                      )}
                     </div>
                   </div>
                 </div>
               ) : null}
             </div>
-            )}
             {motionCard}
           </div>
           {identicalCycle ? (

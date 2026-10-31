@@ -4893,6 +4893,31 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.bakeOptions).toHaveLength(0);
   });
 
+  it('adopts the rail color by default and the brush color only on request (UAT 261031-i54)', async () => {
+    const target = stackClip(1, { overrideColor: '#abcdef' });
+    const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    expect(test.controller.stackOverrideColor.value).toBe('#abcdef');
+    test.controller.useBrushColor();
+    expect(test.controller.stackOverrideColor.value).toBe('#103c65');
+    expect(test.controller.overrideEnabled.value).toBe(true);
+    test.controller.countText.value = '1';
+    expect(await test.controller.confirm()).toBe(true);
+    const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
+    expect(committed?.overrideColor).toBe('#103c65');
+  });
+
+  it('clears the rail color when the stack switches back to Original colors (UAT 261031-i54)', async () => {
+    const target = stackClip(1, { overrideColor: '#abcdef' });
+    const test = stackHarness([target], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    test.controller.overrideEnabled.value = false;
+    test.controller.countText.value = '1';
+    expect(await test.controller.confirm()).toBe(true);
+    const committed = test.commit.mock.calls[0]![0].loopClips?.find((clip) => clip.loopId === 'L1');
+    expect(committed?.overrideColor).toBeNull();
+  });
+
   it('seeds the run from the rail settings, bakes the dialog settings and adopts them on the rail (UAT 261031-i54)', async () => {
     bakePose.poser.mockClear();
     const target = stackClip(1, {
@@ -4906,6 +4931,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     // The dialog starts from the rail's stored bake settings.
     expect(test.controller.mode.value).toBe('progressive');
     expect(test.controller.dialogMotion.value).toEqual({ deformation: 7, position: 9, rotation: 0, scale: 0 });
+    expect(test.controller.overrideEnabled.value).toBe(true);
+    expect(test.controller.stackOverrideColor.value).toBe('#abcdef');
     // The user may mix another Rail Type and wiggle into the rail.
     test.controller.mode.value = 'static';
     test.controller.dialogMotion.value = { deformation: 50, position: 50, rotation: 0, scale: 0 };
@@ -4921,6 +4948,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(committed).toMatchObject({
       mode: 'static',
       motion: { deformation: 50, position: 50 },
+      overrideColor: '#abcdef',
     });
     expect(test.controller.appliedSummary.line1.value).toContain('#abcdef');
     const written = test.commit.mock.calls[0]![0].records.map((record) => record.appFrame);
