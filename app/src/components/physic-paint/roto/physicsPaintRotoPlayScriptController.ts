@@ -10,6 +10,7 @@ import type {
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
+  canonicalizePhysicPaintRotoLoopClips,
   compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
@@ -58,7 +59,6 @@ import {
   type RunScriptDestination,
   type RunScriptRailView,
   type RunScriptStackBoundary,
-  type RunScriptStackLifecycle,
   type RunScriptStackReadout,
 } from './physicsPaintRotoRunScriptStacking';
 
@@ -293,6 +293,12 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   /** Complete accepted physical document used for Group lifecycle preparation and stale checks. */
   getPhysicalDocument?: () => PhysicPaintRotoPhysicalDocument | null;
   availabilityRevision?: ReadonlySignal<number>;
+  /**
+   * WR-13: the scalar physical-content revision. The Studio reads it straight
+   * from the store's existing signal so the availability snapshot never has to
+   * parse the whole document during render.
+   */
+  physicalRevision?: ReadonlySignal<number>;
   /* ---- 52-05 (G-52-3): the Reveal Photo Rail tab ports ---- */
   /** True when the layer has a photo reference with a source — the D-12 creation guard. */
   hasPhotoReference?: () => boolean;
@@ -855,13 +861,25 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return ((value % cycleLength) + cycleLength) % cycleLength;
   }
 
+  /**
+   * WR-02: the LIVE view of the pinned target rail. The pinned surface keeps the
+   * rail identity and run start stable while the dialog is open, but every
+   * boundary/commit decision must read the live row: an override added while the
+   * dialog was open must refuse `frame-override`, not be silently overwritten.
+   * Falls back to the pinned view when the live table is unavailable.
+   */
+  function liveRailForTarget(surface: RunScriptStackSurface): RunScriptRailView {
+    const clipId = surface.destination.rail.clipId;
+    return surface.rails.find((rail) => rail.clipId === clipId) ?? surface.destination.rail;
+  }
+
   function resolveStackBoundaryFor(
     surface: RunScriptStackSurface,
     runStartAppFrame: number,
     requestedCount: number,
     options?: { readonly excludeClipId?: string | null; readonly ownedKeyIds?: readonly string[] },
   ): RunScriptStackBoundary {
-    const target = surface.destination.rail;
+    const target = liveRailForTarget(surface);
     const count = Math.max(0, requestedCount);
     const excluded = options?.excludeClipId ?? null;
     return resolveRunScriptStackBoundary({
@@ -1039,36 +1057,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
      writes nothing until the user picks one of the offered choices. */
   const collisionChoice = signal<RunScriptCollisionOffer | null>(null);
 
-  /**
-   * Explicit Truncate: clamp the lifecycle span, never a silent capacity cap.
-   * WR-03: the clamp is strictly bounded by the explicit end — visibleRanges can
-   * never extend past it, not even through the last-range fallback.
-   */
-  function truncateStackLifecycle(
-    lifecycle: RunScriptStackLifecycle,
-    endExclusive: number,
-    phaseOrigin: number,
-  ): RunScriptStackLifecycle {
-    const previousEnd = lifecycle.originalEndExclusive ?? phaseOrigin;
-    const originalEndExclusive = Math.max(phaseOrigin, Math.min(previousEnd, endExclusive));
-    const clamped = (lifecycle.visibleRanges ?? [])
-      .map((range) => ({
-        start: Math.max(phaseOrigin, range.start),
-        endExclusive: Math.min(originalEndExclusive, range.endExclusive),
-      }))
-      .filter((range) => range.endExclusive > range.start);
-    const visibleRanges = clamped.length > 0
-      ? clamped
-      : originalEndExclusive > phaseOrigin
-        ? [{ start: phaseOrigin, endExclusive: originalEndExclusive }]
-        : [];
-    return Object.freeze({
-      ...lifecycle,
-      originalEndExclusive,
-      visibleRanges: Object.freeze(visibleRanges.map((range) => Object.freeze({ start: range.start, endExclusive: range.endExclusive }) as PhysicPaintRotoGroupVisibleRange)),
-    }) as RunScriptStackLifecycle;
-  }
-
   /** The live playhead must still resolve to the SAME rail at the SAME source frame. */
   function stackDestinationStillCurrent(clipId: string, start: number): boolean {
     const context = stackContext.peek();
@@ -1076,6 +1064,24 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       && context.destination.kind === 'stack'
       && context.destination.rail.clipId === clipId
       && context.destination.runStartAppFrame === start;
+  }
+
+  /**
+   * WR-02: the live target rail must still be the identical source cycle the
+   * session pinned. A concurrent source-cycle edit (key added/removed/retimed
+   * or a repeat change) that keeps the playhead on the same rail would otherwise
+   * be silently overwritten by the commit's pinned merge.
+   */
+  function stackTargetUnchanged(surface: RunScriptStackSurface): boolean {
+    const context = stackContext.peek();
+    if (context === null) return false;
+    const pinned = surface.destination.rail;
+    const live = context.rails.find((rail) => rail.clipId === pinned.clipId) ?? null;
+    return live !== null
+      && live.phaseOrigin === pinned.phaseOrigin
+      && sameOrderedIds(live.sourceKeyIds, pinned.sourceKeyIds)
+      && live.cycleLength === pinned.cycleLength
+      && live.repeat === pinned.repeat;
   }
 
   function currentLoopClips(): readonly PhysicPaintRotoLoopClip[] {
@@ -2153,6 +2159,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       error.value = 'Play Script destination changed before commit. Nothing changed.';
       return false;
     }
+    // WR-02: an open session also requires the live target rail to still be the
+    // SAME source cycle — a concurrent cycle edit must refuse before any bake.
+    if (confirmationOpen.peek() && !stackTargetUnchanged(surface)) {
+      collisionChoice.value = null;
+      phase.value = 'idle'; status.value = null;
+      error.value = 'The target rail changed while the dialog was open. Nothing changed.';
+      return false;
+    }
     // Keep script ON (261031-i54 task 3): a flag-on rail records this run's
     // slices as an APPEND and re-bakes the raw union over its known-empty base.
     // Every other path — OFF, a flag-off target, or no union port — keeps the
@@ -2172,7 +2186,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const needsChoice = boundary.collision || lifecycleOverflow;
     let victimClipId: string | null = null;
     let effectiveCount = requested;
-    let lifecycleEnd: number | null = null;
+    // WR-05: the explicit-Truncate cap. The rail end may GROW only to the cap —
+    // min(parent end, run boundary) for a run-boundary truncation, the parent
+    // end for a lifecycle-only overflow — while an already longer stored end is
+    // preserved (extend-only; a Truncate never shrinks the rail).
+    let lifecycleCap: number | null = null;
     // CR-04/CR-05: a stale or disallowed Overwrite choice refuses with zero writes.
     if (collisionChoice.peek() === 'overwrite' && !overwriteChoiceValid(boundary, surface)) {
       collisionChoice.value = null;
@@ -2211,14 +2229,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           return false;
         }
         effectiveCount = Math.min(requested, rerun.freeCount);
+        if (rerun.collision) lifecycleCap = Math.min(surface.parentEndExclusive, rerun.boundaryExclusive);
       } else {
-        // Truncate (the default): clip the run at the boundary. The lifecycle
-        // clamp applies ONLY to an explicit parent-end overflow — never a silent cap.
+        // Truncate (the default): clip the run at the boundary and cap the rail
+        // end at that same boundary — never a silent capacity cap.
         effectiveCount = Math.min(requested, boundary.freeCount);
+        if (boundary.collision) lifecycleCap = Math.min(surface.parentEndExclusive, boundary.boundaryExclusive);
       }
       const clampedPlan = planStackLifecycle(surface, start, effectiveCount).plan;
       if (target.repeat !== 'infinity' && clampedPlan.requestedRailEndExclusive > surface.parentEndExclusive) {
-        lifecycleEnd = surface.parentEndExclusive;
+        // Lifecycle-only overflow: the rail's repeat-extended end is capped at
+        // the parent range end; an earlier run-boundary cap stays the tighter bound.
+        lifecycleCap = lifecycleCap === null
+          ? surface.parentEndExclusive
+          : Math.min(lifecycleCap, surface.parentEndExclusive);
       }
       if (effectiveCount <= 0) {
         collisionChoice.value = null;
@@ -2331,10 +2355,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         phaseOrigin: target.phaseOrigin,
         newCycleLength: writeExtension.newCycleLength,
         repeat: target.repeat,
+        ...(lifecycleCap === null ? {} : { cap: lifecycleCap }),
       });
-      const lifecycle = lifecyclePlan.lifecycle === null || lifecycleEnd === null
-        ? lifecyclePlan.lifecycle
-        : truncateStackLifecycle(lifecyclePlan.lifecycle, lifecycleEnd, target.phaseOrigin);
+      const lifecycle = lifecyclePlan.lifecycle;
       const updatedTarget: PhysicPaintRotoLoopClip = {
         ...currentTarget,
         sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
@@ -2869,7 +2892,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       generation += 1;
       abortController?.abort();
       abortController = null;
-      pinnedStackDestination.value = null;
+      // WR-14: the pin survives an abort. Cancelling the bake leaves the dialog
+      // open on the SAME stack surface; only an explicit close (or a new open)
+      // clears it. Unpinning here re-exposed the old silent no-op on create.
     } else closeConfirmation();
   }
   function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; progress.value = null; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
@@ -3489,14 +3514,23 @@ function sameFrameOverrides(
  * Field-exact Loop Clip collection comparison for the commit acknowledgement.
  * WR-07: the lifecycle frame fields participate too — an ack that silently
  * rewrites phaseOrigin/visibleRanges/frameOverrides is a mismatch, not a pass.
+ * CR-07: the two sides come from different projections — the publication is the
+ * raw store collection (infinity clips are deliberately lifecycle-less), the
+ * ack is the coordinator-normalized wire collection (every clip carries a
+ * synthesized lifecycle). Both sides are canonicalized first so the comparison
+ * pits ONE canonical shape against itself.
+ * WR-12: the reveal colorize pair participates too — an ack that drops or
+ * mutates it must fail, not silently replace the accepted collection.
  */
 function sameLoopClipCollections(
   left: readonly PhysicPaintRotoLoopClip[] | undefined,
   right: readonly PhysicPaintRotoLoopClip[],
 ): boolean {
   if (!left || left.length !== right.length) return false;
-  return left.every((clip, index) => {
-    const candidate = right[index];
+  const canonicalLeft = canonicalizePhysicPaintRotoLoopClips(left);
+  const canonicalRight = canonicalizePhysicPaintRotoLoopClips(right);
+  return canonicalLeft.every((clip, index) => {
+    const candidate = canonicalRight[index];
     return candidate !== undefined
       && clip.loopId === candidate.loopId
       && clip.placementStart === candidate.placementStart
@@ -3515,6 +3549,8 @@ function sameLoopClipCollections(
       && (clip.keyScriptEdits ?? false) === (candidate.keyScriptEdits ?? false)
       && (clip.paintSeedVariation ?? false) === (candidate.paintSeedVariation ?? false)
       && (clip.overrideColor ?? null) === (candidate.overrideColor ?? null)
+      && (clip.colorize ?? null) === (candidate.colorize ?? null)
+      && (clip.colorizeMix ?? null) === (candidate.colorizeMix ?? null)
       && (clip.syncState ?? null) === (candidate.syncState ?? null)
       && (clip.provenanceState ?? null) === (candidate.provenanceState ?? null)
       && (clip.phaseOrigin ?? null) === (candidate.phaseOrigin ?? null)

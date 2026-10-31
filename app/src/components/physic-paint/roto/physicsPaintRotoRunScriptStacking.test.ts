@@ -595,6 +595,54 @@ describe('planRunScriptStackLifecycle', () => {
     expect(plan.lifecycle!.originalEndExclusive).toBe(100010);
   });
 
+  it('caps growth at the explicit Truncate boundary (WR-05)', () => {
+    // The rail's repeat-extended end is 20, but the run boundary sits at 15 —
+    // an explicit Truncate may grow the rail only up to that boundary.
+    const plan = planRunScriptStackLifecycle({
+      existing: null,
+      phaseOrigin: 10,
+      newCycleLength: 5,
+      repeat: 2,
+      cap: 15,
+    });
+    expect(plan.requestedRailEndExclusive).toBe(20);
+    expect(plan.lifecycle!.originalEndExclusive).toBe(15);
+    expect(plan.lifecycle!.visibleRanges).toEqual([{ start: 10, endExclusive: 15 }]);
+  });
+
+  it('preserves an existing lifecycle end longer than the cap (WR-05)', () => {
+    // Extend-only: a Truncate never shrinks an already longer stored end.
+    const plan = planRunScriptStackLifecycle({
+      existing: {
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 30,
+        visibleRanges: [{ start: 10, endExclusive: 30 }],
+        frameOverrides: [],
+      },
+      phaseOrigin: 10,
+      newCycleLength: 5,
+      repeat: 2,
+      cap: 15,
+    });
+    expect(plan.requestedRailEndExclusive).toBe(20);
+    expect(plan.lifecycle!.originalEndExclusive).toBe(30);
+    expect(plan.lifecycle!.visibleRanges).toEqual([{ start: 10, endExclusive: 30 }]);
+  });
+
+  it('keeps a capped infinity rail lifecycle-less (WR-05)', () => {
+    const plan = planRunScriptStackLifecycle({
+      existing: null,
+      phaseOrigin: 10,
+      newCycleLength: 6,
+      repeat: 'infinity',
+      cap: 15,
+    });
+    expect(plan.lifecycle).toBeNull();
+    expect(plan.requestedRailEndExclusive).toBe(Number.POSITIVE_INFINITY);
+  });
+
   it('keeps infinity rails lifecycle-less', () => {
     const plan = planRunScriptStackLifecycle({
       existing: {

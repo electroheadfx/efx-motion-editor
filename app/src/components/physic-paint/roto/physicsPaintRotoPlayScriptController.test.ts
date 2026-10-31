@@ -25,12 +25,14 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import type {
+  PhysicPaintRotoGroupFrameOverride,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
   PhysicPaintRotoLoopClip,
 } from './physicsPaintRotoPhysicalModel';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  canonicalizePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   requirePhysicPaintRotoInlineBytes,
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
@@ -4944,5 +4946,345 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const outcome = test.controller.stackReadout.value?.outcomeLabel ?? '';
     expect(outcome).toContain('parent range end');
     expect(outcome).not.toContain('Truncated at the next boundary');
+  });
+
+  /* ---- Final remediation: CR-07, WR-02, WR-05, WR-12, WR-14 ---- */
+
+  it('accepts a coordinator-normalized ack for a lifecycle-less infinity clip (CR-07)', async () => {
+    const recorder = vi.fn();
+    // The coordinator's capture snapshot runs every clip through the wire
+    // normalizer, which synthesizes a one-cycle lifecycle for an infinity clip
+    // that the store deliberately keeps lifecycle-less.
+    const coordinatorCommit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+      ok: true,
+      operationId: 'accepted-operation',
+      acceptedRevision: 'revision-2',
+      records: publication.records,
+      interpolationMode: publication.interpolationMode,
+      selectedKeyId: publication.selectedKeyId,
+      selectedAppFrame: publication.selectedAppFrame,
+      loopClips: canonicalizePhysicPaintRotoLoopClips(publication.loopClips ?? []),
+    }));
+    const test = stackHarness(
+      [stackClip('infinity')],
+      { canonicalStart: 11 },
+      { recordRailKeyScripts: recorder, commit: coordinatorCommit },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    // The publication really carried the lifecycle-less store shape...
+    const publication = expectPlayScriptPublication(coordinatorCommit.mock.calls[0]![0]);
+    const published = publication.loopClips![0]!;
+    expect(published.repeat).toBe('infinity');
+    expect(published.syncState).toBeUndefined();
+    expect(published.phaseOrigin).toBeUndefined();
+    // ...while the ack carried the synthesized one. The canonical comparison
+    // recognises them as the same clip, so the run settles and records instead
+    // of reporting failure after the edit landed.
+    expect(test.controller.error.value).toBeNull();
+    expect(recorder).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a normalized ack whose synthesized lifecycle differs from the canonical publication (CR-07)', async () => {
+    const recorder = vi.fn();
+    const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+      ok: true,
+      operationId: 'accepted-operation',
+      acceptedRevision: 'revision-2',
+      records: publication.records,
+      interpolationMode: publication.interpolationMode,
+      selectedKeyId: publication.selectedKeyId,
+      selectedAppFrame: publication.selectedAppFrame,
+      loopClips: canonicalizePhysicPaintRotoLoopClips(publication.loopClips ?? [])
+        .map((clip) => ({ ...clip, phaseOrigin: (clip.phaseOrigin ?? 0) + 1 })),
+    }));
+    const test = stackHarness(
+      [stackClip(1)],
+      { canonicalStart: 11 },
+      { recordRailKeyScripts: recorder, commit },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+    expect(recorder).not.toHaveBeenCalled();
+  });
+
+  it('compares the reveal colorize pair in the acknowledgement (WR-12)', async () => {
+    const runAck = async (mutate: (clip: PhysicPaintRotoLoopClip) => PhysicPaintRotoLoopClip) => {
+      const commit = vi.fn(async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => ({
+        ok: true,
+        operationId: 'accepted-operation',
+        acceptedRevision: 'revision-2',
+        records: publication.records,
+        interpolationMode: publication.interpolationMode,
+        selectedKeyId: publication.selectedKeyId,
+        selectedAppFrame: publication.selectedAppFrame,
+        loopClips: (publication.loopClips ?? []).map((clip) => mutate({ ...clip })),
+      }));
+      const test = stackHarness(
+        [stackClip(1, { colorize: true, colorizeMix: 100 })],
+        { canonicalStart: 11 },
+        { commit },
+        { kind: 'empty', keyId: null, appFrame: 11 },
+      );
+      await test.controller.openConfirmation();
+      test.controller.countText.value = '2';
+      const completed = await test.controller.confirm();
+      return { test, completed };
+    };
+
+    // The pair is published and echoed verbatim — the ack passes.
+    expect((await runAck((clip) => clip)).completed).toBe(true);
+
+    // A dropped colorize flag silently loses the reveal tint — rejected.
+    const dropped = await runAck((clip) => ({ ...clip, colorize: undefined }));
+    expect(dropped.completed).toBe(false);
+    expect(dropped.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+
+    // A mutated mix does not match the accepted collection — rejected too.
+    const mutated = await runAck((clip) => ({ ...clip, colorizeMix: 40 }));
+    expect(mutated.completed).toBe(false);
+    expect(mutated.test.controller.error.value).toContain('mismatched Loop Clip acknowledgement');
+  });
+
+  it('refuses when the target source cycle changes while the dialog is open (WR-02)', async () => {
+    let clips: readonly PhysicPaintRotoLoopClip[] = [stackClip(2)];
+    const test = stackHarness(
+      [stackClip(2)],
+      {
+        canonicalStart: 13,
+        physicalRecords: [
+          ...CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+          physicalRecord('S5', 14, 'src-S5'),
+        ],
+      },
+      { getRotoLoopClips: () => clips },
+      { kind: 'real-key', keyId: null, appFrame: 13 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(test.controller.runStartAppFrame.value).toBe(13);
+
+    // Concurrent edit: the shared cycle gained a source key while the session
+    // stayed pinned — the playhead still resolves to the same rail and, with
+    // the grown cycle (offset 3 mod 5), to the same run start.
+    clips = [stackClip(2, { sourceKeyIds: [...CYCLE_IDS, 'S5'] })];
+    test.bumpAvailability();
+    expect(test.controller.runStartAppFrame.value).toBe(13);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('The target rail changed while the dialog was open. Nothing changed.');
+    expect(test.requestAuthority).toHaveBeenCalledTimes(1); // the open-time probe only
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the target phase origin changes while the dialog is open (WR-02)', async () => {
+    const lifecycleClip = (phaseOrigin: number): PhysicPaintRotoLoopClip => stackClip(1, {
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [],
+    });
+    let clips: readonly PhysicPaintRotoLoopClip[] = [lifecycleClip(10)];
+    const test = stackHarness(
+      [lifecycleClip(10)],
+      { canonicalStart: 11 },
+      { getRotoLoopClips: () => clips },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    expect(test.controller.runStartAppFrame.value).toBe(11);
+
+    // A phase-origin shift that leaves the run start identical: without the
+    // identity guard the pinned merge would silently overwrite the live cycle.
+    clips = [lifecycleClip(9)];
+    test.bumpAvailability();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    expect(test.controller.runStartAppFrame.value).toBe(11);
+
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('The target rail changed while the dialog was open. Nothing changed.');
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a frame override added inside the span while the dialog is open (WR-02)', async () => {
+    const baseClip = (frameOverrides: readonly PhysicPaintRotoGroupFrameOverride[]): PhysicPaintRotoLoopClip => stackClip(1, {
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [...frameOverrides],
+    });
+    let clips: readonly PhysicPaintRotoLoopClip[] = [baseClip([])];
+    const test = stackHarness(
+      [baseClip([])],
+      { canonicalStart: 11 },
+      { getRotoLoopClips: () => clips },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBeNull();
+
+    // The override lands inside F11–F13 after the session pinned the surface.
+    clips = [baseClip([{ appFrame: 12, keyId: 'override:L1:12' }])];
+    test.bumpAvailability();
+
+    // The boundary reads the LIVE rail, so the refusal is the frame override —
+    // not a stale pass that would commit over the locally painted key.
+    expect(test.controller.stackBoundary.value?.frameOverrideRefusal).toBe('frame-override');
+    expect(test.controller.collisionOffers.value).toEqual([]);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('frame override sits inside this span');
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('keeps the stack session pinned when a bake is cancelled, clearing it only on close (WR-14)', async () => {
+    let release!: () => void;
+    nextBakeBehavior(() => new Promise((resolve) => {
+      release = () => resolve({
+        ok: true,
+        frames: [{ frameIndex: 0, appFrame: 0, bytes: testWebpBytes('staged-cancelled'), width: 10, height: 10 }],
+      });
+    }));
+    const test = stackHarness([stackClip(1)], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    const pending = test.controller.confirm();
+    await vi.waitFor(() => expect(test.bakeEvents).toHaveLength(1));
+    expect(test.controller.phase.value).toBe('rendering');
+
+    test.controller.cancel();
+    release();
+    expect(await pending).toBe(false);
+    expect(test.controller.phase.value).toBe('cancelled');
+
+    // The dialog stays open on the SAME stack surface: the pin survived the
+    // abort even after the playhead leaves the rail.
+    expect(test.controller.confirmationOpen.value).toBe(true);
+    test.setSelection({ kind: 'empty', keyId: null, appFrame: 40 });
+    test.bumpAvailability();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    expect(test.controller.runStartAppFrame.value).toBe(11);
+
+    // Closing clears the pin; the live create destination is back.
+    test.controller.closeConfirmation();
+    expect(test.controller.confirmationOpen.value).toBe(false);
+    expect(test.controller.runDestination.value.kind).toBe('create');
+    expect(test.commit).not.toHaveBeenCalled();
+  });
+
+  it('caps an explicit Truncate at the run boundary and grows the rail only to it (WR-05)', async () => {
+    const blocker: PhysicPaintRotoLoopClip = {
+      loopId: 'L2',
+      placementStart: 15,
+      sourceKeyIds: ['T1', 'T2'],
+      repeat: 1,
+      mode: 'static',
+      scriptId: 'script-2',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const target: PhysicPaintRotoLoopClip = stackClip(2, {
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 14,
+      visibleRanges: [{ start: 10, endExclusive: 14 }],
+      frameOverrides: [],
+    });
+    const test = stackHarness(
+      [target, blocker],
+      {
+        canonicalStart: 11,
+        layerEndExclusive: 60,
+        capacity: 49,
+        physicalRecords: [
+          ...CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+          physicalRecord('T1', 15, 't1'),
+          physicalRecord('T2', 16, 't2'),
+        ],
+      },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '10';
+    expect(test.controller.stackBoundary.value).toMatchObject({
+      boundaryExclusive: 15,
+      blocker: 'other-rail',
+      collision: true,
+    });
+    expect(await test.controller.confirm()).toBe(false);
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(true);
+
+    // The run stops at the boundary...
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.semanticDelta.affectedStartAppFrame).toBe(11);
+    expect(publication.semanticDelta.affectedEndAppFrame).toBe(14);
+    // ...and the rail end grows to F15 (previous end 14, cap 15) — never past it.
+    const committedTarget = publication.loopClips!.find((clip) => clip.loopId === 'L1')!;
+    expect(committedTarget.originalEndExclusive).toBe(15);
+    expect(committedTarget.visibleRanges).toEqual([{ start: 10, endExclusive: 15 }]);
+  });
+
+  it('preserves a longer stored rail end through an explicit Truncate (WR-05)', async () => {
+    const blocker: PhysicPaintRotoLoopClip = {
+      loopId: 'L2',
+      placementStart: 15,
+      sourceKeyIds: ['T1', 'T2'],
+      repeat: 1,
+      mode: 'static',
+      scriptId: 'script-2',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const target: PhysicPaintRotoLoopClip = stackClip(2, {
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 30,
+      visibleRanges: [{ start: 10, endExclusive: 30 }],
+      frameOverrides: [],
+    });
+    const test = stackHarness(
+      [target, blocker],
+      {
+        canonicalStart: 11,
+        layerEndExclusive: 60,
+        capacity: 49,
+        physicalRecords: [
+          ...CYCLE_IDS.map((keyId, index) => physicalRecord(keyId, 10 + index, `src-${keyId}`)),
+          physicalRecord('T1', 15, 't1'),
+          physicalRecord('T2', 16, 't2'),
+        ],
+      },
+      {},
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '10';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(await test.controller.confirmStackCollision('truncate')).toBe(true);
+
+    // The run stops at F15 while the rail's already longer end is preserved —
+    // extend-only means the explicit Truncate never shrinks it.
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.semanticDelta.affectedEndAppFrame).toBe(14);
+    const committedTarget = publication.loopClips!.find((clip) => clip.loopId === 'L1')!;
+    expect(committedTarget.originalEndExclusive).toBe(30);
+    expect(committedTarget.visibleRanges).toEqual([{ start: 10, endExclusive: 30 }]);
   });
 });

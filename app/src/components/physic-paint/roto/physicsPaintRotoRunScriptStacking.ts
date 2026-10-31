@@ -389,12 +389,18 @@ export function resolveRunScriptStackBoundary(input: {
  * NEVER shrink, NEVER consult capacity. `requestedRailEndExclusive` is the
  * unclamped ask — the caller routes any parent-end overflow through the
  * explicit Truncate / Cancel offers. Infinity clips stay lifecycle-less.
+ *
+ * WR-05: `cap` is the explicit-Truncate end (min(parent end, run boundary) for a
+ * run-boundary truncation, the parent end for a lifecycle-only overflow). Growth
+ * stops at the cap, but an existing longer `originalEndExclusive` is PRESERVED —
+ * extend-only means a Truncate may grow the rail to its boundary, never shrink it.
  */
 export function planRunScriptStackLifecycle(input: {
   readonly existing: RunScriptStackLifecycleSource | null | undefined;
   readonly phaseOrigin: number;
   readonly newCycleLength: number;
   readonly repeat: number | 'infinity';
+  readonly cap?: number;
 }): RunScriptStackLifecyclePlan {
   if (input.repeat === 'infinity') {
     return Object.freeze({
@@ -404,7 +410,10 @@ export function planRunScriptStackLifecycle(input: {
   }
   const requestedRailEndExclusive = input.phaseOrigin + input.newCycleLength * input.repeat;
   const previousEnd = input.existing?.originalEndExclusive ?? 0;
-  const originalEndExclusive = Math.max(previousEnd, requestedRailEndExclusive);
+  const cappedEndExclusive = input.cap === undefined
+    ? requestedRailEndExclusive
+    : Math.min(requestedRailEndExclusive, input.cap);
+  const originalEndExclusive = Math.max(previousEnd, cappedEndExclusive);
   const existingRanges = input.existing?.visibleRanges ?? [];
   let visibleRanges: PhysicPaintRotoGroupVisibleRange[];
   if (existingRanges.length === 0) {
