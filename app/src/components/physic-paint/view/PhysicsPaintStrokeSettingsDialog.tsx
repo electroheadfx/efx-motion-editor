@@ -15,12 +15,16 @@ import {
   buildPaintSeedVariationPatch,
   geometryMoveDelta,
   geometryTransform,
+  matchesStrokeTypeFilter,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeTipName,
   shouldMarkSawEmpty,
+  sortStrokesTopmostFirst,
   strokeSettingsFields,
+  strokeToolLabel,
   type StrokeGeometryControl,
   type StrokeGeometrySession,
   type StrokeSettingsDialogBundle,
@@ -38,6 +42,7 @@ import {
 import {
   aquarelleStrokeSettingsDismissed,
   aquarelleStrokeTypeFilter,
+  selectAquarelleStroke,
   setAquarelleStrokeTypeFilter,
   type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
@@ -328,6 +333,9 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (!settingsTabRef.current) settingsTabRef.current = signal<StrokeSettingsTab>('geometry');
 
   const selection = scriptSelectedStrokeIds.value;
+  // 261031-euf: the empty Move/Edit selection shows the stroke LIST instead of
+  // the tab row. Pure render-body read — never a write.
+  const selectionEmpty = selection.size === 0;
   const engineModule = bundle?.module ?? 'brush';
   const surfaceActive = bundle !== null && bundle !== undefined
     ? (engineModule === 'watercolor' ? scriptSelectMode.value : bundle.brushMoveActive)
@@ -421,6 +429,11 @@ export function PhysicsPaintStrokeSettingsDialog({
   const requestedSettingsTab = settingsTabRef.current.value;
   const stackTabAvailable = Boolean(bundle.reorderStroke);
   const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
+  // 261031-euf: the Studio lists the WHOLE frame (default 'all'), so the
+  // dialog applies the shared type filter itself and shows the rows
+  // topmost-first. Pure derivations — no state, no signal writes.
+  const typeRows = strokes.filter((stroke) => matchesStrokeTypeFilter(stroke, strokeTypeFilter));
+  const sortedRows = sortStrokesTopmostFirst(typeRows);
   // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
   // either the filter is Eraser, or a lift sits in the selection (a lift has
   // no paint rows). A requested Paint falls back to Geometry while hidden.
@@ -673,40 +686,73 @@ export function PhysicsPaintStrokeSettingsDialog({
         </div>
       ) : null}
 
-      <div
-        class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
-        role="tablist"
-        aria-label="Stroke settings sections"
-        data-testid="stroke-settings-tabs"
-      >
-        {STROKE_SETTINGS_TABS.map((tab) => {
-          if (tab.key === 'stack' && !stackTabAvailable) return null;
-          if (tab.key === 'paint' && !paintTabAvailable) return null;
-          const active = activeSettingsTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              data-testid={`stroke-settings-tab-${tab.key}`}
-              aria-selected={active}
-              class={`physics-paint-options-tab${active ? ' active' : ''}`}
-              onClick={() => {
-                settingsTabRef.current!.value = tab.key;
-              }}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      {!selectionEmpty ? (
+        <div
+          class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
+          role="tablist"
+          aria-label="Stroke settings sections"
+          data-testid="stroke-settings-tabs"
+        >
+          {STROKE_SETTINGS_TABS.map((tab) => {
+            if (tab.key === 'stack' && !stackTabAvailable) return null;
+            if (tab.key === 'paint' && !paintTabAvailable) return null;
+            const active = activeSettingsTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                data-testid={`stroke-settings-tab-${tab.key}`}
+                aria-selected={active}
+                class={`physics-paint-options-tab${active ? ' active' : ''}`}
+                onClick={() => {
+                  settingsTabRef.current!.value = tab.key;
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
-          {appearances.length === 0 ? (
-            <span data-testid="stroke-settings-empty" style={PAINT_ROW_LABEL_STYLE}>
-              Select a stroke to edit.
-            </span>
+          {selectionEmpty ? (
+            <div
+              data-testid="stroke-settings-list"
+              class="physics-paint-stroke-settings-list"
+            >
+              {sortedRows.map((stroke) => {
+                const typeLabel = strokeToolLabel(stroke.tool);
+                const tipName = resolveStrokeTipName(stroke.brushId);
+                return (
+                  <button
+                    key={stroke.mutationId}
+                    type="button"
+                    data-testid={`stroke-settings-stroke-${stroke.mutationId}`}
+                    aria-label={`${typeLabel} stroke #${stroke.serial}, ${tipName}, position ${stroke.stackPosition} of ${stroke.stackTotal}`}
+                    class="physics-paint-stroke-settings-list-row"
+                    style={{ textTransform: 'none' }}
+                    onClick={() => selectAquarelleStroke(stroke.mutationId)}
+                  >
+                    <span
+                      data-testid="stroke-settings-stroke-dot"
+                      style={{ backgroundColor: stroke.color }}
+                    />
+                    <span data-testid="stroke-settings-stroke-type">{typeLabel}</span>
+                    <span data-testid="stroke-settings-stroke-serial">{`#${stroke.serial}`}</span>
+                    <span data-testid="stroke-settings-stroke-position">
+                      {`${stroke.stackPosition}/${stroke.stackTotal}`}
+                    </span>
+                    <span data-testid="stroke-settings-stroke-tip">{tipName}</span>
+                    {stroke.customResponse ? (
+                      <span data-testid="stroke-settings-stroke-custom">Custom response</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             <>
           {activeSettingsTab === 'geometry' ? (

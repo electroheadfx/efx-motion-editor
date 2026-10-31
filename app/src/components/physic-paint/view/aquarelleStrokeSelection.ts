@@ -18,6 +18,11 @@
 
 import { computed, signal } from '@preact/signals';
 import {
+  NEUTRAL_TOOL_OVERRIDES,
+  TOOL_OVERRIDE_FIELDS,
+  type AquarelleToolOverrides,
+} from '@efxlab/efx-watercolor/brushes';
+import {
   isAquarelleDryEvent,
   type AquarellePayloadEvent,
   type AquarelleStroke,
@@ -378,6 +383,18 @@ export function hitTestAquarelleStroke(
 }
 
 /**
+ * quick 261031-euf: true only when a recorded tool-overrides multiplier
+ * differs from neutral. Absent or all-neutral is a plain response; the value
+ * is display metadata for the stroke-list row, never a render input.
+ */
+function hasCustomToolOverrides(overrides: AquarelleToolOverrides | undefined): boolean {
+  if (!overrides) return false;
+  return TOOL_OVERRIDE_FIELDS.some(
+    (field) => overrides[field] !== NEUTRAL_TOOL_OVERRIDES[field],
+  );
+}
+
+/**
  * Every selectable stroke of the frame in recording order. Reads the
  * revision so a narrow leaf re-renders when the stroke set changes.
  * `filter` narrows the LISTING only — stack positions stay global
@@ -423,6 +440,11 @@ export function listSelectableAquarelleStrokes(
     const stackIndex = stackOrder.indexOf(mutationId);
     const stackPosition = stackIndex < 0 ? stackTotal : stackTotal - stackIndex;
     const color = typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : '#111827';
+    // 261031-euf: additive row metadata (both branches) — never a selection,
+    // hit-test or bounds input.
+    const tool = stroke.tool;
+    const brushId = stroke.brushId;
+    const customResponse = hasCustomToolOverrides(stroke.toolOverrides);
     if (kind === 'lift') {
       // The polygon IS the drawn border: bounds = its exact bbox plus the
       // shared 6px grab margin (padding by the hit radius would float the
@@ -442,6 +464,9 @@ export function listSelectableAquarelleStrokes(
         stackTotal,
         color,
         kind,
+        tool,
+        brushId,
+        customResponse,
         ribbonPx: ribbon.polygonPx,
         hitRadiusPx: ribbon.hitRadiusPx,
       });
@@ -457,6 +482,9 @@ export function listSelectableAquarelleStrokes(
       stackTotal,
       color,
       kind,
+      tool,
+      brushId,
+      customResponse,
     });
   }
   return out;

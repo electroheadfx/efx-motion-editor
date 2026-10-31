@@ -50,6 +50,12 @@ export interface ScriptStrokeSize {
   height: number;
 }
 
+/**
+ * quick 261031-euf: the four recorded paint tools. Display metadata only —
+ * the filter, hit-test and geometry laws stay on `kind`.
+ */
+export type ScriptStrokeTool = 'brush' | 'water' | 'pen' | 'lift';
+
 export interface SelectableScriptStroke {
   mutationId: number;
   pointsPx: CanvasPoint[];
@@ -68,6 +74,24 @@ export interface SelectableScriptStroke {
    * the filter, the drawn ribbon and the hit radius.
    */
   readonly kind: 'paint' | 'lift';
+  /**
+   * quick 261031-euf: the recorded paint tool — the stroke-list row's type
+   * label and the finer tool filter. Display metadata only: no hit-test,
+   * bounds or selection behavior reads it.
+   */
+  readonly tool: ScriptStrokeTool;
+  /**
+   * quick 261031-euf: the recorded tip/brush id (lift strokes record their tip
+   * in this same field). Shown through the tip-name resolution with a raw-id
+   * fallback. Display metadata only.
+   */
+  readonly brushId: string;
+  /**
+   * quick 261031-euf: true only when a `toolOverrides` multiplier differs from
+   * `NEUTRAL_TOOL_OVERRIDES` — the row's "Custom response" marker. Display
+   * metadata only.
+   */
+  readonly customResponse: boolean;
   /**
    * 261029-eur: lift only — the drawn ribbon polygon in canvas px (closed by
    * the renderer with Z). Absent on paint entries.

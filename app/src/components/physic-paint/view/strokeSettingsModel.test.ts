@@ -35,12 +35,16 @@ import {
   buildPaintSeedVariationPatch,
   geometryMoveDelta,
   geometryTransform,
+  matchesStrokeTypeFilter,
   readColorField,
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeTipName,
   shouldMarkSawEmpty,
+  sortStrokesTopmostFirst,
   strokeSettingsFields,
+  strokeToolLabel,
   type ScriptStrokeAppearance,
   type StrokeSettingsDialogBundle,
   type StrokeSettingsField,
@@ -50,6 +54,7 @@ import {
   resetStrokeSettingsDialogLayout,
 } from './PhysicsPaintStrokeSettingsDialog';
 import {
+  scriptSelectedStrokeIds,
   setScriptSelectMode,
   setScriptStrokeSelection,
   type SelectableScriptStroke,
@@ -215,6 +220,20 @@ function renderDialogTab(
   return renderDialog(bundle);
 }
 
+/**
+ * 261031-euf: every list row in traversal (DOM) order. Row testids share the
+ * `stroke-settings-stroke-` prefix; the row is the only BUTTON wearing it —
+ * the dot/type/serial/position/tip/custom metadata are spans.
+ */
+function strokeRows(tree: unknown): AnyVNode[] {
+  return childrenOf(tree).filter((node) => {
+    const vnode = node as AnyVNode;
+    if (vnode.type !== 'button') return false;
+    const testId = vnode.props?.['data-testid'];
+    return typeof testId === 'string' && testId.startsWith('stroke-settings-stroke-');
+  }) as AnyVNode[];
+}
+
 function runDialogEffect(): void {
   // 261029-hy2 CR-01/WR-03: the dialog registers TWO effects — the
   // open-transition raise, then the front-gated Escape listener. Run them in
@@ -305,6 +324,10 @@ function selectableStroke(
     stackTotal: 1,
     color: '#ff0000',
     kind,
+    // 261031-euf: the additive row metadata (defaults; override per test).
+    tool: kind === 'lift' ? 'lift' : 'brush',
+    brushId: 'wc/round-medium',
+    customResponse: false,
   };
 }
 
@@ -325,6 +348,9 @@ function stackStrokeFixture(
     stackTotal,
     color,
     kind: 'paint',
+    tool: 'brush',
+    brushId: 'wc/round-medium',
+    customResponse: false,
   };
 }
 
@@ -1642,7 +1668,11 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
 
     expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-filter')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-empty')!.props.children).toBe('Select a stroke to edit.');
+    // 261031-euf: the dead caption is replaced by the stroke list, and the
+    // tab row leaves with it (there is nothing to edit yet).
+    expect(findByTestId(tree, 'stroke-settings-empty')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-close')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-geometry')).toBeUndefined();
 
@@ -1888,5 +1918,216 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
     expect(dialogSource).toContain('physics-paint-script-switch-label');
     expect(modelSource).toContain('readPaintSeedVariation');
     expect(modelSource).toContain('buildPaintSeedVariationPatch');
+  });
+});
+
+// ============================================================
+//  quick 261031-euf — the empty-selection stroke list.
+//
+//  With Move/Edit active and NO selection the sheet lists every
+//  recorded, non-deleted stroke of the frame (type-filtered,
+//  topmost-first). A row click replaces the selection through the
+//  one shared setter, so the canvas outlines it and the tabs
+//  return in place of the list. Pure model first, then the dialog.
+// ============================================================
+
+describe('261031-euf stroke list model', () => {
+  it('maps each recorded tool to its display label', () => {
+    expect(strokeToolLabel('brush')).toBe('Brush');
+    expect(strokeToolLabel('water')).toBe('Water');
+    expect(strokeToolLabel('pen')).toBe('Pen');
+    expect(strokeToolLabel('lift')).toBe('Eraser');
+  });
+
+  it('matches the stroke-kind filter (paint = any non-lift kind)', () => {
+    const paint = selectableStroke(1, { x: 0, y: 0, width: 1, height: 1 });
+    const lift = selectableStroke(2, { x: 0, y: 0, width: 1, height: 1 }, 'lift');
+    expect(matchesStrokeTypeFilter(paint, 'all')).toBe(true);
+    expect(matchesStrokeTypeFilter(lift, 'all')).toBe(true);
+    expect(matchesStrokeTypeFilter(paint, 'paint')).toBe(true);
+    expect(matchesStrokeTypeFilter(lift, 'paint')).toBe(false);
+    expect(matchesStrokeTypeFilter(lift, 'lift')).toBe(true);
+    expect(matchesStrokeTypeFilter(paint, 'lift')).toBe(false);
+  });
+
+  it('resolves the tip name through findTip with the raw brushId fallback', () => {
+    expect(resolveStrokeTipName('wc/round-medium')).toBe('Round medium');
+    // A preset id (not a tip) falls back to the raw recorded string.
+    expect(resolveStrokeTipName('round')).toBe('round');
+    expect(resolveStrokeTipName('')).toBe('');
+  });
+
+  it('sorts a NEW array topmost-first by position, never mutating the input', () => {
+    const strokes = [
+      stackStrokeFixture(1, 3, 3, 3, '#111111'),
+      stackStrokeFixture(2, 1, 1, 3, '#222222'),
+      stackStrokeFixture(3, 2, 2, 3, '#333333'),
+    ];
+    const sorted = sortStrokesTopmostFirst(strokes);
+    expect(sorted.map((stroke) => stroke.mutationId)).toEqual([2, 3, 1]);
+    expect(sorted).not.toBe(strokes);
+    // The input keeps its order and the SAME objects come back out.
+    expect(strokes.map((stroke) => stroke.mutationId)).toEqual([1, 2, 3]);
+    expect(sorted[0]).toBe(strokes[1]);
+  });
+
+  it('breaks a same-position tie by the creation serial', () => {
+    const strokes = [
+      stackStrokeFixture(1, 5, 2, 3, '#111111'),
+      stackStrokeFixture(2, 4, 2, 3, '#222222'),
+    ];
+    expect(sortStrokesTopmostFirst(strokes).map((stroke) => stroke.mutationId)).toEqual([2, 1]);
+  });
+});
+
+describe('261031-euf empty-selection stroke list dialog', () => {
+  function frameStroke(
+    mutationId: number,
+    overrides: Partial<SelectableScriptStroke>,
+  ): SelectableScriptStroke {
+    return {
+      ...selectableStroke(mutationId, { x: 0, y: 0, width: 100, height: 100 }),
+      ...overrides,
+    };
+  }
+
+  /** A mixed frame: two paints and one lift, distinct positions and tips. */
+  const FRAME_STROKES: readonly SelectableScriptStroke[] = Object.freeze([
+    frameStroke(7, {
+      serial: 1,
+      stackPosition: 2,
+      stackTotal: 3,
+      color: '#aa0000',
+      brushId: 'wc/round-medium',
+    }),
+    frameStroke(9, {
+      serial: 2,
+      stackPosition: 1,
+      stackTotal: 3,
+      color: '#00bb00',
+      brushId: 'wc/flat-wash',
+      customResponse: true,
+    }),
+    frameStroke(8, {
+      serial: 3,
+      stackPosition: 3,
+      stackTotal: 3,
+      color: '#0000cc',
+      kind: 'lift',
+      tool: 'lift',
+      brushId: 'round',
+    }),
+  ]);
+
+  function watercolorListBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [...FRAME_STROKES],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
+      ...overrides,
+    });
+  }
+
+  it('lists the frame strokes topmost-first with no tab row and no old caption', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-dialog')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-empty')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
+
+    // The default Paint filter drops the lift; topmost-first order stands.
+    const rows = strokeRows(tree);
+    expect(rows.map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+    ]);
+
+    const row9 = rows[0]!;
+    expect(row9.props.type).toBe('button');
+    expect(row9.props.class).toContain('physics-paint-stroke-settings-list-row');
+    expect((row9.props.style as Record<string, unknown>).textTransform).toBe('none');
+    expect(row9.props['aria-label']).toContain('Brush');
+    expect(row9.props['aria-label']).toContain('#2');
+    expect(row9.props['aria-label']).toContain('Flat wash');
+    expect(row9.props['aria-label']).toContain('1 of 3');
+    expect(
+      (findByTestId(row9, 'stroke-settings-stroke-dot')!.props.style as Record<string, unknown>)
+        .backgroundColor,
+    ).toBe('#00bb00');
+    expect(findByTestId(row9, 'stroke-settings-stroke-type')!.props.children).toBe('Brush');
+    expect(findByTestId(row9, 'stroke-settings-stroke-serial')!.props.children).toBe('#2');
+    expect(findByTestId(row9, 'stroke-settings-stroke-position')!.props.children).toBe('1/3');
+    expect(findByTestId(row9, 'stroke-settings-stroke-tip')!.props.children).toBe('Flat wash');
+    expect(findByTestId(row9, 'stroke-settings-stroke-custom')!.props.children).toBe('Custom response');
+
+    // The neutral row wears no Custom response marker and its own tip name.
+    const row7 = rows[1]!;
+    expect(findByTestId(row7, 'stroke-settings-stroke-type')!.props.children).toBe('Brush');
+    expect(findByTestId(row7, 'stroke-settings-stroke-serial')!.props.children).toBe('#1');
+    expect(findByTestId(row7, 'stroke-settings-stroke-position')!.props.children).toBe('2/3');
+    expect(findByTestId(row7, 'stroke-settings-stroke-tip')!.props.children).toBe('Round medium');
+    expect(findByTestId(row7, 'stroke-settings-stroke-custom')).toBeUndefined();
+  });
+
+  it('clicking a row selects exactly that stroke and brings the tabs back', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    (findByTestId(tree, 'stroke-settings-stroke-9')!.props.onClick as () => void)();
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+
+    const next = renderDialog(bundle);
+    expect(findByTestId(next, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(next, 'stroke-settings-list')).toBeUndefined();
+    expect(strokeRows(next)).toEqual([]);
+    expect(findByTestId(next, 'stroke-settings-geometry')).toBeDefined();
+  });
+
+  it('a non-empty selection renders the tabs and content with no list', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(watercolorListBundle().bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
+    expect(strokeRows(tree)).toEqual([]);
+  });
+
+  it('the brush sheet renders no list, no rows and no type chrome', () => {
+    const { bundle } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
+    expect(strokeRows(tree)).toEqual([]);
+  });
+
+  it('the Paint/Eraser/All filter narrows the rows and lift rows read Eraser', () => {
+    const { bundle } = watercolorListBundle();
+    setAquarelleSelectMode(true);
+
+    setAquarelleStrokeTypeFilter('all');
+    expect(strokeRows(renderDialog(bundle)).map((row) => row.props['data-testid'])).toEqual([
+      'stroke-settings-stroke-9',
+      'stroke-settings-stroke-7',
+      'stroke-settings-stroke-8',
+    ]);
+
+    setAquarelleStrokeTypeFilter('lift');
+    const liftRows = strokeRows(renderDialog(bundle));
+    expect(liftRows.map((row) => row.props['data-testid'])).toEqual(['stroke-settings-stroke-8']);
+    expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-type')!.props.children).toBe('Eraser');
+    // The preset id (not a tip) falls back to the raw string.
+    expect(findByTestId(liftRows[0]!, 'stroke-settings-stroke-tip')!.props.children).toBe('round');
   });
 });

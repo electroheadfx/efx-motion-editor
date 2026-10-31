@@ -11,7 +11,10 @@
 import { describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import { hashMutationId, mixStrokeSeed } from '@efxlab/efx-paint-host';
-import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  type AquarelleToolOverrides,
+} from '@efxlab/efx-watercolor/brushes';
 import {
   PAINT_SEED_SALT_PARAM,
   isAquarelleDryEvent,
@@ -93,16 +96,21 @@ function stroke(options: {
   timestamp?: number;
   diffusionFrames?: number;
   color?: string | null;
+  brushId?: string;
+  toolOverrides?: AquarelleToolOverrides;
 }): AquarelleStroke {
   return {
     tool: 'brush',
     color: options.color === undefined ? '#103c65' : options.color,
     params: { size: options.size ?? 12 },
-    brushId: 'round',
+    brushId: options.brushId ?? 'round',
     points: options.points,
     timestamp: options.timestamp ?? 0,
     ...(options.diffusionFrames !== undefined
       ? { diffusionFrames: options.diffusionFrames }
+      : {}),
+    ...(options.toolOverrides !== undefined
+      ? { toolOverrides: options.toolOverrides }
       : {}),
     playFrame: options.playFrame,
   };
@@ -1325,5 +1333,59 @@ describe('261031-cf9 beginAquarellePaintSeedRerollEdit', () => {
     } finally {
       setAquarelleScriptEditInFlight(false);
     }
+  });
+});
+
+// ============================================================
+//  quick 261031-euf — the additive row metadata on the listing.
+//
+//  The stroke list shows the recorded tool, the tip name (raw
+//  brushId fallback) and a Custom response marker. The producer
+//  carries them on BOTH branches (paint and lift) without
+//  touching the frame/deleted filtering, ribbon or stack law.
+// ============================================================
+
+describe('261031-euf selectable listing metadata', () => {
+  it('carries the recorded tool, brushId and custom-response flag on both branches', () => {
+    recordAquarelleStroke(10101, stroke({
+      points: [point(0.2, 0.5)],
+      playFrame: 950,
+      brushId: 'wc/round-medium',
+    }));
+    recordAquarelleStroke(10102, {
+      ...stroke({ points: [point(0.4, 0.5)], playFrame: 950, brushId: 'water-mop' }),
+      tool: 'water',
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 },
+    });
+    recordAquarelleStroke(10103, {
+      ...stroke({ points: [point(0.6, 0.5)], playFrame: 950, brushId: 'round' }),
+      tool: 'lift',
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, grain: 1.5 },
+    });
+    // An all-neutral override bag is NOT a custom response.
+    recordAquarelleStroke(10104, stroke({
+      points: [point(0.8, 0.5)],
+      playFrame: 950,
+      brushId: 'wc/flat-dry',
+      toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES },
+    }));
+    // Deleted and other-frame strokes never appear.
+    recordAquarelleStroke(10105, stroke({ points: [point(0.1, 0.5)], playFrame: 951 }));
+    recordAquarelleStroke(10106, stroke({ points: [point(0.3, 0.5)], playFrame: 950 }));
+    markAquarelleStrokeDeleted(10106);
+
+    expect(
+      listSelectableAquarelleStrokes(950, SHEET).map((entry) => [
+        entry.mutationId,
+        entry.tool,
+        entry.brushId,
+        entry.customResponse,
+      ]),
+    ).toEqual([
+      [10101, 'brush', 'wc/round-medium', false],
+      [10102, 'water', 'water-mop', true],
+      [10103, 'lift', 'round', true],
+      [10104, 'brush', 'wc/flat-dry', false],
+    ]);
   });
 });

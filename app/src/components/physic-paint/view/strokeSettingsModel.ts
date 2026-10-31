@@ -14,8 +14,13 @@
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
+import { findTip } from '@efxlab/efx-watercolor/brushes';
 import { paintSeedSaltOf } from '@efxlab/efx-watercolor/payload';
-import type { SelectableScriptStroke, ScriptStrokeSize } from './scriptStrokeEdition';
+import type {
+  SelectableScriptStroke,
+  ScriptStrokeSize,
+  ScriptStrokeTool,
+} from './scriptStrokeEdition';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 export type StrokeSettingsModule = 'brush' | 'watercolor';
@@ -217,6 +222,59 @@ export function readPaintSeedVariation(
 /** The switch's whole-selection flag patch. */
 export function buildPaintSeedVariationPatch(enabled: boolean): ScriptStrokeAppearancePatch {
   return { paintSeedVariation: enabled };
+}
+
+// ============================================================
+//  Stroke list laws (quick 261031-euf). Pure display derivations
+//  over the frame listing: row labels, the kind filter, the tip
+//  name, the topmost-first order and the finer filters. No
+//  Preact, no signals, no DOM — the dialog reads them in its
+//  render body and never writes.
+// ============================================================
+
+export type StrokeListTypeFilter = 'all' | 'paint' | 'lift';
+
+/** Closed four-way map (the engine's tool union is closed on these). */
+const STROKE_TOOL_LABELS: Readonly<Record<ScriptStrokeTool, string>> = Object.freeze({
+  brush: 'Brush',
+  water: 'Water',
+  pen: 'Pen',
+  lift: 'Eraser',
+});
+
+export function strokeToolLabel(tool: ScriptStrokeTool): string {
+  return STROKE_TOOL_LABELS[tool];
+}
+
+/** The kind predicate, mirroring `matchesAquarelleStrokeFilter`. */
+export function matchesStrokeTypeFilter(
+  stroke: Pick<SelectableScriptStroke, 'kind'>,
+  filter: StrokeListTypeFilter,
+): boolean {
+  if (filter === 'all') return true;
+  return filter === 'lift' ? stroke.kind === 'lift' : stroke.kind === 'paint';
+}
+
+/**
+ * The recorded tip's display name. Fail-closed: an unknown id (a preset id,
+ * a deleted custom tip) renders the raw recorded string — never a blank.
+ */
+export function resolveStrokeTipName(brushId: string): string {
+  return findTip(brushId)?.name ?? brushId;
+}
+
+/**
+ * A NEW array ordered topmost-first (position 1 first), the creation serial
+ * ascending as the tie-break. The input array and its objects are untouched.
+ */
+export function sortStrokesTopmostFirst(
+  strokes: readonly SelectableScriptStroke[],
+): SelectableScriptStroke[] {
+  return [...strokes].sort((left, right) => (
+    left.stackPosition !== right.stackPosition
+      ? left.stackPosition - right.stackPosition
+      : left.serial - right.serial
+  ));
 }
 
 export interface StrokeSettingsOpenArgs {
