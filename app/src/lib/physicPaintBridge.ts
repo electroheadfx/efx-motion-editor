@@ -761,6 +761,10 @@ async function applyTransportedPhysicPaintPayload(
 }
 
 export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityRequest): PhysicPaintRotoAuthorityResult {
+  // 261031-dm1: the Create Rail open asks for key identities only. Every lean
+  // result — success OR closed failure — stays marked so a bytes consumer can
+  // fail closed instead of publishing a minimal payload.
+  const identitiesOnly = request.identitiesOnly === true;
   const failure = (error: string, revisionTerms?: { trackRevision: string; documentRevision: string }): PhysicPaintRotoAuthorityResult => ({
     operationId: request.operationId,
     ok: false,
@@ -780,6 +784,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationMode: 'duplicate',
     frames: [],
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, request.trackId),
+    ...(identitiesOnly ? { identitiesOnly: true as const } : {}),
     error,
   });
   if (request.projectContextId !== projectStore.projectContextId.peek()) return failure('Project context changed.');
@@ -817,24 +822,33 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
   );
-  const physicalRecords = records.map((record) => ({
-    keyId: record.keyId,
-    appFrame: record.appFrame,
-    payload: record.payload,
-  }));
+  const physicalRecords = records.map((record) => (identitiesOnly
+    ? {
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: { frameIndex: record.payload.frameIndex, appFrame: record.payload.appFrame },
+      }
+    : {
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: record.payload,
+      }));
   // 52.2-02 (D-07): the wire `frames` projection is a runtime shape and needs
   // pixels, so the inline carrier is asserted here. A reference-only record
   // (package file unreadable at launch) is already "missing content" everywhere
   // else — skip it here rather than failing the whole authority, which would
   // block Play for scripts that don't even read `frames` (the aquarelle bake).
+  // 261031-dm1: lean mode transports identities only, so it never builds frames.
   const frames: PhysicPaintRotoAuthorityResult['frames'] = [];
-  for (const record of records) {
-    if (record.payload.bytes === undefined) continue;
-    frames.push({
-      ...record.payload,
-      bytes: record.payload.bytes,
-      source: 'real-key' as const,
-    });
+  if (!identitiesOnly) {
+    for (const record of records) {
+      if (record.payload.bytes === undefined) continue;
+      frames.push({
+        ...record.payload,
+        bytes: record.payload.bytes,
+        source: 'real-key' as const,
+      });
+    }
   }
   return {
     operationId: request.operationId,
@@ -855,6 +869,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     interpolationMode: interpolation.mode,
     frames,
     interpolationSettings: physicPaintStore.getRotoInterpolationSettings(request.layerId, trackId),
+    ...(identitiesOnly ? { identitiesOnly: true as const } : {}),
   };
 }
 

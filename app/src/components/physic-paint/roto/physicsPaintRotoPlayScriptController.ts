@@ -224,6 +224,15 @@ export interface RotoPlayScriptSourceCycleMatchInput {
   readonly identities: readonly PhysicPaintRotoKeyIdentity[];
 }
 
+/**
+ * 261031-dm1: per-request authority options. Only the Create Rail open asks
+ * for `identitiesOnly` — every byte-carrying consumer keeps the default full
+ * mode by passing no options at all.
+ */
+export interface RotoPlayScriptAuthorityRequestOptions {
+  readonly identitiesOnly?: boolean;
+}
+
 export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryController;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
@@ -269,7 +278,11 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   }) => void;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
-  requestAuthority: (operationId: string, start: number) => Promise<PhysicPaintRotoAuthorityResult>;
+  requestAuthority: (
+    operationId: string,
+    start: number,
+    options?: RotoPlayScriptAuthorityRequestOptions,
+  ) => Promise<PhysicPaintRotoAuthorityResult>;
   commit: (
     publication: RotoGeneratedPhysicalPublication,
     revalidateUnderLease?: () => Promise<string | null>,
@@ -766,7 +779,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const operationId = nextOperationId('authority');
     phase.value = 'preparing'; status.value = 'Preparing Play Script…'; error.value = null;
     try {
-      const authority = await ports.requestAuthority(operationId, selected.appFrame);
+      // 261031-dm1: opening the dialog reads only scalars plus {keyId, appFrame},
+      // so it asks for identities only — no WebP bytes cross the bridge.
+      const authority = await ports.requestAuthority(operationId, selected.appFrame, { identitiesOnly: true });
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
       canonicalStart.value = authority.canonicalStart;
       capacity.value = authority.capacity;

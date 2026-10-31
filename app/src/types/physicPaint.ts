@@ -2111,6 +2111,12 @@ export interface PhysicPaintRotoAuthorityRequest {
   canonicalStart: number;
   /** 46-04: stable UUID of the internal track the authority fingerprints (never the live active track). */
   trackId: string;
+  /**
+   * 261031-dm1: ask for key identities only (no raster bytes). Absent is the
+   * full payload mode every other consumer reads; only the literal `true` is
+   * accepted, and any other value fails the whole request before store reads.
+   */
+  identitiesOnly?: true;
 }
 
 export interface PhysicPaintRotoAuthorityResult {
@@ -2135,6 +2141,12 @@ export interface PhysicPaintRotoAuthorityResult {
   interpolationMode: PhysicPaintRotoInterpolationMode;
   frames: PhysicPaintRotoCacheFrame[];
   interpolationSettings: PhysicPaintRotoInterpolationSettings;
+  /**
+   * 261031-dm1: echoed from the request. When true, `physicalRecords` carry
+   * identities only (`{ frameIndex, appFrame }`) and `frames` is empty — any
+   * bytes-needing consumer MUST fail closed instead of publishing them.
+   */
+  identitiesOnly?: true;
   error?: string;
 }
 
@@ -2748,12 +2760,16 @@ export function isPhysicPaintProjectContextRequestMessage(value: unknown): value
 export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {
   return Boolean(
     isRecord(value) &&
-      hasOnlyKeys(value, ['operationId', 'projectContextId', 'layerId', 'canonicalStart', 'trackId']) &&
+      hasOnlyKeys(value, ['operationId', 'projectContextId', 'layerId', 'canonicalStart', 'trackId', 'identitiesOnly']) &&
       isBoundedOperationId(value.operationId) &&
       isNonEmptyString(value.projectContextId) &&
       isNonEmptyString(value.layerId) &&
       isNonEmptyString(value.trackId) &&
-      isNonNegativeInteger(value.canonicalStart)
+      isNonNegativeInteger(value.canonicalStart) &&
+      // 261031-dm1: the lean flag is exactly-literal — `hasOnlyKeys` only
+      // allowlists the KEY, so any fabricated value (false, 'true', 1, null)
+      // must fail the whole request before a store read.
+      (value.identitiesOnly === undefined || value.identitiesOnly === true)
   );
 }
 

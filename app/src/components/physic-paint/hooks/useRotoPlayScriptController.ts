@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { PhysicPaintRotoAuthorityResult } from '../../../types/physicPaint';
 import {
   createRotoPlayScriptController,
+  type RotoPlayScriptAuthorityRequestOptions,
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
   type RotoPlayScriptPhysicalPublication,
@@ -71,7 +72,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),
       log: (...args) => portsRef.current.log(...args),
-      requestAuthority: (operationId, start) => requestWithTimeout(authorityPending.current, operationId, async () => {
+      requestAuthority: (operationId, start, options) => requestWithTimeout(authorityPending.current, operationId, async () => {
         const context = portsRef.current.getLaunchContext();
         if (!context?.project) throw new Error('Project authority is unavailable.');
         const mode = modeRef.current === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : modeRef.current;
@@ -79,8 +80,17 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         // document's current active track (47-01: the live document, not the
         // launch snapshot); the parent revalidates the track dimension and
         // fails closed on a foreign trackId.
-        await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start, trackId: portsRef.current.getActiveTrackId(context.layerId) }, mode);
-      }, (cause) => authorityFailure(operationId, portsRef.current, cause)),
+        // 261031-dm1: identitiesOnly is written ONLY when the caller asked for
+        // the lean mode — the full request stays byte-identical (no key at all).
+        await sendPhysicPaintRotoAuthorityRequest({
+          operationId,
+          projectContextId: context.project.contextId,
+          layerId: context.layerId,
+          canonicalStart: start,
+          trackId: portsRef.current.getActiveTrackId(context.layerId),
+          ...(options?.identitiesOnly === true ? { identitiesOnly: true as const } : {}),
+        }, mode);
+      }, (cause) => authorityFailure(operationId, portsRef.current, options, cause)),
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
         const operationKind = publication.semanticDelta.kind;
@@ -185,7 +195,12 @@ function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operat
     void send().catch((cause) => { globalThis.clearTimeout(timeout); pending.delete(operationId); resolve(fallback(cause)); });
   });
 }
-function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getActiveTrackId' | 'getSelection'>, cause?: unknown): PhysicPaintRotoAuthorityResult {
+function authorityFailure(
+  operationId: string,
+  ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getActiveTrackId' | 'getSelection'>,
+  options?: RotoPlayScriptAuthorityRequestOptions,
+  cause?: unknown,
+): PhysicPaintRotoAuthorityResult {
   const context = ports.getLaunchContext(); const selection = ports.getSelection();
   const causeMessage = cause instanceof Error && cause.message ? cause.message : null;
   return {
@@ -207,6 +222,9 @@ function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControl
     interpolationMode: 'duplicate',
     frames: [],
     interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
+    // 261031-dm1: a lean failure stays marked lean so the caller can tell the
+    // two modes apart even when the transport never answered.
+    ...(options?.identitiesOnly === true ? { identitiesOnly: true as const } : {}),
     error: causeMessage ?? 'Roto authority request timed out.',
   };
 }
