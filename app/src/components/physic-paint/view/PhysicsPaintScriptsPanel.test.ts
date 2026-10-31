@@ -154,7 +154,7 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(playScriptDialog).toContain('role="dialog"');
     expect(playScriptDialog).not.toContain('aria-modal="true"');
     expect(playScriptDialog).toContain('aria-labelledby="physics-play-script-title"');
-    expect(playScriptDialog).toContain('Max {playScript.capacity.value}');
+    expect(playScriptDialog).toContain('Max {playScript.framesMax.value}');
     expect(playScriptDialog).toContain("id: 'physics-play-script-max'");
     expect(playScriptDialog).toContain('role="switch"');
     expect(playScriptDialog).toContain("if (event.key === 'Escape')");
