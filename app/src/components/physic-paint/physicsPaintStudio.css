@@ -1547,9 +1547,21 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
+/* Second line of the row: the stack position and tip share one flow so the
+   position can never auto-place into the 10px dot column and collide with
+   the tip text. */
+.physics-paint-stroke-settings-list-meta {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
 .physics-paint-stroke-settings-list-tip {
   font-size: 10px;
   color: #9aa5b1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

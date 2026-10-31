@@ -868,26 +868,28 @@ export function PhysicsPaintStrokeSettingsDialog({
                     >
                       {`#${stroke.serial}`}
                     </span>
-                    <span
-                      data-testid="stroke-settings-stroke-position"
-                      class="physics-paint-stroke-settings-list-position"
-                    >
-                      {`${stroke.stackPosition}/${stroke.stackTotal}`}
-                    </span>
-                    <span
-                      data-testid="stroke-settings-stroke-tip"
-                      class="physics-paint-stroke-settings-list-tip"
-                    >
-                      {tipName}
-                    </span>
-                    {stroke.customResponse ? (
+                    <span class="physics-paint-stroke-settings-list-meta">
                       <span
-                        data-testid="stroke-settings-stroke-custom"
-                        class="physics-paint-stroke-settings-list-custom"
+                        data-testid="stroke-settings-stroke-position"
+                        class="physics-paint-stroke-settings-list-position"
                       >
-                        Custom response
+                        {`${stroke.stackPosition}/${stroke.stackTotal}`}
                       </span>
-                    ) : null}
+                      <span
+                        data-testid="stroke-settings-stroke-tip"
+                        class="physics-paint-stroke-settings-list-tip"
+                      >
+                        {tipName}
+                      </span>
+                      {stroke.customResponse ? (
+                        <span
+                          data-testid="stroke-settings-stroke-custom"
+                          class="physics-paint-stroke-settings-list-custom"
+                        >
+                          Custom response
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 );
               })}
