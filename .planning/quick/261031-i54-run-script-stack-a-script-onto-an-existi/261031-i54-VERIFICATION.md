@@ -1,8 +1,8 @@
 ---
 phase: 261031-i54-run-script-stack-a-script-onto-an-existi
-verified: 2026-10-31T16:45:04Z
-status: human_needed
-score: 6/6 must-haves verified
+verified: 2026-10-31T18:08:47Z
+status: passed
+score: 7/7 must-haves verified
 covered_files:
   - .planning/quick/261031-i54-run-script-stack-a-script-onto-an-existi/261031-i54-PLAN.md
   - .planning/quick/261031-i54-run-script-stack-a-script-onto-an-existi/261031-i54-SUMMARY.md
@@ -10,14 +10,16 @@ covered_files:
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
   - app/src/components/physic-paint/hooks/useRotoPlayScriptController.test.ts
   - app/src/components/physic-paint/hooks/useRotoPlayScriptController.ts
+  - app/src/components/physic-paint/physicsPaintStudio.css
   - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.ts
+  - app/src/components/physic-paint/view/PhysicsPaintPlayScriptCards.tsx
   - app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx
   - app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts
-covered_digest: "v3:sha256:17c87c3a91bf342ea0da576c43a7227726f80a094e7036b00e064735e2d04fbb"
+covered_digest: "v3:sha256:0e35a3d5715fe6559a86709870c16fb0ab047b34179bcb3d54f1b52e306dfc77"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -27,57 +29,23 @@ re_verification:
   gaps_remaining: []
   regressions: []
 deferred:
-  - truth: "Keep script ON for flag-off (unscripted) Paint rails, together with the durable-base authority seam"
-    addressed_in: "Quick B (user-authorized split; named in 261031-i54-CONTEXT.md and 261031-i54-PLAN.md)"
-    evidence: "Quick A law: flag-off stack targets render the switch OFF and disabled with a replace reason; the union path is unreachable without persisted keyScriptEdits (controller test 'keeps the union branch unreachable on a flag-off rail', 4475-4493)"
-  - truth: "Reveal rail stacking (extension through the placed photo reference, per-key recording on Reveal rails)"
+  - truth: "Keep script ON for flag-off (unscripted) Paint rails, together with the durable-base authority seam (aquarelleScriptBaseAuthority, prepareRotoScriptTarget rewrite, durableBaseKeyId removal)"
+    addressed_in: "Quick B (user-authorized split, named in 261031-i54-CONTEXT.md, 261031-i54-PLAN.md and SUMMARY)"
+    evidence: "Quick A law: a pixel-only stack target renders Keep OFF + disabled with the composite reason and the union path is gated on keyScriptEdits === true (controller keepScriptEffective 1047-1050; tests 4377, 4478)"
+  - truth: "Reveal rail stacking (extension through the placed photo reference, per-key recording, no-reference refusal)"
     addressed_in: "Quick B"
-    evidence: "Quick A refuses a Reveal rail target without opening the dialog (controller test 4587-4594; stacking refuse 230-232); no Reveal stacking code exists"
+    evidence: "Quick A refuses a Reveal rail target before opening the dialog (stacking 222-228; controller test 4670); no Reveal stacking code exists"
   - truth: "Frame-override bases (stacking over a frame override)"
     addressed_in: "Quick B"
-    evidence: "Quick A refuses a frame override inside the written span with zero writes (controller test 4562-4585; stacking test 496-518)"
-human_verification:
-  - test: "Run Script with the playhead inside an existing Paint rail"
-    expected: "Stacks onto that rail: no second Loop Clip appears, the rail's span grows only as far as the run reaches, and frames before the run keep their pixels."
-    why_human: "Live Studio bake/repaint behavior across the real renderer cannot be exercised by the DOM/controller unit suites."
-  - test: "Run Script with the playhead outside every rail"
-    expected: "Bakes a new rail exactly as today, with no stack surface."
-    why_human: "The byte-identical create path is pinned in unit tests, but the live visible result must be confirmed in the app."
-  - test: "Run Script on a generated/interpolated frame inside a rail, then on one outside every rail"
-    expected: "Inside a rail it is allowed and re-anchors to the source-cycle start; outside every rail the existing generated-interpolation refusal still appears."
-    why_human: "Selection/interpolation state in the live Studio is broader than the test harness."
-  - test: "Extend a repeated rail"
-    expected: "The effective span grows by repeat x cycle growth, the repeat count is unchanged, and earlier occurrences still resolve."
-    why_human: "Repeated-rail resolution on the live canvas and timeline is a visual/user-flow check."
-  - test: "Cross another rail's start and resolve with Cancel / Truncate / Overwrite"
-    expected: "Cancel writes nothing; Truncate clips at the boundary and leaves the other rail untouched; Overwrite removes the other rail, its keys stay as ordinary keys, and one undo restores it exactly."
-    why_human: "Undo/redo across the real history stack and the visible rail removal must be confirmed live."
-  - test: "Repeat overflow at the parent end"
-    expected: "Only Truncate / Cancel are offered; the rail is never silently shortened, and the lifecycle-only copy names the parent-range cap."
-    why_human: "Message clarity and the visible outcome are human checks."
-  - test: "Keep script ON on a flag-on rail: stack a second script, repeat, then save/reopen"
-    expected: "The original strokes remain under the new ones with no doubling; stacking is repeatable with no drift."
-    why_human: "Save/reopen persistence and the rendered union can only be confirmed in the live app."
-  - test: "Keep script OFF on a scripted rail"
-    expected: "Replaces the touched span's pixels and records while frames outside keep theirs."
-    why_human: "Visible pixel replacement versus preserved surrounding frames is a visual check."
-  - test: "Flag-off (unscripted) rail target"
-    expected: "Keep script renders OFF and disabled with the reason that this run replaces the touched span; no ON-checked control ever executes replace."
-    why_human: "The disabled affordance and its reason are user-facing presentation."
-  - test: "Max on a stack destination"
-    expected: "Fills the free span before the next boundary, not the physical capacity."
-    why_human: "The dialog interaction in the live Studio must confirm the value shown and the resulting span."
-  - test: "Source cycle card on a stack destination"
-    expected: "The creation-only Source cycle card never appears for a stack destination."
-    why_human: "Visual dialog composition is confirmed by the DOM test; final layout/visibility should be seen live."
+    evidence: "Quick A refuses a frame override inside the written span with zero writes and no offers (stacking 499-520; controller test 4645; dialog Enter test 1735)"
 ---
 
 # Quick 261031-i54: Run Script — stack a script onto an existing Paint rail (Quick A) Verification Report
 
-**Phase Goal:** Run Script — stack a script onto an existing Paint rail (Quick A: playhead targeting, extend-only cycle growth, Keep script ON for flag-on rails / OFF replace, collision Cancel/Truncate/Overwrite-removal, atomic undo). Quick B (flag-off Keep ON + base authority, Reveal stacking) is explicitly out of scope.
-**Verified:** 2026-10-31T16:45:04Z
-**Status:** human_needed
-**Re-verification:** Yes — freshness re-run at HEAD `8bf9931a5`. Since the previous verifier pass (`2026-10-31T16:38:52Z`, status `human_needed`) the only commit is `8bf9931a5 docs(quick-261031-i54): close Run Script Quick A automated-ready`; `git log --since=2026-10-31T16:38:52Z -- app/` is empty, so every must-have was re-confirmed against the same final source, and the fingerprint above was regenerated to clear the `stale` status (the prior digest predated the SUMMARY).
+**Phase Goal:** Run Script stacks a script onto an existing Paint rail — playhead-membership destination, source-cycle offset, extend-only cycle/lifecycle, Keep script on flag-on rails, pixel-only composite, collision Cancel/Truncate/Overwrite in one atomic undo, editable and adopted Rail Type/Motion wiggle/Color, full-phase progress, reusable dialog cards.
+**Verified:** 2026-10-31T18:08:47Z
+**Status:** passed
+**Re-verification:** Yes — full fresh pass at HEAD `1285ec987` after the UAT round 1 remediation. The previous report (`2026-10-31T16:45:04Z`) recorded `human_needed`, 6/6, at HEAD `8bf9931a5`; since then five UAT commits landed (`50b63ca2d`, `048938071`, `6690555c5`, `bc65e9492`, `1285ec987`) and the PLAN gained a seventh must-have truth (the UAT round 1 amendments). The 11 live UAT rows that report was waiting on were accepted by the user on 2026-10-31; the user explicitly deferred the remaining minor UI observations to Quick B, so no human-verification items remain and nothing is carried as a gap.
 
 ## Goal Achievement
 
@@ -85,28 +53,28 @@ human_verification:
 
 | #   | Truth   | Status     | Evidence       |
 | --- | ------- | ---------- | -------------- |
-| 1 | Playhead inside exactly one Paint rail's effective span (real key, generated frame, empty frame, repeated occurrence) targets that rail: writes source-cycle keys at phaseOrigin + cycleOffset, creates no new Loop Clip and never materializes an occurrence; outside every rail the create path is byte-identical. | ✓ VERIFIED | `physicsPaintRotoRunScriptStacking.ts` `toRunScriptRailViews` (161-207) + `resolveRunScriptDestination` (216-246: fragment membership, `offset % cycleLength`, `runStartAppFrame = phaseOrigin + cycleOffset`, create/refuse precedence). Controller `stackContext` re-derives live from the canonical resolver via `ports.getSelection` + `getLoopEditSnapshot`/`getPhysicalDocument` + `getRotoLoopClips` (`physicsPaintRotoPlayScriptController.ts:782-818`, derivation 801-806, destination 810), pinned surface 836-846, `runDestination` 848-854, authority asked at the source-cycle start 1255. Tests: stacking 183-235; controller 4207-4225 (live before open + re-resolve on revision), 4241-4284 (repeated occurrence: no new clip, run start F13, originalEndExclusive 22), 4286-4298 (create path unchanged), 4674-4691 (fragment gap = create). |
-| 2 | Overlapping membership, a Reveal rail target, or a frame override inside the written span fails closed with a clear reason and zero writes; a generated frame outside a rail keeps today's generated-interpolation refusal. | ✓ VERIFIED | Overlap/reveal refusals in `resolveRunScriptDestination` (225-232); frame-override refusal from `clip.frameOverrides` app frames read directly (CR-01, stacking 185-188, 368-383) and controller `confirmStack` 2176-2182 (zero writes before authority); generated-interpolation refusal kept for non-stack destinations (`disabledReason` 575-579); refusals never open the dialog (1231-1240). Tests: stacking 211-235, 496-518; controller 4227-4239 (generated outside), 4562-4585 (override in span: zero commit/record), 4587-4594 (Reveal refused before authority), 5120-5152 (override added while open refused). |
-| 3 | Extend-only: a run past the cycle end appends contiguous source-cycle keys and grows the lifecycle (`originalEndExclusive`, `visibleRanges`); repeat unchanged; infinity stays lifecycle-less; cycle never shrinks; a finite repeat whose extend-only span (cycle length × repeat) crosses the parent end goes through explicit Truncate / Cancel, never a silent cap. | ✓ VERIFIED | `planRunScriptStackExtension` (max-only growth, 252-271); `planRunScriptStackLifecycle` (unclamped `requestedRailEndExclusive = phaseOrigin + newCycleLength * repeat` at 411, explicit `cap` 413-416, `Math.max(previousEnd, …)` 416, infinity → `lifecycle: null` 405-410). Controller `stackCollision.lifecycleOverflow` 941-963 and offer filtering 983-994; confirm applies lifecycle at 2353-2365 and caps only on explicit Truncate 2189-2252. Tests: stacking 238-271, 358-404, 547-725 (including the no-capacity test 587, infinity 634/646, never-shrink 568/613); controller 4241-4284 (repeat 2, end 22), 4540-4560 (parent-end offers cancel/truncate and caps), 4932-4949 (lifecycle-only readout), 5189-5241 (Truncate cap), 5243-5289 (never shrinks a longer stored end). |
-| 4 | Keep script renders only for stack destinations and only when the union port exists; defaults ON for a persisted `keyScriptEdits` rail. ON appends slices and re-bakes the raw union over the known-empty base; OFF replaces pixels and purges/replaces records. A flag-off rail renders OFF + disabled with the replace reason (flag-off Keep ON is Quick B); executed mode always matches the visible switch; `keyScriptEdits` is never flipped. | ✓ VERIFIED | Controller gating 1021-1054 (`keepScriptVisible`/`keepScriptEffective`/`keepScriptDisabledReason`, seed 1036-1048, compare-then-write setter 1050-1054); `confirmStack` `useUnion` 2170-2175, union bytes replace staged records + `proposedRecords` 2378-2399, `recordMode: useUnion ? 'append' : 'replace'` 2409. Studio `bakeStackedRailKey` raw union (recorded events + this run, no composite, null → refuse) `PhysicsPaintStudio.tsx:3896-3912`; mode-aware `recordRailKeyScripts` replace purges + pins known-empty, append records only 3917-3943; ports wired 4025, 4036-4038. Tests: controller 4344-4374 (replace, no `keyScriptEdits` in target), 4376-4400 (gating/flag-off reason), 4402-4452 (one union bake per key, append mode, raw union bytes committed, flag stays true), 4454-4473 (bake refusal aborts with zero writes), 4475-4493 (flag-off union unreachable); Studio pins 5001-5041; dialog 1572-1603. |
-| 5 | Crossing another rail's start offers Cancel / Truncate (default) / Overwrite; Overwrite removes the victim Loop Clip in the same atomic commit (keys survive as ordinary keys) and one undo restores it; crossing the parent end (including the repeat-extended lifecycle span) offers Truncate / Cancel only. | ✓ VERIFIED | Boundary rank + offer table in `resolveRunScriptStackBoundary` (135-147, 319-385); controller `victimHasFrameOverrides`/`overwriteChoiceValid`/`collisionOffers` 967-994; stale Overwrite refused before bake 2194-2202; single `ports.commit(publication)` at 2401 with the victim filtered out of `loopClips` (2366-2368) and the target lifecycle applied (2353-2365), canonical ack 2404; the hook turns one publication into exactly one `executePhysicalEdit` (`useRotoPlayScriptController.ts:104-171`). Tests: stacking 302-546; controller 4495-4538 (victim removed in the same commit, keys survive as ordinary keys, record reaches F25), 4540-4560 (parent-end only cancel/truncate), 4693-4724 (stale Overwrite refused), 4726-4759 (victim with overrides filters Overwrite), 4761-4811 (covering rail, Truncate refuses with zero free span), 4856-4877 (double confirm ignored, one commit). One-command history semantics pinned at controller test 1030-1160; dialog ordering/default 1604-1668. |
-| 6 | Dialog shows the resolved span, source-cycle offset and resulting extension/truncation; Max and the Frames stepper bound resolve to `stackMaxCount` (free span before the collision boundary), never physical capacity; frames default to the script's natural duration for stack targets only (creation keeps 3); the Source cycle card never renders on a stack destination. | ✓ VERIFIED | `buildRunScriptStackReadout` (468-492) + controller `stackMaxCount` 899-904, `framesMax` 1017, natural-duration seeding 1310-1313, `identicalSourceCycle` suppressed for a stack 736-741, repeat locked 1019. Dialog: stack readout `physics-play-script-stack-readout` 700-706, Keep switch + reason 707-718, collision card 740-790, header `Max {framesMax}` 482, Frames bound/allowOutOfRange 646-650, Source cycle card gated by `identicalCycle` 264/875, creation cards hidden. Tests: dialog 1506-1770 (readout, framesMax bound, Keep switch, collision copy, creation cards hidden, tabs hidden); controller 4300-4315 (Max = 49 free span, confirms F11-F59), 4317-4342 (typed count above free span raises collision instead of clamping), 4241-4256 (stack natural-duration seed), 4286-4298 (creation stays 3), 4596-4619 (Source cycle card never surfaces). |
+| 1 | With the playhead inside exactly one Paint rail's effective span (real key, generated frame, empty frame or repeated occurrence) Run Script targets that rail: it writes source-cycle keys at `phaseOrigin + cycleOffset`, creates no new Loop Clip and never materializes a repeated occurrence. Outside every rail the create path is byte-identical to today. | ✓ VERIFIED | `physicsPaintRotoRunScriptStacking.ts` `toRunScriptRailViews` (168-207) + `resolveRunScriptDestination` (226-246: fragment membership, `offset % cycleLength`, `runStartAppFrame = phaseOrigin + cycleOffset`, create/refuse precedence). Controller `stackContext` re-derives live from the canonical `derivePhysicPaintRotoLoopRanges` via `ports.getSelection` + `getLoopEditSnapshot`/`getPhysicalDocument` + `getRotoLoopClips` (`physicsPaintRotoPlayScriptController.ts:802-818`), pinned surface 854-866, `runDestination` 868-873; `confirmStack` uses the pinned `runStartAppFrame` as the run start and asks authority there (2194-2240). Tests: stacking 186-235; controller 4210 (live before open + re-resolve on revision), 4244-4284 (repeated occurrence: one clip, run start F13, `originalEndExclusive` 22, repeat 2), 4286-4298 (create path unchanged), 4757 (fragment gap = outside the rail). |
+| 2 | Overlapping membership, a Reveal rail target, or a frame override inside the requested written span fails closed with a clear reason and zero writes; a generated frame outside a rail keeps today's generated-interpolation refusal. | ✓ VERIFIED | Overlap/reveal refusals in `resolveRunScriptDestination` (226-246), ambiguity reported before reveal; frame-override refusal from `clip.frameOverrides` app frames (`toRunScriptRailViews` 168-195, boundary 329-406) and controller `confirmStack` 2224-2230 (zero writes before any bake/commit); the generated-interpolation refusal is kept for every non-stack destination (controller 597). Refusals never open the dialog (1290-1300 guard). Tests: stacking 214-235, 499-520; controller 4230 (generated outside + malformed derivation degrades to create), 4645 (override in span: no offers, zero writes), 4670 (Reveal refused before authority), 5234 (override added while open refused); dialog 1735 (Enter on a frame-override refusal is a no-op). |
+| 3 | Extend-only: a run past the rail's cycle end appends contiguous source-cycle keys and grows the lifecycle (`originalEndExclusive`, `visibleRanges`) so repeats resolve. Repeat count is unchanged, infinity clips stay lifecycle-less, and the cycle never shrinks. A finite repeat whose extend-only lifecycle span (cycle length × repeat) crosses the parent end goes through the explicit Truncate / Cancel path — never a silent lifecycle cap. | ✓ VERIFIED | `planRunScriptStackExtension` (max-only growth, 262-286); `planRunScriptStackLifecycle` (unclamped `requestedRailEndExclusive = phaseOrigin + newCycleLength * repeat`, explicit `cap` only when Truncate chose one, `Math.max(previousEnd, …)`, infinity → `lifecycle: null`) 408-476. Controller `stackCollision.lifecycleOverflow` 961-981 and the parent-end offer filter 1003-1015; `confirmStack` caps only on an explicit Truncate/lifecycle overflow 2253-2300 and applies the lifecycle at 2412-2424. Tests: stacking 241-276, 551-729 (no capacity clamp 590, infinity 637/649, never-shrink 571/616); controller 4244-4284 (repeat 2, end 22), 4623-4644 (parent-end offers cancel/truncate and caps), 5048 (lifecycle-only overflow reported as the rail capping), 5303 (explicit Truncate caps at the run boundary), 5357 (never shrinks a longer stored end). |
+| 4 | Keep script renders only for stack destinations and only when the union port exists; it defaults ON for a rail whose persisted `keyScriptEdits` is true. ON appends the run's slices to each touched key's records and re-bakes the raw union (existing recorded events + this run's strokes) over the known-empty base; OFF (flag-on) replaces the touched span's records. A pixel-only target (`keyScriptEdits !== true`) is composited over each touched key's CURRENT payload and records nothing — the existing picture is never purged or pinned empty; the switch renders OFF and disabled with that reason. The executed path always matches the visible switch state; `keyScriptEdits` is never flipped. | ✓ VERIFIED | Controller `keepScriptVisible`/`keepScriptEffective`/`keepScriptDisabledReason` 1046-1055, seed effect reads the destination only while the dialog is open 1057-1078, compare-then-write `setKeepScript` 1081-1084; `confirmStack` `useUnion = bakeStackedRailKey !== undefined && keepScriptEffective` 2229, `recordScripts = currentTarget.keyScriptEdits === true` 2290, union branch re-bakes per touched key and replaces staged record bytes 2428-2442, pixel-only composite branch 2443-2458, `recordMode: useUnion ? 'append' : 'replace'` 2465. Studio `bakeStackedRailKey` 3896-3912 (raw union of `getAquarelleEventsForFrame` + this run's strokes; never composites; null → refused); `composeStackedRailKey` 3917-3947 (bakes this run, composite over the key's CURRENT payload, blank base for a newly appended key, `requirePhysicPaintRotoInlineBytes` else `durable-base-unknown`); `recordRailKeyScripts` 3952-3984 (replace purges + pins known-empty; append records only, no purge, no pin). Tests: controller 4344 (replace on flag-on, flag never flipped), 4377 (gating + flag-off reason), 4405 (one raw union bake per key, append mode, union bytes committed), 4457 (bake refusal aborts with zero writes), 4478 (pixel-only composite, records nothing, `keyScriptEdits` undefined), 4515 (composite refusal fails closed); dialog 1659/1676; Studio pins 5004-5030 (record-mode branch: replace-only pin, one `.set(` site) and 5031-5051 (bake/composite bodies). |
+| 5 | Crossing another rail's start offers Cancel / Truncate (default) / Overwrite. Overwrite removes the victim Loop Clip in the same atomic commit (its keys survive as ordinary keys) and one undo restores it exactly; crossing the parent end — including the repeat-extended lifecycle span — offers Truncate / Cancel only. | ✓ VERIFIED | Boundary rank and offer table in `resolveRunScriptStackBoundary` (other-rail < real-key < parent-end < target-end), 329-406; controller `victimHasFrameOverrides` 990-994, `overwriteChoiceValid` 996-1001, `collisionOffers` (Overwrite filtered for lifecycle-only overflow and override-carrying victims) 1003-1015; stale/disallowed Overwrite refused before the bake 2245-2255; one `ports.commit(publication)` at 2461 carrying the target lifecycle and the victim filtered out of `loopClips`; the hook turns one publication into exactly one `executePhysicalEdit` (`useRotoPlayScriptController.ts:148-171`) — the one-undo-entry contract. Tests: stacking 317-550; controller 4578 (victim removed in the same commit, keys survive as ordinary keys), 4623 (parent-end: cancel/truncate only), 4776 (stale Overwrite refused), 4809 (victim with overrides filters Overwrite), 4844 (covering rail, Truncate aborts), 4972 (double confirm ignored), 5268 (pinned session survives a cancelled bake); dialog 1691 (Cancel / default Truncate / conditional Overwrite ordering), 1723 (Enter → Truncate), 1746 (Cancel does not confirm), 1757 (Overwrite removal copy), 1775 (lifecycle-only copy). The live undo round was part of the user-accepted UAT round 1. |
+| 6 | The dialog shows the resolved span, the source-cycle offset and the resulting extension or truncation; Max and the Frames stepper bound resolve to `stackMaxCount` (the free span before the collision boundary), never the physical capacity; frames default to the script's natural duration for stack targets only (creation keeps 3); the creation-only Source cycle card never renders for a stack destination. | ✓ VERIFIED | `buildRunScriptStackReadout` 478-500; controller `stackMaxCount` 919-923, `stackBoundary` 927, `framesMax` 1037, `repeatLocked` 1039, natural-duration seeding in the stack branch of `openConfirmation` 1363-1371 (fallback 3), `identicalSourceCycle` suppressed on a stack. Dialog: stack gating 62-70, summary 163, header `Max {framesMax}` 243, Source-cycle card gated on `identicalCycle` (non-stack) 183/303, Frames bound + `allowOutOfRangeEntry` on stack, primary Run disabled while a collision is open 437. Tests: dialog 1620 (readout, hidden repeat/infinity, no Source cycle, header from framesMax), 1636 (framesMax bound + out-of-range entry), 1650 (summary bar), 1841 (tabs and Reveal surface hidden); controller 4244-4284 (stack count seeded from the natural duration), 4286-4298 (creation keeps 3 even with natural 9), 4300 (Max = free span 49 → confirms F11–F59), 4317 (typed count above the free span raises the collision instead of clamping), 4679 (no creation Source cycle on a stack). |
+| 7 | UAT round 1 (2026-10-31): a stack run exposes Rail Type (Motion/Static), Motion wiggle and Color, seeded from the target rail; the rail adopts the run's `mode`/`motion`/`overrideColor` in the same commit, so its label, interpolation policy and Regenerate follow the run. The dialog footer reports Preparing / Rendering / Rebuilding-or-Compositing / Committing / Recording with an indeterminate bar before the bake and clears stale progress on open. The dialog composes reusable card views (`PhysicsPaintPlayScriptCards.tsx`) shared by creation, stack and Reveal. | ✓ VERIFIED | `PhysicsPaintPlayScriptCards.tsx` (613 lines) exports the shared cards and the APG radio group (RailTypeCard 135, ColorCard 163, MotionWiggleCard 213, Colorize 285, PhotoWiggle 315, PaintSeed 332, KeyScript 349, SourceCycle 364, PaintTiming 393, RevealTiming 467, StackReadout 527, KeepScript 537, Collision 557); the dialog imports and composes them for create/stack/Reveal (19, 303, 320, 325-333, 370) and shows the stack helper "This run updates the rail's Rail Type, Motion wiggle and Color." Adoption: `confirmStack` reads the dialog `motion` and `mode` plus the confirm-time override color and writes `updatedTarget.mode`, `compactPhysicPaintRotoMotion(motion)` and `overrideColor` in the same publication (2296-2305, 2412-2424); adoption feeds the rail label (`physicsPaintLoopClipPresentation.ts:131-132`), the interpolation policy (`physicsPaintRotoPhysicalResolver.ts:5623`) and Regenerate (`physicsPaintRotoPlayScriptController.ts:1582, 1593-1600`). Progress: Preparing (indeterminate) → Rendering x/y → Rebuilding/Compositing → Committing → Recording in `confirmStack` 2295-2470; dialog `progressValue`/`progressBusy` 153-158, determinate bar 384-385, indeterminate bar 386; stale progress cleared on open and no idle re-derivation (controller effect gated on `confirmationOpen` 1057-1078). Tests: controller 4535 (compositing phase), 4560 (progress cleared on open), 4567 (no re-derivation while closed), 4896 (rail color adopted), 4910 (cleared back to Original colors), 4921 (mode/motion seeded, baked and adopted in the same commit); dialog 1796 (editable Rail Type + Motion wiggle on stack, creation-only cards hidden, creation unchanged), 1826 (Color seeded from the rail, brush color only on request), 1850 (busy disables the collision actions and the primary Run). Live verification of this truth was part of the user-accepted UAT round 1. |
 
-**Score:** 6/6 truths verified (0 present, behavior-unverified)
+**Score:** 7/7 truths verified (0 present, behavior-unverified)
 
 ### Deferred Items
 
-Items not yet met but explicitly addressed in later milestone phases (Quick B, user-authorized split).
+Items not yet met but explicitly addressed in later milestone phases (Quick B, user-authorized split). Deferred items are informational — they do not require closure plans for this quick.
 
 | # | Item | Addressed In | Evidence |
 |---|------|-------------|----------|
-| 1 | Keep script ON for flag-off (unscripted) Paint rails + the durable-base authority seam | Quick B | Quick A law: flag-off stack targets render the switch OFF and disabled with a replace reason; the union path is unreachable without persisted `keyScriptEdits` (controller test 4475-4493) |
-| 2 | Reveal rail stacking (extension through the placed photo reference, per-key recording) | Quick B | Quick A refuses a Reveal rail target without opening the dialog (controller test 4587-4594; stacking 230-232); no Reveal stacking code exists |
-| 3 | Frame-override bases (stacking over a frame override) | Quick B | Quick A refuses a frame override inside the written span with zero writes (controller test 4562-4585; stacking test 496-518) |
+| 1 | Keep script ON for flag-off (unscripted) Paint rails + the durable-base authority seam | Quick B | Quick A law: a pixel-only stack target renders Keep OFF + disabled with the composite reason; the union path is unreachable without persisted `keyScriptEdits` (controller `keepScriptEffective` 1047-1050; tests 4377, 4478) |
+| 2 | Reveal rail stacking (extension through the placed photo reference, per-key recording) | Quick B | Quick A refuses a Reveal rail target without opening the dialog (controller test 4670; stacking 222-228); no Reveal stacking code exists |
+| 3 | Frame-override bases (stacking over a frame override) | Quick B | Quick A refuses a frame override inside the written span with zero writes and no offers (controller test 4645; stacking 499-520; dialog 1735) |
+| 4 | Remaining minor UI observations from UAT round 1 | Quick B | User explicitly deferred them on 2026-10-31 (CONTEXT "UAT round 1 amendments"; SUMMARY "Next Phase Readiness") — observation-level polish, no must-have truth depends on them |
 
 ### Advisory (New Scope, Unevidenced)
-
-New-scope findings from the anti-pattern scan with no deterministic evidence — reported, not blocking.
 
 | # | Finding | Category | Why Advisory |
 |---|---------|----------|--------------|
@@ -116,48 +84,51 @@ New-scope findings from the anti-pattern scan with no deterministic evidence —
 
 | Artifact | Expected | Status | Details |
 | -------- | --------- | ------ | ------- |
-| `app/src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.ts` | Pure destination resolution, extend-only growth, collision/override boundary, lifecycle and readout | ✓ VERIFIED | 492 lines (min 180); `verify.artifacts` 4/4 passed; exports destination, extension, merge, boundary, lifecycle, readout and overwrite copy; no stubs or debt markers. |
-| `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts` | Live-port stack destination, runStart re-anchoring, Max/keep gating, confirmStack publication | ✓ VERIFIED | 3561 lines (min 2700); `stackContext`/`runDestination` 782-854; `liveRailForTarget` 871-874; boundary/collision 876-994; Keep gating 1021-1054; `confirmStack` 2141-2434; CR-07 canonical ack 3520-3540. |
-| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx` | Stack readout, Keep script switch, collision choice surface | ✓ VERIFIED | 983 lines (min 880); stack readout `physics-play-script-stack-readout`, Keep switch + reason, collision card with Cancel/Truncate(default)/Overwrite + rendered removal copy (774-790), `Max {framesMax}`, creation cards and tabs hidden. |
-| `app/src/components/physic-paint/PhysicsPaintStudio.tsx` | `bakeStackedRailKey` union re-bake port and mode-aware `recordRailKeyScripts` | ✓ VERIFIED | 10043 lines (min 10020); union port 3896-3912 (raw union, no composite, null → refuse); mode-aware recorder 3917-3943 (one known-empty pin site, replace only); ports wired 4025, 4036-4038 including `physicalRevision` 3990. |
+| `app/src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.ts` | Pure destination resolution, extend-only growth, collision/override boundary, lifecycle and readout | ✓ VERIFIED | 502 lines (min 180); exports destination, extension, merge, boundary, lifecycle, readout and overwrite copy; no stubs, no debt markers. Wiring: consumed by the controller (`stackContext` 802+, `confirmStack` via `planRunScriptStackExtension`/`planRunScriptStackLifecycle`). |
+| `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts` | Live-port stack destination, runStart re-anchoring, Max/keep gating, `confirmStack` publication | ✓ VERIFIED | 3,663 lines (min 2700); `stackContext` 802-818; `runDestination` 868-873; boundary/collision 891-1015; Keep gating 1042-1084; `confirmStack` 2194-2505; canonical ack via `assertPublicationAck`; stack signals exposed 2991-2992. |
+| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx` | Dialog shell composing the shared cards with the stack readout, Keep switch and collision surface | ✓ VERIFIED | 451 lines (min 400); stack gating 62-70; readout 325; Keep 326; collision 330-333; footer 153-158, 384-386; header `Max {framesMax}` 243; Enter collision routing 205-213. |
+| `app/src/components/physic-paint/view/PhysicsPaintPlayScriptCards.tsx` | Reusable card views shared by creation, stack and Reveal | ✓ VERIFIED | 613 lines (min 450); 13 card exports + `DialogRadioGroup`; creation and Reveal code paths compose the same views. |
+| `app/src/components/physic-paint/PhysicsPaintStudio.tsx` | `bakeStackedRailKey`, `composeStackedRailKey`, mode-aware `recordRailKeyScripts` | ✓ VERIFIED | 10,080 lines (min 10020); union port 3896-3912 (raw union, no composite, null → refuse); composite port 3917-3947 (current payload, blank base for a new tail, fail-closed `durable-base-unknown`); recorder 3952-3984 (replace-only purge + known-empty pin; append records only); ports wired 4025, 4060, 4071-4075. |
 
-**Artifacts:** 4/4 verified (`verify.artifacts` exit 0, `all_passed: true`).
+**Artifacts:** 5/5 verified (`verify.artifacts` exit 0, `all_passed: true`).
 
 ### Key Link Verification
 
 | From | To  | Via | Status | Details |
 | ---- | --- | --- | ------ | ------- |
-| Controller `runDestination` | Canonical loop resolver | live ports → `derivePhysicPaintRotoLoopRanges` | ✓ WIRED | `physicsPaintRotoPlayScriptController.ts:782-818` reads `getSelection`, `getLoopEditSnapshot`/`getPhysicalDocument`, `getRotoLoopClips`, builds the canonical context at 801, then `resolveRunScriptDestination` at 810 — no controller-local membership math and no second boundary authority. |
-| Controller `confirmStack` | Studio `bakeStackedRailKey` | one port call per touched key → staged frame bytes | ✓ WIRED | Controller 2174, 2378-2399 replaces staged record bytes and `proposedRecords` with the returned union bytes; Studio port 3896-3912 bakes `getAquarelleEventsForFrame + this run`, refusing on null. Test: 4402-4452. |
-| Controller `confirmStack` | Studio `recordRailKeyScripts` | `recordMode: useUnion ? 'append' : 'replace'` | ✓ WIRED | Controller 2409; Studio replace branch purges + pins `aquarelleDurableBaseByKeyRef` null, append branch records only (3917-3943); reveal creation is pinned to replace (4025). Tests: controller 4344-4374, 4402-4493; Studio pins 5001-5041. |
-| Controller `confirmStack` | ONE commit | publication carrying target lifecycle + merged source keys + victim removal | ✓ WIRED | Single `ports.commit(publication)` at 2401 (no second commit path inside `confirmStack`); publication built 2361-2374 with `updatedTarget` lifecycle and `nextClips` filtered of the victim; the hook commit issues one `executePhysicalEdit` and waits one settlement (`useRotoPlayScriptController.ts:104-171`). Tests: controller 4528-4537, 4856-4877. |
+| Controller `stackContext` | Canonical loop resolver | live ports → `derivePhysicPaintRotoLoopRanges` | ✓ WIRED | `physicsPaintRotoPlayScriptController.ts:802-818` reads `getSelection`, `getLoopEditSnapshot`/`getPhysicalDocument`, `getRotoLoopClips`, builds the canonical context, then `resolveRunScriptDestination` — no controller-local membership math and no second boundary authority. |
+| Controller `confirmStack` | Studio `bakeStackedRailKey` | one port call per touched key → union bytes on staged records | ✓ WIRED | Controller 2428-2442 replaces staged record bytes and `proposedRecords` with the returned union bytes; Studio 3896-3912 bakes `getAquarelleEventsForFrame + this run` and refuses on null. Test: controller 4405. |
+| Controller `confirmStack` | Studio `recordRailKeyScripts` | `recordMode: useUnion ? 'append' : 'replace'` | ✓ WIRED | Controller 2465; Studio replace branch purges + pins `aquarelleDurableBaseByKeyRef` null, append records only (3952-3984); Reveal creation stays pinned to replace (4060). Tests: controller 4344, 4405-4473; Studio 5004-5030. |
+| Controller `confirmStack` | ONE commit | publication carrying the target lifecycle, merged source keys and (Overwrite) the victim removal | ✓ WIRED | Single `ports.commit(publication)` at 2461 (no second commit path inside `confirmStack`); publication built with `updatedTarget` and `nextClips` filtered of the victim; the hook commit issues one `executePhysicalEdit` and waits one settlement (`useRotoPlayScriptController.ts:148-171`). Tests: controller 4578, 4972; hook 136. |
+| Dialog | `PhysicsPaintPlayScriptCards.tsx` | card composition shared by creation, stack and Reveal | ✓ WIRED | Dialog imports all cards (19) and renders RailTypeCard/ColorCard/MotionWiggleCard for stack (303-333), PaintTiming/RevealTiming/SourceCycle/PaintSeed/KeyScript for creation, KeepScript and Collision for stack; card-extraction tests plus the existing creation/Reveal suites pass. |
 
-**Wiring:** 4/4 connections verified (the `verify.key-links` verb parsed 0 links because the PLAN key_links are free-form strings; each link was verified manually against source and tests).
+**Wiring:** 5/5 connections verified. Note: `verify.key-links` parsed 0 structured links (exit 1) because the PLAN `key_links` are free-form strings, not `{from,to,via}` records — that verdict is a parse-shape artifact, not a broken link; each link above was verified manually against source and tests.
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 | -------- | ------------- | ------ | ------------------ | ------ |
-| `runDestination` / stack surface | selection, identities, loop clips | live ports `getSelection` + `getLoopEditSnapshot`/`getPhysicalDocument` + `getRotoLoopClips` | Yes — canonical derivation, no static fallback; malformed derivation degrades to create | ✓ FLOWING |
-| Dialog stack readout / Max / collision | `stackReadout`, `stackMaxCount`, `framesMax`, `stackCollision`, `collisionOffers`, `keepScript*` | controller computeds fed by the live surface | Yes — pure functions over live rails/boundary | ✓ FLOWING |
-| Committed run records (Keep script ON) | `records[].payload.bytes` | `bakeStackedRailKey` → recorded events + this run's strokes → `bakeAquarelleEventsToFrame` | Yes — raw union bytes from the real bake, no composite or mock | ✓ FLOWING |
-| Availability revision | `physicalRevision` | Studio's scalar `rotoPhysicalRevision` signal | Yes — no document parse in the render body (WR-13) | ✓ FLOWING |
+| `runDestination` / stack surface | selection, identities, loop clips | live ports `getSelection` + `getLoopEditSnapshot`/`getPhysicalDocument` + `getRotoLoopClips` | Yes — canonical derivation; a malformed derivation degrades to create, never to a static stack | ✓ FLOWING |
+| Dialog stack readout / Max / collision / Keep | `stackReadout`, `stackMaxCount`, `framesMax`, `stackCollision`, `collisionOffers`, `keepScript*` | controller computeds fed by the live surface | Yes — pure functions over live rails, boundary and parsed count | ✓ FLOWING |
+| Committed run records (Keep ON) | `records[].payload.bytes` | `bakeStackedRailKey` → recorded events + this run's strokes → `bakeAquarelleEventsToFrame` | Yes — raw union bytes from the real bake, no composite, no mock | ✓ FLOWING |
+| Committed run records (pixel-only) | `records[].payload.bytes` | `composeStackedRailKey` → this run's bake over the key's stored payload (blank base only for a newly appended key) | Yes — real composite; unresolvable payload fails closed with zero writes | ✓ FLOWING |
+| Availability revision | `availabilityRevision` (+ scalar `physicalRevision`) | hook signal bumped on operation lock/project saved/selection identity/appFrame/physicalRevision | Yes — re-resolves the destination without parsing the document in a render body | ✓ FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 | -------- | ------- | ------ | ------ |
 | Pure stacking truths (destination, boundary, lifecycle, readout) | `pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.test.ts` | 49 passed | ✓ PASS |
-| Controller stack flow (two-start, pin, live guards, Keep, collision, ack) | `... vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | 222 passed | ✓ PASS |
-| Dialog stack surface | `... vitest run src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts` | 72 passed | ✓ PASS |
-| Studio ports | `... vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts` | 298 passed | ✓ PASS |
-| Hook availability revision | `... vitest run src/components/physic-paint/hooks/useRotoPlayScriptController.test.ts` | 6 passed | ✓ PASS |
-| Full suite | `pnpm --filter efx-motion-editor exec vitest run` (run once, not watch) | 360 files passed (2 skipped); 6725 tests passed, 1 skipped, 96 todo; exit 0 | ✓ PASS |
+| Controller stack flow (live destination, pin, Keep union/composite, collision, ack, adoption, progress) | `... vitest run src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts` | 228 passed | ✓ PASS |
+| Dialog stack surface (readout, framesMax, Keep, collision, Enter, editable cards) | `... vitest run src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts` | 75 passed | ✓ PASS |
+| Studio ports (union bake, composite, record-mode branch pins) | `... vitest run src/components/physic-paint/PhysicsPaintStudio.test.ts` | 299 passed | ✓ PASS |
+| Hook revision + one-commit wiring | `... vitest run src/components/physic-paint/hooks/useRotoPlayScriptController.test.ts` | 7 passed | ✓ PASS |
+| Scripts panel header pin (`framesMax`) | `... vitest run src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts` | 56 passed | ✓ PASS |
+| Combined targeted run (all six changed test files) | see above, one invocation | 6 files, 714 tests passed (2.19 s) | ✓ PASS |
+| Full suite (run once, not watch) | `pnpm --filter efx-motion-editor exec vitest run` | 360 files, 6,736 passed, 1 skipped, 96 todo; exit 0 | ✓ PASS |
 | Type safety | `pnpm --filter efx-motion-editor run typecheck` | exit 0 (`tsc --noEmit`) | ✓ PASS |
-| Rename tripwire (no quoted `Create Rail` in app/src) | `grep -rn --include='*.ts' --include='*.tsx' -E "['\"]Create Rail['\"]" app/src` | no matches | ✓ PASS |
-| Persisted format + Quick B scope guards | `git diff --name-only 8142f03d1^..HEAD` | no `packages/`/codec/payload files; no `aquarelleScriptBaseAuthority`; `aquarelleBaseRecovery`/`physicsPaintRotoScriptClipboard` untouched; Studio diff only the union port, mode-aware recorder, scalar revision port | ✓ PASS |
-
-Combined targeted run: 5 files, 647 tests passed (2.20s). Full suite: 6,725 passed (12.68s).
+| Rename tripwire (no quoted `Create Rail` in app/src) | `grep -rn --include='*.ts' --include='*.tsx' -E "['\"]Create Rail['\"]" app/src` | no matches (grep exit 1) | ✓ PASS |
+| Persisted format + Quick B scope guards | `git diff --name-only 8142f03d1^..HEAD` | 13 implementation files + planning docs/STATE; no `packages/`, codec, payload-format or schema changes; no `aquarelleScriptBaseAuthority`; `aquarelleBaseRecovery`/`physicsPaintRotoScriptClipboard` untouched | ✓ PASS |
 
 ### Probe Execution
 
@@ -169,7 +140,7 @@ Combined targeted run: 5 files, 647 tests passed (2.20s). Full suite: 6,725 pass
 
 | Requirement | Source Plan | Description | Status | Evidence |
 | ----------- | ---------- | ----------- | ------ | -------- |
-| QUICK-261031-I54 | `261031-i54-PLAN.md` | Run Script stacking Quick A (playhead targeting, extend-only growth, Keep script ON/OFF replace, collision choices, atomic commit) | ✓ SATISFIED | All six must-have truths verified; 4/4 artifacts pass; 4/4 key links wired; Quick B scope untouched. No REQUIREMENTS.md row exists for this quick task (the PLAN frontmatter is the source). |
+| QUICK-261031-I54 | `261031-i54-PLAN.md` | Run Script stacking Quick A: playhead-membership destination, source-cycle offset, extend-only cycle/lifecycle, Keep script (flag-on union / pixel-only composite), collision Cancel/Truncate/Overwrite in one atomic undo, UAT round 1 settings/progress/cards | ✓ SATISFIED | All seven must-have truths verified; 5/5 artifacts pass; 5/5 key links wired; Quick B scope explicitly deferred and untouched. No REQUIREMENTS.md row exists for this quick task (the PLAN frontmatter is the contract). |
 
 **Coverage:** 1/1 requirement satisfied, 0 orphaned.
 
@@ -177,100 +148,36 @@ Combined targeted run: 5 files, 647 tests passed (2.20s). Full suite: 6,725 pass
 
 | Test File | Linked Req | Active | Skipped | Circular | Assertion Level | Verdict |
 |-----------|-----------|--------|---------|----------|-----------------|---------|
-| `physicsPaintRotoRunScriptStacking.test.ts` | QUICK-261031-I54 | 49 | 0 | none | Value/Behavioral (`toEqual`, exact span/offset/offer assertions) | ✓ PASS |
-| `physicsPaintRotoPlayScriptController.test.ts` | QUICK-261031-I54 | 222 | 0 | none | Behavioral (multi-step confirm/collision/commit flows, exact publications) | ✓ PASS |
-| `PhysicsPaintPlayScriptDialog.test.ts` | QUICK-261031-I54 | 72 | 0 | none | Value/Behavioral (rendered tree, IDs, copy, handler calls) | ✓ PASS |
-| `PhysicsPaintStudio.test.ts` | QUICK-261031-I54 | 298 | 0 | none | Source-pin / Behavioral (exact branch bodies and ports) | ✓ PASS |
-| `useRotoPlayScriptController.test.ts` | QUICK-261031-I54 | 6 | 0 | none | Behavioral (revision bump without document parse) | ✓ PASS |
+| `physicsPaintRotoRunScriptStacking.test.ts` | QUICK-261031-I54 | 49 | 0 | none | Value/Behavioral (`toEqual`, exact span/offset/offer/lifecycle assertions) | ✓ PASS |
+| `physicsPaintRotoPlayScriptController.test.ts` | QUICK-261031-I54 | 228 | 0 | none | Behavioral (multi-step confirm/collision/commit flows, exact publications and record bytes) | ✓ PASS |
+| `PhysicsPaintPlayScriptDialog.test.ts` | QUICK-261031-I54 | 75 | 0 | none | Value/Behavioral (rendered tree, IDs, copy, handler calls) | ✓ PASS |
+| `PhysicsPaintStudio.test.ts` | QUICK-261031-I54 | 299 | 0 | none | Source-pin / Behavioral (exact branch bodies and port wiring) | ✓ PASS |
+| `useRotoPlayScriptController.test.ts` | QUICK-261031-I54 | 7 | 0 | none | Behavioral (revision bump without document parse; one settlement per commit) | ✓ PASS |
+| `PhysicsPaintScriptsPanel.test.ts` | QUICK-261031-I54 | 56 | 0 | none | Value (header reads `framesMax`) | ✓ PASS |
 
 **Disabled tests on requirements:** 0.
-**Circular patterns detected:** 0 (no fixture-writing scripts in the linked tests).
-**Insufficient assertions:** 0. Coverage note (not a blocker): the positive stack natural-duration assertion at controller 4241-4256 uses a natural duration of 3, which coincides with the creation default; the stack-only law is pinned by the code at controller:1310-1313 together with the creation counter-case at 4286-4290 (natural 9 still seeds 3).
-**Remediated-blocker coverage present:** CR-01 (stacking 108-137; controller 4562), CR-02 (dialog 1670-1686), CR-03 (stacking 138-155, 373-388; controller 4674), CR-04 (controller 4693), CR-05 (controller 4726), CR-06 (stacking 389-404; controller 4761), CR-07 (controller 4953, 4991), WR-02 (controller 5055, 5087, 5120; `stackTargetUnchanged` 1075-1085), WR-05 (stacking 598, 613, 634; controller 5189, 5243), WR-12 (controller 5017), WR-13 (hook test 293-310), WR-14 (controller 5154).
+**Circular patterns detected:** 0.
+**Insufficient assertions:** 0. Coverage note (not a blocker): the positive stack natural-duration assertion uses a natural duration of 3, which coincides with the creation default; the stack-only law is pinned by controller 1363-1371 together with the creation counter-case at 4286-4290 (natural 9 still seeds 3).
+**Remediated-blocker coverage present:** CR-01 (stacking 111-137; controller 4645), CR-02 (dialog 1757), CR-03 (stacking 141-155, 376-388; controller 4757), CR-04 (controller 4776), CR-05 (controller 4809), CR-06 (stacking 392-404; controller 4844), CR-07 (controller 5069, 5105), WR-02 (controller 4704, 4735, 5169, 5201, 5234; `stackTargetUnchanged` 1101-1113), WR-05 (stacking 590, 601, 616, 637; controller 5303, 5357), WR-08 (controller 4995), WR-10 (controller 4972; dialog 1850), WR-12 (controller 5131), WR-13 (hook 293-310), WR-14 (controller 5268). UAT coverage: pixel-only composite (controller 4478, 4515; Studio 5031-5051), editable/adopted settings (controller 4896, 4910, 4921; dialog 1796, 1826), progress/idle gating (controller 4535, 4560, 4567; dialog 1850).
 
 ### Decision Coverage
 
-No trackable decisions in CONTEXT.md (gate: skipped, `no trackable decisions`).
+No trackable decision ids in CONTEXT.md (gate: skipped, `no trackable decisions`).
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 | ---- | ---- | ------- | -------- | ------ |
-| — | — | No `TBD`/`FIXME`/`XXX` debt markers in any i54-modified file | — | — |
-| — | — | No placeholder/coming-soon/empty-handler stubs in the new stacking module or the stack paths (grep for `return null`/`return {}`/`return []` in the module returns nothing) | — | — |
+| — | — | No `TBD`/`FIXME`/`XXX` debt markers in any i54-modified file (grep exit 1) | — | — |
+| — | — | No new placeholder/coming-soon/empty-handler stubs in the stacking module or the stack paths; the only `PLACEHOLDER` matches are the pre-existing `AQUARELLE_PLACEHOLDER_MAX_BYTES` constant and its existing assertions | — | — |
 
 **Anti-patterns:** 0 found (0 blockers, 0 warnings, 0 advisories).
 
-## Human Verification Required
-
-The plan explicitly hands over live, user-run UAT rows. All automated checks pass; these remain.
-
-### 1. Stack onto an existing Paint rail
-**Test:** Put the playhead inside a Paint rail and run a script.
-**Expected:** The run stacks onto that rail — no second Loop Clip, the span grows only as far as the run reaches, and earlier frames keep their pixels.
-**Why human:** Live bake/repaint across the real renderer.
-
-### 2. Create path outside every rail
-**Test:** Put the playhead outside every rail and run a script.
-**Expected:** A new rail is created exactly as today.
-**Why human:** Confirm the visible create result is unchanged.
-
-### 3. Generated frames inside vs outside a rail
-**Test:** Run on a generated/interpolated frame inside a rail, then on one outside every rail.
-**Expected:** Allowed inside (re-anchored to the source-cycle start); refused outside with the existing generated-interpolation reason.
-**Why human:** Live selection/interpolation state.
-
-### 4. Repeated-rail extension
-**Test:** Extend a repeated rail.
-**Expected:** Effective span grows by repeat × cycle growth, repeat count unchanged, earlier occurrences still resolve.
-**Why human:** Visual timeline/canvas resolution.
-
-### 5. Collision choices and undo
-**Test:** Cross another rail's start; try Cancel, then Truncate, then Overwrite; undo the Overwrite.
-**Expected:** Cancel writes nothing; Truncate clips at the boundary and leaves the other rail untouched; Overwrite removes the other rail (its keys stay ordinary keys) and one undo restores it exactly.
-**Why human:** Undo/redo across the real history stack and visible rail removal.
-
-### 6. Parent-end repeat overflow
-**Test:** Force the repeat-extended lifecycle span past the parent end.
-**Expected:** Only Truncate / Cancel are offered; the rail is never silently shortened; the lifecycle-only copy names the parent-range cap.
-**Why human:** Message clarity and visible outcome.
-
-### 7. Keep script ON persistence
-**Test:** On a flag-on rail, stack a second script, repeat, then save/reopen.
-**Expected:** Original strokes remain under the new ones with no doubling; repeat stacking stays stable.
-**Why human:** Save/reopen persistence and the rendered union.
-
-### 8. Keep script OFF replacement
-**Test:** Turn Keep script OFF on a scripted rail and run.
-**Expected:** The touched span's pixels and records are replaced; frames outside keep theirs.
-**Why human:** Visible pixel comparison.
-
-### 9. Flag-off rail switch
-**Test:** Target an unscripted (flag-off) rail.
-**Expected:** Keep script is OFF and disabled with the reason that this run replaces the touched span; no ON-checked control executes replace.
-**Why human:** Disabled affordance and copy are user-facing.
-
-### 10. Max free span
-**Test:** Use Max on a stack destination.
-**Expected:** It fills the free span before the next boundary, not the physical capacity.
-**Why human:** Live dialog interaction and resulting span.
-
-### 11. Source cycle card absence
-**Test:** Open Run Script on a stack destination.
-**Expected:** The creation-only Source cycle card never appears.
-**Why human:** Final visual layout/visibility.
-
 ## Gaps Summary
 
-**No gaps found.** The Quick A goal is implemented and behaviorally verified against HEAD `8bf9931a5`: destination resolution uses the one canonical derivation from live ports; refusals fail closed with zero writes; growth is extend-only with lifecycle growth, unchanged repeat, lifecycle-less infinity clips and explicit Truncate capping; Keep script is wired through the raw-union port and mode-aware recorder with `keyScriptEdits` never flipped; collision offers and the single atomic commit (including victim removal and one-command undo semantics) are in place; and the dialog exposes the stack readout, free-span Max, natural-duration default and collision surface while hiding creation-only controls.
-
-Remediation gate: CR-01..CR-07 and WR-02/05/12/13/14 are all present in source with the named regression tests above.
-
-Scope discipline holds: no persisted format/schema file changed (`git diff --name-only 8142f03d1^..HEAD` touches no `packages/`, codec or payload file), no Quick B artifact exists (`aquarelleScriptBaseAuthority` absent; `aquarelleBaseRecovery.ts` and `physicsPaintRotoScriptClipboard.ts` untouched), and the Studio diff adds only the union port, the mode-aware recorder and the scalar revision port. Only documentation changed after the previous verifier pass; the code is identical to the previously verified tree, and the fingerprint above is regenerated so the report is not stale.
-
-Status is `human_needed` solely because the plan's 11 live UAT rows are user-run and have not been recorded.
+None. All seven must-have truths verify against source and passing tests at HEAD `1285ec987`; all five artifacts pass the artifact gate; all five key links are wired; the Quick B scope (flag-off Keep ON + durable-base authority, Reveal stacking, frame-override bases) is explicitly deferred and untouched. The 11 live UAT rows the previous report was waiting on were accepted by the user on 2026-10-31, and the remaining minor UI observations were explicitly deferred to Quick B, so no human verification is outstanding. One advisory observation is recorded, not counted as a gap: the stack natural-duration seed assertion happens to use the same value as the creation default; the stack-only law is still pinned by the seeding code plus the creation counter-case.
 
 ---
 
-_Verified: 2026-10-31T16:45:04Z_
+_Verified: 2026-10-31T18:08:47Z_
 _Verifier: Claude (gsd-verifier)_
