@@ -1824,7 +1824,7 @@ describe('261031-cf9 the Paint seed variation switch row', () => {
     const label = childrenOf(button).find(
       (node) => typeof (node as AnyVNode).props?.class === 'string'
         && (node as AnyVNode).props.class.includes('physics-paint-script-switch-label'),
-    )!;
+    ) as AnyVNode;
     expect(label.props.children).toBe('Paint seed variation');
 
     // First child of the geometry section, above X/Y/Scale/Rotation.

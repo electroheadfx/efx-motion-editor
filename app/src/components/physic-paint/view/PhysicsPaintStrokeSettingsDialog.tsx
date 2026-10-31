@@ -12,10 +12,12 @@ import {
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
   buildAppearancePatch,
+  buildPaintSeedVariationPatch,
   geometryMoveDelta,
   geometryTransform,
   readColorField,
   readNumericField,
+  readPaintSeedVariation,
   resolveStrokeSettingsOpen,
   shouldMarkSawEmpty,
   strokeSettingsFields,
@@ -185,6 +187,16 @@ const SECTION_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '15px',
+};
+
+/**
+ * 261031-cf9: the Paint seed variation row. The section gap already spaces it
+ * from the row below; the padding gives it its own 15px above and below so the
+ * switch reads as its own block above Geometry. No other properties.
+ */
+const PAINT_SEED_VARIATION_ROW_STYLE: CSSProperties = {
+  paddingTop: '15px',
+  paddingBottom: '15px',
 };
 
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
@@ -447,6 +459,9 @@ export function PhysicsPaintStrokeSettingsDialog({
   const numericFields = fields.filter((field) => field.kind === 'numeric');
   const segmentedFields = fields.filter((field) => field.kind === 'segmented');
   const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;
+  // 261031-cf9: the switch is watercolor-only and derived from the salt each
+  // appearance carries — never a second boolean.
+  const paintSeedVariationActive = readPaintSeedVariation(appearances);
 
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
@@ -707,6 +722,33 @@ export function PhysicsPaintStrokeSettingsDialog({
           {activeSettingsTab === 'geometry' ? (
             liveCenter ? (
               <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
+              {engineModule === 'watercolor' ? (
+                <div
+                  data-testid="stroke-settings-paint-seed-variation"
+                  style={PAINT_SEED_VARIATION_ROW_STYLE}
+                >
+                  <button
+                    type="button"
+                    class={`physics-paint-script-switch${paintSeedVariationActive ? ' is-on' : ''}`}
+                    role="switch"
+                    aria-checked={paintSeedVariationActive ? 'true' : 'false'}
+                    title={paintSeedVariationActive
+                      ? 'Paint seed variation on — every committed re-bake re-rolls the paint texture'
+                      : 'Paint seed variation — re-roll the paint texture on every committed re-bake'}
+                    onClick={() => {
+                      void bundle.applyAppearance(
+                        ids,
+                        buildPaintSeedVariationPatch(!paintSeedVariationActive),
+                      );
+                    }}
+                  >
+                    <span class="physics-paint-script-switch-track" aria-hidden="true">
+                      <span class="physics-paint-script-switch-knob" />
+                    </span>
+                    <span class="physics-paint-script-switch-label">Paint seed variation</span>
+                  </button>
+                </div>
+              ) : null}
               {opacityField && opacityReading ? (
                 <div data-testid="stroke-settings-geometry-opacity">
                   <SliderStepper

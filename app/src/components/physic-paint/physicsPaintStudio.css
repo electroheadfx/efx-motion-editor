@@ -1475,6 +1475,12 @@ button.destructive {
   border-bottom-color: #1c1e22 !important;
 }
 
+/* 261031-cf9: the 12px switch margin belongs to the top bar; inside the
+   Stroke settings sheet the switch aligns to the 12px content edge. */
+.physics-paint-stroke-settings-scroll .physics-paint-script-switch {
+  margin-left: 0;
+}
+
 .physics-paint-options-tab-panel {
   display: flex;
   flex-direction: column;

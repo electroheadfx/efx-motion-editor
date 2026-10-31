@@ -14,6 +14,7 @@
 // ============================================================
 
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
+import { paintSeedSaltOf } from '@efxlab/efx-watercolor/payload';
 import type { SelectableScriptStroke, ScriptStrokeSize } from './scriptStrokeEdition';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
@@ -196,6 +197,26 @@ export function buildAppearancePatch(
 /** Color-only patch for one color commit. */
 export function buildColorPatch(color: string): ScriptStrokeAppearancePatch {
   return { color };
+}
+
+/**
+ * 261031-cf9: the Paint seed variation switch reads ON only when the
+ * selection is non-empty and EVERY selected stroke carries a finite
+ * non-negative `paintSeedSalt` (the reserved host key inside the stroke
+ * params). Mixed, absent or malformed salts read OFF — the switch then
+ * commits ON for the whole selection, so a mixed read is the only safe
+ * representative.
+ */
+export function readPaintSeedVariation(
+  appearances: readonly ScriptStrokeAppearance[],
+): boolean {
+  if (appearances.length === 0) return false;
+  return appearances.every((appearance) => paintSeedSaltOf(appearance.params) !== null);
+}
+
+/** The switch's whole-selection flag patch. */
+export function buildPaintSeedVariationPatch(enabled: boolean): ScriptStrokeAppearancePatch {
+  return { paintSeedVariation: enabled };
 }
 
 export interface StrokeSettingsOpenArgs {
