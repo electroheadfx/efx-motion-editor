@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-31T08:58:54.436Z"
+last_updated: "2026-10-31T09:04:23.395Z"
 last_activity: 2026-10-31
 last_activity_desc: Create Rail layout CLOSED, UAT approved — both tabs share one height, Reveal without Key Script, summary closes column 1, orange selected tab
-state_head: 208e513d5b7737261c9b918a46c813a7cd9bf287
+state_head: 0266a199d36e6afd7cbd741971aed5c29d12a42e
 progress:
   total_phases: 3
   completed_phases: 3
@@ -637,6 +637,7 @@ None yet.
 | 261031-cf9 | Add a Paint seed variation switch to the Move/Edit Stroke settings Geometry tab: ON re-rolls each watercolor stroke's persisted paint seed (paintSeedSalt in engine.params, folded into traceSeed via mixStrokeSeed) on every committed re-bake, undoable; OFF byte-identical to today | 2026-10-31 | 2a4c764af | [261031-cf9-add-a-paint-seed-variation-switch-to-the](./quick/261031-cf9-add-a-paint-seed-variation-switch-to-the/) |
 | 83 | bump preact 11.0.2 to 11.1.1 — CLOSED, UAT approved 2026-10-31 | 2026-10-31 | 3bc344718 | — |
 | 261031-dm1 | Lean Roto authority open: the Create Rail dialog opens on identities only (no raster bytes over the bridge) | 2026-10-31 | 208e513d5 | [261031-dm1-lean-roto-authority-open-make-the-create](./quick/261031-dm1-lean-roto-authority-open-make-the-create/) |
+| 85 | Rename the Physic Paint 'Create Rail' label to 'Run Script' across the Scripts panel, Tools strip, picker and play dialog | 2026-10-31 | 0266a199d | — |
 
 ### Roadmap Evolution
 
