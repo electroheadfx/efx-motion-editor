@@ -138,3 +138,20 @@ None - no external service configuration required.
 - All implementation files and this SUMMARY exist on disk.
 - Both task commits (`0ee92e03b`, `fae0f92eb`) are ancestors of HEAD.
 - Targeted suites, full app suite and typecheck are green.
+
+## UAT APPROVED (2026-10-31)
+
+All eight live Studio rows passed:
+
+- Empty Move/Edit selection shows the sentence-case Paint/Eraser/All toggles, the tool dropdown, the tip dropdown (when >1 tip) and the stroke list - no tab row, no old caption.
+- Paint/Eraser/All filtering stays consistent between the list and the canvas selection outline.
+- Tool and tip dropdowns narrow the list; a tool change that orphans the current tip resets it to All tips; no offered combination is empty.
+- Clicking a row outlines that stroke and returns the Geometry/Stack/Paint tabs; clearing the selection brings the list back.
+- "No strokes on this frame." and "No strokes match this filter." render in the right states; the summary reads `F<n> · N strokes · P paint · E erasers`.
+- A long list scrolls inside the SidebarScrollArea; sheet drag/resize/close unchanged.
+- A rail-key-script frame lists every recorded stroke with its type.
+- Labels and rows render in sentence case, not uppercase.
+
+Post-UAT fix: the row's second line rendered the stack position on top of the tip name (the 3-column grid auto-placed the position into the 10px dot column). Position, tip and the custom marker now share one meta line spanning columns 2-3 (`10184d69d`); the row passed on screen after the fix.
+
+Quick task closed. Commits: `915a96d01`, `0ee92e03b`, `fae0f92eb`, `10184d69d`.
