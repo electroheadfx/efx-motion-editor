@@ -4862,6 +4862,65 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(Object.prototype.hasOwnProperty.call(target, 'keyScriptEdits')).toBe(false);
   });
 
+  it('reloads the extended Reveal rail with the same rendered frames and repeat resolution (Quick B)', async () => {
+    const test = stackHarness(
+      [revealClip({ repeat: 2, colorize: true, colorizeMix: 35 })],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: vi.fn(), hasPhotoReference: () => true },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const revision = buildPhysicPaintRotoPhysicalRevision(
+      publication.records,
+      interpolation,
+      publication.loopClips ?? [],
+    );
+    const reopened = parsePhysicPaintRotoPhysicalDocument(jsonRoundTrip({
+      capacity: 600,
+      realKeyRecords: publication.records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 13,
+      loopClips: publication.loopClips ?? [],
+      incomingInterpolationBreakKeyIds: [],
+      revision,
+    }));
+
+    // The extended rail survives the snapshot byte-for-byte — including the
+    // reveal knobs adopted by the run and the untouched repeat.
+    const target = (publication.loopClips ?? [])[0]!;
+    expect(reopened.loopClips[0]).toEqual(target);
+    expect(reopened.loopClips[0].railKind).toBe('reveal');
+    expect(reopened.loopClips[0].repeat).toBe(2);
+    expect(reopened.loopClips[0].sourceKeyIds).toEqual(target.sourceKeyIds);
+
+    // The reveal-rendered pictures reload unchanged — no plain-paper fallback.
+    const revealBytes = testWebpBytes('reveal-tail');
+    expect(reopened.realKeyRecords
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([revealBytes, revealBytes, revealBytes]);
+
+    // Repeat resolution is identical before and after the reload.
+    const resolve = (loopClips: readonly PhysicPaintRotoLoopClip[]) => {
+      const context = derivePhysicPaintRotoLoopRanges({
+        identities: reopened.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips,
+        capacity: 600,
+        interpolationEnabled: false,
+      });
+      return [10, 12, 13, 15, 16, 17, 18].map((frame) => resolvePhysicPaintRotoLoopFrame(context, frame));
+    };
+    expect(resolve(reopened.loopClips)).toEqual(resolve(publication.loopClips ?? []));
+  });
+
   it('Keep OFF on a Reveal rail records nothing and still renders the revealed union', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
