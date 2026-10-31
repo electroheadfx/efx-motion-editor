@@ -327,7 +327,8 @@ interface BoundaryCandidate {
  * truncated effectiveEnd is a lowest-rank candidate: an other-rail / real-key /
  * parent-end candidate on the same frame keeps its classification (and Overwrite
  * offer); 'target-end' wins only when nothing canonical sits there. A frame
- * override inside the requested written span refuses outright with no offers.
+ * override inside the requested written span is legal (261031-qps): its base
+ * resolves to the source key, so it never blocks the boundary.
  *
  * WR-03: `collision` is the RUN crossing the boundary (`runStart + requestedCount
  * > boundary`), not the cycle end. A run that fits inside a truncated target
