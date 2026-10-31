@@ -4208,17 +4208,39 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       ...portOverrides,
     });
     test.setSelection(selection);
+    // CR-01: a stack run commits the run's per-key slices, so the bake must
+    // report the anchors a real brush script produces. Tests that install a
+    // held/failing/Dry-only behavior BEFORE constructing the harness keep
+    // theirs; anything installed afterwards replaces this default.
+    if (pendingBakeBehavior === null) nextBakeBehavior(reportAnchors);
     const bumpAvailability = () => { test.availabilityRevision.value += 1; };
     bumpAvailability();
     return { ...test, requestAuthority, commit, getLoopEditSnapshot, bumpAvailability };
   };
 
+  // The anchor set a real two-brush script reports from the bake. Shared by
+  // every default/custom stack bake so a held behavior still produces the
+  // per-key slices the run commits.
+  const stackAnchors = () => [
+    { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-a', points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 1 } as AquarelleStroke), startFrame: 0 },
+    { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-b', points: [{ x: 2, y: 2, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 2 } as AquarelleStroke), startFrame: 1 },
+  ];
+
   const reportAnchors = (options: Record<string, any>) => {
-    const anchors = [
-      { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-a', points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 1 } as AquarelleStroke), startFrame: 0 },
-      { stroke: toStudioStroke({ tool: 'brush', color: '#103c65', params: { size: 8, opacity: 1 }, brushId: 'tip-b', points: [{ x: 2, y: 2, p: 0.5, tx: 0, ty: 0, tw: 0 }], timestamp: 2 } as AquarelleStroke), startFrame: 1 },
-    ];
-    options.onStrokeFrameAnchors?.(anchors);
+    options.onStrokeFrameAnchors?.(stackAnchors());
+    return Promise.resolve({
+      ok: true,
+      frames: Array.from({ length: options.frameCount ?? 1 }, (_, index) => ({
+        frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
+      })),
+    });
+  };
+
+  // CR-01: a Dry-only persisted script is schema-legal, but the bake's stroke
+  // list filters every Dry event out, so it reports NO anchors and the slice
+  // list is empty.
+  const reportNoAnchors = (options: Record<string, any>) => {
+    options.onStrokeFrameAnchors?.([]);
     return Promise.resolve({
       ok: true,
       frames: Array.from({ length: options.frameCount ?? 1 }, (_, index) => ({
@@ -4501,6 +4523,50 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.commit).not.toHaveBeenCalled();
     expect(recorder).not.toHaveBeenCalled();
     expect(test.controller.error.value).toContain('bake-failed');
+  });
+
+  it('aborts a Dry-only pixel-only stack run with zero writes on Keep ON (CR-01)', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.keepScriptEffective.value).toBe(true);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportNoAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    // Zero anchors = no authority-backed picture: never the raw staged bake.
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('Nothing changed.');
+  });
+
+  it('aborts a Dry-only pixel-only stack run with zero writes on Keep OFF (CR-01)', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setKeepScript(false);
+    test.controller.mode.value = 'static';
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportNoAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    // No slices: neither the union nor the composite path may run, and the raw
+    // staged bake must not be committed over the destination keys.
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('Nothing changed.');
   });
 
   it('pixel-only Keep ON: unions over the authority base and appends, without flipping keyScriptEdits (Quick B)', async () => {
@@ -5316,14 +5382,17 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
 
   it('ignores a second confirm while a bake is in flight (WR-10)', async () => {
     let release!: () => void;
-    nextBakeBehavior(() => new Promise((resolve) => {
-      release = () => resolve({
-        ok: true,
-        frames: Array.from({ length: 2 }, (_, index) => ({
-          frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
-        })),
+    nextBakeBehavior((options) => {
+      options.onStrokeFrameAnchors?.(stackAnchors());
+      return new Promise((resolve) => {
+        release = () => resolve({
+          ok: true,
+          frames: Array.from({ length: 2 }, (_, index) => ({
+            frameIndex: index, appFrame: index, bytes: testWebpBytes(`staged-${index}`), width: 10, height: 10,
+          })),
+        });
       });
-    }));
+    });
     const test = stackHarness([stackClip(1, { mode: 'progressive' })], { canonicalStart: 11 }, {}, { kind: 'empty', keyId: null, appFrame: 11 });
     await test.controller.openConfirmation();
     test.controller.countText.value = '2';

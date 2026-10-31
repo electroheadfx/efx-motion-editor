@@ -2535,6 +2535,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // The per-key slices drive BOTH the union re-bake and the post-commit
       // recording; slots align with the committed destination frames.
       const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
+      // CR-01: a stack run with no per-key anchors has NO authority-backed
+      // picture to publish. A Dry-only persisted script is schema-legal but the
+      // bake reports anchors only for real brush strokes, so the slice list is
+      // empty; committing the raw staged bake would overwrite every touched
+      // key's existing paint with no pin and no recording. Fail closed before
+      // the single commit (the reveal path keeps its own explicit refusal).
+      if (!isRevealTarget && slices.length === 0) {
+        throw new Error('This run produced no per-key strokes, so the rail was not changed. Nothing changed.');
+      }
       if (isRevealTarget) {
         // 261031-qps (Quick B): EVERY touched frame is re-rendered through the
         // placed photo reference (same photo, new wash) — including the run's
