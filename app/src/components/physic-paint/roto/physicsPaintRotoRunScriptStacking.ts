@@ -19,9 +19,11 @@ import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolve
  * parent end and routes any overflow through the explicit Truncate / Cancel
  * offers).
  *
- * Scope guard: flag-off Keep script ON, the durable-base authority seam, Reveal
- * rail stacking and frame-override bases belong to Quick B and are absent here
- * by design — an override inside the written span REFUSES with zero writes.
+ * 261031-qps (Quick B): a Reveal rail is a legal stack destination — the plan
+ * carries its `railKind` and its stored knobs so the controller can route the
+ * tail bake through the photo reference and adopt them. The durable-base
+ * authority owns every base decision; an override inside the written span is
+ * legal and resolves through its SOURCE key.
  */
 
 /** One visible fragment of a resolved Paint rail (a deleted frame splits the rail). */
@@ -47,6 +49,14 @@ export interface RunScriptRailView {
   readonly motion: PhysicPaintRotoScriptMotionSettings | undefined;
   /** The rail's stored color override (null = Original colors). */
   readonly overrideColor: string | null;
+  /** The rail's stored Colorize knob — seeded and adopted by a Reveal stack. */
+  readonly colorize: boolean;
+  /** Stored Colorize mix percentage (100 when the rail never set one). */
+  readonly colorizeMix: number;
+  /** The rail's stored Photo wiggle knob — seeded and adopted by a Reveal stack. */
+  readonly photoWiggle: boolean;
+  /** The rail's stored Paint seed variation knob — seeded and adopted by a Reveal stack. */
+  readonly paintSeedVariation: boolean;
   readonly sourceKeyIds: readonly string[];
   readonly sourceOffsets: readonly number[];
   /** Physical app frames of the rail's locally painted override keys. */
@@ -73,7 +83,7 @@ export type RunScriptDestination =
       readonly runStartAppFrame: number;
       readonly repeatInstance: number;
     }
-  | { readonly kind: 'refuse'; readonly reason: 'ambiguous-rail' | 'reveal-target' };
+  | { readonly kind: 'refuse'; readonly reason: 'ambiguous-rail' };
 
 export interface RunScriptStackExtension {
   readonly writeAppFrames: readonly number[];
@@ -203,6 +213,10 @@ export function toRunScriptRailViews(input: {
       mode: clip.mode,
       motion: clip.motion === undefined ? undefined : Object.freeze({ ...clip.motion }),
       overrideColor: clip.overrideColor ?? null,
+      colorize: clip.colorize === true,
+      colorizeMix: clip.colorizeMix ?? 100,
+      photoWiggle: clip.photoWiggle === true,
+      paintSeedVariation: clip.paintSeedVariation === true,
       sourceKeyIds: Object.freeze([...anchor.sourceKeyIds]),
       sourceOffsets: Object.freeze([...anchor.sourceOffsets]),
       frameOverrideAppFrames: Object.freeze(overrideFrames),
@@ -217,9 +231,9 @@ export function toRunScriptRailViews(input: {
 /**
  * Playhead membership only, evaluated against the visible FRAGMENTS: a deleted
  * frame splits the rail and the gap between fragments is not part of it (CR-03).
- * Exactly one containing rail resolves to 'stack'; two or more fail closed
- * ('ambiguous-rail') before the reveal refusal. Outside every rail the create
- * path stays byte-identical to today.
+ * Exactly one containing rail resolves to 'stack' — Paint or Reveal alike, since
+ * Quick B's Reveal stack is a legal destination. Two or more fail closed
+ * ('ambiguous-rail'). Outside every rail the create path stays byte-identical.
  */
 export function resolveRunScriptDestination(input: {
   readonly appFrame: number;
@@ -235,9 +249,6 @@ export function resolveRunScriptDestination(input: {
     return Object.freeze({ kind: 'refuse', reason: 'ambiguous-rail' }) as RunScriptDestination;
   }
   const rail = containing[0]!;
-  if (rail.railKind === 'reveal') {
-    return Object.freeze({ kind: 'refuse', reason: 'reveal-target' }) as RunScriptDestination;
-  }
   if (rail.cycleLength <= 0 || input.appFrame < rail.phaseOrigin) {
     return Object.freeze({ kind: 'create' }) as RunScriptDestination;
   }

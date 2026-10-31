@@ -4477,7 +4477,25 @@ describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
     expect(publishBlock).not.toContain(`target.${retired('durableBase', 'KeyId')}`);
     expect(publishBlock).not.toContain('physicPaintStore.getRotoRealKeyRecord(');
     expect(publishBlock).toContain("if (target.durableBaseKind === 'reveal') {");
-    expect(publishBlock).toContain("reason: 'reveal-base-unsupported'");
+    // 261031-qps (Quick B): a reveal-owned key renders through the placed photo
+    // reference with the OWNING clip's knobs — the old reveal-base-unsupported
+    // refusal is gone (it survives only in bakeStackedRailKey, a different seam).
+    expect(publishBlock).toContain('const revealClip = revealClipForKey(target.sourceKeyId ?? target.keyId);');
+    expect(publishBlock).toContain("error: 'reveal-rail-not-found'");
+    expect(publishBlock).toContain('await renderRevealTail({');
+    expect(publishBlock).toContain('motion: revealClip.motion ?? { deformation: 0, position: 0 },');
+    expect(publishBlock).toContain('mode: revealClip.mode,');
+    expect(publishBlock).toContain('colorize: revealClip.colorize === true,');
+    expect(publishBlock).toContain('colorizeMix: revealClip.colorizeMix ?? 100,');
+    expect(publishBlock).toContain('photoWiggle: revealClip.photoWiggle === true,');
+    expect(publishBlock).toContain('paintSeedVariation: revealClip.paintSeedVariation === true,');
+    expect(publishBlock).toContain("durableBaseSource = 'reveal';");
+    expect(publishBlock).toContain('publishBytes = revealFrame.bytes;');
+    // A failed reveal render fails closed before the cache write.
+    const revealFail = publishBlock.indexOf('if (!rendered.ok || !revealFrame) {');
+    expect(revealFail).toBeGreaterThan(-1);
+    expect(publishBlock.indexOf('return false;', revealFail)).toBeGreaterThan(revealFail);
+    expect(publishBlock.indexOf('upsertCachedFrame(')).toBeGreaterThan(revealFail);
     expect(publishBlock).toContain('composeRotoScriptRebakeFrame({');
     expect(publishBlock).toContain('durableBaseBytes: target.durableBaseBytes');
     expect(publishBlock).toContain('sheetBytes: frame.bytes');
@@ -5099,6 +5117,46 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(compositePort).toContain("if (!record) return { kind: 'baked', bytes: baked.bytes };");
     expect(compositePort).not.toContain('purgeAquarelleFrameScript');
     expect(compositePort).not.toContain('aquarelleDurableBaseByKeyRef');
+  });
+
+  it('pins the render-only reveal stack tail: span render, per-slice render, refusal before commit (261031-qps)', () => {
+    const revealPort = slice(
+      studio,
+      'const bakeRevealStackTail = async (input: {',
+      '// 261030-np9 (D-03/D-04): per-key rail scripts',
+    );
+    // The port is render-only: it can never write a record or a base pin. The
+    // controller owns the single atomic commit.
+    expect(revealPort).not.toContain('purgeAquarelleFrameScript');
+    expect(revealPort).not.toContain('aquarelleDurableBaseByKeyRef');
+    expect(revealPort).not.toContain('recordAquarelleStroke(');
+    expect(revealPort).not.toContain('upsertCachedFrame(');
+    expect(revealPort).toContain('if (start === undefined) return { kind: \'refused\', reason: \'empty-span\' };');
+    // Fast path: no destination key owns recorded strokes → the whole span
+    // renders ONCE from the run's script (reveal-creation parity).
+    expect(revealPort).toContain('input.slices.some((slice) => hasAquarelleScriptForFrame(slice.frame))');
+    const fastPath = revealPort.slice(revealPort.indexOf('if (!ownsRecordedStrokes) {'));
+    expect(fastPath).toContain('canonicalStart: start,');
+    expect(fastPath).toContain('frameCount: frames.length,');
+    expect(fastPath).toContain('frameIndex: frame.appFrame - start,');
+    expect(fastPath).toContain("if (!rendered.ok) return { kind: 'refused', reason: rendered.error };");
+    // Slow path: one output frame per touched slice, the key's recorded events
+    // unioned with this run's slice so the picture equals the script.
+    const slowPath = revealPort.slice(revealPort.indexOf('const frameSet = new Set(frames);'));
+    expect(slowPath).toContain('...getAquarelleEventsForFrame(slice.frame),');
+    expect(slowPath).toContain('...slice.strokes.map((stroke) => toStudioStroke(stroke)),');
+    expect(slowPath).toContain('canonicalStart: slice.frame,');
+    expect(slowPath).toContain('frameCount: 1,');
+    expect(slowPath).toContain("return { kind: 'refused', reason: 'reveal-frame-missing' };");
+    expect(slowPath).toContain('frameIndex: slice.slot,');
+    // The ONE reveal seam is shared with the Apply/paste publish dispatch.
+    expect(studio).toContain('renderRevealTailFrames');
+    const wiring = slice(
+      studio,
+      "// 261031-qps (Quick B): the reveal rail's photo-reference tail bake.",
+      'getScriptNaturalDuration:',
+    );
+    expect(wiring).toContain('bakeRevealStackTail,');
   });
 
   it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {

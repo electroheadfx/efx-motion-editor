@@ -60,6 +60,12 @@ export function PhysicsPaintPlayScriptDialog({
      destination is not a creation surface: the Rail kind tabs are hidden and a
      stale Reveal tab can never take over the confirmation (WR-06). */
   const stacking = !loopEdit && !sourceEdit && playScript.runDestination.value.kind === 'stack';
+  // 261031-qps (Quick B): a Reveal rail is a legal stack destination. Its card
+  // set is the reveal knob trio (Colorize / Photo wiggle / Paint seed); Rail
+  // Type, Motion wiggle, Color and Key Script describe a Paint creation and are
+  // hidden. The rail's placed photo reference is shown read-only — the stack
+  // renders through it and never replaces it.
+  const stackReveal = stacking && playScript.stackRailKind.value === 'reveal';
   // 52-05 (G-52-3): the tab strip is an apply-mode creation surface — edit and
   // regenerate modes keep their existing single-surface layout.
   const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact && !stacking;
@@ -295,13 +301,15 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
-          <RailTypeCard
-            playScript={playScript}
-            revealTab={revealTab}
-            busy={busy}
-            locked={loopEdit}
-            stacking={stacking}
-          />
+          {stackReveal ? null : (
+            <RailTypeCard
+              playScript={playScript}
+              revealTab={revealTab}
+              busy={busy}
+              locked={loopEdit}
+              stacking={stacking}
+            />
+          )}
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
@@ -325,8 +333,8 @@ export function PhysicsPaintPlayScriptDialog({
           {stacking && stackReadout ? <StackReadoutCard readout={stackReadout} /> : null}
           {keepScriptVisible ? <KeepScriptCard playScript={playScript} busy={busy} reason={keepScriptReason} /> : null}
           {playScript.dialogMode.value === 'apply' && !revealTab && !stacking ? <KeyScriptCard playScript={playScript} busy={busy} /> : null}
-          {playScript.dialogMode.value === 'apply' && !stacking ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
-          {revealTab ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
+          {stackReveal || (playScript.dialogMode.value === 'apply' && !stacking) ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
+          {revealTab || stackReveal ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
           {stacking && stackCollision !== null ? (
             <CollisionCard
               playScript={playScript}
@@ -363,16 +371,34 @@ export function PhysicsPaintPlayScriptDialog({
           ) : (
           <>
           <div class="physics-paint-play-script-side-stack">
-            <ColorCard
-              playScript={playScript}
-              busy={busy}
-              locked={loopEdit}
-              stacking={stacking}
-              colorValue={colorValue}
-            />
-            <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
+            {/* 261031-qps (Quick B): a reveal stack swaps Color + Motion wiggle
+                for the Colorize card. The cards stay DIRECT children of the
+                stack (no wrapping Fragment) — the D-16 grid pins read the
+                rendered children in order. */}
+            {stackReveal ? null : (
+              <ColorCard
+                playScript={playScript}
+                busy={busy}
+                locked={loopEdit}
+                stacking={stacking}
+                colorValue={colorValue}
+              />
+            )}
+            {stackReveal ? (
+              <ColorizeCard playScript={playScript} busy={busy} />
+            ) : (
+              <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
+            )}
           </div>
-          {identicalCycle ? (
+          {stackReveal ? (
+            /* 261031-qps (Quick B): the reference is the RAIL's own — shown,
+               never replaced or re-placed from the stack dialog. */
+            <div class="physics-paint-play-script-reveal-notice" role="note">
+              <span>{playScript.revealReferencePlaced.value
+                ? "This run renders through the rail's own placed photo reference."
+                : 'This Reveal rail has no photo reference. Place one before running — the run refuses without it.'}</span>
+            </div>
+          ) : identicalCycle ? (
             <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} />
           ) : null}
           </>)}

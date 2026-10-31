@@ -354,6 +354,40 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
     readonly appFrame: number;
     readonly strokes: readonly AquarelleStroke[];
   }) => Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }>;
+  /**
+   * 261031-qps (Quick B): the Reveal rail's render-only tail bake. Every
+   * touched frame renders through the rail's currently placed photo reference
+   * (same photo, new wash) and NO key record or interpolation break is written
+   * — the controller assembles the bytes into the single publication and
+   * asserts full frame coverage before commit. Absent port or a refusal fails
+   * the whole run closed; plain-paper bytes never reach a reveal frame.
+   */
+  bakeRevealStackTail?: (input: {
+    readonly slices: readonly RailKeyScriptResult[];
+    readonly frames: readonly number[];
+    readonly scriptEvents: readonly AquarellePayloadEvent[];
+    readonly mode: 'progressive' | 'static';
+    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    readonly colorize: boolean;
+    readonly colorizeMix: number;
+    readonly photoWiggle: boolean;
+    readonly paintSeedVariation: boolean;
+    readonly signal: AbortSignal;
+    readonly onProgress?: (completed: number, total: number) => void;
+  }) => Promise<
+    | {
+        kind: 'baked';
+        frames: readonly {
+          readonly appFrame: number;
+          readonly frameIndex: number;
+          readonly bytes: Uint8Array;
+          readonly width: number;
+          readonly height: number;
+        }[];
+        anchors: readonly AquarelleStrokeFrameAnchor[];
+      }
+    | { kind: 'refused'; reason: string }
+  >;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (
@@ -503,6 +537,12 @@ export interface RotoPlayScriptController {
   framesMax: ReadonlySignal<number>;
   /** Resolved span, source-cycle offset and extension/truncation copy. */
   stackReadout: ReadonlySignal<RunScriptStackReadout | null>;
+  /**
+   * 261031-qps (Quick B): the pinned destination's rail kind. The dialog
+   * composes a Reveal stack from it (Colorize / Photo wiggle / Paint seed
+   * editable; Rail Type, Motion wiggle, Color and Key Script hidden).
+   */
+  stackRailKind: ReadonlySignal<'playscript' | 'reveal' | null>;
   /** Keep script draft — seeded ON only for a flag-on stack target, then user-owned. */
   keepScript: Signal<boolean>;
   keepScriptVisible: ReadonlySignal<boolean>;
@@ -1041,26 +1081,42 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   const repeatLocked = computed(() => runDestination.value.kind === 'stack');
 
+  /**
+   * 261031-qps (Quick B): the pinned destination's rail kind — the dialog's
+   * composition gate for the Reveal knob set. Reads the pinned destination
+   * (`runDestination`), never the live playhead, so scrubbing cannot flip it.
+   */
+  const stackRailKind = computed<'playscript' | 'reveal' | null>(() => {
+    const destination = runDestination.value;
+    return destination.kind === 'stack' ? destination.rail.railKind : null;
+  });
+
   /* Keep script: a draft signal the user owns, re-seeded only when the TARGET
      changes (rail identity + its persisted flag), never on an unrelated
      revision bump — so a user toggle survives the next scrub. */
   const keepScript = signal(false);
   const unionPortPresent = (): boolean => typeof ports.bakeStackedRailKey === 'function';
-  const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && unionPortPresent());
+  const revealTailPortPresent = (): boolean => typeof ports.bakeRevealStackTail === 'function';
+  /** The port the CURRENT destination's Keep ON bake runs through. */
+  const stackPortPresent = computed(() => (stackRailKind.value === 'reveal' ? revealTailPortPresent() : unionPortPresent()));
+  const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && stackPortPresent.value);
   // 261031-qps (Quick B): Keep script applies to EVERY existing-rail destination.
   // The persisted keyScriptEdits flag no longer gates it — a pixel-only rail is
   // seeded ON and its pre-run picture is pinned as the authority's durable base,
-  // so ON appends scripts and OFF flattens, both without flipping the flag.
+  // so ON appends scripts and OFF flattens, both without flipping the flag. A
+  // Reveal rail needs its render-only tail port instead of the union bake.
   const keepScriptEffective = computed(() => {
     const destination = runDestination.value;
-    return destination.kind === 'stack' && unionPortPresent() && keepScript.value;
+    return destination.kind === 'stack' && stackPortPresent.value && keepScript.value;
   });
   const keepScriptDisabledReason = computed(() => {
     const destination = runDestination.value;
     // Only the never-a-stack case (no bake port in this build) disables the
-    // switch; every stack destination with the port can keep its scripts.
-    if (destination.kind !== 'stack' || unionPortPresent()) return null;
-    return 'This build cannot re-bake per-key scripts on an existing rail. The run is composited over its existing pixels.';
+    // switch; every stack destination with its port can keep its scripts.
+    if (destination.kind !== 'stack' || stackPortPresent.value) return null;
+    return destination.rail.railKind === 'reveal'
+      ? 'This build cannot re-render a Reveal rail. Nothing can be stacked onto it.'
+      : 'This build cannot re-bake per-key scripts on an existing rail. The run is composited over its existing pixels.';
   });
   let keepScriptSeedKey: string | null = null;
   const seedKeepScript = effect(() => {
@@ -1279,15 +1335,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   async function openConfirmation(options?: { railTab?: RotoPlayScriptRailTab }): Promise<void> {
     if (disposed || disabledReason.peek()) return;
     // 261031-i54: a refused destination never opens the dialog and never asks
-    // for authority. Reveal rail stacking is the follow-up quick; an ambiguous
-    // overlap fails closed instead of writing to a guessed rail.
+    // for authority. 261031-qps (Quick B): the ONLY remaining refusal is an
+    // ambiguous overlap — Paint and Reveal rails alike now accept a stack.
     const destination = runDestination.peek();
     if (destination.kind === 'refuse') {
       phase.value = 'idle';
       status.value = null;
-      error.value = destination.reason === 'reveal-target'
-        ? 'Reveal rails stack in a later update. Run Script onto a Paint rail, or place the playhead outside every rail.'
-        : 'Two or more rails cover this frame. Move the playhead onto exactly one rail and try again.';
+      error.value = 'Two or more rails cover this frame. Move the playhead onto exactly one rail and try again.';
       ports.log(error.peek()!, true);
       return;
     }
@@ -1366,8 +1420,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         );
         overrideEnabled.value = destination.rail.overrideColor !== null;
         stackOverrideColor.value = destination.rail.overrideColor;
-        // WR-06: a stack destination is Paint-only — the Reveal tab must never
-        // stay selected from an earlier open.
+        // 261031-qps (Quick B): a Reveal stack seeds its four editable knobs
+        // from the rail's stored settings — compare-then-write (rule 3), once
+        // at open, never a per-playhead-tick read. A Paint stack keeps the
+        // creation defaults (all off) for these reveal-only settings.
+        if (destination.rail.railKind === 'reveal') {
+          if (colorize.peek() !== destination.rail.colorize) colorize.value = destination.rail.colorize;
+          if (colorizeMix.peek() !== destination.rail.colorizeMix) colorizeMix.value = destination.rail.colorizeMix;
+          if (photoWiggle.peek() !== destination.rail.photoWiggle) photoWiggle.value = destination.rail.photoWiggle;
+          if (paintSeedVariation.peek() !== destination.rail.paintSeedVariation) paintSeedVariation.value = destination.rail.paintSeedVariation;
+        }
+        // WR-06/261031-qps: the stack composition comes from the rail kind, not
+        // the tab — the Reveal CREATE tab must never stay selected from an
+        // earlier open.
         if (railTab.peek() !== 'paint') railTab.value = 'paint';
         const natural = selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null;
         const seeded = String(natural ?? 3);
@@ -2324,19 +2389,45 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       return false;
     }
 
+    // 261031-qps (Quick B): a Reveal stack renders through the rail's placed
+    // photo reference. No reference → a clear refusal with zero writes; a
+    // build without the render-only port refuses too, because plain-paper
+    // bytes must never land on a reveal frame.
+    const isRevealTarget = currentTarget.railKind === 'reveal' || target.railKind === 'reveal';
+    if (isRevealTarget) {
+      const referenceRefusal = !revealTailPortPresent()
+        ? 'This build cannot render a Reveal rail. Nothing changed.'
+        : !(ports.hasPhotoReference?.() ?? false)
+          ? 'This Reveal rail has no photo reference. Place a reference, then run again. Nothing changed.'
+          : null;
+      if (referenceRefusal !== null) {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = referenceRefusal;
+        return false;
+      }
+    }
+
     // 261031-qps (Quick B) — the Keep-script 2x2. ON unions over the
     // authority-resolved durable base and APPENDS this run's slices on both
     // rail kinds (a pixel-only key's pre-run picture is pinned first, so ON is
     // non-destructive). OFF flattens a pixel-only rail (composite over its
     // current picture, record nothing, no purge, no pin) and keeps Quick A's
-    // purge-then-replace law on a flag-on rail. No branch writes the persisted
-    // keyScriptEdits flag — it is read here and never adopted below.
+    // purge-then-replace law on a flag-on rail. A Reveal rail records the
+    // revealed union on Keep ON (append) and records NOTHING on Keep OFF.
+    // No branch writes the persisted keyScriptEdits flag — it is read here and
+    // never adopted below.
     const flagOn = currentTarget.keyScriptEdits === true;
     const unionBake = ports.bakeStackedRailKey;
-    const useUnion = unionBake !== undefined && keepScriptEffective.peek();
-    const recordMode: 'append' | 'replace' | 'none' = useUnion ? 'append' : flagOn ? 'replace' : 'none';
+    const revealTailBake = ports.bakeRevealStackTail;
+    const keepOn = keepScriptEffective.peek();
+    const useUnion = !isRevealTarget && unionBake !== undefined && keepOn;
+    const recordMode: 'append' | 'replace' | 'none' = isRevealTarget
+      ? (keepOn ? 'append' : 'none')
+      : useUnion ? 'append' : flagOn ? 'replace' : 'none';
     const acceptedGeneration = ++generation;
     abortController = new AbortController();
+    const bakeSignal = abortController.signal;
     ports.stopPlayback();
     phase.value = 'preparing'; progress.value = null; status.value = 'Preparing Run Script…'; error.value = null;
     try {
@@ -2347,10 +2438,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // wiggle — seeded from the rail at open, editable by the user. The target
       // adopts them below so its label, interpolation policy and Regenerate all
       // describe what was just run. Paint seed and color stay the rail's own.
-      const motion = { ...dialogMotion.peek() };
-      const renderMode = mode.peek();
-      const renderOverrideColor = resolveOverrideColor();
-      const renderPaintSeedVariation = currentTarget.paintSeedVariation === true;
+      // 261031-qps (Quick B): a Reveal stack hides Rail Type, Motion wiggle and
+      // Color, so its render always uses the rail's OWN stored values; the four
+      // reveal knobs come from the dialog and are adopted below.
+      const motion: { deformation: number; position: number; rotation?: number; scale?: number } = isRevealTarget
+        ? (currentTarget.motion === undefined ? { deformation: 0, position: 0 } : { ...currentTarget.motion })
+        : { ...dialogMotion.peek() };
+      const renderMode = isRevealTarget ? currentTarget.mode : mode.peek();
+      const renderOverrideColor = isRevealTarget ? (currentTarget.overrideColor ?? null) : resolveOverrideColor();
+      const renderPaintSeedVariation = isRevealTarget
+        ? paintSeedVariation.peek()
+        : currentTarget.paintSeedVariation === true;
       const rotoBackground = { ...ports.getBackgroundMetadata() };
       const snapshot = await ports.library.loadSnapshot(selectedId);
       assertCurrent(acceptedGeneration);
@@ -2412,11 +2510,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       });
       const lifecycle = lifecyclePlan.lifecycle;
       const updatedTarget: PhysicPaintRotoLoopClip = {
-        ...currentTarget,
+        // 261031-qps (Quick B): a Reveal stack replaces its stored knobs with
+        // the run's (each written only when enabled); a Paint stack keeps them
+        // untouched. `keyScriptEdits` is never part of this metadata.
+        ...(isRevealTarget ? omitStoredRevealKnobs(currentTarget) : currentTarget),
         sourceKeyIds: Object.freeze([...mergedSourceKeyIds]),
         mode: renderMode,
         motion: compactPhysicPaintRotoMotion(motion),
         overrideColor: renderOverrideColor,
+        ...(isRevealTarget && colorize.peek() ? { colorize: true as const, colorizeMix: colorizeMix.peek() } : {}),
+        ...(isRevealTarget && photoWiggle.peek() ? { photoWiggle: true as const } : {}),
+        ...(isRevealTarget && paintSeedVariation.peek() ? { paintSeedVariation: true as const } : {}),
         ...(lifecycle ?? {}),
       };
       const nextClips = Object.freeze(currentLoopClips()
@@ -2431,7 +2535,49 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // The per-key slices drive BOTH the union re-bake and the post-commit
       // recording; slots align with the committed destination frames.
       const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
-      if (useUnion && unionBake !== undefined && slices.length > 0) {
+      if (isRevealTarget) {
+        // 261031-qps (Quick B): EVERY touched frame is re-rendered through the
+        // placed photo reference (same photo, new wash) — including the run's
+        // appended tail. Plain-paper Paint bytes must never reach a reveal key.
+        status.value = 'Rendering through the photo reference…';
+        if (revealTailBake === undefined || slices.length === 0) {
+          throw new Error('Reveal tail render is unavailable. Nothing changed.');
+        }
+        const reveal = await revealTailBake({
+          slices,
+          frames: destinationAppFrames,
+          scriptEvents: aquarelleEventsFromScript(snapshot),
+          mode: renderMode,
+          motion,
+          colorize: colorize.peek(),
+          colorizeMix: colorizeMix.peek(),
+          photoWiggle: photoWiggle.peek(),
+          paintSeedVariation: paintSeedVariation.peek(),
+          signal: bakeSignal,
+          onProgress: (completed, total) => {
+            if (disposed || generation !== acceptedGeneration) return;
+            progress.value = { completed, total };
+            status.value = `Rendering ${completed} / ${total}`;
+          },
+        });
+        assertCurrent(acceptedGeneration);
+        if (reveal.kind !== 'baked') throw new Error(`Reveal tail render refused: ${reveal.reason}`);
+        // T-261031-QPS-03: the changed-frame set must equal the touched reveal
+        // frames exactly — any extra or missing frame aborts with zero writes.
+        const expectedFrames = new Set(destinationAppFrames);
+        const renderedBytesByFrame = new Map<number, Uint8Array>();
+        for (const frame of reveal.frames) {
+          if (!expectedFrames.has(frame.appFrame) || renderedBytesByFrame.has(frame.appFrame)) {
+            throw new Error(`Reveal tail render produced an unexpected frame ${frame.appFrame}. Nothing changed.`);
+          }
+          renderedBytesByFrame.set(frame.appFrame, frame.bytes);
+        }
+        const missingFrame = destinationAppFrames.find((appFrame) => !renderedBytesByFrame.has(appFrame));
+        if (missingFrame !== undefined) {
+          throw new Error(`Reveal tail render is missing frame ${missingFrame}. Nothing changed.`);
+        }
+        publication = withRecordBytes(publication, renderedBytesByFrame);
+      } else if (useUnion && unionBake !== undefined && slices.length > 0) {
         status.value = 'Rebuilding key scripts…';
         // ONE batch call: the port resolves every touched key's base through
         // the authority and pins the fresh ones before returning the frames.
@@ -2984,7 +3130,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     keyScriptEdits, setKeyScriptEdits,
     paintSeedVariation, setPaintSeedVariation,
     /* 261031-i54: Run Script stacking onto an existing Paint rail. */
-    runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout,
+    /* 261031-qps: `stackRailKind` composes the Reveal stack card set. */
+    runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout, stackRailKind,
     keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked,
     stackOverrideColor, useBrushColor,
     setKeepScript, confirmStackCollision,
@@ -3539,6 +3686,19 @@ function toPhysicalEditRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaint
     appFrame: record.appFrame,
     payload: clonePhysicalPayload(record.payload),
   };
+}
+
+/**
+ * 261031-qps (Quick B): a Reveal stack ADOPTS its four knobs from the run,
+ * persisting each only when enabled (the existing field precedent). The rail's
+ * previous values are dropped first, so toggling a knob OFF clears the stored
+ * flag instead of keeping it, and an all-off run persists no knob at all —
+ * byte-identical to a pre-quick rail.
+ */
+function omitStoredRevealKnobs(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
+  const { colorize, colorizeMix, photoWiggle, paintSeedVariation, ...rest } = clip;
+  void colorize; void colorizeMix; void photoWiggle; void paintSeedVariation;
+  return rest;
 }
 
 /** Publish the post-bake bytes for the touched frames (Keep-script union or pixel composite). */

@@ -23,6 +23,9 @@ import { resetProjectPaperRasterForTests } from '../lib/projectPaperRaster';
 import { testPngBytes, testWebpBytes } from '../testUtils/testWebpBytes';
 import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
 import { encodeCanvasAsWebp } from '../lib/webpFrameCodec';
+import { renderRevealTailFrames } from './physicPaintStore';
+import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import { toStudioStroke } from '@efxlab/efx-watercolor/payload';
 
 // 52.1-04 (D-13): the decode path invokes the Rust `decode_webp_frame` command
 // (leaf module) then bridges raw RGBA → ImageData → createImageBitmap. The
@@ -64,6 +67,16 @@ vi.mock('../lib/projectPaperRaster', async (importOriginal) => ({
 vi.mock('../lib/ipc', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/ipc')>()),
   ipcEfxPaintReadFrameMedia: readFrameMediaMock,
+}));
+
+// 261031-qps (Quick B): the render-only reveal tail bake must reach the SAME
+// exported renderer as Reveal creation — mock it so the reference walk and the
+// forwarded knobs are observable without running the aquarelle engine.
+const { renderRevealMock } = vi.hoisted(() => ({ renderRevealMock: vi.fn() }));
+
+vi.mock('../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer')>()),
+  renderRotoRevealFrames: renderRevealMock,
 }));
 
 const decodeFlatLog = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -3863,5 +3876,163 @@ describe('261019-mj2 Task 5: atomic runtime cache re-anchor on physical publicat
     expect(frames.get(4)).toEqual(pixelsB);
     expect(frames.has(0)).toBe(false);
     expectFramesSubsetOfMetadata();
+  });
+});
+
+// 261031-qps (Quick B): the reveal stack tail bake. It mirrors commitRevealBake's
+// reference walk and calls the SAME exported renderer, but it is strictly
+// RENDER-ONLY: no key records, no leading interpolation break, no document
+// mutation. The controller owns the single atomic publication.
+describe('261031-qps renderRevealTailFrames: the render-only reveal bake', () => {
+  const LAYER = 'layer-reveal-tail';
+  const PROJECT_SIZE = { width: 4, height: 3 } as const;
+  const script = {
+    provenance: { sessionId: 'reveal-tail', layerId: LAYER, sourceFrame: 10 },
+    sourceFrame: 10,
+    sourceDisplayFrame: 10,
+    sourceRevision: 0,
+    brushes: [],
+  };
+  const tailFrame = (appFrame: number) => ({
+    frameIndex: appFrame - 10,
+    appFrame,
+    bytes: testWebpBytes(`tail-${appFrame}`),
+    width: 4,
+    height: 3,
+    source: 'real-key' as const,
+  });
+  const anchorAt = (startFrame: number): AquarelleStrokeFrameAnchor => ({
+    stroke: toStudioStroke({
+      tool: 'brush',
+      color: '#103c65',
+      params: { size: 8, opacity: 1 },
+      brushId: `tail-${startFrame}`,
+      points: [{ x: 1, y: 1, p: 0.5, tx: 0, ty: 0, tw: 0 }],
+      timestamp: startFrame + 1,
+    }),
+    startFrame,
+  });
+  const renderInput = (overrides: Partial<Parameters<typeof renderRevealTailFrames>[0]> = {}) => ({
+    layerId: LAYER,
+    script,
+    frameCount: 3,
+    canonicalStart: 10,
+    motion: { deformation: 12, position: 30, rotation: 4, scale: 6 },
+    mode: 'static' as const,
+    colorize: true,
+    colorizeMix: 35,
+    photoWiggle: false,
+    paintSeedVariation: true,
+    projectSize: PROJECT_SIZE,
+    aquarellePaper: { paperId: 'canvas1', grainStrength: 0.45, grainScale: 1.5 },
+    signal: new AbortController().signal,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    renderRevealMock.mockReset();
+  });
+
+  it('renders every span frame through the placed reference and writes nothing', async () => {
+    registerDocument(createEfxPaintDocument(LAYER));
+    setPhotoReferenceSource(LAYER, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+    const documentBefore = getEfxPaintDocument(LAYER)!;
+    const trackId = documentBefore.activeTrackId!;
+    const frames = [tailFrame(10), tailFrame(11), tailFrame(12)];
+    const anchors = [anchorAt(10), anchorAt(11)];
+    renderRevealMock.mockImplementation(async (input: { onStrokeFrameAnchors?: (next: readonly AquarelleStrokeFrameAnchor[]) => void }) => {
+      input.onStrokeFrameAnchors?.(anchors);
+      return frames;
+    });
+    const onProgress = vi.fn();
+
+    const result = await renderRevealTailFrames(renderInput({ onProgress }));
+
+    expect(result).toEqual({ ok: true, frames, anchors });
+    const forwarded = renderRevealMock.mock.calls[0][0] as {
+      size: { width: number; height: number };
+      reference: { bytesByAppFrame: Map<number, Uint8Array>; transform: unknown; zoom: number };
+      colorize: boolean;
+      colorizeMix: number;
+      photoWiggle: boolean;
+      paintSeedVariation: boolean;
+      signal: AbortSignal;
+    } & Record<string, unknown>;
+    expect(forwarded).toMatchObject({
+      script,
+      frameCount: 3,
+      canonicalStart: 10,
+      motion: { deformation: 12, position: 30, rotation: 4, scale: 6 },
+      mode: 'static',
+      colorize: true,
+      colorizeMix: 35,
+      photoWiggle: false,
+      paintSeedVariation: true,
+      size: { width: 4, height: 3 },
+      aquarellePaper: { paperId: 'canvas1', grainStrength: 0.45, grainScale: 1.5 },
+    });
+    expect(forwarded.reference.zoom).toBe(1);
+    expect(forwarded.reference.transform).toEqual(documentBefore.photoReference!.transform);
+    expect([...forwarded.reference.bytesByAppFrame.keys()]).toEqual([10, 11, 12]);
+    expect(forwarded.reference.bytesByAppFrame.get(10)).toEqual(testWebpBytes('ref-a'));
+
+    // Render-only: no records, no clips, no document mutation.
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, trackId)).toEqual([]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, trackId)).toEqual([]);
+    expect(getEfxPaintDocument(LAYER)).toBe(documentBefore);
+  });
+
+  it('fails closed with missing reference source before a pixel is rendered', async () => {
+    registerDocument(createEfxPaintDocument(LAYER));
+    // Frame-aligned 1:1 from frame 0, clamped at the sequence end: frame 0 hits
+    // ref-a, frame 1 hits the unregistered ref-b. Spanning from 0 is deliberate —
+    // a start past the sequence end would clamp every frame onto ref-c.
+    setPhotoReferenceSource(LAYER, ['ref-a', 'ref-b', 'ref-c']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+    registerReferenceSourceImage('ref-c', testWebpBytes('ref-c'));
+
+    await expect(renderRevealTailFrames(renderInput({ canonicalStart: 0, frameCount: 3 }))).resolves.toEqual({
+      ok: false,
+      error: 'missing reference source',
+    });
+    expect(renderRevealMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses without a document or a photo reference', async () => {
+    await expect(renderRevealTailFrames(renderInput())).resolves.toEqual({
+      ok: false,
+      error: 'no efx paint document',
+    });
+
+    registerDocument(createEfxPaintDocument(LAYER));
+    await expect(renderRevealTailFrames(renderInput())).resolves.toEqual({
+      ok: false,
+      error: 'no photo reference',
+    });
+    expect(renderRevealMock).not.toHaveBeenCalled();
+  });
+
+  it('rethrows AbortError so the caller keeps its cancel contract', async () => {
+    registerDocument(createEfxPaintDocument(LAYER));
+    setPhotoReferenceSource(LAYER, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+    renderRevealMock.mockRejectedValue(new DOMException('Aborted', 'AbortError'));
+
+    await expect(renderRevealTailFrames(renderInput())).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('turns a render failure into a closed error result', async () => {
+    registerDocument(createEfxPaintDocument(LAYER));
+    setPhotoReferenceSource(LAYER, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+
+    renderRevealMock.mockRejectedValue(new Error('engine exploded'));
+    await expect(renderRevealTailFrames(renderInput())).resolves.toEqual({ ok: false, error: 'engine exploded' });
+
+    renderRevealMock.mockRejectedValue('not an error');
+    await expect(renderRevealTailFrames(renderInput())).resolves.toEqual({ ok: false, error: 'reveal tail bake failed' });
   });
 });

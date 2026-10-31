@@ -20,6 +20,7 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge,
 
 type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
 type StackedRailKeyComposeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['composeStackedRailKey']>>[0];
+type RevealStackTailInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeRevealStackTail']>>[0];
 
 interface RotoPlayScriptCoordinatorPort<EngineState> {
   executePhysicalEdit: (
@@ -84,6 +85,11 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       // the Studio supplies it (a missing port fails the run closed).
       ...(ports.composeStackedRailKey
         ? { composeStackedRailKey: (input: StackedRailKeyComposeInput) => portsRef.current.composeStackedRailKey!(input) }
+        : {}),
+      // 261031-qps (Quick B): the reveal rail's photo-reference tail bake,
+      // forwarded only when the Studio supplies it.
+      ...(ports.bakeRevealStackTail
+        ? { bakeRevealStackTail: (input: RevealStackTailInput) => portsRef.current.bakeRevealStackTail!(input) }
         : {}),
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),

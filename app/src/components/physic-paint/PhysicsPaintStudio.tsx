@@ -6,7 +6,7 @@ import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, rotoPhysicalRevision, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, rotoPhysicalRevision, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, renderRevealTailFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   _setEfxPaintRevealScriptLoader,
   _setEfxPaintTrackScriptDeleteCallback,
@@ -73,6 +73,7 @@ import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics } from './roto/physicsPaintRotoPlayScriptController';
 import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts';
+import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -278,7 +279,8 @@ import type {
   StrokeSettingsDialogBundle,
 } from './view/strokeSettingsModel';
 import type { AquarelleStroke, AquarelleStrokePayload } from '@efxlab/efx-watercolor';
-import { isAquarelleDryEvent, toStudioStroke } from '@efxlab/efx-watercolor/payload';
+import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
+import { isAquarelleDryEvent, toStudioStroke, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { collectLiftDabs, liftShapeForStroke, punchTransmittanceBytes, type LiftDab } from './roto/aquarelleLiftErase';
 import {
   beginAquarelleLiftPreview,
@@ -1980,18 +1982,40 @@ export function PhysicsPaintStudio() {
           let publishBytes = frame.bytes;
           let durableBaseSource: 'authority-base' | 'known-empty' | 'reveal' | 'unknown' = 'unknown';
           if (target.durableBaseKind === 'reveal') {
-            // Quick B Task 3 wires the render-only photo-reference port; until
-            // then a reveal-owned key has no pixel base at all, so refusing is
-            // the only non-destructive outcome.
-            recordAquarelleRenderSplitEvent('script-bake-result', {
-              appFrame: frame.appFrame,
-              targetKeyId: frame.keyId,
-              ok: false,
-              reason: 'reveal-base-unsupported',
-            });
-            return false;
-          }
-          if (target.durableBaseBytes === null) {
+            // 261031-qps (Quick B): a reveal-owned key's picture is wash ×
+            // placed reference. Render the applied timeline through the photo
+            // with the OWNING reveal clip's stored knobs instead of publishing
+            // the raw wash. The render-only port fails closed on a missing
+            // reference or an empty wash timeline — zero writes either way.
+            const revealClip = revealClipForKey(target.sourceKeyId ?? target.keyId);
+            const rendered = revealClip === null
+              ? { ok: false as const, error: 'reveal-rail-not-found' }
+              : await renderRevealTail({
+                  events,
+                  canonicalStart: frame.appFrame,
+                  frameCount: 1,
+                  motion: revealClip.motion ?? { deformation: 0, position: 0 },
+                  mode: revealClip.mode,
+                  colorize: revealClip.colorize === true,
+                  colorizeMix: revealClip.colorizeMix ?? 100,
+                  photoWiggle: revealClip.photoWiggle === true,
+                  paintSeedVariation: revealClip.paintSeedVariation === true,
+                  signal: new AbortController().signal,
+                });
+            const revealFrame = rendered.ok ? rendered.frames[0] : undefined;
+            const revealReason = rendered.ok ? 'reveal-frame-missing' : rendered.error;
+            if (!rendered.ok || !revealFrame) {
+              recordAquarelleRenderSplitEvent('script-bake-result', {
+                appFrame: frame.appFrame,
+                targetKeyId: frame.keyId,
+                ok: false,
+                reason: revealReason,
+              });
+              return false;
+            }
+            durableBaseSource = 'reveal';
+            publishBytes = revealFrame.bytes;
+          } else if (target.durableBaseBytes === null) {
             // KNOWN empty base (blank promotion): the script IS the key's
             // complete content, so the raw bake is complete — no composite.
             durableBaseSource = 'known-empty';
@@ -3914,6 +3938,71 @@ export function PhysicsPaintStudio() {
       .then(({ getCurrentWindow }) => getCurrentWindow().close())
       .catch(() => { window.close(); });
   }, []);
+  // 261031-qps (Quick B): the ONE reveal-render seam. Any script whose target is
+  // reveal-owned — creation Apply/paste publish, and the Run Script tail — must
+  // render through the placed photo reference with the render-only store port,
+  // never bake a plain-paper wash. The port walks the span frame-aligned and
+  // fails closed (`missing reference source`) before a pixel is rendered, so a
+  // reveal key can never receive paper bytes. It writes nothing: the caller
+  // owns the single atomic commit.
+  async function renderRevealTail(input: {
+    readonly events: readonly AquarellePayloadEvent[];
+    readonly canonicalStart: number;
+    readonly frameCount: number;
+    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    readonly mode: 'progressive' | 'static';
+    readonly colorize: boolean;
+    readonly colorizeMix: number;
+    readonly photoWiggle: boolean;
+    readonly paintSeedVariation: boolean;
+    readonly signal: AbortSignal;
+    readonly onProgress?: (completed: number, total: number) => void;
+  }): Promise<
+    | { ok: true; frames: readonly { appFrame: number; frameIndex: number; bytes: Uint8Array; width?: number; height?: number }[]; anchors: readonly AquarelleStrokeFrameAnchor[] }
+    | { ok: false; error: string }
+  > {
+    const launch = launchContextRef.current;
+    if (!launch) return { ok: false, error: 'launch-unavailable' };
+    const backgroundMetadata = buildRotoBackgroundMetadata(settings);
+    const script: RotoPaintScript = {
+      provenance: { sessionId: `reveal-tail-${input.canonicalStart}`, layerId: launch.layerId, sourceFrame: input.canonicalStart },
+      sourceFrame: input.canonicalStart,
+      sourceDisplayFrame: input.canonicalStart,
+      sourceRevision: 0,
+      brushes: [],
+      aquarelleEvents: input.events,
+    };
+    return renderRevealTailFrames({
+      layerId: launch.layerId,
+      script,
+      frameCount: input.frameCount,
+      canonicalStart: input.canonicalStart,
+      motion: input.motion,
+      mode: input.mode,
+      colorize: input.colorize,
+      colorizeMix: input.colorizeMix,
+      photoWiggle: input.photoWiggle,
+      paintSeedVariation: input.paintSeedVariation,
+      projectSize: {
+        width: launch.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH,
+        height: launch.height ?? DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT,
+      },
+      aquarellePaper: {
+        paperId: backgroundMetadata.background,
+        grainStrength: backgroundMetadata.grainStrength,
+        grainScale: backgroundMetadata.grainScale ?? 1,
+      },
+      signal: input.signal,
+      onProgress: input.onProgress,
+    });
+  }
+  /** The reveal rail whose source cycle owns `keyId` (null when it is not reveal-owned). */
+  function revealClipForKey(keyId: string): PhysicPaintRotoLoopClip | null {
+    const launch = launchContextRef.current;
+    if (!launch) return null;
+    const clips = physicPaintStore.getRotoPhysicalLoopClips(launch.layerId, studioActiveTrackId());
+    return clips.find((clip) => clip.railKind === 'reveal' && clip.sourceKeyIds.includes(keyId)) ?? null;
+  }
   // 261031-qps (Quick B): the Keep-script-ON union re-bake, authority-backed.
   // ONE batch for the whole written span: each touched key's durable base is
   // resolved through resolveScriptBase (a flag-on rail resolves KNOWN EMPTY; a
@@ -4020,6 +4109,98 @@ export function PhysicsPaintStudio() {
     return composed === null
       ? { kind: 'refused', reason: 'composite-failed' }
       : { kind: 'baked', bytes: composed.bytes };
+  };
+  // 261031-qps (Quick B): the reveal stack tail bake. The run's keys are
+  // rendered through the placed photo reference — never the raw wash. Fast
+  // path: no destination key owns a recorded stroke, so the whole span renders
+  // once from the run's script (Reveal creation parity). Slow path: each
+  // touched key renders at ONE output frame from its recorded events unioned
+  // with this run's slice, so picture equals script and a repeat cannot double.
+  // Refuses before the caller's single commit on any render failure.
+  const bakeRevealStackTail = async (input: {
+    readonly slices: readonly RailKeyScriptResult[];
+    readonly frames: readonly number[];
+    readonly scriptEvents: readonly AquarellePayloadEvent[];
+    readonly mode: 'progressive' | 'static';
+    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    readonly colorize: boolean;
+    readonly colorizeMix: number;
+    readonly photoWiggle: boolean;
+    readonly paintSeedVariation: boolean;
+    readonly signal: AbortSignal;
+    readonly onProgress?: (completed: number, total: number) => void;
+  }): Promise<
+    | {
+      kind: 'baked';
+      frames: readonly { readonly appFrame: number; readonly frameIndex: number; readonly bytes: Uint8Array; readonly width: number; readonly height: number }[];
+      anchors: readonly AquarelleStrokeFrameAnchor[];
+    }
+    | { kind: 'refused'; reason: string }
+  > => {
+    const frames = input.frames;
+    const start = frames[0];
+    if (start === undefined) return { kind: 'refused', reason: 'empty-span' };
+    const ownsRecordedStrokes = input.slices.some((slice) => hasAquarelleScriptForFrame(slice.frame));
+    if (!ownsRecordedStrokes) {
+      const rendered = await renderRevealTail({
+        events: input.scriptEvents,
+        canonicalStart: start,
+        frameCount: frames.length,
+        motion: input.motion,
+        mode: input.mode,
+        colorize: input.colorize,
+        colorizeMix: input.colorizeMix,
+        photoWiggle: input.photoWiggle,
+        paintSeedVariation: input.paintSeedVariation,
+        signal: input.signal,
+        onProgress: input.onProgress,
+      });
+      if (!rendered.ok) return { kind: 'refused', reason: rendered.error };
+      return {
+        kind: 'baked',
+        frames: rendered.frames.map((frame) => ({
+          appFrame: frame.appFrame,
+          frameIndex: frame.appFrame - start,
+          bytes: frame.bytes,
+          width: frame.width ?? canvasWidth,
+          height: frame.height ?? canvasHeight,
+        })),
+        anchors: rendered.anchors,
+      };
+    }
+    const frameSet = new Set(frames);
+    const baked: Array<{ appFrame: number; frameIndex: number; bytes: Uint8Array; width: number; height: number }> = [];
+    const anchors: AquarelleStrokeFrameAnchor[] = [];
+    for (const slice of input.slices) {
+      if (!frameSet.has(slice.frame)) continue;
+      const rendered = await renderRevealTail({
+        events: [
+          ...getAquarelleEventsForFrame(slice.frame),
+          ...slice.strokes.map((stroke) => toStudioStroke(stroke)),
+        ],
+        canonicalStart: slice.frame,
+        frameCount: 1,
+        motion: input.motion,
+        mode: input.mode,
+        colorize: input.colorize,
+        colorizeMix: input.colorizeMix,
+        photoWiggle: input.photoWiggle,
+        paintSeedVariation: input.paintSeedVariation,
+        signal: input.signal,
+      });
+      if (!rendered.ok) return { kind: 'refused', reason: rendered.error };
+      const frame = rendered.frames[0];
+      if (!frame || frame.appFrame !== slice.frame) return { kind: 'refused', reason: 'reveal-frame-missing' };
+      baked.push({
+        appFrame: frame.appFrame,
+        frameIndex: slice.slot,
+        bytes: frame.bytes,
+        width: frame.width ?? canvasWidth,
+        height: frame.height ?? canvasHeight,
+      });
+      anchors.push(...rendered.anchors);
+    }
+    return { kind: 'baked', frames: baked, anchors };
   };
   // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
   // timeline the live sheet writes, with mutation ids from the ONE ledger. A
@@ -4152,6 +4333,8 @@ export function PhysicsPaintStudio() {
     bakeStackedRailKey,
     // 261031-i54 UAT: the pixel-only rail's composite-over-picture port.
     composeStackedRailKey,
+    // 261031-qps (Quick B): the reveal rail's photo-reference tail bake.
+    bakeRevealStackTail,
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,

@@ -38,6 +38,10 @@ function rail(overrides: Partial<RunScriptRailView> & { readonly clipId: string 
     mode: 'progressive',
     motion: undefined,
     overrideColor: null,
+    colorize: false,
+    colorizeMix: 100,
+    photoWiggle: false,
+    paintSeedVariation: false,
     sourceKeyIds: [],
     sourceOffsets: [],
     frameOverrideAppFrames: [],
@@ -106,6 +110,32 @@ describe('toRunScriptRailViews', () => {
     expect(view.sourceOffsets).toEqual([0, 2]);
     expect(view.frameOverrideAppFrames).toEqual([15]);
     expect(view.keyScriptEdits).toBe(true);
+    // 261031-qps: the reveal knobs ride the view so the dialog can seed them;
+    // an unset knob reads off/100 exactly like the persisted record.
+    expect(view.colorize).toBe(false);
+    expect(view.colorizeMix).toBe(100);
+    expect(view.photoWiggle).toBe(false);
+    expect(view.paintSeedVariation).toBe(false);
+  });
+
+  it('carries a reveal rail’s stored knobs onto its view (261031-qps)', () => {
+    const views = toRunScriptRailViews({
+      clips: [makeClip('r', {
+        railKind: 'reveal',
+        colorize: true,
+        colorizeMix: 40,
+        photoWiggle: true,
+        paintSeedVariation: true,
+      })],
+      context: { ranges: [makeRange({ loopId: 'r' })] },
+    });
+    expect(views).toHaveLength(1);
+    const view = views[0]!;
+    expect(view.railKind).toBe('reveal');
+    expect(view.colorize).toBe(true);
+    expect(view.colorizeMix).toBe(40);
+    expect(view.photoWiggle).toBe(true);
+    expect(view.paintSeedVariation).toBe(true);
   });
 
   it('reads frame-override app frames directly, even for a key id absent from the real-key index (CR-01)', () => {
@@ -222,15 +252,19 @@ describe('resolveRunScriptDestination', () => {
     });
   });
 
-  it('refuses a reveal rail target', () => {
+  it('2026-10-31 (Quick B): resolves a reveal rail target like a Paint rail', () => {
     const reveal = rail({ clipId: 'reveal', railKind: 'reveal' });
-    expect(resolveRunScriptDestination({ appFrame: 17, rails: [reveal] })).toEqual({
-      kind: 'refuse',
-      reason: 'reveal-target',
-    });
+    const destination = resolveRunScriptDestination({ appFrame: 17, rails: [reveal] });
+    expect(destination.kind).toBe('stack');
+    if (destination.kind === 'stack') {
+      expect(destination.rail.railKind).toBe('reveal');
+      expect(destination.rail.clipId).toBe('reveal');
+      expect(destination.cycleOffset).toBe(3);
+      expect(destination.runStartAppFrame).toBe(13);
+    }
   });
 
-  it('reports the overlap refusal before the reveal refusal when both apply', () => {
+  it('still fails closed when a reveal rail overlaps another rail', () => {
     const reveal = rail({ clipId: 'reveal', railKind: 'reveal' });
     const other = rail({ clipId: 'other', placementStart: 12, effectiveEnd: 30 });
     expect(resolveRunScriptDestination({ appFrame: 17, rails: [reveal, other] })).toEqual({

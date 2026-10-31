@@ -98,7 +98,12 @@ import {
   type RotoRailSetPasteImpact,
 } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { deriveKeyRailSegments } from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
-import { renderRotoRevealFrames, type RotoRevealRenderInput } from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
+import {
+  renderRotoRevealFrames,
+  type RotoRevealRenderInput,
+  type RotoRevealStrokeFrameAnchors,
+  type StagedRotoPlayScriptFrame,
+} from '../components/physic-paint/roto/physicsPaintRotoPlayScriptRenderer';
 import type { RotoPaintScript } from '../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 import { createPhysicPaintRotoKeyId, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 // 52.2-06 (D-06/D-07): the persist seam's media projection. Both roto
@@ -2141,6 +2146,89 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   }
 
   return { ok: true, records: bakedRecords };
+}
+
+/** Input to the render-only reveal tail port (261031-qps). */
+export interface RevealTailRenderInput {
+  layerId: string;
+  /** The timeline the reveal bake replays — its `aquarelleEvents` must be non-empty. */
+  script: RotoPaintScript;
+  frameCount: number;
+  canonicalStart: number;
+  motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+  mode: 'progressive' | 'static';
+  colorize?: boolean;
+  colorizeMix?: number;
+  photoWiggle?: boolean;
+  paintSeedVariation?: boolean;
+  /** The PROJECT dims the reference transform is authored against (carried launch dims). */
+  projectSize: Readonly<{ width: number; height: number }>;
+  /** The Studio paper the wash deposits on (same paper as Reveal creation). */
+  aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+  signal: AbortSignal;
+  onProgress?: (completed: number, total: number) => void;
+}
+
+/** Closed result of the render-only reveal tail port. */
+export type RevealTailRenderResult =
+  | { ok: true; frames: readonly StagedRotoPlayScriptFrame[]; anchors: RotoRevealStrokeFrameAnchors }
+  | { ok: false; error: string };
+
+/**
+ * 261031-qps (Quick B): the render-only reveal tail bake. Mirrors
+ * `commitRevealBake`'s reference walk and calls the SAME exported
+ * `renderRotoRevealFrames`, but writes NO key records and NO leading
+ * interpolation break — the caller owns the single atomic publication, so the
+ * bake must stay a pure render. Fail-closed: a span frame without a resolvable
+ * reference returns `missing reference source` before a pixel is rendered,
+ * never a plain-paper wash. Aborts rethrow so the caller's cancel flow keeps
+ * its DOMException contract.
+ */
+export async function renderRevealTailFrames(input: RevealTailRenderInput): Promise<RevealTailRenderResult> {
+  const document = getEfxPaintDocument(input.layerId);
+  if (!document) return { ok: false, error: 'no efx paint document' };
+  const track = document.photoReference;
+  if (track === null) return { ok: false, error: 'no photo reference' };
+
+  // Same size authority as the creation bake: script strokes live in working
+  // coordinates, and the carried project dims supply the project→working zoom
+  // (the Studio child realm's projectStore is never hydrated).
+  const projectSize = input.projectSize;
+  const size = getPhysicsPaintWorkingSize(projectSize.width, projectSize.height);
+  const referenceZoom = size.width / projectSize.width;
+
+  const bytesByAppFrame = new Map<number, Uint8Array>();
+  for (let index = 0; index < input.frameCount; index += 1) {
+    const appFrame = input.canonicalStart + index;
+    const verdict = _resolveReferenceSourceImage(document, appFrame);
+    if (verdict === null) return { ok: false, error: 'missing reference source' };
+    bytesByAppFrame.set(appFrame, verdict.bytes);
+  }
+
+  let anchors: RotoRevealStrokeFrameAnchors = [];
+  try {
+    const frames = await renderRotoRevealFrames({
+      script: input.script,
+      frameCount: input.frameCount,
+      canonicalStart: input.canonicalStart,
+      motion: input.motion,
+      mode: input.mode,
+      colorize: input.colorize,
+      colorizeMix: input.colorizeMix,
+      photoWiggle: input.photoWiggle,
+      paintSeedVariation: input.paintSeedVariation,
+      size,
+      reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
+      aquarellePaper: input.aquarellePaper,
+      onStrokeFrameAnchors: (next) => { anchors = next; },
+      signal: input.signal,
+      onProgress: input.onProgress,
+    });
+    return { ok: true, frames, anchors };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    return { ok: false, error: error instanceof Error ? error.message : 'reveal tail bake failed' };
+  }
 }
 
 function _getCombinedRotoMetadata(layerId: string, trackId: string): PhysicPaintRotoCacheFrame[] {

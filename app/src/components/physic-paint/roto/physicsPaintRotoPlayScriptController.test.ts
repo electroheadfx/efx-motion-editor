@@ -262,6 +262,21 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     frames: input.slices.map((slice) => ({ appFrame: slice.frame, bytes: testWebpBytes('stacked-union') })),
   }));
   const composeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-composite') }));
+  // 261031-qps (Quick B): the render-only reveal tail port. Echoes one frame
+  // per slice so the publication can prove full frame coverage.
+  const bakeRevealStackTail = vi.fn(async (input: {
+    slices: readonly { frame: number; slot: number }[];
+  }) => ({
+    kind: 'baked' as const,
+    frames: input.slices.map((slice) => ({
+      appFrame: slice.frame,
+      frameIndex: slice.slot,
+      bytes: testWebpBytes('reveal-tail'),
+      width: 10,
+      height: 10,
+    })),
+    anchors: [],
+  }));
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
@@ -269,11 +284,11 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log,
     createAquarelleAdapter, createAquarelleBake,
-    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey,
+    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail,
     ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 function expectPlayScriptPublication(
@@ -4730,13 +4745,221 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(recorded.keyIds).not.toContain('override:L1:11');
   });
 
-  it('refuses a Reveal rail target without opening the dialog', async () => {
-    const revealClip = stackClip(2, { railKind: 'reveal' });
-    const test = stackHarness([revealClip], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+  /* ---- 261031-qps (Quick B): Reveal rail stacking ---- */
+
+  const revealClip = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip =>
+    stackClip(2, { railKind: 'reveal', ...overrides });
+
+  it('stacks onto a Reveal rail, exposes stackRailKind and seeds its four knobs (Quick B)', async () => {
+    const withPhoto = stackHarness(
+      [revealClip({ colorize: true, colorizeMix: 35, photoWiggle: true, paintSeedVariation: true })],
+      {},
+      { hasPhotoReference: () => true },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    expect(withPhoto.controller.runDestination.value.kind).toBe('stack');
+    expect(withPhoto.controller.stackRailKind.value).toBe('reveal');
+    // The reveal tail port is the Keep-ON bake seam for this rail kind.
+    expect(withPhoto.controller.keepScriptVisible.value).toBe(true);
+    await withPhoto.controller.openConfirmation();
+    expect(withPhoto.controller.confirmationOpen.value).toBe(true);
+    expect(withPhoto.controller.stackRailKind.value).toBe('reveal');
+    // Seeded from the rail's stored values (dialog-gated, compare-then-write).
+    expect(withPhoto.controller.colorize.value).toBe(true);
+    expect(withPhoto.controller.colorizeMix.value).toBe(35);
+    expect(withPhoto.controller.photoWiggle.value).toBe(true);
+    expect(withPhoto.controller.paintSeedVariation.value).toBe(true);
+    expect(withPhoto.controller.keepScript.value).toBe(true);
+
+    // A Paint destination reports its own kind; the create path reports null.
+    const paint = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    expect(paint.controller.stackRailKind.value).toBe('playscript');
+    const create = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 30 });
+    expect(create.controller.stackRailKind.value).toBeNull();
+  });
+
+  it('refuses a Reveal stack run with no placed photo reference and writes nothing', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [revealClip()],
+      {},
+      { recordRailKeyScripts: recorder, hasPhotoReference: () => false },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
     await test.controller.openConfirmation();
-    expect(test.controller.confirmationOpen.value).toBe(false);
-    expect(test.controller.error.value).toContain('Reveal');
-    expect(test.requestAuthority).not.toHaveBeenCalled();
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.bakeRevealStackTail).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('no photo reference');
+  });
+
+  it('renders through the photo reference, adopts the knobs and appends on Keep ON (Quick B)', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [revealClip({ colorize: true, colorizeMix: 35 })],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder, hasPhotoReference: () => true },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    // Rail Type is hidden for a reveal stack: the dialog's draft mode never
+    // reaches the render, the rail's stored mode does.
+    test.controller.mode.value = 'progressive';
+    test.controller.setPhotoWiggle(true);
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+
+    expect(test.bakeRevealStackTail).toHaveBeenCalledTimes(1);
+    const call = (test.bakeRevealStackTail.mock.calls as unknown as Array<[{
+      slices: readonly { frame: number; slot: number }[];
+      frames: readonly number[];
+      scriptEvents: readonly unknown[];
+      mode: string;
+      motion: { deformation: number; position: number };
+      colorize: boolean;
+      colorizeMix: number;
+      photoWiggle: boolean;
+      paintSeedVariation: boolean;
+    }]>) [0]![0];
+    expect(call.frames).toEqual([13, 14, 15]);
+    expect(call.slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
+    expect(call.scriptEvents.length).toBeGreaterThan(0);
+    expect(call.mode).toBe('static'); // the rail's own stored mode
+    expect(call.motion).toEqual({ deformation: 0, position: 0 });
+    expect(call.colorize).toBe(true);
+    expect(call.colorizeMix).toBe(35);
+    expect(call.photoWiggle).toBe(true);
+    expect(call.paintSeedVariation).toBe(false);
+
+    // The publication's written frames carry the reveal-rendered bytes, never
+    // the Paint bake's plain-paper bytes.
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const revealBytes = testWebpBytes('reveal-tail');
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([revealBytes, revealBytes, revealBytes]);
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+
+    // Keep ON records the run's slices with append mode.
+    const recorded = recorder.mock.calls[0]![0] as { recordMode: string; keyIds: readonly string[] };
+    expect(recorded.recordMode).toBe('append');
+    expect(recorded.keyIds).toHaveLength(3);
+
+    // The rail adopts the run's knobs in the SAME commit; mode/motion/color
+    // stay the rail's own and the flag is never written.
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(target.colorize).toBe(true);
+    expect(target.colorizeMix).toBe(35);
+    expect(target.photoWiggle).toBe(true);
+    expect(target.paintSeedVariation).toBeUndefined();
+    expect(target.mode).toBe('static');
+    expect(target.motion).toEqual({ deformation: 0, position: 0 });
+    expect(target.overrideColor).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(target, 'keyScriptEdits')).toBe(false);
+  });
+
+  it('Keep OFF on a Reveal rail records nothing and still renders the revealed union', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [revealClip()],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder, hasPhotoReference: () => true },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setKeepScript(false);
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(true);
+
+    expect(test.bakeRevealStackTail).toHaveBeenCalledTimes(1);
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    const revealBytes = testWebpBytes('reveal-tail');
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([revealBytes, revealBytes, revealBytes]);
+    // An all-off run persists no reveal knob at all.
+    const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(target.colorize).toBeUndefined();
+    expect(target.colorizeMix).toBeUndefined();
+    expect(target.photoWiggle).toBeUndefined();
+  });
+
+  it('aborts a Reveal stack run with zero writes when the tail render misses a frame (T-261031-QPS-03)', async () => {
+    const recorder = vi.fn();
+    const bakeRevealStackTail = vi.fn(async (input: {
+      slices: readonly { frame: number; slot: number }[];
+    }) => ({
+      kind: 'baked' as const,
+      // Drop the last touched frame: the publication must NOT commit partial
+      // coverage, and no other branch may fall back to Paint bytes.
+      frames: input.slices.slice(0, -1).map((slice) => ({
+        appFrame: slice.frame,
+        frameIndex: slice.slot,
+        bytes: testWebpBytes('reveal-tail'),
+        width: 10,
+        height: 10,
+      })),
+      anchors: [],
+    }));
+    const test = stackHarness(
+      [revealClip()],
+      { canonicalStart: 13 },
+      { recordRailKeyScripts: recorder, hasPhotoReference: () => true, bakeRevealStackTail },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('missing frame');
+  });
+
+  it('aborts a Reveal stack run with zero writes when the tail render refuses', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [revealClip()],
+      { canonicalStart: 13 },
+      {
+        recordRailKeyScripts: recorder,
+        hasPhotoReference: () => true,
+        bakeRevealStackTail: vi.fn(async () => ({ kind: 'refused' as const, reason: 'missing reference source' })),
+      },
+      { kind: 'empty', keyId: null, appFrame: 17 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    nextBakeBehavior(reportAnchors);
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.controller.error.value).toContain('missing reference source');
+  });
+
+  it('never stacks a Reveal rail when this build has no render-only tail port', async () => {
+    const recorder = vi.fn();
+    const test = stackHarness(
+      [revealClip()],
+      {},
+      { recordRailKeyScripts: recorder, hasPhotoReference: () => true, bakeRevealStackTail: undefined },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    expect(test.controller.keepScriptVisible.value).toBe(false);
+    expect(test.controller.keepScriptEffective.value).toBe(false);
+    expect(test.controller.keepScriptDisabledReason.value).toContain('Reveal');
+    await test.controller.openConfirmation();
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(recorder).not.toHaveBeenCalled();
   });
 
   it('never offers the creation Source cycle choice on a stack destination', async () => {

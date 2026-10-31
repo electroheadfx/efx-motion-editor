@@ -319,6 +319,32 @@ describe('useRotoPlayScriptController', () => {
     expect(composeStackedRailKey).toHaveBeenCalledWith({ keyId: 'key-1', appFrame: 4, strokes: [] });
   });
 
+  it('261031-qps: forwards the render-only reveal tail port only when supplied', async () => {
+    const bakeRevealStackTail = vi.fn(async () => ({ kind: 'baked' as const, frames: [], anchors: [] }));
+    renderHook({ ...ports(1), bakeRevealStackTail });
+    const stablePorts = captured.ports!;
+    expect(stablePorts.bakeRevealStackTail).toBeTypeOf('function');
+    const input = {
+      slices: [],
+      frames: [4],
+      scriptEvents: [],
+      mode: 'static' as const,
+      motion: { deformation: 0, position: 0 },
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+      paintSeedVariation: false,
+      signal: new AbortController().signal,
+    };
+    await stablePorts.bakeRevealStackTail!(input);
+    expect(bakeRevealStackTail).toHaveBeenCalledWith(input);
+  });
+
+  it('261031-qps: omits the reveal tail port when the Studio does not supply it', () => {
+    renderHook(ports(2));
+    expect(captured.ports!.bakeRevealStackTail).toBeUndefined();
+  });
+
   it('261031-dm1: forwards identitiesOnly only for the lean authority request', async () => {
     vi.useFakeTimers();
     try {
