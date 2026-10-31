@@ -5170,10 +5170,13 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
       'const bakeRevealStackTail = async (input: {',
       '// 261030-np9 (D-03/D-04): per-key rail scripts',
     );
-    // The port is render-only: it can never write a record or a base pin. The
-    // controller owns the single atomic commit.
+    // The port is render-only: it can never write a record, a base pin, or a
+    // leading interpolation break. The controller owns the single atomic commit.
     expect(revealPort).not.toContain('purgeAquarelleFrameScript');
     expect(revealPort).not.toContain('aquarelleDurableBaseByKeyRef');
+    // IN-02: the other half of law 4 — never the commitRevealBake write path.
+    expect(revealPort).not.toContain('incomingInterpolationBreak');
+    expect(revealPort).not.toContain('commitRevealBake');
     expect(revealPort).not.toContain('recordAquarelleStroke(');
     expect(revealPort).not.toContain('upsertCachedFrame(');
     expect(revealPort).toContain('if (start === undefined) return { kind: \'refused\', reason: \'empty-span\' };');
