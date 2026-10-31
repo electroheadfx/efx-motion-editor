@@ -128,6 +128,9 @@ interface FakeControllerSeed {
     boundaryExclusive: number;
     blocker: 'other-rail' | 'real-key' | 'parent-end' | 'target-end';
     victimClipId: string | null;
+    runCollision?: boolean;
+    lifecycleOverflow?: boolean;
+    parentEndExclusive?: number | null;
   } | null;
   collisionOffers?: readonly ('cancel' | 'truncate' | 'overwrite')[];
 }
@@ -1662,5 +1665,106 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     handler(findOne(tree, byId('physics-play-script-collision-cancel')), 'onClick')();
     expect(controller.confirmStackCollision).toHaveBeenCalledWith('cancel');
     expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('renders the Overwrite copy — the victim rail is REMOVED — only when Overwrite is offered (CR-02)', () => {
+    const offered = renderDialog(createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 22, blocker: 'other-rail', victimClipId: 'L2' },
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    })).controller);
+    const copy = findOne(offered, byId('physics-play-script-collision-overwrite-copy'));
+    expect(textOf(copy)).toBe('Removes the other rail; its keys stay as ordinary keys.');
+    expect(textOf(copy)).not.toContain('shorten');
+    // The rendered card itself carries the explanation, not just the constant.
+    expect(textOf(findOne(offered, byId('physics-play-script-collision')))).toContain('Removes the other rail');
+
+    const parent = renderDialog(createFakeController(stackSeed({
+      stackCollision: { boundaryExclusive: 20, blocker: 'parent-end', victimClipId: null },
+      collisionOffers: ['cancel', 'truncate'],
+    })).controller);
+    expect(findAll(parent, byId('physics-play-script-collision-overwrite-copy'))).toHaveLength(0);
+  });
+
+  it('renders the lifecycle-only capping copy, never run truncation, when only the rail span overflows (WR-03/WR-05)', () => {
+    const { controller } = createFakeController(stackSeed({
+      stackCollision: {
+        boundaryExclusive: 20,
+        blocker: 'other-rail',
+        victimClipId: 'L2',
+        runCollision: false,
+        lifecycleOverflow: true,
+        parentEndExclusive: 20,
+      },
+      collisionOffers: ['cancel', 'truncate'],
+    }));
+    const tree = renderDialog(controller);
+    const text = textOf(findOne(tree, byId('physics-play-script-collision')));
+    expect(text).toContain("The rail's repeat span crosses the parent end at F20");
+    expect(text).toContain('still writes the whole run');
+    expect(text).not.toContain('Truncate writes only the free span');
+    expect(text).not.toContain('The run reaches past');
+    expect(findAll(tree, byId('physics-play-script-collision-overwrite'))).toHaveLength(0);
+  });
+
+  it('hides every creation-only control on a stack destination (WR-04)', () => {
+    const { controller } = createFakeController(stackSeed({
+      keepScriptVisible: true,
+      keyScriptEdits: true,
+      paintSeedVariation: true,
+      identicalSourceCycle: { sourceKeyIds: ['S1', 'S2', 'S3', 'S4'], loopCount: 1, sourceStart: 10 },
+    }));
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-side-stack'))).toHaveLength(0);
+    // The stack-specific surfaces and the run span stay.
+    expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+
+    // Creation keeps every one of them.
+    const create = renderDialog(createFakeController({ keyScriptEdits: true, paintSeedVariation: true }).controller);
+    expect(findAll(create, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
+    expect(findAll(create, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
+    expect(findAll(create, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
+    expect(findAll(create, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(1);
+    expect(findAll(create, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(1);
+  });
+
+  it('hides the Rail kind tabs and never renders the Reveal surface on a stack (WR-06)', () => {
+    const { controller } = createFakeController(stackSeed({ railTab: 'reveal' }));
+    const tree = renderDialog(controller);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-reveal-count'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+  });
+
+  it('disables the collision actions while busy and the primary Run while a collision is open (WR-10)', () => {
+    const collision = {
+      boundaryExclusive: 22,
+      blocker: 'other-rail' as const,
+      victimClipId: 'L2',
+      runCollision: true,
+      lifecycleOverflow: false,
+    };
+    const busy = renderDialog(createFakeController(stackSeed({
+      canCancel: true,
+      stackCollision: collision,
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    })).controller);
+    expect(findOne(busy, byId('physics-play-script-collision-cancel')).props.disabled).toBe(true);
+    expect(findOne(busy, byId('physics-play-script-collision-truncate')).props.disabled).toBe(true);
+    expect(findOne(busy, byId('physics-play-script-collision-overwrite')).props.disabled).toBe(true);
+
+    const idle = renderDialog(createFakeController(stackSeed({
+      stackCollision: collision,
+      collisionOffers: ['cancel', 'truncate', 'overwrite'],
+    })).controller);
+    expect(findOne(idle, byId('physics-play-script-collision-cancel')).props.disabled).toBe(false);
+    expect(findOne(idle, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script').props.disabled).toBe(true);
   });
 });
