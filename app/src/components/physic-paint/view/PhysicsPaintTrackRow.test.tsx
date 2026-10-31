@@ -229,6 +229,11 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       sourceKeyIds: ['k0', 'k1'],
       repeat: 3,
       mode: 'progressive',
+      // 261031-vbo (Quick C1): a typed fixture keeps its all-or-nothing
+      // provenance — a provenance-free clip is now a merged Standard Rail.
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
     }]);
     if (!motion.ok) throw new Error(`motion loop seed failed: ${motion.error}`);
     const motionLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
@@ -245,11 +250,40 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       sourceKeyIds: ['k0', 'k1'],
       repeat: 1,
       mode: 'static',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
     }]);
     if (!staticClip.ok) throw new Error(`static loop seed failed: ${staticClip.error}`);
     const staticLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(staticLine).toHaveLength(1);
     expect(String(staticLine[0].props.class)).toContain('mode-static');
+    expect(String(staticLine[0].props.class)).not.toContain('rail-kind-standard');
+  });
+
+  it('renders a merged Standard Rail gray and labelled Standard on a non-active row (261031-vbo)', () => {
+    physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [
+      makeRecord('k0', 0, 'a@0'),
+      makeRecord('k1', 2, 'a@2'),
+    ], INTERPOLATION, CAPACITY);
+    const seeded = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: 'loop-merged',
+      placementStart: 6,
+      sourceKeyIds: ['k0', 'k1'],
+      repeat: 3,
+      mode: 'progressive',
+    }]);
+    if (!seeded.ok) throw new Error(`merged loop seed failed: ${seeded.error}`);
+    const line = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
+    expect(line).toHaveLength(1);
+    const className = String(line[0]!.props.class);
+    expect(className).toContain('rail-kind-standard');
+    expect(className).toContain('mode-progressive');
+    expect(className).not.toContain('rail-kind-reveal');
+    expect(String(line[0]!.props['aria-label'])).toContain('Standard rail at frame ');
+    // The gray paints from the same stylesheet rule the active lane uses.
+    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment,'))
+      .toContain('background: #9CA3AF');
   });
 
   it('renders no in-line lifecycle status dot on non-active rows (AM-2: the status lives in the tooltip)', () => {

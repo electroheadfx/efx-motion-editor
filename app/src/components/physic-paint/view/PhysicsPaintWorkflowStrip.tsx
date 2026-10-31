@@ -7,6 +7,7 @@ import { signal, useSignal, type ReadonlySignal, type Signal } from '@preact/sig
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
+  classifyLoopClipRailKind,
   collectRotoDragVacatedAppFrames,
   collectRotoGroupDragGapPreviewAppFrames,
   getRotoAcceptedCellFillClass,
@@ -3936,6 +3937,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
           firstFrame: range.placementStart,
           effectiveEndExclusive: range.effectiveEnd,
           mode: clip.mode,
+          // 261031-vbo: a merged Standard Rail keeps `mode`; the presentation
+          // classification is the only way the copy mapper can tell.
+          railKind: classifyLoopClipRailKind(clip),
         });
       }
     }

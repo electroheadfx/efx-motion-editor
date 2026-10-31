@@ -45,6 +45,7 @@ import {
   type PhysicPaintRotoPhysicalEditProposal,
 } from './physicsPaintRotoPhysicalResolver';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
+import { STANDARD_RAIL_REGENERATE_REASON } from './physicsPaintRotoRunScriptStacking';
 import { projectPhysicsPaintLoopClipPresentation } from '../view/physicsPaintLoopClipPresentation';
 import type {
   RotoPhysicalEditAcceptedOutput,
@@ -3645,6 +3646,46 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(prepared.controller.regenerateImpact.value?.actionHash).toMatch(/^action-/);
       expect(Object.isFrozen(prepared.controller.regenerateImpact.value)).toBe(true);
       expect(prepared.library.loadSnapshot).toHaveBeenCalledWith('script-1');
+    });
+
+    it('refuses Regenerate on a merged Standard Rail with the merged reason and zero writes (261031-vbo)', async () => {
+      const canonicalMerged: PhysicPaintRotoLoopClip = {
+        loopId: 'G1',
+        placementStart: 10,
+        sourceKeyIds: ['S1', 'S2', 'S3'],
+        repeat: 2,
+        mode: 'static',
+        syncState: 'modified',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 20,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [],
+      };
+      const canonical = regenerateHarness([canonicalMerged]);
+      expect(await canonical.controller.openSourceEdit('G1')).toEqual({
+        ok: false,
+        reason: STANDARD_RAIL_REGENERATE_REASON,
+      });
+      expect(canonical.controller.regenerateImpact.value).toBeNull();
+      expect(canonical.commit).not.toHaveBeenCalled();
+      expect(canonical.requestAuthority).not.toHaveBeenCalled();
+
+      const infinityMerged: PhysicPaintRotoLoopClip = {
+        loopId: 'G1',
+        placementStart: 10,
+        sourceKeyIds: ['S1', 'S2', 'S3'],
+        repeat: 'infinity',
+        mode: 'progressive',
+      };
+      const infinity = regenerateHarness([infinityMerged]);
+      expect(await infinity.controller.openSourceEdit('G1')).toEqual({
+        ok: false,
+        reason: STANDARD_RAIL_REGENERATE_REASON,
+      });
+      expect(infinity.controller.regenerateImpact.value).toBeNull();
+      expect(infinity.commit).not.toHaveBeenCalled();
+      expect(infinity.requestAuthority).not.toHaveBeenCalled();
     });
 
     it('prepares Group Regenerate against the parent end rather than physical capacity', async () => {

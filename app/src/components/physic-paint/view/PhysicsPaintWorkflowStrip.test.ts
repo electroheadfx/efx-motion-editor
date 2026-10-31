@@ -90,6 +90,13 @@ describe('Delete scope copy', () => {
     expect(buildRotoDeleteScopeLabel(groupTarget('static'), 'Held Pose')).toBe(
       'Delete Static Rail — Held Pose',
     );
+    // 261031-vbo: a merged Standard Rail keeps its stored mode; classification wins.
+    expect(buildRotoDeleteScopeLabel(groupTarget('static'), 'Merged', 'standard')).toBe(
+      'Delete Standard Rail — Merged',
+    );
+    expect(buildRotoDeleteScopeLabel(groupTarget('progressive'), null, 'standard')).toBe(
+      'Delete Standard Rail — Standard Rail at F10',
+    );
   });
 
   it('maps multiple-key and single-key Key Rails with bounded frame/count copy', () => {
@@ -178,6 +185,12 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // copy lives in tooltip/aria/status, never a visible text label.
     expect(block).not.toContain('<span class="physics-paint-roto-key-icon-label">Delete</span>');
     expect(block).not.toContain('Delete key');
+  });
+
+  it('threads the clip rail-kind classification into the rail-set copy member (261031-vbo)', () => {
+    // The member keeps its stored `mode`; the Standard classification is the
+    // only field that lets the shared copy mapper say "Standard" for a merge.
+    expect(source()).toContain('railKind: classifyLoopClipRailKind(clip),');
   });
 
   it('keeps the onion and key utility controls; the interpolation dropdown no longer renders (260911-s1j follow-up)', () => {

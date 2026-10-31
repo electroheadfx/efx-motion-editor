@@ -70,7 +70,7 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
-import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
+import { classifyLoopClipRailKind, clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics } from './roto/physicsPaintRotoPlayScriptController';
 import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts';
 import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
@@ -2954,12 +2954,14 @@ export function PhysicsPaintStudio() {
       ? selectedLoopClipIds.peek().filter((groupId) => groupId !== target.groupId)
       : selectedLoopClipIds.peek();
     if (selectedLoopClipIds.value.length === 0) loopSelectionAnchorId.value = null;
-    const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode
-      ?? 'progressive';
+    // 261031-vbo (Quick C1): a merged Standard Rail keeps its stored mode, so
+    // the success copy classifies the clip rather than reading `mode` alone.
+    const deletedGroupClip = rotoLoopClips.find((clip) => clip.loopId === target.groupId);
+    const deletedRailType = classifyLoopClipRailKind(deletedGroupClip) === 'standard'
+      ? 'Standard'
+      : deletedGroupClip?.mode === 'static' ? 'Static' : 'Motion';
     setApplyMessage(target.operationKind === 'delete-group'
-      ? deletedGroupMode === 'static'
-        ? `Deleted Static Rail at F${target.phaseOrigin}.`
-        : `Deleted Motion Rail at F${target.phaseOrigin}.`
+      ? `Deleted ${deletedRailType} Rail at F${target.phaseOrigin}.`
       : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`);
     return accepted !== null;
   };

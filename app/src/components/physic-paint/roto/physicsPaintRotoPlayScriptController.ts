@@ -49,7 +49,9 @@ import { sliceRailKeyScripts, type RailKeyScriptResult } from './physicsPaintRot
 import {
   buildRunScriptStackReadout,
   buildStandardStackedLoopClip,
+  isStandardMergedLoopClip,
   mergeStackedSourceKeyIds,
+  STANDARD_RAIL_REGENERATE_REASON,
   planRunScriptStackExtension,
   planRunScriptStackLifecycle,
   resolveRunScriptDestination,
@@ -1581,6 +1583,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   function groupRegenerateReason(group: PhysicPaintRotoLoopClip, document: PhysicPaintRotoPhysicalDocument | null): string | null {
     if (ports.library.busy.peek() || ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Rail operation.';
+    // 261031-vbo (Quick C1): a merged Standard Rail is refused BEFORE the
+    // lifecycle-shape check — an infinity merge has no lifecycle members, and
+    // the inherited provenance must never report "Script detached" for a rail
+    // that no longer has one script to rebuild from.
+    if (isStandardMergedLoopClip(group)) return STANDARD_RAIL_REGENERATE_REASON;
     if (!isRegenerableLifecycleShape(group)) return 'Regenerate unavailable — Rail source is unresolved.';
     if (group.syncState === 'synchronized') return 'Already synchronized with Script.';
     if (group.provenanceState !== 'attached' || !group.scriptId) return 'Regenerate unavailable — Script detached.';
@@ -1690,6 +1697,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   async function openSourceEdit(loopId: string): Promise<RotoPlayScriptLoopOpResult> {
     const loop = currentLoopClips().find((clip) => clip.loopId === loopId);
     if (!loop) return rejectLoopOp(`Loop Clip "${loopId}" no longer exists.`);
+    // 261031-vbo (Quick C1): the dialog's Regenerate entry refuses a merged
+    // Standard Rail with the merged reason BEFORE the lifecycle-shape branch —
+    // a lifecycle-less merge would otherwise fall to "no source-cycle
+    // provenance".
+    if (isStandardMergedLoopClip(loop)) return rejectLoopOp(STANDARD_RAIL_REGENERATE_REASON);
     if (isRegenerableLifecycleShape(loop)) return openGroupRegenerate(loop);
     const guard = loopOpGuard();
     if (guard) return { ok: false, reason: guard };

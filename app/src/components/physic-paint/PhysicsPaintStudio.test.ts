@@ -654,14 +654,15 @@ describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
     expect(reconcile).toContain('selectedRotoKeyRail.value = null;');
   });
 
-  it('feeds classifier and strip paint from the reconciled selection with mode-resolved Rail deletion copy', () => {
+  it('feeds classifier and strip paint from the reconciled selection with classified Rail deletion copy (261031-vbo)', () => {
     expect(studio).toContain('getSelectedKeyRail: () => effectiveSelectedRotoKeyRail,');
     expect(studio).toContain('selectedRotoKeyRail: effectiveSelectedRotoKeyRail');
     expect(studio).toContain('onSelectRotoKeyRail: handleSelectRotoKeyRail');
     expect(studio).toContain('onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected');
     expect(studio).toContain('rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0');
-    expect(studio).toContain("const deletedGroupMode = rotoLoopClips.find((clip) => clip.loopId === target.groupId)?.mode\n      ?? 'progressive';");
-    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? deletedGroupMode === 'static'\n        ? `Deleted Static Rail at F${target.phaseOrigin}.`\n        : `Deleted Motion Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
+    expect(studio).toContain('const deletedGroupClip = rotoLoopClips.find((clip) => clip.loopId === target.groupId);');
+    expect(studio).toContain("const deletedRailType = classifyLoopClipRailKind(deletedGroupClip) === 'standard'\n      ? 'Standard'\n      : deletedGroupClip?.mode === 'static' ? 'Static' : 'Motion';");
+    expect(studio).toContain("target.operationKind === 'delete-group'\n      ? `Deleted ${deletedRailType} Rail at F${target.phaseOrigin}.`\n      : `Deleted F${target.appFrame} from Rail at F${target.phaseOrigin}.`");
   });
 
   it('pins the shared rail focus treatment on both :focus and :focus-visible — no selection box (43.4 defect 6/8, 47 close-out UAT round 10)', () => {

@@ -39,7 +39,7 @@ import {
   projectPhysicsPaintLoopClipGeometry,
   type PhysicsPaintBackgroundClipPresentation,
 } from './physicsPaintLoopClipPresentation';
-import { classifyRotoRailKind, getRotoRailKindLabel, type RotoRailKind } from './physicsPaintWorkflowPresentation';
+import { classifyLoopClipRailKind, getRotoRailKindLabel, type RotoRailKind } from './physicsPaintWorkflowPresentation';
 import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
@@ -332,7 +332,9 @@ function resolveTrackRowLoopVisuals(
       width: geometry.width,
       placementFrame: continuousRange.placementStart,
       mode: clip?.mode ?? 'progressive',
-      railKind: classifyRotoRailKind(clip?.railKind),
+      // 261031-vbo (Quick C1): one classifier for the active lane and the
+      // non-active rows — a merged (provenance-free) clip is 'standard'.
+      railKind: classifyLoopClipRailKind(clip),
       unresolved: Boolean(continuousRange.unresolved),
       sourceKeyIds: range.sourceKeyIds,
     });
@@ -668,7 +670,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         {loopLines.map((line) => (
           <span
             key={line.loopId}
-            class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.railKind === 'reveal' ? ' rail-kind-reveal' : ''}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
+            class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.railKind === 'reveal' ? ' rail-kind-reveal' : ''}${line.railKind === 'standard' ? ' rail-kind-standard' : ''}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             data-rail-first-frame={line.placementFrame}
             data-rail-kind="loop"
             data-rail-key-ids={line.sourceKeyIds.join(',')}

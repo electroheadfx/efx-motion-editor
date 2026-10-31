@@ -51,6 +51,7 @@ import type {
   RotoPhysicalKeyUtilityPort,
 } from '../roto/rotoCoordinatorPorts';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
@@ -932,6 +933,7 @@ function deriveRailSetDeleteMembers(input: RotoDeleteTargetClassificationInput):
 export function buildRotoDeleteScopeLabel(
   target: RotoDeleteTarget,
   groupDisplayName: string | null = null,
+  railKind?: RotoRailKind,
 ): string {
   if (target.kind === 'rail-set') {
     return target.members.length === 1 ? 'Delete 1 Rail' : `Delete ${target.members.length} Rails`;
@@ -942,7 +944,9 @@ export function buildRotoDeleteScopeLabel(
       : `Delete Key Rail — frames ${target.firstKeyFrame}–${target.lastKeyFrame}, ${target.keyIds.length} keys.`;
   }
   if (target.kind === 'group') {
-    const railType = target.mode === 'static' ? 'Static' : 'Motion';
+    // 261031-vbo (Quick C1): a merged Standard Rail keeps its stored mode but
+    // presents as Standard — delete copy must never re-advertise a typed rail.
+    const railType = railKind === 'standard' ? 'Standard' : target.mode === 'static' ? 'Static' : 'Motion';
     const displayName = groupDisplayName?.trim() || `${railType} Rail at F${target.phaseOrigin}`;
     return `Delete ${railType} Rail — ${displayName}`;
   }
@@ -1010,12 +1014,15 @@ export interface RailSetCopyMember {
   readonly effectiveEndExclusive: number;
   /** Loop members carry their rail type; key-rail members are always 'Key'. */
   readonly mode?: 'progressive' | 'static';
+  /** 261031-vbo: the presentation classification; 'standard' outranks mode. */
+  readonly railKind?: RotoRailKind;
 }
 
-type RailSetCopyType = 'Motion' | 'Static' | 'Key';
+type RailSetCopyType = 'Motion' | 'Static' | 'Standard' | 'Key';
 
 function railSetCopyType(member: RailSetCopyMember): RailSetCopyType {
   if (member.kind === 'key-rail') return 'Key';
+  if (member.railKind === 'standard') return 'Standard';
   return member.mode === 'static' ? 'Static' : 'Motion';
 }
 
@@ -1831,10 +1838,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const deleteDisabledReason = computed(() => mapRotoDeleteProductReason(deleteTarget.value));
   const deleteScopeLabel = computed(() => {
     const target = deleteTarget.value;
-    const groupDisplayName = target.kind === 'group'
-      ? input.getSelectedLoopRailDisplayName?.(target.groupId) ?? null
-      : null;
-    return buildRotoDeleteScopeLabel(target, groupDisplayName);
+    if (target.kind !== 'group') return buildRotoDeleteScopeLabel(target);
+    const groupDisplayName = input.getSelectedLoopRailDisplayName?.(target.groupId) ?? null;
+    const groupClip = (input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY)
+      .find((clip) => clip.loopId === target.groupId);
+    return buildRotoDeleteScopeLabel(target, groupDisplayName, classifyLoopClipRailKind(groupClip));
   });
   const scissorTarget = computed(() => classifyRotoScissorTarget(readRotoScissorTargetInput(input)));
   const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);

@@ -228,7 +228,30 @@ function lifecycleGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): Physi
     sourceKeyIds: Object.freeze(['A', 'B']),
     repeat: 2,
     mode: 'progressive',
+    // 261031-vbo (Quick C1): a provenance-free clip now presents as a merged
+    // Standard Rail — typed fixtures must carry the all-or-nothing provenance.
+    scriptId: 'script-1',
+    motion: Object.freeze({ deformation: 0, position: 0 }),
+    overrideColor: null,
     syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
+    frameOverrides: Object.freeze([]),
+    ...overrides,
+  });
+}
+
+/** 261031-vbo: a merged Standard Rail — lifecycle kept, provenance absent. */
+function standardMergedGroup(overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    loopId: 'group-1',
+    placementStart: 10,
+    sourceKeyIds: Object.freeze(['A', 'B']),
+    repeat: 2,
+    mode: 'progressive',
+    syncState: 'modified',
     provenanceState: 'attached',
     phaseOrigin: 10,
     originalEndExclusive: 16,
@@ -544,6 +567,19 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
     });
     expect(requestGroupDeleteChoice).not.toHaveBeenCalled();
     expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('names a merged Standard Rail in the Delete scope copy while typed rails keep Motion (261031-vbo)', () => {
+    const harness = createHarness({
+      records,
+      loopClips: [standardMergedGroup()],
+      selectedLoopClipIds: ['group-1'],
+      selectedLoopRailDisplayName: 'Walk Group',
+      currentAppFrame: 20,
+      capacity: 30,
+    });
+
+    expect(harness.actions.physicalActions.deleteScopeLabel.value).toBe('Delete Standard Rail — Walk Group');
   });
 
   it('opens only the focused sole-occurrence Delete Frame warning', async () => {
@@ -3622,6 +3658,13 @@ describe('useRotoTimelineActions set-copy mapper family (43.6-01 Task 3, D-27)',
     effectiveEndExclusive,
     mode: 'static' as const,
   });
+  const standardLoop = (firstFrame: number, effectiveEndExclusive: number) => ({
+    kind: 'loop' as const,
+    firstFrame,
+    effectiveEndExclusive,
+    mode: 'static' as const,
+    railKind: 'standard' as const,
+  });
 
   it('produces the locked homogeneous copy with the type name and en-dash range', () => {
     expect(buildRailSetCopy([
@@ -3657,6 +3700,18 @@ describe('useRotoTimelineActions set-copy mapper family (43.6-01 Task 3, D-27)',
       staticLoop(12, 20),
       staticLoop(30, 41),
     ])).toBe('2 Static Rails selected — frames 12–40.');
+  });
+
+  it('names a merged Standard rail by its classification, never its stored mode (261031-vbo)', () => {
+    expect(buildRailSetCopy([
+      standardLoop(12, 20),
+      standardLoop(30, 41),
+    ])).toBe('2 Standard Rails selected — frames 12–40.');
+    expect(buildRailSetCopy([
+      standardLoop(12, 40),
+      keyRail(50, 70),
+      keyRail(75, 89),
+    ])).toBe('3 Rails selected — frames 12–88 (1 Standard, 2 Key).');
   });
 
   it('derives the inclusive frame range from canonical half-open intervals', () => {
