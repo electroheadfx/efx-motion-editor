@@ -283,12 +283,12 @@ The only design that would need a schema change is "persist a per-key 'this rail
 | A4 | `preserveSelection: true` is acceptable with a non-empty affected range | A2, A6 | Playhead would jump to `runStart`; undo/selection behaviour differs from the dialog promise |
 | A5 | Collision "cross" is measured on the **new cycle end** (`phaseOrigin + newCycleLength`), while the parent-end limit is measured on the **new `originalEndExclusive`** (`× repeat`) | A3, A4 | Max would over-promise for repeated rails |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Overwrite semantics.** What we know: the other rail's clip can be removed atomically; its keys cannot be deleted; a start-crossed rail cannot be shortened. What is unclear: whether the user accepts "Overwrite = that rail disappears (its keys become ordinary keys and inside the run they show the run's pixels)". Recommendation: lock Overwrite = remove the clip; replace "shortened" in the copy with "removed".
-2. **Keep-ON recording on flag-off rails.** What we know: the doubling hazard is real and reopen-reachable; the durable base is persisted. What is unclear: whether the CONTEXT intends records to be written on flag-off rails. Recommendation: no records on flag-off rails in this task; if records are wanted, plan the `prepareRotoScriptTarget` map-first change as a separate task.
-3. **Linked rails sharing a source cycle.** At the shared physical source frames two rails claim membership. Recommendation: fail closed and name both rails (locked ambiguity law); do not silently pick the earlier `placementStart`.
-4. **Count default for a rail destination.** Today `countText` opens at `'3'`; Reveal opens at the script's natural duration ([VERIFIED: …PlayScriptController.ts:801, 810]). Recommendation: default to the script's natural duration for a rail destination and let the user shorten — it matches "run the script".
+1. **Overwrite semantics. (RESOLVED)** Remove the victim rail's Loop Clip in the same atomic commit; its keys survive as ordinary keys; frames outside the run keep their pixels; copy says "removes", never "shortens"; one undo restores it exactly. See CONTEXT.
+2. **Keep-ON recording on flag-off rails. (RESOLVED)** The user chose records + the base-authority fix, but the plan then exceeded the quick budget (165k vs 100k), so the pre-authorized split applies: Quick A is flag-on only; flag-off Keep ON + the base authority are deferred to Quick B. Quick A seeds the switch OFF and disabled with a reason for flag-off targets. See CONTEXT.
+3. **Linked rails sharing a source cycle. (RESOLVED)** Fail closed with `ambiguous-rail`, naming both rails. See CONTEXT.
+4. **Count default for a rail destination. (RESOLVED)** The script's natural duration for existing-rail targets only; creation keeps 3; fallback 3 when unknown. See CONTEXT.
 
 ## Environment Availability
 
