@@ -56,6 +56,7 @@ import {
 } from './PhysicsPaintPlayScriptCards';
 import {
   createRotoPlayScriptController,
+  stackRunKindMode,
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
   type RotoPlayScriptMode,
@@ -260,7 +261,12 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setPaintSeedVariation: vi.fn(),
     useBrushColor: vi.fn(),
     setKeepScript: vi.fn(),
-    setStackRunKind: vi.fn(),
+    // IN-04: the fake mirrors the real controller's SOLE write path. The signal
+    // is read-only on the interface, and the setter keeps `mode` in lockstep.
+    setStackRunKind: vi.fn((kind: RotoPlayScriptStackRunKind) => {
+      signals.stackRunKind.value = kind;
+      signals.mode.value = stackRunKindMode(kind);
+    }),
     confirmStackCollision: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
@@ -2132,7 +2138,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal run surface (261101-1pc)', () => {
     const tree = renderDialog(test.controller);
     expect(findAll(tree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(1);
 
-    test.signals.stackRunKind.value = 'motion';
+    test.controller.setStackRunKind('motion');
     const back = renderDialog(test.controller);
     expect(findAll(back, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
     expect(findAll(back, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);

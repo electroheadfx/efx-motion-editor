@@ -626,8 +626,12 @@ export interface RotoPlayScriptController {
    * 261101-1pc (Quick C2): the stack's Rail Type — Motion / Static / Reveal
    * Motion / Reveal Static. Dialog state only, never persisted; the committed
    * Standard Rail still stores the destination's `mode`.
+   *
+   * Read-only: `setStackRunKind` is the sole writer, because it is the only
+   * path that also derives `mode` — a direct signal write would desync the
+   * visible card set from the mode the bake reads.
    */
-  stackRunKind: Signal<RotoPlayScriptStackRunKind>;
+  stackRunKind: ReadonlySignal<RotoPlayScriptStackRunKind>;
   /** Choose the run kind and derive the single mode the bake uses (compare-then-write). */
   setStackRunKind: (kind: RotoPlayScriptStackRunKind) => void;
   /** Keep script draft — seeded ON only for a flag-on stack target, then user-owned. */
