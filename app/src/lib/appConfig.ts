@@ -1,5 +1,6 @@
 import { LazyStore } from '@tauri-apps/plugin-store';
 import { configGetTheme, configSetTheme, configGetCanvasBg, configSetCanvasBg, configGetSidebarWidth, configSetSidebarWidth, configGetPanelHeights, configSetPanelHeights, configGetLoopEnabled, configSetLoopEnabled } from './ipc';
+import type { PlayScriptDialogDefaults } from './playScriptDialogDefaults';
 
 /** Singleton app config store -- persists as JSON in Tauri app data dir */
 const store = new LazyStore('app-config.json');
@@ -64,6 +65,16 @@ export async function setLastProjectPath(path: string | null): Promise<void> {
 export async function setWindowSize(width: number, height: number): Promise<void> {
   await store.set('windowWidth', width);
   await store.set('windowHeight', height);
+}
+
+// --- Run Script dialog defaults (261101-cd5 UAT) ---
+
+export async function getPlayScriptDialogDefaults(): Promise<PlayScriptDialogDefaults | null> {
+  return (await store.get<PlayScriptDialogDefaults>('playScriptDialogDefaults')) ?? null;
+}
+
+export async function setPlayScriptDialogDefaults(value: PlayScriptDialogDefaults): Promise<void> {
+  await store.set('playScriptDialogDefaults', value);
 }
 
 // --- Theme (persisted to ~/.config/efx-motion/builder-config.yaml via Rust) ---

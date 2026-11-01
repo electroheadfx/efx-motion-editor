@@ -17,6 +17,7 @@ import type {
 } from './useRotoPhysicalEditCoordinator';
 import { sendPhysicPaintRotoAuthorityRequest } from '../bridge/physicsPaintBridgeTransport';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintRotoAuthorityResultBridge, type PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
+import type { PlayScriptDialogDefaults } from '../../../lib/playScriptDialogDefaults';
 
 type RailKeyScriptRecordInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['recordRailKeyScripts']>>[0];
 type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
@@ -62,6 +63,14 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getBackgroundMetadata: () => portsRef.current.getBackgroundMetadata(),
       getOperationLocked: () => portsRef.current.getOperationLocked(),
       getSize: () => portsRef.current.getSize(),
+      // 261101-cd5 UAT: persisted creation defaults — forwarded only when the
+      // host supplies them, so a host without settings keeps built-in defaults.
+      ...(ports.getPlayScriptDefaults
+        ? { getPlayScriptDefaults: () => portsRef.current.getPlayScriptDefaults!() }
+        : {}),
+      ...(ports.savePlayScriptDefaults
+        ? { savePlayScriptDefaults: (defaults: PlayScriptDialogDefaults) => portsRef.current.savePlayScriptDefaults!(defaults) }
+        : {}),
       getRotoLoopClips: () => portsRef.current.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       getPhysicalDocument: () => portsRef.current.getPhysicalDocument?.() ?? null,

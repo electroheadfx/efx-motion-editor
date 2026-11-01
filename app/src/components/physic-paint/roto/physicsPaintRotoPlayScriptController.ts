@@ -31,6 +31,7 @@ import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { isWebpBytes } from '../../../types/physicPaint';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
+import type { PlayScriptDialogDefaults } from '../../../lib/playScriptDialogDefaults';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
@@ -347,6 +348,10 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   getActiveTrackId: (layerId: string) => string;
   getSelection: () => { kind: RotoTimelineSelectionKind; keyId: string | null; appFrame: number };
   getMotion: () => { deformation: number; position: number; rotation?: number; scale?: number };
+  /** Persisted creation defaults (app-level settings). Absent = built-in defaults. */
+  getPlayScriptDefaults?: () => PlayScriptDialogDefaults | null;
+  /** Persist the creation dialog's current settings. Stacks and edit modes never call it. */
+  savePlayScriptDefaults?: (defaults: PlayScriptDialogDefaults) => void;
   // D-08R: the ONLY override-color resolution path — reads the live Studio brush color
   // (settings.color; sole writer setBrushColor). Read at confirm time and at the first-open
   // summary compose; the value is never stored dialog-side (D-10/D-18).
@@ -660,8 +665,10 @@ export interface RotoPlayScriptController {
   /** The open collision prompt; null when the run is free or refused. */
   stackCollision: ReadonlySignal<RotoPlayScriptStackCollision | null>;
   collisionOffers: ReadonlySignal<readonly RunScriptCollisionOffer[]>;
-  /** A stack destination never edits the rail's repeat — its Cycle/Never controls are hidden. */
+  /** A stack destination never edits the rail's repeat — its Cycle/Never controls are read-only. */
   repeatLocked: ReadonlySignal<boolean>;
+  /** The pinned destination rail's stored repeat; null off a stack. */
+  stackRepeat: ReadonlySignal<number | 'infinity' | null>;
   /** The stack's seeded override color; null falls back to the live brush color. */
   stackOverrideColor: ReadonlySignal<string | null>;
   /** Adopt the app's current brush color as the stack's Custom color (no-op off a stack). */
@@ -1193,6 +1200,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   const repeatLocked = computed(() => runDestination.value.kind === 'stack');
 
+  /** 261101-cd5 UAT: the stack Timing hero shows the rail's own Cycle read-only. */
+  const stackRepeat = computed<number | 'infinity' | null>(() => {
+    const destination = runDestination.value;
+    return destination.kind === 'stack' ? destination.rail.repeat : null;
+  });
+
   /**
    * 261031-qps (Quick B): the pinned destination's rail kind — the dialog's
    * composition gate for the Reveal knob set. Reads the pinned destination
@@ -1340,19 +1353,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return null;
   }
 
-  // D-15: first-time Static / Hold defaults apply once per session; later mode switches keep session values.
-  let staticDefaultsApplied = false;
-  const stopStaticDefaults = effect(() => {
-    if (mode.value === 'static' && !staticDefaultsApplied) {
-      staticDefaultsApplied = true;
-      countText.value = '3';
-      lastFiniteCount.value = '3';
-      max.value = false;
-      repeatText.value = '1';
-      infinity.value = false;
-    }
-  });
-
   function setMax(enabled: boolean): void {
     if (enabled) {
       // Preserve the last VALID finite frame count; an invalid disabled draft never overwrites it.
@@ -1418,20 +1418,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       : toDialogMotion(ports.getMotion());
   }
 
-  /* 52-05 (G-52-3): switching to the Reveal Photo Rail tab re-defaults the span
-     from the selected script's natural duration (D-20) and runs the reference
+  /* 52-05 (G-52-3): switching to the Reveal Photo Rail tab runs the reference
      guard PROACTIVELY — no reference → the Photo Reference modal opens directly
      so the user places a source and returns to this dialog (never a silent
-     disabled state, never a bare error). */
+     disabled state, never a bare error). The span and the per-key script opt-in
+     are user settings: switching tabs never resets them (261101-cd5 UAT). */
   function setRailTab(tab: RotoPlayScriptRailTab): void {
     if (isBusyPhase(phase.peek())) return;
     railTab.value = tab;
     if (tab !== 'reveal') return;
-    // The per-key script opt-in is disabled on the Reveal tab for now — a
-    // Paint-tab ON must never ride invisibly into a Reveal bake.
-    if (keyScriptEdits.peek()) keyScriptEdits.value = false;
-    const selectedId = ports.library.selectedId.peek();
-    revealCountText.value = String((selectedId ? ports.getScriptNaturalDuration?.(selectedId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
     if (!revealReferencePlaced.peek()) ports.openPhotoReference?.();
   }
 
@@ -1504,29 +1499,52 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       sourceEditRepairId.value = null;
       regenerateImpact.value = null;
       linkChoice.value = 'link';
-      countText.value = '3';
-      lastFiniteCount.value = '3';
-      max.value = false;
-      dialogMotion.value = toDialogMotion(ports.getMotion());
-      // 52-05 (G-52-3): the open entry picks the tab — the track rail-creation
-      // flow's Reveal item opens directly on the Reveal Photo Rail tab. The
-      // reveal span defaults to the selected script's natural duration (D-20).
-      railTab.value = options?.railTab ?? 'paint';
+      // 261101-cd5 UAT: creation settings are sticky — restore the last saved
+      // values (app-level defaults) instead of resetting them on every open.
+      // A stack keeps seeding from its destination rail below. A host without
+      // the settings port keeps the pre-persistence in-session behavior.
       const selectedScriptId = ports.library.selectedId.peek();
-      revealCountText.value = String((selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT);
-      // 261029-vbp: colorize is an apply-mode creation setting — reset it with
-      // the rest of the apply-mode state on every open (never sticky).
-      colorize.value = false;
-      colorizeMix.value = 100;
-      // 261030-ey9: the Photo wiggle is an apply-mode creation setting too —
-      // reset on every open (colorize precedent, never sticky).
-      photoWiggle.value = false;
-      // 261030-ig0: still guarding the same value (rule 3) rather than writing
-      // unconditionally — a reset to the default must not churn subscribers.
-      if (keyScriptEdits.peek()) keyScriptEdits.value = false;
-      // 261030-v1t: the per-frame paint-seed variation is an apply-mode
-      // creation setting too — reset on every open (never sticky).
-      if (paintSeedVariation.peek()) paintSeedVariation.value = false;
+      const naturalReveal = (selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null) ?? DEFAULT_REVEAL_FRAME_COUNT;
+      const savedDefaults = destination.kind === 'stack' ? null : (ports.getPlayScriptDefaults?.() ?? null);
+      // 52-05 (G-52-3): the open entry picks the tab — the track rail-creation
+      // flow's Reveal item opens directly on the Reveal Photo Rail tab.
+      railTab.value = options?.railTab ?? 'paint';
+      if (savedDefaults) {
+        const savedCount = savedDefaults.countText;
+        const seededCountText = parseCount(savedCount, authority.capacity).count !== null ? savedCount : '3';
+        countText.value = seededCountText;
+        lastFiniteCount.value = seededCountText;
+        max.value = savedDefaults.max && authority.capacity > 0;
+        repeatText.value = parseRepeat(savedDefaults.repeatText, parseCount(seededCountText, authority.capacity).count).count !== null
+          ? savedDefaults.repeatText
+          : '1';
+        infinity.value = savedDefaults.infinity;
+        if (savedDefaults.mode === 'static' || savedDefaults.mode === 'progressive') mode.value = savedDefaults.mode;
+        dialogMotion.value = toDialogMotion(savedDefaults.motion);
+        revealCountText.value = parseCount(savedDefaults.revealCountText, authority.capacity).count !== null
+          ? savedDefaults.revealCountText
+          : String(naturalReveal);
+        colorize.value = savedDefaults.colorize;
+        colorizeMix.value = Math.min(100, Math.max(0, Math.round(savedDefaults.colorizeMix)));
+        photoWiggle.value = savedDefaults.photoWiggle;
+        // Compare-then-write (rule 3) — restoring a default must not churn subscribers.
+        if (keyScriptEdits.peek() !== savedDefaults.keyScriptEdits) keyScriptEdits.value = savedDefaults.keyScriptEdits;
+        if (paintSeedVariation.peek() !== savedDefaults.paintSeedVariation) paintSeedVariation.value = savedDefaults.paintSeedVariation;
+        overrideEnabled.value = savedDefaults.overrideEnabled;
+      } else {
+        // No saved defaults: the pre-persistence reset (mode / repeat / infinity /
+        // override stay as the in-session memory they always were).
+        countText.value = '3';
+        lastFiniteCount.value = '3';
+        max.value = false;
+        dialogMotion.value = toDialogMotion(ports.getMotion());
+        revealCountText.value = String(naturalReveal);
+        colorize.value = false;
+        colorizeMix.value = 100;
+        photoWiggle.value = false;
+        if (keyScriptEdits.peek()) keyScriptEdits.value = false;
+        if (paintSeedVariation.peek()) paintSeedVariation.value = false;
+      }
       // 261101-1pc (Quick C2): the stack Rail Type is apply-mode dialog state —
       // reset on every open (a stack open re-seeds it from the destination).
       if (stackRunKind.peek() !== 'motion') stackRunKind.value = 'motion';
@@ -1578,7 +1596,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         const runStart = stackStart ?? authority.canonicalStart;
         const seededCount = parsedCount.peek().count ?? (typeof natural === 'number' ? natural : 3);
         phase.value = 'idle';
-        status.value = `Run Script onto ${destination.rail.clipId} · F${runStart}–F${runStart + seededCount - 1}`;
+        // 261101-cd5 UAT: the footer reads like the creation surface — the
+        // destination's UUID is not part of the one-modal UI.
+        status.value = `Max ${Math.max(1, stackMaxCount.peek())} · F${runStart}–F${runStart + seededCount - 1}`;
         return;
       }
       pinnedStackDestination.value = null;
@@ -2070,7 +2090,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       () => stagedLoops,
       `Loop updated · Cycle ${cycleDuration}f × ${draftRepeat === 'infinity' ? '∞' : draftRepeat}`,
     );
-    if (result.ok) confirmationOpen.value = false;
+    if (result.ok) { persistDialogDefaults(); confirmationOpen.value = false; }
     return result.ok;
   }
 
@@ -2388,6 +2408,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       appliedSummaryLine2.value = `F${start} · Reveal rail baked · Cycle ${count}f × ${repeatDraft === 'infinity' ? '∞' : repeatDraft}`;
       phase.value = 'complete'; progress.value = { completed: count, total: count };
       status.value = `Reveal Rail complete · ${count} frames`;
+      persistDialogDefaults();
       confirmationOpen.value = false; ports.log(status.value); return true;
     } catch (cause) {
       if (disposed) return false;
@@ -2900,6 +2921,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       appliedSummaryLine2.value = `F${start}–F${start + effectiveCount - 1} · Stacked onto the existing rail · Cycle ${writeExtension.newCycleLength}f × ${target.repeat === 'infinity' ? '∞' : target.repeat}`;
       phase.value = 'complete'; progress.value = { completed: effectiveCount, total: effectiveCount };
       status.value = `Run Script complete · ${effectiveCount} frames`;
+      persistDialogDefaults();
       confirmationOpen.value = false;
       pinnedStackDestination.value = null;
       ports.log(status.value);
@@ -3061,6 +3083,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         appliedSummaryLine2.value = `F${start} · Linked to the existing source cycle · Cycle ${count}f × ${infinity.peek() ? '∞' : parsedRepeat.peek().count}`;
         hasSuccessfulGeneration = true;
         phase.value = 'complete'; progress.value = null; status.value = 'Loop Clip linked';
+        persistDialogDefaults();
         confirmationOpen.value = false; ports.log(status.value); return true;
       }
 
@@ -3346,6 +3369,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       status.value = preparedRegenerate
         ? `Rail Regenerate complete · ${preparedRegenerate.affectedGroups.length} Rail${preparedRegenerate.affectedGroups.length === 1 ? '' : 's'}`
         : `Play Script complete · ${count} frames`;
+      persistDialogDefaults();
       confirmationOpen.value = false; ports.log(status.value); return true;
     } catch (cause) {
       if (isAbort(cause)) { phase.value = 'cancelled'; status.value = 'Play Script cancelled'; error.value = null; ports.log(status.value); }
@@ -3365,9 +3389,36 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }
   }
 
+  /**
+   * 261101-cd5 UAT: save the creation dialog's settings as app-level defaults
+   * when the dialog closes. Stacks seed from their destination rail and edit
+   * modes have no creation settings, so neither writes.
+   */
+  function persistDialogDefaults(): void {
+    if (!ports.savePlayScriptDefaults) return;
+    if (dialogMode.peek() !== 'apply') return;
+    if (runDestination.peek().kind === 'stack') return;
+    ports.savePlayScriptDefaults({
+      mode: mode.peek(),
+      countText: countText.peek(),
+      max: max.peek(),
+      repeatText: repeatText.peek(),
+      infinity: infinity.peek(),
+      motion: { ...dialogMotion.peek() },
+      keyScriptEdits: keyScriptEdits.peek(),
+      paintSeedVariation: paintSeedVariation.peek(),
+      colorize: colorize.peek(),
+      colorizeMix: colorizeMix.peek(),
+      photoWiggle: photoWiggle.peek(),
+      overrideEnabled: overrideEnabled.peek(),
+      revealCountText: revealCountText.peek(),
+    });
+  }
+
   function closeConfirmation(): void {
     if (isBusyPhase(phase.peek())) return;
     pinnedStackDestination.value = null;
+    persistDialogDefaults();
     confirmationOpen.value = false;
   }
   function cancel(): void {
@@ -3398,14 +3449,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     /* 261031-qps: `stackRailKind` composes the Reveal stack card set. */
     /* 261101-1pc: `stackRunKind` is the stack's four-kind Rail Type (dialog state). */
     runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout, stackRailKind, stackRunKind, setStackRunKind,
-    keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked,
+    keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked, stackRepeat,
     stackOverrideColor, useBrushColor,
     setKeepScript, confirmStackCollision,
     openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
     dispose: () => {
       disposed = true;
       generation += 1;
-      stopStaticDefaults();
       seedKeepScript();
       // AQUA-07 / D-21: a long aquarelle cuisson SURVIVES dispose(). Settle
       // in-flight turns through the bake host's flush — never abort them and

@@ -190,6 +190,8 @@ import { isSoundSourceMissing, collectMissingSoundSourcePaths } from '../../lib/
 import { audioEngine } from '../../lib/audioEngine';
 import { computeWaveformPeaks } from '../../lib/audioWaveform';
 import { audioPeaksCache } from '../../lib/audioPeaksCache';
+import { getPlayScriptDialogDefaults, setPlayScriptDialogDefaults } from '../../lib/appConfig';
+import type { PlayScriptDialogDefaults } from '../../lib/playScriptDialogDefaults';
 import { efxPaintDocumentAudioStore } from './audio/efxPaintDocumentAudioStore';
 import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary, requestPhysicPaintProjectContext } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
@@ -4322,6 +4324,21 @@ export function PhysicsPaintStudio() {
     }
     stagedPins?.clear();
   };
+  // 261101-cd5 UAT: the Run Script dialog's creation defaults persist in the
+  // app settings store. The ref is the sync read the controller's ports need;
+  // the write is fire-and-forget after the in-memory value is updated.
+  const playScriptDefaultsRef = useRef<PlayScriptDialogDefaults | null>(null);
+  const playScriptDefaultsDirty = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void getPlayScriptDialogDefaults()
+      .then((value) => {
+        // A save made while the read was in flight wins — never clobber it.
+        if (!cancelled && !playScriptDefaultsDirty.current) playScriptDefaultsRef.current = value;
+      })
+      .catch(() => { /* settings persistence unavailable (tests/web) */ });
+    return () => { cancelled = true; };
+  }, []);
   const rotoPlayScript = useRotoPlayScriptController({
     library: rotoScriptLibrary,
     getLaunchContext: () => launchContext,
@@ -4337,6 +4354,12 @@ export function PhysicsPaintStudio() {
       rotation: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).rotation ?? 0,
       scale: physicPaintStore.getRotoInterpolationSettings(launchContext.layerId, studioActiveTrackId()).scale ?? 0,
     } : { deformation: 0, position: 0, rotation: 0, scale: 0 },
+    getPlayScriptDefaults: () => playScriptDefaultsRef.current,
+    savePlayScriptDefaults: (value) => {
+      playScriptDefaultsDirty.current = true;
+      playScriptDefaultsRef.current = value;
+      void setPlayScriptDialogDefaults(value).catch(() => { /* best-effort settings write */ });
+    },
     // D-08R/D-18: read-only live brush-color port — setBrushColor remains the sole writer;
     // the controller only observes and snapshots settings.color at confirm time.
     getBrushColor: () => settings.color,

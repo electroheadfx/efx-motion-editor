@@ -735,6 +735,49 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.overrideEnabled.value).toBe(true);
   });
 
+  it('261101-cd5: seeds the creation form from persisted defaults and saves them on close', async () => {
+    const saved = {
+      mode: 'static' as const,
+      countText: '2',
+      max: false,
+      repeatText: '4',
+      infinity: false,
+      motion: { deformation: 11, position: 22, rotation: 3, scale: 4 },
+      keyScriptEdits: true,
+      paintSeedVariation: true,
+      colorize: true,
+      colorizeMix: 60,
+      photoWiggle: true,
+      overrideEnabled: true,
+      revealCountText: '2',
+    };
+    const savePlayScriptDefaults = vi.fn();
+    const test = harness({ getPlayScriptDefaults: () => saved, savePlayScriptDefaults });
+    await test.controller.openConfirmation();
+    expect(test.controller.mode.value).toBe('static');
+    expect(test.controller.countText.value).toBe('2');
+    expect(test.controller.repeatText.value).toBe('4');
+    expect(test.controller.dialogMotion.value).toEqual(saved.motion);
+    expect(test.controller.revealCountText.value).toBe('2');
+    expect(test.controller.colorize.value).toBe(true);
+    expect(test.controller.colorizeMix.value).toBe(60);
+    expect(test.controller.photoWiggle.value).toBe(true);
+    expect(test.controller.keyScriptEdits.value).toBe(true);
+    expect(test.controller.paintSeedVariation.value).toBe(true);
+    expect(test.controller.overrideEnabled.value).toBe(true);
+
+    test.controller.closeConfirmation();
+    expect(savePlayScriptDefaults).toHaveBeenCalledTimes(1);
+    expect(savePlayScriptDefaults.mock.calls[0]![0]).toMatchObject({
+      mode: 'static',
+      countText: '2',
+      repeatText: '4',
+      colorizeMix: 60,
+      keyScriptEdits: true,
+      revealCountText: '2',
+    });
+  });
+
   it('generates exactly the cycle value regardless of repeat or infinity', async () => {
     const bigRepeat = harness();
     await bigRepeat.controller.openConfirmation();
@@ -3892,7 +3935,7 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     expect(test.controller.revealCountText.value).toBe('3');
   });
 
-  it('setRailTab re-defaults the span and runs the reference guard proactively (D-12)', async () => {
+  it('setRailTab keeps the user span and runs the reference guard proactively (D-12)', async () => {
     const openPhotoReference = vi.fn();
     const test = harness({ hasPhotoReference: () => false, openPhotoReference, getScriptNaturalDuration: () => 2 });
     await test.controller.openConfirmation();
@@ -3900,18 +3943,21 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     test.controller.revealCountText.value = '7';
     test.controller.setRailTab('reveal');
     expect(test.controller.railTab.value).toBe('reveal');
-    expect(test.controller.revealCountText.value).toBe('2');
+    // 261101-cd5 UAT: a tab switch never resets the user's span.
+    expect(test.controller.revealCountText.value).toBe('7');
     expect(openPhotoReference).toHaveBeenCalledTimes(1);
   });
 
-  it('261030-fas: switching to Reveal clears the per-key script opt-in and the bake never records it', async () => {
+  it('261030-fas: switching to Reveal keeps the Paint opt-in but the bake never records it', async () => {
     const createReveal = vi.fn(async (_input: { keyScriptEdits?: boolean }) => ({ ok: true as const }));
     const test = harness({ hasPhotoReference: () => true, createReveal, getScriptNaturalDuration: () => 3 });
     await test.controller.openConfirmation();
     test.controller.setKeyScriptEdits(true);
     test.controller.setRailTab('reveal');
-    expect(test.controller.keyScriptEdits.value).toBe(false);
+    // 261101-cd5 UAT: the Paint setting survives the tab switch.
+    expect(test.controller.keyScriptEdits.value).toBe(true);
     expect(await test.controller.confirm()).toBe(true);
+    // The reveal bake still records nothing, whatever the Paint draft says.
     expect(createReveal.mock.calls[0]![0].keyScriptEdits).toBe(false);
   });
 
@@ -4270,6 +4316,15 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     bumpAvailability();
     return { ...test, requestAuthority, commit, getLoopEditSnapshot, bumpAvailability };
   };
+
+  it('261101-cd5: never persists a stack session as creation defaults', async () => {
+    const savePlayScriptDefaults = vi.fn();
+    const test = stackHarness([stackClip(1)], {}, { savePlayScriptDefaults });
+    await test.controller.openConfirmation();
+    expect(test.controller.runDestination.value.kind).toBe('stack');
+    test.controller.closeConfirmation();
+    expect(savePlayScriptDefaults).not.toHaveBeenCalled();
+  });
 
   // The anchor set a real two-brush script reports from the bake. Shared by
   // every default/custom stack bake so a held behavior still produces the
