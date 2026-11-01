@@ -8,7 +8,11 @@
 //  engine canvas while its select surface is active, so painting
 //  is blocked without touching the engine's pointer handling. It
 //  outlines every listed stroke of the current edit frame (a
-//  point polyline plus a brush-size-inflated bbox), owns the
+//  point polyline plus a brush-size-inflated bbox). 261101-mvg:
+//  while the Stroke settings "Preview stroke size" switch is on,
+//  the outline becomes the stroke's real footprint band instead —
+//  the paint band from the module's resolver, the 261029-eur red
+//  ribbon for an Eraser; OFF keeps today's thin centerline, owns the
 //  selection SET (plain click replaces, Cmd/Ctrl-click toggles,
 //  Shift-click adds, empty click clears), hands Alt+click to the
 //  caller's batch delete callback, and turns a press-and-drag on
@@ -38,6 +42,7 @@ import {
   setScriptStrokeDrag,
   setScriptStrokeSelection,
   setScriptStrokeTransform,
+  strokeSizePreview,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
@@ -126,6 +131,10 @@ export function ScriptStrokeOverlay(props: {
   // select mode is exited, or a transform preview is in flight, mid-gesture.
   const drag = scriptStrokeDrag.value;
   const transformPreview = scriptStrokeTransform.value;
+  // 261101-mvg: the "Preview stroke size" leaf gate. THIS overlay is the
+  // narrow leaf that owns the subscription — the Studio render body never
+  // reads it (efx-preact-reactivity rule 5).
+  const previewStrokeSize = strokeSizePreview.value;
   if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;
 
   // Narrow subscriptions: the port's listing repaints the outlines when the
@@ -360,20 +369,27 @@ export function ScriptStrokeOverlay(props: {
           // still no script mutation and no engine call.
           const transformed = transformPreview !== null
             && transformPreview.ids.includes(entry.mutationId);
-          // 261029-eur: a lift draws as ONE ribbon polygon — every vertex goes
-          // through the same transform and drag offset as its centerline.
-          const liftPath =
-            entry.kind === 'lift' && entry.ribbonPx !== undefined && entry.ribbonPx.length > 0
-              ? `M${entry.ribbonPx
-                  .map((p) => {
-                    const moved = transformed
-                      ? applyScriptStrokeTransform(p, transformPreview!)
-                      : p;
-                    return `${moved.x + offsetX},${moved.y + offsetY}`;
-                  })
-                  .join(' L')} Z`
-              : null;
-          // Paint branch: the dual outline polylines and the bbox stay as-is.
+          // 261101-mvg: the switch-gated footprint band. OFF (the default,
+          // Eraser included) resolves nothing and falls through to today's
+          // thin centerline; ON draws the area the stroke actually covers
+          // (paint) or the unchanged 261029-eur ribbon (Eraser). Every band
+          // vertex goes through the same transform and drag offset as its
+          // centerline — no geometry translation anywhere else.
+          const bandPx = previewStrokeSize && props.port.bandFor !== undefined
+            ? props.port.bandFor(entry, size)
+            : undefined;
+          const bandPath = bandPx !== undefined && bandPx.length > 0
+            ? `M${bandPx
+                .map((p) => {
+                  const moved = transformed
+                    ? applyScriptStrokeTransform(p, transformPreview!)
+                    : p;
+                  return `${moved.x + offsetX},${moved.y + offsetY}`;
+                })
+                .join(' L')} Z`
+            : null;
+          // The centerline polylines (the OFF outline / no-band fallback) and
+          // the bbox stay as-is.
           const points = entry.pointsPx
             .map((p) => {
               const moved = transformed
@@ -382,6 +398,9 @@ export function ScriptStrokeOverlay(props: {
               return `${moved.x + offsetX},${moved.y + offsetY}`;
             })
             .join(' ');
+          // 261101-mvg: the band colour follows the badge accent law — the
+          // Eraser's one red, otherwise the stroke's own recorded colour.
+          const bandAccent = entry.kind === 'lift' ? LIFT_RIBBON_COLOR : entry.color;
           // A selected lift badges in the ribbon colour (its own recorded
           // stroke colour may be any paint tint).
           const badgeAccent = entry.kind === 'lift' ? LIFT_RIBBON_COLOR : entry.color;
@@ -396,22 +415,20 @@ export function ScriptStrokeOverlay(props: {
               data-stroke-id={entry.mutationId}
               data-testid={dragged ? props.ghostTestId : undefined}
             >
-              {entry.kind === 'lift' ? (
-                liftPath !== null ? (
-                  <path
-                    data-testid="stroke-lift-ribbon"
-                    d={liftPath}
-                    fill={LIFT_RIBBON_COLOR}
-                    // Unselected stays a quiet reference: a thin edge and a
-                    // faint wash. Selecting it brings the full weight back.
-                    fillOpacity={isSelected ? 0.14 : 0.07}
-                    fillRule="nonzero"
-                    stroke={LIFT_RIBBON_COLOR}
-                    strokeWidth={isSelected ? 3.5 : 1.5}
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ) : null
+              {bandPath !== null ? (
+                <path
+                  data-testid={entry.kind === 'lift' ? 'stroke-lift-ribbon' : 'stroke-size-band'}
+                  d={bandPath}
+                  fill={bandAccent}
+                  // Unselected stays a quiet reference: a thin edge and a
+                  // faint wash. Selecting it brings the full weight back.
+                  fillOpacity={isSelected ? 0.14 : 0.07}
+                  fillRule="nonzero"
+                  stroke={bandAccent}
+                  strokeWidth={isSelected ? 3.5 : 1.5}
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
               ) : isSelected ? (
                 <polyline
                   points={points}

@@ -42,6 +42,8 @@ import {
   setScriptStrokeEditionPorts,
   setScriptStrokeSelection,
   setScriptStrokeTransform,
+  setStrokeSizePreview,
+  strokeSizePreview,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
@@ -121,6 +123,35 @@ describe('scriptStrokeEdition — shared signals', () => {
       expect(runs).toBe(before + 2);
     } finally {
       dispose();
+    }
+  });
+
+  it('is compare-then-write on the stroke-size preview and survives the select-mode teardown', () => {
+    // 261101-mvg: a session VIEW preference — the select-mode exit clears the
+    // selection/drag/transform but must never touch it.
+    setStrokeSizePreview(false);
+    let runs = 0;
+    const dispose = effect(() => {
+      void strokeSizePreview.value;
+      runs += 1;
+    });
+    try {
+      expect(strokeSizePreview.value).toBe(false);
+      const before = runs;
+      setStrokeSizePreview(true);
+      expect(strokeSizePreview.value).toBe(true);
+      expect(runs).toBe(before + 1);
+      // A repeated write of the SAME value notifies nobody.
+      setStrokeSizePreview(true);
+      expect(runs).toBe(before + 1);
+
+      setScriptSelectMode(true);
+      setScriptSelectMode(false);
+      expect(strokeSizePreview.value).toBe(true);
+      expect(runs).toBe(before + 1);
+    } finally {
+      dispose();
+      setStrokeSizePreview(false);
     }
   });
 

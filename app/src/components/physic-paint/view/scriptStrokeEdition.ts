@@ -108,6 +108,21 @@ export interface SelectableScriptStroke {
 export const scriptSelectMode = signal(false);
 
 /**
+ * 261101-mvg: the Move/Edit "Preview stroke size" VIEW preference. Session/UI
+ * state only — never written to the document, never part of the undo stack,
+ * never persisted. OFF (the default, Eraser included) draws every stroke as
+ * its thin centerline. Read by the Stroke settings header leaf and the
+ * overlay leaf; NEVER the Studio render body (rule 5).
+ */
+export const strokeSizePreview = signal(false);
+
+/** Compare-then-write — 1000 identical calls notify zero times (rule 3). */
+export function setStrokeSizePreview(on: boolean): void {
+  if (strokeSizePreview.value === on) return;
+  strokeSizePreview.value = on;
+}
+
+/**
  * The highlighted strokes (261024-mz5: one SET, not a single id).
  * Compare-then-write on membership — an identical membership never
  * allocates a new Set nor notifies a subscriber.
@@ -375,6 +390,13 @@ export interface ScriptStrokeEditionPort {
   isActive(): boolean;
   listStrokes(playFrame: number, size: ScriptStrokeSize): SelectableScriptStroke[];
   hitTestStroke(pointPx: CanvasPoint, playFrame: number, size: ScriptStrokeSize): number | null;
+  /**
+   * 261101-mvg: the display-only footprint band the overlay draws while the
+   * "Preview stroke size" switch is on. Absent means the module has no band
+   * geometry and the overlay keeps its centerline. NEVER a hit-test, bounds,
+   * stack or script input.
+   */
+  bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): CanvasPoint[] | undefined;
   /** 261024-mz5: the WHOLE selection in one batch edit. */
   deleteStrokes(ids: readonly number[]): void;
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): void;

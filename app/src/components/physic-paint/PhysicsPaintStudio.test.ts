@@ -3029,28 +3029,37 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(scriptStrokeOverlay).not.toContain('useSignal');
   });
 
-  it('draws a lift as one red ribbon while paint keeps its dual outline', () => {
+  it('draws the size band for paint and the red ribbon for a lift only while the preview switch is on', () => {
     expect(scriptStrokeOverlay).toContain("const LIFT_RIBBON_COLOR = '#ef4444';");
     expect(scriptStrokeOverlay).toContain("entry.kind === 'lift'");
     expect(scriptStrokeOverlay).toContain('fillRule="nonzero"');
-    // Unselected ribbons stay quiet (thin edge, faint wash); selecting one
+    // Unselected bands stay quiet (thin edge, faint wash); selecting one
     // restores the full weight.
     expect(scriptStrokeOverlay).toContain('fillOpacity={isSelected ? 0.14 : 0.07}');
     expect(scriptStrokeOverlay).toContain('strokeWidth={isSelected ? 3.5 : 1.5}');
     expect(scriptStrokeOverlay).toContain("const SELECTED_STROKE_COLOR = '#38bdf8';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_DARK = '#111111';");
     expect(scriptStrokeOverlay).toContain("const OUTLINE_LIGHT = '#ffffff';");
-    // The lift-branch region must map EVERY polygon vertex through the same
-    // transform and drag offset as the centerline. A branch-exists-only pin
-    // cannot catch a preview that stops following the ribbon (UAT row 6).
-    const liftStart = scriptStrokeOverlay.indexOf("entry.kind === 'lift'");
-    const paintStart = scriptStrokeOverlay.indexOf('// Paint branch:');
-    expect(liftStart).toBeGreaterThan(-1);
-    expect(paintStart).toBeGreaterThan(liftStart);
-    const liftRegion = scriptStrokeOverlay.slice(liftStart, paintStart);
-    expect(liftRegion).toContain('applyScriptStrokeTransform');
-    expect(liftRegion).toContain('offsetX');
-    expect(liftRegion).toContain('offsetY');
+    // 261101-mvg: the band comes from the module's display-only resolver and
+    // is gated on the session switch — OFF (the default, Eraser included)
+    // falls through to today's thin centerline outlines.
+    expect(scriptStrokeOverlay).toContain('strokeSizePreview');
+    expect(scriptStrokeOverlay).toContain('const previewStrokeSize = strokeSizePreview.value;');
+    expect(scriptStrokeOverlay).toContain('props.port.bandFor');
+    expect(scriptStrokeOverlay).toContain('stroke-size-band');
+    expect(scriptStrokeOverlay).toContain('stroke-lift-ribbon');
+    // The band region must map EVERY polygon vertex through the same transform
+    // and drag offset as the centerline. A branch-exists-only pin cannot catch
+    // a preview that stops following the band (UAT row 6).
+    const bandStart = scriptStrokeOverlay.indexOf('const bandPx');
+    const badgeStart = scriptStrokeOverlay.indexOf('const badgeAccent');
+    expect(bandStart).toBeGreaterThan(-1);
+    expect(badgeStart).toBeGreaterThan(bandStart);
+    const bandRegion = scriptStrokeOverlay.slice(bandStart, badgeStart);
+    expect(bandRegion).toContain('previewStrokeSize');
+    expect(bandRegion).toContain('applyScriptStrokeTransform');
+    expect(bandRegion).toContain('offsetX');
+    expect(bandRegion).toContain('offsetY');
   });
 
   it('renders the select/Move toggle in the watercolor rail bound to the select signal', () => {

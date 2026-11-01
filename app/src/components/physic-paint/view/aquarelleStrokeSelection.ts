@@ -47,6 +47,7 @@ import {
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeSelection,
+  strokeSizePreview,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeBounds,
@@ -61,6 +62,7 @@ import {
   liftStrokeRadiusPx,
   trimLiftRibbonCache,
 } from './aquarelleLiftRibbon';
+import { buildStrokeBandCached, trimStrokeBandCache } from './aquarelleStrokeBand';
 import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
@@ -463,13 +465,19 @@ export function listSelectableAquarelleStrokes(
   // 261029-eur: trim the ribbon cache against the FULL frame's lift ids —
   // filter-independent, so narrowing the filter never orphans a cached
   // polygon and frame navigation cannot grow the cache.
+  // 261101-mvg: same hygiene for the paint band cache — the two caches are
+  // disjoint by kind. Cache bookkeeping only: zero geometry, so the entries
+  // below stay byte-identical whatever the preview switch says.
   const liveLiftIds: number[] = [];
+  const liveBandIds: number[] = [];
   for (const [mutationId, stroke] of entries) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     if (stroke.tool === 'lift') liveLiftIds.push(mutationId);
+    else liveBandIds.push(mutationId);
   }
   trimLiftRibbonCache(liveLiftIds);
+  trimStrokeBandCache(liveBandIds);
 
   const out: SelectableAquarelleStroke[] = [];
   for (const [mutationId, stroke] of entries) {
@@ -535,6 +543,37 @@ export function listSelectableAquarelleStrokes(
 }
 
 /**
+ * 261101-mvg: the footprint band the overlay draws for one listed entry while
+ * the "Preview stroke size" switch is ON. DISPLAY-ONLY: this path is
+ * unreachable from `hitTestAquarelleStroke` (which walks the registry
+ * directly), and it never touches bounds, stack positions or the script.
+ *
+ * - OFF returns nothing for BOTH kinds, the Eraser included (default).
+ * - ON returns a lift's `ribbonPx` BY IDENTITY (the listing already built it —
+ *   never rebuild the 261029-eur law here) and a paint polygon from the ONE
+ *   band module.
+ *
+ * The `strokeSizePreview.value` read happens inside the overlay's render, so
+ * the subscription is the narrow leaf's (efx-preact-reactivity rule 5).
+ */
+export function resolveAquarelleStrokeBandPx(
+  entry: SelectableAquarelleStroke,
+  size: EnginePixelSize,
+): CanvasPoint[] | undefined {
+  if (!strokeSizePreview.value) return undefined;
+  if (entry.kind === 'lift') return entry.ribbonPx;
+  const stroke = getRecordedAquarelleStroke(entry.mutationId);
+  if (!stroke) return undefined;
+  const polygonPx = buildStrokeBandCached(
+    stroke,
+    entry.mutationId,
+    size,
+    aquarelleStrokesRevision.value,
+  ).polygonPx;
+  return polygonPx.length > 0 ? polygonPx : undefined;
+}
+
+/**
  * 261023-g4p: the watercolor half of the shared edition port. The Studio
  * registration adds `isActive` plus the delete/move/step callbacks (the same
  * handlers the rail gestures and the keyboard actions already use).
@@ -545,12 +584,13 @@ export function listSelectableAquarelleStrokes(
  */
 export const aquarelleScriptStrokeEditionPort: Pick<
   ScriptStrokeEditionPort,
-  'listStrokes' | 'hitTestStroke'
+  'listStrokes' | 'hitTestStroke' | 'bandFor'
 > = {
   listStrokes: (playFrame, size) =>
     listSelectableAquarelleStrokes(playFrame, size, aquarelleStrokeTypeFilter.value),
   hitTestStroke: (pointPx, playFrame, size) =>
     hitTestAquarelleStroke(pointPx, playFrame, size, aquarelleStrokeTypeFilter.value),
+  bandFor: (entry, size) => resolveAquarelleStrokeBandPx(entry, size),
 };
 
 // ============================================================
