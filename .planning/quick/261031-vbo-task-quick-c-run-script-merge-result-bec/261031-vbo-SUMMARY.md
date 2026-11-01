@@ -227,3 +227,7 @@ Fix (law now identical for every non-reveal destination):
 - Reveal destination tail law unchanged.
 
 Ports: `bakeStackedRailKey` takes the run `sheets` (not slices) and merges them; `composeStackedRailKey` takes `sheetBytes`. Tests updated: the union-port pins now assert the current-payload composite and the absence of event replay; the WR-12/replace pins were retargeted to the new law. Full suite 363 files / 6,818 passed / 0 failed, typecheck clean. Rows 1–5 of the UAT list above are the user's re-test.
+
+## UAT result — APPROVED 2026-11-01
+
+The user re-ran live UAT after `28411564c` and approved: the Motion rail keeps its animation when a Static run merges over it, Keep OFF no longer replaces the destination, and the merged rail presents as one gray Standard Rail. Quick C1 is CLOSED. C2 (Reveal incoming on any destination + document-reference routing/refusal) is the next quick.

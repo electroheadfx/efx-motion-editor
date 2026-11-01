@@ -1,7 +1,8 @@
 ---
 phase: 261031-vbo-task-quick-c-run-script-merge-result-bec
 verified: 2026-10-31T23:50:51Z
-status: human_needed
+uat_approved: 2026-11-01
+status: passed
 score: 6/6 must-haves verified
 covered_files:
   - ".planning/quick/261031-vbo-task-quick-c-run-script-merge-result-bec/261031-vbo-PLAN.md"
@@ -180,3 +181,7 @@ No gaps. Every PLAN truth, artifact and key link is present, substantive, wired 
 
 _Verified: 2026-10-31T23:50:51Z_
 _Verifier: Claude (gsd-verifier)_
+
+## UAT result
+
+Live UAT approved by the user on 2026-11-01 after the post-UAT picture-merge fix `28411564c` (run sheet composites over the destination's current cached picture; Keep OFF never purges). Rows 1–10 above passed live; Quick C1 is CLOSED.
