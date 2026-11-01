@@ -88,6 +88,18 @@ export function stackRunKindMode(kind: RotoPlayScriptStackRunKind): RotoPlayScri
   return kind === 'static' || kind === 'reveal-static' ? 'static' : 'progressive';
 }
 
+/**
+ * WR-02 (261101-1pc review): the run render seam reports reference failures as
+ * internal diagnostics — `missing reference source` when a touched frame has no
+ * hydrated bytes (a launch/reopen hydration still in flight), `no photo
+ * reference` when the document lost its track after the gate. Both mean the
+ * same thing to the user as the pre-authority gate's check, so the run maps
+ * them to that gate's copy instead of leaking the seam's wording.
+ */
+function isMissingRevealReferenceReason(reason: string): boolean {
+  return reason === 'missing reference source' || reason === 'no photo reference';
+}
+
 /** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
 export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
 
@@ -2774,7 +2786,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
             },
           });
           assertCurrent(acceptedGeneration);
-          if (rendered.kind !== 'baked') throw new Error(`Reveal run render refused: ${rendered.reason}`);
+          // WR-02: the gate above proved a reference is PLACED, but the render
+          // needs hydrated bytes per touched frame. A reference failure here
+          // keeps the gate's user-facing copy; every other refusal stays an
+          // internal `Reveal run render refused: <reason>`.
+          if (rendered.kind !== 'baked') {
+            throw new Error(isMissingRevealReferenceReason(rendered.reason)
+              ? 'This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.'
+              : `Reveal run render refused: ${rendered.reason}`);
+          }
           const runBytesByFrame = collectExactFrameCoverage(rendered.frames, 'Reveal run');
           sheets = destinationAppFrames.map((appFrame) => ({ appFrame, bytes: runBytesByFrame.get(appFrame)! }));
         }

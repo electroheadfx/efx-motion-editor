@@ -6257,6 +6257,52 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
   });
 
+  // WR-02 (261101-1pc review): a placed reference can still lack hydrated
+  // bytes per touched frame (launch/reopen hydration in flight). The render
+  // seam's reference failures keep the GATE's user-facing copy; every other
+  // refusal keeps the internal reason.
+  it.each(['missing reference source', 'no photo reference'])(
+    'surfaces the reference gate copy when the reveal run render refuses with %j, writing nothing (Quick C2 WR-02)',
+    async (reason) => {
+      const refusing = vi.fn(async () => ({ kind: 'refused' as const, reason }));
+      const test = stackHarness(
+        [stackClip(2)],
+        { canonicalStart: 11 },
+        { hasPhotoReference: () => true, bakeRevealStackRun: refusing as unknown as RotoPlayScriptControllerPorts['bakeRevealStackRun'] },
+        { kind: 'empty', keyId: null, appFrame: 11 },
+      );
+      await test.controller.openConfirmation();
+      test.controller.setStackRunKind('reveal-motion');
+      test.controller.countText.value = '2';
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.controller.error.value).toBe('This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.');
+      // Zero writes: the refusal precedes the union, the composite, the record
+      // and the single commit.
+      expect(refusing).toHaveBeenCalledTimes(1);
+      expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+      expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+      expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+      expect(test.commit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the internal prefix for a non-reference reveal run refusal (Quick C2 WR-02)', async () => {
+    const refusing = vi.fn(async () => ({ kind: 'refused' as const, reason: 'render-failed' }));
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 11 },
+      { hasPhotoReference: () => true, bakeRevealStackRun: refusing as unknown as RotoPlayScriptControllerPorts['bakeRevealStackRun'] },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setStackRunKind('reveal-motion');
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('Reveal run render refused: render-failed');
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+  });
+
   it('aborts a Reveal run with zero writes when the run render does not cover the span exactly (Quick C2)', async () => {
     const extra = vi.fn(async (input: { frames: readonly number[] }) => ({
       kind: 'baked' as const,
