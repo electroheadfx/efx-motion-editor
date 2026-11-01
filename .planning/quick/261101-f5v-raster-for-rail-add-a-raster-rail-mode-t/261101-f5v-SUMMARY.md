@@ -197,6 +197,28 @@ None - no new network, auth, file-access or schema surface. The rail run reuses 
 - `pnpm --filter efx-motion-editor run typecheck` - clean (after each task).
 - Static diff checks: only the six declared files changed; no `useState`; the rail target is read only in the leaf; `purgeMemoryScriptFrame` / `purgeMemoryRailScripts` / `clearMemoryRailScripts` bodies untouched; no `activeModule` write; no retry/timer/queue; no `persistAfterPurge` inside the per-key core; no CSS change.
 
+## Post-UAT Fix (2026-11-01, approved)
+
+Live UAT caught the real scope gap: the header Raster only recognized a
+selected **Key Rail**, so selecting a **Loop Clip (Run Script/Action) rail** —
+which paints the same orange selection line — silently fell back to the frame
+action and rastered only the current key. The `/tmp` diagnostic capture proved
+the state: `selectedRotoKeyRail: null` and `railSetSelection: null` while the
+loop rail was visibly selected.
+
+Fix (`6c2d8378e`): `RasterRailTarget` now carries its family.
+- Key rail → the rail's `keyIds`.
+- Loop Clip rail → the rail's `sourceKeyIds` (the real keys it cycles).
+
+Both resolve through the physical projection. The shared per-key
+capture/verify/purge core, skip accounting, single snapshot persist, range
+dialog and copy are unchanged. Confirm-time re-resolution now checks either the
+live reconciled key-rail selection or the live `selectedLoopClipId` plus the
+clip's existence on the active track.
+
+Gates after the fix: physic-paint 200 files / 4,586 tests passed, typecheck
+clean. Live UAT approved 2026-11-01.
+
 ## Next Phase Readiness
 
 Automated-ready. Live UAT remains the user's step — the rows to exercise: (1) select a multi-key rail, confirm the range dialog, and verify every scripted key keeps its pixels while losing Move/Select/replay; (2) a rail with a key whose retained raster is missing reports the skip; (3) a one-key rail shows the key copy with that frame; (4) an empty rail is disabled with `This rail has no keys to raster.`; (5) with no rail selected the single-key Raster is unchanged.
