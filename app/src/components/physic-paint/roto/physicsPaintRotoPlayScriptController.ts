@@ -313,6 +313,24 @@ export interface PhysicPaintRotoStackSheet {
   readonly bytes: Uint8Array;
 }
 
+/**
+ * 261101-1pc (Quick C2) / IN-03: the input to the run-only Reveal bake port.
+ * Exported so the Studio port cannot drift from the controller's port shape
+ * when a field is added.
+ */
+export interface RotoPlayScriptRevealRunRenderInput {
+  readonly frames: readonly number[];
+  readonly scriptEvents: readonly AquarellePayloadEvent[];
+  readonly mode: RotoPlayScriptMode;
+  readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+  readonly colorize: boolean;
+  readonly colorizeMix: number;
+  readonly photoWiggle: boolean;
+  readonly paintSeedVariation: boolean;
+  readonly signal: AbortSignal;
+  readonly onProgress?: (completed: number, total: number) => void;
+}
+
 export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryController;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   /** 47-01: resolve the DOCUMENT's current active track — the launch snapshot
@@ -452,18 +470,7 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
    * DESTINATION and its slow path unions the destination's recorded events.
    * A Reveal run renders ONCE for the whole span from the run's own script.
    */
-  bakeRevealStackRun?: (input: {
-    readonly frames: readonly number[];
-    readonly scriptEvents: readonly AquarellePayloadEvent[];
-    readonly mode: RotoPlayScriptMode;
-    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
-    readonly colorize: boolean;
-    readonly colorizeMix: number;
-    readonly photoWiggle: boolean;
-    readonly paintSeedVariation: boolean;
-    readonly signal: AbortSignal;
-    readonly onProgress?: (completed: number, total: number) => void;
-  }) => Promise<
+  bakeRevealStackRun?: (input: RotoPlayScriptRevealRunRenderInput) => Promise<
     | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
     | { kind: 'refused'; reason: string }
   >;

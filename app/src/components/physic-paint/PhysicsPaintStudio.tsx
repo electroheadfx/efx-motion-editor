@@ -71,7 +71,7 @@ import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysic
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { classifyLoopClipRailKind, clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics, type PhysicPaintRotoStackSheet } from './roto/physicsPaintRotoPlayScriptController';
+import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics, type PhysicPaintRotoStackSheet, type RotoPlayScriptRevealRunRenderInput } from './roto/physicsPaintRotoPlayScriptController';
 import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts';
 import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -4247,18 +4247,7 @@ export function PhysicsPaintStudio() {
   // C1 union/composite. Deliberately NOT `bakeRevealStackTail`: that path unions
   // a destination's recorded events. Render-only — never purges, pins or writes
   // the durable base; the whole picture merge stays in the C1 ports.
-  const bakeRevealStackRun = async (input: {
-    readonly frames: readonly number[];
-    readonly scriptEvents: readonly AquarellePayloadEvent[];
-    readonly mode: 'progressive' | 'static';
-    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
-    readonly colorize: boolean;
-    readonly colorizeMix: number;
-    readonly photoWiggle: boolean;
-    readonly paintSeedVariation: boolean;
-    readonly signal: AbortSignal;
-    readonly onProgress?: (completed: number, total: number) => void;
-  }): Promise<
+  const bakeRevealStackRun = async (input: RotoPlayScriptRevealRunRenderInput): Promise<
     | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
     | { kind: 'refused'; reason: string }
   > => {

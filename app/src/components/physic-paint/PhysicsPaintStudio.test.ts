@@ -5219,7 +5219,7 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
   it('pins the Reveal RUN port: one whole-span render through the document reference, no union or writes (261101-1pc)', () => {
     const runPort = slice(
       studio,
-      'const bakeRevealStackRun = async (input: {',
+      'const bakeRevealStackRun = async (input: RotoPlayScriptRevealRunRenderInput)',
       '// 261030-np9 (D-03/D-04): per-key rail scripts',
     );
     // Render-only: never a destination-event union, a per-slice loop, a purge,
