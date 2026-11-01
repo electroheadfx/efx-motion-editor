@@ -2032,6 +2032,16 @@ describe('PhysicsPaintPlayScriptDialog Reveal run surface (261101-1pc)', () => {
     offsetLabel: 'Source cycle +3',
     outcomeLabel: 'Stacks onto the existing cycle.',
   };
+  const revealRunSeed = (overrides: Partial<FakeControllerSeed> = {}): FakeControllerSeed => ({
+    runDestination: { kind: 'stack', clipId: 'L1' },
+    stackRailKind: 'playscript',
+    stackRunKind: 'reveal-motion',
+    repeatLocked: true,
+    framesMax: 6,
+    stackReadout: STACK_READOUT,
+    destinationRange: 'F13–F15',
+    ...overrides,
+  });
 
   it('offers the 2x2 Rail Type grid on a stack and keeps two options on creation', () => {
     const { controller } = createFakeController({
@@ -2056,5 +2066,99 @@ describe('PhysicsPaintPlayScriptDialog Reveal run surface (261101-1pc)', () => {
     const createGroup = findOne(create, byRadioGroup('Rail Type'));
     expect(findAll(createGroup, (vnode) => vnode.props?.role === 'radio').map((radio) => textOf(radio)))
       .toEqual(['Motion', 'Static']);
+  });
+
+  it('composes the reveal-run card set on a Paint destination', () => {
+    const { controller } = createFakeController(revealRunSeed({
+      keepScriptVisible: true,
+      paintSeedVariation: true,
+      colorize: true,
+      photoWiggle: true,
+      keyScriptEdits: true,
+      identicalSourceCycle: { sourceKeyIds: ['S1', 'S2', 'S3', 'S4'], loopCount: 1, sourceStart: 10 },
+    }));
+    const tree = renderDialog(controller);
+    // The Rail Type card stays with the four run kinds.
+    const group = findOne(tree, byRadioGroup('Rail Type'));
+    expect(findAll(group, (vnode) => vnode.props?.role === 'radio').map((radio) => textOf(radio)))
+      .toEqual(['Motion', 'Static', 'Reveal Motion', 'Reveal Static']);
+    // Exactly one of each reveal-run card.
+    expect(findAll(tree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(1);
+    // No Color, Key Script, source cycle or rail-kind tabs.
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
+    // Timing, stack readout, Keep script and the summary bar stay.
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(1);
+  });
+
+  it('states that a placed document reference is used, with no action', () => {
+    const { controller } = createFakeController(revealRunSeed({ revealReferencePlaced: true }));
+    const tree = renderDialog(controller);
+    const notice = findOne(tree, byClass('physics-paint-play-script-reveal-notice'));
+    expect(textOf(notice)).toBe("This run renders through the document's placed photo reference.");
+    expect(findAll(notice, (vnode) => vnode.type === 'button')).toHaveLength(0);
+    expect(controller.requestPhotoReference).not.toHaveBeenCalled();
+  });
+
+  it('warns without a document reference and offers the Place a reference action', () => {
+    const { controller } = createFakeController(revealRunSeed({ revealReferencePlaced: false }));
+    const tree = renderDialog(controller);
+    const notice = findOne(tree, byClass('physics-paint-play-script-reveal-notice'));
+    expect(textOf(notice)).toContain('Reveal bakes the placed photo reference — no reference placed yet.');
+    const button = findOne(notice, (vnode) => vnode.type === 'button');
+    expect(textOf(button)).toBe('Place a reference…');
+    expect(button.props.disabled).toBe(false);
+    handler(button, 'onClick')();
+    expect(controller.requestPhotoReference).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the Place a reference action while busy', () => {
+    const { controller } = createFakeController(revealRunSeed({ revealReferencePlaced: false, canCancel: true }));
+    const tree = renderDialog(controller);
+    const button = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Place a reference…');
+    expect(button.props.disabled).toBe(true);
+  });
+
+  it('restores the Paint composition when the run kind goes back to Motion', () => {
+    const test = createFakeController(revealRunSeed());
+    const tree = renderDialog(test.controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(1);
+
+    test.signals.stackRunKind.value = 'motion';
+    const back = renderDialog(test.controller);
+    expect(findAll(back, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
+    expect(findAll(back, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
+    expect(findAll(back, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(0);
+    expect(findAll(back, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
+    expect(findAll(back, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
+    expect(findAll(back, byClass('physics-paint-play-script-reveal-notice'))).toHaveLength(0);
+  });
+
+  it('keeps Quick B’s reveal-destination composition even when the run kind says Reveal', () => {
+    const { controller } = createFakeController({
+      runDestination: { kind: 'stack', clipId: 'R1' },
+      stackRailKind: 'reveal',
+      stackRunKind: 'reveal-motion',
+      repeatLocked: true,
+      framesMax: 6,
+      stackReadout: STACK_READOUT,
+      destinationRange: 'F13–F15',
+      revealReferencePlaced: true,
+    });
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-motion'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(1);
+    const notice = findOne(tree, byClass('physics-paint-play-script-reveal-notice'));
+    expect(textOf(notice)).toBe("This run renders through the rail's own placed photo reference.");
   });
 });

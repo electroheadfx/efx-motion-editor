@@ -1,6 +1,9 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import {
+  isRevealRunKind,
+  type RotoPlayScriptController,
+} from '../roto/physicsPaintRotoPlayScriptController';
 import {
   isStandardMergedLoopClip,
   STANDARD_RAIL_REGENERATE_REASON,
@@ -74,6 +77,10 @@ export function PhysicsPaintPlayScriptDialog({
   // hidden. The rail's placed photo reference is shown read-only — the stack
   // renders through it and never replaces it.
   const stackReveal = stacking && playScript.stackRailKind.value === 'reveal';
+  // 261101-1pc (Quick C2): the mirror of Quick B — a Reveal RUN on a Paint /
+  // Standard destination. It keeps Motion wiggle (the run's own setting) and
+  // adds the reveal knobs, but hides Color and Key Script.
+  const stackRevealRun = stacking && !stackReveal && isRevealRunKind(playScript.stackRunKind.value);
   // 52-05 (G-52-3): the tab strip is an apply-mode creation surface — edit and
   // regenerate modes keep their existing single-surface layout.
   const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact && !stacking;
@@ -342,8 +349,8 @@ export function PhysicsPaintPlayScriptDialog({
           {stacking && stackReadout ? <StackReadoutCard readout={stackReadout} /> : null}
           {keepScriptVisible ? <KeepScriptCard playScript={playScript} busy={busy} reason={keepScriptReason} /> : null}
           {playScript.dialogMode.value === 'apply' && !revealTab && !stacking ? <KeyScriptCard playScript={playScript} busy={busy} /> : null}
-          {stackReveal || (playScript.dialogMode.value === 'apply' && !stacking) ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
-          {revealTab || stackReveal ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
+          {stackReveal || stackRevealRun || (playScript.dialogMode.value === 'apply' && !stacking) ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
+          {revealTab || stackReveal || stackRevealRun ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
           {stacking && stackCollision !== null ? (
             <CollisionCard
               playScript={playScript}
@@ -383,8 +390,12 @@ export function PhysicsPaintPlayScriptDialog({
             {/* 261031-qps (Quick B): a reveal stack swaps Color + Motion wiggle
                 for the Colorize card. The cards stay DIRECT children of the
                 stack (no wrapping Fragment) — the D-16 grid pins read the
-                rendered children in order. */}
-            {stackReveal ? null : (
+                rendered children in order.
+                261101-1pc (Quick C2): a Reveal RUN keeps Motion wiggle (it is
+                the run's own setting) after the Colorize card, so the order is
+                reveal destination [Colorize], reveal run [Colorize, Motion],
+                paint stack [Color, Motion]. */}
+            {stackReveal || stackRevealRun ? null : (
               <ColorCard
                 playScript={playScript}
                 busy={busy}
@@ -393,13 +404,35 @@ export function PhysicsPaintPlayScriptDialog({
                 colorValue={colorValue}
               />
             )}
-            {stackReveal ? (
+            {stackReveal || stackRevealRun ? (
               <ColorizeCard playScript={playScript} busy={busy} />
             ) : (
               <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
             )}
+            {stackRevealRun ? (
+              <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
+            ) : null}
           </div>
-          {stackReveal ? (
+          {stackRevealRun ? (
+            /* 261101-1pc (Quick C2): the run's reference is the DOCUMENT's
+               placed reference — its own source, so it can be placed from here.
+               Quick B's rail notice stays read-only. */
+            <div class="physics-paint-play-script-reveal-notice" role="note">
+              <span>{playScript.revealReferencePlaced.value
+                ? "This run renders through the document's placed photo reference."
+                : 'Reveal bakes the placed photo reference — no reference placed yet.'}</span>
+              {playScript.revealReferencePlaced.value ? null : (
+                <button
+                  type="button"
+                  class="physics-paint-play-script-heading-link"
+                  disabled={busy}
+                  onClick={() => playScript.requestPhotoReference()}
+                >
+                  Place a reference…
+                </button>
+              )}
+            </div>
+          ) : stackReveal ? (
             /* 261031-qps (Quick B): the reference is the RAIL's own — shown,
                never replaced or re-placed from the stack dialog. */
             <div class="physics-paint-play-script-reveal-notice" role="note">
