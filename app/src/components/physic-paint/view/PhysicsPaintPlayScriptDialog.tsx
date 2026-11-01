@@ -87,6 +87,9 @@ export function PhysicsPaintPlayScriptDialog({
   // regenerate modes keep their existing single-surface layout.
   const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact && !stacking;
   const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !stacking;
+  // 261101-cd5: the creation-only global cards (Key Script, Paint Seed) belong
+  // to the apply surface only; preserved modes render their own card sets.
+  const paintCreation = playScript.dialogMode.value === 'apply' && !revealTab && !stacking;
   const stackReadout = stacking ? playScript.stackReadout.value : null;
   const stackCollision = stacking ? playScript.stackCollision.value : null;
   const collisionOffers = stacking ? playScript.collisionOffers.value : [];
@@ -370,29 +373,20 @@ export function PhysicsPaintPlayScriptDialog({
           )}
           {stacking && stackReadout ? <StackReadoutCard readout={stackReadout} /> : null}
           {keepScriptVisible ? <KeepScriptCard playScript={playScript} busy={busy} reason={keepScriptReason} /> : null}
-          {playScript.dialogMode.value === 'apply' && !revealTab && !stacking ? <KeyScriptCard playScript={playScript} busy={busy} /> : null}
-          {stackReveal || stackRevealRun || (playScript.dialogMode.value === 'apply' && !stacking) ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
-          {revealTab || stackReveal || stackRevealRun ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
-          {stacking && stackCollision !== null ? (
-            <CollisionCard
-              playScript={playScript}
-              collision={stackCollision}
-              offers={collisionOffers}
-              busy={busy}
-            />
-          ) : null}
-          {summaryBar}
-          {revealTab ? (<>
-            <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
-            <ColorizeCard playScript={playScript} busy={busy} />
-          </>) : (<>
-            {/* 261031-qps (Quick B): a reveal stack swaps Color + Motion wiggle
-                for the Colorize card.
-                261101-1pc (Quick C2): a Reveal RUN keeps Motion wiggle (it is
-                the run's own setting) after the Colorize card, so the order is
-                reveal destination [Colorize], reveal run [Colorize, Motion],
-                paint stack [Color, Motion]. */}
-            {stackReveal || stackRevealRun ? null : (
+          {/* 261031-qps (Quick B): a reveal stack has no Motion wiggle. Every
+              other mode keeps the borderless 2 × 2 section. */}
+          {stackReveal ? null : <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />}
+          {/* 261101-cd5: the global cards form one equal-width row pinned to the
+              panel floor by the caps label's auto margin. Paint creation:
+              Key Script / Paint Seed / Color (+ Source cycle). Reveal creation:
+              Paint Seed / Photo Wiggle / Colorize. Preserved modes render only
+              the cards their visibility rules already produced. */}
+          <span class="physics-paint-play-script-global-label">GLOBAL OPTIONS</span>
+          <div class="physics-paint-play-script-global-row">
+            {paintCreation ? <KeyScriptCard playScript={playScript} busy={busy} /> : null}
+            {paintCreation || revealTab || stackReveal || stackRevealRun ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
+            {revealTab || stackReveal || stackRevealRun ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
+            {!revealTab && !stackReveal && !stackRevealRun ? (
               <ColorCard
                 playScript={playScript}
                 busy={busy}
@@ -400,16 +394,10 @@ export function PhysicsPaintPlayScriptDialog({
                 stacking={stacking}
                 colorValue={colorValue}
               />
-            )}
-            {stackReveal || stackRevealRun ? (
-              <ColorizeCard playScript={playScript} busy={busy} />
-            ) : (
-              <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
-            )}
-            {stackRevealRun ? (
-              <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
             ) : null}
-          </>)}
+            {revealTab || stackReveal || stackRevealRun ? <ColorizeCard playScript={playScript} busy={busy} /> : null}
+            {identicalCycle ? <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} /> : null}
+          </div>
           {stackRevealRun ? (
             /* 261101-1pc (Quick C2): the run's reference is the DOCUMENT's
                placed reference — its own source, so it can be placed from here.
@@ -437,9 +425,16 @@ export function PhysicsPaintPlayScriptDialog({
                 ? "This run renders through the rail's own placed photo reference."
                 : 'This Reveal rail has no photo reference. Place one before running — the run refuses without it.'}</span>
             </div>
-          ) : identicalCycle ? (
-            <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} />
           ) : null}
+          {stacking && stackCollision !== null ? (
+            <CollisionCard
+              playScript={playScript}
+              collision={stackCollision}
+              offers={collisionOffers}
+              busy={busy}
+            />
+          ) : null}
+          {summaryBar}
           </>)}
           </div>
         </div>

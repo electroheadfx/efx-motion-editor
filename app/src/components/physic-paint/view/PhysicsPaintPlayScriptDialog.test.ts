@@ -370,6 +370,14 @@ const byId = (id: string) => (vnode: TestVNode) => vnode.props?.id === id;
 const byClass = (name: string) => (vnode: TestVNode) => hasClass(vnode, name);
 const byRadioGroup = (label: string) => (vnode: TestVNode) => vnode.props?.role === 'radiogroup' && vnode.props?.['aria-label'] === label;
 
+// 261101-cd5: the creation cards share one equal-width global row. Their
+// rendered order inside that row is the only order the design defines.
+function globalRowCards(root: unknown): TestVNode[] {
+  const row = findOne(root, byClass('physics-paint-play-script-global-row'));
+  return findAll(row, (vnode) => hasClass(vnode, 'physics-paint-play-script-card-global')
+    && renderedParentOf(row, vnode) === row);
+}
+
 beforeEach(() => {
   hooks.reset();
 });
@@ -655,17 +663,18 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
 });
 
 describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', () => {
-  it("renders a radiogroup with exactly two options 'Original colors' and 'Custom color' using the APG radio pattern", () => {
+  it("261101-cd5: renders the compact radiogroup with exactly two options 'Original' and 'Custom' in a mini segmented skin", () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const group = findOne(tree, byRadioGroup('Color'));
+    expect(hasClass(group, 'physics-paint-play-script-mode-group-mini')).toBe(true);
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
-    expect(textOf(radios[0])).toBe('Original colors');
-    expect(textOf(radios[1])).toBe('Custom color');
+    expect(textOf(radios[0])).toBe('Original');
+    expect(textOf(radios[1])).toBe('Custom');
   });
 
-  it("has 'Original colors' checked and the override disabled by default", () => {
+  it("has 'Original' checked and the override disabled by default", () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
     const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
@@ -704,7 +713,7 @@ describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', ()
     expect(radioElements[1].focus).toHaveBeenCalledTimes(2);
   });
 
-  it("checking 'Custom color' sets overrideEnabled and renders the CURRENT brushColor prop as chip + hex + note — live, with no dialog-side copy", () => {
+  it("261101-cd5: checking 'Custom' sets overrideEnabled and renders the CURRENT brushColor prop as a swatch with the hex beneath — live, with no dialog-side copy", () => {
     const { controller, signals } = createFakeController();
     let tree = renderDialog(controller, '#3366ff');
     const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
@@ -712,27 +721,32 @@ describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', ()
     expect(signals.overrideEnabled.value).toBe(true);
 
     tree = renderDialog(controller, '#3366ff');
-    const chip = findOne(tree, byClass('physics-paint-play-script-override-chip'));
-    expect((chip.props.style as { backgroundColor?: string }).backgroundColor).toBe('#3366ff');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain('#3366ff');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain("Picked from the app's brush color panel");
+    const chip = findOne(tree, byClass('physics-paint-play-script-color-custom-chip'));
+    const swatch = findOne(chip, byClass('physics-paint-play-script-override-chip'));
+    expect((swatch.props.style as { backgroundColor?: string }).backgroundColor).toBe('#3366ff');
+    // The hex sits under the swatch — same live prop, no dialog-side color state.
+    expect(textOf(findOne(chip, byClass('physics-paint-play-script-color-hex')))).toBe('#3366ff');
+    // Custom replaces the four original dots.
+    expect(findAll(tree, byClass('physics-paint-play-script-color-dots'))).toHaveLength(0);
 
     // The chip/hex track the prop live — re-rendering with a new brush color updates them
     // without any dialog-side color state (D-08R/D-18).
     tree = renderDialog(controller, '#aa5500');
     const updatedChip = findOne(tree, byClass('physics-paint-play-script-override-chip'));
     expect((updatedChip.props.style as { backgroundColor?: string }).backgroundColor).toBe('#aa5500');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-custom-row')))).toContain('#aa5500');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-color-hex')))).toBe('#aa5500');
   });
 
-  it("checking 'Original colors' sets overrideEnabled false and collapses the custom pane", () => {
+  it("261101-cd5: checking 'Original' sets overrideEnabled false and collapses the custom chip", () => {
     const { controller, signals } = createFakeController({ overrideEnabled: true });
     let tree = renderDialog(controller);
+    // Custom shows the swatch + hex chip in place of the dots.
+    expect(findAll(tree, byClass('physics-paint-play-script-color-custom-chip'))).toHaveLength(1);
     const radios = findAll(findOne(tree, byRadioGroup('Color')), (vnode) => vnode.props?.role === 'radio');
     handler(radios[0], 'onClick')({ currentTarget: { focus: vi.fn() } });
     expect(signals.overrideEnabled.value).toBe(false);
     tree = renderDialog(controller);
-    expect(findAll(tree, byClass('physics-paint-play-script-color-custom-row'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-color-custom-chip'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-color-pane'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-color-dots'))).toHaveLength(1);
   });
@@ -891,9 +905,15 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
 
 describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked copy)', () => {
   it('keeps the locked copy and prohibitions in the dialog source', () => {
-    expect(source).toContain('Original colors');
-    expect(source).toContain('Custom color');
-    expect(source).toContain("Picked from the app's brush color panel");
+    // 261101-cd5: the segmented labels are the short forms; the custom color
+    // reads live from the brush (swatch + hex), never from dialog-side copy.
+    expect(source).toContain("{ value: false, label: 'Original' }");
+    expect(source).toContain("{ value: true, label: 'Custom' }");
+    expect(source).not.toContain("Picked from the app's brush color panel");
+    expect(source).toContain('Use brush color');
+    expect(source).toContain('GLOBAL OPTIONS');
+    expect(source).toContain("label: 'Link'");
+    expect(source).toContain("label: 'Create'");
     expect(source).not.toContain("Keep each stroke's original paint color.");
     expect(source).toContain('Frames per cycle');
     expect(source).toContain('Motion wiggle');
@@ -1331,33 +1351,44 @@ describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)'
     expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
   });
 
-  it('renders the segmented control with locked options and helpers, Link selected by default with the source range and linked count', () => {
+  it('261101-cd5: renders the compact Link/Create segmented control with a one-line helper, Link selected by default with the source range and linked count', () => {
     const { controller } = createFakeController({ identicalSourceCycle: identical, loopIntentActive: true, linkChoice: 'link' });
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-source-choice'));
-    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Link to existing cycle'))).toBe('Link to existing cycle');
-    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Create new cycle'))).toBe('Create new cycle');
+    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Link'))).toBe('Link');
+    expect(textOf(findOne(card, (vnode) => textOf(vnode) === 'Create'))).toBe('Create');
+    // The compact skin is the mini segmented group.
+    expect(hasClass(findOne(card, byRadioGroup('Source cycle')), 'physics-paint-play-script-mode-group-mini')).toBe(true);
+    // The full helper stays available twice: a visible one-line subline (title
+    // carries the whole copy) and the hidden described-by node.
     const helper = findOne(card, byId('physics-play-script-source-helper'));
     expect(textOf(helper)).toContain('Reuses the existing source cycle. Future source edits update every linked loop.');
     expect(textOf(helper)).toContain('Source F10–F14 · 2 linked loop(s).');
-    const linkRadio = findOne(card, (vnode) => textOf(vnode) === 'Link to existing cycle');
+    expect(hasClass(helper, 'physics-paint-play-script-visually-hidden')).toBe(true);
+    const subline = findOne(card, byClass('physics-paint-play-script-card-subline'));
+    expect(textOf(subline)).toBe(textOf(helper));
+    expect(subline.props.title).toBe(textOf(helper));
+    expect(findOne(card, byRadioGroup('Source cycle')).props['aria-describedby']).toBe('physics-play-script-source-helper');
+    const linkRadio = findOne(card, (vnode) => textOf(vnode) === 'Link');
     expect(linkRadio.props['aria-checked']).toBe(true);
   });
 
-  it('switching to Create new cycle updates the controller linkChoice and shows the Create helper', () => {
+  it('switching to Create updates the controller linkChoice and shows the Create helper', () => {
     const { controller, signals } = createFakeController({ identicalSourceCycle: identical, loopIntentActive: true, linkChoice: 'link' });
     let tree = renderDialog(controller);
-    handler(findOne(tree, (vnode) => textOf(vnode) === 'Create new cycle'), 'onClick')({ currentTarget: null });
+    handler(findOne(tree, (vnode) => textOf(vnode) === 'Create'), 'onClick')({ currentTarget: null });
     expect(signals.linkChoice.value).toBe('create');
     tree = renderDialog(controller);
-    const helper = findOne(tree, byId('physics-play-script-source-helper'));
+    const card = findOne(tree, byClass('physics-paint-play-script-card-source-choice'));
+    const helper = findOne(card, byId('physics-play-script-source-helper'));
     expect(textOf(helper)).toContain('Creates an independent source cycle. Future edits do not affect the existing loops.');
+    expect(textOf(findOne(card, byClass('physics-paint-play-script-card-subline')))).toBe(textOf(helper));
   });
 });
 
 describe('PhysicsPaintPlayScriptDialog 43-06 copy + token contract', () => {
   it('ships the revised Rail action labels in normal casing and never the prohibited terms', () => {
-    for (const locked of ['Edit Rail', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Update Rail', 'Regenerate Rail', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel', 'Link to existing cycle', 'Create new cycle']) {
+    for (const locked of ['Edit Rail', 'Edit Source Cycle', 'Update Motion', 'Update Static', 'Update Rail', 'Regenerate Rail', 'Regenerate source cycle', 'Keep Local Changes', 'Cancel']) {
       expect(source).toContain(locked);
     }
     expect(source).not.toContain('clip bloquant');
@@ -1450,19 +1481,21 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const { controller, signals } = createFakeController({ railTab: 'reveal' });
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-photo-wiggle'));
-    expect(textOf(card)).toContain('Photo wiggle');
-    expect(textOf(card)).toContain('Wiggle photo and wash together');
-    // The card is a direct panel row, under Paint seed variation.
-    const panel = findOne(tree, byClass('physics-paint-play-script-content'));
-    expect(renderedParentOf(tree, card)).toBe(panel);
+    expect(textOf(card)).toContain('Photo Wiggle');
+    expect(textOf(card)).toContain('Move photo and wash together');
+    // 261101-cd5: the global cards share one equal-width row — Photo Wiggle
+    // follows Paint Seed.
+    const row = findOne(tree, byClass('physics-paint-play-script-global-row'));
+    expect(renderedParentOf(tree, card)).toBe(row);
+    const rowCards = globalRowCards(tree);
     const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
-    const panelChildren = [...walk(panel)]
-      .filter((child) => child !== panel && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(panel, child) === panel);
-    expect(panelChildren.indexOf(card)).toBeGreaterThan(panelChildren.indexOf(seedCard));
+    expect(rowCards.indexOf(card)).toBeGreaterThan(rowCards.indexOf(seedCard));
 
     const checkbox = findOne(card, byId('physics-play-script-photo-wiggle')) as TestVNode;
     expect(checkbox.props.role).toBe('switch');
+    // The switch's accessible name keeps the full sentence even though the
+    // visible label is the compact subline.
+    expect(checkbox.props['aria-label']).toBe('Wiggle photo and wash together');
     expect(checkbox.props['aria-checked']).toBe('false');
     expect(checkbox.props.disabled).toBe(false);
     handler(checkbox, 'onClick')();
@@ -1479,12 +1512,15 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(findAll(paintTree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
   });
 
-  it('261030-ig0: renders the Key Script Editing opt-in on the Paint tab only, defaulting unchecked', () => {
+  it('261030-ig0: renders the Key Script opt-in on the Paint tab only, defaulting unchecked', () => {
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-key-script'));
-    expect(textOf(card)).toContain('Key Script Editing');
-    expect(textOf(card)).toContain('Save script on each key');
+    expect(textOf(card)).toContain('Key Script');
+    expect(textOf(card)).toContain('Save a script on each key');
+    // 261101-cd5: the compact card keeps the full switch name for AT.
+    expect((findOne(card, byId('physics-play-script-key-script-edits')) as TestVNode).props['aria-label'])
+      .toBe('Save script on each key');
     // 261030-v1t UAT: the long Paint hint is gone — title + toggle only.
     expect(textOf(card)).not.toContain('Each key of this Rail');
     const checkbox = findOne(card, byId('physics-play-script-key-script-edits')) as TestVNode;
@@ -1508,59 +1544,72 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
     expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
 
-    // 261030-np9 (D-08): on Paint the Key Script opt-in sits directly beneath
-    // Timing and Paint seed follows it. The Task 1 panel is a flat column; the
-    // Task 2 global row keeps this relative order.
+    // 261030-np9 (D-08) + 261101-cd5: the panel keeps Rail Type → Timing →
+    // Motion → GLOBAL OPTIONS → global row → summary, and the global row keeps
+    // the per-tab equal-width card order.
     const orderOf = (tree: TestVNode) => {
       const panel = findOne(tree, byClass('physics-paint-play-script-content'));
       const panelChildren = [...walk(panel)]
         .filter((child) => child !== panel && typeof child.type !== 'function')
         .filter((child) => renderedParentOf(panel, child) === panel);
-      const indexOfClass = (name: string) => {
-        const card = findAll(panel, byClass(name))[0];
-        return card ? panelChildren.indexOf(card) : -1;
+      const panelIndexOf = (name: string) => {
+        const node = findAll(panel, byClass(name))[0];
+        return node ? panelChildren.indexOf(node) : -1;
       };
+      const rowCards = globalRowCards(tree);
+      const rowIndexOf = (name: string) => rowCards.findIndex((node) => hasClass(node, name));
       return {
         keyScriptCard: findAll(panel, byClass('physics-paint-play-script-card-key-script'))[0],
-        mode: indexOfClass('physics-paint-play-script-card-mode'),
-        timing: indexOfClass('physics-paint-play-script-card-timing'),
-        keyScript: indexOfClass('physics-paint-play-script-card-key-script'),
-        seed: indexOfClass('physics-paint-play-script-card-paint-seed-variation'),
-        photoWiggle: indexOfClass('physics-paint-play-script-card-photo-wiggle'),
-        summary: indexOfClass('physics-paint-play-script-summary-bar'),
-        motion: indexOfClass('physics-paint-play-script-card-motion'),
-        color: indexOfClass('physics-paint-play-script-card-color'),
-        colorize: indexOfClass('physics-paint-play-script-card-colorize'),
+        mode: panelIndexOf('physics-paint-play-script-card-mode'),
+        timing: panelIndexOf('physics-paint-play-script-card-timing'),
+        motion: panelIndexOf('physics-paint-play-script-card-motion'),
+        globalLabel: panelIndexOf('physics-paint-play-script-global-label'),
+        globalRow: panelIndexOf('physics-paint-play-script-global-row'),
+        summary: panelIndexOf('physics-paint-play-script-summary-bar'),
+        keyScript: rowIndexOf('physics-paint-play-script-card-key-script'),
+        seed: rowIndexOf('physics-paint-play-script-card-paint-seed-variation'),
+        photoWiggle: rowIndexOf('physics-paint-play-script-card-photo-wiggle'),
+        color: rowIndexOf('physics-paint-play-script-card-color'),
+        colorize: rowIndexOf('physics-paint-play-script-card-colorize'),
       };
     };
     const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(hasClass(paintOrder.keyScriptCard, 'physics-paint-play-script-card-wide')).toBe(false);
     expect(paintOrder.mode).toBe(0);
     expect(paintOrder.timing).toBe(paintOrder.mode + 1);
-    expect(paintOrder.timing).toBeLessThan(paintOrder.keyScript);
-    expect(paintOrder.keyScript).toBeLessThan(paintOrder.seed);
-    expect(paintOrder.seed).toBeLessThan(paintOrder.summary);
+    expect(paintOrder.motion).toBeLessThan(paintOrder.globalLabel);
+    expect(paintOrder.globalLabel).toBeLessThan(paintOrder.globalRow);
+    expect(paintOrder.globalRow).toBeLessThan(paintOrder.summary);
+    // Paint creation row: Key Script → Paint Seed → Color.
+    expect(paintOrder.keyScript).toBe(0);
+    expect(paintOrder.seed).toBe(paintOrder.keyScript + 1);
+    expect(paintOrder.color).toBe(paintOrder.seed + 1);
     expect(paintOrder.photoWiggle).toBe(-1);
-    expect(paintOrder.color).toBeGreaterThan(-1);
-    expect(paintOrder.color).toBeLessThan(paintOrder.motion);
+    expect(paintOrder.colorize).toBe(-1);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
-    // Reveal has no Key Script card; Paint seed follows Timing and Photo wiggle
-    // follows Paint seed.
+    // Reveal creation row: Paint Seed → Photo Wiggle → Colorize; no Key Script
+    // and no Color card. The panel column keeps the same skeleton.
     expect(revealOrder.keyScript).toBe(-1);
+    expect(revealOrder.color).toBe(-1);
     expect(revealOrder.timing).toBe(revealOrder.mode + 1);
-    expect(revealOrder.timing).toBeLessThan(revealOrder.seed);
-    expect(revealOrder.seed).toBeLessThan(revealOrder.photoWiggle);
-    expect(revealOrder.photoWiggle).toBeLessThan(revealOrder.summary);
-    expect(revealOrder.motion).toBeLessThan(revealOrder.colorize);
+    expect(revealOrder.motion).toBeLessThan(revealOrder.globalLabel);
+    expect(revealOrder.globalLabel).toBeLessThan(revealOrder.globalRow);
+    expect(revealOrder.globalRow).toBeLessThan(revealOrder.summary);
+    expect(revealOrder.seed).toBe(0);
+    expect(revealOrder.photoWiggle).toBe(revealOrder.seed + 1);
+    expect(revealOrder.colorize).toBe(revealOrder.photoWiggle + 1);
   });
 
-  it('261030-v1t: renders the Paint seed variation card on both tabs in apply mode only, routing the checkbox', () => {
+  it('261030-v1t: renders the Paint Seed card on both tabs in apply mode only, routing the checkbox', () => {
     // Paint tab: present, unchecked, editable, routed to the controller.
     const { controller, signals } = createFakeController();
     const tree = renderDialog(controller);
     const card = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
-    expect(textOf(card)).toContain('Paint seed variation');
+    expect(textOf(card)).toContain('Paint Seed');
+    expect(textOf(card)).toContain('Vary the brush texture each frame');
+    expect((findOne(card, byId('physics-play-script-paint-seed-variation')) as TestVNode).props['aria-label'])
+      .toBe('Vary the brush texture per frame');
     // 261030-v1t UAT: the long hint is gone — the card is a compact title + toggle.
     expect(textOf(card)).not.toContain('Same strokes');
 
@@ -1578,24 +1627,21 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
     expect(revealCheckbox.props.role).toBe('switch');
 
-    // 261030-v1t UAT: the card is a direct panel row — beneath Key Script on
-    // Paint, directly after Timing on Reveal (which has no Key Script card).
+    // 261101-cd5: the seed card lives in the shared global row — after Key
+    // Script on Paint, first on Reveal (which has no Key Script card).
     const placementOf = (dialog: TestVNode) => {
-      const panel = findOne(dialog, byClass('physics-paint-play-script-content'));
-      const seed = findOne(panel, byClass('physics-paint-play-script-card-paint-seed-variation'));
-      const timing = findOne(panel, byClass('physics-paint-play-script-card-timing'));
-      const keyScript = findAll(panel, byClass('physics-paint-play-script-card-key-script'))[0];
-      const directChildren = [...walk(panel)].filter((child) => child !== panel
-        && typeof child.type !== 'function'
-        && renderedParentOf(dialog, child) === panel);
+      const row = findOne(dialog, byClass('physics-paint-play-script-global-row'));
+      const rowCards = globalRowCards(dialog);
+      const seed = findOne(dialog, byClass('physics-paint-play-script-card-paint-seed-variation'));
+      const keyScript = rowCards.find((node) => hasClass(node, 'physics-paint-play-script-card-key-script'));
       return {
-        seedFirstAfterTiming: directChildren.indexOf(seed) === directChildren.indexOf(timing) + 1,
-        seedAfterKeyScript: keyScript ? directChildren.indexOf(seed) > directChildren.indexOf(keyScript) : keyScript,
-        seedDirectPanelChild: directChildren.includes(seed),
+        seedFirstInRow: rowCards[0] === seed,
+        seedAfterKeyScript: keyScript ? rowCards.indexOf(seed) > rowCards.indexOf(keyScript) : undefined,
+        seedDirectRowChild: renderedParentOf(dialog, seed) === row,
       };
     };
-    expect(placementOf(tree)).toEqual({ seedFirstAfterTiming: false, seedAfterKeyScript: true, seedDirectPanelChild: true });
-    expect(placementOf(reveal)).toEqual({ seedFirstAfterTiming: true, seedAfterKeyScript: undefined, seedDirectPanelChild: true });
+    expect(placementOf(tree)).toEqual({ seedFirstInRow: false, seedAfterKeyScript: true, seedDirectRowChild: true });
+    expect(placementOf(reveal)).toEqual({ seedFirstInRow: true, seedAfterKeyScript: undefined, seedDirectRowChild: true });
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);

@@ -51,14 +51,16 @@ const STACK_RUN_KINDS: ReadonlyArray<{ value: RotoPlayScriptStackRunKind; label:
   { value: 'reveal-static', label: 'Reveal Static' },
 ];
 
+// 261101-cd5: the compact Source cycle card carries short segment labels; the
+// full sentence stays in the helper + `title` (and the hidden described-by node).
 const PLAY_SCRIPT_SOURCE_CHOICES = [
-  { value: 'link' as const, label: 'Link to existing cycle', helper: 'Reuses the existing source cycle. Future source edits update every linked loop.' },
-  { value: 'create' as const, label: 'Create new cycle', helper: 'Creates an independent source cycle. Future edits do not affect the existing loops.' },
+  { value: 'link' as const, label: 'Link', helper: 'Reuses the existing source cycle. Future source edits update every linked loop.' },
+  { value: 'create' as const, label: 'Create', helper: 'Creates an independent source cycle. Future edits do not affect the existing loops.' },
 ];
 
 const PLAY_SCRIPT_COLORS: ReadonlyArray<{ value: boolean; label: string }> = [
-  { value: false, label: 'Original colors' },
-  { value: true, label: 'Custom color' },
+  { value: false, label: 'Original' },
+  { value: true, label: 'Custom' },
 ];
 
 const ORIGINAL_COLOR_DOTS = ['#d2654d', '#2d9d6c', '#5a7bd4', '#d4699e'];
@@ -76,13 +78,18 @@ function dialogIntegerValue(text: string, floor: number): number {
 
 // The top-bar Script switch's visuals, compacted for the dialog cards. Inline
 // markup (not a component) so this dialog's node-tree tests see the label text.
+// 261101-cd5: compact global cards keep the visible copy in their subline, so
+// the switch can drop the visible label and carry it as its accessible name.
 function dialogSwitch(props: {
   id: string;
   label: string;
   checked: boolean;
   disabled?: boolean;
   onClick: () => void;
+  hideLabel?: boolean;
+  ariaLabel?: string;
 }) {
+  const accessibleName = props.hideLabel ? (props.ariaLabel ?? props.label) : props.ariaLabel;
   return (
     <button
       type="button"
@@ -90,13 +97,14 @@ function dialogSwitch(props: {
       class={`physics-paint-script-switch physics-paint-play-script-switch${props.checked ? ' is-on' : ''}`}
       role="switch"
       aria-checked={props.checked ? 'true' : 'false'}
+      aria-label={accessibleName}
       disabled={props.disabled}
       onClick={props.onClick}
     >
       <span class="physics-paint-script-switch-track" aria-hidden="true">
         <span class="physics-paint-script-switch-knob" />
       </span>
-      <span class="physics-paint-script-switch-label">{props.label}</span>
+      {props.hideLabel ? null : <span class="physics-paint-script-switch-label">{props.label}</span>}
     </button>
   );
 }
@@ -231,44 +239,42 @@ export function ColorCard(props: {
   stacking: boolean;
   colorValue: string;
 }) {
+  const custom = props.playScript.overrideEnabled.value;
   return (
-    <div class={`physics-paint-play-script-card physics-paint-play-script-card-color${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
+    <div class={`physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-color${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Color</span>
-        <span class="physics-paint-play-script-color-dots" aria-hidden="true">
-          {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
-        </span>
+        {custom ? (
+          /* 261101-cd5: Custom shows the live swatch with the hex underneath. */
+          <span class="physics-paint-play-script-color-custom-chip">
+            <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: props.colorValue }} />
+            <span class="physics-paint-play-script-color-hex">{props.colorValue}</span>
+          </span>
+        ) : (
+          <span class="physics-paint-play-script-color-dots" aria-hidden="true">
+            {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
+          </span>
+        )}
       </div>
       <DialogRadioGroup
         ariaLabel="Color"
+        class="physics-paint-play-script-mode-group-mini"
         options={PLAY_SCRIPT_COLORS}
         value={props.playScript.overrideEnabled.value}
         getValue={() => props.playScript.overrideEnabled.value}
         disabled={props.busy || props.locked}
         onSelect={(value) => { props.playScript.overrideEnabled.value = value; }}
       />
-      {props.playScript.overrideEnabled.value ? (
-        <div class="physics-paint-play-script-color-pane">
-          <div class="physics-paint-play-script-color-custom-row">
-            <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: props.colorValue }} />
-            <div class="physics-paint-play-script-color-meta">
-              <span class="physics-paint-play-script-color-hex">{props.colorValue}</span>
-              {props.stacking ? (
-                <button
-                  type="button"
-                  class="physics-paint-play-script-heading-link"
-                  title="Use the app's current brush color"
-                  disabled={props.busy}
-                  onClick={props.playScript.useBrushColor}
-                >
-                  Use brush color
-                </button>
-              ) : (
-                <span class="physics-paint-play-script-color-note">Picked from the app's brush color panel</span>
-              )}
-            </div>
-          </div>
-        </div>
+      {props.stacking && custom ? (
+        <button
+          type="button"
+          class="physics-paint-play-script-heading-link physics-paint-play-script-card-subline-action"
+          title="Use the app's current brush color"
+          disabled={props.busy}
+          onClick={props.playScript.useBrushColor}
+        >
+          Use brush color
+        </button>
       ) : null}
     </div>
   );
@@ -284,9 +290,9 @@ export function MotionWiggleCard(props: {
   };
   const disabled = props.busy || props.locked;
   return (
-    <div class={`physics-paint-play-script-card physics-paint-play-script-card-motion${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
-      <div class="physics-paint-play-script-card-heading">
-        <span class="physics-paint-play-script-card-title">Motion wiggle</span>
+    <div class={`physics-paint-play-script-motion-section physics-paint-play-script-card-motion${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
+      <div class="physics-paint-play-script-motion-heading">
+        <span class="physics-paint-play-script-motion-title">Motion wiggle</span>
         <button
           type="button"
           class="physics-paint-play-script-heading-link"
@@ -296,9 +302,10 @@ export function MotionWiggleCard(props: {
           Reset defaults
         </button>
       </div>
-      <div class="physics-paint-play-script-motion-rows">
+      <div class="physics-paint-play-script-motion-grid">
         <SliderStepper
           id="physics-play-script-motion-deformation"
+          class="physics-paint-play-script-slim-stepper"
           label="Deformation"
           ariaLabel="Deformation"
           value={props.playScript.dialogMotion.value.deformation}
@@ -310,6 +317,7 @@ export function MotionWiggleCard(props: {
         />
         <SliderStepper
           id="physics-play-script-motion-position"
+          class="physics-paint-play-script-slim-stepper"
           label="Position"
           ariaLabel="Position"
           value={props.playScript.dialogMotion.value.position}
@@ -321,6 +329,7 @@ export function MotionWiggleCard(props: {
         />
         <SliderStepper
           id="physics-play-script-motion-rotation"
+          class="physics-paint-play-script-slim-stepper"
           label="Rotation"
           ariaLabel="Rotation"
           value={props.playScript.dialogMotion.value.rotation}
@@ -332,6 +341,7 @@ export function MotionWiggleCard(props: {
         />
         <SliderStepper
           id="physics-play-script-motion-scale"
+          class="physics-paint-play-script-slim-stepper"
           label="Scale"
           ariaLabel="Scale"
           value={props.playScript.dialogMotion.value.scale}
@@ -348,18 +358,21 @@ export function MotionWiggleCard(props: {
 
 export function ColorizeCard(props: { playScript: RotoPlayScriptController; busy: boolean }) {
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-colorize">
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-colorize">
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Colorize</span>
+        {dialogSwitch({
+          id: 'physics-play-script-colorize',
+          label: 'Colorize with wash color',
+          hideLabel: true,
+          checked: props.playScript.colorize.value,
+          disabled: props.busy,
+          onClick: () => props.playScript.setColorize(!props.playScript.colorize.value),
+        })}
       </div>
-      {dialogSwitch({
-        id: 'physics-play-script-colorize',
-        label: 'Colorize with wash color',
-        checked: props.playScript.colorize.value,
-        disabled: props.busy,
-        onClick: () => props.playScript.setColorize(!props.playScript.colorize.value),
-      })}
-      <label class="physics-paint-play-script-slider-row" for="physics-play-script-colorize-mix">
+      {/* 261101-cd5: sub and Mix are two stacked rows, as in the design. */}
+      <span class="physics-paint-play-script-card-subline" title="Tint with the wash color">Tint with the wash color</span>
+      <label class="physics-paint-play-script-slider-row physics-paint-play-script-slider-row-colorize" for="physics-play-script-colorize-mix">
         <span>Mix</span>
         <input
           id="physics-play-script-colorize-mix"
@@ -378,49 +391,57 @@ export function ColorizeCard(props: { playScript: RotoPlayScriptController; busy
 
 export function PhotoWiggleCard(props: { playScript: RotoPlayScriptController; busy: boolean }) {
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-photo-wiggle">
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-photo-wiggle">
       <div class="physics-paint-play-script-card-heading">
-        <span class="physics-paint-play-script-card-title">Photo wiggle</span>
+        <span class="physics-paint-play-script-card-title">Photo Wiggle</span>
+        {dialogSwitch({
+          id: 'physics-play-script-photo-wiggle',
+          label: 'Wiggle photo and wash together',
+          hideLabel: true,
+          checked: props.playScript.photoWiggle.value,
+          disabled: props.busy,
+          onClick: () => props.playScript.setPhotoWiggle(!props.playScript.photoWiggle.value),
+        })}
       </div>
-      {dialogSwitch({
-        id: 'physics-play-script-photo-wiggle',
-        label: 'Wiggle photo and wash together',
-        checked: props.playScript.photoWiggle.value,
-        disabled: props.busy,
-        onClick: () => props.playScript.setPhotoWiggle(!props.playScript.photoWiggle.value),
-      })}
+      <span class="physics-paint-play-script-card-subline" title="Move photo and wash together">Move photo and wash together</span>
     </div>
   );
 }
 
 export function PaintSeedCard(props: { playScript: RotoPlayScriptController; busy: boolean }) {
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-paint-seed-variation">
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-paint-seed-variation">
       <div class="physics-paint-play-script-card-heading">
-        <span class="physics-paint-play-script-card-title">Paint seed variation</span>
+        <span class="physics-paint-play-script-card-title">Paint Seed</span>
+        {dialogSwitch({
+          id: 'physics-play-script-paint-seed-variation',
+          label: 'Vary the brush texture per frame',
+          hideLabel: true,
+          checked: props.playScript.paintSeedVariation.value,
+          disabled: props.busy,
+          onClick: () => props.playScript.setPaintSeedVariation(!props.playScript.paintSeedVariation.value),
+        })}
       </div>
-      {dialogSwitch({
-        id: 'physics-play-script-paint-seed-variation',
-        label: 'Vary the brush texture per frame',
-        checked: props.playScript.paintSeedVariation.value,
-        disabled: props.busy,
-        onClick: () => props.playScript.setPaintSeedVariation(!props.playScript.paintSeedVariation.value),
-      })}
+      <span class="physics-paint-play-script-card-subline" title="Vary the brush texture each frame">Vary the brush texture each frame</span>
     </div>
   );
 }
 
 export function KeyScriptCard(props: { playScript: RotoPlayScriptController; busy: boolean }) {
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-key-script">
-      <span class="physics-paint-play-script-card-title">Key Script Editing</span>
-      {dialogSwitch({
-        id: 'physics-play-script-key-script-edits',
-        label: 'Save script on each key',
-        checked: props.playScript.keyScriptEdits.value,
-        disabled: props.busy,
-        onClick: () => props.playScript.setKeyScriptEdits(!props.playScript.keyScriptEdits.value),
-      })}
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-key-script">
+      <div class="physics-paint-play-script-card-heading">
+        <span class="physics-paint-play-script-card-title">Key Script</span>
+        {dialogSwitch({
+          id: 'physics-play-script-key-script-edits',
+          label: 'Save script on each key',
+          hideLabel: true,
+          checked: props.playScript.keyScriptEdits.value,
+          disabled: props.busy,
+          onClick: () => props.playScript.setKeyScriptEdits(!props.playScript.keyScriptEdits.value),
+        })}
+      </div>
+      <span class="physics-paint-play-script-card-subline" title="Save a script on each key">Save a script on each key</span>
     </div>
   );
 }
@@ -432,24 +453,26 @@ export function SourceCycleCard(props: {
 }) {
   const active = PLAY_SCRIPT_SOURCE_CHOICES.find((option) => option.value === props.playScript.linkChoice.value)
     ?? PLAY_SCRIPT_SOURCE_CHOICES[0]!;
+  const helperText = `${active.helper}${props.playScript.linkChoice.value === 'link'
+    ? ` Source F${props.identicalCycle.sourceStart}–F${props.identicalCycle.sourceStart + props.identicalCycle.sourceKeyIds.length - 1} · ${props.identicalCycle.loopCount} linked loop(s).`
+    : ''}`;
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-source-choice">
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-source-choice">
       <span class="physics-paint-play-script-card-title">Source cycle</span>
       <DialogRadioGroup
         ariaLabel="Source cycle"
         describedBy="physics-play-script-source-helper"
+        class="physics-paint-play-script-mode-group-mini"
         options={PLAY_SCRIPT_SOURCE_CHOICES}
         value={props.playScript.linkChoice.value}
         getValue={() => props.playScript.linkChoice.value}
         disabled={props.busy}
         onSelect={(value) => { props.playScript.linkChoice.value = value; }}
       />
-      <span id="physics-play-script-source-helper" class="physics-paint-play-script-mode-helper">
-        {active.helper}
-        {props.playScript.linkChoice.value === 'link'
-          ? ` Source F${props.identicalCycle.sourceStart}–F${props.identicalCycle.sourceStart + props.identicalCycle.sourceKeyIds.length - 1} · ${props.identicalCycle.loopCount} linked loop(s).`
-          : ''}
-      </span>
+      {/* 261101-cd5: one-line subline; the full copy stays in `title` and the
+          hidden described-by node so screen readers never lose it. */}
+      <span class="physics-paint-play-script-card-subline" title={helperText}>{helperText}</span>
+      <span id="physics-play-script-source-helper" class="physics-paint-play-script-visually-hidden">{helperText}</span>
     </div>
   );
 }
@@ -465,11 +488,15 @@ export function PaintTimingCard(props: {
   const perCycle = props.playScript.mode.value === 'static' || props.locked;
   return (
     <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
-      <span class="physics-paint-play-script-card-title">Timing</span>
-      <div class="physics-paint-play-script-timing-grid">
+      <div class="physics-paint-play-script-timing-header">
+        <span class="physics-paint-play-script-card-title">Timing</span>
+        <span class="physics-paint-play-script-timing-meta">{`${Math.max(1, props.playScript.framesMax.value)} frames available`}</span>
+      </div>
+      <div class="physics-paint-play-script-timing-body">
         <div class={`physics-paint-play-script-field${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
           <SliderStepper
             id="physics-play-script-count"
+            class="physics-paint-play-script-hero-stepper physics-paint-play-script-count"
             inputRef={props.inputRef}
             label={perCycle ? 'Frames per cycle' : 'Frames'}
             ariaLabel={perCycle ? 'Frames per cycle' : 'Frames'}
@@ -495,10 +522,12 @@ export function PaintTimingCard(props: {
           </div>
           {props.playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{props.playScript.validationError.value}</span> : null}
         </div>
-        {props.stacking ? null : (
-          <div class="physics-paint-play-script-field">
+        {props.stacking ? null : (<>
+          <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
+          <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
             <SliderStepper
               id="physics-play-script-repeat"
+              class="physics-paint-play-script-compact-stepper"
               inputRef={props.repeatInputRef}
               label="Cycle"
               ariaLabel="Cycle"
@@ -522,7 +551,7 @@ export function PaintTimingCard(props: {
             </div>
             {props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
           </div>
-        )}
+        </>)}
       </div>
     </div>
   );
@@ -535,11 +564,15 @@ export function RevealTimingCard(props: {
 }) {
   return (
     <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
-      <span class="physics-paint-play-script-card-title">Timing</span>
-      <div class="physics-paint-play-script-timing-grid">
+      <div class="physics-paint-play-script-timing-header">
+        <span class="physics-paint-play-script-card-title">Timing</span>
+        <span class="physics-paint-play-script-timing-meta">{`from F${props.playScript.canonicalStart.value ?? 0}`}</span>
+      </div>
+      <div class="physics-paint-play-script-timing-body">
         <div class="physics-paint-play-script-field">
           <SliderStepper
             id="physics-play-script-reveal-count"
+            class="physics-paint-play-script-hero-stepper"
             inputRef={props.inputRef}
             label="Frames"
             ariaLabel="Frames"
@@ -553,14 +586,13 @@ export function RevealTimingCard(props: {
             ariaInvalid={Boolean(props.playScript.revealValidationError.value)}
             ariaDescribedBy={props.playScript.revealValidationError.value ? 'physics-play-script-reveal-error' : undefined}
           />
-          <div class="physics-paint-play-script-timing-foot">
-            <span class="physics-paint-play-script-hint">from F{props.playScript.canonicalStart.value ?? 0}</span>
-          </div>
           {props.playScript.revealValidationError.value ? <span id="physics-play-script-reveal-error" class="physics-paint-script-inline-error">{props.playScript.revealValidationError.value}</span> : null}
         </div>
-        <div class="physics-paint-play-script-field">
+        <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
+        <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
           <SliderStepper
             id="physics-play-script-repeat"
+            class="physics-paint-play-script-compact-stepper"
             label="Cycle"
             ariaLabel="Cycle"
             value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
