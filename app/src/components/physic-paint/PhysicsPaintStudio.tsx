@@ -71,7 +71,7 @@ import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysic
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { classifyLoopClipRailKind, clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics } from './roto/physicsPaintRotoPlayScriptController';
+import { applyAquarelleEventsToKey, bakeAquarelleEventsToFrame, mapRevealRailRejectionReason, type AquarelleApplyDiagnostics, type PhysicPaintRotoStackSheet } from './roto/physicsPaintRotoPlayScriptController';
 import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts';
 import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -4031,25 +4031,28 @@ export function PhysicsPaintStudio() {
   // refusal aborts the run.
   const bakeStackedRailKey = async (input: {
     readonly keyIds: readonly string[];
-    readonly slices: readonly RailKeyScriptResult[];
+    readonly sheets: readonly PhysicPaintRotoStackSheet[];
   }): Promise<
     | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
     | { kind: 'refused'; reason: string }
   > => {
+    const launch = launchContextRef.current;
+    if (!launch) return { kind: 'refused', reason: 'launch-unavailable' };
     const stagedPins = pendingStackedScriptBasePinsRef.current;
     // A new bake owns the stage: any pins left by a previously aborted run are
     // discarded here (they were never applied).
     stagedPins.clear();
     const lookup = scriptBaseLookupFor(readScriptBasePayload);
-    // Resolve EVERY key before any pin or bake: one refusal stops the run with
+    // Resolve EVERY key before any pin or merge: one refusal stops the run with
     // zero writes (no half-pinned span, no committed frame).
     const planned: Array<{
       readonly keyId: string;
-      readonly slice: RailKeyScriptResult;
+      readonly sheet: PhysicPaintRotoStackSheet;
       readonly resolution: Exclude<Extract<ScriptBaseResolution, { ok: true }>, { kind: 'reveal' }>;
     }> = [];
-    for (const slice of input.slices) {
-      const keyId = input.keyIds[slice.slot];
+    for (let index = 0; index < input.sheets.length; index += 1) {
+      const sheet = input.sheets[index]!;
+      const keyId = input.keyIds[index];
       if (keyId === undefined) continue;
       let resolution: ScriptBaseResolution;
       try {
@@ -4063,7 +4066,7 @@ export function PhysicsPaintStudio() {
       // A reveal-owned key's picture is wash × placed reference, never a pixel
       // base — the reveal stacking path owns it (Quick B Task 3).
       if (resolution.kind === 'reveal') return { kind: 'refused', reason: 'reveal-base-unsupported' };
-      planned.push({ keyId, slice, resolution });
+      planned.push({ keyId, sheet, resolution });
     }
     // WR-01: stage the fresh pins — the base bytes are copied from the PRE-RUN
     // picture here, before this run's publication can overwrite the payload —
@@ -4075,61 +4078,57 @@ export function PhysicsPaintStudio() {
         resolution: entry.resolution.kind === 'bytes'
           ? { ok: true, kind: 'bytes', bytes: entry.resolution.bytes.slice(0), persistPin: true }
           : { ok: true, kind: 'known-empty', persistPin: true },
-        appFrame: entry.slice.frame,
+        appFrame: entry.sheet.appFrame,
       });
     }
+    // 261031-vbo UAT: merge the RUN's own baked sheet over each key's CURRENT
+    // cached picture. The destination's recorded events are never replayed —
+    // a motion rail's animation lives in its pixels, not in untransformed
+    // strokes — so the animation survives the merge.
     const frames: Array<{ appFrame: number; bytes: Uint8Array }> = [];
     for (const entry of planned) {
-      const events = [
-        ...getAquarelleEventsForFrame(entry.slice.frame),
-        ...entry.slice.strokes.map((stroke) => toStudioStroke(stroke)),
-      ];
-      const baked = await bakeAquarelleEventsToFrame({
-        events,
-        size: { width: canvasWidth, height: canvasHeight },
-        paper: aquarelleLiftPaperRef.current,
-      });
-      if (!baked) {
-        stagedPins.clear();
-        return { kind: 'refused', reason: 'bake-failed' };
-      }
-      if (entry.resolution.kind === 'known-empty') {
-        frames.push({ appFrame: entry.slice.frame, bytes: baked.bytes });
+      const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), entry.keyId);
+      if (!record) {
+        // A newly appended tail key has no pre-run picture: the sheet is the
+        // complete content.
+        frames.push({ appFrame: entry.sheet.appFrame, bytes: entry.sheet.bytes });
         continue;
       }
+      let baseBytes: Uint8Array;
+      try {
+        baseBytes = requirePhysicPaintRotoInlineBytes(record.payload);
+      } catch {
+        stagedPins.clear();
+        return { kind: 'refused', reason: 'durable-base-unknown' };
+      }
       const composed = await composeRotoScriptRebakeFrame({
-        durableBaseBytes: new Uint8Array(entry.resolution.bytes),
-        sheetBytes: baked.bytes,
-        appFrame: entry.slice.frame,
+        durableBaseBytes: baseBytes,
+        sheetBytes: entry.sheet.bytes,
+        appFrame: entry.sheet.appFrame,
         size: { width: canvasWidth, height: canvasHeight },
       });
       if (!composed) {
         stagedPins.clear();
         return { kind: 'refused', reason: 'composite-failed' };
       }
-      frames.push({ appFrame: entry.slice.frame, bytes: composed.bytes });
+      frames.push({ appFrame: entry.sheet.appFrame, bytes: composed.bytes });
     }
     return { kind: 'baked', frames };
   };
-  // 261031-i54 UAT: a pixel-only rail stores the picture itself, so a stack run
-  // draws the new sheet over each touched key's CURRENT payload. A missing
+  // 261031-vbo UAT: Keep OFF (and the pixel-only Keep ON fallback) flattens the
+  // run's own baked sheet over each touched key's CURRENT payload. A missing
   // record is a newly appended key — its base is blank, so the sheet is the
-  // complete content. Never purges or pins: there is no script to replace.
+  // complete content. Never purges, pins or records: the destination's picture
+  // and per-key scripts both survive the merge.
   const composeStackedRailKey = async (input: {
     readonly keyId: string;
     readonly appFrame: number;
-    readonly strokes: readonly AquarelleStroke[];
+    readonly sheetBytes: Uint8Array;
   }): Promise<{ kind: 'baked'; bytes: Uint8Array } | { kind: 'refused'; reason: string }> => {
     const launch = launchContextRef.current;
     if (!launch) return { kind: 'refused', reason: 'launch-unavailable' };
-    const baked = await bakeAquarelleEventsToFrame({
-      events: input.strokes.map((stroke) => toStudioStroke(stroke)),
-      size: { width: canvasWidth, height: canvasHeight },
-      paper: aquarelleLiftPaperRef.current,
-    });
-    if (!baked) return { kind: 'refused', reason: 'bake-failed' };
     const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), input.keyId);
-    if (!record) return { kind: 'baked', bytes: baked.bytes };
+    if (!record) return { kind: 'baked', bytes: input.sheetBytes };
     let baseBytes: Uint8Array;
     try {
       baseBytes = requirePhysicPaintRotoInlineBytes(record.payload);
@@ -4138,7 +4137,7 @@ export function PhysicsPaintStudio() {
     }
     const composed = await composeRotoScriptRebakeFrame({
       durableBaseBytes: baseBytes,
-      sheetBytes: baked.bytes,
+      sheetBytes: input.sheetBytes,
       appFrame: input.appFrame,
       size: { width: canvasWidth, height: canvasHeight },
     });

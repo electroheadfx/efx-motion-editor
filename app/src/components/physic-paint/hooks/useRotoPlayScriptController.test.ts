@@ -315,8 +315,9 @@ describe('useRotoPlayScriptController', () => {
     renderHook({ ...ports(1), composeStackedRailKey });
     const stablePorts = captured.ports!;
     expect(stablePorts.composeStackedRailKey).toBeTypeOf('function');
-    await stablePorts.composeStackedRailKey!({ keyId: 'key-1', appFrame: 4, strokes: [] });
-    expect(composeStackedRailKey).toHaveBeenCalledWith({ keyId: 'key-1', appFrame: 4, strokes: [] });
+    const sheetBytes = new Uint8Array([2]);
+    await stablePorts.composeStackedRailKey!({ keyId: 'key-1', appFrame: 4, sheetBytes });
+    expect(composeStackedRailKey).toHaveBeenCalledWith({ keyId: 'key-1', appFrame: 4, sheetBytes });
   });
 
   it('261031-qps: forwards the render-only reveal tail port only when supplied', async () => {

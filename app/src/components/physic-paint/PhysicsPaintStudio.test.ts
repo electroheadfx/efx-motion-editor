@@ -5074,37 +5074,43 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(recordRail).not.toContain('enqueueRecordedStroke');
   });
 
-  it('pins the authority-backed union re-bake port: known-empty raw, bytes composed, refusal before commit', () => {
+  it('pins the authority-backed stack merge port: run sheets over the current picture, base pins staged, refusal before commit (261031-vbo)', () => {
     const unionPort = slice(
       studio,
       'const bakeStackedRailKey = async (input: {',
       'const composeStackedRailKey = async (input: {',
     );
-    // One batch: keyIds slot-aligned with the slices.
+    // One batch: keyIds slot-aligned with the RUN's own baked sheets.
     expect(unionPort).toContain('readonly keyIds: readonly string[];');
-    expect(unionPort).toContain('readonly slices: readonly RailKeyScriptResult[];');
-    // The base decision is the authority's, resolved per touched key.
+    expect(unionPort).toContain('readonly sheets: readonly PhysicPaintRotoStackSheet[];');
+    // The base decision is the authority's, resolved per touched key — it only
+    // stages the pin a later per-key edit needs.
     expect(unionPort).toContain('resolveScriptBase(keyId, lookup)');
     expect(unionPort).toContain('if (!resolution.ok) return { kind: \'refused\', reason: resolution.reason };');
-    // Known-empty publishes the raw union; bytes multiply-composite it.
-    expect(unionPort).toContain('if (entry.resolution.kind === \'known-empty\') {');
+    // 261031-vbo UAT: the PICTURE is the run's own sheet composited over the
+    // touched key's CURRENT payload — the destination's recorded events are
+    // never replayed (that flattened a motion rail to a static wash).
+    expect(unionPort).not.toContain('getAquarelleEventsForFrame(');
+    expect(unionPort).not.toContain('bakeAquarelleEventsToFrame(');
+    expect(unionPort).toContain('getRotoRealKeyRecord(');
+    expect(unionPort).toContain('requirePhysicPaintRotoInlineBytes(record.payload)');
     expect(unionPort).toContain('composeRotoScriptRebakeFrame({');
-    expect(unionPort).toContain('durableBaseBytes: new Uint8Array(entry.resolution.bytes)');
+    expect(unionPort).toContain('durableBaseBytes: baseBytes');
     expect(unionPort).toContain("reason: 'composite-failed'");
     // WR-01: the port NEVER writes the live durable-base map, the recovered
-    // markers or the snapshot dirty state — a refused bake leaves all three
+    // markers or the snapshot dirty state — a refused merge leaves all three
     // untouched.
     expect(unionPort).not.toContain('pinScriptBase(');
     expect(unionPort).not.toContain('aquarelleDurableBaseByKeyRef');
     expect(unionPort).not.toContain('aquarelleRecoveredBaseKeyIdsRef');
     expect(unionPort).not.toContain('markDirty');
     // The fresh base is resolved from the PRE-RUN picture and STAGED (copied)
-    // before the bake, so the publication can never overwrite it.
+    // before the merge, so the publication can never overwrite it.
     const stagedAt = unionPort.indexOf('stagedPins.set(entry.keyId, {');
     expect(stagedAt).toBeGreaterThan(-1);
     expect(unionPort.indexOf('resolveScriptBase(keyId, lookup)')).toBeLessThan(stagedAt);
     expect(unionPort.indexOf('bytes: entry.resolution.bytes.slice(0)')).toBeGreaterThan(stagedAt);
-    expect(unionPort.indexOf('bakeAquarelleEventsToFrame({', stagedAt)).toBeGreaterThan(stagedAt);
+    expect(unionPort.indexOf('getRotoRealKeyRecord(', stagedAt)).toBeGreaterThan(stagedAt);
     expect(unionPort).toContain('scriptBaseLookupFor(readScriptBasePayload)');
 
     // The persist-vs-session split: a recovered base answers ONLY the session
@@ -5118,7 +5124,7 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(pin).toContain('studioScriptSnapshot.markDirty();');
   });
 
-  it('leaves the durable-base map and the snapshot dirty state untouched on every union-bake refusal (WR-01)', () => {
+  it('leaves the durable-base map and the snapshot dirty state untouched on every stack-merge refusal (WR-01, 261031-vbo)', () => {
     const unionPort = slice(
       studio,
       'const bakeStackedRailKey = async (input: {',
@@ -5132,7 +5138,7 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(unionPort).not.toContain('markDirty');
     // Both post-staging refusal returns clear the stage: nothing is left that a
     // later append record could apply.
-    for (const reason of ["reason: 'bake-failed'", "reason: 'composite-failed'"]) {
+    for (const reason of ["reason: 'durable-base-unknown'", "reason: 'composite-failed'"]) {
       const refusal = unionPort.indexOf(reason);
       expect(refusal).toBeGreaterThan(-1);
       expect(unionPort.slice(refusal - 80, refusal)).toContain('stagedPins.clear();');
@@ -5149,18 +5155,20 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(recordRail).toContain('stagedPins?.clear();');
   });
 
-  it('pins the pixel-only stack composite: the current payload plus this run, never a purge or base pin (UAT 261031-i54)', () => {
+  it('pins the Keep-OFF stack composite: the current payload plus the run sheet, never a bake, purge or base pin (UAT 261031-vbo)', () => {
     const compositePort = slice(
       studio,
       'const composeStackedRailKey = async (input: {',
       'const recordRailKeyScripts = (input: {',
     );
+    expect(compositePort).toContain('sheetBytes: Uint8Array');
     expect(compositePort).toContain('getRotoRealKeyRecord(');
     expect(compositePort).toContain('requirePhysicPaintRotoInlineBytes(record.payload)');
     expect(compositePort).toContain('composeRotoScriptRebakeFrame({');
     // A missing record is a newly appended key — its base is blank, so the
-    // sheet is the complete content.
-    expect(compositePort).toContain("if (!record) return { kind: 'baked', bytes: baked.bytes };");
+    // run's sheet is the complete content.
+    expect(compositePort).toContain("if (!record) return { kind: 'baked', bytes: input.sheetBytes };");
+    expect(compositePort).not.toContain('bakeAquarelleEventsToFrame(');
     expect(compositePort).not.toContain('purgeAquarelleFrameScript');
     expect(compositePort).not.toContain('aquarelleDurableBaseByKeyRef');
   });

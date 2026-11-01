@@ -259,11 +259,11 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   // a stack case only has to swap the collection and the selection.
   const availabilityRevision = signal(0);
   const recordRailKeyScripts = vi.fn();
-  // 261031-qps: ONE batch union call for the whole span; the fake echoes one
-  // frame per slice so the publication pins the port's bytes per appFrame.
-  const bakeStackedRailKey = vi.fn(async (input: { slices: readonly { frame: number }[] }) => ({
+  // 261031-vbo: ONE batch merge call for the whole span; the fake echoes one
+  // frame per RUN sheet so the publication pins the port's bytes per appFrame.
+  const bakeStackedRailKey = vi.fn(async (input: { sheets: readonly { appFrame: number }[] }) => ({
     kind: 'baked' as const,
-    frames: input.slices.map((slice) => ({ appFrame: slice.frame, bytes: testWebpBytes('stacked-union') })),
+    frames: input.sheets.map((sheet) => ({ appFrame: sheet.appFrame, bytes: testWebpBytes('stacked-union') })),
   }));
   const composeStackedRailKey = vi.fn(async () => ({ kind: 'baked' as const, bytes: testWebpBytes('stacked-composite') }));
   // 261031-qps (Quick B): the render-only reveal tail port. Echoes one frame
@@ -4427,7 +4427,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(publication.semanticDelta).toMatchObject({ affectedStartAppFrame: 11, affectedEndAppFrame: 29 });
   });
 
-  it('records the touched keys with recordMode replace on a flag-on rail with Keep OFF and never flips keyScriptEdits', async () => {
+  it('composites a flag-on rail with Keep OFF over its current picture and never records or purges (261031-vbo UAT)', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2, { keyScriptEdits: true })],
@@ -4443,19 +4443,28 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     test.controller.countText.value = '3';
     nextBakeBehavior(reportAnchors);
     expect(await test.controller.confirm()).toBe(true);
-    const recorded = recorder.mock.calls[0]![0] as {
-      keyIds: readonly string[];
-      recordMode: string;
-      slices: readonly { frame: number; strokes: readonly AquarelleStroke[] }[];
-    };
-    expect(recorded.recordMode).toBe('replace');
-    expect(recorded.keyIds).toHaveLength(3);
-    expect(recorded.slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
-    expect(recorded.slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
-      ['tip-a', 'tip-b'],
-      ['tip-a', 'tip-b'],
-      ['tip-a', 'tip-b'],
+    // 261031-vbo UAT: Keep OFF records NOTHING on a flag-on rail and never
+    // purges the destination — its script and picture both survive, and only
+    // the run's sheet is flattened over each touched key's current picture.
+    expect(recorder).not.toHaveBeenCalled();
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).toHaveBeenCalledTimes(3);
+    const composeCalls = test.composeStackedRailKey.mock.calls as unknown as Array<[{
+      keyId: string;
+      appFrame: number;
+      sheetBytes: Uint8Array;
+    }]>;
+    expect(composeCalls.map((call) => call[0].appFrame)).toEqual([13, 14, 15]);
+    expect(composeCalls.map((call) => call[0].sheetBytes)).toEqual([
+      testWebpBytes('staged-0'),
+      testWebpBytes('staged-0'),
+      testWebpBytes('staged-0'),
     ]);
+    const compositeBytes = testWebpBytes('stacked-composite');
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.records
+      .filter((record) => record.appFrame >= 13 && record.appFrame <= 15)
+      .map((record) => record.payload.bytes)).toEqual([compositeBytes, compositeBytes, compositeBytes]);
     const target = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
     expect(target.keyScriptEdits).toBe(true);
     // 261031-vbo: Keep OFF changes the picture, never the merged rail's identity.
@@ -4498,7 +4507,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(create.controller.keepScriptVisible.value).toBe(false);
   });
 
-  it('re-bakes the raw union per touched key and appends the records on a flag-on rail', async () => {
+  it('merges the run sheets over each touched key and appends the records on a flag-on rail', async () => {
     const recorder = vi.fn();
     const test = stackHarness(
       [stackClip(2, { keyScriptEdits: true })],
@@ -4507,29 +4516,29 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
-    // Static: the full run lands on every written key, so every union bake
-    // carries both strokes.
+    // Static: the full run lands on every written key.
     test.controller.mode.value = 'static';
     test.controller.countText.value = '3';
     nextBakeBehavior(reportAnchors);
     expect(test.controller.keepScriptEffective.value).toBe(true);
     expect(await test.controller.confirm()).toBe(true);
 
-    // ONE batch union call for the whole span: keyIds slot-aligned with the
-    // slices, each slice carrying exactly that key's run strokes.
+    // 261031-vbo UAT: ONE batch merge call for the whole span — the RUN'S OWN
+    // staged sheets (motion/pose already baked) are slot-aligned with the
+    // destination frames; the destination's scripts are never replayed.
     expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(1);
     const unionCalls = test.bakeStackedRailKey.mock.calls as unknown as Array<[{
       keyIds: readonly string[];
-      slices: readonly { frame: number; slot: number; strokes: readonly { brushId: string }[] }[];
+      sheets: readonly { appFrame: number; bytes: Uint8Array }[];
     }]>;
-    expect(unionCalls[0]![0].slices.map((slice) => slice.frame)).toEqual([13, 14, 15]);
-    expect(unionCalls[0]![0].slices.map((slice) => slice.strokes.map((stroke) => stroke.brushId))).toEqual([
-      ['tip-a', 'tip-b'],
-      ['tip-a', 'tip-b'],
-      ['tip-a', 'tip-b'],
+    expect(unionCalls[0]![0].sheets.map((sheet) => sheet.appFrame)).toEqual([13, 14, 15]);
+    expect(unionCalls[0]![0].sheets.map((sheet) => sheet.bytes)).toEqual([
+      testWebpBytes('staged-0'),
+      testWebpBytes('staged-0'),
+      testWebpBytes('staged-0'),
     ]);
     expect(unionCalls[0]![0].keyIds).toHaveLength(3);
-    // The committed frames carry the RAW union bytes, not the staged bake.
+    // The committed frames carry the merged bytes, not the staged bake.
     const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
     const unionBytes = testWebpBytes('stacked-union');
     expect(publication.records
@@ -4705,9 +4714,8 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       { kind: 'empty', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
-    // Flag-on Keep OFF = the 'replace' record mode: the run cannot be reported
-    // complete without the recording seam.
-    test.controller.setKeepScript(false);
+    // Keep ON must record: the run cannot be reported complete without the
+    // recording seam.
     test.controller.mode.value = 'static';
     test.controller.countText.value = '3';
     nextBakeBehavior(reportAnchors);
