@@ -22,10 +22,24 @@ const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: strin
   { value: 'static', label: 'Static' },
 ];
 
+// 261101-cd5: the Reveal tab supplies the Reveal context, so the rail kinds
+// read Motion / Static exactly like the Paint tab.
 const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
-  { value: 'progressive', label: 'Reveal Motion' },
-  { value: 'static', label: 'Reveal Static' },
+  { value: 'progressive', label: 'Motion' },
+  { value: 'static', label: 'Static' },
 ];
+
+// 261101-cd5: the Rail Type subheader's one-line helper per creation variant.
+const RAIL_TYPE_HELPERS: Record<RotoPlayScriptMode, { paint: string; reveal: string }> = {
+  progressive: {
+    paint: 'Builds the paint stroke by stroke',
+    reveal: 'Reveals the photo progressively',
+  },
+  static: {
+    paint: 'Holds one painted pose per cycle',
+    reveal: 'Reveals with per-frame variation',
+  },
+};
 
 // 261101-1pc (Quick C2): the 2×2 Rail Type grid for a stack RUN. The kind is
 // dialog state only — the merged Standard Rail still stores the destination's
@@ -92,6 +106,8 @@ function dialogSwitch(props: {
 export function DialogRadioGroup<T extends string | boolean,>(props: {
   ariaLabel: string;
   describedBy?: string;
+  /** 261101-cd5: lets callers add a variant skin (e.g. the 2 × 2 stack grid). */
+  class?: string;
   options: ReadonlyArray<{ readonly value: T; readonly label: string }>;
   value: T;
   /** Keyboard navigation must read the LIVE value; the rendered prop can be stale between renders. */
@@ -113,7 +129,7 @@ export function DialogRadioGroup<T extends string | boolean,>(props: {
   };
   return (
     <div
-      class="physics-paint-play-script-mode-group"
+      class={`physics-paint-play-script-mode-group${props.class ? ` ${props.class}` : ''}`}
       role="radiogroup"
       aria-label={props.ariaLabel}
       aria-describedby={props.describedBy}
@@ -152,11 +168,18 @@ export function RailTypeCard(props: {
   /** 261031-vbo (Quick C1): a merged edit target has no editable rail type —
    *  the stored `mode` is internal and must never render as Motion/Static. */
   standard?: boolean;
+  /** 261101-cd5: the Reveal creation guard rides this row as a compact chip. */
+  showReferenceChip?: boolean;
 }) {
   const options = props.revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
+  const helper = props.stacking
+    ? 'This run merges into the rail — the result is one Standard Rail.'
+    : props.standard
+      ? null
+      : RAIL_TYPE_HELPERS[props.playScript.mode.value][props.revealTab ? 'reveal' : 'paint'];
   return (
-    <div class={`physics-paint-play-script-card physics-paint-play-script-card-wide physics-paint-play-script-card-mode${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
-      <span class="physics-paint-play-script-card-title">Rail Type</span>
+    <div class={`physics-paint-play-script-card-mode physics-paint-play-script-rail-row${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
+      <span class="physics-paint-play-script-rail-label">RAIL TYPE</span>
       {props.standard ? (
         <span class="physics-paint-play-script-standard-rail-value">Standard</span>
       ) : props.stacking ? (
@@ -164,6 +187,7 @@ export function RailTypeCard(props: {
            single bake mode. Creation and the Reveal tab keep their two-option
            group bound to `mode`. */
         <DialogRadioGroup
+          class="physics-paint-play-script-mode-group-stack"
           ariaLabel="Rail Type"
           options={STACK_RUN_KINDS}
           value={props.playScript.stackRunKind.value}
@@ -181,9 +205,19 @@ export function RailTypeCard(props: {
           onSelect={(value) => { props.playScript.mode.value = value; }}
         />
       )}
-      {props.stacking ? (
-        <span class="physics-paint-play-script-mode-helper">
-          This run merges into the rail — the result is one Standard Rail.
+      {helper ? <span class="physics-paint-play-script-rail-helper">{helper}</span> : null}
+      {props.showReferenceChip && !props.playScript.revealReferencePlaced.value ? (
+        <span class="physics-paint-play-script-ref-chip">
+          <i class="physics-paint-play-script-ref-dot" aria-hidden="true" />
+          <span class="physics-paint-play-script-ref-label">No photo reference</span>
+          <button
+            type="button"
+            class="physics-paint-play-script-ref-action"
+            disabled={props.busy}
+            onClick={() => props.playScript.requestPhotoReference()}
+          >
+            Place
+          </button>
         </span>
       ) : null}
     </div>

@@ -374,86 +374,50 @@ beforeEach(() => {
   hooks.reset();
 });
 
-describe('PhysicsPaintPlayScriptDialog final grid (D-16 final / D-19)', () => {
-  it('lays out Mode (span-2), then Timing LEFT beside the Color-over-Motion right stack; the summary closes col1 on Paint and col2 on Reveal', () => {
+describe('PhysicsPaintPlayScriptDialog fixed shell (261101-cd5)', () => {
+  it('composes header → workspace (folder tabs then tab-owned panel) → footer inside the fixed surface', () => {
     const readout = 'Requested: 25f (5f × 5) · Effective: 18f — shortened by the next clip';
     const { controller } = createFakeController({ loopReadout: readout });
     const tree = renderDialog(controller);
-    const content = findOne(tree, byClass('physics-paint-play-script-content'));
-    // 52-05 (G-52-3): the tab branches nest one extra Fragment level — resolve
-    // the RENDERED parent (unwraps every function/Fragment level) instead of one.
-    const contentChildren = [...walk(content)]
-      .filter((child) => child !== content && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(content, child) === content);
-
-    // 52-05 (G-52-3): the tab strip is the first-read element, full width.
-    const tabStrip = findOne(content, byClass('physics-paint-play-script-tabs'));
-    expect(renderedParentOf(tree, tabStrip)).toBe(content);
-    expect(contentChildren[0]).toBe(tabStrip);
-
-    // Rail Type card follows the tab strip, full width.
-    const modeCard = findOne(content, byClass('physics-paint-play-script-card-mode'));
-    expect(hasClass(modeCard, 'physics-paint-play-script-card-wide')).toBe(true);
-    expect(renderedParentOf(tree, modeCard)).toBe(content);
-    expect(contentChildren[1]).toBe(modeCard);
-
-    // (a) Timing and the key-script opt-in share grid column 1; the right-column
-    // stack is the sibling cell in the same body grid row.
-    const keyColumn = findOne(content, byClass('physics-paint-play-script-key-column'));
-    const timingCard = findOne(tree, byClass('physics-paint-play-script-card-timing'));
-    const sideStack = findOne(tree, byClass('physics-paint-play-script-side-stack'));
-    expect(renderedParentOf(tree, timingCard)).toBe(keyColumn);
-    expect(renderedParentOf(tree, sideStack)).toBe(content);
-    expect(contentChildren.indexOf(keyColumn)).toBeLessThan(contentChildren.indexOf(sideStack));
-
-    // (b) Color card precedes Motion wiggle inside the right column; Motion wiggle is
-    // NEVER a separate full-width row and NEVER above Color (D-16).
-    const colorCard = findOne(tree, byClass('physics-paint-play-script-card-color'));
-    const motionCard = findOne(tree, byClass('physics-paint-play-script-card-motion'));
-    expect(renderedParentOf(tree, colorCard)).toBe(sideStack);
-    expect(renderedParentOf(tree, motionCard)).toBe(sideStack);
-    const stackChildren = childrenOf(sideStack).map((child) => (
-      typeof child === 'object' && child !== null
-      && typeof (child as TestVNode).type === 'function'
-        ? renderFunctionVNode(child as TestVNode)
-        : child
-    )).filter((child): child is TestVNode =>
+    const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+    const surfaceChildren = childrenOf(surface).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
-    expect(stackChildren.indexOf(colorCard)).toBeLessThan(stackChildren.indexOf(motionCard));
-    expect(hasClass(motionCard, 'physics-paint-play-script-card-wide')).toBe(false);
+    expect(surfaceChildren.map((child) => String(child.props.class ?? ''))).toEqual([
+      'physics-paint-play-script-header',
+      'physics-paint-play-script-workspace',
+      'physics-paint-play-script-footer',
+    ]);
 
-    // Motion wiggle heading with the compact Reset defaults heading link.
-    const heading = findOne(motionCard, byClass('physics-paint-play-script-card-heading'));
-    expect(textOf(heading)).toContain('Motion wiggle');
-    expect(textOf(findOne(heading, (vnode) => textOf(vnode) === 'Reset defaults'))).toBe('Reset defaults');
+    // The workspace owns the folder-tab strip and the panel the tabs fill.
+    const workspace = findOne(surface, byClass('physics-paint-play-script-workspace'));
+    const workspaceChildren = childrenOf(workspace).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(hasClass(workspaceChildren[0]!, 'physics-paint-play-script-tabs')).toBe(true);
+    expect(hasClass(workspaceChildren[1]!, 'physics-paint-play-script-content')).toBe(true);
 
-    // (d) Paint: the summary sits inside col1, under Paint seed variation.
-    const summaryBar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(tree, summaryBar)).toBe(keyColumn);
-    const keyColumnChildren = [...walk(keyColumn)]
-      .filter((child) => child !== keyColumn && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(keyColumn, child) === keyColumn);
-    const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
-    expect(keyColumnChildren.indexOf(summaryBar)).toBeGreaterThan(keyColumnChildren.indexOf(seedCard));
+    // The panel is a single column whose first row is the RAIL TYPE subheader.
+    const panel = findOne(tree, byClass('physics-paint-play-script-content'));
+    const panelChildren = [...walk(panel)]
+      .filter((child) => child !== panel && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(panel, child) === panel);
+    const modeRow = findOne(panel, byClass('physics-paint-play-script-card-mode'));
+    expect(hasClass(modeRow, 'physics-paint-play-script-rail-row')).toBe(true);
+    expect(panelChildren[0]).toBe(modeRow);
+    expect(findAll(panel, byClass('physics-paint-play-script-key-column'))).toHaveLength(0);
+    expect(findAll(panel, byClass('physics-paint-play-script-side-stack'))).toHaveLength(0);
+
+    // Timing and (until the footer tooltip lands) the readout are flat panel rows.
+    const timingCard = findOne(panel, byClass('physics-paint-play-script-card-timing'));
+    expect(renderedParentOf(tree, timingCard)).toBe(panel);
+    const summaryBar = findOne(panel, byClass('physics-paint-play-script-summary-bar'));
+    expect(renderedParentOf(tree, summaryBar)).toBe(panel);
+    expect(panelChildren.indexOf(summaryBar)).toBeGreaterThan(panelChildren.indexOf(timingCard));
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
     expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
 
-    // Reveal: the summary also closes col1, under Photo wiggle, so both tabs
-    // hug the same height and the right stack ends with Colorize.
-    const revealTree = renderDialog(createFakeController({ railTab: 'reveal', loopReadout: readout }).controller);
-    const revealColumn = findOne(revealTree, byClass('physics-paint-play-script-key-column'));
-    const revealSummary = findOne(revealTree, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(revealTree, revealSummary)).toBe(revealColumn);
-    const revealColumnChildren = [...walk(revealColumn)]
-      .filter((child) => child !== revealColumn && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(revealColumn, child) === revealColumn);
-    expect(revealColumnChildren[revealColumnChildren.length - 1]).toBe(revealSummary);
-    const revealStack = findOne(revealTree, byClass('physics-paint-play-script-side-stack'));
-    expect(findAll(revealStack, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
-
-    // Footer stays outside the body grid, inside the modal surface.
+    // Footer stays outside the panel, inside the modal surface.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
-    expect(parentOf(tree, footer)).not.toBe(content);
+    expect(parentOf(tree, footer)).toBe(surface);
     expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Run Script'))).toBe('Run Script');
   });
 
@@ -488,38 +452,52 @@ describe('PhysicsPaintPlayScriptDialog floating shell', () => {
     expect(parentOf(root, surface)).toBe(root);
   });
 
-  it('keeps the compact header (title left, Max range right) and the footer INSIDE the modal surface', () => {
+  it('keeps the 48px header (badge + title, range + Close) and the footer INSIDE the modal surface', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
     const header = findOne(surface, byClass('physics-paint-play-script-header'));
     expect(parentOf(surface, header)).toBe(surface);
-    // Title is the first header child; the range readout is the second (right-aligned via CSS).
-    const headerChildren = childrenOf(header).filter((child): child is TestVNode =>
-      typeof child === 'object' && child !== null && !Array.isArray(child));
-    expect(textOf(headerChildren[0])).toBe('Run Script');
-    expect(textOf(headerChildren[1])).toBe('Max 4 · F4–F7');
-    // Footer (progress + Cancel/Generate) renders inside the modal surface, after the body.
+    const main = findOne(header, byClass('physics-paint-play-script-header-main'));
+    expect(findOne(main, byClass('physics-paint-play-script-header-badge'))).toBeDefined();
+    expect(textOf(findOne(main, byId('physics-play-script-title')))).toBe('Run Script');
+    expect(textOf(findOne(header, byClass('physics-paint-play-script-header-range')))).toBe('Max 4 · F4–F7');
+
+    // T-261101-CD5-01: Close never starts the header drag and routes only through
+    // the existing cancel path.
+    const close = findOne(header, byClass('physics-paint-play-script-close'));
+    expect(close.props['aria-label']).toBe('Close');
+    const stopPropagation = vi.fn();
+    handler(close, 'onPointerDown')({ stopPropagation });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    handler(close, 'onClick')();
+    expect(controller.cancel).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).not.toHaveBeenCalled();
+
+    // Footer (progress + Cancel/Generate) renders inside the modal surface,
+    // after the workspace that carries the tabs and panel.
     const footer = findOne(surface, byClass('physics-paint-play-script-footer'));
     expect(parentOf(surface, footer)).toBe(surface);
     const surfaceChildren = childrenOf(surface).filter((child): child is TestVNode =>
       typeof child === 'object' && child !== null && !Array.isArray(child));
-    const bodyIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-content'));
-    const footerIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-footer'));
     const headerIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-header'));
-    expect(headerIndex).toBeGreaterThanOrEqual(0);
-    expect(bodyIndex).toBeGreaterThan(headerIndex);
-    expect(footerIndex).toBeGreaterThan(bodyIndex);
+    const workspaceIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-workspace'));
+    const footerIndex = surfaceChildren.findIndex((child) => hasClass(child, 'physics-paint-play-script-footer'));
+    expect(headerIndex).toBe(0);
+    expect(workspaceIndex).toBeGreaterThan(headerIndex);
+    expect(footerIndex).toBeGreaterThan(workspaceIndex);
   });
 });
 
 describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', () => {
-  it('renders a radiogroup with two radio options and roving tabindex, without a helper line', () => {
+  it('renders the RAIL TYPE subheader with two radio options, roving tabindex and the Paint Motion helper', () => {
     const { controller } = createFakeController();
     const tree = renderDialog(controller);
     const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
+    expect(hasClass(modeCard, 'physics-paint-play-script-rail-row')).toBe(true);
+    expect(hasClass(modeCard, 'physics-paint-play-script-card')).toBe(false);
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-rail-label')))).toBe('RAIL TYPE');
     const group = findOne(modeCard, byRadioGroup('Rail Type'));
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Rail Type');
     expect(group.props['aria-describedby']).toBeUndefined();
     const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
     expect(radios).toHaveLength(2);
@@ -529,7 +507,25 @@ describe('PhysicsPaintPlayScriptDialog mode segmented control (D-05, PLAY-03)', 
     expect(radios[0].props.tabIndex).toBe(0);
     expect(radios[1].props['aria-checked']).toBe(false);
     expect(radios[1].props.tabIndex).toBe(-1);
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-rail-helper')))).toBe('Builds the paint stroke by stroke');
     expect(findAll(tree, byId('physics-play-script-mode-helper'))).toHaveLength(0);
+  });
+
+  it('names the active creation variant in the rail-row helper for all four views and the stack', () => {
+    const helperText = (seed: Partial<FakeControllerSeed>) => textOf(findOne(
+      renderDialog(createFakeController(seed).controller),
+      byClass('physics-paint-play-script-rail-helper'),
+    ));
+    expect(helperText({})).toBe('Builds the paint stroke by stroke');
+    expect(helperText({ mode: 'static' })).toBe('Holds one painted pose per cycle');
+    expect(helperText({ railTab: 'reveal' })).toBe('Reveals the photo progressively');
+    expect(helperText({ railTab: 'reveal', mode: 'static' })).toBe('Reveals with per-frame variation');
+    expect(helperText({
+      runDestination: { kind: 'stack', clipId: 'L1' },
+      stackRailKind: 'playscript',
+      repeatLocked: true,
+      framesMax: 6,
+    })).toBe('This run merges into the rail — the result is one Standard Rail.');
   });
 
   it('arrow keys move focus AND check with wrap-around', () => {
@@ -1203,8 +1199,9 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
     const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-card-title')))).toBe('Rail Type');
+    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-rail-label')))).toBe('RAIL TYPE');
     expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-standard-rail-value')))).toBe('Standard');
+    expect(findAll(modeCard, byClass('physics-paint-play-script-rail-helper'))).toHaveLength(0);
     expect(findAll(modeCard, byRadioGroup('Rail Type'))).toHaveLength(0);
     expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Motion')).toHaveLength(0);
     expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Static')).toHaveLength(0);
@@ -1389,7 +1386,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const { controller } = createFakeController({ railTab: 'reveal', canonicalStart: 4 });
     const tree = renderDialog(controller);
     const radios = findAll(findOne(tree, byRadioGroup('Rail Type')), (vnode) => vnode.props?.role === 'radio');
-    expect(radios.map((radio) => textOf(radio))).toEqual(['Reveal Motion', 'Reveal Static']);
+    expect(radios.map((radio) => textOf(radio))).toEqual(['Motion', 'Static']);
     expect(findAll(tree, byId('physics-play-script-mode-helper'))).toHaveLength(0);
     // Frames defaults + the playhead-snapshot hint.
     const frames = findOne(tree, byId('physics-play-script-reveal-count'));
@@ -1455,14 +1452,14 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const card = findOne(tree, byClass('physics-paint-play-script-card-photo-wiggle'));
     expect(textOf(card)).toContain('Photo wiggle');
     expect(textOf(card)).toContain('Wiggle photo and wash together');
-    // The card lives in the left column, under Paint seed variation.
-    const keyColumn = findOne(tree, byClass('physics-paint-play-script-key-column'));
-    expect(renderedParentOf(tree, card)).toBe(keyColumn);
+    // The card is a direct panel row, under Paint seed variation.
+    const panel = findOne(tree, byClass('physics-paint-play-script-content'));
+    expect(renderedParentOf(tree, card)).toBe(panel);
     const seedCard = findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'));
-    const columnChildren = [...walk(keyColumn)]
-      .filter((child) => child !== keyColumn && typeof child.type !== 'function')
-      .filter((child) => renderedParentOf(keyColumn, child) === keyColumn);
-    expect(columnChildren.indexOf(card)).toBeGreaterThan(columnChildren.indexOf(seedCard));
+    const panelChildren = [...walk(panel)]
+      .filter((child) => child !== panel && typeof child.type !== 'function')
+      .filter((child) => renderedParentOf(panel, child) === panel);
+    expect(panelChildren.indexOf(card)).toBeGreaterThan(panelChildren.indexOf(seedCard));
 
     const checkbox = findOne(card, byId('physics-play-script-photo-wiggle')) as TestVNode;
     expect(checkbox.props.role).toBe('switch');
@@ -1511,61 +1508,51 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const editMode = renderDialog(createFakeController({ dialogMode: 'loop-edit' }).controller);
     expect(findAll(editMode, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
 
-    // 261030-np9 (D-08): the card shares grid column 1 with Timing and renders
-    // directly BENEATH it (the empty space under Timing), on both tabs.
+    // 261030-np9 (D-08): on Paint the Key Script opt-in sits directly beneath
+    // Timing and Paint seed follows it. The Task 1 panel is a flat column; the
+    // Task 2 global row keeps this relative order.
     const orderOf = (tree: TestVNode) => {
-      const content = findOne(tree, byClass('physics-paint-play-script-content'));
-      const column = findOne(content, byClass('physics-paint-play-script-key-column'));
-      const directChildrenOf = (parent: TestVNode) => [...walk(parent)]
-        .filter((child) => child !== parent && typeof child.type !== 'function')
-        .filter((child) => renderedParentOf(tree, child) === parent);
-      const columnChildren = directChildrenOf(column);
-      const contentChildren = directChildrenOf(content);
-      const stack = findOne(content, byClass('physics-paint-play-script-side-stack'));
-      const stackChildren = directChildrenOf(stack);
-      const photoWiggle = findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))[0];
-      const colorize = findAll(tree, byClass('physics-paint-play-script-card-colorize'))[0];
-      const keyScript = findAll(tree, byClass('physics-paint-play-script-card-key-script'))[0];
+      const panel = findOne(tree, byClass('physics-paint-play-script-content'));
+      const panelChildren = [...walk(panel)]
+        .filter((child) => child !== panel && typeof child.type !== 'function')
+        .filter((child) => renderedParentOf(panel, child) === panel);
+      const indexOfClass = (name: string) => {
+        const card = findAll(panel, byClass(name))[0];
+        return card ? panelChildren.indexOf(card) : -1;
+      };
       return {
-        keyScriptCard: keyScript,
-        timingInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-timing'))),
-        keyScriptInColumn: keyScript ? columnChildren.indexOf(keyScript) : -1,
-        seedInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))),
-        photoWiggleInColumn: photoWiggle ? columnChildren.indexOf(photoWiggle) : -1,
-        summaryInColumn: columnChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
-        summaryInContent: contentChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
-        motionInStack: stackChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-card-motion'))),
-        colorizeInStack: colorize ? stackChildren.indexOf(colorize) : -1,
-        summaryInStack: stackChildren.indexOf(findOne(tree, byClass('physics-paint-play-script-summary-bar'))),
-        stackChildCount: stackChildren.length,
-        columnInContent: contentChildren.indexOf(column),
-        stackInContent: contentChildren.indexOf(stack),
+        keyScriptCard: findAll(panel, byClass('physics-paint-play-script-card-key-script'))[0],
+        mode: indexOfClass('physics-paint-play-script-card-mode'),
+        timing: indexOfClass('physics-paint-play-script-card-timing'),
+        keyScript: indexOfClass('physics-paint-play-script-card-key-script'),
+        seed: indexOfClass('physics-paint-play-script-card-paint-seed-variation'),
+        photoWiggle: indexOfClass('physics-paint-play-script-card-photo-wiggle'),
+        summary: indexOfClass('physics-paint-play-script-summary-bar'),
+        motion: indexOfClass('physics-paint-play-script-card-motion'),
+        color: indexOfClass('physics-paint-play-script-card-color'),
+        colorize: indexOfClass('physics-paint-play-script-card-colorize'),
       };
     };
     const paintOrder = orderOf(renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5)' }).controller));
     expect(hasClass(paintOrder.keyScriptCard, 'physics-paint-play-script-card-wide')).toBe(false);
-    expect(paintOrder.timingInColumn).toBe(0);
-    expect(paintOrder.timingInColumn).toBeLessThan(paintOrder.keyScriptInColumn);
-    expect(paintOrder.keyScriptInColumn).toBeLessThan(paintOrder.seedInColumn);
-    expect(paintOrder.seedInColumn).toBeLessThan(paintOrder.summaryInColumn);
-    expect(paintOrder.photoWiggleInColumn).toBe(-1);
-    expect(paintOrder.summaryInContent).toBe(-1);
-    expect(paintOrder.summaryInStack).toBe(-1);
-    expect(paintOrder.columnInContent).toBeLessThan(paintOrder.stackInContent);
+    expect(paintOrder.mode).toBe(0);
+    expect(paintOrder.timing).toBe(paintOrder.mode + 1);
+    expect(paintOrder.timing).toBeLessThan(paintOrder.keyScript);
+    expect(paintOrder.keyScript).toBeLessThan(paintOrder.seed);
+    expect(paintOrder.seed).toBeLessThan(paintOrder.summary);
+    expect(paintOrder.photoWiggle).toBe(-1);
+    expect(paintOrder.color).toBeGreaterThan(-1);
+    expect(paintOrder.color).toBeLessThan(paintOrder.motion);
 
     const revealOrder = orderOf(renderDialog(createFakeController({ railTab: 'reveal', loopReadout: 'Requested: 25f (5f × 5)' }).controller));
-    // Reveal has no Key Script card; its summary also closes col1, under Photo
-    // wiggle, so both tabs hug the same height.
-    expect(revealOrder.keyScriptInColumn).toBe(-1);
-    expect(revealOrder.timingInColumn).toBe(0);
-    expect(revealOrder.timingInColumn).toBeLessThan(revealOrder.seedInColumn);
-    expect(revealOrder.seedInColumn).toBeLessThan(revealOrder.photoWiggleInColumn);
-    expect(revealOrder.photoWiggleInColumn).toBeLessThan(revealOrder.summaryInColumn);
-    expect(revealOrder.summaryInContent).toBe(-1);
-    expect(revealOrder.summaryInStack).toBe(-1);
-    expect(revealOrder.motionInStack).toBeLessThan(revealOrder.colorizeInStack);
-    expect(revealOrder.stackChildCount).toBe(2);
-    expect(revealOrder.columnInContent).toBeLessThan(revealOrder.stackInContent);
+    // Reveal has no Key Script card; Paint seed follows Timing and Photo wiggle
+    // follows Paint seed.
+    expect(revealOrder.keyScript).toBe(-1);
+    expect(revealOrder.timing).toBe(revealOrder.mode + 1);
+    expect(revealOrder.timing).toBeLessThan(revealOrder.seed);
+    expect(revealOrder.seed).toBeLessThan(revealOrder.photoWiggle);
+    expect(revealOrder.photoWiggle).toBeLessThan(revealOrder.summary);
+    expect(revealOrder.motion).toBeLessThan(revealOrder.colorize);
   });
 
   it('261030-v1t: renders the Paint seed variation card on both tabs in apply mode only, routing the checkbox', () => {
@@ -1591,25 +1578,24 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     const revealCheckbox = findOne(reveal, byId('physics-play-script-paint-seed-variation')) as TestVNode;
     expect(revealCheckbox.props.role).toBe('switch');
 
-    // 261030-v1t UAT: the card lives in grid column 1 — beneath Key Script on
+    // 261030-v1t UAT: the card is a direct panel row — beneath Key Script on
     // Paint, directly after Timing on Reveal (which has no Key Script card).
     const placementOf = (dialog: TestVNode) => {
-      const content = findOne(dialog, byClass('physics-paint-play-script-content'));
-      const column = findOne(content, byClass('physics-paint-play-script-key-column'));
-      const seed = findOne(column, byClass('physics-paint-play-script-card-paint-seed-variation'));
-      const timing = findOne(column, byClass('physics-paint-play-script-card-timing'));
-      const keyScript = findAll(column, byClass('physics-paint-play-script-card-key-script'))[0];
-      const directChildren = [...walk(column)].filter((child) => child !== column
+      const panel = findOne(dialog, byClass('physics-paint-play-script-content'));
+      const seed = findOne(panel, byClass('physics-paint-play-script-card-paint-seed-variation'));
+      const timing = findOne(panel, byClass('physics-paint-play-script-card-timing'));
+      const keyScript = findAll(panel, byClass('physics-paint-play-script-card-key-script'))[0];
+      const directChildren = [...walk(panel)].filter((child) => child !== panel
         && typeof child.type !== 'function'
-        && renderedParentOf(dialog, child) === column);
+        && renderedParentOf(dialog, child) === panel);
       return {
         seedFirstAfterTiming: directChildren.indexOf(seed) === directChildren.indexOf(timing) + 1,
         seedAfterKeyScript: keyScript ? directChildren.indexOf(seed) > directChildren.indexOf(keyScript) : keyScript,
-        seedInStack: findAll(findOne(content, byClass('physics-paint-play-script-side-stack')), byClass('physics-paint-play-script-card-paint-seed-variation')).length,
+        seedDirectPanelChild: directChildren.includes(seed),
       };
     };
-    expect(placementOf(tree)).toEqual({ seedFirstAfterTiming: false, seedAfterKeyScript: true, seedInStack: 0 });
-    expect(placementOf(reveal)).toEqual({ seedFirstAfterTiming: true, seedAfterKeyScript: undefined, seedInStack: 0 });
+    expect(placementOf(tree)).toEqual({ seedFirstAfterTiming: false, seedAfterKeyScript: true, seedDirectPanelChild: true });
+    expect(placementOf(reveal)).toEqual({ seedFirstAfterTiming: true, seedAfterKeyScript: undefined, seedDirectPanelChild: true });
 
     // A seeded enable renders checked.
     const seeded = renderDialog(createFakeController({ railTab: 'reveal', paintSeedVariation: true }).controller);
@@ -1636,16 +1622,25 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(createButton.props.disabled).toBe(true);
   });
 
-  it('shows the reference guard notice with the Place a reference action when no reference is placed (D-12)', () => {
+  it('shows the reference guard as a rail-row chip with the Place action when no reference is placed (D-12)', () => {
     const { controller } = createFakeController({ railTab: 'reveal', revealReferencePlaced: false });
     const tree = renderDialog(controller);
-    const notice = findOne(tree, byClass('physics-paint-play-script-reveal-notice'));
-    expect(textOf(notice)).toContain('no reference placed yet');
-    handler(findOne(notice, (vnode) => textOf(vnode) === 'Place a reference…'), 'onClick')();
+    // 261101-cd5: the creation guard is the compact chip, never a full-width row.
+    expect(findAll(tree, byClass('physics-paint-play-script-reveal-notice'))).toHaveLength(0);
+    const railRow = findOne(tree, byClass('physics-paint-play-script-rail-row'));
+    const chip = findOne(railRow, byClass('physics-paint-play-script-ref-chip'));
+    expect(textOf(chip)).toContain('No photo reference');
+    expect(findOne(chip, byClass('physics-paint-play-script-ref-dot'))).toBeDefined();
+    handler(findOne(chip, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Place'), 'onClick')();
     expect(controller.requestPhotoReference).toHaveBeenCalledTimes(1);
-    // The notice disappears once a reference is placed.
+
+    // The chip disappears once a reference is placed.
     const placed = renderDialog(createFakeController({ railTab: 'reveal', revealReferencePlaced: true }).controller);
+    expect(findAll(placed, byClass('physics-paint-play-script-ref-chip'))).toHaveLength(0);
     expect(findAll(placed, byClass('physics-paint-play-script-reveal-notice'))).toHaveLength(0);
+
+    // The Paint tab never shows a reference chip.
+    expect(findAll(renderDialog(createFakeController().controller), byClass('physics-paint-play-script-ref-chip'))).toHaveLength(0);
   });
 
   it('routes the Reveal tab Create through the same confirm entry (creation IS the first bake — D-11)', () => {
@@ -1878,8 +1873,10 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(findAll(tree, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
     expect(findAll(tree, byClass('physics-paint-play-script-card-paint-seed-variation'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
-    // The right column is filled by Color over Motion instead of going empty.
-    expect(findAll(tree, byClass('physics-paint-play-script-side-stack'))).toHaveLength(1);
+    // The panel keeps Color and Motion wiggle instead of going empty.
+    const stackPanel = findOne(tree, byClass('physics-paint-play-script-content'));
+    expect(findAll(stackPanel, byClass('physics-paint-play-script-card-color'))).toHaveLength(1);
+    expect(findAll(stackPanel, byClass('physics-paint-play-script-card-motion'))).toHaveLength(1);
     // The stack-specific surfaces and the run span stay.
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);

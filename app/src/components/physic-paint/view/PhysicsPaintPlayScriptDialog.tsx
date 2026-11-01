@@ -1,5 +1,6 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { Image, Paintbrush, Play, X } from 'lucide-preact';
 import {
   isRevealRunKind,
   type RotoPlayScriptController,
@@ -35,10 +36,11 @@ export interface PhysicsPaintPlayScriptDialogProps {
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 }
 
-// 52-05 (G-52-3): the Create Rail dialog tabs (apply mode only).
+// 52-05 (G-52-3): the Create Rail dialog tabs (apply mode only). 261101-cd5:
+// folder tabs that own the panel, with a rail-kind icon each.
 const RAIL_TABS = [
-  { value: 'paint' as const, label: 'Paint Rail' },
-  { value: 'reveal' as const, label: 'Reveal Photo Rail' },
+  { value: 'paint' as const, label: 'Paint Rail', icon: Paintbrush },
+  { value: 'reveal' as const, label: 'Reveal Photo Rail', icon: Image },
 ];
 
 export function PhysicsPaintPlayScriptDialog({
@@ -250,20 +252,61 @@ export function PhysicsPaintPlayScriptDialog({
           onPointerUp={endHeaderDrag}
           onPointerCancel={endHeaderDrag}
         >
-          <strong id="physics-play-script-title">{regenerateImpact
-            ? `Regenerate “${regenerateImpact.groupName}”?`
-            : loopEdit
-              ? 'Edit Rail'
-              : sourceEdit
-                ? 'Edit Source Cycle'
-                : 'Run Script'}</strong>
-          {regenerateImpact
-            ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
-            : loopEdit && editTarget
-              ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
-              : <span class="physics-paint-play-script-header-range">Max {playScript.framesMax.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+          <div class="physics-paint-play-script-header-main">
+            <span class="physics-paint-play-script-header-badge" aria-hidden="true">
+              <Play size={12} aria-hidden="true" />
+            </span>
+            <strong id="physics-play-script-title">{regenerateImpact
+              ? `Regenerate “${regenerateImpact.groupName}”?`
+              : loopEdit
+                ? 'Edit Rail'
+                : sourceEdit
+                  ? 'Edit Source Cycle'
+                  : 'Run Script'}</strong>
+          </div>
+          <div class="physics-paint-play-script-header-meta">
+            {regenerateImpact
+              ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
+              : loopEdit && editTarget
+                ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
+                : <span class="physics-paint-play-script-header-range">Max {playScript.framesMax.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+            {/* T-261101-CD5-01: Close stops pointer-down so it never starts the
+                header drag, and routes only through the existing cancel path. */}
+            <button
+              type="button"
+              class="physics-paint-play-script-close"
+              aria-label="Close"
+              onPointerDown={(event) => { event.stopPropagation(); }}
+              onClick={() => playScript.cancel()}
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
         </div>
-        <div class="physics-paint-play-script-content">
+        <div class="physics-paint-play-script-workspace">
+          {tabsVisible ? (
+            <div class="physics-paint-play-script-tabs" role="tablist" aria-label="Rail kind">
+              {RAIL_TABS.map((tab) => {
+                const selected = playScript.railTab.value === tab.value;
+                const TabIcon = tab.icon;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected ? 'true' : 'false'}
+                    class={`physics-paint-play-script-tab${selected ? ' active' : ''}`}
+                    disabled={busy}
+                    onClick={() => playScript.setRailTab(tab.value)}
+                  >
+                    <TabIcon size={14} aria-hidden="true" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <div class="physics-paint-play-script-content">
           {regenerateImpact ? (
             <div class="physics-paint-play-script-regenerate">
               <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Rail changes and restores the result from the saved Script and stored Rail settings.</p>
@@ -290,32 +333,14 @@ export function PhysicsPaintPlayScriptDialog({
               ) : null}
             </div>
           ) : (<>
-          {tabsVisible ? (
-            <div class="physics-paint-play-script-tabs" role="tablist" aria-label="Rail kind">
-              {RAIL_TABS.map((tab) => {
-                const selected = playScript.railTab.value === tab.value;
-                return (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected ? 'true' : 'false'}
-                    class={`physics-paint-play-script-tab${selected ? ' active' : ''}`}
-                    disabled={busy}
-                    onClick={() => playScript.setRailTab(tab.value)}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
           {sourceEdit ? (
             <p class="physics-paint-play-script-notice">
               Confirming regenerates the source cycle and updates every linked Rail referencing it.
               {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
+          {/* 261101-cd5: Rail Type is the panel's first row (a subheader, not a
+              bordered card), with the Reveal reference guard as a compact chip. */}
           {stackReveal ? null : (
             <RailTypeCard
               playScript={playScript}
@@ -324,16 +349,13 @@ export function PhysicsPaintPlayScriptDialog({
               locked={loopEdit}
               stacking={stacking}
               standard={standardEditTarget}
+              showReferenceChip={revealTab && !stacking}
             />
           )}
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
               the same mutation law as the Paint Rail (D-08). No Max toggle. */}
-          {/* 261030-np9 (D-08): column 1 is Timing plus, directly beneath it,
-              the per-key script opt-in — it fills the empty space under Timing
-              instead of opening a new grid row. Apply-mode creation only. */}
-          <div class="physics-paint-play-script-key-column">
           {revealTab ? (
             <RevealTimingCard playScript={playScript} busy={busy} inputRef={revealInputRef} />
           ) : (
@@ -360,37 +382,12 @@ export function PhysicsPaintPlayScriptDialog({
             />
           ) : null}
           {summaryBar}
-          </div>
-          {revealTab ? (
-          <>
-          <div class="physics-paint-play-script-side-stack">
+          {revealTab ? (<>
             <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
             <ColorizeCard playScript={playScript} busy={busy} />
-          </div>
-          {/* 52-05 (G-52-3, D-12): the reference guard — proactive, never a bare
-              error. The action opens the Photo Reference modal so the user places
-              a source, then returns to this dialog. */}
-          {playScript.revealReferencePlaced.value ? null : (
-            <div class="physics-paint-play-script-reveal-notice" role="note">
-              <span>Reveal bakes the placed photo reference — no reference placed yet.</span>
-              <button
-                type="button"
-                class="physics-paint-play-script-heading-link"
-                disabled={busy}
-                onClick={() => playScript.requestPhotoReference()}
-              >
-                Place a reference…
-              </button>
-            </div>
-          )}
-          </>
-          ) : (
-          <>
-          <div class="physics-paint-play-script-side-stack">
+          </>) : (<>
             {/* 261031-qps (Quick B): a reveal stack swaps Color + Motion wiggle
-                for the Colorize card. The cards stay DIRECT children of the
-                stack (no wrapping Fragment) — the D-16 grid pins read the
-                rendered children in order.
+                for the Colorize card.
                 261101-1pc (Quick C2): a Reveal RUN keeps Motion wiggle (it is
                 the run's own setting) after the Colorize card, so the order is
                 reveal destination [Colorize], reveal run [Colorize, Motion],
@@ -412,7 +409,7 @@ export function PhysicsPaintPlayScriptDialog({
             {stackRevealRun ? (
               <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />
             ) : null}
-          </div>
+          </>)}
           {stackRevealRun ? (
             /* 261101-1pc (Quick C2): the run's reference is the DOCUMENT's
                placed reference — its own source, so it can be placed from here.
@@ -444,7 +441,7 @@ export function PhysicsPaintPlayScriptDialog({
             <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} />
           ) : null}
           </>)}
-          </>)}
+          </div>
         </div>
         {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
