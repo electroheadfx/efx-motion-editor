@@ -644,10 +644,10 @@ export interface RotoPlayScriptController {
    * Standard Rail still stores the destination's `mode`.
    *
    * Read-only: `setStackRunKind` is the public write path and the only one
-   * that derives `mode`. The open reset and the stack seed write the signal
-   * directly ONLY because they seed `mode` immediately before it, so the two
-   * stay in lockstep; any other direct write would desync the visible card
-   * set from the mode the bake reads.
+   * that derives `mode`. The open reset and the stack seed set the signal
+   * directly so the dialog starts from its defaults/destination (the stack
+   * seed sets `mode` from the destination first); any other direct write
+   * would desync the visible card set from the mode the bake reads.
    */
   stackRunKind: ReadonlySignal<RotoPlayScriptStackRunKind>;
   /** Choose the run kind and derive the single mode the bake uses (compare-then-write). */

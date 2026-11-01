@@ -6350,8 +6350,11 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       test.controller.countText.value = '2';
       expect(await test.controller.confirm()).toBe(false);
       expect(test.controller.error.value).toBe(expectedCopy);
-      // A user-fixable reference problem leaves the run idle, not failed.
+      // A user-fixable reference problem leaves the run idle, not failed, and
+      // no stale render progress survives the refusal.
       expect(test.controller.phase.value).toBe('idle');
+      expect(test.controller.status.value).toBeNull();
+      expect(test.controller.progress.value).toBeNull();
       // Zero writes: the refusal precedes the union, the composite, the record
       // and the single commit.
       expect(refusing).toHaveBeenCalledTimes(1);
