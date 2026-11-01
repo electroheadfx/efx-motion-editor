@@ -67,9 +67,11 @@ import {
 } from './PhysicsPaintStrokeSettingsDialog';
 import {
   draftMode,
+  frozenCacheVisible,
   scriptSelectedStrokeIds,
   setDraftMode,
   setDraftPixelsDirty,
+  setFrozenCacheVisible,
   setScriptSelectMode,
   setScriptStrokeSelection,
   setStrokeSizePreview,
@@ -181,6 +183,8 @@ beforeEach(() => {
   // the pixels are dirty).
   setDraftPixelsDirty(false);
   setDraftMode(false);
+  // 261101-o2m (D-02): the cache eye is a session signal too — default visible.
+  setFrozenCacheVisible(true);
   // The sheet order is module-global; the Escape gate reads it.
   resetFloatingSheetStack();
 });
@@ -3322,5 +3326,107 @@ describe('261101-o2m Draft strip', () => {
     setAquarelleSelectMode(false);
     renderDialog(bundle);
     expect(() => [...hooks.effects][0]!()).not.toThrow();
+  });
+});
+
+// 261101-o2m (D-02): the cache eye lives in the same strip — always available
+// (Draft AND Live, both views), default visible, and DISPLAY-only: it flips the
+// session signal, never a commit / capture / save / export.
+describe('261101-o2m cache eye', () => {
+  function watercolorBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 12,
+        load: 50,
+        water: 50,
+        flow: 50,
+        bleed: 50,
+        edge: 50,
+        granulation: 50,
+        dry: 50,
+      })),
+      ...overrides,
+    });
+  }
+
+  function eyeOf(tree: unknown): AnyVNode {
+    const button = findByTestId(tree, 'stroke-settings-cache-visibility');
+    expect(button, 'cache eye').toBeDefined();
+    return button!;
+  }
+
+  it('defaults visible, is never disabled, and hides then shows the sheet', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    // LIVE: pressed ON (= visible), enabled.
+    const liveTree = renderDialog(bundle);
+    expect(frozenCacheVisible.value).toBe(true);
+    const liveEye = eyeOf(liveTree);
+    expect(liveEye.props['aria-pressed']).toBe(true);
+    expect(liveEye.props.disabled).toBeUndefined();
+    expect(liveEye.props['aria-label']).toBe('Show or hide the committed sheet');
+
+    (liveEye.props.onClick as () => void)();
+    expect(frozenCacheVisible.value).toBe(false);
+    const hiddenTree = renderDialog(bundle);
+    expect(eyeOf(hiddenTree).props['aria-pressed']).toBe(false);
+    // The same control brings it back.
+    (eyeOf(hiddenTree).props.onClick as () => void)();
+    expect(frozenCacheVisible.value).toBe(true);
+
+    // SETTINGS view: same strip, still present and enabled.
+    const settingsTree = renderSettings(bundle);
+    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
+    expect(eyeOf(settingsTree).props.disabled).toBeUndefined();
+    (eyeOf(settingsTree).props.onClick as () => void)();
+    expect(frozenCacheVisible.value).toBe(false);
+    setFrozenCacheVisible(true);
+  });
+
+  it('is available in Draft too, and Draft and Preview never reset each other', () => {
+    const { bundle } = watercolorBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    setDraftMode(true);
+
+    const draftTree = renderDialog(bundle);
+    const eye = eyeOf(draftTree);
+    expect(eye.props.disabled).toBeUndefined();
+    (eye.props.onClick as () => void)();
+    expect(frozenCacheVisible.value).toBe(false);
+
+    // D-08 both ways: the Preview switch still toggles under Draft and neither
+    // click resets the other session preference.
+    const preview = findByTestId(renderDialog(bundle), 'stroke-settings-preview-stroke-size');
+    expect(preview, 'preview switch').toBeDefined();
+    (preview!.props.onClick as () => void)();
+    expect(strokeSizePreview.value).toBe(true);
+    expect(draftMode.value).toBe(true);
+    expect(frozenCacheVisible.value).toBe(false);
+
+    // And the Draft switch keeps Draft while Preview is ON.
+    const draftSwitch = findByTestId(renderDialog(bundle), 'stroke-settings-draft-switch');
+    expect(draftSwitch!.props['aria-checked']).toBe('true');
+    expect(strokeSizePreview.value).toBe(true);
+
+    setDraftPixelsDirty(false);
+    setDraftMode(false);
+    setStrokeSizePreview(false);
+    setFrozenCacheVisible(true);
+  });
+
+  it('renders no eye for a brush bundle (the strip is watercolor-only)', () => {
+    const brush = createBundle();
+    setScriptStrokeSelection([7]);
+    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-cache-visibility'))
+      .toBeUndefined();
+    expect(findByTestId(renderSettings(brush.bundle), 'stroke-settings-cache-visibility'))
+      .toBeUndefined();
   });
 });

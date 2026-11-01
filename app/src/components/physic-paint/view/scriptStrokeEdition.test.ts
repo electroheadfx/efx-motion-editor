@@ -29,6 +29,7 @@ import {
   deleteSelectedScriptStroke,
   draftMode,
   draftPixelsDirty,
+  frozenCacheVisible,
   hitsScriptStroke,
   scriptSelectedStrokeId,
   scriptSelectedStrokeIds,
@@ -40,6 +41,7 @@ import {
   selectScriptStrokeAt,
   setDraftMode,
   setDraftPixelsDirty,
+  setFrozenCacheVisible,
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeEditionPort,
@@ -106,6 +108,7 @@ afterEach(() => {
   // invariant FIRST (the leave guard would refuse the mode reset otherwise).
   setDraftPixelsDirty(false);
   setDraftMode(false);
+  setFrozenCacheVisible(true);
 });
 
 describe('scriptStrokeEdition — shared signals', () => {
@@ -434,6 +437,58 @@ describe('scriptStrokeEdition — Draft mode session law', () => {
     setScriptSelectMode(true);
     setScriptSelectMode(false);
     expect(draftMode.value).toBe(true);
+  });
+});
+
+// 261101-o2m (D-02): the cache eye is a DISPLAY-ONLY session preference. It
+// hides the committed sheet; it never gates a commit, a capture, a save or an
+// export, and it is independent of every other session view preference.
+describe('scriptStrokeEdition — cache eye session law', () => {
+  it('starts visible and is compare-then-write both ways', () => {
+    expect(frozenCacheVisible.value).toBe(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      void frozenCacheVisible.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      // A repeated write of the SAME value notifies nobody (rule 3).
+      setFrozenCacheVisible(true);
+      expect(runs).toBe(before);
+      setFrozenCacheVisible(false);
+      expect(frozenCacheVisible.value).toBe(false);
+      expect(runs).toBe(before + 1);
+      setFrozenCacheVisible(false);
+      expect(runs).toBe(before + 1);
+      setFrozenCacheVisible(true);
+      expect(frozenCacheVisible.value).toBe(true);
+      expect(runs).toBe(before + 2);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('is never reset by the Draft, Preview or select-mode setters', () => {
+    setFrozenCacheVisible(false);
+    setDraftMode(true);
+    setDraftPixelsDirty(true);
+    expect(frozenCacheVisible.value).toBe(false);
+    setStrokeSizePreview(true);
+    expect(frozenCacheVisible.value).toBe(false);
+    setDraftMode(false);
+    setDraftPixelsDirty(false);
+    expect(frozenCacheVisible.value).toBe(false);
+    setScriptSelectMode(true);
+    setScriptSelectMode(false);
+    expect(frozenCacheVisible.value).toBe(false);
+
+    // Both other session setters keep working while the cache is hidden.
+    setDraftMode(true);
+    expect(draftMode.value).toBe(true);
+    expect(strokeSizePreview.value).toBe(true);
+    setDraftMode(false);
+    setStrokeSizePreview(false);
   });
 });
 

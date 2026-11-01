@@ -8120,6 +8120,15 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   pointer-events: none;
 }
 
+/* 261101-o2m (D-02): the Stroke settings cache eye. DISPLAY-ONLY — the canvas
+   stays mounted and its decode cache stays warm (the leaf only swaps a class),
+   and no commit, capture, save or export path reads the signal. `visibility`
+   (never `display: none`, never unmounting) keeps the layer's box and the
+   double-buffered decode untouched. */
+.demo-canvas-shell .aquarelle-cached-base.aquarelle-cached-base-hidden {
+  visibility: hidden;
+}
+
 /* 261027-klx follow-up: the engine-1 surface is gone, so these steps apply to
    the watercolor surfaces that replaced it. During cached roto playback the
    cached playback background owns the frame; the cached base is already

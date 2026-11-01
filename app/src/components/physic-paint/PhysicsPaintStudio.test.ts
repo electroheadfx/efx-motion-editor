@@ -46,6 +46,8 @@ const livePixelTransactions = readFileSync(fileURLToPath(new URL('./roto/rotoLiv
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
+// 261101-o2m (D-02): the frozen-sheet leaf the cache eye hides.
+const cachedBase = readFileSync(fileURLToPath(new URL('./engine/AquarelleCachedBaseLayer.tsx', import.meta.url)), 'utf8');
 // 261027-klx: the Brush edition adapter and its overlay are gone with engine-1
 // (Wave 2). Wave 3 owns this suite's load path — no read may name a deleted file.
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
@@ -3227,7 +3229,10 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // guide strokes, so applyCurrentScript refused silently on the 2nd delete.
     const applySite = deleteHandler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = deleteHandler.indexOf('if (ok) {');
-    const recordSite = deleteHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    // 261101-o2m: the Draft branch records the edit ABOVE the Live tail (a
+    // synchronous script commit with no re-bake). Anchor the Live record from
+    // the success gate so this pin keeps asserting the re-bake ordering.
+    const recordSite = deleteHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);', successSite);
     expect(applySite).toBeGreaterThan(-1);
     expect(deleteHandler).not.toContain('applyCurrentScript');
     expect(successSite).toBeGreaterThan(applySite);
@@ -3567,7 +3572,9 @@ describe('261022-ujp stroke stack step', () => {
     const resetSite = handler.indexOf('aquarelleResetSheetRef.current?.();');
     const applySite = handler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = handler.indexOf('if (ok) {');
-    const recordSite = handler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    // 261101-o2m: the Draft branch records ABOVE the Live tail — anchor the
+    // Live record from the success gate so the re-bake order stays the law.
+    const recordSite = handler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);', successSite);
     const rollbackSite = handler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
     expect(beginSite).toBeGreaterThan(-1);
     expect(resetSite).toBeGreaterThan(beginSite);
@@ -4120,7 +4127,9 @@ describe('261024-mz5 watercolor transform surface', () => {
     // begin -> reset -> await apply -> record on success -> raw rollback on failure.
     const reset = body.indexOf('aquarelleResetSheetRef.current?.();');
     const apply = body.indexOf('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
-    const record = body.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)');
+    // 261101-o2m: the Draft branch records ABOVE the Live tail — anchor the
+    // Live record from the apply so the re-bake order stays the law.
+    const record = body.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)', apply);
     const rollback = body.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
     expect(reset).toBeGreaterThan(-1);
     expect(apply).toBeGreaterThan(reset);
@@ -4154,7 +4163,9 @@ describe('261024-vga watercolor exact stack placement wiring', () => {
     const beginSite = placeHandler.indexOf('beginAquarellePlaceEdit(mutationId, positionFromTop)');
     const resetSite = placeHandler.indexOf('aquarelleResetSheetRef.current?.();');
     const applySite = placeHandler.indexOf('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
-    const recordSite = placeHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)');
+    // 261101-o2m: the Draft branch records ABOVE the Live tail — anchor the
+    // Live record from the apply so the re-bake order stays the law.
+    const recordSite = placeHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)', applySite);
     const rollbackSite = placeHandler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
     expect(beginSite).toBeGreaterThan(-1);
     expect(resetSite).toBeGreaterThan(beginSite);
@@ -5580,5 +5591,136 @@ describe('quick 261101-o2m — Draft mode session seam', () => {
     expect(branch).not.toContain('aquarelleResetSheetRef');
     expect(branch).not.toContain('applyAquarelleTimeline');
     expect(branch).not.toContain('script-move-result');
+  });
+});
+
+// 261101-o2m Task 2: every remaining edit path commits under Draft and skips
+// only the reset/apply tail, undo/redo gates only its pixel ports, and the
+// cache eye is a display-only class on the still-mounted cached-base canvas.
+describe('quick 261101-o2m — every edit commits under Draft, the cache eye', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  /** The Draft branch of one handler, sliced from its `if (draft) {`. */
+  function draftBranchOf(region: string, nextMarker: string): string {
+    return regionOf(region, 'if (draft) {', nextMarker);
+  }
+
+  const handlers = [
+    ['handleAquarelleDeleteStrokes', 'const handleAquarelleMoveStrokes'],
+    ['handleAquarelleAppearanceStrokes', 'aquarelleAppearanceCommitRef.current'],
+    ['handleAquarelleTransformStrokes', 'const handleAquarelleStepStroke'],
+    ['handleAquarelleStepStroke', 'const handleAquarellePlaceStroke'],
+    ['handleAquarellePlaceStroke', 'setScriptStrokeEditionPorts('],
+  ] as const;
+
+  it('records and marks dirty on the Draft branch, keeping every Live reset/apply path', () => {
+    for (const [handler, next] of handlers) {
+      const region = regionOf(studio, `const ${handler} = useCallback`, next);
+      const draftAt = region.indexOf('const draft = draftMode.peek();');
+      const resetAt = region.indexOf('aquarelleResetSheetRef.current?.()');
+      expect(draftAt, `${handler} reads the Draft state`).toBeGreaterThan(-1);
+      expect(resetAt, `${handler} keeps the Live reset path`).toBeGreaterThan(draftAt);
+      expect(region, `${handler} keeps the Live apply`).toContain('applyAquarelleTimeline');
+      const branch = draftBranchOf(region, handler.includes('Delete')
+        ? 'aquarelleResetSheetRef.current?.()'
+        : 'setAquarelleScriptEditInFlight(true);');
+      expect(branch, `${handler} records the edit`).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+      expect(branch, `${handler} marks the pixels dirty`).toContain('setDraftPixelsDirty(true);');
+      expect(branch, `${handler} clears the error`).toContain('setLastError(null);');
+      expect(branch).not.toContain('applyAquarelleTimeline');
+      expect(branch).not.toContain('restoreAquarelleEditSnapshot');
+    }
+  });
+
+  it('keeps the durable-base ensure at its Live index (delete after the begin, appearance/transform before it)', () => {
+    const deleteRegion = regionOf(studio, 'const handleAquarelleDeleteStrokes = useCallback', 'const handleAquarelleMoveStrokes');
+    // Live ordering, deliberately untouched by this quick.
+    expect(deleteRegion.indexOf('const editId = beginAquarelleDeleteEdit('))
+      .toBeLessThan(deleteRegion.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);'));
+    // The delete Draft branch still applies the owner law the Live tail applies.
+    expect(draftBranchOf(deleteRegion, 'aquarelleResetSheetRef.current?.()'))
+      .toContain('applyFrameModuleState(playFrame);');
+
+    for (const [handler, next] of [
+      ['handleAquarelleAppearanceStrokes', 'aquarelleAppearanceCommitRef.current'],
+      ['handleAquarelleTransformStrokes', 'const handleAquarelleStepStroke'],
+    ] as const) {
+      const region = regionOf(studio, `const ${handler} = useCallback`, next);
+      const ensureAt = region.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+      const beginAt = region.indexOf('const editId = beginAquarelle');
+      expect(ensureAt, `${handler} keeps its pre-begin ensure`).toBeGreaterThan(-1);
+      expect(beginAt).toBeGreaterThan(ensureAt);
+    }
+
+    // Step and place have no ensure in Live either: the entry arm protects them.
+    for (const [handler, next] of [
+      ['handleAquarelleStepStroke', 'const handleAquarellePlaceStroke'],
+      ['handleAquarellePlaceStroke', 'setScriptStrokeEditionPorts('],
+    ] as const) {
+      const region = regionOf(studio, `const ${handler} = useCallback`, next);
+      expect(region).not.toContain('ensureAquarelleDurableBaseRef');
+    }
+  });
+
+  it('gates only the resetSheet/rebake ports and the post-replay capture', () => {
+    const replay = regionOf(studio, 'const runScriptReplay = useCallback', 'const handleRebakeScript');
+    // resetSheet returns early in Draft, before the tile check.
+    const resetPort = regionOf(replay, 'resetSheet: () => {', 'rebake: () => {');
+    const resetDraftAt = resetPort.indexOf('if (draftMode.peek()) return;');
+    expect(resetDraftAt, 'resetSheet is gated in Draft').toBeGreaterThan(-1);
+    expect(resetPort.indexOf('if (tileHistory) return;')).toBeGreaterThan(resetDraftAt);
+    // rebake marks dirty and resolves success BEFORE the tile branch (the
+    // restore port already swapped the script).
+    const rebakePort = regionOf(replay, 'rebake: () => {', 'rollback: (revert) => {');
+    const rebakeDraftAt = rebakePort.indexOf('if (draftMode.peek()) {');
+    expect(rebakeDraftAt, 'rebake is gated in Draft').toBeGreaterThan(-1);
+    expect(rebakePort.indexOf('setDraftPixelsDirty(true);', rebakeDraftAt)).toBeGreaterThan(rebakeDraftAt);
+    expect(rebakePort.indexOf('return Promise.resolve(true);', rebakeDraftAt)).toBeGreaterThan(rebakeDraftAt);
+    expect(rebakePort.indexOf('if (tileHistory) {')).toBeGreaterThan(rebakeDraftAt);
+    // The post-replay capture also tests the Draft state.
+    expect(replay).toContain('if (replayed && tileHistory && !skipCapture && !draftMode.peek()) {');
+    // The ledger/owner ports stay ungated: Draft only gates the PIXEL side.
+    for (const port of [
+      'restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),',
+      'rollback: (revert) => {',
+      'notify: () => { rotoScript.notifySourceRevision(); },',
+      'publishOwner: () => { applyFrameModuleState(playFrame); },',
+      'invalidate: () => {',
+      'ensureBase: () => ensureAquarelleDurableBaseRef.current(playFrame),',
+    ]) {
+      expect(replay, `port survives: ${port}`).toContain(port);
+    }
+  });
+
+  it('hides the frozen sheet through a display-only class on the mounted canvas', () => {
+    // The leaf subscribes to the session preference and only swaps a class.
+    expect(cachedBase).toContain("import { frozenCacheVisible } from '../view/scriptStrokeEdition';");
+    expect(cachedBase).toContain('const cacheVisible = frozenCacheVisible.value;');
+    expect(cachedBase).toContain('class={`aquarelle-cached-base${cacheVisible ? \'\' : \' aquarelle-cached-base-hidden\'}`}');
+    // Mounted, never unmounted, never nulled: the decode cache stays warm.
+    expect(cachedBase).toContain('ref={canvasRef}');
+    expect(cachedBase).toContain('aria-hidden="true"');
+    expect(cachedBase).not.toContain('return null');
+    // The CSS hide is `visibility`, never `display: none`.
+    expect(css).toContain('.demo-canvas-shell .aquarelle-cached-base.aquarelle-cached-base-hidden {');
+    const rule = regionOf(css, '.demo-canvas-shell .aquarelle-cached-base.aquarelle-cached-base-hidden {', '}');
+    expect(rule).toContain('visibility: hidden;');
+    expect(rule).not.toContain('display: none');
+    // The strip itself carries the eye (the dialog leaf owns the control).
+    const dialog = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintStrokeSettingsDialog.tsx', import.meta.url)), 'utf8');
+    expect(dialog).toContain('data-testid="stroke-settings-cache-visibility"');
+  });
+
+  it('leaves the overlay law untouched — still selection-only', () => {
+    expect(scriptStrokeOverlay).toContain('scriptSelectedStrokeIds');
+    // Draft never widens the drawn set: no stroke-listing read in the overlay.
+    expect(scriptStrokeOverlay).not.toContain('listSelectableAquarelleStrokes');
+    expect(scriptStrokeOverlay).not.toContain('draftMode');
   });
 });

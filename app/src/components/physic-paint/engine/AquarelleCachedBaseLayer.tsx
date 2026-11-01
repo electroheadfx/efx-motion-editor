@@ -14,6 +14,7 @@ import {
   type AquarelleLiftPreviewDab,
 } from '../roto/aquarelleLiftPreview';
 import { aquarelleBrushForActiveTool } from '../view/aquarelleRecordState';
+import { frozenCacheVisible } from '../view/scriptStrokeEdition';
 
 /**
  * 2026-10-26 (round 2, option B): the committed aquarelle sheet, rendered as a
@@ -190,5 +191,16 @@ export function AquarelleCachedBaseLayer(props: { url: string }) {
     rafRef.current = 0;
   }, []);
 
-  return <canvas ref={canvasRef} class="aquarelle-cached-base" aria-hidden="true" />;
+  // 261101-o2m (D-02): the Stroke settings cache eye. The read is a render-body
+  // subscription of THIS leaf only (never the Studio). The hide is display-only
+  // — the canvas stays mounted so the decoded pixels stay warm, and no capture,
+  // save or export path consults it.
+  const cacheVisible = frozenCacheVisible.value;
+  return (
+    <canvas
+      ref={canvasRef}
+      class={`aquarelle-cached-base${cacheVisible ? '' : ' aquarelle-cached-base-hidden'}`}
+      aria-hidden="true"
+    />
+  );
 }

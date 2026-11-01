@@ -5521,11 +5521,21 @@ export function PhysicsPaintStudio() {
           prepare,
           restore: (targetEditId, dir) => restoreAquarelleEditSnapshot(targetEditId, dir),
           resetSheet: () => {
+            // 261101-o2m (Draft): a Draft edit is a synchronous script commit —
+            // the sheet still shows the last Live render and must not be reset.
+            if (draftMode.peek()) return;
             // The tile path keeps the live sheet — no reset, no flash.
             if (tileHistory) return;
             aquarelleResetSheetRef.current?.();
           },
           rebake: () => {
+            // 261101-o2m (Draft): `restore` already swapped the script, so the
+            // pixels now lag it — mark them dirty and report success without
+            // touching the engine. The ONE exit recompute catches up later.
+            if (draftMode.peek()) {
+              setDraftPixelsDirty(true);
+              return Promise.resolve(true);
+            }
             // The engine's tile undo/redo IS the pixel side of this command.
             // It restores the exact sheet step without re-rendering.
             if (tileHistory) {
@@ -5547,7 +5557,10 @@ export function PhysicsPaintStudio() {
       // 261029-lsr UAT row 4: the auto-key composite skips it — the key is
       // deleted immediately after, and this commit would advance the document
       // revision under the coordinator's own flush and fail the key replay.
-      if (replayed && tileHistory && !skipCapture) {
+      // 261101-o2m (Draft): never snapshot either — a Draft edit is a
+      // synchronous script commit, so the sheet still holds the last Live
+      // render and capturing it would freeze those stale pixels in the cache.
+      if (replayed && tileHistory && !skipCapture && !draftMode.peek()) {
         aquarelleCaptureFrameRef.current(
           playFrame,
           () => aquarelleEnginePortRef.current?.exportCanvas('transparent') ?? null,
@@ -8193,6 +8206,10 @@ export function PhysicsPaintStudio() {
     // current edit frame before the batch edit.
     const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
     if (frameIds.length === 0) return;
+    // 261101-o2m (Draft): read once — the branch below differs from Live ONLY
+    // in the reset/apply tail. A `.peek()` guard: the handler must not
+    // subscribe the Studio body.
+    const draft = draftMode.peek();
     // One delete = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds (Task 3).
     const editId = beginAquarelleDeleteEdit(frameIds);
@@ -8204,8 +8221,22 @@ export function PhysicsPaintStudio() {
         // keeps working after an Apply refresh clears the engine guide strokes.
         const playFrame = launchContextRef.current?.startFrame ?? 0;
         // 261028-k03d: recover a legacy key's missing durable base BEFORE the
-        // edit changes the script, or the publish fails closed.
+        // edit changes the script, or the publish fails closed. Kept at its
+        // Live index under Draft too (a fast no-op once the entry arm
+        // resolved the base) — Live parity, never a re-order.
         await ensureAquarelleDurableBaseRef.current(playFrame);
+        // 261101-o2m (Draft): the script commit above IS the edit — the engine
+        // re-render is deferred to the ONE settle. Record exactly like the Live
+        // success tail, mark the pixels dirty, and keep the owner law the Live
+        // tail applies; no reset, no apply, no rollback.
+        if (draft) {
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
+          setDraftPixelsDirty(true);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          applyFrameModuleState(playFrame);
+          return;
+        }
         aquarelleResetSheetRef.current?.();
         const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
         if (ok) {
@@ -8376,12 +8407,24 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
+    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
+    // the Studio body.
+    const draft = draftMode.peek();
     // 261028-k03d: recover a legacy key's missing durable base before the edit.
     await ensureAquarelleDurableBaseRef.current(playFrame);
     // One appearance batch = one edit with before/after script snapshots. The
     // ledger records it only after the re-bake succeeds.
     const editId = beginAquarelleAppearanceEdit(frameIds, patch);
     if (editId === null) return false;
+    // 261101-o2m (Draft): the script commit IS the edit — record exactly like
+    // the Live success tail, mark the pixels dirty, and skip the reset/apply.
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
     setAquarelleScriptEditInFlight(true);
     try {
       // The recorded timeline IS the script (same replay source as delete).
@@ -8458,6 +8501,9 @@ export function PhysicsPaintStudio() {
       { x: transform.anchorX, y: transform.anchorY },
       sheetSize,
     );
+    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
+    // the Studio body.
+    const draft = draftMode.peek();
     // 261028-k03d: recover a legacy key's missing durable base before the edit.
     await ensureAquarelleDurableBaseRef.current(playFrame);
     // One transform = one edit with before/after script snapshots. The ledger
@@ -8473,6 +8519,15 @@ export function PhysicsPaintStudio() {
       scaleY: transform.scaleY,
     });
     if (editId === null) return false;
+    // 261101-o2m (Draft): the script commit IS the edit — record exactly like
+    // the Live success tail, mark the pixels dirty, and skip the reset/apply.
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
     setAquarelleScriptEditInFlight(true);
     try {
       // The recorded timeline IS the script (same replay source as delete).
@@ -8524,8 +8579,21 @@ export function PhysicsPaintStudio() {
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleScriptEditInFlight()) return;
+    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
+    // the Studio body. No ensure exists on this Live path either: the entry
+    // arm is what protects a reorder on a legacy key.
+    const draft = draftMode.peek();
     const editId = beginAquarelleReorderEdit(mutationId, direction);
     if (editId === null) return;
+    // 261101-o2m (Draft): the script commit IS the edit — record exactly like
+    // the Live success tail, mark the pixels dirty, and skip the reset/apply.
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return;
+    }
     setAquarelleScriptEditInFlight(true);
     void (async () => {
       try {
@@ -8576,8 +8644,20 @@ export function PhysicsPaintStudio() {
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleScriptEditInFlight()) return;
+    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
+    // the Studio body. No ensure exists on this Live path either.
+    const draft = draftMode.peek();
     const editId = beginAquarellePlaceEdit(mutationId, positionFromTop);
     if (editId === null) return;
+    // 261101-o2m (Draft): the script commit IS the edit — record exactly like
+    // the Live success tail, mark the pixels dirty, and skip the reset/apply.
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return;
+    }
     setAquarelleScriptEditInFlight(true);
     void (async () => {
       try {

@@ -161,6 +161,22 @@ export function setDraftMode(on: boolean): void {
 }
 
 /**
+ * 261101-o2m (D-02): the Stroke settings **cache eye** VIEW preference — hides
+ * the committed (frozen) sheet so the edited script's overlay is readable on
+ * its own. Session/UI state only, default visible, never persisted, never
+ * undoable, and DISPLAY-only: no commit, capture, save or export ever consults
+ * it (T-261101-o2m-04). Read by the strip leaf and the cached-base leaf only;
+ * never the Studio render body (rule 5).
+ */
+export const frozenCacheVisible = signal(true);
+
+/** Compare-then-write — 1000 identical calls notify zero times (rule 3). */
+export function setFrozenCacheVisible(on: boolean): void {
+  if (frozenCacheVisible.value === on) return;
+  frozenCacheVisible.value = on;
+}
+
+/**
  * The highlighted strokes (261024-mz5: one SET, not a single id).
  * Compare-then-write on membership — an identical membership never
  * allocates a new Set nor notifies a subscriber.

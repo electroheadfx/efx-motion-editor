@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { List, Settings2, SlidersHorizontal, Spline, Trash2, X } from 'lucide-preact';
+import { Eye, EyeOff, List, Settings2, SlidersHorizontal, Spline, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -43,9 +43,11 @@ import {
 } from './strokeSettingsModel';
 import {
   draftMode,
+  frozenCacheVisible,
   scriptSelectedStrokeIds,
   scriptSelectMode,
   setDraftMode,
+  setFrozenCacheVisible,
   setStrokeSizePreview,
   strokeSizePreview,
 } from './scriptStrokeEdition';
@@ -449,6 +451,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   // document edit, never undoable) read by this strip leaf — never the Studio
   // render body.
   const draftOn = draftMode.value;
+  // 261101-o2m (D-02): the cache eye — a display-only VIEW preference read by
+  // this strip leaf and the cached-base leaf. It never gates a commit, a
+  // capture, a save or an export.
+  const cacheVisible = frozenCacheVisible.value;
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
@@ -935,6 +941,28 @@ export function PhysicsPaintStrokeSettingsDialog({
             </span>
           </button>
           <span class="physics-paint-stroke-settings-draft-row-spacer" aria-hidden="true" />
+          {/* 261101-o2m (D-02): the cache eye — ALWAYS available (Draft and
+              Live, both views, never disabled). Display-only: it hides the
+              committed sheet through a CSS modifier, so the decode cache stays
+              warm and no capture, save or export ever reads it. */}
+          <span class="physics-paint-stroke-settings-draft-row-label">cache</span>
+          <button
+            type="button"
+            data-testid="stroke-settings-cache-visibility"
+            class="physics-paint-stroke-settings-header-button"
+            aria-pressed={cacheVisible}
+            aria-label="Show or hide the committed sheet"
+            title={cacheVisible
+              ? 'Hide the committed sheet'
+              : 'Show the committed sheet'}
+            // The header is the drag handle: the press must not start one.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setFrozenCacheVisible(!frozenCacheVisible.peek())}
+          >
+            {cacheVisible
+              ? <Eye size={12} aria-hidden="true" />
+              : <EyeOff size={12} aria-hidden="true" />}
+          </button>
         </div>
       ) : null}
 
