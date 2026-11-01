@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { List, Settings2, SlidersHorizontal, Trash2, X } from 'lucide-preact';
+import { List, Settings2, SlidersHorizontal, Spline, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -41,7 +41,12 @@ import {
   type StrokeSettingsDialogBundle,
   type StrokeSettingsView,
 } from './strokeSettingsModel';
-import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition';
+import {
+  scriptSelectedStrokeIds,
+  scriptSelectMode,
+  setStrokeSizePreview,
+  strokeSizePreview,
+} from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 import { clampStackPosition } from './stackOrder';
 import {
@@ -432,6 +437,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   // stored filter the rows do not offer renders All without a state write.
   const strokeToolFilter = aquarelleStrokeToolFilter.value;
   const strokeTipFilter = aquarelleStrokeTipFilter.value;
+  // 261101-mvg: the "Preview stroke size" switch. A session-only VIEW
+  // preference (never a document edit, never undoable) read by this header
+  // leaf and the overlay leaf — never the Studio render body.
+  const previewStrokeSize = strokeSizePreview.value;
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
@@ -795,6 +804,25 @@ export function PhysicsPaintStrokeSettingsDialog({
             }}
           >
             <Trash2 size={12} aria-hidden="true" />
+          </button>
+        ) : null}
+        {engineModule === 'watercolor' ? (
+          <button
+            type="button"
+            data-testid="stroke-settings-preview-stroke-size"
+            class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
+            aria-pressed={previewStrokeSize}
+            aria-label="Preview stroke size"
+            title={previewStrokeSize
+              ? 'Preview stroke size: drawn as the area every stroke covers'
+              : 'Preview stroke size: draw the area every stroke covers'}
+            // A view preference, never a selection action: the swatch stays
+            // clickable on an empty selection (only the surface gate hides it).
+            // The header is the drag handle (see Close below).
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => setStrokeSizePreview(!strokeSizePreview.peek())}
+          >
+            <Spline size={12} aria-hidden="true" />
           </button>
         ) : null}
         {engineModule === 'watercolor' ? (

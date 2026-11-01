@@ -5827,6 +5827,22 @@ button.destructive {
   cursor: default;
 }
 
+/* 261101-mvg: the Move/Edit "Preview stroke size" switch. It shares the 22px
+   header chrome and carries its On state through aria-pressed — the audio
+   preview toggle's blue, so both view preferences read the same. OFF is every
+   kind's default, Eraser included. */
+.physics-paint-stroke-settings-preview-toggle[aria-pressed='true'] {
+  border-color: #2d5be3;
+  background: #2d5be3;
+  color: #fff;
+}
+
+.physics-paint-stroke-settings-preview-toggle[aria-pressed='true']:hover:not(:disabled) {
+  border-color: #2d5be3;
+  background: #3f6ce8;
+  color: #fff;
+}
+
 /* 52.5 UAT → 261009-6ee: main-app-audio preview toggle — now the STRIP's
    Audio Preview button only (the modal's header surface was dropped by the
    one-switch law; the modal's single switch is the footer enabled pill). Same

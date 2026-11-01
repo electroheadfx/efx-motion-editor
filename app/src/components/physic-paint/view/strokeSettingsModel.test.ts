@@ -69,6 +69,8 @@ import {
   scriptSelectedStrokeIds,
   setScriptSelectMode,
   setScriptStrokeSelection,
+  setStrokeSizePreview,
+  strokeSizePreview,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
 import {
@@ -168,6 +170,9 @@ beforeEach(() => {
   // 261031-euf: the finer filters are module signals too — reset them by the
   // production choke point so no case leaks into the next one.
   resetAquarelleStrokeFineFilters();
+  // 261101-mvg: the preview-stroke-size switch is a session signal — reset it
+  // so an ON case never leaks its band into the next one.
+  setStrokeSizePreview(false);
   // The sheet order is module-global; the Escape gate reads it.
   resetFloatingSheetStack();
 });
@@ -3030,5 +3035,96 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     const reselected = renderDialog(bundle);
     expect(findByTestId(reselected, 'stroke-settings-list')).toBeDefined();
     expect(findByTestId(reselected, 'stroke-settings-tabs')).toBeUndefined();
+  });
+});
+
+// 261101-mvg: the Move/Edit "Preview stroke size" switch lives in the Stroke
+// settings HEADER — above the list/settings view gate, outside every tab — so
+// it is reachable in BOTH views and can never be trapped in a tab body.
+describe('261101-mvg "Preview stroke size" switch', () => {
+  function previewBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 12,
+        load: 50,
+        water: 50,
+        flow: 50,
+        bleed: 50,
+        edge: 50,
+        granulation: 50,
+        dry: 50,
+      })),
+      ...overrides,
+    });
+  }
+
+  function switchOf(tree: unknown): AnyVNode {
+    const button = findByTestId(tree, 'stroke-settings-preview-stroke-size');
+    expect(button, 'preview stroke size switch').toBeDefined();
+    return button!;
+  }
+
+  it('defaults OFF and toggles the session signal from the header in BOTH views', () => {
+    const { bundle } = previewBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    // LIST view: the control is in the header, pressed-state OFF.
+    const listTree = renderDialog(bundle);
+    expect(strokeSizePreview.value).toBe(false);
+    expect(switchOf(listTree).props['aria-pressed']).toBe(false);
+
+    (switchOf(listTree).props.onClick as () => void)();
+    expect(strokeSizePreview.value).toBe(true);
+    const onTree = renderDialog(bundle);
+    expect(switchOf(onTree).props['aria-pressed']).toBe(true);
+
+    // The same click returns it to OFF.
+    (switchOf(onTree).props.onClick as () => void)();
+    expect(strokeSizePreview.value).toBe(false);
+
+    // SETTINGS view: still present (the header is above the view gate).
+    const settingsTree = renderSettings(bundle);
+    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
+    const settingsSwitch = switchOf(settingsTree);
+    expect(settingsSwitch.props['aria-pressed']).toBe(false);
+    (settingsSwitch.props.onClick as () => void)();
+    expect(strokeSizePreview.value).toBe(true);
+  });
+
+  it('is not gated by the selection size and carries the header chrome', () => {
+    const { bundle } = previewBundle();
+    setAquarelleSelectMode(true);
+    // Empty selection: the watercolor sheet stays open, and the switch is
+    // still clickable (it is a view preference, not a selection action).
+    const tree = renderDialog(bundle);
+    const button = switchOf(tree);
+    expect(button.props.disabled).toBeUndefined();
+    expect(button.props['aria-label']).toBe('Preview stroke size');
+    expect(String(button.props.title)).toContain('Preview stroke size');
+    const className = String(button.props.class);
+    expect(className).toContain('physics-paint-stroke-settings-header-button');
+    expect(className).toContain('physics-paint-stroke-settings-preview-toggle');
+    // The header is the sheet's drag handle: the press must not start a drag.
+    let stopped = false;
+    (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
+      stopPropagation: () => { stopped = true; },
+    });
+    expect(stopped).toBe(true);
+  });
+
+  it('renders no switch for a brush bundle', () => {
+    const brush = createBundle();
+    setScriptStrokeSelection([7]);
+    expect(
+      findByTestId(renderDialog(brush.bundle), 'stroke-settings-preview-stroke-size'),
+    ).toBeUndefined();
+    expect(
+      findByTestId(renderSettings(brush.bundle), 'stroke-settings-preview-stroke-size'),
+    ).toBeUndefined();
   });
 });

@@ -23,6 +23,7 @@ import {
   type AquarellePoint,
   type AquarelleStroke,
 } from '@efxlab/efx-watercolor/payload';
+import { buildBrushForStroke, toEngineParams } from '@efxlab/efx-watercolor';
 import { liftEngineSize, liftRadiusDoc } from '../roto/aquarelleLiftErase';
 import {
   aquarelleStrokesRevision,
@@ -70,9 +71,11 @@ import {
   reanchorAquarelleEditFromLiveContent,
   reanchorAquarelleEditRevision,
   resetAquarelleStrokeFineFilters,
+  resolveAquarelleStrokeBandPx,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   selectAquarelleStroke,
+  type SelectableAquarelleStroke,
   setAquarelleScriptEditInFlight,
   setAquarelleSelectMode,
   setAquarelleStrokeTipFilter,
@@ -85,15 +88,20 @@ import {
   distanceToSegmentPx,
   scriptSelectedStrokeIds,
   setScriptStrokeSelection,
+  setStrokeSizePreview,
+  strokeSizePreview,
   type CanvasPoint,
 } from './scriptStrokeEdition';
+import { paintRadiusDocFor } from './aquarelleStrokeBand';
 
 const SHEET = { width: 400, height: 200 };
 
 // 261031-euf: the finer list filters are module signals — reset them through
 // the production choke point so no case leaks into the next one.
+// 261101-mvg: the preview-stroke-size switch is a session signal too.
 beforeEach(() => {
   resetAquarelleStrokeFineFilters();
+  setStrokeSizePreview(false);
 });
 
 function point(x: number, y: number): AquarellePoint {
@@ -125,6 +133,25 @@ function stroke(options: {
       : {}),
     playFrame: options.playFrame,
   };
+}
+
+/**
+ * Distance from a point to a polyline (single point = its own distance).
+ * Hoisted to file scope (261101-mvg) so both the 261029-eur ribbon pins and the
+ * preview-band pins reuse it instead of keeping a private copy each.
+ */
+function distanceToPolyline(point: CanvasPoint, polyline: readonly CanvasPoint[]): number {
+  if (polyline.length === 1) {
+    return Math.hypot(point.x - polyline[0]!.x, point.y - polyline[0]!.y);
+  }
+  let best = Infinity;
+  for (let index = 1; index < polyline.length; index += 1) {
+    best = Math.min(
+      best,
+      distanceToSegmentPx(point.x, point.y, polyline[index - 1]!, polyline[index]!),
+    );
+  }
+  return best;
 }
 
 type StrokeEvent = Exclude<AquarellePayloadEvent, { kind: 'dry' }>;
@@ -767,20 +794,6 @@ describe('261029-eur lift ribbon listing (LIFT-RIBBON)', () => {
     };
   }
 
-  function distanceToPolyline(point: CanvasPoint, polyline: readonly CanvasPoint[]): number {
-    if (polyline.length === 1) {
-      return Math.hypot(point.x - polyline[0]!.x, point.y - polyline[0]!.y);
-    }
-    let best = Infinity;
-    for (let index = 1; index < polyline.length; index += 1) {
-      best = Math.min(
-        best,
-        distanceToSegmentPx(point.x, point.y, polyline[index - 1]!, polyline[index]!),
-      );
-    }
-    return best;
-  }
-
   it('fills a polygon ribbon, the maximum-support hit radius and polygon bounds on a lift', () => {
     const recorded = wideLift({
       points: [point(0.2, 0.5), point(0.5, 0.5), point(0.8, 0.5)],
@@ -864,6 +877,136 @@ describe('261029-eur lift ribbon listing (LIFT-RIBBON)', () => {
     expect(
       hitTestAquarelleStroke({ x: 200, y: 100 + radiusPx * 2 + 1 }, 808, SHEET, 'lift'),
     ).toBeNull();
+  });
+});
+
+// ============================================================
+//  261101-mvg — "Preview stroke size" band resolver.
+//
+//  The switch is a session-only VIEW preference: OFF resolves no
+//  band for either kind, ON resolves the paint footprint band (the
+//  bake law) and hands a lift back its unchanged 261029-eur
+//  ribbon. The listing itself stays byte-identical across the
+//  toggle — the band is never a bounds, hit-test or stack input.
+// ============================================================
+describe('261101-mvg preview stroke size band', () => {
+  const FRAME = 809;
+
+  /**
+   * One paint and one aspect-2 lift on a dedicated frame. They sit on
+   * separate rows (canvas y 140 / 60) and separate x spans so a probe
+   * cannot reach the wrong stroke through the newest-wins scan.
+   */
+  function recordBoth(): { paint: AquarelleStroke; lift: AquarelleStroke } {
+    const paint = stroke({
+      points: [point(0.15, 0.3), point(0.35, 0.3), point(0.55, 0.3)],
+      playFrame: FRAME,
+      size: 40,
+    });
+    const lift: AquarelleStroke = {
+      ...stroke({
+        points: [point(0.65, 0.7), point(0.9, 0.7)],
+        playFrame: FRAME,
+        size: 40,
+        toolOverrides: { ...NEUTRAL_TOOL_OVERRIDES, aspect: 2 },
+      }),
+      tool: 'lift',
+    };
+    recordAquarelleStroke(10061, paint);
+    recordAquarelleStroke(10062, lift);
+    return { paint, lift };
+  }
+
+  function entryOf(mutationId: number): SelectableAquarelleStroke {
+    const entry = listSelectableAquarelleStrokes(FRAME, SHEET).find(
+      (candidate) => candidate.mutationId === mutationId,
+    );
+    expect(entry, `listed entry ${mutationId}`).toBeDefined();
+    return entry!;
+  }
+
+  it('resolves no band for either kind while the switch is off', () => {
+    recordBoth();
+    expect(strokeSizePreview.value).toBe(false);
+    expect(resolveAquarelleStrokeBandPx(entryOf(10061), SHEET)).toBeUndefined();
+    expect(resolveAquarelleStrokeBandPx(entryOf(10062), SHEET)).toBeUndefined();
+  });
+
+  it('resolves the paint footprint band and the unchanged lift ribbon while on', () => {
+    const { paint } = recordBoth();
+    setStrokeSizePreview(true);
+
+    const paintEntry = entryOf(10061);
+    const paintBand = resolveAquarelleStrokeBandPx(paintEntry, SHEET);
+    expect(paintBand).toBeDefined();
+    expect(paintBand!.length).toBeGreaterThan(2);
+
+    // Every drawn vertex stays inside the bake footprint: the radius law the
+    // band shares with Engine/aquarelleFootprint, at this stroke's pressure.
+    const engineSize = toEngineParams(paint.params).size!;
+    const radiusPx =
+      paintRadiusDocFor(
+        'brush',
+        buildBrushForStroke('round'),
+        engineSize,
+        1,
+      ) * SHEET.height;
+    expect(radiusPx).toBeGreaterThan(MIN_STROKE_PAD_PX);
+    const centerline = aquarelleStrokePointsPx(paint, SHEET);
+    for (const vertex of paintBand!) {
+      expect(distanceToPolyline(vertex, centerline)).toBeLessThanOrEqual(
+        radiusPx + 1e-6,
+      );
+    }
+
+    // A lift keeps the 261029-eur ribbon by identity — no second geometry.
+    const liftEntry = entryOf(10062);
+    expect(liftEntry.ribbonPx).toBeDefined();
+    expect(resolveAquarelleStrokeBandPx(liftEntry, SHEET)).toBe(liftEntry.ribbonPx);
+  });
+
+  it('leaves the listed entries byte-identical across the toggle', () => {
+    recordBoth();
+    const before = listSelectableAquarelleStrokes(FRAME, SHEET);
+    setStrokeSizePreview(true);
+    const after = listSelectableAquarelleStrokes(FRAME, SHEET);
+    expect(after).toEqual(before);
+
+    for (const mutationId of [10061, 10062]) {
+      const beforeEntry = before.find((candidate) => candidate.mutationId === mutationId)!;
+      const afterEntry = after.find((candidate) => candidate.mutationId === mutationId)!;
+      expect(afterEntry.bounds).toEqual(beforeEntry.bounds);
+      expect(afterEntry.pointsPx).toEqual(beforeEntry.pointsPx);
+      expect(afterEntry.ribbonPx).toEqual(beforeEntry.ribbonPx);
+      expect(afterEntry.hitRadiusPx).toEqual(beforeEntry.hitRadiusPx);
+      expect(afterEntry.serial).toBe(beforeEntry.serial);
+      expect(afterEntry.stackPosition).toBe(beforeEntry.stackPosition);
+      expect(afterEntry.kind).toBe(beforeEntry.kind);
+      expect(afterEntry.tool).toBe(beforeEntry.tool);
+      expect(afterEntry.brushId).toBe(beforeEntry.brushId);
+      expect(afterEntry.customResponse).toBe(beforeEntry.customResponse);
+    }
+  });
+
+  it('hit-tests the same stroke in both states', () => {
+    recordBoth();
+    const paintProbe = { x: 140, y: 140 };
+    const liftProbe = { x: 300, y: 60 };
+    expect(hitTestAquarelleStroke(paintProbe, FRAME, SHEET)).toBe(10061);
+    expect(hitTestAquarelleStroke(liftProbe, FRAME, SHEET)).toBe(10062);
+
+    setStrokeSizePreview(true);
+    expect(hitTestAquarelleStroke(paintProbe, FRAME, SHEET)).toBe(10061);
+    expect(hitTestAquarelleStroke(liftProbe, FRAME, SHEET)).toBe(10062);
+  });
+
+  it('never bumps the stroke revision — a view preference is not a document edit', () => {
+    recordBoth();
+    const revisionBefore = aquarelleStrokesRevision.value;
+    setStrokeSizePreview(true);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    setStrokeSizePreview(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
   });
 });
 
