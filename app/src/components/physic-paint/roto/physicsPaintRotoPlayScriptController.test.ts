@@ -6130,6 +6130,13 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     // Motion wiggle. Both are RUN settings: they shape this bake only.
     test.controller.setStackRunKind('reveal-motion');
     test.controller.dialogMotion.value = { deformation: 12, position: 30, rotation: 0, scale: 0 };
+    // WR-01: drive all four reveal knobs to NON-default values. The open reset
+    // sets them to false/100, so a literal substitution in the controller's
+    // forward (or a dropped forward in the Studio port) now fails this test.
+    test.controller.setColorize(true);
+    test.controller.setColorizeMix(42);
+    test.controller.setPhotoWiggle(true);
+    test.controller.setPaintSeedVariation(true);
     test.controller.countText.value = '2';
     expect(await test.controller.confirm()).toBe(true);
 
@@ -6149,10 +6156,10 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(runCall.scriptEvents.length).toBeGreaterThan(0);
     expect(runCall.mode).toBe('progressive');
     expect(runCall.motion).toMatchObject({ deformation: 12, position: 30 });
-    expect(runCall.colorize).toBe(false);
-    expect(runCall.colorizeMix).toBe(100);
-    expect(runCall.photoWiggle).toBe(false);
-    expect(runCall.paintSeedVariation).toBe(false);
+    expect(runCall.colorize).toBe(true);
+    expect(runCall.colorizeMix).toBe(42);
+    expect(runCall.photoWiggle).toBe(true);
+    expect(runCall.paintSeedVariation).toBe(true);
     // The tail port is the Reveal DESTINATION's seam — never the run's.
     expect(test.bakeRevealStackTail).not.toHaveBeenCalled();
 

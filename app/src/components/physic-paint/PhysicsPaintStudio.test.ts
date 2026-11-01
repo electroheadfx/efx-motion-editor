@@ -5240,6 +5240,12 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(runPort).toContain('events: input.scriptEvents,');
     expect(runPort).toContain('canonicalStart: start,');
     expect(runPort).toContain('frameCount: input.frames.length,');
+    // WR-01: the four dialog knobs are FORWARDED from the port input — a
+    // literal substitution here must fail this pin.
+    expect(runPort).toContain('colorize: input.colorize,');
+    expect(runPort).toContain('colorizeMix: input.colorizeMix,');
+    expect(runPort).toContain('photoWiggle: input.photoWiggle,');
+    expect(runPort).toContain('paintSeedVariation: input.paintSeedVariation,');
     expect(runPort).toContain("if (!rendered.ok) return { kind: 'refused', reason: rendered.error };");
     expect(runPort).toContain('frames: rendered.frames.map((frame) => ({ appFrame: frame.appFrame, bytes: frame.bytes }))');
     // The ports object wires it beside the Quick B tail.
