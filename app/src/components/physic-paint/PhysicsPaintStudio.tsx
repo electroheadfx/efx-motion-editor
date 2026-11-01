@@ -10342,6 +10342,7 @@ export function PhysicsPaintStudio() {
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
+      handleAquarelleDeleteStrokes,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -10359,6 +10360,10 @@ export function PhysicsPaintStudio() {
         moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
         reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
+        // 261101-jmm: the sheet's row/global trash uses the SAME handler as
+        // Backspace/Delete — one undoable edit, one re-bake, the frame guards
+        // intact. The dialog never touches the engine.
+        deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
         // 261029-eur UAT: close LEAVES the surface — the same result as
         // releasing Cmd or toggling the rail Select off, so painting resumes
         // with the paint tool that was active. `keepOpenOnEmpty` only keeps the

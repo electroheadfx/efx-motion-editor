@@ -4172,6 +4172,17 @@ describe('261024-vga watercolor exact stack placement wiring', () => {
     const memoDepEnd = studio.indexOf('() => {', memoStart);
     expect(memoDepEnd).toBeGreaterThan(memoStart);
     expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarellePlaceStroke');
+
+    // 261101-jmm: the sheet's trash shares the Backspace/Delete handler. The
+    // SAME call string exists at the edition-port registration, so both pins
+    // are scoped to the bundle slice — a whole-file `toContain` would pass
+    // without the bundle wiring at all.
+    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarelleDeleteStrokes');
+    const bodyEnd = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel({', memoDepEnd);
+    expect(bodyEnd).toBeGreaterThan(memoDepEnd);
+    expect(studio.slice(memoDepEnd, bodyEnd)).toContain(
+      'deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),',
+    );
   });
 });
 
