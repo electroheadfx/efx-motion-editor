@@ -210,3 +210,20 @@ None — no new network endpoint, auth path, file-access pattern or trust-bounda
 
 - Files verified present: stacking module, controller, presentation/workflow modules, both rail hosts, CSS, dialog cards, hook, Studio, and their suites.
 - Commits verified in history: `0bf377a63`, `9752d6567`, `c76ba561f` (all ancestors of HEAD; measured 3 commits over `f67b27d30..c76ba561f`).
+
+## Post-UAT fix (2026-11-01, commit `28411564c`)
+
+Live UAT round 1 failed two rows:
+
+- Motion rail (Key Script Editing ON) + Static rail = gray Standard rail, but the cached motion animation was lost (the span became static).
+- Motion rail + Static rail with Keep OFF = rail 1 replaced by rail 2, including its script.
+
+Root cause: the non-reveal stack picture path replayed the destination's recorded events (untransformed strokes) over the durable base. A motion rail's animation lives in its BAKED pixels, not in its script, so the union bake flattened it to a static wash; Keep OFF additionally used Quick A's purge/replace record mode.
+
+Fix (law now identical for every non-reveal destination):
+
+- The run's OWN baked frame (mode/motion/seed already applied) composites over each touched key's CURRENT cached picture. The destination's animation survives, and an incoming Motion run animates.
+- Keep ON: still appends the run's slices and stages the pre-run base pins (per-key editing stays). Keep OFF: records nothing and NEVER purges the destination's scripts or picture.
+- Reveal destination tail law unchanged.
+
+Ports: `bakeStackedRailKey` takes the run `sheets` (not slices) and merges them; `composeStackedRailKey` takes `sheetBytes`. Tests updated: the union-port pins now assert the current-payload composite and the absence of event replay; the WR-12/replace pins were retargeted to the new law. Full suite 363 files / 6,818 passed / 0 failed, typecheck clean. Rows 1–5 of the UAT list above are the user's re-test.
