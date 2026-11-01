@@ -4336,7 +4336,7 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
   const coreEnd = studio.indexOf('const rasterKeyImplRef', coreStart);
   const core = studio.slice(coreStart, coreEnd);
   const railStart = studio.indexOf(
-    'const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});',
+    "const rasterRailImplRef = useRef<(kind: RasterRailTarget['kind'], railId: string) => Promise<void>>(async () => {});",
   );
   const railEnd = studio.indexOf('const handleRasterRailRequest = useCallback(', railStart);
   const rail = studio.slice(railStart, railEnd);
@@ -4458,13 +4458,18 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
     expect(railStart).toBeGreaterThan(-1);
     expect(railEnd).toBeGreaterThan(railStart);
     expect(studio).toContain(
-      'const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});',
+      "const rasterRailImplRef = useRef<(kind: RasterRailTarget['kind'], railId: string) => Promise<void>>(async () => {});",
     );
-    expect(studio).toContain('const handleRasterRailRequest = useCallback((firstKeyId: string) => {');
-    expect(studio).toContain('void rasterRailImplRef.current(firstKeyId);');
-    // The clicked identity must still be the reconciled selection.
+    expect(studio).toContain(
+      "const handleRasterRailRequest = useCallback((kind: RasterRailTarget['kind'], railId: string) => {",
+    );
+    expect(studio).toContain('void rasterRailImplRef.current(kind, railId);');
+    // The clicked identity must still be the reconciled key selection.
     expect(rail).toContain('const selection = effectiveSelectedRotoKeyRail;');
-    expect(rail).toContain('if (selection === null || selection.firstKeyId !== firstKeyId) return;');
+    expect(rail).toContain('if (selection === null || selection.firstKeyId !== railId) return;');
+    // A Loop Clip rail re-checks the loop selection and targets its source keys.
+    expect(rail).toContain('if (selectedLoopClipId.value !== railId) return;');
+    expect(rail).toContain('railKeyIds = clip.sourceKeyIds;');
     // Frames resolve through the PHYSICAL projection, never the display source.
     expect(rail).toContain('projection.framesByKeyId.get(keyId)');
     expect(rail).toContain('if (!projection) return;');

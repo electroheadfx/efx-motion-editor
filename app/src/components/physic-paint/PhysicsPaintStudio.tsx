@@ -1828,34 +1828,51 @@ export function PhysicsPaintStudio() {
     return resolveFrameScriptOwner(cell.appFrame, resolveStudioScriptCell(cell.appFrame));
   });
   // quick-261101-f5v (D-01/D-02): the Raster action's rail target. A selected
-  // key rail retargets the action at the whole rail — Loop Clip rails and rail
-  // sets never do (this computed only reads the key-rail selection). The
-  // selection is read FIRST so the no-rail case subscribes to nothing but the
-  // rail selection, never to stroke revisions. Frames resolve through the
-  // PHYSICAL projection, never the display source, and the rail stays in rail
-  // mode even when its frames do not resolve (the leaf shows the empty-rail
-  // reason rather than falling back to the key scope).
+  // key rail OR a selected Loop Clip rail retargets the action at that rail's
+  // real keys — the two rail families the timeline paints as an orange
+  // selection line. A key rail owns `keyIds` directly; a Loop Clip rail cycles
+  // its `sourceKeyIds`, so those are the keys to raster (the repeats render
+  // the same pixels). Rail sets are not a rail selection and never target.
+  //
+  // The two selections are read FIRST so the no-rail case subscribes to
+  // nothing but the selections, never to stroke revisions. Frames resolve
+  // through the PHYSICAL projection, never the display source, and the rail
+  // stays in rail mode even when its frames do not resolve (the leaf shows the
+  // empty-rail reason rather than falling back to the key scope). The loop
+  // clips are read from the STORE inside the callback: a render-scoped array
+  // captured by a once-created computed would freeze at the first render.
   const rasterRailTarget = useComputed<RasterRailTarget | null>(() => {
-    const selection = selectedRotoKeyRail.value;
-    if (selection === null) return null;
+    const keyRail = selectedRotoKeyRail.value;
+    const loopRailId = selectedLoopClipId.value;
+    if (keyRail === null && loopRailId === null) return null;
     const launch = launchContextRef.current;
     if (launch === null) return null;
     void aquarelleStrokesRevision.value;
     void rotoModelGeneration.value;
     void efxPaintVersion.value;
     void rotoPhysicalRevision.value;
+    const trackId = studioActiveTrackId();
     const framesByKeyId = physicPaintStore
-      .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
+      .getRotoPhysicalProjection(launch.layerId, trackId)
       ?.framesByKeyId;
-    const frames = [
+    const framesFromKeyIds = (keyIds: readonly string[]) => [
       ...new Set(
-        selection.keyIds
+        keyIds
           .map((keyId) => framesByKeyId?.get(keyId))
           .filter((frame): frame is number => typeof frame === 'number' && Number.isFinite(frame)),
       ),
     ].sort((left, right) => left - right);
+    const loopRail = loopRailId === null
+      ? null
+      : physicPaintStore
+        .getRotoPhysicalLoopClips(launch.layerId, trackId)
+        .find((clip) => clip.loopId === loopRailId) ?? null;
+    const frames = keyRail !== null
+      ? framesFromKeyIds(keyRail.keyIds)
+      : framesFromKeyIds(loopRail?.sourceKeyIds ?? []);
     return {
-      firstKeyId: selection.firstKeyId,
+      kind: keyRail !== null ? 'key-rail' : 'loop-rail',
+      railId: keyRail !== null ? keyRail.firstKeyId : loopRailId!,
       frames,
       hasScript: frames.some((frame) => hasAquarelleScriptForFrame(frame)),
     };
@@ -8991,23 +9008,37 @@ export function PhysicsPaintStudio() {
   // at CALL time — a confirm dialog left open across a selection change can
   // never purge a different rail. One bounded pass, sequential awaits, no
   // retry, and a stop on any session guard break.
-  const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});
-  rasterRailImplRef.current = async (firstKeyId) => {
+  const rasterRailImplRef = useRef<(kind: RasterRailTarget['kind'], railId: string) => Promise<void>>(async () => {});
+  rasterRailImplRef.current = async (kind, railId) => {
     if (rasterInFlightRef.current) return;
     if (isPhysicalMutationLocked()) return;
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoCachedPlayback.isActive) return;
     if (!readyToApply) return;
-    // The clicked rail identity must still be the reconciled selection.
-    const selection = effectiveSelectedRotoKeyRail;
-    if (selection === null || selection.firstKeyId !== firstKeyId) return;
     const launch = launchContextRef.current;
     if (launch === null) return;
-    const projection = physicPaintStore.getRotoPhysicalProjection(launch.layerId, studioActiveTrackId());
+    const trackId = studioActiveTrackId();
+    // The clicked rail identity must still be the live selection. A key rail
+    // re-checks the reconciled selection; a Loop Clip rail re-checks the loop
+    // selection AND that the clip still exists on this track.
+    let railKeyIds: readonly string[];
+    if (kind === 'key-rail') {
+      const selection = effectiveSelectedRotoKeyRail;
+      if (selection === null || selection.firstKeyId !== railId) return;
+      railKeyIds = selection.keyIds;
+    } else {
+      if (selectedLoopClipId.value !== railId) return;
+      const clip = physicPaintStore
+        .getRotoPhysicalLoopClips(launch.layerId, trackId)
+        .find((loopClip) => loopClip.loopId === railId);
+      if (!clip) return;
+      railKeyIds = clip.sourceKeyIds;
+    }
+    const projection = physicPaintStore.getRotoPhysicalProjection(launch.layerId, trackId);
     if (!projection) return;
     const entries = [
       ...new Map(
-        selection.keyIds
+        railKeyIds
           .map((keyId) => ({ keyId, frame: projection.framesByKeyId.get(keyId) }))
           .filter((entry): entry is { keyId: string; frame: number } => (
             typeof entry.frame === 'number' && Number.isFinite(entry.frame)
@@ -9054,8 +9085,8 @@ export function PhysicsPaintStudio() {
       rasterInFlightRef.current = false;
     }
   };
-  const handleRasterRailRequest = useCallback((firstKeyId: string) => {
-    void rasterRailImplRef.current(firstKeyId);
+  const handleRasterRailRequest = useCallback((kind: RasterRailTarget['kind'], railId: string) => {
+    void rasterRailImplRef.current(kind, railId);
   }, []);
 
   // CACHE MERGE BASE (aquarelle-cache-lost-on-return): a frame change clears

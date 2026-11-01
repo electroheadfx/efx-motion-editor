@@ -50,8 +50,14 @@ export function resolveRasterKeyPresentation(
 //  rail and a rail whose keys carry no script.
 // ============================================================
 
+/** The two rail families the header Raster can target. A key rail owns its
+ *  keys directly; a Loop Clip rail owns the source keys it cycles through. */
+export type RasterRailKind = 'key-rail' | 'loop-rail';
+
 export interface RasterRailTarget {
-  readonly firstKeyId: string;
+  readonly kind: RasterRailKind;
+  /** Key rail: `firstKeyId`. Loop rail: `loopId`. */
+  readonly railId: string;
   readonly frames: readonly number[];
   readonly hasScript: boolean;
 }

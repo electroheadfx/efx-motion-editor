@@ -325,7 +325,7 @@ export interface PhysicsPaintWorkflowStripProps {
    * action at the whole rail; the Studio re-resolves the rail at call time,
    * so this carries only the clicked rail's first key id.
    */
-  onRasterRail?: (firstKeyId: string) => void;
+  onRasterRail?: (kind: RasterRailTarget['kind'], railId: string) => void;
   /**
    * quick-261025-awl: the current key's script owner. Passed as a signal
    * REFERENCE — only the Raster leaf reads .value, so the strip body and the
@@ -949,7 +949,7 @@ function PhysicsPaintRasterKeyControl(props: {
   playbackActive: boolean;
   mutationLocked: boolean;
   onRasterKey?: (frame: number) => void;
-  onRasterRail?: (firstKeyId: string) => void;
+  onRasterRail?: (kind: RasterRailTarget['kind'], railId: string) => void;
   railTargetSignal?: ReadonlySignal<RasterRailTarget | null>;
 }) {
   const tooltip = useStyledTooltip();
@@ -1019,7 +1019,7 @@ function PhysicsPaintRasterKeyControl(props: {
     // quick-261101-f5v: the rail scope forwards the clicked rail identity; the
     // Studio re-resolves it at call time. The key scope is unchanged.
     if (railTarget !== null) {
-      props.onRasterRail?.(railTarget.firstKeyId);
+      props.onRasterRail?.(railTarget.kind, railTarget.railId);
       return;
     }
     props.onRasterKey?.(props.currentFrame.peek());
@@ -1156,7 +1156,7 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   onRasterKey?: (frame: number) => void;
   frameScriptOwner?: ReadonlySignal<FrameScriptOwner>;
   /** quick-261101-f5v: the rail-scoped Raster bundle (same reference+callback shape). */
-  onRasterRail?: (firstKeyId: string) => void;
+  onRasterRail?: (kind: RasterRailTarget['kind'], railId: string) => void;
   rasterRailTarget?: ReadonlySignal<RasterRailTarget | null>;
   playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined;
   playbackLoop: boolean;

@@ -114,7 +114,10 @@ describe('quick-261025-awl Raster strip wiring', () => {
 
   it('threads the rail Raster bundle from the strip props to the leaf', () => {
     // Strip props, static-chrome props, and the leaf's own inline props.
-    expect(countOccurrences(stripSource, 'onRasterRail?: (firstKeyId: string) => void;')).toBe(3);
+    expect(countOccurrences(
+      stripSource,
+      "onRasterRail?: (kind: RasterRailTarget['kind'], railId: string) => void;",
+    )).toBe(3);
     expect(countOccurrences(stripSource, 'rasterRailTarget?: ReadonlySignal<RasterRailTarget | null>;')).toBe(2);
     expect(countOccurrences(stripSource, 'railTargetSignal?: ReadonlySignal<RasterRailTarget | null>;')).toBe(1);
     expect(stripSource).toContain('onRasterRail={props.onRasterRail}');
@@ -134,7 +137,7 @@ describe('quick-261025-awl Raster strip wiring', () => {
   });
 
   it('dispatches the clicked rail identity in rail mode and keeps the frame dispatch otherwise', () => {
-    expect(stripSource).toContain('props.onRasterRail?.(railTarget.firstKeyId)');
+    expect(stripSource).toContain('props.onRasterRail?.(railTarget.kind, railTarget.railId)');
     expect(stripSource).toContain('props.onRasterKey?.(props.currentFrame.peek());');
   });
 
