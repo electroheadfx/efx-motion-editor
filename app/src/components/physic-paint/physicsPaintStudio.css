@@ -3298,28 +3298,6 @@ button.destructive {
   box-shadow: 0 1px 3px oklch(0 0 0 / 0.4) !important;
 }
 
-/* Requested/Effective readout — informational only (D-14). Task 3 moves it into
-   the footer tooltip; until then it closes the panel. */
-.physics-paint-play-script-summary-bar {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  margin: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--ps-border);
-  border-radius: 8px;
-  background: var(--ps-inset);
-  color: var(--ps-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.physics-paint-play-script-summary-requested,
-.physics-paint-play-script-summary-effective { min-width: 0; }
-
 .physics-paint-play-script-mode-helper,
 .physics-paint-play-script-content span { overflow-wrap: anywhere; }
 
@@ -3336,106 +3314,214 @@ button.destructive {
   font-size: 12px;
 }
 
-/* E5: generation failure renders the reason in --ps-error above the footer (existing
-   contract, restyled for the dark surface). */
-.physics-paint-play-script-dialog-error {
-  flex: 0 0 auto;
-  padding: 0 20px 8px;
-  color: var(--ps-error);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-/* Compact footer INSIDE the modal (D-16 Row 5): progress/status left, Cancel/Generate
-   right; --ps-foot surface, 1px top border — never attached to the canvas/window bottom. */
+/* 261101-cd5 footer: progress track → info → status on the left, Cancel / primary
+   on the right; 56px tall, never attached to the canvas/window bottom. */
 .physics-paint-play-script-footer {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  justify-content: space-between;
   gap: 14px;
+  box-sizing: border-box;
   min-width: 0;
-  padding: 10px 20px;
-  border-top: 1px solid var(--ps-border);
-  background: var(--ps-foot);
+  height: 56px;
+  padding: 0 20px;
+  border-top: 1px solid var(--ps-divider);
+  background: var(--ps-shell);
 }
 
 .physics-paint-play-script-progress-line {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
-.physics-paint-play-script-progress-line progress {
+/* The 160 × 4 track is persistent; the real <progress> mounts inside it only
+   while generating, so idle/failed/cancelled states render no progress element. */
+.physics-paint-play-script-progress-track {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  width: 160px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ps-track);
+}
+
+.physics-paint-play-script-progress-track progress {
   appearance: none;
-  flex: 1 1 auto;
+  display: block;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.physics-paint-play-script-progress-track progress::-webkit-progress-bar {
+  border-radius: 2px;
+  background: transparent;
+}
+
+.physics-paint-play-script-progress-track progress::-webkit-progress-value {
+  border-radius: 2px;
+  background: var(--ps-accent);
+}
+
+.physics-paint-play-script-progress-track progress::-moz-progress-bar {
+  border-radius: 2px;
+  background: var(--ps-accent);
+}
+
+/* Requested/Effective readout — a borderless tooltip above the footer, opened on
+   hover AND keyboard focus (focus-within). CSS only: no state, no effect, no
+   measurement. Out of flow, so the 56px footer height never changes. */
+.physics-paint-play-script-readout {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.physics-paint-play-script-readout-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ps-muted);
+  cursor: default;
+}
+
+.physics-paint-play-script-readout-info:hover,
+.physics-paint-play-script-readout:focus-within .physics-paint-play-script-readout-info {
+  background: var(--ps-panel-raised);
+  color: var(--ps-fg);
+}
+
+.physics-paint-play-script-readout-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 210px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #232830;
+  box-shadow: 0 6px 18px oklch(0 0 0 / 0.35);
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.physics-paint-play-script-readout:hover .physics-paint-play-script-readout-tooltip,
+.physics-paint-play-script-readout:focus-within .physics-paint-play-script-readout-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+.physics-paint-play-script-readout-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
   min-width: 0;
-  height: 10px;
-  border: 1px solid var(--ps-border);
-  border-radius: 5px;
-  background: var(--ps-inset);
-  overflow: hidden;
 }
 
-.physics-paint-play-script-progress-line progress::-webkit-progress-bar {
-  border-radius: 5px;
-  background: var(--ps-inset);
+.physics-paint-play-script-readout-key {
+  flex: 0 0 auto;
+  color: var(--ps-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
 }
 
-.physics-paint-play-script-progress-line progress::-webkit-progress-value {
-  border-radius: 4px;
-  background: var(--ps-accent);
-}
-
-.physics-paint-play-script-progress-line progress::-moz-progress-bar {
-  border-radius: 4px;
-  background: var(--ps-accent);
-}
-
-.physics-paint-play-script-progress-status {
-  min-width: 148px;
-  max-width: 340px;
+.physics-paint-play-script-readout-value {
+  min-width: 0;
   overflow: hidden;
   color: var(--ps-fg);
-  font-size: 11.5px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.physics-paint-play-script-progress-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ps-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* E5: a generation failure renders role="alert" in the footer STATUS slot — the
+   same element, classes and text as before, full message in `title`; it is never
+   a direct child of the surface. */
+.physics-paint-play-script-dialog-error {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ps-error);
+  font-size: 10.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .physics-paint-play-script-actions {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .physics-paint-play-script-button {
   appearance: none;
-  min-height: 34px;
-  padding: 8px 18px;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 7px;
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   text-transform: none;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
+.physics-paint-play-script-button svg { flex: 0 0 auto; }
+
 .physics-paint-play-script-button:disabled { opacity: 0.45; cursor: default; }
 
 .physics-paint-play-script-button-ghost {
-  border: 1px solid var(--ps-border);
+  border: 1px solid var(--ps-divider);
   background: transparent;
   color: var(--ps-muted);
 }
 
 .physics-paint-play-script-button-ghost:hover:not(:disabled) {
   border-color: var(--ps-faint);
-  background: var(--ps-raised);
+  background: var(--ps-panel-raised);
   color: var(--ps-fg);
 }
 

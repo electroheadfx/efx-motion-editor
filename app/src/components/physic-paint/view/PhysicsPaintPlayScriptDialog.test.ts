@@ -414,19 +414,30 @@ describe('PhysicsPaintPlayScriptDialog fixed shell (261101-cd5)', () => {
     expect(findAll(panel, byClass('physics-paint-play-script-key-column'))).toHaveLength(0);
     expect(findAll(panel, byClass('physics-paint-play-script-side-stack'))).toHaveLength(0);
 
-    // Timing and (until the footer tooltip lands) the readout are flat panel rows.
+    // Timing is a flat panel row; the readout left the panel for the footer.
     const timingCard = findOne(panel, byClass('physics-paint-play-script-card-timing'));
     expect(renderedParentOf(tree, timingCard)).toBe(panel);
-    const summaryBar = findOne(panel, byClass('physics-paint-play-script-summary-bar'));
-    expect(renderedParentOf(tree, summaryBar)).toBe(panel);
-    expect(panelChildren.indexOf(summaryBar)).toBeGreaterThan(panelChildren.indexOf(timingCard));
-    expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 25f (5f × 5)');
-    expect(textOf(findOne(summaryBar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 18f — shortened by the next clip');
+    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
 
-    // Footer stays outside the panel, inside the modal surface.
+    // Footer stays outside the panel, inside the modal surface: track → info →
+    // status on the left, actions last on the right.
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     expect(parentOf(tree, footer)).toBe(surface);
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Run Script'))).toBe('Run Script');
+    const footerChildren = childrenOf(footer).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(footerChildren.map((child) => String(child.props.class ?? ''))).toEqual([
+      'physics-paint-play-script-progress-line',
+      'physics-paint-play-script-actions',
+    ]);
+    const line = footerChildren[0]!;
+    const lineChildren = childrenOf(line).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(lineChildren.map((child) => String(child.props.class ?? ''))).toEqual([
+      'physics-paint-play-script-progress-track',
+      'physics-paint-play-script-readout',
+      'physics-paint-play-script-progress-status',
+    ]);
+    expect(textOf(findOne(footer, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script'))).toBe('Run Script');
   });
 
   it('marks the root with the reveal modifier only on the Reveal tab', () => {
@@ -438,14 +449,44 @@ describe('PhysicsPaintPlayScriptDialog fixed shell (261101-cd5)', () => {
     expect(hasClass(revealRoot, 'physics-paint-play-script-reveal')).toBe(true);
   });
 
-  it('splits the infinity readout as Cycle Nf × ∞ left / Effective right, and renders nothing when the readout is null', () => {
+  it('261101-cd5: opens Requested/Effective in a footer tooltip with the display prefixes stripped, and renders no info control when the readout is null', () => {
     const { controller } = createFakeController({ loopReadout: 'Cycle 4f × ∞ · Effective: 4f' });
     const tree = renderDialog(controller);
-    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-requested')))).toBe('Cycle 4f × ∞');
-    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 4f');
+    const tooltip = findOne(tree, byId('physics-play-script-readout-tooltip'));
+    expect(tooltip.props.role).toBe('tooltip');
+    const rows = findAll(tooltip, byClass('physics-paint-play-script-readout-row'));
+    expect(rows).toHaveLength(2);
+    expect(findAll(tooltip, byClass('physics-paint-play-script-readout-key')).map(textOf)).toEqual(['Requested', 'Effective']);
+    expect(findAll(tooltip, byClass('physics-paint-play-script-readout-value')).map(textOf)).toEqual(['Cycle 4f × ∞', '4f']);
+    // The info control is focusable and described by the tooltip (keyboard reach).
+    const info = findOne(tree, byClass('physics-paint-play-script-readout-info'));
+    expect(info.type).toBe('button');
+    expect(info.props['aria-label']).toBe('Run details');
+    expect(info.props['aria-describedby']).toBe('physics-play-script-readout-tooltip');
+    expect(tooltip.props.id).toBe(info.props['aria-describedby']);
+    // The readout lives in the footer, not the panel.
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    expect(renderedParentOf(tree, tooltip)).not.toBe(findOne(tree, byClass('physics-paint-play-script-content')));
+    expect(findAll(footer, byClass('physics-paint-play-script-readout'))).toHaveLength(1);
+
+    // Display-only prefixes never leak into the tooltip values (the row key carries them).
+    const prefixed = renderDialog(createFakeController({ loopReadout: 'Requested: 25f (5f × 5) · Effective: 18f' }).controller);
+    expect(findAll(prefixed, byClass('physics-paint-play-script-readout-value')).map(textOf)).toEqual(['25f (5f × 5)', '18f']);
+
     const empty = renderDialog(createFakeController({ loopReadout: null }).controller);
-    expect(findAll(empty, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
+    expect(findAll(empty, byId('physics-play-script-readout-tooltip'))).toHaveLength(0);
+    expect(findAll(empty, byClass('physics-paint-play-script-readout-info'))).toHaveLength(0);
+  });
+
+  it('keeps a persistent progress track and shows Ready while idle', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    const track = findOne(footer, byClass('physics-paint-play-script-progress-track'));
+    expect(track.props['aria-hidden']).toBe('true');
+    expect(findAll(footer, (vnode) => vnode.type === 'progress')).toHaveLength(0);
+    expect(textOf(findOne(footer, byClass('physics-paint-play-script-progress-status')))).toBe('Ready');
+    expect(findAll(footer, byClass('physics-paint-play-script-dialog-error'))).toHaveLength(0);
   });
 });
 
@@ -812,10 +853,27 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     const tree = renderDialog(controller);
     const error = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-inline-error') && hasClass(vnode, 'physics-paint-play-script-dialog-error'));
     expect(textOf(error)).toBe('Parent rejected the Play Script batch.');
+    expect(error.props.role).toBe('alert');
+    expect(error.props.title).toBe('Parent rejected the Play Script batch.');
     expect(findAll(tree, (vnode) => vnode.type === 'progress')).toHaveLength(0);
     expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script').props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-count')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
+
+    // The error lives in the footer status slot, never as a direct surface child.
+    const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+    const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
+    const progressLine = findOne(tree, byClass('physics-paint-play-script-progress-line'));
+    expect(parentOf(tree, error)).toBe(progressLine);
+    expect(parentOf(tree, progressLine)).toBe(footer);
+    expect(parentOf(tree, footer)).toBe(surface);
+    const surfaceChildren = childrenOf(surface).filter((child): child is TestVNode =>
+      typeof child === 'object' && child !== null && !Array.isArray(child));
+    expect(surfaceChildren.map((child) => String(child.props.class ?? ''))).toEqual([
+      'physics-paint-play-script-header',
+      'physics-paint-play-script-workspace',
+      'physics-paint-play-script-footer',
+    ]);
   });
 
   it('renders NO generation-error element after normal user cancellation while the dialog stays open', () => {
@@ -1146,7 +1204,8 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const tree = renderDialog(controller);
 
     expect(textOf(findOne(tree, byClass('physics-paint-play-script-header-range')))).toBe('F10 · Cycle 3f');
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 21f (7f × 3)');
+    const tooltip = findOne(tree, byId('physics-play-script-readout-tooltip'));
+    expect(findAll(tooltip, byClass('physics-paint-play-script-readout-value')).map(textOf)).toEqual(['21f (7f × 3)', '21f']);
     expect(findOne(tree, byId('physics-play-script-count')).props.value).toBe(3);
   });
 
@@ -1173,10 +1232,10 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(false);
     expect(findOne(tree, byId('physics-play-script-max')).props.disabled).toBe(true);
-    // The Requested/Effective readout renders in the summary bar.
-    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-requested')))).toBe('Requested: 15f (5f × 3)');
-    expect(textOf(findOne(bar, byClass('physics-paint-play-script-summary-effective')))).toBe('Effective: 8f — shortened by the next clip');
+    // 261101-cd5: the Requested/Effective readout rides the footer tooltip.
+    const tooltip = findOne(tree, byId('physics-play-script-readout-tooltip'));
+    expect(findAll(tooltip, byClass('physics-paint-play-script-readout-value')).map(textOf))
+      .toEqual(['15f (5f × 3)', '8f — shortened by the next clip']);
   });
 
   it('Update Static confirms; Regenerate Group opens the source-edit mode for the target loop', () => {
@@ -1340,6 +1399,31 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
   });
 
+  it('261101-cd5: assigns -surface-tall from the mode flags for every preserved mode and never for a creation view', () => {
+    const tall = (seed: FakeControllerSeed) => {
+      const tree = renderDialog(createFakeController(seed).controller);
+      const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+      expect(hasClass(surface, 'physics-paint-play-script-surface-tall')).toBe(true);
+    };
+    // Loop edit, source edit and its regenerate confirmation share the flag rule.
+    tall({ dialogMode: 'loop-edit' });
+    tall({ dialogMode: 'source-edit' });
+    tall(sourceEditSeed);
+    // All three stack kinds — Paint destination, Reveal destination, Reveal run — with and without a collision.
+    tall({ runDestination: { kind: 'stack', clipId: 'L1' } });
+    tall({ runDestination: { kind: 'stack', clipId: 'L1' }, stackCollision: { boundaryExclusive: 20, blocker: 'other-rail', victimClipId: 'L2' } });
+    tall({ runDestination: { kind: 'stack', clipId: 'R1' }, stackRailKind: 'reveal', railTab: 'reveal' });
+    tall({ runDestination: { kind: 'stack', clipId: 'L1' }, stackRailKind: 'playscript', stackRunKind: 'reveal-motion' });
+
+    // The four creation views keep the exact fixed 660 surface.
+    for (const railTab of ['paint', 'reveal'] as const) {
+      for (const mode of ['progressive', 'static'] as const) {
+        const tree = renderDialog(createFakeController({ railTab, mode }).controller);
+        const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+        expect(hasClass(surface, 'physics-paint-play-script-surface-tall')).toBe(false);
+      }
+    }
+  });
 });
 
 describe('PhysicsPaintPlayScriptDialog apply-time Link/Create choice (S4, D-05)', () => {
@@ -1565,7 +1649,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
         motion: panelIndexOf('physics-paint-play-script-card-motion'),
         globalLabel: panelIndexOf('physics-paint-play-script-global-label'),
         globalRow: panelIndexOf('physics-paint-play-script-global-row'),
-        summary: panelIndexOf('physics-paint-play-script-summary-bar'),
+        lastPanel: panelChildren.length - 1,
         keyScript: rowIndexOf('physics-paint-play-script-card-key-script'),
         seed: rowIndexOf('physics-paint-play-script-card-paint-seed-variation'),
         photoWiggle: rowIndexOf('physics-paint-play-script-card-photo-wiggle'),
@@ -1579,7 +1663,8 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(paintOrder.timing).toBe(paintOrder.mode + 1);
     expect(paintOrder.motion).toBeLessThan(paintOrder.globalLabel);
     expect(paintOrder.globalLabel).toBeLessThan(paintOrder.globalRow);
-    expect(paintOrder.globalRow).toBeLessThan(paintOrder.summary);
+    // 261101-cd5: the panel now ends on the global row (no summary bar).
+    expect(paintOrder.globalRow).toBe(paintOrder.lastPanel);
     // Paint creation row: Key Script → Paint Seed → Color.
     expect(paintOrder.keyScript).toBe(0);
     expect(paintOrder.seed).toBe(paintOrder.keyScript + 1);
@@ -1595,7 +1680,7 @@ describe('PhysicsPaintPlayScriptDialog Reveal Photo Rail tab (52-05, G-52-3)', (
     expect(revealOrder.timing).toBe(revealOrder.mode + 1);
     expect(revealOrder.motion).toBeLessThan(revealOrder.globalLabel);
     expect(revealOrder.globalLabel).toBeLessThan(revealOrder.globalRow);
-    expect(revealOrder.globalRow).toBeLessThan(revealOrder.summary);
+    expect(revealOrder.globalRow).toBe(revealOrder.lastPanel);
     expect(revealOrder.seed).toBe(0);
     expect(revealOrder.photoWiggle).toBe(revealOrder.seed + 1);
     expect(revealOrder.colorize).toBe(revealOrder.photoWiggle + 1);
@@ -1754,13 +1839,13 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     expect(createStepper.props.allowOutOfRangeEntry).toBeUndefined();
   });
 
-  it('uses the stack readout in the summary bar when the loop readout is absent', () => {
+  it('uses the stack readout in the footer tooltip when the loop readout is absent', () => {
     const { controller } = createFakeController(stackSeed({ loopReadout: null }));
     const tree = renderDialog(controller);
-    const bar = findOne(tree, byClass('physics-paint-play-script-summary-bar'));
-    expect(textOf(bar)).toContain('F13–F15');
-    expect(textOf(bar)).toContain('Source cycle +3');
-    expect(textOf(bar)).toContain('Stacks onto the existing cycle.');
+    const tooltip = findOne(tree, byId('physics-play-script-readout-tooltip'));
+    expect(textOf(tooltip)).toContain('F13–F15');
+    expect(textOf(tooltip)).toContain('Source cycle +3');
+    expect(textOf(tooltip)).toContain('Stacks onto the existing cycle.');
   });
 
   it('renders the Keep script switch ON for a flag-on stack destination and writes through setKeepScript', () => {
@@ -2035,7 +2120,8 @@ describe('PhysicsPaintPlayScriptDialog reveal stacking (261031-qps)', () => {
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
-    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-readout-tooltip'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
   });
 
   it('states that the run uses the rail’s own reference and never offers to replace it', () => {
@@ -2141,11 +2227,12 @@ describe('PhysicsPaintPlayScriptDialog Reveal run surface (261101-1pc)', () => {
     expect(findAll(tree, byClass('physics-paint-play-script-card-key-script'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
     expect(findAll(tree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
-    // Timing, stack readout, Keep script and the summary bar stay.
+    // Timing, stack readout, Keep script and the footer readout stay.
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-stack-readout'))).toHaveLength(1);
     expect(findAll(tree, byId('physics-play-script-keep-script'))).toHaveLength(1);
-    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-readout-tooltip'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-summary-bar'))).toHaveLength(0);
   });
 
   it('states that a placed document reference is used, with no action', () => {

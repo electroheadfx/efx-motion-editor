@@ -1,6 +1,6 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Image, Paintbrush, Play, X } from 'lucide-preact';
+import { Image, Info, Paintbrush, Play, X } from 'lucide-preact';
 import {
   isRevealRunKind,
   type RotoPlayScriptController,
@@ -182,22 +182,24 @@ export function PhysicsPaintPlayScriptDialog({
     || playScript.phase.value === 'committing'
     || playScript.phase.value === 'regenerating';
   const progressLabel = playScript.status.value ?? (progressValue ? `${progressValue.completed}/${progressValue.total}` : '');
-  // D-13/D-16 Row 4: the loop readout splits into Requested (left) and Effective (right)
-  // inside the summary bar. Infinity reads 'Cycle {N}f × ∞' on the left (D-12).
+  // D-13/D-16 Row 4: the loop readout splits into Requested and Effective rows.
+  // Infinity reads 'Cycle {N}f × ∞' on the left (D-12).
   // 261031-i54: a stack reports its resolved span/offset/outcome — prefer it over
-  // the creation readout so the bar never mixes the two laws.
+  // the creation readout so the tooltip never mixes the two laws.
+  // 261101-cd5: the readout is a footer tooltip opened on hover / keyboard focus;
+  // the row values drop the display prefixes because the row keys carry them.
   const stackSummary = stackReadout ? `${stackReadout.spanLabel} · ${stackReadout.offsetLabel} · ${stackReadout.outcomeLabel}` : null;
   const loopReadout = stackSummary ?? playScript.loopReadout.value;
   const EFFECTIVE_SEPARATOR = ' · Effective: ';
+  const REQUESTED_PREFIX = 'Requested: ';
   const effectiveSplitAt = loopReadout ? loopReadout.indexOf(EFFECTIVE_SEPARATOR) : -1;
-  const summaryRequested = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
-  const summaryEffective = loopReadout && effectiveSplitAt >= 0 ? `Effective: ${loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)}` : null;
-  const summaryBar = summaryRequested ? (
-    <p class="physics-paint-play-script-summary-bar">
-      <span class="physics-paint-play-script-summary-requested">{summaryRequested}</span>
-      {summaryEffective ? <span class="physics-paint-play-script-summary-effective">{summaryEffective}</span> : null}
-    </p>
-  ) : null;
+  const requestedReadout = loopReadout ? (effectiveSplitAt >= 0 ? loopReadout.slice(0, effectiveSplitAt) : loopReadout) : null;
+  const readoutRequested = requestedReadout?.startsWith(REQUESTED_PREFIX)
+    ? requestedReadout.slice(REQUESTED_PREFIX.length)
+    : requestedReadout;
+  const readoutEffective = loopReadout && effectiveSplitAt >= 0
+    ? loopReadout.slice(effectiveSplitAt + EFFECTIVE_SEPARATOR.length)
+    : null;
 
   // 43-06 S4 (D-05): the apply-time Link/Create choice renders only when the
   // controller reports an identical source cycle — a Paint Rail concept only
@@ -245,7 +247,7 @@ export function PhysicsPaintPlayScriptDialog({
     >
       <div
         ref={surfaceRef}
-        class="physics-paint-play-script-surface"
+        class={`physics-paint-play-script-surface${loopEdit || sourceEdit || stacking ? ' physics-paint-play-script-surface-tall' : ''}`}
         style={dragOffset.x !== 0 || dragOffset.y !== 0 ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
       >
         <div
@@ -434,19 +436,53 @@ export function PhysicsPaintPlayScriptDialog({
               busy={busy}
             />
           ) : null}
-          {summaryBar}
           </>)}
           </div>
         </div>
-        {playScript.error.value ? <span role="alert" class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span> : null}
         <div class="physics-paint-play-script-footer">
           <div class="physics-paint-play-script-progress-line">
-            {progressValue ? (
-              <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
-            ) : progressBusy ? (
-              <progress aria-label={progressLabel} />
+            {/* 261101-cd5: the 160 × 4 track is persistent; the real <progress>
+                exists only while generating. */}
+            <span class="physics-paint-play-script-progress-track" aria-hidden="true">
+              {progressValue ? (
+                <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
+              ) : progressBusy ? (
+                <progress aria-label={progressLabel} />
+              ) : null}
+            </span>
+            {readoutRequested ? (
+              /* Borderless tooltip on hover AND keyboard focus — CSS only, no
+                 state, no width work. Out of flow so the 56px footer never moves. */
+              <span class="physics-paint-play-script-readout">
+                <button
+                  type="button"
+                  class="physics-paint-play-script-readout-info"
+                  aria-label="Run details"
+                  aria-describedby="physics-play-script-readout-tooltip"
+                >
+                  <Info size={13} aria-hidden="true" />
+                </button>
+                <span id="physics-play-script-readout-tooltip" class="physics-paint-play-script-readout-tooltip" role="tooltip">
+                  <span class="physics-paint-play-script-readout-row">
+                    <span class="physics-paint-play-script-readout-key">Requested</span>
+                    <span class="physics-paint-play-script-readout-value">{readoutRequested}</span>
+                  </span>
+                  {readoutEffective ? (
+                    <span class="physics-paint-play-script-readout-row">
+                      <span class="physics-paint-play-script-readout-key">Effective</span>
+                      <span class="physics-paint-play-script-readout-value">{readoutEffective}</span>
+                    </span>
+                  ) : null}
+                </span>
+              </span>
             ) : null}
-            <span class="physics-paint-play-script-progress-status">{progressLabel}</span>
+            {/* The generation failure replaces the status text in this same slot;
+                it is never a direct child of the surface. */}
+            {playScript.error.value ? (
+              <span role="alert" title={playScript.error.value} class="physics-paint-script-inline-error physics-paint-play-script-dialog-error">{playScript.error.value}</span>
+            ) : (
+              <span class="physics-paint-play-script-progress-status">{progressLabel || 'Ready'}</span>
+            )}
           </div>
           <div class="physics-paint-play-script-actions">
             {regenerateImpact ? (<>
@@ -504,7 +540,9 @@ export function PhysicsPaintPlayScriptDialog({
                     ? standardEditTarget
                       ? 'Update Rail'
                       : playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
-                    : sourceEdit ? 'Regenerate source cycle' : 'Run Script'}
+                    : sourceEdit
+                      ? 'Regenerate source cycle'
+                      : (<><Play size={11} aria-hidden="true" />Run Script</>)}
                 </button>
               ) : null}
             </>)}
