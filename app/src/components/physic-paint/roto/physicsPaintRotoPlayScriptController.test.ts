@@ -5,6 +5,8 @@ import type { PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult } from '.
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
   createRotoPlayScriptController,
+  REVEAL_RUN_REFERENCE_LOADING_COPY,
+  REVEAL_RUN_REFERENCE_MISSING_COPY,
   type RotoGeneratedPhysicalPublication,
   type RotoPlayScriptCommitResult,
   type RotoPlayScriptController,
@@ -6317,7 +6319,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     test.controller.setStackRunKind('reveal-motion');
     const authorityCallsBefore = test.requestAuthority.mock.calls.length;
     expect(await test.controller.confirm()).toBe(false);
-    expect(test.controller.error.value).toBe('This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.');
+    expect(test.controller.error.value).toBe(REVEAL_RUN_REFERENCE_MISSING_COPY);
     expect(test.controller.phase.value).toBe('idle');
     expect(test.requestAuthority.mock.calls.length).toBe(authorityCallsBefore);
     expect(test.bakeOptions).toHaveLength(0);
@@ -6327,12 +6329,15 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
   });
 
   // WR-02 (261101-1pc review): a placed reference can still lack hydrated
-  // bytes per touched frame (launch/reopen hydration in flight). The render
-  // seam's reference failures keep the GATE's user-facing copy; every other
-  // refusal keeps the internal reason.
-  it.each(['missing reference source', 'no photo reference'])(
-    'surfaces the reference gate copy when the reveal run render refuses with %j, writing nothing (Quick C2 WR-02)',
-    async (reason) => {
+  // bytes per touched frame (launch/reopen hydration in flight). Each
+  // reference failure maps to its own accurate copy; every other refusal
+  // keeps the internal reason.
+  it.each([
+    ['missing reference source', REVEAL_RUN_REFERENCE_LOADING_COPY],
+    ['no photo reference', REVEAL_RUN_REFERENCE_MISSING_COPY],
+  ])(
+    'surfaces the accurate reference copy when the reveal run render refuses with %j, writing nothing (Quick C2 WR-02)',
+    async (reason, expectedCopy) => {
       const refusing = vi.fn(async () => ({ kind: 'refused' as const, reason }));
       const test = stackHarness(
         [stackClip(2)],
@@ -6344,7 +6349,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
       test.controller.setStackRunKind('reveal-motion');
       test.controller.countText.value = '2';
       expect(await test.controller.confirm()).toBe(false);
-      expect(test.controller.error.value).toBe('This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.');
+      expect(test.controller.error.value).toBe(expectedCopy);
+      // A user-fixable reference problem leaves the run idle, not failed.
+      expect(test.controller.phase.value).toBe('idle');
       // Zero writes: the refusal precedes the union, the composite, the record
       // and the single commit.
       expect(refusing).toHaveBeenCalledTimes(1);
@@ -6410,7 +6417,7 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     placed = false;
     const authorityCallsBefore = test.requestAuthority.mock.calls.length;
     expect(await test.controller.confirm()).toBe(false);
-    expect(test.controller.error.value).toBe('This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.');
+    expect(test.controller.error.value).toBe(REVEAL_RUN_REFERENCE_MISSING_COPY);
     expect(test.controller.phase.value).toBe('idle');
     // The gate runs BEFORE acceptedGeneration: no confirm-time authority, bake
     // or write of any kind ever happens.

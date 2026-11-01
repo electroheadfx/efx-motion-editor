@@ -88,16 +88,25 @@ export function stackRunKindMode(kind: RotoPlayScriptStackRunKind): RotoPlayScri
   return kind === 'static' || kind === 'reveal-static' ? 'static' : 'progressive';
 }
 
+/** 261101-1pc: the confirm gate's copy when the document has no reference track. */
+export const REVEAL_RUN_REFERENCE_MISSING_COPY = 'This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.';
+
+/** 261101-1pc: a track exists but its decoded bytes are not hydrated yet. */
+export const REVEAL_RUN_REFERENCE_LOADING_COPY = 'The photo reference is still loading. Wait a moment, then run again. Nothing changed.';
+
 /**
  * WR-02 (261101-1pc review): the run render seam reports reference failures as
- * internal diagnostics — `missing reference source` when a touched frame has no
- * hydrated bytes (a launch/reopen hydration still in flight), `no photo
- * reference` when the document lost its track after the gate. Both mean the
- * same thing to the user as the pre-authority gate's check, so the run maps
- * them to that gate's copy instead of leaking the seam's wording.
+ * internal diagnostics. `missing reference source` means the track exists but
+ * a touched frame's bytes are not hydrated yet (a launch/reopen hydration in
+ * flight); `no photo reference` means the document lost its track after the
+ * gate. Each maps to its own accurate copy instead of leaking seam wording —
+ * telling a user with a placed-but-loading reference to place one would be
+ * wrong and unactionable.
  */
-function isMissingRevealReferenceReason(reason: string): boolean {
-  return reason === 'missing reference source' || reason === 'no photo reference';
+export function revealRunReferenceFailureCopy(reason: string): string | null {
+  if (reason === 'missing reference source') return REVEAL_RUN_REFERENCE_LOADING_COPY;
+  if (reason === 'no photo reference') return REVEAL_RUN_REFERENCE_MISSING_COPY;
+  return null;
 }
 
 /** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
@@ -634,9 +643,11 @@ export interface RotoPlayScriptController {
    * Motion / Reveal Static. Dialog state only, never persisted; the committed
    * Standard Rail still stores the destination's `mode`.
    *
-   * Read-only: `setStackRunKind` is the sole writer, because it is the only
-   * path that also derives `mode` — a direct signal write would desync the
-   * visible card set from the mode the bake reads.
+   * Read-only: `setStackRunKind` is the public write path and the only one
+   * that derives `mode`. The open reset and the stack seed write the signal
+   * directly ONLY because they seed `mode` immediately before it, so the two
+   * stay in lockstep; any other direct write would desync the visible card
+   * set from the mode the bake reads.
    */
   stackRunKind: ReadonlySignal<RotoPlayScriptStackRunKind>;
   /** Choose the run kind and derive the single mode the bake uses (compare-then-write). */
@@ -2553,7 +2564,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const revealRunRefusal = !revealRunPortPresent()
         ? 'This build cannot render a Reveal run. Nothing changed.'
         : !(ports.hasPhotoReference?.() ?? false)
-          ? 'This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.'
+          ? REVEAL_RUN_REFERENCE_MISSING_COPY
           : null;
       if (revealRunRefusal !== null) {
         collisionChoice.value = null;
@@ -2799,12 +2810,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           assertCurrent(acceptedGeneration);
           // WR-02: the gate above proved a reference is PLACED, but the render
           // needs hydrated bytes per touched frame. A reference failure here
-          // keeps the gate's user-facing copy; every other refusal stays an
-          // internal `Reveal run render refused: <reason>`.
+          // returns the same idle surface as the gate (a user-fixable reference
+          // problem is not a failed run); every other refusal stays an internal
+          // `Reveal run render refused: <reason>`.
           if (rendered.kind !== 'baked') {
-            throw new Error(isMissingRevealReferenceReason(rendered.reason)
-              ? 'This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.'
-              : `Reveal run render refused: ${rendered.reason}`);
+            const referenceCopy = revealRunReferenceFailureCopy(rendered.reason);
+            if (referenceCopy !== null) {
+              collisionChoice.value = null;
+              phase.value = 'idle'; progress.value = null; status.value = null;
+              error.value = referenceCopy;
+              return false;
+            }
+            throw new Error(`Reveal run render refused: ${rendered.reason}`);
           }
           const runBytesByFrame = collectExactFrameCoverage(rendered.frames, 'Reveal run');
           sheets = destinationAppFrames.map((appFrame) => ({ appFrame, bytes: runBytesByFrame.get(appFrame)! }));
