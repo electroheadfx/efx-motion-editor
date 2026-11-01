@@ -170,7 +170,7 @@ Grounded facts (verified against the live tree — do not re-derive, do not inve
 
 <task type="auto" tdd="true">
   <name>Task 2: The session switch and the bold band in the drawing leaf (paint band + Eraser fallback), with the 261029-eur overlay pin rewritten</name>
-  <files>app/src/components/physic-paint/view/scriptStrokeEdition.ts, app/src/components/physic-paint/view/aquarelleStrokeSelection.ts, app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx, app/src/components/physic-paint/PhysicsPaintStudio.test.ts</files>
+  <files>app/src/components/physic-paint/view/scriptStrokeEdition.ts, app/src/components/physic-paint/view/aquarelleStrokeSelection.ts, app/src/components/physic-paint/engine/ScriptStrokeOverlay.tsx, app/src/components/physic-paint/view/scriptStrokeEdition.test.ts, app/src/components/physic-paint/PhysicsPaintStudio.test.ts</files>
   <behavior>
     - `strokeSizePreview` starts false; `setStrokeSizePreview(true)` notifies an `effect` subscriber exactly once and a repeated `setStrokeSizePreview(true)` notifies zero times (compare-then-write); turning select mode off does NOT reset it (session preference).
     - `resolveAquarelleStrokeBandPx(entry, size)` returns `undefined` for a paint entry AND for a lift entry while the switch is OFF; with the switch ON it returns the lift entry's `ribbonPx` BY IDENTITY (`toBe`) and a paint polygon with more than two finite vertices.
@@ -179,6 +179,8 @@ Grounded facts (verified against the live tree — do not re-derive, do not inve
   </behavior>
   <action>
     Session switch (`app/src/components/physic-paint/view/scriptStrokeEdition.ts`): beside `scriptSelectMode` (`:107-108`) add `export const strokeSizePreview = signal(false);` documented as the Move/Edit "Preview stroke size" VIEW PREFERENCE — session/UI state only, never written to the document, never in the undo stack, never persisted — and `export function setStrokeSizePreview(on: boolean): void` with a compare-then-write guard and an early return when unchanged (rule 3). It must NOT be reset by `setScriptSelectMode`.
+
+    Setter pins (`app/src/components/physic-paint/view/scriptStrokeEdition.test.ts`): add a case for the new switch in the file's existing shared-seam style — subscribe an `effect` to `strokeSizePreview`, assert it starts `false`, set it once and assert a single notification carrying `true`, set the SAME value again and assert zero further notifications (compare-then-write), then flip select mode with `setScriptSelectMode(true)` and `setScriptSelectMode(false)` and assert `strokeSizePreview.value` is still `true` (session preference, never reset by the select-mode teardown). Dispose the effect at the end, like the surrounding cases.
 
     Extend the port (`:373-384`) with the optional display-only member `bandFor?(entry: SelectableScriptStroke, size: ScriptStrokeSize): CanvasPoint[] | undefined;` documented as the footprint band the overlay draws while the preview switch is on; absent means the module has no band geometry and the overlay draws its centerline. It is NEVER a hit-test or bounds input.
 
