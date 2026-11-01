@@ -816,7 +816,19 @@ export function PhysicsPaintStrokeSettingsDialog({
               // write — the `sawEmptySinceDismiss = false` precedent).
               if (next === 'settings') strokeSettingsViewInvalidated = false;
               const ref = settingsViewRef.current!;
-              if (ref.value !== next) ref.value = next;
+              if (ref.value !== next) {
+                ref.value = next;
+                return;
+              }
+              // An INVALIDATED request already holds the target value ('list'
+              // shows while the signal still says 'settings'), so a plain
+              // compare-then-write would notify nobody and this click would
+              // look dead. Re-assert through the opposite value: both writes
+              // run inside this handler and signals batch them into ONE render.
+              if (view !== next) {
+                ref.value = next === 'settings' ? 'list' : 'settings';
+                ref.value = next;
+              }
             }}
           >
             {view === 'settings'

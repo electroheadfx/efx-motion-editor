@@ -2797,6 +2797,17 @@ describe('261101-jmm list-first stroke settings sheet', () => {
     expect(findByTestId(renderDialog(bundle), 'stroke-settings-tabs')).toBeDefined();
   });
 
+  it('re-asserts an invalidated request so the header toggle never dead-clicks', () => {
+    // The harness re-renders by hand, so a compare-then-write that performs no
+    // write is invisible here — `renderDialog(bundle)` re-reads the signal even
+    // when it notified nobody. In the real app nothing re-renders without a
+    // notification: an INVALIDATED request still holds 'settings' while the
+    // list shows, so clicking the icon would be a no-op. Pin the source-level
+    // remedy — write through the OPPOSITE value, then the target.
+    expect(dialogSource).toContain("ref.value = next === 'settings' ? 'list' : 'settings';");
+    expect(dialogSource).toContain('if (view !== next) {');
+  });
+
   it('keeps the settings view across a non-empty selection change', () => {
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([9]);
