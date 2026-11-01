@@ -45,6 +45,7 @@ import {
   readColorField,
   readNumericField,
   readPaintSeedVariation,
+  resolveStrokeListRange,
   resolveStrokeSettingsOpen,
   resolveStrokeSettingsView,
   resolveStrokeTipFilter,
@@ -2841,8 +2842,173 @@ describe('261101-jmm list-first stroke settings sheet', () => {
 
     expect(findByTestId(tree, 'stroke-settings-view-toggle')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-delete-selection')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
+  });
+
+  // ── 261101-jmm Task 2: multi-select + trashes ────────────────────
+
+  function clickRow(tree: unknown, mutationId: number, event: Record<string, unknown>): void {
+    const row = findByTestId(tree, `stroke-settings-stroke-${mutationId}`);
+    expect(row, `row ${mutationId}`).toBeDefined();
+    (row!.props.onClick as (event: unknown) => void)({
+      shiftKey: false,
+      metaKey: false,
+      ctrlKey: false,
+      ...event,
+    });
+  }
+
+  function deleteStub(): ReturnType<typeof vi.fn> {
+    return vi.fn();
+  }
+
+  it('resolves the inclusive DISPLAYED range and rejects invalid indices', () => {
+    expect(resolveStrokeListRange([9, 7, 8], 0, 2)).toEqual([9, 7, 8]);
+    expect(resolveStrokeListRange([9, 7, 8], 2, 0)).toEqual([9, 7, 8]);
+    expect(resolveStrokeListRange([9, 7, 8], 0, 1)).toEqual([9, 7]);
+    expect(resolveStrokeListRange([9, 7, 8], 1, 1)).toEqual([7]);
+    expect(resolveStrokeListRange([9, 7, 8], 1, 2)).toEqual([7, 8]);
+    expect(resolveStrokeListRange([], 0, 0)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], -1, 0)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], 0, -1)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], 0.5, 1)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], 0, 1.5)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], 0, 2)).toEqual([]);
+    expect(resolveStrokeListRange([9, 7], 2, 0)).toEqual([]);
+  });
+
+  it('plain replaces, Cmd and Ctrl toggle, Shift takes the displayed range', () => {
+    setAquarelleSelectMode(true);
+    const { bundle } = sheetBundle();
+    // Displayed order is topmost-first: 7 then 9 (equal positions, serial tie).
+    expect(
+      strokeRows(renderDialog(bundle)).map((row) => row.props['data-testid']),
+    ).toEqual(['stroke-settings-stroke-7', 'stroke-settings-stroke-9']);
+
+    clickRow(renderDialog(bundle), 9, {});
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+
+    // Cmd+click adds; the anchor moves to that row.
+    clickRow(renderDialog(bundle), 7, { metaKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9, 7]));
+
+    // Ctrl+click toggles too.
+    clickRow(renderDialog(bundle), 9, { ctrlKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7]));
+
+    // Shift from the anchor (row 9 = index 1) to row 7 (index 0): the whole
+    // inclusive displayed range, in DISPLAYED order.
+    clickRow(renderDialog(bundle), 7, { shiftKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7, 9]));
+
+    // Cmd on row 7 removes it and re-anchors on index 0; Shift to row 9 then
+    // takes the forward range again.
+    clickRow(renderDialog(bundle), 7, { metaKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+    clickRow(renderDialog(bundle), 9, { shiftKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7, 9]));
+
+    // Anchor on row 9 (index 1), Shift back to row 7 (index 0): the range is
+    // still emitted in DISPLAYED order.
+    clickRow(renderDialog(bundle), 9, { metaKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7]));
+    clickRow(renderDialog(bundle), 7, { shiftKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7, 9]));
+
+    // Single-row range: Shift on the anchor itself.
+    clickRow(renderDialog(bundle), 9, { shiftKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+  });
+
+  it('Shift before any plain or Cmd click behaves as a plain click', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+    const { bundle } = sheetBundle();
+    clickRow(renderDialog(bundle), 7, { shiftKey: true });
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([7]));
+  });
+
+  it('marks a selected row wrapper with is-selected', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const tree = renderDialog(sheetBundle().bundle);
+    expect(findByTestId(tree, 'stroke-settings-row-9')!.props.class).toContain('is-selected');
+    expect(findByTestId(tree, 'stroke-settings-row-7')!.props.class).not.toContain('is-selected');
+  });
+
+  it('a row trash deletes only its own stroke and never touches the selection', () => {
+    const deleteStrokes = deleteStub();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle({ deleteStrokes });
+    const tree = renderDialog(bundle);
+
+    const trash = findByTestId(tree, 'stroke-settings-row-delete-7')!;
+    expect(trash).toBeDefined();
+    expect(trash.props['aria-label']).toBe('Delete stroke #7');
+
+    const stopPointerDown = vi.fn();
+    (trash.props.onPointerDown as (event: unknown) => void)({ stopPropagation: stopPointerDown });
+    expect(stopPointerDown).toHaveBeenCalledTimes(1);
+
+    const stopClick = vi.fn();
+    (trash.props.onClick as (event: unknown) => void)({ stopPropagation: stopClick });
+    expect(stopClick).toHaveBeenCalledTimes(1);
+    expect(deleteStrokes).toHaveBeenCalledWith([7]);
+    // No selection setter ran: the other row stays exactly as selected.
+    expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
+  });
+
+  it('the global trash is disabled below two strokes and deletes the whole selection', () => {
+    const deleteStrokes = deleteStub();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle({ deleteStrokes });
+
+    const one = renderDialog(bundle);
+    expect(findByTestId(one, 'stroke-settings-delete-selection')!.props.disabled).toBe(true);
+
+    setScriptStrokeSelection([9, 7]);
+    const two = renderDialog(bundle);
+    const globalTrash = findByTestId(two, 'stroke-settings-delete-selection')!;
+    expect(globalTrash.props.disabled).toBe(false);
+
+    const stopPointerDown = vi.fn();
+    (globalTrash.props.onPointerDown as (event: unknown) => void)({
+      stopPropagation: stopPointerDown,
+    });
+    expect(stopPointerDown).toHaveBeenCalledTimes(1);
+
+    (globalTrash.props.onClick as () => void)();
+    expect(deleteStrokes).toHaveBeenCalledWith([9, 7]);
+  });
+
+  it('a delete that empties the selection renders the list, and the request stays invalidated', () => {
+    const deleteStrokes = vi.fn(() => {
+      setScriptStrokeSelection([]);
+    });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9, 7]);
+    const { bundle } = sheetBundle({ deleteStrokes });
+
+    // Really in the settings view: the tabs are up.
+    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
+
+    (findByTestId(renderDialog(bundle), 'stroke-settings-delete-selection')!.props.onClick as () => void)();
+    expect(deleteStrokes).toHaveBeenCalledWith([9, 7]);
+
+    const emptied = renderDialog(bundle);
+    expect(findByTestId(emptied, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(emptied, 'stroke-settings-tabs')).toBeUndefined();
+
+    // The delete-to-empty ALSO invalidated the pending request: the next
+    // non-empty selection lands on the list with no icon click.
+    setScriptStrokeSelection([9]);
+    const reselected = renderDialog(bundle);
+    expect(findByTestId(reselected, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(reselected, 'stroke-settings-tabs')).toBeUndefined();
   });
 });

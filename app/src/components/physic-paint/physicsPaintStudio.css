@@ -1508,6 +1508,9 @@ button.destructive {
   align-items: center;
   gap: 6px;
   width: 100%;
+  /* 261101-jmm: the row shares the item with its sibling per-row trash. */
+  flex: 1 1 0;
+  min-width: 0;
   padding: 5px 6px;
   border: 1px solid #565b61;
   border-radius: 6px;
@@ -1571,6 +1574,61 @@ button.destructive {
   font-size: 9px;
   font-style: italic;
   color: #9aa5b1;
+}
+
+/* 261101-jmm: a row is the selectable button plus its sibling per-row trash.
+   The item is the flex wrapper; the button keeps its 3-column grid. */
+.physics-paint-stroke-settings-list-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row {
+  border-color: #7e9cff;
+  background: #454b5a;
+}
+
+/* Same reveal law as the scripts list (261022-o2a): hidden until the row is
+   hovered, focused or selected. Never `display: none` — the button must stay
+   focusable so `:focus-within` can reveal it after a delete round-trip. */
+.physics-paint-stroke-settings-list-row-delete {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #5a6067;
+  border-radius: 4px;
+  background: transparent;
+  color: #9aa3ad;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s, background-color 0.12s;
+}
+
+.physics-paint-stroke-settings-list-item:hover .physics-paint-stroke-settings-list-row-delete,
+.physics-paint-stroke-settings-list-item:focus-within .physics-paint-stroke-settings-list-row-delete,
+.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.physics-paint-stroke-settings-list-row-delete:hover {
+  border-color: #b4544f;
+  background: rgba(190, 72, 66, 0.18);
+  color: #ff9b94;
+}
+
+.physics-paint-stroke-settings-list-row-delete:focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: 2px;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* 261031-cf9: the 12px switch margin belongs to the top bar; inside the

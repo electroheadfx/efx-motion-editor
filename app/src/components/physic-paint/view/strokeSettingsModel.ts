@@ -464,6 +464,29 @@ export function shouldInvalidateStrokeSettingsView(
 }
 
 /**
+ * The inclusive DISPLAYED range between the shift anchor and the clicked row.
+ * Both indices address `orderedIds` (the rendered order), so the result keeps
+ * the displayed order — never the selection's insertion order. Anything that
+ * is not an integer index inside `0..length - 1` (an empty list, a negative
+ * index, a fractional index, an index past the end) resolves to no ids, which
+ * the caller must treat as "no range".
+ */
+export function resolveStrokeListRange(
+  orderedIds: readonly number[],
+  anchorIndex: number,
+  clickedIndex: number,
+): number[] {
+  const last = orderedIds.length - 1;
+  if (last < 0) return [];
+  if (!Number.isInteger(anchorIndex) || !Number.isInteger(clickedIndex)) return [];
+  if (anchorIndex < 0 || clickedIndex < 0) return [];
+  if (anchorIndex > last || clickedIndex > last) return [];
+  const start = Math.min(anchorIndex, clickedIndex);
+  const end = Math.max(anchorIndex, clickedIndex);
+  return orderedIds.slice(start, end + 1);
+}
+
+/**
  * The view-supplied callback bundle. The dialog never consumes the shared
  * ScriptStrokeEditionPort — the Studio chooses the active module's engine
  * paths and hands them in. Geometry members may be async (the watercolor
@@ -504,6 +527,13 @@ export interface StrokeSettingsDialogBundle {
    * falls back to the module law — watercolor keeps it open.
    */
   readonly keepOpenOnEmpty?: boolean;
+  /**
+   * 261101-jmm: the SAME delete path as Backspace/Delete (`aquarelleStrokesOnFrame`
+   * guards, one undoable edit, one re-bake). The row trash passes exactly its
+   * own `mutationId`; the header trash passes the whole current selection.
+   * Absent hides both affordances. The dialog never touches the engine.
+   */
+  readonly deleteStrokes?: (ids: readonly number[]) => boolean | Promise<boolean> | void;
 }
 
 // ============================================================

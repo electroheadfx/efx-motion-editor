@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { List, Settings2, SlidersHorizontal, X } from 'lucide-preact';
+import { List, Settings2, SlidersHorizontal, Trash2, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -24,6 +24,7 @@ import {
   readColorField,
   readNumericField,
   readPaintSeedVariation,
+  resolveStrokeListRange,
   resolveStrokeSettingsOpen,
   resolveStrokeSettingsView,
   resolveStrokeTipFilter,
@@ -56,9 +57,11 @@ import {
   aquarelleStrokeToolFilter,
   aquarelleStrokeTypeFilter,
   selectAquarelleStroke,
+  setAquarelleStrokeSelection,
   setAquarelleStrokeTipFilter,
   setAquarelleStrokeToolFilter,
   setAquarelleStrokeTypeFilter,
+  toggleAquarelleStrokeSelection,
   type AquarelleStrokeToolFilter,
   type AquarelleStrokeTypeFilter,
 } from './aquarelleStrokeSelection';
@@ -408,6 +411,11 @@ export function PhysicsPaintStrokeSettingsDialog({
    */
   const settingsViewRef = useRef<Signal<StrokeSettingsView> | null>(null);
   if (!settingsViewRef.current) settingsViewRef.current = signal<StrokeSettingsView>('list');
+  /**
+   * 261101-jmm: the Shift-range anchor, held as the DISPLAYED row index (the
+   * StrokeList law). Set by a plain or Cmd/Ctrl click, never by Shift itself.
+   */
+  const rowAnchorRef = useRef<number>(-1);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -532,6 +540,9 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   if (!bundle || !open) return null;
 
+  // 261101-jmm: the bundle's delete path — present on watercolor (the Studio
+  // passes the SAME handler as Backspace/Delete). Absent hides both trashes.
+  const deleteStrokes = bundle.deleteStrokes;
   const requestedSettingsTab = settingsTabRef.current.value;
   const stackTabAvailable = Boolean(bundle.reorderStroke);
   const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
@@ -553,6 +564,9 @@ export function PhysicsPaintStrokeSettingsDialog({
   const listRows = sortStrokesTopmostFirst(
     filterStrokeListRows(typeRows, { tool: effectiveTool, tip: effectiveTip }),
   );
+  // 261101-jmm: the Shift range walks the DISPLAYED order, so the ids are read
+  // from the rendered rows (never from the selection's insertion order).
+  const displayedIds = listRows.map((stroke) => stroke.mutationId);
   const listSummary = strokeListSummary(bundle.playFrame, strokes);
   // 261029-eur: the Paint tab hides whenever an ERASER stroke is in play —
   // either the filter is Eraser, or a lift sits in the selection (a lift has
@@ -765,6 +779,24 @@ export function PhysicsPaintStrokeSettingsDialog({
         />
         <strong>Stroke settings</strong>
         <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
+        {engineModule === 'watercolor' && deleteStrokes ? (
+          <button
+            type="button"
+            data-testid="stroke-settings-delete-selection"
+            class="physics-paint-stroke-settings-header-button"
+            aria-label="Delete selected strokes"
+            title="Delete selected strokes"
+            // A per-row trash owns the single-stroke case.
+            disabled={selection.size < 2}
+            // The header is the drag handle (see Close below).
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              void deleteStrokes([...selection]);
+            }}
+          >
+            <Trash2 size={12} aria-hidden="true" />
+          </button>
+        ) : null}
         {engineModule === 'watercolor' ? (
           <button
             type="button"
@@ -925,59 +957,105 @@ export function PhysicsPaintStrokeSettingsDialog({
                 <span data-testid="stroke-settings-list-empty-filter" style={PAINT_ROW_LABEL_STYLE}>
                   No strokes match this filter.
                 </span>
-              ) : listRows.map((stroke) => {
+              ) : listRows.map((stroke, index) => {
                 const typeLabel = strokeToolLabel(stroke.tool);
                 const tipName = resolveStrokeTipName(stroke.brushId);
+                const selected = selection.has(stroke.mutationId);
                 return (
-                  <button
+                  <div
                     key={stroke.mutationId}
-                    type="button"
-                    data-testid={`stroke-settings-stroke-${stroke.mutationId}`}
-                    aria-label={`${typeLabel} stroke #${stroke.serial}, ${tipName}, position ${stroke.stackPosition} of ${stroke.stackTotal}`}
-                    class="physics-paint-stroke-settings-list-row"
-                    style={{ textTransform: 'none' }}
-                    onClick={() => selectAquarelleStroke(stroke.mutationId)}
+                    data-testid={`stroke-settings-row-${stroke.mutationId}`}
+                    class={`physics-paint-stroke-settings-list-item${selected ? ' is-selected' : ''}`}
                   >
-                    <span
-                      data-testid="stroke-settings-stroke-dot"
-                      class="physics-paint-stroke-settings-list-dot"
-                      style={{ backgroundColor: stroke.color }}
-                    />
-                    <span
-                      data-testid="stroke-settings-stroke-type"
-                      class="physics-paint-stroke-settings-list-type"
+                    <button
+                      type="button"
+                      data-testid={`stroke-settings-stroke-${stroke.mutationId}`}
+                      aria-label={`${typeLabel} stroke #${stroke.serial}, ${tipName}, position ${stroke.stackPosition} of ${stroke.stackTotal}`}
+                      class="physics-paint-stroke-settings-list-row"
+                      style={{ textTransform: 'none' }}
+                      onClick={(event) => {
+                        // The StrokeList multi-select law, on the ONE shared
+                        // selection signal: plain replaces, Cmd/Ctrl toggles,
+                        // Shift takes the inclusive displayed range from the
+                        // last plain/Cmd click. Shift without an anchor is a
+                        // plain click. No move code lives here — the canvas
+                        // drag, transform handles and Geometry rows already
+                        // operate on the whole selection.
+                        if (event.shiftKey && rowAnchorRef.current >= 0) {
+                          setAquarelleStrokeSelection(
+                            resolveStrokeListRange(displayedIds, rowAnchorRef.current, index),
+                          );
+                          return;
+                        }
+                        if (event.metaKey || event.ctrlKey) {
+                          toggleAquarelleStrokeSelection(stroke.mutationId);
+                          rowAnchorRef.current = index;
+                          return;
+                        }
+                        selectAquarelleStroke(stroke.mutationId);
+                        rowAnchorRef.current = index;
+                      }}
                     >
-                      {typeLabel}
-                    </span>
-                    <span
-                      data-testid="stroke-settings-stroke-serial"
-                      class="physics-paint-stroke-settings-list-serial"
-                    >
-                      {`#${stroke.serial}`}
-                    </span>
-                    <span class="physics-paint-stroke-settings-list-meta">
                       <span
-                        data-testid="stroke-settings-stroke-position"
-                        class="physics-paint-stroke-settings-list-position"
+                        data-testid="stroke-settings-stroke-dot"
+                        class="physics-paint-stroke-settings-list-dot"
+                        style={{ backgroundColor: stroke.color }}
+                      />
+                      <span
+                        data-testid="stroke-settings-stroke-type"
+                        class="physics-paint-stroke-settings-list-type"
                       >
-                        {`${stroke.stackPosition}/${stroke.stackTotal}`}
+                        {typeLabel}
                       </span>
                       <span
-                        data-testid="stroke-settings-stroke-tip"
-                        class="physics-paint-stroke-settings-list-tip"
+                        data-testid="stroke-settings-stroke-serial"
+                        class="physics-paint-stroke-settings-list-serial"
                       >
-                        {tipName}
+                        {`#${stroke.serial}`}
                       </span>
-                      {stroke.customResponse ? (
+                      <span class="physics-paint-stroke-settings-list-meta">
                         <span
-                          data-testid="stroke-settings-stroke-custom"
-                          class="physics-paint-stroke-settings-list-custom"
+                          data-testid="stroke-settings-stroke-position"
+                          class="physics-paint-stroke-settings-list-position"
                         >
-                          Custom response
+                          {`${stroke.stackPosition}/${stroke.stackTotal}`}
                         </span>
-                      ) : null}
-                    </span>
-                  </button>
+                        <span
+                          data-testid="stroke-settings-stroke-tip"
+                          class="physics-paint-stroke-settings-list-tip"
+                        >
+                          {tipName}
+                        </span>
+                        {stroke.customResponse ? (
+                          <span
+                            data-testid="stroke-settings-stroke-custom"
+                            class="physics-paint-stroke-settings-list-custom"
+                          >
+                            Custom response
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                    {deleteStrokes ? (
+                      <button
+                        type="button"
+                        data-testid={`stroke-settings-row-delete-${stroke.mutationId}`}
+                        class="physics-paint-stroke-settings-list-row-delete"
+                        aria-label={`Delete stroke #${stroke.serial}`}
+                        title={`Delete stroke #${stroke.serial}`}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          // Sibling of the row button: never let the press
+                          // reach the selectable row, and run NO selection
+                          // setter — the delete path owns the outcome.
+                          event.stopPropagation();
+                          void deleteStrokes([stroke.mutationId]);
+                        }}
+                      >
+                        <Trash2 size={12} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
