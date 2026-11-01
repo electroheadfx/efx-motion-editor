@@ -6216,6 +6216,72 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.controller.appliedSummary.line1.value).not.toContain('#abcdef');
   });
 
+  it('runs a Reveal Static run in static mode while storing the destination mode (Quick C2)', async () => {
+    // IN-05: the 2x2 grid's fourth corner through a real bake/commit. The
+    // destination is Progressive, so the run kind and the stored rail mode must
+    // diverge: the bake holds one wash, the Standard Rail keeps Progressive.
+    const target = stackClip(2, { mode: 'progressive' });
+    const test = stackHarness(
+      [target],
+      { canonicalStart: 11 },
+      { hasPhotoReference: () => true },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setStackRunKind('reveal-static');
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    // The run port renders Static…
+    expect(test.bakeRevealStackRun).toHaveBeenCalledTimes(1);
+    const runCall = test.bakeRevealStackRun.mock.calls[0]![0] as unknown as { mode: string };
+    expect(runCall.mode).toBe('static');
+    // …and the plain-paper bake (the per-key slices) also settled ONE static
+    // wash — no progressive poser.
+    expect(test.bakeOptions[0]).toMatchObject({ frameCount: 1, poseFrame: undefined });
+    // The committed Standard Rail still stores the DESTINATION's mode.
+    const committed = (test.commit.mock.calls[0]![0].loopClips ?? [])[0]!;
+    expect(committed.mode).toBe('progressive');
+    expect(isStandardMergedLoopClip(committed)).toBe(true);
+    expect(test.controller.error.value).toBeNull();
+  });
+
+  it('flattens a Reveal run when the union port is absent, recording nothing (Quick C2)', async () => {
+    // IN-05: a reveal run on a destination without the union bake port takes
+    // the C1 pixel-only fallback law — Keep script is hidden and ineffective,
+    // so the run composites over the existing picture and records nothing.
+    const target = stackClip(2);
+    const test = stackHarness(
+      [target],
+      { canonicalStart: 11 },
+      { hasPhotoReference: () => true, bakeStackedRailKey: undefined },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    expect(test.controller.keepScriptVisible.value).toBe(false);
+    expect(test.controller.keepScriptEffective.value).toBe(false);
+    test.controller.setStackRunKind('reveal-motion');
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    // The REVEAL sheets — not the plain-paper bake — reach the composite.
+    expect(test.composeStackedRailKey).toHaveBeenCalledTimes(2);
+    const composeCalls = test.composeStackedRailKey.mock.calls as unknown as Array<[{
+      keyId: string;
+      appFrame: number;
+      sheetBytes: Uint8Array;
+    }]>;
+    expect(composeCalls.map((call) => [call[0].keyId, call[0].appFrame, call[0].sheetBytes])).toEqual([
+      ['S2', 11, testWebpBytes('reveal-run-11')],
+      ['S3', 12, testWebpBytes('reveal-run-12')],
+    ]);
+    // No record and no purge path (`recordRailKeyScripts` is never reached);
+    // the single commit still lands with the composited bytes.
+    expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    expect(test.controller.error.value).toBeNull();
+  });
+
   it('refuses a Reveal run when this build has no run-only port, writing nothing (Quick C2)', async () => {
     const test = stackHarness(
       [stackClip(2)],
