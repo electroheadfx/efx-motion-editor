@@ -1012,6 +1012,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }) as RunScriptStackSurface;
   }
 
+  /**
+   * Visible rail material left from the playhead to the end of the fragment it
+   * sits in — the "rail length minus position on the rail" the dialog opens
+   * with — bounded by the rest of the source cycle so a repeated rail never
+   * grows its cycle (and multiplies its length) on an untouched default.
+   * Null when the surface or the containing fragment is unavailable.
+   */
+  function remainingRailFramesAt(surface: RunScriptStackSurface | null): number | null {
+    if (surface === null) return null;
+    const { appFrame, cycleOffset, rail } = surface.destination;
+    const fragment = rail.placementFragments.find(
+      (entry) => entry.start <= appFrame && appFrame < entry.endExclusive,
+    );
+    if (fragment === undefined) return null;
+    return Math.max(0, Math.min(fragment.endExclusive - appFrame, rail.cycleLength - cycleOffset));
+  }
+
   /* WR-01/WR-02/IN-03: the stack session is PINNED at open. Scrubbing out of the
      rail while the dialog is up must not flip the surface back to creation; the
      target rail and the run start stay the pinned ones. The live context still
@@ -1509,13 +1526,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 52-05 (G-52-3): the open entry picks the tab — the track rail-creation
       // flow's Reveal item opens directly on the Reveal Photo Rail tab.
       railTab.value = options?.railTab ?? 'paint';
+      // UAT 261101: the Frames timing is always evaluated at open from the
+      // location — the frames the timeline still allows from the playhead
+      // (capacity already caps at the apply maximum) — never a remembered count.
+      const availableCountText = String(Math.max(1, authority.capacity));
       if (savedDefaults) {
-        const savedCount = savedDefaults.countText;
-        const seededCountText = parseCount(savedCount, authority.capacity).count !== null ? savedCount : '3';
-        countText.value = seededCountText;
-        lastFiniteCount.value = seededCountText;
+        countText.value = availableCountText;
+        lastFiniteCount.value = availableCountText;
         max.value = savedDefaults.max && authority.capacity > 0;
-        repeatText.value = parseRepeat(savedDefaults.repeatText, parseCount(seededCountText, authority.capacity).count).count !== null
+        repeatText.value = parseRepeat(savedDefaults.repeatText, parseCount(availableCountText, authority.capacity).count).count !== null
           ? savedDefaults.repeatText
           : '1';
         infinity.value = savedDefaults.infinity;
@@ -1533,9 +1552,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         overrideEnabled.value = savedDefaults.overrideEnabled;
       } else {
         // No saved defaults: the pre-persistence reset (mode / repeat / infinity /
-        // override stay as the in-session memory they always were).
-        countText.value = '3';
-        lastFiniteCount.value = '3';
+        // override stay as the in-session memory they always were). The count is
+        // the location's available span either way.
+        countText.value = availableCountText;
+        lastFiniteCount.value = availableCountText;
         max.value = false;
         dialogMotion.value = toDialogMotion(ports.getMotion());
         revealCountText.value = String(naturalReveal);
@@ -1588,13 +1608,24 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // the tab — the Reveal CREATE tab must never stay selected from an
         // earlier open.
         if (railTab.peek() !== 'paint') railTab.value = 'paint';
+        // UAT 261101: a stack's Frames timing opens at the rest of the rail
+        // from the playhead (rail length minus position on the rail), bounded
+        // by the timeline and re-evaluated on every open. The script's natural
+        // duration is only a defensive fallback when no fragment is found.
         const natural = selectedScriptId ? ports.getScriptNaturalDuration?.(selectedScriptId) : null;
-        const seeded = String(natural ?? 3);
+        const availableCount = Math.max(1, Math.min(
+          remainingRailFramesAt(stackSurfaceAtOpen) ?? natural ?? 3,
+          authority.capacity,
+        ));
+        const seeded = String(availableCount);
         if (countText.peek() !== seeded) countText.value = seeded;
         lastFiniteCount.value = seeded;
+        // Max means the whole free span before the next boundary, not the rest
+        // of this rail — clearing it keeps the visible value the true one.
+        if (max.peek()) max.value = false;
         confirmationOpen.value = true;
         const runStart = stackStart ?? authority.canonicalStart;
-        const seededCount = parsedCount.peek().count ?? (typeof natural === 'number' ? natural : 3);
+        const seededCount = parsedCount.peek().count ?? availableCount;
         phase.value = 'idle';
         // 261101-cd5 UAT: the footer reads like the creation surface — the
         // destination's UUID is not part of the one-modal UI.
@@ -3400,7 +3431,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (runDestination.peek().kind === 'stack') return;
     ports.savePlayScriptDefaults({
       mode: mode.peek(),
-      countText: countText.peek(),
       max: max.peek(),
       repeatText: repeatText.peek(),
       infinity: infinity.peek(),

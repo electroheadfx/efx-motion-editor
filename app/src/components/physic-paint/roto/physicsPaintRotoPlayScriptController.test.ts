@@ -343,15 +343,14 @@ describe('createRotoPlayScriptController', () => {
     expect(test.createAquarelleBake).not.toHaveBeenCalled();
   });
 
-  it('opens every fresh Create Group at finite 3 with Max off, independent of remembered Group Type', async () => {
+  it('opens every fresh Create Group at the available timeline span, independent of remembered Group Type', async () => {
     const test = harness();
-    expect(test.controller.countText.value).toBe('3');
-    expect(test.controller.max.value).toBe(false);
-
     await test.controller.openConfirmation();
-    expect(test.controller.countText.value).toBe('3');
+    // UAT 261101: the Frames timing is re-evaluated on every open — the frames
+    // the timeline still allows from the playhead (capacity), never a remembered count.
+    expect(test.controller.countText.value).toBe('4');
     expect(test.controller.max.value).toBe(false);
-    expect(test.controller.destinationRange.value).toBe('F4–F6');
+    expect(test.controller.destinationRange.value).toBe('F4–F7');
 
     test.controller.mode.value = 'static';
     test.controller.countText.value = '7';
@@ -359,15 +358,30 @@ describe('createRotoPlayScriptController', () => {
     test.controller.closeConfirmation();
     await test.controller.openConfirmation();
     expect(test.controller.mode.value).toBe('static');
-    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.countText.value).toBe('4');
     expect(test.controller.max.value).toBe(false);
+  });
+
+  it('261101: re-evaluates the Frames timing at every open from the frames the timeline allows at the playhead', async () => {
+    let current = authority({ canonicalStart: 4, capacity: 18, layerEndExclusive: 22 });
+    const test = harness({ requestAuthority: vi.fn(async () => current) });
+    await test.controller.openConfirmation();
+    expect(test.controller.countText.value).toBe('18');
+    expect(test.controller.destinationRange.value).toBe('F4–F21');
+    test.controller.closeConfirmation();
+
+    current = authority({ canonicalStart: 10, capacity: 7, layerEndExclusive: 17 });
+    test.setSelection({ kind: 'real-key', keyId: 'key-10', appFrame: 10 });
+    await test.controller.openConfirmation();
+    expect(test.controller.countText.value).toBe('7');
+    expect(test.controller.destinationRange.value).toBe('F10–F16');
   });
 
   it('uses current capacity through parsed count, destination, readout, and confirm when Max is checked', async () => {
     const test = harness(); await test.controller.openConfirmation();
     test.controller.setMax(true);
     expect(test.controller.capacity.value).toBe(4);
-    expect(test.controller.countText.value).toBe('3');
+    expect(test.controller.countText.value).toBe('4');
     expect(test.controller.validationError.value).toBeNull();
     expect(test.controller.destinationRange.value).toBe('F4–F7');
     expect(test.controller.loopReadout.value).toBe('Requested: 4f (4f × 1) · Effective: 4f');
@@ -582,7 +596,8 @@ describe('createRotoPlayScriptController', () => {
     await untouched.controller.openConfirmation();
     expect(await untouched.controller.confirm()).toBe(true);
     // Progressive: the bake emits one pose per output frame (frameCount = count).
-    expect(untouched.bakeOptions[0]).toMatchObject({ frameCount: 3 });
+    // The count opens at the location's available span (capacity 4 in the fixture).
+    expect(untouched.bakeOptions[0]).toMatchObject({ frameCount: 4 });
     expect(bakePose.poser).toHaveBeenCalledWith(
       { width: 10, height: 10 },
       { deformation: 25, position: 40, rotation: 0, scale: 0 },
@@ -735,10 +750,9 @@ describe('createRotoPlayScriptController', () => {
     expect(test.controller.overrideEnabled.value).toBe(true);
   });
 
-  it('261101-cd5: seeds the creation form from persisted defaults and saves them on close', async () => {
+  it('261101-cd5: seeds the creation form from persisted defaults (except the location-derived count) and saves them on close', async () => {
     const saved = {
       mode: 'static' as const,
-      countText: '2',
       max: false,
       repeatText: '4',
       infinity: false,
@@ -755,7 +769,8 @@ describe('createRotoPlayScriptController', () => {
     const test = harness({ getPlayScriptDefaults: () => saved, savePlayScriptDefaults });
     await test.controller.openConfirmation();
     expect(test.controller.mode.value).toBe('static');
-    expect(test.controller.countText.value).toBe('2');
+    // UAT 261101: the count is never restored — it opens at the capacity.
+    expect(test.controller.countText.value).toBe('4');
     expect(test.controller.repeatText.value).toBe('4');
     expect(test.controller.dialogMotion.value).toEqual(saved.motion);
     expect(test.controller.revealCountText.value).toBe('2');
@@ -770,12 +785,12 @@ describe('createRotoPlayScriptController', () => {
     expect(savePlayScriptDefaults).toHaveBeenCalledTimes(1);
     expect(savePlayScriptDefaults.mock.calls[0]![0]).toMatchObject({
       mode: 'static',
-      countText: '2',
       repeatText: '4',
       colorizeMix: 60,
       keyScriptEdits: true,
       revealCountText: '2',
     });
+    expect('countText' in savePlayScriptDefaults.mock.calls[0]![0]).toBe(false);
   });
 
   it('generates exactly the cycle value regardless of repeat or infinity', async () => {
@@ -959,7 +974,7 @@ describe('createRotoPlayScriptController', () => {
     test.setBrushColor('#ff0000');
     await test.controller.openConfirmation();
     expect(test.controller.appliedSummary.line1.value).toBe('Progressive · Override #3366ff · Motion 25/40');
-    expect(test.controller.appliedSummary.line2.value).toBe('F4–F6 · 3 frames generated');
+    expect(test.controller.appliedSummary.line2.value).toBe('F4–F7 · 4 frames generated');
   });
 
   it('composes the first-open summary line 1 from the CURRENT port value when the override is enabled', async () => {
@@ -4110,9 +4125,10 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
     // Cycle 3f × 2 requested against the 4f boundary (F4–F7) → shortened readout.
     expect(test.controller.loopReadout.value).toBe('Requested: 6f (3f × 2) · Effective: 4f — shortened by the next clip');
     // Repeat is shared across tabs (one mutation law) — only the cycle length switches.
+    // The Paint tab's count is the location-derived capacity (4), never the reveal span.
     test.controller.setRailTab('paint');
     test.controller.repeatText.value = '1';
-    expect(test.controller.loopReadout.value).toBe('Requested: 3f (3f × 1) · Effective: 3f');
+    expect(test.controller.loopReadout.value).toBe('Requested: 4f (4f × 1) · Effective: 4f');
   });
 
   it('resets to the Paint tab on every plain open and on loop-edit prefill', async () => {
@@ -4326,6 +4342,27 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(savePlayScriptDefaults).not.toHaveBeenCalled();
   });
 
+  it('261101: a stack opens its Frames at the rest of the rail from the playhead, re-evaluated on every open', async () => {
+    // Rail L1 covers [10, 14): at its start 4 frames remain, mid-rail 2.
+    const atStart = stackHarness([stackClip(1)], { canonicalStart: 10 }, {}, { kind: 'empty', keyId: null, appFrame: 10 });
+    await atStart.controller.openConfirmation();
+    expect(atStart.controller.runDestination.value.kind).toBe('stack');
+    expect(atStart.controller.countText.value).toBe('4');
+    expect(atStart.controller.destinationRange.value).toBe('F10–F13');
+
+    const midRail = stackHarness([stackClip(1)], { canonicalStart: 12 }, {}, { kind: 'empty', keyId: null, appFrame: 12 });
+    await midRail.controller.openConfirmation();
+    expect(midRail.controller.countText.value).toBe('2');
+    expect(midRail.controller.destinationRange.value).toBe('F12–F13');
+
+    // A repeated rail's fragment spans [10, 18), but stack runs write
+    // source-cycle frames: the default is the rest of the CYCLE (4), so an
+    // untouched run never grows the cycle and doubles the rail's length.
+    const repeated = stackHarness([stackClip(2)], { canonicalStart: 10 }, {}, { kind: 'empty', keyId: null, appFrame: 10 });
+    await repeated.controller.openConfirmation();
+    expect(repeated.controller.countText.value).toBe('4');
+  });
+
   // The anchor set a real two-brush script reports from the bake. Shared by
   // every default/custom stack bake so a held behavior still produces the
   // per-key slices the run commits.
@@ -4395,14 +4432,17 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const test = stackHarness(
       [stackClip(2)],
       { canonicalStart: 13 },
-      { getScriptNaturalDuration: () => 3 },
+      {},
       { kind: 'real-key', keyId: null, appFrame: 17 },
     );
     await test.controller.openConfirmation();
     expect(test.controller.confirmationOpen.value).toBe(true);
     expect(test.controller.canonicalStart.value).toBe(13);
-    // Frames default to the selected script's natural duration for stack targets.
-    expect(test.controller.countText.value).toBe('3');
+    // UAT 261101: Frames open at the rest of the rail from the playhead — the
+    // rail is [10, 18), so F17 is its last frame and 1 frame remains.
+    expect(test.controller.countText.value).toBe('1');
+    // The run below exercises a 3-frame stack; set it explicitly.
+    test.controller.countText.value = '3';
     expect(test.controller.destinationRange.value).toBe('F13–F15');
     expect(test.controller.loopReadout.value).toContain('F13–F15');
     expect(test.controller.stackReadout.value?.offsetLabel).toBe('Source cycle +3');
@@ -4433,11 +4473,12 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(test.requestAuthority.mock.calls.map((call) => call[1])).toEqual([13, 13, 13]);
   });
 
-  it('keeps the create path byte-identical when the playhead is outside every rail', async () => {
-    const test = stackHarness([stackClip(1)], { canonicalStart: 30 }, { getScriptNaturalDuration: () => 9 }, { kind: 'empty', keyId: null, appFrame: 30 });
+  it('keeps the create path when the playhead is outside every rail', async () => {
+    const test = stackHarness([stackClip(1)], { canonicalStart: 30 }, {}, { kind: 'empty', keyId: null, appFrame: 30 });
     await test.controller.openConfirmation();
-    // Creation keeps today's default of 3 frames regardless of natural duration.
-    expect(test.controller.countText.value).toBe('3');
+    // UAT 261101: creation opens at the timeline's remaining capacity (the
+    // fixture reports 49), never a remembered count or the rail rule.
+    expect(test.controller.countText.value).toBe('49');
     test.controller.countText.value = '2';
     expect(await test.controller.confirm()).toBe(true);
     const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
