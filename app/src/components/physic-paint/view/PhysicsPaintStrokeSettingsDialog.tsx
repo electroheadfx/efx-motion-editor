@@ -813,9 +813,7 @@ export function PhysicsPaintStrokeSettingsDialog({
             class="physics-paint-stroke-settings-header-button physics-paint-stroke-settings-preview-toggle"
             aria-pressed={previewStrokeSize}
             aria-label="Preview stroke size"
-            title={previewStrokeSize
-              ? 'Preview stroke size: drawn as the area every stroke covers'
-              : 'Preview stroke size: draw the area every stroke covers'}
+            title="Preview stroke size — draw every stroke as the area it covers"
             // A view preference, never a selection action: the swatch stays
             // clickable on an empty selection (only the surface gate hides it).
             // The header is the drag handle (see Close below).
