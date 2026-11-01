@@ -5708,6 +5708,40 @@ button.destructive {
   outline-offset: 1px;
 }
 
+/* 261101-jmm: the Stroke settings sheet's view toggle — the same 22px chrome
+   as the close button, sitting between the spacer and Close. Listed / Settings
+   is carried by aria-pressed and the lucide glyph, never a colour swap. */
+.physics-paint-stroke-settings-header-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: #2a3540;
+  color: #b9c3ce;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.physics-paint-stroke-settings-header-button:hover:not(:disabled) {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-stroke-settings-header-button:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-stroke-settings-header-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* 52.5 UAT → 261009-6ee: main-app-audio preview toggle — now the STRIP's
    Audio Preview button only (the modal's header surface was dropped by the
    one-switch law; the modal's single switch is the footer enabled pill). Same

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
-import { SlidersHorizontal, X } from 'lucide-preact';
+import { List, Settings2, SlidersHorizontal, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
@@ -25,9 +25,11 @@ import {
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeSettingsView,
   resolveStrokeTipFilter,
   resolveStrokeTipName,
   resolveStrokeToolFilter,
+  shouldInvalidateStrokeSettingsView,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
@@ -36,6 +38,7 @@ import {
   type StrokeGeometryControl,
   type StrokeGeometrySession,
   type StrokeSettingsDialogBundle,
+  type StrokeSettingsView,
 } from './strokeSettingsModel';
 import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
@@ -86,6 +89,16 @@ import {
  * does. Escape passes through when a focused input/textarea/contenteditable
  * INSIDE the dialog owns the key.
  *
+ * 261101-jmm view (exact law): watercolor is LIST FIRST. The ref-held
+ * `settingsViewRef` defaults to 'list' and the stroke list stays visible while
+ * strokes are selected; the Geometry/Stack/Paint tabs mount only after the
+ * header toggle is clicked, and the same button (now a list icon) returns.
+ * An EMPTY selection invalidates a pending settings request through the plain
+ * `strokeSettingsViewInvalidated` marker — the `sawEmptySinceDismiss`
+ * precedent, written idempotently in the render body — so a close/reopen, a
+ * leave and re-enter of Move/Select, or a delete-to-empty always lands the
+ * next non-empty selection back on the list. Brush keeps its tabs verbatim.
+ *
  * Geometry: every row is a release-commit, free-entry SliderStepper. X/Y type
  * an absolute target and commit `target - live centre` in integer px; Scale /
  * Scale X / Scale Y / Rotation apply the delta from that row's last APPLIED
@@ -119,9 +132,15 @@ interface DragOffset {
 const strokeSettingsDragOffset = signal<DragOffset | null>(null);
 const strokeSettingsResizeHeight = signal<number | null>(null);
 
+/**
+ * Resets the module-level dialog SESSION state: the movable/resizable layout
+ * plus the view-request invalidation marker (`strokeSettingsViewInvalidated`).
+ * There is no production call site — a fresh mount reproduces this state.
+ */
 export function resetStrokeSettingsDialogLayout(): void {
   strokeSettingsDragOffset.value = null;
   strokeSettingsResizeHeight.value = null;
+  strokeSettingsViewInvalidated = false;
 }
 
 interface DragStart {
@@ -167,6 +186,16 @@ export interface PhysicsPaintStrokeSettingsDialogProps {
 }
 
 let sawEmptySinceDismiss = false;
+
+/**
+ * 261101-jmm: the settings-view request's staleness marker. A PLAIN
+ * (non-signal) module flag, exactly like `sawEmptySinceDismiss`: written
+ * idempotently in the render body when the selection is observed EMPTY under
+ * a settings request, cleared ONLY by the header toggle's click handler (the
+ * one explicit settings entry) and by `resetStrokeSettingsDialogLayout`. It
+ * notifies no subscriber, so it can never drive a reactive loop.
+ */
+let strokeSettingsViewInvalidated = false;
 
 /** Distance from the canvas region's top/right edges. */
 const SURFACE_INSET_PX = 12;
@@ -372,11 +401,15 @@ export function PhysicsPaintStrokeSettingsDialog({
   /** 261024-vga UAT revision: the active section tab (ref-held, Geometry default). */
   const settingsTabRef = useRef<Signal<StrokeSettingsTab> | null>(null);
   if (!settingsTabRef.current) settingsTabRef.current = signal<StrokeSettingsTab>('geometry');
+  /**
+   * 261101-jmm: which surface the sheet shows. Ref-held like the tab signal and
+   * written ONLY from the header toggle's click handler (compare-then-write) —
+   * the empty-selection fallback is a pure render derivation, never a write.
+   */
+  const settingsViewRef = useRef<Signal<StrokeSettingsView> | null>(null);
+  if (!settingsViewRef.current) settingsViewRef.current = signal<StrokeSettingsView>('list');
 
   const selection = scriptSelectedStrokeIds.value;
-  // 261031-euf: the empty Move/Edit selection shows the stroke LIST instead of
-  // the tab row. Pure render-body read — never a write.
-  const selectionEmpty = selection.size === 0;
   const engineModule = bundle?.module ?? 'brush';
   const surfaceActive = bundle !== null && bundle !== undefined
     ? (engineModule === 'watercolor' ? scriptSelectMode.value : bundle.brushMoveActive)
@@ -406,6 +439,33 @@ export function PhysicsPaintStrokeSettingsDialog({
   ) {
     sawEmptySinceDismiss = true;
   }
+
+  // Plain (non-signal) render-body flag write — the settings-request
+  // staleness marker. Inert for brush and for every list-first render (only a
+  // still-pending 'settings' request over an EMPTY selection arms it). Sits
+  // BEFORE the early return so a CLOSED sheet still observes the empty edge:
+  // the close path leaves Move/Select, which clears the selection, so the
+  // request can never survive a close/reopen cycle.
+  const requestedView = settingsViewRef.current.value;
+  if (
+    engineModule === 'watercolor'
+    && shouldInvalidateStrokeSettingsView({
+      requested: requestedView,
+      selectionSize: selection.size,
+    })
+  ) {
+    strokeSettingsViewInvalidated = true;
+  }
+  const effectiveRequest: StrokeSettingsView = strokeSettingsViewInvalidated
+    ? 'list'
+    : requestedView;
+  /**
+   * Brush keeps today's sheet verbatim (its tabs are not a user request);
+   * watercolor is LIST FIRST with an explicit settings mode.
+   */
+  const view: StrokeSettingsView = engineModule === 'watercolor'
+    ? resolveStrokeSettingsView(effectiveRequest, selection.size)
+    : 'settings';
 
   const open = bundle !== null
     && bundle !== undefined
@@ -705,6 +765,33 @@ export function PhysicsPaintStrokeSettingsDialog({
         />
         <strong>Stroke settings</strong>
         <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
+        {engineModule === 'watercolor' ? (
+          <button
+            type="button"
+            data-testid="stroke-settings-view-toggle"
+            class="physics-paint-stroke-settings-header-button"
+            aria-pressed={view === 'settings'}
+            aria-label={view === 'settings' ? 'Show stroke list' : 'Show stroke settings'}
+            title={view === 'settings' ? 'Show stroke list' : 'Show stroke settings'}
+            // Nothing to edit yet: the list is the only meaningful surface.
+            disabled={selection.size === 0}
+            // The header is the drag handle (see Close below).
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              const next: StrokeSettingsView = view === 'settings' ? 'list' : 'settings';
+              // Entering settings is the ONE explicit request, so it is also
+              // the only place the staleness marker clears (event-handler
+              // write — the `sawEmptySinceDismiss = false` precedent).
+              if (next === 'settings') strokeSettingsViewInvalidated = false;
+              const ref = settingsViewRef.current!;
+              if (ref.value !== next) ref.value = next;
+            }}
+          >
+            {view === 'settings'
+              ? <List size={12} aria-hidden="true" />
+              : <Settings2 size={12} aria-hidden="true" />}
+          </button>
+        ) : null}
         <button
           type="button"
           class="physics-paint-photo-reference-close"
@@ -721,7 +808,7 @@ export function PhysicsPaintStrokeSettingsDialog({
         </button>
       </div>
 
-      {engineModule === 'watercolor' ? (
+      {engineModule === 'watercolor' && view === 'list' ? (
         <div
           role="group"
           aria-label="Stroke type"
@@ -748,7 +835,7 @@ export function PhysicsPaintStrokeSettingsDialog({
         </div>
       ) : null}
 
-      {engineModule === 'watercolor' && selectionEmpty ? (
+      {engineModule === 'watercolor' && view === 'list' ? (
         <div data-testid="stroke-settings-fine-filters" style={FINE_FILTERS_ROW_STYLE}>
           <select
             class="physics-paint-stroke-settings-select"
@@ -790,7 +877,7 @@ export function PhysicsPaintStrokeSettingsDialog({
         </div>
       ) : null}
 
-      {!selectionEmpty ? (
+      {view === 'settings' ? (
         <div
           class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
           role="tablist"
@@ -822,7 +909,7 @@ export function PhysicsPaintStrokeSettingsDialog({
 
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
-          {selectionEmpty ? (
+          {view === 'list' ? (
             <div
               data-testid="stroke-settings-list"
               class="physics-paint-stroke-settings-list"

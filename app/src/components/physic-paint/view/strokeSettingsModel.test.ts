@@ -46,9 +46,11 @@ import {
   readNumericField,
   readPaintSeedVariation,
   resolveStrokeSettingsOpen,
+  resolveStrokeSettingsView,
   resolveStrokeTipFilter,
   resolveStrokeTipName,
   resolveStrokeToolFilter,
+  shouldInvalidateStrokeSettingsView,
   shouldMarkSawEmpty,
   sortStrokesTopmostFirst,
   strokeListSummary,
@@ -229,12 +231,31 @@ function renderDialog(bundle: StrokeSettingsDialogBundle | null | undefined): un
   return PhysicsPaintStrokeSettingsDialog({ bundle });
 }
 
+/**
+ * 261101-jmm: enter the watercolor sheet's SETTINGS view, IDEMPOTENTLY. Once
+ * the tab row is up this does nothing — the toggle writes the opposite of the
+ * resolved view, so a second call in the same test would flip back to list.
+ * Brush bundles resolve to the settings view already, so they are untouched.
+ */
+function renderSettings(
+  bundle: StrokeSettingsDialogBundle | null | undefined,
+): unknown {
+  let tree = renderDialog(bundle);
+  if (findByTestId(tree, 'stroke-settings-tabs') !== undefined) return tree;
+  const toggle = findByTestId(tree, 'stroke-settings-view-toggle');
+  // An empty selection natively disables the toggle: there is no way in.
+  if (!toggle || toggle.props.disabled) return tree;
+  (toggle.props.onClick as () => void)();
+  tree = renderDialog(bundle);
+  return tree;
+}
+
 /** Activate one of the pinned tabs, then re-render from the live signal. */
 function renderDialogTab(
   bundle: StrokeSettingsDialogBundle | null | undefined,
   tab: 'geometry' | 'stack' | 'paint',
 ): unknown {
-  const tree = renderDialog(bundle);
+  const tree = renderSettings(bundle);
   const button = findByTestId(tree, `stroke-settings-tab-${tab}`);
   expect(button, `tab ${tab}`).toBeDefined();
   (button!.props.onClick as () => void)();
@@ -1637,7 +1658,7 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     // Eraser-only: the tab leaves the row and the requested tab resolves back
     // to Geometry (the Paint content must not linger).
     setAquarelleStrokeTypeFilter('lift');
-    const eraserTree = renderDialog(bundle);
+    const eraserTree = renderSettings(bundle);
     expect(findByTestId(eraserTree, 'stroke-settings-tab-paint')).toBeUndefined();
     expect(findByTestId(eraserTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
     expect(findByTestId(eraserTree, 'stroke-settings-geometry')).toBeDefined();
@@ -1645,11 +1666,11 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
 
     // All and Paint bring it back.
     setAquarelleStrokeTypeFilter('all');
-    const allTree = renderDialog(bundle);
+    const allTree = renderSettings(bundle);
     expect(findByTestId(allTree, 'stroke-settings-tab-paint')).toBeDefined();
     expect(findByTestId(allTree, 'stroke-settings-paint')).toBeDefined();
     setAquarelleStrokeTypeFilter('paint');
-    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tab-paint')).toBeDefined();
+    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tab-paint')).toBeDefined();
   });
 
   it('hides the Paint tab whenever an eraser stroke is selected, even on All', () => {
@@ -1658,7 +1679,7 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
     setAquarelleStrokeTypeFilter('all');
     setScriptStrokeSelection([7]);
     expect(
-      findByTestId(renderDialog(watercolorBundle().bundle), 'stroke-settings-tab-paint'),
+      findByTestId(renderSettings(watercolorBundle().bundle), 'stroke-settings-tab-paint'),
     ).toBeDefined();
 
     // The same sheet with a LIFT stroke selected drops the tab.
@@ -1666,7 +1687,7 @@ describe('261029-eur dialog filter row, Paint-tab law and open-on-empty', () => 
       listStrokes: () => [selectableStroke(8, { x: 0, y: 0, width: 100, height: 100 }, 'lift')],
     });
     setScriptStrokeSelection([8]);
-    const liftTree = renderDialog(lift.bundle);
+    const liftTree = renderSettings(lift.bundle);
     expect(findByTestId(liftTree, 'stroke-settings-tab-paint')).toBeUndefined();
     expect(findByTestId(liftTree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
   });
@@ -2289,30 +2310,50 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(findByTestId(row7, 'stroke-settings-stroke-custom')).toBeUndefined();
   });
 
-  it('clicking a row selects exactly that stroke and brings the tabs back', () => {
+  it('clicking a row selects exactly that stroke and KEEPS the list', () => {
     const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
     const tree = renderDialog(bundle);
 
-    (findByTestId(tree, 'stroke-settings-stroke-9')!.props.onClick as () => void)();
+    (findByTestId(tree, 'stroke-settings-stroke-9')!.props.onClick as (event: unknown) => void)({
+      shiftKey: false,
+      metaKey: false,
+      ctrlKey: false,
+    });
     expect(scriptSelectedStrokeIds.value).toEqual(new Set([9]));
 
     const next = renderDialog(bundle);
-    expect(findByTestId(next, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(next, 'stroke-settings-list')).toBeUndefined();
-    expect(strokeRows(next)).toEqual([]);
-    expect(findByTestId(next, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(next, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(next, 'stroke-settings-tabs')).toBeUndefined();
+    expect(strokeRows(next).map((row) => row.props['data-testid'])).toContain(
+      'stroke-settings-stroke-9',
+    );
+
+    // The header icon is the ONE explicit settings entry.
+    (findByTestId(next, 'stroke-settings-view-toggle')!.props.onClick as () => void)();
+    const settings = renderDialog(bundle);
+    expect(findByTestId(settings, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(settings, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(settings, 'stroke-settings-geometry')).toBeDefined();
   });
 
-  it('a non-empty selection renders the tabs and content with no list', () => {
+  it('a non-empty selection renders the list rows and the toggle reveals the tabs', () => {
+    const { bundle } = watercolorListBundle();
     setAquarelleSelectMode(true);
     setScriptStrokeSelection([7]);
-    const tree = renderDialog(watercolorListBundle().bundle);
+    const tree = renderDialog(bundle);
 
-    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
-    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
-    expect(strokeRows(tree)).toEqual([]);
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(strokeRows(tree).map((row) => row.props['data-testid'])).toContain(
+      'stroke-settings-stroke-7',
+    );
+
+    const settings = renderSettings(bundle);
+    expect(findByTestId(settings, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(settings, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(settings, 'stroke-settings-geometry')).toBeDefined();
+    expect(strokeRows(settings)).toEqual([]);
   });
 
   it('the brush sheet renders no list, no rows and no type chrome', () => {
@@ -2584,11 +2625,16 @@ describe('261031-euf empty-selection stroke list dialog', () => {
       expect((row.props.style as Record<string, unknown>).textTransform).toBe('none');
     }
 
-    // The finer filters belong to the LIST: a non-empty selection has none.
+    // 261101-jmm: the finer filters belong to the LIST — they stay while a
+    // stroke is selected and leave only when the SETTINGS view is entered.
     setScriptStrokeSelection([7]);
     const editing = renderDialog(bundle);
-    expect(findByTestId(editing, 'stroke-settings-fine-filters')).toBeUndefined();
-    expect(findByTestId(editing, 'stroke-settings-tool-filter')).toBeUndefined();
+    expect(findByTestId(editing, 'stroke-settings-fine-filters')).toBeDefined();
+    expect(findByTestId(editing, 'stroke-settings-tool-filter')).toBeDefined();
+
+    const settings = renderSettings(bundle);
+    expect(findByTestId(settings, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(settings, 'stroke-settings-tool-filter')).toBeUndefined();
   });
 
   it('the brush sheet renders none of the finer-filter chrome', () => {
@@ -2608,5 +2654,195 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     expect(cssSource).toMatch(
       /\.physics-paint-stroke-settings-list-row\s*\{[^}]*text-transform:\s*none/s,
     );
+  });
+});
+
+// ============================================================
+//  quick 261101-jmm — LIST FIRST. 261031-euf made the list an
+//  empty-selection-only surface, so selecting a row hid the list
+//  and swapped to the tabs. The list is the DEFAULT surface and
+//  stays put; the parameter tabs are an explicit request made
+//  from the header icon. An empty selection invalidates that
+//  request (close/reopen, leave + re-enter Move/Select, or a
+//  delete that empties the selection), so every later non-empty
+//  selection lands back on the list.
+// ============================================================
+
+describe('261101-jmm list-first stroke settings sheet', () => {
+  const FRAME_STROKES: readonly SelectableScriptStroke[] = Object.freeze([
+    selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 }),
+    selectableStroke(9, { x: 20, y: 20, width: 60, height: 60 }),
+  ]);
+
+  function sheetBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [...FRAME_STROKES],
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 })),
+      ...overrides,
+    });
+  }
+
+  function viewToggle(tree: unknown): AnyVNode {
+    const toggle = findByTestId(tree, 'stroke-settings-view-toggle');
+    expect(toggle, 'view toggle').toBeDefined();
+    return toggle!;
+  }
+
+  it('resolves the view: a settings request over an empty selection falls back to the list', () => {
+    expect(resolveStrokeSettingsView('settings', 0)).toBe('list');
+    expect(resolveStrokeSettingsView('settings', 1)).toBe('settings');
+    expect(resolveStrokeSettingsView('settings', 3)).toBe('settings');
+    for (const size of [0, 1, 3]) {
+      expect(resolveStrokeSettingsView('list', size), `list/${size}`).toBe('list');
+    }
+  });
+
+  it('invalidates ONLY a settings request observed over an empty selection', () => {
+    expect(
+      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 0 }),
+    ).toBe(true);
+    expect(
+      shouldInvalidateStrokeSettingsView({ requested: 'list', selectionSize: 0 }),
+    ).toBe(false);
+    expect(
+      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 1 }),
+    ).toBe(false);
+    expect(
+      shouldInvalidateStrokeSettingsView({ requested: 'settings', selectionSize: 3 }),
+    ).toBe(false);
+  });
+
+  it('natively disables the view toggle on an empty selection', () => {
+    setAquarelleSelectMode(true);
+    const emptyToggle = viewToggle(renderDialog(sheetBundle().bundle));
+    expect(emptyToggle.props.disabled).toBe(true);
+
+    setScriptStrokeSelection([9]);
+    const selectedToggle = viewToggle(renderDialog(sheetBundle().bundle));
+    expect(selectedToggle.props.disabled).toBe(false);
+  });
+
+  it('keeps the list while a stroke is selected and round-trips through the toggle', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle();
+    const listTree = renderDialog(bundle);
+
+    expect(findByTestId(listTree, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(listTree, 'stroke-settings-tabs')).toBeUndefined();
+    expect(strokeRows(listTree).map((row) => row.props['data-testid'])).toContain(
+      'stroke-settings-stroke-9',
+    );
+
+    const toSettings = viewToggle(listTree);
+    expect(toSettings.props['aria-pressed']).toBe(false);
+    expect(toSettings.props['aria-label']).toBe('Show stroke settings');
+    (toSettings.props.onClick as () => void)();
+
+    const settingsTree = renderDialog(bundle);
+    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-list')).toBeUndefined();
+
+    const toList = viewToggle(settingsTree);
+    expect(toList.props['aria-pressed']).toBe(true);
+    expect(toList.props['aria-label']).toBe('Show stroke list');
+    (toList.props.onClick as () => void)();
+
+    const returned = renderDialog(bundle);
+    expect(findByTestId(returned, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(returned, 'stroke-settings-tabs')).toBeUndefined();
+    expect(strokeRows(returned).map((row) => row.props['data-testid'])).toContain(
+      'stroke-settings-stroke-9',
+    );
+  });
+
+  it('never restores a settings request after the selection was observed empty', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle();
+
+    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
+
+    // Close/reopen, a leave and re-enter of Move/Select, or a delete-to-empty:
+    // the selection empties while the sheet stays mounted.
+    setScriptStrokeSelection([]);
+    const emptied = renderDialog(bundle);
+    expect(findByTestId(emptied, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(emptied, 'stroke-settings-tabs')).toBeUndefined();
+
+    // The next non-empty selection STAYS on the list — no icon click happened.
+    setScriptStrokeSelection([9]);
+    const reentered = renderDialog(bundle);
+    expect(findByTestId(reentered, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(reentered, 'stroke-settings-tabs')).toBeUndefined();
+
+    // Only a FRESH click of the header icon returns to the tabs.
+    (viewToggle(reentered).props.onClick as () => void)();
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tabs')).toBeDefined();
+
+    // The invalidation is not one-shot: a second empty -> non-empty cycle
+    // behaves identically.
+    setScriptStrokeSelection([]);
+    renderDialog(bundle);
+    setScriptStrokeSelection([9]);
+    const again = renderDialog(bundle);
+    expect(findByTestId(again, 'stroke-settings-list')).toBeDefined();
+    expect(findByTestId(again, 'stroke-settings-tabs')).toBeUndefined();
+    (viewToggle(again).props.onClick as () => void)();
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-tabs')).toBeDefined();
+  });
+
+  it('keeps the settings view across a non-empty selection change', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle();
+    expect(findByTestId(renderSettings(bundle), 'stroke-settings-tabs')).toBeDefined();
+
+    // Add a row while already in settings: never invalidates the request.
+    setScriptStrokeSelection([9, 7]);
+    const widened = renderDialog(bundle);
+    expect(findByTestId(widened, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(widened, 'stroke-settings-list')).toBeUndefined();
+
+    // Remove a row: still settings.
+    setScriptStrokeSelection([7]);
+    const narrowed = renderDialog(bundle);
+    expect(findByTestId(narrowed, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(narrowed, 'stroke-settings-list')).toBeUndefined();
+  });
+
+  it('renders the type filter, fine filters and summary in the LIST view only', () => {
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([9]);
+    const { bundle } = sheetBundle();
+
+    const listTree = renderDialog(bundle);
+    expect(findByTestId(listTree, 'stroke-settings-filter')).toBeDefined();
+    expect(findByTestId(listTree, 'stroke-settings-fine-filters')).toBeDefined();
+    expect(findByTestId(listTree, 'stroke-settings-list-summary')).toBeDefined();
+
+    const settingsTree = renderSettings(bundle);
+    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-filter')).toBeUndefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-fine-filters')).toBeUndefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-list-summary')).toBeUndefined();
+  });
+
+  it('leaves the brush sheet unchanged: no toggle, no list, its tabs as today', () => {
+    const { bundle } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    expect(findByTestId(tree, 'stroke-settings-view-toggle')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-list')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-filter')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
   });
 });
