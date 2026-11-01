@@ -1236,6 +1236,19 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   /** Complete physical cursor authority, independent from selection and operation target. */
   readonly cursorAppFrame: number;
   /**
+   * studio-undo-replay-mismatch: the child's captured PRE-edit selection and
+   * cursor — the same pair its history `before` snapshot carries and replays on
+   * Undo. The parent ledger's `before` snapshot must use this authority: the
+   * parent document is a passive mirror, so a child-local navigation or a
+   * paint-driven document sync can move its selection independently of the edit
+   * about to be accepted, and a mirror-derived `before` then rejects a faithful
+   * Undo with a cursor/selectedKeyId/selectedAppFrame target mismatch. Forward
+   * (non-replay) edits carry the pair; both fields appear together or not at
+   * all, and replay kinds never carry them.
+   */
+  readonly beforeSelectedKeyId?: string | null;
+  readonly beforeCursorAppFrame?: number;
+  /**
    * Quick 261019-mj2: capacity raise authorized only for a gap insert. The
    * resolver's `proposal.nextCapacity` is the single computation; the child
    * coordinator stages against it and the parent bridge owns the FX span
@@ -1731,7 +1744,7 @@ function failApplyPayload(clause: string): false {
 
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return failApplyPayload('not-record');
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'targetCapacity', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'beforeSelectedKeyId', 'beforeCursorAppFrame', 'targetCapacity', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
   if (value.kind !== 'replace-roto-physical-map') return failApplyPayload('wrong-kind');
   if (!isNonEmptyString(value.operationId)) return failApplyPayload('bad-operationId');
   if (!isNonEmptyString(value.trackId)) return failApplyPayload('bad-trackId');
@@ -1765,6 +1778,14 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return failApplyPayload('bad-selectedAppFrame');
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return failApplyPayload('selected-mismatch');
   if (!isNonNegativeInteger(value.cursorAppFrame)) return failApplyPayload('bad-cursorAppFrame');
+  // studio-undo-replay-mismatch: the captured pre-edit selection rides forward
+  // edits only, as a pair. Replays carry their target snapshot instead.
+  if ((value.beforeSelectedKeyId === undefined) !== (value.beforeCursorAppFrame === undefined)) return failApplyPayload('before-selection-pair-mismatch');
+  if (value.beforeSelectedKeyId !== undefined) {
+    if (value.beforeSelectedKeyId !== null && !isBoundedPhysicalKeyId(value.beforeSelectedKeyId)) return failApplyPayload('bad-beforeSelectedKeyId');
+    if (!isNonNegativeInteger(value.beforeCursorAppFrame)) return failApplyPayload('bad-beforeCursorAppFrame');
+    if (value.operationKind === 'undo' || value.operationKind === 'redo') return failApplyPayload('unexpected-beforeSelection');
+  }
   if (value.targetCapacity !== undefined) {
     // Quick 261019-mj2: only a gap insert may raise capacity. Replay kinds and
     // every other operation carry no targetCapacity.

@@ -241,6 +241,45 @@ describe('physic paint payload contracts', () => {
       ...payload,
       intent: { ...payload.intent, unknown: true },
     })).toBe(false);
+    // studio-undo-replay-mismatch: the captured pre-edit selection rides
+    // forward edits as a pair and is refused on replay kinds.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeSelectedKeyId: 'key-A',
+      beforeCursorAppFrame: 0,
+    })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeSelectedKeyId: null,
+      beforeCursorAppFrame: 0,
+    })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeSelectedKeyId: 'key-A',
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeCursorAppFrame: 0,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeSelectedKeyId: 'key-A',
+      beforeCursorAppFrame: -1,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      beforeSelectedKeyId: '',
+      beforeCursorAppFrame: 0,
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      operationKind: 'undo',
+      intent: undefined,
+      targetCapacity: undefined,
+      beforeSelectedKeyId: 'key-A',
+      beforeCursorAppFrame: 4,
+      historyProvenance: { historyCommandId: 'cmd-1', historyDirection: 'undo', sourceRevision: 'revision-1', targetRevision: 'revision-2' },
+    })).toBe(false);
     // The retired empty-segment insert shapes and the old insert-slot shape are rejected outright.
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,

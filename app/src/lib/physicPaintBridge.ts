@@ -2039,6 +2039,22 @@ async function applyPhysicPaintRotoPhysicalMap(
     // Group lifecycle deletes keep payload authority because their proposal
     // preserves the pre-op selection in the common case (buildLifecycleProposal).
     const beforeSelectionFromPayload = childBeforeAuthority && payload.operationKind !== 'delete-rails';
+    // studio-undo-replay-mismatch: for the remaining kinds (delete-rails and
+    // every non-lifecycle edit) the child's CAPTURED pre-edit selection is the
+    // authority. `currentDocument` is a passive mirror — a child-local
+    // navigation, or a paint-driven document sync carrying the child's
+    // selection, moves it independently of the child's history capture, and a
+    // mirror-derived before snapshot then rejected the faithful Undo with a
+    // cursor/selectedKeyId/selectedAppFrame replay-target mismatch. The forward
+    // payload carries the captured pair; the mirror stays the fallback for
+    // legacy payloads that predate the field.
+    const capturedBeforeSelection = payload.beforeSelectedKeyId !== undefined
+      && payload.beforeCursorAppFrame !== undefined
+      ? {
+          selectedKeyId: payload.beforeSelectedKeyId,
+          cursorAppFrame: payload.beforeCursorAppFrame,
+        }
+      : null;
     const beforeSnapshot = createAcceptedPhysicalCommandSnapshot({
       records: currentRecords,
       groupOverrideRecords: currentGroupOverrideRecords,
@@ -2047,10 +2063,10 @@ async function applyPhysicPaintRotoPhysicalMap(
       incomingInterpolationBreakKeyIds: currentIncomingInterpolationBreakKeyIds,
       selectedKeyId: beforeSelectionFromPayload
         ? payload.selectedKeyId
-        : currentDocument?.selectedKeyId ?? null,
+        : capturedBeforeSelection?.selectedKeyId ?? currentDocument?.selectedKeyId ?? null,
       cursorAppFrame: beforeSelectionFromPayload
         ? payload.cursorAppFrame
-        : currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
+        : capturedBeforeSelection?.cursorAppFrame ?? currentDocument?.cursorAppFrame ?? payload.cursorAppFrame,
       capacity,
       revision: currentRevision,
     });

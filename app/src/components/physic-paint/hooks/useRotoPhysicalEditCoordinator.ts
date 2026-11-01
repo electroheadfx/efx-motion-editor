@@ -2415,6 +2415,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           selectedKeyId: targetSelectedKeyId,
           selectedAppFrame: targetSelectedAppFrame,
           cursorAppFrame: targetCursorAppFrame,
+          // studio-undo-replay-mismatch: a forward edit carries the CAPTURED
+          // pre-edit selection/cursor — the same authority its history `before`
+          // entry replays on Undo. The parent ledger's before snapshot must not
+          // read its passive document mirror instead: the mirror lags a
+          // child-local navigation or a paint-driven document sync, and a
+          // mirror-derived before rejects the faithful Undo with a
+          // cursor/selectedKeyId/selectedAppFrame target mismatch. Replays never
+          // write a ledger entry, so they never carry the pair.
+          ...(isReplay ? {} : {
+            beforeSelectedKeyId: before.selectedKeyId,
+            beforeCursorAppFrame: before.currentAppFrame,
+          }),
           ...(railSetPasteImpact
             ? { semanticDelta: railSetPasteImpact }
             : railSetDeleteImpact

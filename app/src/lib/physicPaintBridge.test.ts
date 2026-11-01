@@ -5068,6 +5068,151 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
+  it('records the child-captured pre-edit selection as the ledger before so an ordinary group-delete Undo survives a divergent parent mirror (studio-undo-replay-mismatch)', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    projectStore.projectContextId.value = projectContextId;
+    sequenceStore.add({
+      id: 'bridge-undo-replay-mismatch-sequence',
+      kind: 'fx',
+      extrapolation: 'hold',
+      name: 'Bridge undo replay target authority',
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 100,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('key-A', 0),
+      makePhysicalRecord('key-B', 2),
+      makePhysicalRecord('key-C', 6),
+      makePhysicalRecord('key-D', 8),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    registerRotoAlphaCanvasFrame(records[0].payload.bytes, { width: 1000, height: 650 } as HTMLCanvasElement);
+    // Launching on frame 2 installs 'key-B'@2 as the parent mirror's
+    // selection — the authority the ledger used to read for the before snapshot.
+    const launch = await openPhysicPaintCanvas({ layer, frame: 2 });
+    if (!launch.ok) throw new Error(launch.error);
+    const launchDocument = carriedRotoPhysical(launch.data);
+    expect(launchDocument.selectedKeyId).toBe('key-B');
+    expect(launchDocument.cursorAppFrame).toBe(2);
+
+    // The child document navigated to 'key-A'@0 after launch, so its first
+    // capture — and the history before entry the Undo replays — carry
+    // 'key-A'@0 while the parent mirror still sits on 'key-B'@2: exactly the
+    // live rejection (cursor 0 != 2 | selectedKeyId … != …).
+    const intent = { kind: 'delete-key-group', keyIds: ['key-C', 'key-D'] } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: launchDocument.capacity,
+      capacity: launchDocument.capacity,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    const proposal = resolution.proposal;
+    const canonicalRecords = (proposal.nextRecords ?? proposal.orderedKeyIds.map((keyId) => {
+      const current = records.find((record) => record.keyId === keyId);
+      const appFrame = proposal.mapping.get(keyId);
+      if (!current || appFrame === undefined) throw new Error('Missing canonical group-delete record.');
+      return movePhysicalRecord(current, appFrame);
+    })).map(({ kind: _kind, ...record }) => record);
+    const canonicalLoopClips = proposal.nextLoopClips ?? [];
+    const canonicalBreaks = proposal.nextIncomingInterpolationBreakKeyIds ?? [];
+    const leaseToken = acquirePhysicalLease(layer.id, projectContextId);
+    const forward = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'group-delete-undo-replay-mismatch',
+      operationKind: 'delete-key-group',
+      intent,
+      layerId: layer.id,
+      leaseToken,
+      startFrame: proposal.selectedAppFrame ?? 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: launchDocument.revision,
+      records: canonicalRecords,
+      groupOverrideRecords: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: canonicalLoopClips,
+      incomingInterpolationBreakKeyIds: canonicalBreaks,
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+      cursorAppFrame: proposal.selectedAppFrame ?? launchDocument.cursorAppFrame,
+      // The child's captured pre-edit pair rides the forward payload.
+      beforeSelectedKeyId: 'key-A',
+      beforeCursorAppFrame: 0,
+      ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
+    });
+    expect(forward.ok, forward.ok ? undefined : forward.error).toBe(true);
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    if (!acceptedDocument) throw new Error('Expected an accepted group-delete document.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+
+    // Undo replays the child history entry's before snapshot ('key-A'@0).
+    // Without the captured-pair authority the ledger recorded the mirror's
+    // 'key-B'@2 and this faithful replay was rejected with the reported
+    // 'replay target snapshot does not match the original accepted command'.
+    const undoLease = acquirePhysicalLease(layer.id, projectContextId);
+    const undo = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'undo-group-delete-undo-replay-mismatch',
+      operationKind: 'undo',
+      layerId: layer.id,
+      leaseToken: undoLease,
+      startFrame: 0,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: acceptedDocument.revision,
+      records: records.map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: [],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: 'key-A',
+      selectedAppFrame: 0,
+      cursorAppFrame: 0,
+      historyProvenance: {
+        historyCommandId: 'group-delete-undo-replay-mismatch',
+        historyDirection: 'undo',
+        sourceRevision: acceptedDocument.revision,
+        targetRevision: launchDocument.revision,
+      },
+    });
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    const restored = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    expect(restored?.selectedKeyId).toBe('key-A');
+    expect(restored?.cursorAppFrame).toBe(0);
+    expect(restored?.realKeyRecords).toEqual(records);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(undoLease)).toBe(true);
+  });
+
   it('settles a Rust-committed referenced Action deletion exactly once with enriched history facts', async () => {
     const test = await lifecycleHarness('detach-action-groups', 'referenced-action-committed');
     const committed = {

@@ -657,6 +657,14 @@ function harness(options: {
     selectedKeyId = keyId;
     currentFrame = appFrame;
   };
+  // studio-undo-replay-mismatch: simulates a child-local navigation (or a
+  // paint-driven document sync) that moves the child DOCUMENT's selection
+  // while the last parent-accepted selection and the parent's passive mirror
+  // stay where they were.
+  const setCanonicalSelection = (keyId: string | null, appFrame: number) => {
+    canonicalSelectedKeyId = keyId;
+    canonicalCursorAppFrame = appFrame;
+  };
   // Simulates handleSelectRotoKeyRail's setRotoPhysicalSelection(layerId,
   // null, currentFrame): the child document's selection is cleared locally
   // while the parent document retains the last accepted selection (43.4
@@ -902,6 +910,7 @@ function harness(options: {
     executePlayScript,
     seedGroupDocument,
     setStudioSelection,
+    setCanonicalSelection,
     clearCanonicalSelection,
     publishCanonicalGroupSelection,
     seedCacheFrames,
@@ -2546,6 +2555,81 @@ describe('Phase 43.4 Key Rail coordinator/history integration', () => {
     expect(test.coordinator.acknowledgePhysicalEditSettlement(redoOperationId, 'release')).toBe(true);
     expect(test.getCanonicalDocument()).toEqual(after);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+});
+
+describe('studio-undo-replay-mismatch — captured pre-edit selection authority', () => {
+  it('carries the child capture (not the launch/mirror pair) in the forward payload and restores an ordinary group delete through Undo', async () => {
+    // The launch pair stands in for the parent's passive mirror: 'C'@2. The
+    // child document has since navigated to 'A'@0, so the child's first
+    // capture (and its history before entry) is 'A'@0 — the divergence the
+    // live rejection named (cursor 0 != 2 | selectedKeyId a06d61af != f726efd4).
+    const test = harness({ launchRotoPhysical: { selectedKeyId: 'C', cursorAppFrame: 2 } });
+    const records = [record('A', 0), record('B', 2), record('C', 6), record('D', 8)];
+    const before = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: 'A',
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+    const intent = { kind: 'delete-key-group', keyIds: ['C', 'D'] } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 30,
+      capacity: 30,
+      interpolationEnabled: false,
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+
+    expect(await test.coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'delete-key-group',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+    })).toBe(true);
+    const payload = test.getPayload();
+    if (!payload) throw new Error('Expected a forward payload.');
+    // The captured pre-edit pair rides the wire so the parent ledger can
+    // record the SAME before snapshot the child history will replay. Without
+    // this field the parent falls back to its mirror ('C'@2) and the Undo
+    // target check rejects the faithful replay.
+    expect(payload.beforeSelectedKeyId).toBe('A');
+    expect(payload.beforeCursorAppFrame).toBe(0);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected an accepted group delete.');
+    expect(accepted.before.selectedKeyId).toBe('A');
+    expect(accepted.before.selectedAppFrame).toBe(0);
+    expect(accepted.before.currentAppFrame).toBe(0);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    const undoPayload = test.getPayload();
+    if (!undoPayload) throw new Error('Expected an Undo payload.');
+    expect(undoPayload.operationKind).toBe('undo');
+    // Replays never carry the forward-only captured pair.
+    expect(undoPayload.beforeSelectedKeyId).toBeUndefined();
+    expect(undoPayload.beforeCursorAppFrame).toBeUndefined();
+    expect(test.accept()).toBe('accepted');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoPayload.operationId, 'release')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
   });
 });
 
