@@ -2864,6 +2864,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           // before it starts instead of leaving the bar silently full.
           await yieldToPaint();
         }
+        // IN-02: on a Reveal run these appended `slices` are the plain-paper RUN
+        // strokes while the committed pixels are the reveal composite (a known,
+        // plan-locked mirror of Quick B) — a later replay reproduces paint, not
+        // the reveal.
         recordRailKeyScripts!({ keyIds: touchedKeyIds, slices, recordMode });
       }
       collisionChoice.value = null;
