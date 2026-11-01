@@ -443,7 +443,7 @@ export function PhysicsPaintPlayScriptDialog({
           <div class="physics-paint-play-script-progress-line">
             {/* 261101-cd5: the 160 × 4 track is persistent; the real <progress>
                 exists only while generating. */}
-            <span class="physics-paint-play-script-progress-track" aria-hidden="true">
+            <span class="physics-paint-play-script-progress-track">
               {progressValue ? (
                 <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
               ) : progressBusy ? (

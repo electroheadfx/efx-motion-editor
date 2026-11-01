@@ -483,7 +483,7 @@ describe('PhysicsPaintPlayScriptDialog fixed shell (261101-cd5)', () => {
     const tree = renderDialog(controller);
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
     const track = findOne(footer, byClass('physics-paint-play-script-progress-track'));
-    expect(track.props['aria-hidden']).toBe('true');
+    expect(track.props['aria-hidden']).toBeUndefined();
     expect(findAll(footer, (vnode) => vnode.type === 'progress')).toHaveLength(0);
     expect(textOf(findOne(footer, byClass('physics-paint-play-script-progress-status')))).toBe('Ready');
     expect(findAll(footer, byClass('physics-paint-play-script-dialog-error'))).toHaveLength(0);
@@ -896,7 +896,9 @@ describe('PhysicsPaintPlayScriptDialog generation states (E5)', () => {
     expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(true);
     expect(findOne(tree, byId('physics-play-script-motion-deformation')).props.disabled).toBe(true);
     const footer = findOne(tree, byClass('physics-paint-play-script-footer'));
-    expect(findOne(footer, (vnode) => vnode.type === 'progress')).toBeTruthy();
+    const bar = findOne(footer, (vnode) => vnode.type === 'progress');
+    expect(bar).toBeTruthy();
+    expect(parentOf(footer, bar)?.props['aria-hidden']).toBeUndefined();
     expect(textOf(tree)).toContain('Cancel generation');
   });
 
