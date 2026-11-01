@@ -5,6 +5,7 @@ import {imageStore} from '../stores/imageStore';
 import {efxPaintVersion} from '../stores/efxPaintStore';
 import {physicPaintVersion} from '../stores/physicPaintStore';
 import {clearIoFailureLatch, reportLatchedIoFailure} from './projectIoFailureDialog';
+import {isStudioDraftModeActive, setStudioDraftModeReleaseHandler} from './physicPaintDraftMode';
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -32,9 +33,17 @@ function recordSaved(): void {
 
 function scheduleSave() {
   if (disposed) return;
+  // 261101-o2m (D-05, T-261101-o2m-01): an autosave uses `skipPaintFlush`, so
+  // persisting mid-Draft would write the NEW script against the FROZEN
+  // pre-Draft pixel sidecar. While the Studio publishes an active gate nothing
+  // arms; the release handler registered in `startAutoSave` re-schedules once
+  // the Studio reports a clean pixel state (or the 20s staleness belt clears a
+  // dead Studio's gate — a dead webview can never wedge autosave forever).
+  if (isStudioDraftModeActive()) return;
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
+      if (isStudioDraftModeActive()) return;
       void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved, (error) => {
         reportLatchedIoFailure('save', error);
       });
@@ -75,9 +84,17 @@ export function startAutoSave(): void {
     scheduleSave();
   });
 
+  // 261101-o2m (D-05): the deferred save resumes on the Draft-off publish, not
+  // before — the 2s debounce then re-arms normally. The handler is cleared in
+  // `stopAutoSave` so a stopped watcher can never be resurrected.
+  setStudioDraftModeReleaseHandler(() => scheduleSave());
+
   // Periodic save every 60 seconds as safety net
   intervalId = setInterval(() => {
     if (projectStore.filePath.value && projectStore.isDirty.value && (paintVersionsChanged() || nonPaintDirty)) {
+      // Same mid-Draft hazard as the debounce body: skip, never persist over
+      // the frozen pixel sidecar.
+      if (isStudioDraftModeActive()) return;
       void projectStore.saveProject({ skipPaintFlush: true }).then(recordSaved, (error) => {
         reportLatchedIoFailure('save', error);
       });
@@ -88,6 +105,7 @@ export function startAutoSave(): void {
 /** Stop auto-save watchers. Call on app shutdown or project close. */
 export function stopAutoSave(): void {
   disposed = true;
+  setStudioDraftModeReleaseHandler(null);
   if (disposeEffect) {
     disposeEffect();
     disposeEffect = null;

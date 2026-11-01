@@ -48,6 +48,13 @@ const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptS
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
 // 261101-o2m (D-02): the frozen-sheet leaf the cache eye hides.
 const cachedBase = readFileSync(fileURLToPath(new URL('./engine/AquarelleCachedBaseLayer.tsx', import.meta.url)), 'utf8');
+// 261101-o2m (D-05): the main-realm Draft gate, its Studio publisher and the
+// two save/export callers that abort on a refused recompute.
+const draftModeTransport = readFileSync(fileURLToPath(new URL('../../lib/physicPaintDraftMode.ts', import.meta.url)), 'utf8');
+const autoSave = readFileSync(fileURLToPath(new URL('../../lib/autoSave.ts', import.meta.url)), 'utf8');
+const projectStoreSource = readFileSync(fileURLToPath(new URL('../../stores/projectStore.ts', import.meta.url)), 'utf8');
+const exportEngine = readFileSync(fileURLToPath(new URL('../../lib/exportEngine.ts', import.meta.url)), 'utf8');
+const snapshotController = readFileSync(fileURLToPath(new URL('./snapshot/studioScriptSnapshotController.ts', import.meta.url)), 'utf8');
 // 261027-klx: the Brush edition adapter and its overlay are gone with engine-1
 // (Wave 2). Wave 3 owns this suite's load path — no read may name a deleted file.
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
@@ -5722,5 +5729,195 @@ describe('quick 261101-o2m — every edit commits under Draft, the cache eye', (
     // Draft never widens the drawn set: no stroke-listing read in the overlay.
     expect(scriptStrokeOverlay).not.toContain('listSelectableAquarelleStrokes');
     expect(scriptStrokeOverlay).not.toContain('draftMode');
+  });
+});
+
+// 261101-o2m Task 3: frame change, play (both entry points), save/export, the
+// Studio window-close REFUSAL, the deferred script snapshot, and the main-realm
+// gate with its heartbeat and staleness belt. Every exit ACTS on the settle's
+// result — a refusal aborts rather than proceeds over the frozen sheet.
+describe('quick 261101-o2m — the five exits act on the recompute, the persistence channels are closed', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('settles before the frame-leave capture and aborts the navigation on a refusal', () => {
+    const nav = regionOf(studio, 'const navigateToSyncedPhysicalFrame', 'const runScriptReplay');
+    // The two-flag peek keeps the Live law synchronous: no await, no microtask.
+    const guardAt = nav.indexOf('if (draftMode.peek() || draftPixelsDirty.peek()) {');
+    expect(guardAt, 'the frame-change exit is guarded on both flags').toBeGreaterThan(-1);
+    const settleAt = nav.indexOf('const draftSettled = await settleDraftScript();', guardAt);
+    expect(settleAt, 'the settle runs inside the guarded block').toBeGreaterThan(guardAt);
+    // The settle PRECEDES the frame-leave capture: settling afterwards would
+    // enqueue the frozen pre-Draft sheet for the OUTGOING frame.
+    const captureAt = nav.indexOf('aquarelleFlushCaptureRef.current?.();', settleAt);
+    expect(captureAt, 'the frame-leave capture still runs').toBeGreaterThan(settleAt);
+    // ACTING on the result, not just awaiting it.
+    expect(nav).toContain('if (!draftSettled) return false;');
+    // A navigation superseded during the await yields the canvas to the newer
+    // intent instead of capturing over it.
+    const generationAt = nav.indexOf('if (!rotoNavigationGeneration.isLatest(generation)) return false;', settleAt);
+    expect(generationAt, 'the generation is re-checked after the await').toBeGreaterThan(settleAt);
+    // The callback depends on the seam it calls (its own deps array — the one
+    // closing the `return true;` body, not a later effect's).
+    const depsAt = nav.indexOf('return true;\n  }, [');
+    expect(depsAt, 'the callback deps array closes the navigation body').toBeGreaterThan(-1);
+    expect(nav.slice(depsAt, nav.indexOf(']);', depsAt))).toContain('settleDraftScript');
+  });
+
+  it('routes BOTH play entry points through ONE settle-then-toggle wrapper', () => {
+    const wrapper = regionOf(studio, 'const handleToggleRotoPlayback = useCallback', 'const navigateToSyncedPhysicalFrame');
+    const settleAt = wrapper.indexOf('void settleDraftScript().then((settled) => {');
+    const toggleAt = wrapper.indexOf('if (settled) rotoCachedPlayback.toggle();');
+    expect(settleAt, 'the wrapper settles first').toBeGreaterThan(-1);
+    expect(toggleAt, 'a refused settle never starts playback').toBeGreaterThan(settleAt);
+    // Fail closed: the toggle is INSIDE the settled check.
+    expect(wrapper.indexOf('rotoCachedPlayback.toggle();', settleAt)).toBeGreaterThan(settleAt);
+    // Declared before its first consumer (the keyboard hook call).
+    const wrapperAt = studio.indexOf('const handleToggleRotoPlayback = useCallback');
+    const keyboardAt = studio.indexOf('usePhysicsPaintStudioKeyboard(');
+    expect(wrapperAt, 'the wrapper is declared before the keyboard consumer').toBeGreaterThan(-1);
+    expect(keyboardAt).toBeGreaterThan(wrapperAt);
+    // BOTH consumers are wired to the wrapper — bare Space included.
+    expect(studio).toContain('toggleRotoPlayback: handleToggleRotoPlayback,');
+    expect(studio).toContain('onToggleRotoPlayback: handleToggleRotoPlayback,');
+    expect(studio).not.toContain('toggleRotoPlayback: rotoCachedPlayback.toggle,');
+    expect(studio).not.toContain('onToggleRotoPlayback: rotoCachedPlayback.toggle,');
+  });
+
+  it('makes the save/export flush throw on a refused recompute, before any capture', () => {
+    const listenerFlush = regionOf(studio, 'flushStudioStateRef.current = async () => {', 'installPhysicPaintFlushRequestListener');
+    const settleStepAt = listenerFlush.indexOf('if (await settleDraftScript()) return;');
+    expect(settleStepAt, 'the settle is a flush step').toBeGreaterThan(-1);
+    expect(listenerFlush).toContain("throw new Error('Draft recompute refused — save/export cancelled.');");
+    // The throw IS the abort: the capture never runs after a refusal.
+    expect(listenerFlush.indexOf('flushAquarellePixels()', settleStepAt)).toBeGreaterThan(settleStepAt);
+    // The step is FIRST in the list: it precedes the idle-gated ledger drain.
+    expect(listenerFlush.indexOf('await runStudioFlush([')).toBeGreaterThan(-1);
+    const firstLiveStepAt = listenerFlush.indexOf('if (!readInteractionIdle()) return;');
+    expect(firstLiveStepAt, 'the Live first step still runs').toBeGreaterThan(settleStepAt);
+  });
+
+  it('refuses the Studio window close while dirty — never a recompute', () => {
+    // The CALL, not the import line: slice from the indented invocation so the
+    // region is the close block itself.
+    const closeStart = studio.indexOf('\n  usePhysicsPaintCloseFlush(');
+    expect(closeStart).toBeGreaterThan(-1);
+    const closeReleaseAt = studio.indexOf('efxPaintAudioMonitor.release()', closeStart);
+    expect(closeReleaseAt).toBeGreaterThan(closeStart);
+    const closeFlush = studio.slice(closeStart, closeReleaseAt);
+    const refusalAt = closeFlush.indexOf("if (draftPixelsDirty.peek()) throw new Error('Draft recompute pending — turn Draft off before closing the Studio.');");
+    expect(refusalAt, 'the dirty refusal is a close step').toBeGreaterThan(-1);
+    // FIRST step: nothing is captured, pushed or written before it throws.
+    for (const later of [
+      'rotoMutationPort.flushPendingStrokeFinalizations?.()',
+      'flushAquarellePixels(currentFrame)',
+      'flushDocumentSyncRef.current()',
+      'studioScriptSnapshot.flushNow()',
+    ]) {
+      expect(closeFlush.indexOf(later), `${later} runs after the refusal`).toBeGreaterThan(refusalAt);
+    }
+    // D-04 has exactly five exits: the window close must never settle.
+    expect(closeFlush).not.toContain('settleDraftScript(');
+    // The audio engine release still runs (outside the step list, after it).
+    const releaseAt = studio.indexOf('efxPaintAudioMonitor.release(),', closeStart);
+    expect(releaseAt, 'the audio release still runs first in the close hook').toBeGreaterThan(closeStart + refusalAt);
+    expect(studio.slice(closeStart, releaseAt)).toContain('studioScriptSnapshot.flushNow()');
+  });
+
+  it('publishes the Draft-or-dirty state with a 5s heartbeat from one lifecycle effect', () => {
+    expect(studio).toContain("import { PHYSIC_PAINT_DRAFT_HEARTBEAT_MS, publishStudioDraftMode } from '../../lib/physicPaintDraftMode';");
+    const effectStart = studio.indexOf('const active = draftMode.value || draftPixelsDirty.value;');
+    expect(effectStart, 'the publisher follows the PIXELS, never the switch alone').toBeGreaterThan(-1);
+    expect(studio.indexOf('void publishStudioDraftMode(active);', effectStart)).toBeGreaterThan(effectStart);
+    expect(studio.indexOf('}, PHYSIC_PAINT_DRAFT_HEARTBEAT_MS);', effectStart)).toBeGreaterThan(effectStart);
+    expect(studio.indexOf('heartbeat = setInterval(', effectStart)).toBeGreaterThan(effectStart);
+    // Disposed on unmount: the effect teardown clears the interval.
+    const publishBlockStart = studio.lastIndexOf('useEffect(() => {', effectStart);
+    const publishBlock = studio.slice(publishBlockStart, studio.indexOf('}, []);', publishBlockStart));
+    expect(publishBlock).toContain('dispose();');
+    expect(publishBlock).toContain('stopHeartbeat();');
+  });
+
+  it('gates both autosave sites and resumes on the release publish', () => {
+    expect(autoSave).toContain("import {isStudioDraftModeActive, setStudioDraftModeReleaseHandler} from './physicPaintDraftMode';");
+    // scheduleSave never arms a timer while the gate is active.
+    const armAt = autoSave.indexOf('saveTimeout = setTimeout(');
+    expect(autoSave.indexOf('if (isStudioDraftModeActive()) return;', autoSave.indexOf('function scheduleSave()'))).toBeGreaterThan(-1);
+    expect(armAt).toBeGreaterThan(autoSave.indexOf('if (isStudioDraftModeActive()) return;'));
+    // BOTH execution bodies consult the gate: the 2s debounce and the 60s
+    // interval (one call in scheduleSave + one in each body = three).
+    expect((autoSave.match(/isStudioDraftModeActive\(\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    const debounceBody = autoSave.slice(armAt, autoSave.indexOf('}, 2000); // 2-second debounce'));
+    expect(debounceBody, 'the debounce body is gated').toContain('if (isStudioDraftModeActive()) return;');
+    const intervalStart = autoSave.indexOf('intervalId = setInterval(');
+    const intervalBody = autoSave.slice(intervalStart, autoSave.indexOf('}, 60_000);'));
+    expect(intervalStart).toBeGreaterThan(-1);
+    expect(intervalBody, 'the 60s interval body is gated').toContain('if (isStudioDraftModeActive()) return;');
+    // Registration in startAutoSave, cleared in stopAutoSave.
+    expect(autoSave).toContain('setStudioDraftModeReleaseHandler(() => scheduleSave());');
+    expect(autoSave).toContain('setStudioDraftModeReleaseHandler(null);');
+    expect(autoSave.indexOf('setStudioDraftModeReleaseHandler(() => scheduleSave());'))
+      .toBeGreaterThan(autoSave.indexOf('export function startAutoSave(): void {'));
+    expect(autoSave.indexOf('setStudioDraftModeReleaseHandler(null);'))
+      .toBeGreaterThan(autoSave.indexOf('export function stopAutoSave(): void {'));
+  });
+
+  it('installs the main-realm listener in the bootstrap', () => {
+    expect(main).toContain("import {installPhysicPaintDraftModeListener} from './lib/physicPaintDraftMode';");
+    const installAt = main.indexOf('await installPhysicPaintDraftModeListener();');
+    expect(installAt).toBeGreaterThan(-1);
+    expect(installAt).toBeGreaterThan(main.indexOf('startAutoSave();'));
+    expect(installAt).toBeGreaterThan(main.indexOf('render(<App />, root);'));
+  });
+
+  it('cancels save and export in the main realm while the Draft gate is still active', () => {
+    // The conjunction is race-free: a successful settle always reports flushed.
+    const gate = 'if (!flushed && isStudioDraftModeActive())';
+    expect(projectStoreSource.split(gate).length - 1, 'both save paths abort').toBe(2);
+    expect(projectStoreSource.split("throw new Error('Save cancelled — the Draft recompute did not complete.');").length - 1).toBe(2);
+    // saveProject keeps its skipPaintFlush autosave path free of the flush.
+    expect(projectStoreSource).toContain('if (!options?.skipPaintFlush) {');
+    expect(exportEngine.split(gate).length - 1, 'the export aborts').toBe(1);
+    expect(exportEngine).toContain("errorMessage: 'Export cancelled — the Draft recompute did not complete. Turn Draft off and retry.'");
+    // Both import the gate from the leaf module (no cycle through the bridge).
+    expect(projectStoreSource).toContain("import {isStudioDraftModeActive} from '../lib/physicPaintDraftMode';");
+    expect(exportEngine).toContain("import { isStudioDraftModeActive } from './physicPaintDraftMode';");
+  });
+
+  it('defers every script-snapshot write at the two controller chokepoints', () => {
+    // The Studio injects the dirty port beside the content signature.
+    expect(studio).toContain('shouldDeferSave: () => draftPixelsDirty.peek(),');
+    // Optional: absent means never defer (every existing construction intact).
+    expect(snapshotController).toContain('shouldDeferSave?: () => boolean;');
+    const markDirty = regionOf(snapshotController, 'function markDirty(): void {', 'async function flushNow(');
+    const deferAt = markDirty.indexOf('if (deps.shouldDeferSave?.()) return;');
+    expect(deferAt, 'markDirty defers before arming').toBeGreaterThan(-1);
+    expect(markDirty.indexOf('saveTimer = setTimeout(', deferAt), 'no timer is armed').toBeGreaterThan(deferAt);
+    const prepareSave = regionOf(snapshotController, 'function prepareSave(options?: StudioScriptSnapshotSaveOptions): PreparedSave | null {', 'const identity = boundIdentity;');
+    expect(prepareSave, 'prepareSave prepares nothing while dirty').toContain('if (deps.shouldDeferSave?.()) return null;');
+  });
+
+  it('keeps the transport a validated, self-clearing gate', () => {
+    // The event + belt constants live in the leaf module.
+    expect(draftModeTransport).toContain("export const PHYSIC_PAINT_DRAFT_MODE_EVENT = 'physic-paint:draft-mode';");
+    expect(draftModeTransport).toContain('export const PHYSIC_PAINT_DRAFT_HEARTBEAT_MS = 5000;');
+    expect(draftModeTransport).toContain('export const PHYSIC_PAINT_DRAFT_STALE_MS = 20000;');
+    // Unvalidated payloads are ignored, never interpreted.
+    expect(draftModeTransport).toContain("return typeof active === 'boolean' ? active : null;");
+    // Release only on a true -> false transition.
+    expect(draftModeTransport).toContain('if (active === draftModeActive) return;');
+    // An active gate can never stick: the belt routes through the same law.
+    expect(draftModeTransport).toContain('staleTimer = setTimeout(() => {');
+    expect(draftModeTransport).toContain('}, PHYSIC_PAINT_DRAFT_STALE_MS);');
+    // The window-closed literal mirrors the Rust emit.
+    expect(draftModeTransport).toContain("const PHYSIC_PAINT_WINDOW_CLOSED_EVENT = 'physic-paint:window-closed';");
+    // Browser fallback: publishing and installing are no-ops.
+    expect(draftModeTransport).toContain('export async function publishStudioDraftMode');
+    expect(draftModeTransport).toContain('if (!isTauriRuntime()) return () => {};');
   });
 });

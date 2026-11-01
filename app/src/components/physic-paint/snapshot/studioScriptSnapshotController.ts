@@ -117,6 +117,27 @@ export interface StudioScriptSnapshotControllerDeps {
   /** Opaque content fingerprint; any script mutation must change it. */
   getContentSignature: () => string;
   /**
+   * 261101-o2m: true while the Studio's watercolor pixels are dirty (Draft).
+   * Every save preparation is deferred so a script can never land against a
+   * frozen pixel sidecar. Absent means never defer.
+   *
+   * Why this seam (T-261101-o2m-10): every Draft commit bumps
+   * `aquarelleStrokesRevision`, whose subscription calls `markDirty()`, and the
+   * 800 ms debounce then writes `watercolorEvents + durableBases` into the
+   * package — a script write with no exit, settle or gate. `prepareSave` is the
+   * single preparation point behind the debounce drain, the track-switch
+   * `saveNow`, the close `flushNow` and `persistAfterPurge`, so these two
+   * checks cover every writer including the direct `markDirty()` calls.
+   *
+   * Deferral, never a drop: the stores keep the content, `isDirty()` stays true
+   * (so `persistAfterPurge` fails closed), and the settle's `markDirty()` lands
+   * the write once the recompute succeeded. Accepted cost — a crash mid-Draft
+   * loses the Draft edits, exactly D-05's stated trade. This is what makes
+   * "nothing is persisted while the pixels are dirty" a single invariant
+   * instead of a per-caller promise.
+   */
+  shouldDeferSave?: () => boolean;
+  /**
    * Live real-key app frames for the bound track. `null` (or an empty set)
    * means unknown — pruning is DISABLED rather than wiping the script.
    */
@@ -774,6 +795,9 @@ export function createStudioScriptSnapshotController(
    * (reported here, once per attempt).
    */
   function prepareSave(options?: StudioScriptSnapshotSaveOptions): PreparedSave | null {
+    // 261101-o2m (T-261101-o2m-10): no payload is ever prepared while the
+    // pixels are dirty — a timer armed BEFORE Draft opened also lands here.
+    if (deps.shouldDeferSave?.()) return null;
     const identity = boundIdentity;
     if (!identity) return null;
     // studio-snapshot-empty-save: the rebind window's empty session must never
@@ -892,6 +916,9 @@ export function createStudioScriptSnapshotController(
   }
 
   function markDirty(): void {
+    // 261101-o2m (T-261101-o2m-10): a dirty Draft must arm no timer — the
+    // settle's own `markDirty()` re-arms the write once the recompute landed.
+    if (deps.shouldDeferSave?.()) return;
     if (!boundIdentity) return;
     // The restore's seed bumps are the new baseline, not a mutation.
     if (restoringCount > 0) return;

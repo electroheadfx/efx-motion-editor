@@ -123,6 +123,7 @@ import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, send
 import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
 import { interactionIdle, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
+import { PHYSIC_PAINT_DRAFT_HEARTBEAT_MS, publishStudioDraftMode } from '../../lib/physicPaintDraftMode';
 import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';
 import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
@@ -1248,6 +1249,10 @@ export function PhysicsPaintStudio() {
       // mutation — and a stroke that completes without a bump is the one
       // silent-loss case this signature is chosen to rule out.
       getContentSignature: () => `${aquarelleStrokesRevision.peek()}`,
+      // 261101-o2m (D-05, T-261101-o2m-10): the Draft deferral — the script is
+      // committed but the pixels are frozen, so every snapshot write waits for
+      // the settle's `markDirty()` (a `.peek()` read: no subscription).
+      shouldDeferSave: () => draftPixelsDirty.peek(),
       // Live real-key app frames for the bound track. An empty set disables
       // pruning in the controller (unknown ≠ empty), so a launch whose key
       // records are not loaded yet can never wipe the restored script.
@@ -3979,6 +3984,18 @@ export function PhysicsPaintStudio() {
       // gates replace the old whole-chain `return`, so a dirty non-roto
       // session still reaches the snapshot save.
       await runStudioFlush([
+        // 261101-o2m (T-261101-o2m-09): the Studio WINDOW close is a REFUSAL,
+        // never a sixth recompute — D-04's five exits stand. A dirty Draft
+        // would otherwise capture the frozen sheet into the frame cache, push
+        // the document, write the post-Draft script and then destroy the realm,
+        // whose transport clears the gate and lets the deferred autosave persist
+        // the same mismatched pair. A throwing step resolves the drain `failed`
+        // with no later step run, `runStudioFlush` rethrows and this hook's
+        // catch skips `destroy()` — the window stays open with the work intact
+        // until the user turns Draft off (a settle).
+        () => {
+          if (draftPixelsDirty.peek()) throw new Error('Draft recompute pending — turn Draft off before closing the Studio.');
+        },
         () => {
           if (workflowMode !== 'roto') return;
           // 261027-klx: watercolor finalizes a stroke synchronously at stroke
@@ -5156,6 +5173,19 @@ export function PhysicsPaintStudio() {
     draftSettlePromiseRef.current = run;
     return run;
   }, [applyFrameModuleState, isPhysicalMutationLocked, rotoPersistence, rotoScript, setApplyMessage, setApplyStatus, setLastError]);
+  /**
+   * 261101-o2m (D-04, play exit): ONE wrapper for BOTH play entry points — the
+   * keyboard actions object (bare Space) and the view model's
+   * `onToggleRotoPlayback` prop. Playback over the frozen sheet is never
+   * allowed: the settle runs first and a refused recompute leaves playback
+   * stopped (fail closed). Depends on the stable `toggle` member, never the
+   * fresh-per-render hook wrapper (the `rotoMoveHistory` law below).
+   */
+  const handleToggleRotoPlayback = useCallback(() => {
+    void settleDraftScript().then((settled) => {
+      if (settled) rotoCachedPlayback.toggle();
+    });
+  }, [rotoCachedPlayback.toggle, settleDraftScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -5180,6 +5210,20 @@ export function PhysicsPaintStudio() {
     // navigation started during the flush supersedes this one.
     const generation = rotoNavigationGeneration.begin();
     if (launchContext) {
+      // 261101-o2m (D-04, frame-change exit): the ONE Draft recompute runs
+      // FIRST — before the frame-leave capture below — because that capture
+      // persists the OUTGOING frame: settling afterwards would enqueue the
+      // frozen pre-Draft sheet. A refused recompute ABORTS the navigation
+      // before anything is captured, written or cleared, and a navigation
+      // superseded during the await yields the canvas to the newer intent.
+      // The two-flag peek keeps the Live law synchronous: with Draft OFF and
+      // clean pixels this block adds no await and no microtask, so the
+      // key-selection write below keeps its exact tick (the 2-click family).
+      if (draftMode.peek() || draftPixelsDirty.peek()) {
+        const draftSettled = await settleDraftScript();
+        if (!draftSettled) return false;
+        if (!rotoNavigationGeneration.isLatest(generation)) return false;
+      }
       // 47 close-out: set the primary key selection SYNCHRONOUSLY, before the
       // flush — the post-flush write ran after the paint, so the first click's
       // selection was never visible (the 2-click bug) and a second click
@@ -5272,7 +5316,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlayback.seek(frame);
     }
     return true;
-  }, [applyFrameModuleState, bridgeMode, currentFrame, launchContext, loadCachedRotoReferenceFrame, previewBasePort, rotoCachedPlayback, rotoMutationPort, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  }, [applyFrameModuleState, bridgeMode, currentFrame, launchContext, loadCachedRotoReferenceFrame, previewBasePort, rotoCachedPlayback, rotoMutationPort, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, selectedKeyId, setCachedRotoReferenceUrl, settleDraftScript]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through
@@ -6333,7 +6377,7 @@ export function PhysicsPaintStudio() {
         selectionAnchorKeyId.value = next.anchorKeyId;
       },
       toggleShortcuts: () => setShortcutsVisible((visible) => !visible),
-      toggleRotoPlayback: rotoCachedPlayback.toggle,
+      toggleRotoPlayback: handleToggleRotoPlayback,
       navigateRotoFrame: (frame) => { void requestRotoFrameNavigation(frame); },
       toggleOnion: () => setOnion((current) => ({ ...current, enabled: !current.enabled })),
       adjustOnionCount: (delta) => setOnion((current) => ({ ...current, count: clampOnionCount(current.count + delta) })),
@@ -9998,6 +10042,16 @@ export function PhysicsPaintStudio() {
     // captures (the drain cannot race a capture still producing) and hands the
     // same drain to a concurrent close instead of running a second sequence.
     await runStudioFlush([
+      // 261101-o2m (D-04, save/export exit): save and export both reach this
+      // through `requestPhysicPaintFlush`. The ONE Draft recompute runs FIRST —
+      // a throwing step aborts the drain before the capture and the document
+      // push, so the flush request reports `unavailable` and the main realm
+      // cancels the save/export while the gate is still active. Never a capture
+      // over the frozen sheet.
+      async () => {
+        if (await settleDraftScript()) return;
+        throw new Error('Draft recompute refused — save/export cancelled.');
+      },
       () => {
         if (!readInteractionIdle()) return;
         // 261027-klx: Water color is the only module — drain the queued stroke
@@ -10027,6 +10081,36 @@ export function PhysicsPaintStudio() {
       unlisten = unsub;
     });
     return () => unlisten?.();
+  }, []);
+  // 261101-o2m (D-05, T-261101-o2m-06): mirror the Draft gate to the MAIN
+  // realm. The published value follows the PIXELS, never the switch alone — a
+  // Draft session whose script has not diverged yet still blocks the autosave,
+  // and a dirty state can never be published as clean. The flip to clean
+  // happens only after a successful settle, so the main gate can never release
+  // early. The 5s heartbeat keeps the main realm's 20s staleness belt fresh; a
+  // dead webview stops heartbeating and the belt clears the gate. A narrow
+  // lifecycle effect (never the Studio render body — rule 5).
+  useEffect(() => {
+    let heartbeat: ReturnType<typeof setTimeout> | null = null;
+    const stopHeartbeat = () => {
+      if (heartbeat !== null) {
+        clearInterval(heartbeat);
+        heartbeat = null;
+      }
+    };
+    const dispose = effect(() => {
+      const active = draftMode.value || draftPixelsDirty.value;
+      stopHeartbeat();
+      void publishStudioDraftMode(active);
+      if (!active) return;
+      heartbeat = setInterval(() => {
+        void publishStudioDraftMode(true);
+      }, PHYSIC_PAINT_DRAFT_HEARTBEAT_MS);
+    });
+    return () => {
+      dispose();
+      stopHeartbeat();
+    };
   }, []);
   // 49-04 (Task 2): the scoped full-area asset picker (S2). The Studio realm's
   // imageStore is empty (Pitfall 2), so the picker populates its grid from the
@@ -10664,7 +10748,7 @@ export function PhysicsPaintStudio() {
         // reference (never .value-read here); only the nav-pill current-frame
         // output child subscribes to it, during active playback only.
         rotoCachedPlaybackTick: rotoCachedPlayback.playbackTick,
-        onToggleRotoPlayback: rotoCachedPlayback.toggle, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
+        onToggleRotoPlayback: handleToggleRotoPlayback, onRotoPlaybackLoopChange: setRotoPlaybackLoop, onRotoPlaybackFpsChange: setRotoPlaybackFps, rotoInterpolationEnabled: rotoInterpolationState.enabled, rotoInterpolationMode: rotoInterpolationState.mode, rotoInterpolationPending: physicalEditCoordinator.pendingOperationId.value !== null,
         // 41-04 (D-12..D-14): session-local Audio Preview toggle. The .value
         // read subscribes this bundle like the sibling signal reads above; the
         // intent routes through the monitor funnel for immediate effect.

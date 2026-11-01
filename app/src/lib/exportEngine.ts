@@ -1,6 +1,7 @@
 import { PreviewRenderer } from './previewRenderer';
 import { renderGlobalFrame, renderFrameWithMotionBlur, preloadExportImages } from './exportRenderer';
 import { requestPhysicPaintFlush } from './physicPaintFlush';
+import { isStudioDraftModeActive } from './physicPaintDraftMode';
 import { frameMap, crossDissolveOverlaps, getOverlaySkipRange } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
@@ -141,7 +142,17 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
   // 52.1: drain the Studio's queued post-gesture work before reading the frame
   // map, so an export never renders a stale document/sidecar set.
-  await requestPhysicPaintFlush();
+  const flushed = await requestPhysicPaintFlush();
+  // 261101-o2m (D-05, T-261101-o2m-01): a flush that reported `unavailable`
+  // WHILE the Studio's Draft gate is still active is a refused (or timed-out)
+  // Draft recompute — the export would render the NEW script against the FROZEN
+  // pre-Draft pixel sidecar. The conjunction keeps it race-free and
+  // browser-safe (a successful settle reports `flushed: true`; a browser
+  // fallback has no flush channel and therefore no gate).
+  if (!flushed && isStudioDraftModeActive()) {
+    exportStore.updateProgress({ status: 'error', errorMessage: 'Export cancelled — the Draft recompute did not complete. Turn Draft off and retry.' });
+    return;
+  }
 
   let fm = frameMap.peek();
 

@@ -129,6 +129,7 @@ function harness(
     | 'getWatercolorKeyAnchors'
     | 'getDurableBases'
     | 'seedDurableBases'
+    | 'shouldDeferSave'
   >> = {},
 ): Harness {
   let signature = 'sig-0';
@@ -184,6 +185,7 @@ function harness(
     getDurableBases: overrides.getDurableBases ?? (() => durableBaseMap),
     seedDurableBases: overrides.seedDurableBases ?? seedDurableBases,
     getAuthority: overrides.getAuthority ?? (() => authority),
+    ...(overrides.shouldDeferSave ? { shouldDeferSave: overrides.shouldDeferSave } : {}),
     report,
     write,
     read,
@@ -1422,5 +1424,90 @@ describe('studioScriptSnapshotController — foreign-track isolation (261027 UAT
     expect(writtenSnapshot(write).durableBases).toEqual([
       { keyId: 'deleted-key', bytes: null },
     ]);
+  });
+});
+
+// 261101-o2m (T-261101-o2m-10): while the Studio's watercolor pixels are dirty
+// (Draft), EVERY script-snapshot write is deferred at the controller's two
+// chokepoints — markDirty arms no timer and prepareSave prepares no payload —
+// so the debounce drain, the track-switch saveNow, the close flushNow and every
+// direct markDirty are covered by one check. Deferral, never a drop: the content
+// stays, isDirty() stays true, and the settle's markDirty lands the write.
+describe('studioScriptSnapshotController — 261101-o2m Draft deferral', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function deferredHarness(): ReturnType<typeof harness> & { setDefer: (value: boolean) => void } {
+    let defer = true;
+    return { ...harness({ shouldDeferSave: () => defer }), setDefer: (value: boolean) => { defer = value; } };
+  }
+
+  it('arms no timer and writes nothing while the pixels are dirty', async () => {
+    const { controller, write, setSignature } = deferredHarness();
+    controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
+    controller.markDirty();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+    // Deferral, not loss: the content is still pending (persistAfterPurge must
+    // fail closed on it).
+    expect(controller.isDirty()).toBe(true);
+    controller.dispose();
+  });
+
+  it('saveNow and flushNow prepare nothing while dirty, then the released markDirty writes exactly once', async () => {
+    const { controller, write, setSignature, setDefer } = deferredHarness();
+    controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
+    await controller.saveNow();
+    await controller.flushNow();
+    expect(write).not.toHaveBeenCalled();
+    expect(controller.isDirty()).toBe(true);
+
+    // The settle flipped the pixels clean and called markDirty: ONE write.
+    setDefer(false);
+    controller.markDirty();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+    controller.dispose();
+  });
+
+  it('flushNow writes immediately once the deferral is released', async () => {
+    const { controller, write, setSignature, setDefer } = deferredHarness();
+    controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
+    await controller.flushNow();
+    expect(write).not.toHaveBeenCalled();
+
+    setDefer(false);
+    await controller.flushNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+    controller.dispose();
+  });
+
+  it('a controller built without the port writes exactly as before', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
+    controller.markDirty();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+    controller.dispose();
   });
 });

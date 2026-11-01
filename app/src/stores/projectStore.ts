@@ -19,6 +19,7 @@ import {audioEngine, addAudioDecodeError} from '../lib/audioEngine';
 import {computeWaveformPeaks} from '../lib/audioWaveform';
 import {audioPeaksCache} from '../lib/audioPeaksCache';
 import {startAutoSave, stopAutoSave} from '../lib/autoSave';
+import {isStudioDraftModeActive} from '../lib/physicPaintDraftMode';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
@@ -971,7 +972,19 @@ export const projectStore = {
       // engine's finalize drain, which is unbounded at 1080p (~0.5-2s on the
       // Studio's main thread at 52.1 sizes) and fires from inside the user's
       // next stroke — the autosave's freshness guarantee doesn't need it.
-      if (!options?.skipPaintFlush) await requestPhysicPaintFlush();
+      if (!options?.skipPaintFlush) {
+        const flushed = await requestPhysicPaintFlush();
+        // 261101-o2m (D-05, T-261101-o2m-01): a flush that reported
+        // `unavailable` WHILE the Studio's Draft gate is still active is a
+        // refused (or timed-out) Draft recompute. Persisting then would write
+        // the NEW script against the FROZEN pre-Draft pixel sidecar. The
+        // conjunction is what makes the rule race-free and browser-safe: a
+        // successful settle always reports `flushed: true`, and a browser
+        // fallback (no flush channel, therefore no gate) still saves.
+        if (!flushed && isStudioDraftModeActive()) {
+          throw new Error('Save cancelled — the Draft recompute did not complete.');
+        }
+      }
       // The write set is computed AFTER the flush, so the Studio's pending
       // post-gesture work is what gets persisted (never stale content).
       const documents = buildEfxPaintDocuments();
@@ -1018,7 +1031,14 @@ export const projectStore = {
     const parentDir = newFilePath.substring(0, newFilePath.lastIndexOf('/'));
     try {
       // 52.1: drain the Studio's queued post-gesture work before serializing.
-      await requestPhysicPaintFlush();
+      const flushed = await requestPhysicPaintFlush();
+      // 261101-o2m: same refused-recompute abort as `saveProject` — the
+      // document would carry the NEW script while the frame's pixel sidecar is
+      // the frozen pre-Draft render. The catch below restores the previous path
+      // state and rethrows, so nothing is left half-migrated.
+      if (!flushed && isStudioDraftModeActive()) {
+        throw new Error('Save cancelled — the Draft recompute did not complete.');
+      }
       const documents = buildEfxPaintDocuments();
       // The destination package: manifest, layer sub-files and media all reach
       // their canonical paths through the destination's own transaction, so a

@@ -18,6 +18,7 @@ import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
 import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintDraftModeListener} from './lib/physicPaintDraftMode';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
@@ -108,6 +109,10 @@ if (window.location.pathname === '/physics-paint') {
     await paintStore.initFromPreferences(); // Load saved brush prefs BEFORE render
     render(<App />, root);
     startAutoSave();
+    // 261101-o2m (D-05): mirror the Studio's Draft gate so the autosave above
+    // never writes the new script against the frozen pre-Draft pixel sidecar.
+    // Main window only; app-lifetime install like the sibling bridge installs.
+    await installPhysicPaintDraftModeListener();
     mountShortcuts(); // Mount keyboard shortcuts globally
     await installPhysicPaintApplyListener();
     // 47-01: main window accepts the Studio's EFX Paint document sync (track
