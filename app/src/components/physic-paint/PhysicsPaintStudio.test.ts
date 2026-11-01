@@ -5613,9 +5613,16 @@ describe('quick 261101-o2m — every edit commits under Draft, the cache eye', (
     return source.slice(start, end);
   }
 
-  /** The Draft branch of one handler, sliced from its `if (draft) {`. */
-  function draftBranchOf(region: string, nextMarker: string): string {
-    return regionOf(region, 'if (draft) {', nextMarker);
+  /**
+   * The Draft branch of one handler. The delete branch re-reads the live mode
+   * after its await (261101-o2m WR-03), so its marker differs.
+   */
+  function draftBranchOf(
+    region: string,
+    nextMarker: string,
+    branchMarker = 'if (draft) {',
+  ): string {
+    return regionOf(region, branchMarker, nextMarker);
   }
 
   const handlers = [
@@ -5634,9 +5641,12 @@ describe('quick 261101-o2m — every edit commits under Draft, the cache eye', (
       expect(draftAt, `${handler} reads the Draft state`).toBeGreaterThan(-1);
       expect(resetAt, `${handler} keeps the Live reset path`).toBeGreaterThan(draftAt);
       expect(region, `${handler} keeps the Live apply`).toContain('applyAquarelleTimeline');
-      const branch = draftBranchOf(region, handler.includes('Delete')
-        ? 'aquarelleResetSheetRef.current?.()'
-        : 'setAquarelleScriptEditInFlight(true);');
+      const isDelete = handler.includes('Delete');
+      const branch = draftBranchOf(
+        region,
+        isDelete ? 'aquarelleResetSheetRef.current?.()' : 'setAquarelleScriptEditInFlight(true);',
+        isDelete ? 'if (draft && draftMode.peek()) {' : 'if (draft) {',
+      );
       expect(branch, `${handler} records the edit`).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
       expect(branch, `${handler} marks the pixels dirty`).toContain('setDraftPixelsDirty(true);');
       expect(branch, `${handler} clears the error`).toContain('setLastError(null);');
@@ -5651,8 +5661,11 @@ describe('quick 261101-o2m — every edit commits under Draft, the cache eye', (
     expect(deleteRegion.indexOf('const editId = beginAquarelleDeleteEdit('))
       .toBeLessThan(deleteRegion.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);'));
     // The delete Draft branch still applies the owner law the Live tail applies.
-    expect(draftBranchOf(deleteRegion, 'aquarelleResetSheetRef.current?.()'))
-      .toContain('applyFrameModuleState(playFrame);');
+    expect(draftBranchOf(
+      deleteRegion,
+      'aquarelleResetSheetRef.current?.()',
+      'if (draft && draftMode.peek()) {',
+    )).toContain('applyFrameModuleState(playFrame);');
 
     for (const [handler, next] of [
       ['handleAquarelleAppearanceStrokes', 'aquarelleAppearanceCommitRef.current'],
@@ -5919,5 +5932,122 @@ describe('quick 261101-o2m — the five exits act on the recompute, the persiste
     // Browser fallback: publishing and installing are no-ops.
     expect(draftModeTransport).toContain('export async function publishStudioDraftMode');
     expect(draftModeTransport).toContain('if (!isTauriRuntime()) return () => {};');
+  });
+});
+
+// 261101-o2m code-review fixes: CR-01 (track switch over a dirty Draft),
+// WR-02 (the last-stroke delete's refused close settle) and WR-03 (stale
+// Draft reads across the durable-base await). Each test here fails against
+// the pre-fix tree.
+describe('quick 261101-o2m — review fixes: guarded track switch, delete close retry, fresh Draft reads', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('CR-01: routes ALL six track-switch entry points through the one Draft-aware seam', () => {
+    // Exactly ONE raw write survives — inside the seam. Any second one is an
+    // unguarded switch path (the defect this pins).
+    expect(studio.split('setActiveTrackId(').length - 1).toBe(1);
+    const seam = regionOf(studio, 'const switchActiveTrack = useCallback', 'const handleToggleRotoPlayback = useCallback');
+    // Clean pixels keep the synchronous tick; dirty Draft settles first and a
+    // refused recompute aborts (fail closed).
+    expect(seam).toContain('if (!draftMode.peek() && !draftPixelsDirty.peek()) {');
+    const settleAt = seam.indexOf('void settleDraftScript()');
+    const commitAt = seam.indexOf('commitSwitch();', settleAt);
+    expect(settleAt, 'the dirty path runs the ONE recompute').toBeGreaterThan(-1);
+    expect(commitAt, 'the switch runs only after the settle').toBeGreaterThan(settleAt);
+    expect(seam).toContain('if (!settled) return;');
+
+    const sites = [
+      ['handleAddTrack', 'const handleDuplicateTrack'],
+      ['handleDuplicateTrack', 'const handleDeleteSelectedBackgroundClip'],
+      ['handleSelectTrackFrame', 'const handleSelectTrackRail'],
+      ['handleSelectTrackRail', 'const navigateLinkedGroup'],
+      ['handleToggleBlend', 'const handleReorderTrack'],
+    ] as const;
+    for (const [handler, next] of sites) {
+      const region = regionOf(studio, `const ${handler} = useCallback`, next);
+      expect(region, `${handler} routes through the seam`).toContain('switchActiveTrack(');
+      expect(region, `${handler} never writes the store directly`).not.toContain('setActiveTrackId(');
+    }
+    // The row bundle's row click is the sixth entry point.
+    const bundle = regionOf(studio, 'onSelectTrack: (trackId: string) => {', 'onSelectTrackFrame: handleSelectTrackFrame,');
+    expect(bundle).toContain('switchActiveTrack(layerId, trackId');
+    expect(bundle).not.toContain('setActiveTrackId(');
+  });
+
+  it('CR-01: never runs the commit tail (capture/save/reset) over dirty Draft pixels', () => {
+    const effect = regionOf(studio, 'if (sessionNeedsCommit) {', 'rotoEditBuffer.resetForLaunch();');
+    // The belt refuses the whole destructive tail while Draft is dirty.
+    const beltAt = effect.indexOf('if (draftMode.peek() || draftPixelsDirty.peek()) return;');
+    expect(beltAt, 'the commit tail refuses dirty Draft pixels').toBeGreaterThan(-1);
+    for (const later of [
+      'aquarelleResetSheetRef.current?.();',
+      'void studioScriptSnapshot.saveNow();',
+    ]) {
+      expect(effect.indexOf(later), `${later} runs after the belt`).toBeGreaterThan(beltAt);
+    }
+    // ...and the outgoing capture carries its OWN lock (the post-replay law).
+    const captureAt = effect.indexOf('aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);');
+    const captureGuardAt = effect.indexOf('if (!draftMode.peek() && !draftPixelsDirty.peek()) {');
+    const resetAt = effect.indexOf('aquarelleResetSheetRef.current?.()');
+    expect(captureGuardAt, 'the capture is gated on both flags').toBeGreaterThan(-1);
+    expect(captureAt, 'the capture still runs on clean pixels').toBeGreaterThan(captureGuardAt);
+    expect(resetAt, 'the reset stays after the capture').toBeGreaterThan(captureAt);
+  });
+
+  it('WR-02: marks dirty with the commit and retries the auto-closed sheet after the flag clears', () => {
+    const del = regionOf(studio, 'const handleAquarelleDeleteStrokes = useCallback', 'const handleAquarelleMoveStrokes');
+    // The surface state is captured BEFORE the begin can auto-close the sheet.
+    const selectReadAt = del.indexOf('const selectWasOn = aquarelleSelectMode.peek();');
+    const beginAt = del.indexOf('const editId = beginAquarelleDeleteEdit(frameIds);');
+    expect(selectReadAt, 'the pre-close surface state is captured').toBeGreaterThan(-1);
+    expect(beginAt).toBeGreaterThan(selectReadAt);
+    // Dirty is marked WITH the commit — before the shared in-flight flag and
+    // before the await, so the close exit can never observe clean pixels over
+    // a diverged script.
+    const dirtyAt = del.indexOf('if (draft) setDraftPixelsDirty(true);');
+    const inFlightAt = del.indexOf('setAquarelleDeleteInFlight(true);');
+    const ensureAt = del.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    expect(dirtyAt, 'the commit marks the divergence dirty synchronously').toBeGreaterThan(beginAt);
+    expect(inFlightAt, 'the in-flight flag is set after the mark').toBeGreaterThan(dirtyAt);
+    expect(ensureAt, 'the ensure stays after the begin').toBeGreaterThan(inFlightAt);
+    // The retry: the dialog-close exit that was refused by this handler's own
+    // flag re-runs after the flag clears, so no dirty Draft can be stranded
+    // behind a closed sheet.
+    const finallyAt = del.indexOf('} finally {');
+    const clearAt = del.indexOf('setAquarelleDeleteInFlight(false);', finallyAt);
+    const retryGuardAt = del.indexOf('if (draft && selectWasOn && !aquarelleSelectMode.peek()) {', clearAt);
+    const retryAt = del.indexOf('void settleDraftScript()', clearAt);
+    expect(clearAt, 'the flag clears in the finally').toBeGreaterThan(finallyAt);
+    expect(retryGuardAt, 'the retry is scoped to the auto-closed surface').toBeGreaterThan(clearAt);
+    expect(retryAt, 'the refused close settle is retried').toBeGreaterThan(retryGuardAt);
+    // The retry is a dependency of the handler (fresh closure).
+    expect(del).toContain('clearOwnedScriptApplyRefusal,\n    settleDraftScript,');
+  });
+
+  it('WR-03: re-reads the Draft mode AFTER the durable-base await in every async edit', () => {
+    for (const [handler, next] of [
+      ['handleAquarelleMoveStrokes', 'const handleAquarelleAppearanceStrokes'],
+      ['handleAquarelleAppearanceStrokes', 'aquarelleAppearanceCommitRef.current'],
+      ['handleAquarelleTransformStrokes', 'const handleAquarelleStepStroke'],
+    ] as const) {
+      const region = regionOf(studio, `const ${handler} = useCallback`, next);
+      const ensureAt = region.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+      const draftAt = region.indexOf('const draft = draftMode.peek();');
+      expect(ensureAt, `${handler} keeps its ensure`).toBeGreaterThan(-1);
+      expect(draftAt, `${handler} reads Draft after the await`).toBeGreaterThan(ensureAt);
+      expect(region.indexOf('if (draft) {'), `${handler} branches on the fresh read`).toBeGreaterThan(draftAt);
+    }
+    // The delete commits BEFORE its await, so its branch re-reads the live
+    // mode instead of reusing the entry read.
+    const del = regionOf(studio, 'const handleAquarelleDeleteStrokes = useCallback', 'const handleAquarelleMoveStrokes');
+    const ensureAt = del.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    const rereadAt = del.indexOf('if (draft && draftMode.peek()) {');
+    expect(rereadAt, 'the delete re-reads Draft after the await').toBeGreaterThan(ensureAt);
   });
 });

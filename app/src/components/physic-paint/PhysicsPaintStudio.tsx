@@ -5174,6 +5174,47 @@ export function PhysicsPaintStudio() {
     return run;
   }, [applyFrameModuleState, isPhysicalMutationLocked, rotoPersistence, rotoScript, setApplyMessage, setApplyStatus, setLastError]);
   /**
+   * 261101-o2m (CR-01): the ONE guarded active-track switch.
+   *
+   * A track switch commits the session to the incoming track: the commit
+   * effect below captures the OUTGOING sheet, saves its script and then wipes
+   * every session buffer (`rotoEditBuffer.resetForLaunch`,
+   * `resetAquarelleRecordState`). Popping a dirty Draft through that tail is
+   * pure data loss — the capture freezes the PRE-Draft sheet into the outgoing
+   * key, `saveNow()` silently no-ops behind `shouldDeferSave`, and the resets
+   * then drop the only copy of the committed script. So EVERY switch runs the
+   * ONE Draft recompute first and ABORTS on refusal (fail closed: the session
+   * never leaves the outgoing track over stale pixels).
+   *
+   * With Draft OFF and clean pixels the switch stays fully synchronous — no
+   * await, no microtask — so the click laws keep their exact tick.
+   */
+  const switchActiveTrack = useCallback((
+    layerId: string,
+    trackId: string,
+    after?: () => void,
+  ): void => {
+    // The ONLY raw active-track write in the Studio: both paths commit here.
+    const commitSwitch = () => {
+      setActiveTrackId(layerId, trackId);
+      after?.();
+    };
+    if (!draftMode.peek() && !draftPixelsDirty.peek()) {
+      commitSwitch();
+      return;
+    }
+    void settleDraftScript()
+      .then((settled) => {
+        // Fail closed: a refused recompute keeps the session on the outgoing
+        // track; the settle has already surfaced its refusal message.
+        if (!settled) return;
+        commitSwitch();
+      })
+      .catch((error) => {
+        console.error('[PhysicsPaintStudio] Draft settle before the track switch failed:', error);
+      });
+  }, [settleDraftScript]);
+  /**
    * 261101-o2m (D-04, play exit): ONE wrapper for BOTH play entry points — the
    * keyboard actions object (bare Space) and the view model's
    * `onToggleRotoPlayback` prop. Playback over the frozen sheet is never
@@ -5368,6 +5409,15 @@ export function PhysicsPaintStudio() {
     // recovery lease then disables every paint tool. A visibility flip of the
     // SAME track keeps the buffers (same content authority, same track).
     if (sessionNeedsCommit) {
+      // 261101-o2m (CR-01): BELT — every switch entry runs `switchActiveTrack`,
+      // which settles the ONE Draft recompute before the document moves, so
+      // this tail must never see dirty Draft pixels. If one ever slips through
+      // (a store-level switch outside the six entry points), refuse the tail:
+      // the capture below would freeze the PRE-Draft sheet into the outgoing
+      // key, `saveNow()` is deferred to a no-op by `shouldDeferSave`, and the
+      // resets would then wipe the only copy of the committed script. Staying
+      // bound to the outgoing track is recoverable; the wipe is not.
+      if (draftMode.peek() || draftPixelsDirty.peek()) return;
       // 261027 UAT round 6: the flush below must target the OUTGOING track.
       // `setActiveTrackId` already moved the document, and the capture chain
       // resolves its target from the live active track — so without this the
@@ -5382,7 +5432,14 @@ export function PhysicsPaintStudio() {
         // this, the module stores would hold the outgoing track's strokes
         // and the next save would write them under the incoming key, the
         // exact cross-track mix the brief forbids.
-        aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);
+        // 261101-o2m (CR-01): the local lock on the one irreversible step —
+        // never snapshot a frozen Draft sheet into the outgoing key (the same
+        // law as the post-replay capture gate in `runScriptReplay`). The
+        // early return above is the primary gate; this keeps the capture
+        // itself fail-closed.
+        if (!draftMode.peek() && !draftPixelsDirty.peek()) {
+          aquarelleFlushCaptureRef.current?.(outgoingTrackId ?? undefined);
+        }
         // 261027 UAT round 10: a track switch replaces the sheet's OWNER.
         // The capture above resolved its canvas eagerly, but the aquarelle
         // engine itself was never cleared on a track switch (only a frame
@@ -6215,19 +6272,23 @@ export function PhysicsPaintStudio() {
   const handleAddTrack = useCallback(() => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
-    const result = addTrack(layerId);    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    const result = addTrack(layerId);
+    // 261101-o2m (CR-01): the switch is Draft-guarded like every one of the
+    // six entry points — a dirty Draft settles first or the switch aborts.
+    if (result.ok) switchActiveTrack(layerId, result.trackId);
     // 47-03 Task 2: the keyboard shortcut path (Cmd/Ctrl+Shift+N) routes
     // through the same handle — failures must reach the status capsule just
     // like the strip's rename/delete rejections (47-02 publishStatus channel).
     else setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
+  }, [launchContext?.layerId, switchActiveTrack]);
   const handleDuplicateTrack = useCallback((trackId: string) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
     const result = duplicateTrack(layerId, trackId);
-    if (result.ok) setActiveTrackId(layerId, result.trackId);
+    // 261101-o2m (CR-01): same guarded switch.
+    if (result.ok) switchActiveTrack(layerId, result.trackId);
     else setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
+  }, [launchContext?.layerId, switchActiveTrack]);
   // 49-06 UAT: the timeline delete path for a selected Background clip — the
   // Delete/Backspace shortcut AND the selected-rail trash button route here.
   // Mirrors the section's dialog-free D-08 delete: call the store op, clear
@@ -6562,44 +6623,53 @@ export function PhysicsPaintStudio() {
     // studio-realm-divergence probe: which route armed the cross-track guard,
     // and did it actually change the active track (a same-track arm is never
     // consumed until a LATER switch's display-state change).
-    setActiveTrackId(layerId, trackId);
-    crossTrackSelectionPendingRef.current = true;
-    handleNavigateToSyncedFrame(frame);
-    railSetSelection.value = null;
-    clearRotoLoopSelection();
-    selectedRotoKeyRail.value = null;
-    rotoSpacingSelection.value = null;
-    const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
-    selectedKeyId.value = key?.keyId ?? null;
-    selectedKeyIds.value = key ? [key.keyId] : [];
-    selectionAnchorKeyId.value = key?.keyId ?? null;
-    physicPaintStore.setRotoPhysicalSelection(layerId, trackId, key?.keyId ?? null, frame);
-  }, [clearRotoLoopSelection, handleNavigateToSyncedFrame, launchContext?.layerId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId]);
+    // 261101-o2m (CR-01): the switch is Draft-guarded — a dirty Draft settles
+    // first and a refusal aborts the whole click (fail closed), so the commit
+    // effect can never capture/reset the frozen sheet. The clean path stays
+    // synchronous inside the same tick.
+    switchActiveTrack(layerId, trackId, () => {
+      crossTrackSelectionPendingRef.current = true;
+      handleNavigateToSyncedFrame(frame);
+      railSetSelection.value = null;
+      clearRotoLoopSelection();
+      selectedRotoKeyRail.value = null;
+      rotoSpacingSelection.value = null;
+      const key = physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame);
+      selectedKeyId.value = key?.keyId ?? null;
+      selectedKeyIds.value = key ? [key.keyId] : [];
+      selectionAnchorKeyId.value = key?.keyId ?? null;
+      physicPaintStore.setRotoPhysicalSelection(layerId, trackId, key?.keyId ?? null, frame);
+    });
+  }, [clearRotoLoopSelection, handleNavigateToSyncedFrame, launchContext?.layerId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedRotoKeyRail, selectionAnchorKeyId, switchActiveTrack]);
   const handleSelectTrackRail = useCallback((trackId: string, rail: TrackRowRailSelection) => {
     const layerId = launchContext?.layerId;
-    if (!layerId) return;    setActiveTrackId(layerId, trackId);
-    crossTrackSelectionPendingRef.current = true;
-    if (rail.kind === 'key') {
-      handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain');
-      return;
-    }
-    // Loop rail: apply the plain single-rail selection directly. The canonical
-    // handler validates the loopId against the ACTIVE track's loop clips, but
-    // the click just switched the track — the loopId comes from this row's own
-    // loop line, so it is guaranteed present on the newly active track.
-    railSetSelection.value = null;
-    selectedRotoKeyRail.value = null;
-    selectedKeyId.value = null;
-    selectedKeyIds.value = [];
-    selectionAnchorKeyId.value = null;
-    rotoSpacingSelection.value = null;
-    if (launchContext) {
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackId, null, currentFrame);
-    }
-    selectedLoopClipIds.value = [rail.loopId];
-    loopSelectionAnchorId.value = rail.loopId;
-    selectedLoopClipId.value = rail.loopId;
-  }, [clearRotoLoopSelection, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId]);
+    if (!layerId) return;
+    // 261101-o2m (CR-01): Draft-guarded switch — the rail selection (and the
+    // whole click) is refused when the recompute refuses.
+    switchActiveTrack(layerId, trackId, () => {
+      crossTrackSelectionPendingRef.current = true;
+      if (rail.kind === 'key') {
+        handleSelectRotoKeyRail({ firstKeyId: rail.firstKeyId, keyIds: rail.keyIds }, 'plain');
+        return;
+      }
+      // Loop rail: apply the plain single-rail selection directly. The canonical
+      // handler validates the loopId against the ACTIVE track's loop clips, but
+      // the click just switched the track — the loopId comes from this row's own
+      // loop line, so it is guaranteed present on the newly active track.
+      railSetSelection.value = null;
+      selectedRotoKeyRail.value = null;
+      selectedKeyId.value = null;
+      selectedKeyIds.value = [];
+      selectionAnchorKeyId.value = null;
+      rotoSpacingSelection.value = null;
+      if (launchContext) {
+        physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackId, null, currentFrame);
+      }
+      selectedLoopClipIds.value = [rail.loopId];
+      loopSelectionAnchorId.value = rail.loopId;
+      selectedLoopClipId.value = rail.loopId;
+    });
+  }, [clearRotoLoopSelection, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId, switchActiveTrack]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];
@@ -8250,14 +8320,25 @@ export function PhysicsPaintStudio() {
     // current edit frame before the batch edit.
     const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
     if (frameIds.length === 0) return;
-    // 261101-o2m (Draft): read once — the branch below differs from Live ONLY
-    // in the reset/apply tail. A `.peek()` guard: the handler must not
-    // subscribe the Studio body.
+    // 261101-o2m (Draft): the entry read decides whether the commit below is a
+    // Draft divergence. A `.peek()` guard: the handler must not subscribe the
+    // Studio body.
     const draft = draftMode.peek();
+    // 261101-o2m (WR-02): deleting the LAST stroke auto-closes the sheet, and
+    // that close exit settles while THIS handler owns the shared in-flight
+    // flag — a refusal with no retry. Remember the surface state so the
+    // `finally` can tell "closed by this delete" from "still open".
+    const selectWasOn = aquarelleSelectMode.peek();
     // One delete = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds (Task 3).
     const editId = beginAquarelleDeleteEdit(frameIds);
     if (editId === null) return;
+    // 261101-o2m (WR-02): the begin ALREADY mutated the script (and may have
+    // closed the sheet). Mark the divergence dirty SYNCHRONOUSLY — before the
+    // in-flight flag and before the await — so no observer (the close exit's
+    // settle, `shouldDeferSave`, the D-07 open reset) can see a clean pixel
+    // state over a diverged script.
+    if (draft) setDraftPixelsDirty(true);
     setAquarelleDeleteInFlight(true);
     void (async () => {
       try {
@@ -8269,11 +8350,17 @@ export function PhysicsPaintStudio() {
         // Live index under Draft too (a fast no-op once the entry arm
         // resolved the base) — Live parity, never a re-order.
         await ensureAquarelleDurableBaseRef.current(playFrame);
-        // 261101-o2m (Draft): the script commit above IS the edit — the engine
-        // re-render is deferred to the ONE settle. Record exactly like the Live
-        // success tail, mark the pixels dirty, and keep the owner law the Live
-        // tail applies; no reset, no apply, no rollback.
-        if (draft) {
+        // 261101-o2m (WR-03): re-read the mode AFTER the durable-base await.
+        // The entry read is not authoritative once a real bake has run — when
+        // Draft is no longer ON this falls through to the Live path below
+        // instead of leaving stale pixels behind a Draft-OFF switch.
+        if (draft && draftMode.peek()) {
+          // The script commit above IS the edit — the engine re-render is
+          // deferred to the ONE settle. Record exactly like the Live success
+          // tail and keep the owner law the Live tail applies; no reset, no
+          // apply, no rollback. (The dirty flag is already set above; the
+          // compare-then-write call also covers a Draft that turned ON during
+          // the await, where the entry read was false.)
           rotoMoveHistory.recordAquarelleScriptEdit(editId);
           setDraftPixelsDirty(true);
           setLastError(null);
@@ -8287,6 +8374,9 @@ export function PhysicsPaintStudio() {
           rotoMoveHistory.recordAquarelleScriptEdit(editId);
           setLastError(null);
           clearOwnedScriptApplyRefusal();
+          // 261101-o2m (WR-03) belt: the entry mark is reconciled — this Live
+          // path re-rendered the pixels, so they are current again.
+          if (draft) setDraftPixelsDirty(false);
           // quick-261025-awl (D-02/D-03): deleting the last stroke clears the
           // owner and unlocks both modules.
           applyFrameModuleState(playFrame);
@@ -8309,6 +8399,17 @@ export function PhysicsPaintStudio() {
         scriptApplyRefusalOwnedRef.current = true;
       } finally {
         setAquarelleDeleteInFlight(false);
+        // 261101-o2m (WR-02): the last-stroke delete auto-closed the sheet and
+        // its dialog-close exit was refused by the in-flight flag this handler
+        // had just set. Re-run that exit now that the flag is down — the ONE
+        // recompute — so the delete can never strand `draftMode` ON over dirty
+        // pixels behind a closed sheet (switch unreachable, autosave and the
+        // script snapshot deferred, window close refused).
+        if (draft && selectWasOn && !aquarelleSelectMode.peek()) {
+          void settleDraftScript().catch((error) => {
+            console.error('[PhysicsPaintStudio] Draft settle after the last-stroke delete failed:', error);
+          });
+        }
       }
     })();
   }, [
@@ -8323,6 +8424,7 @@ export function PhysicsPaintStudio() {
     setApplyMessage,
     setApplyStatus,
     clearOwnedScriptApplyRefusal,
+    settleDraftScript,
   ]);
 
   // 261022-tv1 / 261024-mz5: Cmd+drag stroke move of the whole selection. The
@@ -8349,10 +8451,6 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
-    // 261101-o2m (Draft): read once — the branch below differs from Live ONLY
-    // in the reset/apply tail. A `.peek()` guard: the handler must not
-    // subscribe the Studio body.
-    const draft = draftMode.peek();
     recordAquarelleRenderSplitEvent('script-move-entry', {
       playFrame,
       requestedIds: ids.length,
@@ -8370,6 +8468,13 @@ export function PhysicsPaintStudio() {
     // 261028-k03d: recover a legacy key's missing durable base before the move
     // mutates the script (the pre-edit bake is what the inversion needs).
     await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): the Draft read must be AFTER the await, never
+    // before it — the recovery bake can run long enough for an exit to settle
+    // Draft OFF, and the stale `true` would then commit the edit, mark the
+    // pixels dirty and skip the re-render, leaving Draft OFF over stale pixels
+    // (the invariant at scriptStrokeEdition.ts:157-161). `.peek()` only — the
+    // handler must not subscribe the Studio body.
+    const draft = draftMode.peek();
     const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);
     if (editId === null) return false;
     // 261101-o2m (Draft): the script commit above IS the edit — the engine
@@ -8451,11 +8556,12 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
-    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
-    // the Studio body.
-    const draft = draftMode.peek();
     // 261028-k03d: recover a legacy key's missing durable base before the edit.
     await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): read the Draft state AFTER the await — an exit that
+    // settled Draft OFF during the recovery must take the Live path below.
+    // `.peek()` only — the handler must not subscribe the Studio body.
+    const draft = draftMode.peek();
     // One appearance batch = one edit with before/after script snapshots. The
     // ledger records it only after the re-bake succeeds.
     const editId = beginAquarelleAppearanceEdit(frameIds, patch);
@@ -8545,11 +8651,12 @@ export function PhysicsPaintStudio() {
       { x: transform.anchorX, y: transform.anchorY },
       sheetSize,
     );
-    // 261101-o2m (Draft): a `.peek()` guard — the handler must not subscribe
-    // the Studio body.
-    const draft = draftMode.peek();
     // 261028-k03d: recover a legacy key's missing durable base before the edit.
     await ensureAquarelleDurableBaseRef.current(playFrame);
+    // 261101-o2m (WR-03): read the Draft state AFTER the await — an exit that
+    // settled Draft OFF during the recovery must take the Live path below.
+    // `.peek()` only — the handler must not subscribe the Studio body.
+    const draft = draftMode.peek();
     // One transform = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
     const editId = beginAquarelleTransformEdit(frameIds, {
@@ -9725,19 +9832,29 @@ export function PhysicsPaintStudio() {
     if (physicalEditCoordinator.pendingOperationId.value !== null) return;
     const document = getEfxPaintDocument(layerId);
     if (!document) return;
-    if (document.activeTrackId !== trackId) setActiveTrackId(layerId, trackId);
-    const trackDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
-    const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
-    const selectedKeyId = trackDocument?.selectedKeyId ?? null;
-    void physicalEditCoordinator.executePhysicalEdit({
-      operationKind: 'set-interpolation-enabled',
-      expectedLaunch: { operationId: launchContext.operationId, layerId },
-      records: physicPaintStore.getRotoRealKeyRecords(layerId, trackId),
-      targetInterpolation: { enabled: !current.enabled, mode: current.mode },
-      selectedKeyId,
-      selectedAppFrame: selectedKeyId === null ? null : (trackDocument?.cursorAppFrame ?? null),
-    });
-  }, [launchContext, physicalEditCoordinator]);
+    const toggleBlend = () => {
+      const trackDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
+      const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
+      const selectedKeyId = trackDocument?.selectedKeyId ?? null;
+      void physicalEditCoordinator.executePhysicalEdit({
+        operationKind: 'set-interpolation-enabled',
+        expectedLaunch: { operationId: launchContext.operationId, layerId },
+        records: physicPaintStore.getRotoRealKeyRecords(layerId, trackId),
+        targetInterpolation: { enabled: !current.enabled, mode: current.mode },
+        selectedKeyId,
+        selectedAppFrame: selectedKeyId === null ? null : (trackDocument?.cursorAppFrame ?? null),
+      });
+    };
+    // 261101-o2m (CR-01): a non-active row's toggle focuses that row first —
+    // that switch is Draft-guarded like every other one, and a refused
+    // recompute must not run the interpolation edit against an unswitched
+    // track.
+    if (document.activeTrackId !== trackId) {
+      switchActiveTrack(layerId, trackId, toggleBlend);
+      return;
+    }
+    toggleBlend();
+  }, [launchContext, physicalEditCoordinator, switchActiveTrack]);
   const handleReorderTrack = useCallback((trackId: string, newOrder: number) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
@@ -9776,9 +9893,11 @@ export function PhysicsPaintStudio() {
       // Track option — it clears any selected Bg clip (the Background tab
       // disappears) and switches the tool tab to Track.
       onSelectTrack: (trackId: string) => {
-        setActiveTrackId(layerId, trackId);
-        selectedBackgroundClipId.value = null;
-        rightPanelToolTab.value = 'track';
+        // 261101-o2m (CR-01): Draft-guarded switch (the sixth entry point).
+        switchActiveTrack(layerId, trackId, () => {
+          selectedBackgroundClipId.value = null;
+          rightPanelToolTab.value = 'track';
+        });
       },
       onSelectTrackFrame: handleSelectTrackFrame,
       onSelectTrackRail: handleSelectTrackRail,
@@ -9809,7 +9928,7 @@ export function PhysicsPaintStudio() {
       onReorderTrack: handleReorderTrack,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [launchContext?.layerId, efxPaintVersion.value, selectedBackgroundClipId.value, backgroundPlacementFrame.value]);
+  }, [launchContext?.layerId, efxPaintVersion.value, selectedBackgroundClipId.value, backgroundPlacementFrame.value, switchActiveTrack]);
   // 47-01: the Studio window owns its own efxPaintStore instance — track CRUD
   // mutates the CHILD document only. Push it to the main window on every
   // document mutation so the main window's save path serializes the same
