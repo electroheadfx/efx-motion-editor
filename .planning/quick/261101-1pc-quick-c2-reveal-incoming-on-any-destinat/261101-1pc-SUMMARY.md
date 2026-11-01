@@ -204,3 +204,7 @@ Re-review after the fix: no blocker or warning outside that resolved item; the r
 
 - Files verified present: controller, Studio port, hook, cards, dialog and their four specs.
 - Commits verified in history: `0aa8625aa`, `206d51379`, `152c0afc3` (all ancestors of HEAD; measured 3 commits over `7c36385b2..152c0afc3`).
+
+## UAT result — APPROVED 2026-11-01
+
+The user ran all 10 live UAT rows and approved them: Reveal Motion/Reveal Static runs on Motion, Static and Standard destinations; the no-reference refusal with "Place a reference…" and the clear-while-open case; Keep ON/OFF; one Undo; save/reopen; the Quick B reveal destination unchanged; and Regenerate/Replay still unavailable on the merged rail. Quick C2 is CLOSED. This closes the Quick A/B/C Run Script stacking saga: Motion, Static and Reveal incoming runs all merge into one Standard Rail.

@@ -1,7 +1,8 @@
 ---
 phase: 261101-1pc-quick-c2-reveal-incoming-on-any-destinat
 verified: 2026-11-01T01:21:33Z
-status: human_needed
+uat_approved: 2026-11-01
+status: passed
 score: 7/7 must-haves verified
 covered_files:
   [
@@ -234,3 +235,7 @@ The task remains **human_needed** only because the feature's visible pixel/perce
 
 _Verified: 2026-11-01T01:21:33Z_
 _Verifier: Claude (gsd-verifier)_
+
+## UAT result
+
+Live UAT approved by the user on 2026-11-01: all 10 rows passed (Reveal Motion/Reveal Static on Motion/Static/Standard destinations, the reference refusal and Place-a-reference flow, Keep ON/OFF, Undo, save/reopen, Quick B reveal destination unchanged, Regenerate/Replay refusal). Quick C2 is CLOSED.
