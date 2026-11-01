@@ -84,7 +84,12 @@ function decimateStations(
   return out;
 }
 
-interface BandStation {
+/**
+ * 261101-mvg: one normal-offset band station. Shared with the paint
+ * footprint band (`aquarelleStrokeBand`) — the ONLY difference between the
+ * two kinds is the radius passed through `radiusOf`.
+ */
+export interface SupportBandStation {
   /** Doc-pixel frame: uv.x * width. */
   px: number;
   /** Doc-pixel frame, y up: uv.y * height. */
@@ -96,19 +101,25 @@ interface BandStation {
 }
 
 /**
- * The stroke's station list: pressure radius through the shared law, and the
+ * The stroke's station list: the caller's per-point radius law, and the
  * mirror of `Engine.brushAngle` — a sticky azimuth scanned BEFORE each point,
  * `follow` riding the aspect-corrected segment direction, `random` the preset
  * angle (declared approximation: never call RNG), else azimuth ?? preset.
+ *
+ * 261101-mvg: behaviour-preserving extraction of the former private
+ * `buildStations`. `radiusOf` carries the footprint law of the stroke KIND
+ * (the Eraser's `liftRadiusDoc`, the paint band's brush law), so the two
+ * previews share one geometry core and can never drift in their normals,
+ * caps or decimation.
  */
-function buildStations(
-  stroke: LiftStrokeSource,
-  shape: LiftFootprintShape,
+export function buildSupportBandStations(
+  stroke: Pick<AquarelleStroke, 'points'>,
+  shape: Pick<LiftFootprintShape, 'rotation' | 'angle'>,
   size: ScriptStrokeSize,
-): BandStation[] {
+  radiusOf: (point: AquarelleStroke['points'][number]) => number,
+): SupportBandStation[] {
   const points = decimateStations(stroke.points ?? []);
-  const engineSize = liftEngineSize(stroke.params);
-  const stations: BandStation[] = [];
+  const stations: SupportBandStation[] = [];
   let azimuth: number | null = null;
   // The engine's smoothed s.dx/s.dy are not recorded; the raw segment
   // direction is the declared approximation `collectLiftDabs` also uses.
@@ -130,7 +141,7 @@ function buildStations(
           : azimuth ?? shape.angle;
     const px = point.x * size.width;
     const pyUp = point.y * size.height;
-    const radius = liftRadiusDoc(point.p, engineSize) * size.height;
+    const radius = radiusOf(point);
     // Never emit NaN into a path `d` (T-261029-eur-01).
     if (!Number.isFinite(px) || !Number.isFinite(pyUp) || !Number.isFinite(radius)) continue;
     if (!Number.isFinite(theta)) continue;
@@ -141,7 +152,7 @@ function buildStations(
 
 /** Central difference; endpoints use their adjacent segment; zero → previous. */
 function stationTangent(
-  stations: readonly BandStation[],
+  stations: readonly SupportBandStation[],
   index: number,
   previous: CanvasPoint,
 ): CanvasPoint {
@@ -162,7 +173,7 @@ function stationTangent(
  * cap vertex joins the band on the same support curve (CR-01).
  */
 function supportHalfWidth(
-  station: BandStation,
+  station: SupportBandStation,
   dirX: number,
   dirYUp: number,
   aspect: number,
@@ -210,26 +221,19 @@ export interface LiftRibbonGeometry {
 }
 
 /**
- * The drawn ribbon of one recorded lift stroke: a normal-offset band with
- * support-function caps. Pure — same input, same output; fresh arrays every call.
+ * 261101-mvg: the normal-offset band polygon about a station list, in canvas
+ * px. Pure: it reads nothing but its arguments. Shared by the Eraser ribbon
+ * and the paint footprint band — only the stations' radius law differs.
+ *
+ * ZERO stations returns `[]`: the cap prologue dereferences the last station
+ * and its tangent, so this guard is what makes both callers safe.
  */
-export function buildLiftRibbon(
-  stroke: LiftStrokeSource,
-  size: ScriptStrokeSize,
-): LiftRibbonGeometry {
-  const hitRadiusPx = liftStrokeRadiusPx(stroke, size);
-  if (
-    !Number.isFinite(size.width)
-    || !Number.isFinite(size.height)
-    || size.width <= 0
-    || size.height <= 0
-  ) {
-    return { polygonPx: [], hitRadiusPx };
-  }
-  const shape = liftShapeForStroke(stroke);
-  const stations = buildStations(stroke, shape, size);
-  if (stations.length === 0) return { polygonPx: [], hitRadiusPx };
-  const aspect = shape.aspect;
+export function buildSupportBandPolygon(
+  stations: readonly SupportBandStation[],
+  height: number,
+  aspect: number,
+): CanvasPoint[] {
+  if (stations.length === 0) return [];
 
   // Single sample: sweep the station's own support law all the way around, so
   // the drawn silhouette and the hit radius share one law (IN-02). A round tip
@@ -243,10 +247,10 @@ export function buildLiftRibbon(
       const dirYUp = Math.sin(angle);
       const half = supportHalfWidth(only, dirX, dirYUp, aspect);
       polygonPx.push(
-        toCanvas({ x: only.px + dirX * half, y: only.pyUp + dirYUp * half }, size.height),
+        toCanvas({ x: only.px + dirX * half, y: only.pyUp + dirYUp * half }, height),
       );
     }
-    return { polygonPx, hitRadiusPx };
+    return polygonPx;
   }
 
   const left: CanvasPoint[] = [];
@@ -302,7 +306,39 @@ export function buildLiftRibbon(
     docPolygon.push({ x: first.px + dirX * half, y: first.pyUp + dirYUp * half });
   }
 
-  return { polygonPx: docPolygon.map((point) => toCanvas(point, size.height)), hitRadiusPx };
+  return docPolygon.map((point) => toCanvas(point, height));
+}
+
+/**
+ * The drawn ribbon of one recorded lift stroke: a normal-offset band with
+ * support-function caps. Pure — same input, same output; fresh arrays every call.
+ */
+export function buildLiftRibbon(
+  stroke: LiftStrokeSource,
+  size: ScriptStrokeSize,
+): LiftRibbonGeometry {
+  const hitRadiusPx = liftStrokeRadiusPx(stroke, size);
+  if (
+    !Number.isFinite(size.width)
+    || !Number.isFinite(size.height)
+    || size.width <= 0
+    || size.height <= 0
+  ) {
+    return { polygonPx: [], hitRadiusPx };
+  }
+  const shape = liftShapeForStroke(stroke);
+  const engineSize = liftEngineSize(stroke.params);
+  const stations = buildSupportBandStations(
+    stroke,
+    shape,
+    size,
+    (point) => liftRadiusDoc(point.p, engineSize) * size.height,
+  );
+  if (stations.length === 0) return { polygonPx: [], hitRadiusPx };
+  return {
+    polygonPx: buildSupportBandPolygon(stations, size.height, shape.aspect),
+    hitRadiusPx,
+  };
 }
 
 /** Exact polygon bbox expanded by the shared grab margin (lift bounds law). */
