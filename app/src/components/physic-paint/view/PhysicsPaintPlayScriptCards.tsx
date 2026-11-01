@@ -5,12 +5,10 @@ import type {
   RotoPlayScriptIdenticalSourceCycle,
   RotoPlayScriptMode,
   RotoPlayScriptStackCollision,
-  RotoPlayScriptStackRunKind,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import {
   RUN_SCRIPT_OVERWRITE_COPY,
   type RunScriptCollisionOffer,
-  type RunScriptStackReadout,
 } from '../roto/physicsPaintRotoRunScriptStacking';
 
 /* The Run Script dialog's cards as standalone views. Creation, a stack run and
@@ -18,13 +16,6 @@ import {
    cards render. Redesign a card here without touching the dialog's state flow. */
 
 const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
-  { value: 'progressive', label: 'Motion' },
-  { value: 'static', label: 'Static' },
-];
-
-// 261101-cd5: the Reveal tab supplies the Reveal context, so the rail kinds
-// read Motion / Static exactly like the Paint tab.
-const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
   { value: 'progressive', label: 'Motion' },
   { value: 'static', label: 'Static' },
 ];
@@ -41,15 +32,9 @@ const RAIL_TYPE_HELPERS: Record<RotoPlayScriptMode, { paint: string; reveal: str
   },
 };
 
-// 261101-1pc (Quick C2): the 2×2 Rail Type grid for a stack RUN. The kind is
-// dialog state only — the merged Standard Rail still stores the destination's
-// mode, and a Reveal kind renders the run's wash through the document reference.
-const STACK_RUN_KINDS: ReadonlyArray<{ value: RotoPlayScriptStackRunKind; label: string }> = [
-  { value: 'motion', label: 'Motion' },
-  { value: 'static', label: 'Static' },
-  { value: 'reveal-motion', label: 'Reveal Motion' },
-  { value: 'reveal-static', label: 'Reveal Static' },
-];
+export function railTypeHelper(mode: RotoPlayScriptMode, reveal: boolean): string {
+  return RAIL_TYPE_HELPERS[mode][reveal ? 'reveal' : 'paint'];
+}
 
 // 261101-cd5: the compact Source cycle card carries short segment labels; the
 // full sentence stays in the helper + `title` (and the hidden described-by node).
@@ -168,64 +153,65 @@ export function DialogRadioGroup<T extends string | boolean,>(props: {
 }
 
 export function RailTypeCard(props: {
-  playScript: RotoPlayScriptController;
-  revealTab: boolean;
+  /** The live Rail Type value (creation `mode`, or the stack run kind's mode). */
+  modeValue: RotoPlayScriptMode;
+  /** Arrow-key navigation must read the LIVE value, not the rendered prop. */
+  getMode?: () => RotoPlayScriptMode;
+  onSelectMode: (mode: RotoPlayScriptMode) => void;
   busy: boolean;
   locked: boolean;
-  stacking: boolean;
+  /** A Photo destination owns its stored type — the control is read-only. */
+  disabled?: boolean;
   /** 261031-vbo (Quick C1): a merged edit target has no editable rail type —
    *  the stored `mode` is internal and must never render as Motion/Static. */
   standard?: boolean;
-  /** 261101-cd5: the Reveal creation guard rides this row as a compact chip. */
-  showReferenceChip?: boolean;
+  helper: string | null;
+  /** 261101-cd5: the reference guard rides this row as a compact chip. */
+  referenceChip?: { label: string; actionLabel?: string; onAction?: () => void } | null;
+  /** 261101-cd5 UAT: stack-only Keep script toggle, compact in the same row. */
+  keepScript?: { checked: boolean; disabled: boolean; reason: string | null; onToggle: () => void } | null;
 }) {
-  const options = props.revealTab ? REVEAL_RAIL_TYPES : PLAY_SCRIPT_MODES;
-  const helper = props.stacking
-    ? 'This run merges into the rail — the result is one Standard Rail.'
-    : props.standard
-      ? null
-      : RAIL_TYPE_HELPERS[props.playScript.mode.value][props.revealTab ? 'reveal' : 'paint'];
   return (
     <div class={`physics-paint-play-script-card-mode physics-paint-play-script-rail-row${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
       <span class="physics-paint-play-script-rail-label">RAIL TYPE</span>
       {props.standard ? (
         <span class="physics-paint-play-script-standard-rail-value">Standard</span>
-      ) : props.stacking ? (
-        /* 261101-1pc (Quick C2): a stack picks the run kind, which derives the
-           single bake mode. Creation and the Reveal tab keep their two-option
-           group bound to `mode`. */
-        <DialogRadioGroup
-          class="physics-paint-play-script-mode-group-stack"
-          ariaLabel="Rail Type"
-          options={STACK_RUN_KINDS}
-          value={props.playScript.stackRunKind.value}
-          getValue={() => props.playScript.stackRunKind.value}
-          disabled={props.busy || props.locked}
-          onSelect={(value) => { props.playScript.setStackRunKind(value); }}
-        />
       ) : (
         <DialogRadioGroup
           ariaLabel="Rail Type"
-          options={options}
-          value={props.playScript.mode.value}
-          getValue={() => props.playScript.mode.value}
-          disabled={props.busy || props.locked}
-          onSelect={(value) => { props.playScript.mode.value = value; }}
+          options={PLAY_SCRIPT_MODES}
+          value={props.modeValue}
+          getValue={() => props.getMode?.() ?? props.modeValue}
+          disabled={props.busy || props.locked || props.disabled === true}
+          onSelect={props.onSelectMode}
         />
       )}
-      {helper ? <span class="physics-paint-play-script-rail-helper">{helper}</span> : null}
-      {props.showReferenceChip && !props.playScript.revealReferencePlaced.value ? (
-        <span class="physics-paint-play-script-ref-chip">
+      {props.helper ? <span class="physics-paint-play-script-rail-helper">{props.helper}</span> : null}
+      {props.referenceChip ? (
+        <span class="physics-paint-play-script-ref-chip" title={props.referenceChip.label}>
           <i class="physics-paint-play-script-ref-dot" aria-hidden="true" />
-          <span class="physics-paint-play-script-ref-label">No photo reference</span>
-          <button
-            type="button"
-            class="physics-paint-play-script-ref-action"
-            disabled={props.busy}
-            onClick={() => props.playScript.requestPhotoReference()}
-          >
-            Place
-          </button>
+          <span class="physics-paint-play-script-ref-label">{props.referenceChip.label}</span>
+          {props.referenceChip.actionLabel ? (
+            <button
+              type="button"
+              class="physics-paint-play-script-ref-action"
+              disabled={props.busy}
+              onClick={props.referenceChip.onAction}
+            >
+              {props.referenceChip.actionLabel}
+            </button>
+          ) : null}
+        </span>
+      ) : null}
+      {props.keepScript ? (
+        <span class="physics-paint-play-script-keep-script-compact" title={props.keepScript.reason ?? undefined}>
+          {dialogSwitch({
+            id: 'physics-play-script-keep-script',
+            label: 'Keep script',
+            checked: props.keepScript.checked,
+            disabled: props.keepScript.disabled,
+            onClick: props.keepScript.onToggle,
+          })}
         </span>
       ) : null}
     </div>
@@ -245,11 +231,26 @@ export function ColorCard(props: {
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Color</span>
         {custom ? (
-          /* 261101-cd5: Custom shows the live swatch with the hex underneath. */
-          <span class="physics-paint-play-script-color-custom-chip">
-            <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: props.colorValue }} />
-            <span class="physics-paint-play-script-color-hex">{props.colorValue}</span>
-          </span>
+          /* 261101-cd5: Custom shows the live swatch with the hex underneath.
+             261101-cd5 UAT: on a stack the chip itself adopts the live brush
+             color, so the card never grows past its 80px tile. */
+          props.stacking ? (
+            <button
+              type="button"
+              class="physics-paint-play-script-color-custom-chip physics-paint-play-script-color-pick"
+              title="Use the app's current brush color"
+              disabled={props.busy}
+              onClick={props.playScript.useBrushColor}
+            >
+              <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: props.colorValue }} />
+              <span class="physics-paint-play-script-color-hex">{props.colorValue}</span>
+            </button>
+          ) : (
+            <span class="physics-paint-play-script-color-custom-chip">
+              <span class="physics-paint-play-script-override-chip" style={{ backgroundColor: props.colorValue }} />
+              <span class="physics-paint-play-script-color-hex">{props.colorValue}</span>
+            </span>
+          )
         ) : (
           <span class="physics-paint-play-script-color-dots" aria-hidden="true">
             {ORIGINAL_COLOR_DOTS.map((color) => <i key={color} style={{ background: color }} />)}
@@ -265,17 +266,6 @@ export function ColorCard(props: {
         disabled={props.busy || props.locked}
         onSelect={(value) => { props.playScript.overrideEnabled.value = value; }}
       />
-      {props.stacking && custom ? (
-        <button
-          type="button"
-          class="physics-paint-play-script-heading-link physics-paint-play-script-card-subline-action"
-          title="Use the app's current brush color"
-          disabled={props.busy}
-          onClick={props.playScript.useBrushColor}
-        >
-          Use brush color
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -427,9 +417,18 @@ export function PaintSeedCard(props: { playScript: RotoPlayScriptController; bus
   );
 }
 
-export function KeyScriptCard(props: { playScript: RotoPlayScriptController; busy: boolean }) {
+export function KeyScriptCard(props: {
+  playScript: RotoPlayScriptController;
+  busy: boolean;
+  /** 261101-cd5 UAT: a stack records per-key scripts through Keep script. */
+  disabled?: boolean;
+  disabledReason?: string;
+}) {
   return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-key-script">
+    <div
+      class="physics-paint-play-script-card physics-paint-play-script-card-global physics-paint-play-script-card-key-script"
+      title={props.disabled ? props.disabledReason : undefined}
+    >
       <div class="physics-paint-play-script-card-heading">
         <span class="physics-paint-play-script-card-title">Key Script</span>
         {dialogSwitch({
@@ -437,7 +436,7 @@ export function KeyScriptCard(props: { playScript: RotoPlayScriptController; bus
           label: 'Save script on each key',
           hideLabel: true,
           checked: props.playScript.keyScriptEdits.value,
-          disabled: props.busy,
+          disabled: props.busy || props.disabled === true,
           onClick: () => props.playScript.setKeyScriptEdits(!props.playScript.keyScriptEdits.value),
         })}
       </div>
@@ -486,6 +485,13 @@ export function PaintTimingCard(props: {
   repeatInputRef: Ref<HTMLInputElement>;
 }) {
   const perCycle = props.playScript.mode.value === 'static' || props.locked;
+  // 261101-cd5 UAT: a stack keeps the full Timing hero; the Cycle column shows
+  // the destination rail's stored repeat read-only.
+  const stackCycle = props.stacking ? props.playScript.stackRepeat.value : null;
+  const cycleValue = props.stacking
+    ? (typeof stackCycle === 'number' ? stackCycle : 1)
+    : dialogIntegerValue(props.playScript.repeatText.value, 1);
+  const cycleInfinity = props.stacking ? stackCycle === 'infinity' : props.playScript.infinity.value;
   return (
     <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
       <div class="physics-paint-play-script-timing-header">
@@ -522,36 +528,34 @@ export function PaintTimingCard(props: {
           </div>
           {props.playScript.validationError.value ? <span id="physics-play-script-error" class="physics-paint-script-inline-error">{props.playScript.validationError.value}</span> : null}
         </div>
-        {props.stacking ? null : (<>
-          <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
-          <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
-            <SliderStepper
-              id="physics-play-script-repeat"
-              class="physics-paint-play-script-compact-stepper"
-              inputRef={props.repeatInputRef}
-              label="Cycle"
-              ariaLabel="Cycle"
-              value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
-              onChange={(value) => { props.playScript.repeatText.value = String(value); }}
-              min={1}
-              sliderMax={16}
-              step={1}
-              disabled={props.busy || props.playScript.infinity.value}
-              ariaInvalid={Boolean(props.playScript.repeatError.value)}
-              ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
-            />
-            <div class="physics-paint-play-script-timing-foot">
-              {dialogSwitch({
-                id: 'physics-play-script-infinity',
-                label: 'Infinity',
-                checked: props.playScript.infinity.value,
-                disabled: props.busy,
-                onClick: () => props.playScript.setInfinity(!props.playScript.infinity.value),
-              })}
-            </div>
-            {props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
+        <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
+        <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
+          <SliderStepper
+            id="physics-play-script-repeat"
+            class="physics-paint-play-script-compact-stepper"
+            inputRef={props.repeatInputRef}
+            label="Cycle"
+            ariaLabel="Cycle"
+            value={cycleValue}
+            onChange={(value) => { if (!props.stacking) props.playScript.repeatText.value = String(value); }}
+            min={1}
+            sliderMax={16}
+            step={1}
+            disabled={props.busy || props.stacking || props.playScript.infinity.value}
+            ariaInvalid={!props.stacking && Boolean(props.playScript.repeatError.value)}
+            ariaDescribedBy={!props.stacking && props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+          />
+          <div class="physics-paint-play-script-timing-foot">
+            {dialogSwitch({
+              id: 'physics-play-script-infinity',
+              label: 'Infinity',
+              checked: cycleInfinity,
+              disabled: props.busy || props.stacking,
+              onClick: () => { if (!props.stacking) props.playScript.setInfinity(!props.playScript.infinity.value); },
+            })}
           </div>
-        </>)}
+          {!props.stacking && props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
+        </div>
       </div>
     </div>
   );
@@ -616,36 +620,6 @@ export function RevealTimingCard(props: {
           {props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-export function StackReadoutCard(props: { readout: RunScriptStackReadout }) {
-  return (
-    <div id="physics-play-script-stack-readout" class="physics-paint-play-script-card physics-paint-play-script-card-stack">
-      <span class="physics-paint-play-script-card-title">Run span</span>
-      <span class="physics-paint-play-script-stack-span">{props.readout.spanLabel}</span>
-      <span class="physics-paint-play-script-stack-meta">{`${props.readout.offsetLabel} · ${props.readout.outcomeLabel}`}</span>
-    </div>
-  );
-}
-
-export function KeepScriptCard(props: {
-  playScript: RotoPlayScriptController;
-  busy: boolean;
-  reason: string | null;
-}) {
-  return (
-    <div class="physics-paint-play-script-card physics-paint-play-script-card-keep-script">
-      <span class="physics-paint-play-script-card-title">Keep script</span>
-      {dialogSwitch({
-        id: 'physics-play-script-keep-script',
-        label: 'Keep this rail’s per-key scripts',
-        checked: props.playScript.keepScriptEffective.value,
-        disabled: props.busy || props.reason !== null,
-        onClick: () => props.playScript.setKeepScript(!props.playScript.keepScript.value),
-      })}
-      {props.reason ? <span id="physics-play-script-keep-script-reason" class="physics-paint-play-script-mode-helper">{props.reason}</span> : null}
     </div>
   );
 }

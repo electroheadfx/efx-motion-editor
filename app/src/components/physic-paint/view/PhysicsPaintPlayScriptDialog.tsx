@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Image, Info, Paintbrush, Play, X } from 'lucide-preact';
 import {
   isRevealRunKind,
+  stackRunKindMode,
   type RotoPlayScriptController,
+  type RotoPlayScriptMode,
+  type RotoPlayScriptRailTab,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import {
   isStandardMergedLoopClip,
@@ -14,16 +17,15 @@ import {
   CollisionCard,
   ColorCard,
   ColorizeCard,
-  KeepScriptCard,
   KeyScriptCard,
   MotionWiggleCard,
   PaintSeedCard,
   PaintTimingCard,
   PhotoWiggleCard,
+  railTypeHelper,
   RailTypeCard,
   RevealTimingCard,
   SourceCycleCard,
-  StackReadoutCard,
 } from './PhysicsPaintPlayScriptCards';
 
 export interface PhysicsPaintPlayScriptDialogProps {
@@ -39,8 +41,8 @@ export interface PhysicsPaintPlayScriptDialogProps {
 // 52-05 (G-52-3): the Create Rail dialog tabs (apply mode only). 261101-cd5:
 // folder tabs that own the panel, with a rail-kind icon each.
 const RAIL_TABS = [
-  { value: 'paint' as const, label: 'Paint Rail', icon: Paintbrush },
-  { value: 'reveal' as const, label: 'Reveal Photo Rail', icon: Image },
+  { value: 'paint' as const, label: 'Paint', icon: Paintbrush },
+  { value: 'reveal' as const, label: 'Photo', icon: Image },
 ];
 
 export function PhysicsPaintPlayScriptDialog({
@@ -68,33 +70,75 @@ export function PhysicsPaintPlayScriptDialog({
   const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
   const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
   const restoreRegenerateTriggerFocus = useRef(false);
-  /* 261031-i54: Run Script stacking onto an existing Paint rail. The target is
-     resolved by the controller; the dialog only renders its surface. A stack
-     destination is not a creation surface: the Rail kind tabs are hidden and a
-     stale Reveal tab can never take over the confirmation (WR-06). */
+  /* 261031-i54: Run Script stacking onto an existing rail. The target is
+     resolved by the controller; the dialog renders ONE composition for creation
+     and every stack (261101-cd5 UAT). A stack is not a creation surface, but
+     its two Rail axes (Paint/Photo × Motion/Static) map 1:1 onto the four
+     stack run kinds, so the same tab strip + Rail Type subheader drive both. */
   const stacking = !loopEdit && !sourceEdit && playScript.runDestination.value.kind === 'stack';
-  // 261031-qps (Quick B): a Reveal rail is a legal stack destination. Its card
-  // set is the reveal knob trio (Colorize / Photo wiggle / Paint seed); Rail
-  // Type, Motion wiggle, Color and Key Script describe a Paint creation and are
-  // hidden. The rail's placed photo reference is shown read-only — the stack
-  // renders through it and never replaces it.
+  // 261031-qps (Quick B): a Reveal rail is a legal stack destination. Its render
+  // uses the rail's own stored type, motion and color, so those controls are
+  // visible but read-only. The reference guard stays a compact chip.
   const stackReveal = stacking && playScript.stackRailKind.value === 'reveal';
-  // 261101-1pc (Quick C2): the mirror of Quick B — a Reveal RUN on a Paint /
-  // Standard destination. It keeps Motion wiggle (the run's own setting) and
-  // adds the reveal knobs, but hides Color and Key Script.
+  // 261101-1pc (Quick C2): a Reveal RUN on a Paint / Standard destination.
   const stackRevealRun = stacking && !stackReveal && isRevealRunKind(playScript.stackRunKind.value);
-  // 52-05 (G-52-3): the tab strip is an apply-mode creation surface — edit and
-  // regenerate modes keep their existing single-surface layout.
-  const tabsVisible = !loopEdit && !sourceEdit && !regenerateImpact && !stacking;
+  // Apply surface = creation + every stack; edit modes keep their own layout.
+  const applySurface = !loopEdit && !sourceEdit && !regenerateImpact;
   const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !stacking;
-  // 261101-cd5: the creation-only global cards (Key Script, Paint Seed) belong
-  // to the apply surface only; preserved modes render their own card sets.
-  const paintCreation = playScript.dialogMode.value === 'apply' && !revealTab && !stacking;
+  // The visual axis (which card set / timing / theme) for the current surface.
+  const activeReveal = stacking ? (stackReveal || stackRevealRun) : revealTab;
+  const activeTab: RotoPlayScriptRailTab = stacking
+    ? (activeReveal ? 'reveal' : 'paint')
+    : playScript.railTab.value;
+  // A Photo destination owns its stored type: tabs and Rail Type stay visible
+  // but read-only (the run renders through the rail's own mode).
+  const tabAxisLocked = stacking && stackReveal;
+  // The live Rail Type value: creation's `mode`, or the stack run kind's mode.
+  const railMode = stacking ? stackRunKindMode(playScript.stackRunKind.value) : playScript.mode.value;
+  const onSelectTab = (tab: RotoPlayScriptRailTab) => {
+    if (!stacking) { playScript.setRailTab(tab); return; }
+    if (tabAxisLocked) return;
+    const mode = stackRunKindMode(playScript.stackRunKind.value);
+    playScript.setStackRunKind(tab === 'reveal'
+      ? (mode === 'static' ? 'reveal-static' : 'reveal-motion')
+      : (mode === 'static' ? 'static' : 'motion'));
+  };
+  const onSelectRailType = (mode: RotoPlayScriptMode) => {
+    if (!stacking) { playScript.mode.value = mode; return; }
+    if (tabAxisLocked) return;
+    playScript.setStackRunKind(activeReveal
+      ? (mode === 'static' ? 'reveal-static' : 'reveal-motion')
+      : (mode === 'static' ? 'static' : 'motion'));
+  };
+  const railHelper = stacking
+    ? (stackReveal
+      ? 'This destination is a Photo rail — it keeps its stored type.'
+      : 'This run merges into the rail — the result is one Standard Rail.')
+    : standardEditTarget
+      ? null
+      : railTypeHelper(playScript.mode.value, revealTab);
+  const referenceChip = !playScript.revealReferencePlaced.value
+    ? (stacking && stackReveal)
+      ? { label: 'No photo reference' }
+      : ((stacking && stackRevealRun) || (!stacking && revealTab))
+        ? { label: 'No photo reference', actionLabel: 'Place', onAction: () => playScript.requestPhotoReference() }
+        : null
+    : null;
+  const keepScriptSwitch = stacking && playScript.keepScriptVisible.value
+    ? {
+      checked: playScript.keepScriptEffective.value,
+      disabled: playScript.canCancel.value || playScript.keepScriptDisabledReason.value !== null,
+      reason: playScript.keepScriptDisabledReason.value,
+      onToggle: () => playScript.setKeepScript(!playScript.keepScript.value),
+    }
+    : null;
   const stackReadout = stacking ? playScript.stackReadout.value : null;
   const stackCollision = stacking ? playScript.stackCollision.value : null;
   const collisionOffers = stacking ? playScript.collisionOffers.value : [];
-  const keepScriptVisible = stacking && playScript.keepScriptVisible.value;
-  const keepScriptReason = stacking ? playScript.keepScriptDisabledReason.value : null;
+  // 261101-cd5 UAT: the fixed 660 shell now carries every stack too. Only edit
+  // modes and an open collision prompt (a one-shot user-triggered state, never
+  // a toggle) need the content-height surface.
+  const surfaceTall = loopEdit || sourceEdit || stackCollision !== null;
   // UAT 261031-i54: a stack starts from the rail's stored color; null falls back
   // to the live brush color (the creation behavior), so "Custom color" on a
   // rail that had none picks up the app's current brush color.
@@ -219,7 +263,7 @@ export function PhysicsPaintPlayScriptDialog({
 
   return (
     <div
-      class={`physics-paint-play-script-dialog${revealTab ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
+      class={`physics-paint-play-script-dialog${activeReveal ? ' physics-paint-play-script-reveal' : ''}${dragging ? ' physics-paint-play-script-dragging' : ''}`}
       role="dialog"
       aria-labelledby="physics-play-script-title"
       onKeyDown={(event) => {
@@ -247,7 +291,7 @@ export function PhysicsPaintPlayScriptDialog({
     >
       <div
         ref={surfaceRef}
-        class={`physics-paint-play-script-surface${loopEdit || sourceEdit || stacking ? ' physics-paint-play-script-surface-tall' : ''}`}
+        class={`physics-paint-play-script-surface${surfaceTall ? ' physics-paint-play-script-surface-tall' : ''}`}
         style={dragOffset.x !== 0 || dragOffset.y !== 0 ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
       >
         <div
@@ -289,10 +333,10 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
         </div>
         <div class="physics-paint-play-script-workspace">
-          {tabsVisible ? (
+          {applySurface ? (
             <div class="physics-paint-play-script-tabs" role="tablist" aria-label="Rail kind">
               {RAIL_TABS.map((tab) => {
-                const selected = playScript.railTab.value === tab.value;
+                const selected = activeTab === tab.value;
                 const TabIcon = tab.icon;
                 return (
                   <button
@@ -301,8 +345,8 @@ export function PhysicsPaintPlayScriptDialog({
                     role="tab"
                     aria-selected={selected ? 'true' : 'false'}
                     class={`physics-paint-play-script-tab${selected ? ' active' : ''}`}
-                    disabled={busy}
-                    onClick={() => playScript.setRailTab(tab.value)}
+                    disabled={busy || tabAxisLocked}
+                    onClick={() => onSelectTab(tab.value)}
                   >
                     <TabIcon size={14} aria-hidden="true" />
                     {tab.label}
@@ -344,24 +388,27 @@ export function PhysicsPaintPlayScriptDialog({
               {playScript.sourceEditSharedLoopCount.value > 1 ? ` This source cycle is shared by ${playScript.sourceEditSharedLoopCount.value} Rails.` : ''}
             </p>
           ) : null}
-          {/* 261101-cd5: Rail Type is the panel's first row (a subheader, not a
-              bordered card), with the Reveal reference guard as a compact chip. */}
-          {stackReveal ? null : (
-            <RailTypeCard
-              playScript={playScript}
-              revealTab={revealTab}
-              busy={busy}
-              locked={loopEdit}
-              stacking={stacking}
-              standard={standardEditTarget}
-              showReferenceChip={revealTab && !stacking}
-            />
-          )}
+          {/* 261101-cd5: Rail Type is the panel's first row for creation AND
+              every stack (a subheader, not a bordered card). The Reveal
+              reference guard rides it as a compact chip; a stack adds its
+              Keep script toggle in the same row. */}
+          <RailTypeCard
+            modeValue={railMode}
+            getMode={() => (stacking ? stackRunKindMode(playScript.stackRunKind.value) : playScript.mode.value)}
+            onSelectMode={onSelectRailType}
+            busy={busy}
+            locked={loopEdit}
+            disabled={tabAxisLocked}
+            standard={standardEditTarget}
+            helper={railHelper}
+            referenceChip={referenceChip}
+            keepScript={keepScriptSwitch}
+          />
           {/* 52-05 (G-52-3): the Reveal tab's Timing card — the Frames field
               defaults to the script's natural duration with the "from F{n}" hint
               (the playhead snapshotted at open, D-20); Repeat + Infinity ride
               the same mutation law as the Paint Rail (D-08). No Max toggle. */}
-          {revealTab ? (
+          {!stacking && revealTab ? (
             <RevealTimingCard playScript={playScript} busy={busy} inputRef={revealInputRef} />
           ) : (
             <PaintTimingCard
@@ -373,22 +420,28 @@ export function PhysicsPaintPlayScriptDialog({
               repeatInputRef={repeatInputRef}
             />
           )}
-          {stacking && stackReadout ? <StackReadoutCard readout={stackReadout} /> : null}
-          {keepScriptVisible ? <KeepScriptCard playScript={playScript} busy={busy} reason={keepScriptReason} /> : null}
-          {/* 261031-qps (Quick B): a reveal stack has no Motion wiggle. Every
-              other mode keeps the borderless 2 × 2 section. */}
-          {stackReveal ? null : <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit} />}
-          {/* 261101-cd5: the global cards form one equal-width row pinned to the
-              panel floor by the caps label's auto margin. Paint creation:
-              Key Script / Paint Seed / Color (+ Source cycle). Reveal creation:
-              Paint Seed / Photo Wiggle / Colorize. Preserved modes render only
-              the cards their visibility rules already produced. */}
+          {/* 261101-cd5 UAT: Motion wiggle is part of the one composition. A
+              Photo destination owns its stored motion, so the section is
+              visible but read-only there. */}
+          <MotionWiggleCard playScript={playScript} busy={busy} locked={loopEdit || stackReveal} />
+          {/* 261101-cd5 UAT: ONE global row for creation and every stack.
+              Paint: Key Script / Paint Seed / Color (+ Source cycle on
+              creation); Photo: Paint Seed / Photo Wiggle / Colorize. A stack's
+              Key Script is inert (Keep script owns per-key scripts). Edit modes
+              keep their Color-only row. */}
           <span class="physics-paint-play-script-global-label">GLOBAL OPTIONS</span>
           <div class="physics-paint-play-script-global-row">
-            {paintCreation ? <KeyScriptCard playScript={playScript} busy={busy} /> : null}
-            {paintCreation || revealTab || stackReveal || stackRevealRun ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
-            {revealTab || stackReveal || stackRevealRun ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
-            {!revealTab && !stackReveal && !stackRevealRun ? (
+            {applySurface && !activeReveal ? (
+              <KeyScriptCard
+                playScript={playScript}
+                busy={busy}
+                disabled={stacking}
+                disabledReason="Stacked runs record per-key scripts through Keep script."
+              />
+            ) : null}
+            {applySurface ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
+            {applySurface && activeReveal ? <PhotoWiggleCard playScript={playScript} busy={busy} /> : null}
+            {!applySurface || !activeReveal ? (
               <ColorCard
                 playScript={playScript}
                 busy={busy}
@@ -397,37 +450,9 @@ export function PhysicsPaintPlayScriptDialog({
                 colorValue={colorValue}
               />
             ) : null}
-            {revealTab || stackReveal || stackRevealRun ? <ColorizeCard playScript={playScript} busy={busy} /> : null}
+            {applySurface && activeReveal ? <ColorizeCard playScript={playScript} busy={busy} /> : null}
             {identicalCycle ? <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} /> : null}
           </div>
-          {stackRevealRun ? (
-            /* 261101-1pc (Quick C2): the run's reference is the DOCUMENT's
-               placed reference — its own source, so it can be placed from here.
-               Quick B's rail notice stays read-only. */
-            <div class="physics-paint-play-script-reveal-notice" role="note">
-              <span>{playScript.revealReferencePlaced.value
-                ? "This run renders through the document's placed photo reference."
-                : 'Reveal bakes the placed photo reference — no reference placed yet.'}</span>
-              {playScript.revealReferencePlaced.value ? null : (
-                <button
-                  type="button"
-                  class="physics-paint-play-script-heading-link"
-                  disabled={busy}
-                  onClick={() => playScript.requestPhotoReference()}
-                >
-                  Place a reference…
-                </button>
-              )}
-            </div>
-          ) : stackReveal ? (
-            /* 261031-qps (Quick B): the reference is the RAIL's own — shown,
-               never replaced or re-placed from the stack dialog. */
-            <div class="physics-paint-play-script-reveal-notice" role="note">
-              <span>{playScript.revealReferencePlaced.value
-                ? "This run renders through the rail's own placed photo reference."
-                : 'This Reveal rail has no photo reference. Place one before running — the run refuses without it.'}</span>
-            </div>
-          ) : null}
           {stacking && stackCollision !== null ? (
             <CollisionCard
               playScript={playScript}

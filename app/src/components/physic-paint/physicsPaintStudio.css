@@ -2328,9 +2328,9 @@ button.destructive {
   pointer-events: auto;
 }
 
-/* 261101-cd5: preserved modes (loop edit, source edit, every stack kind, and
-   therefore regenerate) size to their content instead of the fixed creation
-   surface. A static render-time mode rule — never a runtime measurement. */
+/* 261101-cd5: the fixed 660 shell carries creation AND every stack; only edit
+   modes (loop/source/regenerate) and the one-shot collision prompt size to
+   their content. A static render-time state rule — never a runtime measurement. */
 .physics-paint-play-script-surface-tall { height: auto; }
 
 /* 48px header: badge + title left, range meta + Close right, drag handle. */
@@ -2487,22 +2487,6 @@ button.destructive {
 
 .physics-paint-play-script-tab:disabled { cursor: default; opacity: 0.5; }
 
-/* Stack reference states keep the notice row; the creation Reveal guard is the
-   rail-row chip instead. */
-.physics-paint-play-script-reveal-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--ps-divider);
-  border-radius: 8px;
-  color: var(--ps-muted);
-  font-size: 11.5px;
-  line-height: 1.4;
-}
-
 /* Panel: the tabs own it — single-column flex, panel fill, bottom radius.
    NO overflow region anywhere; the fixed layout, not scrolling, solves fit. */
 .physics-paint-play-script-content {
@@ -2548,13 +2532,6 @@ button.destructive {
   height: 80px;
 }
 
-/* Preserved modes size to their content, so the card row may grow past 80px
-   rather than clip the stack-only "Use brush color" action. */
-.physics-paint-play-script-surface-tall .physics-paint-play-script-global-row {
-  height: auto;
-  min-height: 80px;
-}
-
 .physics-paint-play-script-card-global {
   flex: 1 1 0;
   box-sizing: border-box;
@@ -2579,7 +2556,12 @@ button.destructive {
   white-space: nowrap;
 }
 
-.physics-paint-play-script-card-color .physics-paint-play-script-card-heading { align-items: flex-start; }
+/* 261101-cd5 UAT: the Color heading reserves the swatch+hex height in BOTH
+   states, so Original ↔ Custom never moves the card's segmented row. */
+.physics-paint-play-script-card-color .physics-paint-play-script-card-heading {
+  align-items: flex-start;
+  min-height: 30px;
+}
 
 .physics-paint-play-script-card-subline {
   display: block;
@@ -2601,12 +2583,6 @@ button.destructive {
   width: 90px;
 }
 
-.physics-paint-play-script-card-subline-action {
-  align-self: flex-start;
-  margin-left: 0;
-  font-size: 10.5px;
-}
-
 .physics-paint-play-script-color-custom-chip {
   display: inline-flex;
   flex: 0 0 auto;
@@ -2614,6 +2590,22 @@ button.destructive {
   align-items: flex-end;
   gap: 1px;
 }
+
+/* 261101-cd5 UAT: on a stack the swatch+hex chip is the "Use brush color"
+   action — it never adds a second row, so the card height is state-invariant. */
+.physics-paint-play-script-color-pick {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.physics-paint-play-script-color-pick:hover:not(:disabled) .physics-paint-play-script-color-hex {
+  color: var(--ps-fg);
+}
+
+.physics-paint-play-script-color-pick:disabled { cursor: default; opacity: 0.6; }
 
 /* The chip renders the USER'S CURRENT BRUSH COLOR as data — never accent (D-18). */
 .physics-paint-play-script-override-chip {
@@ -2703,6 +2695,19 @@ button.destructive {
 .physics-paint-play-script-ref-action:hover:not(:disabled) { color: var(--ps-accent-hi); }
 .physics-paint-play-script-ref-action:disabled { cursor: default; opacity: 0.45; }
 
+/* 261101-cd5 UAT: Keep script rides the Rail Type row — compact, out of the
+   card stack, so every stack keeps the same 660 composition. */
+.physics-paint-play-script-keep-script-compact {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: auto;
+}
+
+.physics-paint-play-script-ref-chip + .physics-paint-play-script-keep-script-compact {
+  margin-left: 0;
+}
+
 /* 261101-cd5 Motion wiggle: a borderless section with a 2 × 2 slim-slider grid
    (24px column and row gaps). */
 .physics-paint-play-script-motion-section {
@@ -2788,15 +2793,6 @@ button.destructive {
   border: 0;
   border-radius: 8px;
   background: var(--ps-inset);
-}
-
-/* 261101-1pc (Quick C2): the four-kind stack run Rail Type lays out 2 × 2. */
-.physics-paint-play-script-mode-group-stack {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.physics-paint-play-script-mode-group-stack .physics-paint-play-script-mode-option {
-  padding: 0 10px;
 }
 
 /* 261101-cd5: the mini segmented inside a compact global card (Color's
@@ -3081,6 +3077,13 @@ button.destructive {
 .physics-paint-play-script-dialog .physics-paint-play-script-switch .physics-paint-script-switch-label {
   font-size: 11.5px;
   font-weight: 600;
+}
+
+/* 261101-cd5 UAT: instant switch state. The 120ms track/knob animation read as
+   a modal shake when toggling inside the fixed surface. */
+.physics-paint-play-script-dialog .physics-paint-script-switch-track,
+.physics-paint-play-script-dialog .physics-paint-script-switch-knob {
+  transition: none;
 }
 
 .physics-paint-play-script-color-dots {
@@ -3422,7 +3425,8 @@ button.destructive {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  /* 261101-cd5 UAT: instant show/hide — the opacity fade read as a shake. */
+  transition: none;
 }
 
 .physics-paint-play-script-readout:hover .physics-paint-play-script-readout-tooltip,
