@@ -201,6 +201,9 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { clearFrameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type FrameScriptCell } from './view/frameScriptOwnership';
+// quick-261101-f5v: the rail run's summary copy (the rail's own presentation
+// matrix lives in the strip, next to the key matrix).
+import { formatRasterRailRunCopy, type RasterRailTarget } from './view/rasterKeyPresentation';
 import {
   anchorUnownedAquarelleStrokesForFrame,
   aquarelleScriptRecordingEnabled,
@@ -328,6 +331,14 @@ type AquarelleLiftErasePlan =
       recoverBase: boolean;
     };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
+/** quick-261101-f5v: one rastered key's outcome, shared by both Raster scopes. */
+type RasterOneKeyOutcome =
+  | 'rastered'
+  | 'skipped'
+  | 'stale'
+  | 'unavailable'
+  | 'reload-failed'
+  | 'failed';
 type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
   operationKind: 'delete-group-frame' | 'delete-group';
 }>;
@@ -1815,6 +1826,39 @@ export function PhysicsPaintStudio() {
     void efxPaintVersion.value;
     const cell = rotoTimelineModel.currentCell.value;
     return resolveFrameScriptOwner(cell.appFrame, resolveStudioScriptCell(cell.appFrame));
+  });
+  // quick-261101-f5v (D-01/D-02): the Raster action's rail target. A selected
+  // key rail retargets the action at the whole rail — Loop Clip rails and rail
+  // sets never do (this computed only reads the key-rail selection). The
+  // selection is read FIRST so the no-rail case subscribes to nothing but the
+  // rail selection, never to stroke revisions. Frames resolve through the
+  // PHYSICAL projection, never the display source, and the rail stays in rail
+  // mode even when its frames do not resolve (the leaf shows the empty-rail
+  // reason rather than falling back to the key scope).
+  const rasterRailTarget = useComputed<RasterRailTarget | null>(() => {
+    const selection = selectedRotoKeyRail.value;
+    if (selection === null) return null;
+    const launch = launchContextRef.current;
+    if (launch === null) return null;
+    void aquarelleStrokesRevision.value;
+    void rotoModelGeneration.value;
+    void efxPaintVersion.value;
+    void rotoPhysicalRevision.value;
+    const framesByKeyId = physicPaintStore
+      .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
+      ?.framesByKeyId;
+    const frames = [
+      ...new Set(
+        selection.keyIds
+          .map((keyId) => framesByKeyId?.get(keyId))
+          .filter((frame): frame is number => typeof frame === 'number' && Number.isFinite(frame)),
+      ),
+    ].sort((left, right) => left - right);
+    return {
+      firstKeyId: selection.firstKeyId,
+      frames,
+      hasScript: frames.some((frame) => hasAquarelleScriptForFrame(frame)),
+    };
   });
   // 261029-lsr: the force-re-render escape hatch. Enabled only for a frame that
   // OWNS A PAINT SCRIPT — a lift-only script bakes a blank sheet over raster
@@ -6661,6 +6705,16 @@ export function PhysicsPaintStudio() {
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }
+  // quick-261101-f5v (D-07): the ONE post-purge settle for a Raster run (the
+  // key action passes a single frame, the rail run every rastered frame).
+  // Mirrors the Memory-tab rail purge: refresh the module only when the purge
+  // touched the live frame, and write the snapshot ONCE — never one package
+  // write per key.
+  function finishRasterPurge(frames: readonly number[]): void {
+    const liveFrame = launchContextRef.current?.startFrame ?? -1;
+    if (frames.includes(liveFrame)) applyFrameModuleState(liveFrame);
+    void studioScriptSnapshot.persistAfterPurge();
+  }
   function clearMemoryRailScripts(): boolean {
     if (!purgeAllAquarelleKeyScripts()) return false;
     // quick-261025-awl: clear-all touches every frame, including the live one.
@@ -8839,50 +8893,41 @@ export function PhysicsPaintStudio() {
   // THEN purge both script stores. Every failure before the purge leaves the
   // stores untouched. The handler never writes activeModule — after the purge
   // the owner is null, so applyFrameModuleState leaves the module as it was.
-  const rasterKeyImplRef = useRef<(frame: number) => Promise<void>>(async () => {});
-  rasterKeyImplRef.current = async (frame) => {
-    if (isPhysicalMutationLocked()) return;
-    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
-    if (rotoCachedPlayback.isActive) return;
-    if (!readyToApply) return;
-    // The confirmation may sit open while the window moves on (frame change,
-    // track switch): a stale frame must never purge a different key.
-    if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
+  //
+  // quick-261101-f5v (D-05): ONE per-key core owns that ordering, shared with
+  // the rail run. It never refreshes the module and never persists — the
+  // caller settles the run through finishRasterPurge.
+  const rasterInFlightRef = useRef(false);
+  async function rasterOneKeyCore(
+    frame: number,
+    stillValid: () => boolean,
+  ): Promise<RasterOneKeyOutcome> {
     const scriptCell = resolveStudioScriptCell(frame);
     const owner = resolveFrameScriptOwner(frame, scriptCell);
-    if (owner === null) return;
-    const reportNothingChanged = (message: string) => {
-      setLastError(message);
-      setApplyMessage(message);
-      setApplyStatus('error');
-    };
+    // Scriptless keys are never targeted — and never flushed.
+    if (owner === null) return 'skipped';
     try {
       await flushAquarellePixels(frame);
-      // Re-check after the await: navigation may have moved on while the pixel
-      // flush was draining.
-      if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
-      if (!findCachedRotoDisplayFrameRef.current(frame)) {
-        reportNothingChanged(
-          "The key's painted pixels are not available — nothing changed.",
-        );
-        return;
-      }
-      previewBasePort.clearPreviewBaseImage(true);
-      previewBasePort.resetBackground(true);
-      previewBasePort.clear();
-      if (!loadCachedRotoReferenceFrame(frame, previewBasePort)) {
-        reportNothingChanged(
-          "The key's painted pixels could not be reloaded — nothing changed.",
-        );
-        return;
+      // Re-check after the await: navigation (or a rail edit) may have moved
+      // on while the pixel flush was draining.
+      if (!stillValid()) return 'stale';
+      if (!findCachedRotoDisplayFrameRef.current(frame)) return 'unavailable';
+      // The preview base is a LIVE-FRAME surface: a rail that excludes the
+      // live frame must leave previewBasePort untouched.
+      if (frame === (launchContextRef.current?.startFrame ?? -1)) {
+        previewBasePort.clearPreviewBaseImage(true);
+        previewBasePort.resetBackground(true);
+        previewBasePort.clear();
+        if (!loadCachedRotoReferenceFrame(frame, previewBasePort)) return 'reload-failed';
       }
     } catch {
-      reportNothingChanged('Rastering the key failed — nothing changed.');
-      return;
+      return 'failed';
     }
     // Committed: both stores lose the key's script (Memory-tab per-key
     // semantics + snapshot cleanup), then the ownership signal republishes.
-    purgeMemoryScriptFrame(frame);
+    // A zero removal means a race left nothing to purge — nothing changed, so
+    // there is nothing to persist either.
+    if (purgeAquarelleFrameScript(frame) === 0) return 'stale';
     // 261026 ordered with the raster: the rastered pixels ARE the key's full
     // content now, so a pinned pre-script base is stale — the next stroke must
     // re-pin the rastered display as the new durable base.
@@ -8890,10 +8935,127 @@ export function PhysicsPaintStudio() {
       aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);
       aquarelleRecoveredBaseKeyIdsRef.current.delete(scriptCell.keyId);
     }
-    applyFrameModuleState(frame);
+    return 'rastered';
+  }
+  const rasterKeyImplRef = useRef<(frame: number) => Promise<void>>(async () => {});
+  rasterKeyImplRef.current = async (frame) => {
+    // One in-flight guard for BOTH scopes (D-09): a second request during a
+    // run is ignored.
+    if (rasterInFlightRef.current) return;
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoCachedPlayback.isActive) return;
+    if (!readyToApply) return;
+    // The confirmation may sit open while the window moves on (frame change,
+    // track switch): a stale frame must never purge a different key.
+    if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
+    const reportNothingChanged = (message: string) => {
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+    };
+    rasterInFlightRef.current = true;
+    try {
+      const outcome = await rasterOneKeyCore(
+        frame,
+        () => frame === (launchContextRef.current?.startFrame ?? -1),
+      );
+      if (outcome === 'rastered') {
+        finishRasterPurge([frame]);
+        return;
+      }
+      if (outcome === 'unavailable') {
+        reportNothingChanged(
+          "The key's painted pixels are not available — nothing changed.",
+        );
+      } else if (outcome === 'reload-failed') {
+        reportNothingChanged(
+          "The key's painted pixels could not be reloaded — nothing changed.",
+        );
+      } else if (outcome === 'failed') {
+        reportNothingChanged('Rastering the key failed — nothing changed.');
+      }
+      // 'skipped' and 'stale' stay silent, exactly like the pre-change
+      // scriptless return.
+    } finally {
+      rasterInFlightRef.current = false;
+    }
   };
   const handleRasterKeyRequest = useCallback((frame: number) => {
     void rasterKeyImplRef.current(frame);
+  }, []);
+
+  // quick-261101-f5v (D-01/D-06): the rail-scoped Raster run. The strip gets a
+  // stable callback; the implementation is reassigned every render so the rail
+  // selection, the physical projection and every session guard are re-resolved
+  // at CALL time — a confirm dialog left open across a selection change can
+  // never purge a different rail. One bounded pass, sequential awaits, no
+  // retry, and a stop on any session guard break.
+  const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});
+  rasterRailImplRef.current = async (firstKeyId) => {
+    if (rasterInFlightRef.current) return;
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoCachedPlayback.isActive) return;
+    if (!readyToApply) return;
+    // The clicked rail identity must still be the reconciled selection.
+    const selection = effectiveSelectedRotoKeyRail;
+    if (selection === null || selection.firstKeyId !== firstKeyId) return;
+    const launch = launchContextRef.current;
+    if (launch === null) return;
+    const projection = physicPaintStore.getRotoPhysicalProjection(launch.layerId, studioActiveTrackId());
+    if (!projection) return;
+    const entries = [
+      ...new Map(
+        selection.keyIds
+          .map((keyId) => ({ keyId, frame: projection.framesByKeyId.get(keyId) }))
+          .filter((entry): entry is { keyId: string; frame: number } => (
+            typeof entry.frame === 'number' && Number.isFinite(entry.frame)
+          ))
+          .map((entry) => [entry.frame, entry] as const),
+      ).values(),
+    ]
+      .sort((left, right) => left.frame - right.frame)
+      .filter((entry) => hasAquarelleScriptForFrame(entry.frame));
+    if (entries.length === 0) return;
+    rasterInFlightRef.current = true;
+    try {
+      let rastered = 0;
+      let stopped = false;
+      const purgedFrames: number[] = [];
+      for (const entry of entries) {
+        if (isPhysicalMutationLocked()
+          || rotoScript.applying.peek() || rotoScript.mutationLocked.peek()
+          || rotoCachedPlayback.isActive
+          || !readyToApply) {
+          stopped = true;
+          break;
+        }
+        const outcome = await rasterOneKeyCore(entry.frame, () => {
+          const cell = resolveStudioScriptCell(entry.frame);
+          return cell !== null && cell.kind === 'real' && cell.keyId === entry.keyId;
+        });
+        if (outcome === 'rastered') {
+          rastered += 1;
+          purgedFrames.push(entry.frame);
+        }
+      }
+      if (purgedFrames.length > 0) finishRasterPurge(purgedFrames);
+      const copy = formatRasterRailRunCopy({
+        rastered,
+        targeted: entries.length,
+        skipped: entries.length - rastered,
+        stopped,
+      });
+      setApplyMessage(copy.message);
+      setApplyStatus(copy.isError ? 'error' : 'idle');
+      if (copy.isError) setLastError(copy.message);
+    } finally {
+      rasterInFlightRef.current = false;
+    }
+  };
+  const handleRasterRailRequest = useCallback((firstKeyId: string) => {
+    void rasterRailImplRef.current(firstKeyId);
   }, []);
 
   // CACHE MERGE BASE (aquarelle-cache-lost-on-return): a frame change clears
@@ -10274,6 +10436,9 @@ export function PhysicsPaintStudio() {
         // and the ownership SIGNAL REFERENCE keep the static-chrome memo intact;
         // only the strip's Raster leaf reads .value.
         onRasterKey: handleRasterKeyRequest, frameScriptOwner: rasterKeyOwner,
+        // quick-261101-f5v: the rail scope rides the same shape — a stable
+        // callback plus the rail target as a SIGNAL REFERENCE.
+        onRasterRail: handleRasterRailRequest, rasterRailTarget,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();

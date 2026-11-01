@@ -27,7 +27,12 @@ import {
 } from './physicsPaintWorkflowPresentation';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
-import { resolveRasterKeyPresentation } from './rasterKeyPresentation';
+import {
+  formatRasterRailRange,
+  resolveRasterKeyPresentation,
+  resolveRasterRailPresentation,
+  type RasterRailTarget,
+} from './rasterKeyPresentation';
 import type { FrameScriptOwner } from '../../shared/frameModuleLock';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -316,11 +321,22 @@ export interface PhysicsPaintWorkflowStripProps {
    */
   onRasterKey?: (frame: number) => void;
   /**
+   * quick-261101-f5v: rail-scoped Raster. A selected key rail retargets the
+   * action at the whole rail; the Studio re-resolves the rail at call time,
+   * so this carries only the clicked rail's first key id.
+   */
+  onRasterRail?: (firstKeyId: string) => void;
+  /**
    * quick-261025-awl: the current key's script owner. Passed as a signal
    * REFERENCE — only the Raster leaf reads .value, so the strip body and the
    * memoized chrome never subscribe to ownership changes.
    */
   frameScriptOwner?: ReadonlySignal<FrameScriptOwner>;
+  /**
+   * quick-261101-f5v: the rail target, also a signal REFERENCE — read only by
+   * the Raster leaf (null = the key scope).
+   */
+  rasterRailTarget?: ReadonlySignal<RasterRailTarget | null>;
   /** + Rail header action: create a blank key that deliberately starts a NEW rail. */
   onCreateRotoKeyRail?: () => void;
   onDuplicateRotoKey?: () => void;
@@ -933,6 +949,8 @@ function PhysicsPaintRasterKeyControl(props: {
   playbackActive: boolean;
   mutationLocked: boolean;
   onRasterKey?: (frame: number) => void;
+  onRasterRail?: (firstKeyId: string) => void;
+  railTargetSignal?: ReadonlySignal<RasterRailTarget | null>;
 }) {
   const tooltip = useStyledTooltip();
   // One signal for the lifetime of the leaf — created in a ref (never a fresh
@@ -947,12 +965,25 @@ function PhysicsPaintRasterKeyControl(props: {
 
   const frame = props.currentFrame.value;
   const owner = props.ownerSignal.value;
-  const presentation = resolveRasterKeyPresentation({
-    hasScript: owner !== null,
-    ready: props.ready,
-    playbackActive: props.playbackActive,
-    mutationLocked: props.mutationLocked,
-  });
+  // quick-261101-f5v (D-01): a selected key rail wins the Raster scope. The
+  // rail target arrives as a signal REFERENCE and is read HERE only, so the
+  // strip body and the memoized chrome never subscribe to it.
+  const railTarget = props.railTargetSignal?.value ?? null;
+  const railMode = railTarget !== null;
+  const presentation = railTarget !== null
+    ? resolveRasterRailPresentation({
+      hasScript: railTarget.hasScript,
+      ready: props.ready,
+      playbackActive: props.playbackActive,
+      mutationLocked: props.mutationLocked,
+      frameCount: railTarget.frames.length,
+    })
+    : resolveRasterKeyPresentation({
+      hasScript: owner !== null,
+      ready: props.ready,
+      playbackActive: props.playbackActive,
+      mutationLocked: props.mutationLocked,
+    });
 
   // Modal focus: Cancel is the quiet default, exactly like the Memory tab.
   // Synchronous (no rAF) so the harness and Node tests can run the whole flow.
@@ -985,8 +1016,25 @@ function PhysicsPaintRasterKeyControl(props: {
   };
   const confirmRaster = () => {
     closeConfirm();
+    // quick-261101-f5v: the rail scope forwards the clicked rail identity; the
+    // Studio re-resolves it at call time. The key scope is unchanged.
+    if (railTarget !== null) {
+      props.onRasterRail?.(railTarget.firstKeyId);
+      return;
+    }
     props.onRasterKey?.(props.currentFrame.peek());
   };
+
+  // quick-261101-f5v (D-08): the dialog names the scope. A multi-key rail
+  // names its frame range and the skip rule; Task 2's refinement reuses the
+  // key copy for a one-key rail.
+  const railRange = railTarget ? formatRasterRailRange(railTarget.frames) : '';
+  const dialogAria = railTarget ? `Raster rail keys ${railRange}` : `Raster key ${frame}`;
+  const dialogTitle = railTarget ? `Raster rail keys ${railRange}?` : `Raster key ${frame}?`;
+  const dialogBody = railTarget
+    ? 'Every scripted key on this rail loses its Brush and Water color script and keeps its painted pixels. Keys without cached pixels are skipped. Move, Select and replay are lost for those keys.'
+    : "This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.";
+  const dialogConfirm = railTarget ? 'Raster rail keys' : 'Raster key';
 
   const dialog = open ? (
     <div
@@ -994,7 +1042,7 @@ function PhysicsPaintRasterKeyControl(props: {
       class="physics-paint-memory-confirmation physics-paint-raster-confirmation"
       role="dialog"
       aria-modal="true"
-      aria-label={`Raster key ${frame}`}
+      aria-label={dialogAria}
       style={{ visibility: 'hidden' }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -1020,9 +1068,9 @@ function PhysicsPaintRasterKeyControl(props: {
         }
       }}
     >
-      <strong>{`Raster key ${frame}?`}</strong>
+      <strong>{dialogTitle}</strong>
       <p class="physics-paint-memory-confirm-copy">
-        This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.
+        {dialogBody}
       </p>
       <div class="physics-paint-memory-confirm-actions">
         <button
@@ -1038,7 +1086,7 @@ function PhysicsPaintRasterKeyControl(props: {
           class="physics-paint-memory-confirm-ok destructive"
           onClick={confirmRaster}
         >
-          Raster key
+          {dialogConfirm}
         </button>
       </div>
     </div>
@@ -1055,7 +1103,7 @@ function PhysicsPaintRasterKeyControl(props: {
         <button
           type="button"
           class="physics-paint-roto-key-icon-button"
-          aria-label="Raster the key"
+          aria-label={railMode ? 'Raster the rail' : 'Raster the key'}
           aria-disabled={presentation.disabled ? 'true' : undefined}
           onFocus={tooltip.onFocus}
           onBlur={tooltip.onBlur}
@@ -1076,7 +1124,9 @@ function PhysicsPaintRasterKeyControl(props: {
         </button>
         <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">
           {buildGuardedActionTooltipCopy(
-            'Raster the key — remove its script and keep the painted pixels.',
+            railMode
+              ? "Raster the rail — remove every key's script and keep the painted pixels."
+              : 'Raster the key — remove its script and keep the painted pixels.',
             presentation.reason,
           )}
         </PhysicsPaintStyledTooltip>
@@ -1099,6 +1149,9 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   /** quick-261025-awl (D-04): Raster header action — signal reference + stable callback. */
   onRasterKey?: (frame: number) => void;
   frameScriptOwner?: ReadonlySignal<FrameScriptOwner>;
+  /** quick-261101-f5v: the rail-scoped Raster bundle (same reference+callback shape). */
+  onRasterRail?: (firstKeyId: string) => void;
+  rasterRailTarget?: ReadonlySignal<RasterRailTarget | null>;
   playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined;
   playbackLoop: boolean;
   playbackFps: number;
@@ -1503,6 +1556,8 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           playbackActive={props.playbackActive}
           mutationLocked={props.mutationLocked}
           onRasterKey={props.onRasterKey}
+          onRasterRail={props.onRasterRail}
+          railTargetSignal={props.rasterRailTarget}
         />
       ) : null}
       <span
@@ -5149,6 +5204,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}
         onRasterKey={props.onRasterKey}
         frameScriptOwner={props.frameScriptOwner}
+        onRasterRail={props.onRasterRail}
+        rasterRailTarget={props.rasterRailTarget}
         playbackTick={props.rotoCachedPlaybackTick}
         playbackLoop={Boolean(props.rotoCachedPlaybackLoop)}
         playbackFps={props.rotoCachedPlaybackFps ?? 0}

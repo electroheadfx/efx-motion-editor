@@ -4330,6 +4330,16 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
   );
   const handlerEnd = studio.indexOf('const handleRasterKeyRequest = useCallback(', handlerStart);
   const handler = studio.slice(handlerStart, handlerEnd);
+  // quick-261101-f5v: the shared per-key core (before the key impl) and the
+  // rail run (after the key callback).
+  const coreStart = studio.indexOf('async function rasterOneKeyCore(');
+  const coreEnd = studio.indexOf('const rasterKeyImplRef', coreStart);
+  const core = studio.slice(coreStart, coreEnd);
+  const railStart = studio.indexOf(
+    'const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});',
+  );
+  const railEnd = studio.indexOf('const handleRasterRailRequest = useCallback(', railStart);
+  const rail = studio.slice(railStart, railEnd);
 
   it('exists with the stable strip callback wired into the workflow props', () => {
     expect(handlerStart).toBeGreaterThan(-1);
@@ -4344,13 +4354,15 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
   it('refuses in the documented guard order', () => {
     // 261027-klx: the engine-1 handle guard left with the Efx child — the
     // owner resolver is the live-surface guard.
+    // quick-261101-f5v (D-09): the in-flight boolean precedes every guard and
+    // is shared with the rail run.
     const guards = [
+      'if (rasterInFlightRef.current) return;',
       'if (isPhysicalMutationLocked()) return;',
       'if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;',
       'if (rotoCachedPlayback.isActive) return;',
       'if (!readyToApply) return;',
       'if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;',
-      'if (owner === null) return;',
     ];
     let previous = -1;
     for (const guard of guards) {
@@ -4359,38 +4371,64 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
       previous = index;
     }
     expect(handler).not.toContain('if (!engine) return;');
-    expect(handler).toContain('const scriptCell = resolveStudioScriptCell(frame);');
-    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell);');
-    // The frame identity is re-checked after the awaited pixel flush.
+    // quick-261101-f5v (D-05): ownership resolution and the stale re-check
+    // moved into the shared core; the handler keeps ONE stale pre-check.
+    expect(handler).not.toContain('const scriptCell = resolveStudioScriptCell(frame);');
+    expect(handler).not.toContain('if (owner === null) return;');
+    expect(handler).not.toContain('purgeMemoryScriptFrame(frame);');
     expect(
       countOccurrences(
         handler,
         'if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;',
       ),
-    ).toBe(2);
+    ).toBe(1);
+    expect(handler).toContain('const outcome = await rasterOneKeyCore(');
+    expect(handler).toContain('() => frame === (launchContextRef.current?.startFrame ?? -1),');
+    expect(handler).toContain('finishRasterPurge([frame]);');
   });
 
   it('runs capture, verification, ledger clear and reload strictly before the purge', () => {
+    // quick-261101-f5v (D-05): the ONE per-key ordering lives in the shared
+    // core, so the frame action and the rail run cannot drift apart.
+    expect(coreStart).toBeGreaterThan(-1);
+    expect(coreEnd).toBeGreaterThan(coreStart);
     const order = [
+      'const scriptCell = resolveStudioScriptCell(frame);',
+      'const owner = resolveFrameScriptOwner(frame, scriptCell);',
+      "if (owner === null) return 'skipped';",
       'await flushAquarellePixels(frame);',
+      "if (!stillValid()) return 'stale';",
       'findCachedRotoDisplayFrameRef.current(frame)',
       'previewBasePort.clearPreviewBaseImage(true);',
       'previewBasePort.resetBackground(true);',
       'previewBasePort.clear();',
       'loadCachedRotoReferenceFrame(frame, previewBasePort)',
-      'purgeMemoryScriptFrame(frame);',
-      'applyFrameModuleState(frame);',
+      'purgeAquarelleFrameScript(frame)',
+      'aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);',
+      'aquarelleRecoveredBaseKeyIdsRef.current.delete(scriptCell.keyId);',
     ];
     let previous = -1;
     for (const step of order) {
-      const index = handler.indexOf(step);
+      const index = core.indexOf(step);
       expect(index, step).toBeGreaterThan(previous);
       previous = index;
     }
+    // The preview base is a live-frame surface only.
+    expect(core).toContain('if (frame === (launchContextRef.current?.startFrame ?? -1)) {');
+    // Scriptless keys never reach the flush; a missing raster never reaches
+    // the purge.
+    expect(core.indexOf("if (owner === null) return 'skipped';"))
+      .toBeLessThan(core.indexOf('await flushAquarellePixels(frame);'));
+    expect(core.indexOf("if (!findCachedRotoDisplayFrameRef.current(frame)) return 'unavailable';"))
+      .toBeLessThan(core.indexOf('purgeAquarelleFrameScript(frame)'));
+    // The core never refreshes the module and never persists.
+    expect(core).not.toContain('applyFrameModuleState');
+    expect(core).not.toContain('persistAfterPurge');
+    expect(core).not.toContain('activeModule');
     // The engine-1 finalize/dry/clear seams are gone.
-    expect(handler).not.toContain('engine.flushPendingStrokeFinalizations();');
-    expect(handler).not.toContain('engine.forceDry();');
-    expect(handler).not.toContain('engine.clear();');
+    expect(core).not.toContain('engine.flushPendingStrokeFinalizations();');
+    expect(core).not.toContain('engine.forceDry();');
+    expect(core).not.toContain('engine.clear();');
   });
 
   it('fails closed with the nothing-changed copy for both pre-purge failures', () => {
@@ -4401,17 +4439,81 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
       '"The key\'s painted pixels could not be reloaded — nothing changed."',
     );
     expect(handler).toContain("'Rastering the key failed — nothing changed.'");
-    // Both failure paths return before the purge call.
-    const firstReturnAfterFailure = handler.indexOf('return;', handler.indexOf('findCachedRotoDisplayFrameRef.current(frame)'));
-    const purge = handler.indexOf('purgeMemoryScriptFrame(frame);');
-    expect(firstReturnAfterFailure).toBeGreaterThan(-1);
-    expect(firstReturnAfterFailure).toBeLessThan(purge);
+    // The failure outcomes are reported, never purged: the core's failure
+    // returns all precede its purge call.
+    const purge = core.indexOf('purgeAquarelleFrameScript(frame)');
+    expect(core.indexOf("return 'unavailable'")).toBeGreaterThan(-1);
+    expect(core.indexOf("return 'unavailable'")).toBeLessThan(purge);
+    expect(core.indexOf("return 'reload-failed'")).toBeLessThan(purge);
+    expect(core.indexOf("return 'failed'")).toBeLessThan(purge);
   });
 
   it('never writes activeModule — the module survives the conversion', () => {
     expect(handler).not.toContain('activeModule.value');
     expect(handler).not.toContain('activeModule.peek() !==');
     expect(handler).not.toContain('activeModule.peek() === \'watercolor\')');
+  });
+
+  it('re-resolves the clicked rail, the projection and every guard at call time', () => {
+    expect(railStart).toBeGreaterThan(-1);
+    expect(railEnd).toBeGreaterThan(railStart);
+    expect(studio).toContain(
+      'const rasterRailImplRef = useRef<(firstKeyId: string) => Promise<void>>(async () => {});',
+    );
+    expect(studio).toContain('const handleRasterRailRequest = useCallback((firstKeyId: string) => {');
+    expect(studio).toContain('void rasterRailImplRef.current(firstKeyId);');
+    // The clicked identity must still be the reconciled selection.
+    expect(rail).toContain('const selection = effectiveSelectedRotoKeyRail;');
+    expect(rail).toContain('if (selection === null || selection.firstKeyId !== firstKeyId) return;');
+    // Frames resolve through the PHYSICAL projection, never the display source.
+    expect(rail).toContain('projection.framesByKeyId.get(keyId)');
+    expect(rail).toContain('if (!projection) return;');
+    // Only scripted keys are targeted.
+    expect(rail).toContain('.filter((entry) => hasAquarelleScriptForFrame(entry.frame));');
+  });
+
+  it('runs one bounded sequential pass with a per-iteration guard re-check', () => {
+    const loopStart = rail.indexOf('for (const entry of entries) {');
+    expect(loopStart).toBeGreaterThan(-1);
+    // No second pass and no retry: one loop over the snapshot.
+    expect(countOccurrences(rail, 'for (const entry of entries) {')).toBe(1);
+    expect(rail).not.toContain('setTimeout');
+    expect(rail).not.toContain('setInterval');
+    // The session guards are re-checked at the TOP of every iteration and a
+    // break reports a partial run.
+    const guardStart = rail.indexOf('if (isPhysicalMutationLocked()', loopStart);
+    const stopStart = rail.indexOf('stopped = true;', loopStart);
+    const coreCallStart = rail.indexOf('await rasterOneKeyCore(entry.frame, () => {', loopStart);
+    expect(guardStart).toBeGreaterThan(loopStart);
+    expect(stopStart).toBeGreaterThan(guardStart);
+    expect(coreCallStart).toBeGreaterThan(stopStart);
+    expect(rail).toContain('break;');
+    // Each key's predicate re-checks the key identity after the flush.
+    expect(rail).toContain('cell.keyId === entry.keyId');
+  });
+
+  it('writes the snapshot once per run and publishes one summary', () => {
+    expect(rail).toContain('finishRasterPurge(purgedFrames)');
+    expect(countOccurrences(rail, 'finishRasterPurge(')).toBe(1);
+    expect(rail).toContain('formatRasterRailRunCopy({');
+    expect(rail).toContain("setApplyStatus(copy.isError ? 'error' : 'idle');");
+    expect(rail).toContain('if (copy.isError) setLastError(copy.message);');
+    // finishRasterPurge owns the single persist (the Memory-tab contract).
+    const finishStart = studio.indexOf('function finishRasterPurge(');
+    const finishEnd = studio.indexOf('function clearMemoryRailScripts(', finishStart);
+    const finish = studio.slice(finishStart, finishEnd);
+    expect(finishStart).toBeGreaterThan(-1);
+    expect(finish).toContain('if (frames.includes(liveFrame)) applyFrameModuleState(liveFrame);');
+    expect(countOccurrences(finish, 'studioScriptSnapshot.persistAfterPurge()')).toBe(1);
+    // The Memory-tab purges keep their own contract.
+    expect(studio).toContain('function purgeMemoryScriptFrame(frame: number): boolean {');
+    expect(studio).toContain('function purgeMemoryRailScripts(frames: readonly number[]): boolean {');
+  });
+
+  it('threads the rail bundle into the workflow strip props', () => {
+    expect(studio).toContain('onRasterRail: handleRasterRailRequest, rasterRailTarget,');
+    // The key bundle line is untouched (the source contract pins it verbatim).
+    expect(studio).toContain('onRasterKey: handleRasterKeyRequest, frameScriptOwner: rasterKeyOwner,');
   });
 });
 
@@ -4578,10 +4680,11 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     const generation = between(studio, 'const rotoModelGeneration = useSignal(0);', 'const loopResolutionContext');
     expect(generation).toContain('rotoModelGeneration.value += 1;');
     expect(generation).toContain('}, [rotoTimelineModel]);');
-    // 261027-klx: the Brush Move gate left with engine 1. Three reads remain:
-    // the Water color gate, the 261028-k03h Raster enablement and the
-    // 261029-lsr force-re-render enablement (the same live-graph rebind law).
-    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(3);
+    // 261027-klx: the Brush Move gate left with engine 1. Four reads remain:
+    // the Water color gate, the 261028-k03h Raster enablement, the
+    // 261029-lsr force-re-render enablement and the quick-261101-f5v rail
+    // target (the same live-graph rebind law).
+    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(4);
     expect(studio).not.toContain('const moveAvailable = useComputed(');
 
     const waterGate = between(studio, 'const watercolorMoveAvailable = useComputed(() => {', 'const gateDiagnosticsRef = useRef');

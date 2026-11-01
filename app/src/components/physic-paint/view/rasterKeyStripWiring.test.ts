@@ -55,7 +55,9 @@ describe('quick-261025-awl Raster strip wiring', () => {
   });
 
   it('uses the exact Raster label and accessible name', () => {
-    expect(stripSource).toContain('aria-label="Raster the key"');
+    // quick-261101-f5v: the accessible name names the scope; the visible
+    // label stays Raster in both modes (no header layout shift).
+    expect(stripSource).toContain("aria-label={railMode ? 'Raster the rail' : 'Raster the key'}");
     expect(stripSource).toContain('<span class="physics-paint-roto-key-icon-label">Raster</span>');
   });
 
@@ -104,7 +106,42 @@ describe('quick-261025-awl Raster strip wiring', () => {
     expect(stripSource).toContain(
       "This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.",
     );
-    expect(stripSource).toContain('aria-label={`Raster key ${frame}`}');
+    expect(stripSource).toContain('`Raster key ${frame}`');
+  });
+
+  it('threads the rail Raster bundle from the strip props to the leaf', () => {
+    // Strip props, static-chrome props, and the leaf's own inline props.
+    expect(countOccurrences(stripSource, 'onRasterRail?: (firstKeyId: string) => void;')).toBe(3);
+    expect(countOccurrences(stripSource, 'rasterRailTarget?: ReadonlySignal<RasterRailTarget | null>;')).toBe(2);
+    expect(countOccurrences(stripSource, 'railTargetSignal?: ReadonlySignal<RasterRailTarget | null>;')).toBe(1);
+    expect(stripSource).toContain('onRasterRail={props.onRasterRail}');
+    expect(stripSource).toContain('rasterRailTarget={props.rasterRailTarget}');
+    expect(stripSource).toContain('railTargetSignal={props.rasterRailTarget}');
+  });
+
+  it('reads the rail target only in the leaf (narrow subscription)', () => {
+    const leafStart = stripSource.indexOf('function PhysicsPaintRasterKeyControl(');
+    const leafEnd = stripSource.indexOf('interface PhysicsPaintWorkflowStaticChromeProps {', leafStart);
+    const leaf = stripSource.slice(leafStart, leafEnd);
+
+    expect(leaf).toContain('const railTarget = props.railTargetSignal?.value ?? null;');
+    // The strip body and the memoized chrome only forward the reference.
+    expect(stripSource).not.toContain('props.rasterRailTarget?.value');
+    expect(stripSource).not.toContain('props.rasterRailTarget.value');
+  });
+
+  it('dispatches the clicked rail identity in rail mode and keeps the frame dispatch otherwise', () => {
+    expect(stripSource).toContain('props.onRasterRail?.(railTarget.firstKeyId)');
+    expect(stripSource).toContain('props.onRasterKey?.(props.currentFrame.peek());');
+  });
+
+  it('carries the rail dialog copy beside the key copy', () => {
+    expect(stripSource).toContain('`Raster rail keys ${railRange}?`');
+    expect(stripSource).toContain('`Raster rail keys ${railRange}`');
+    expect(stripSource).toContain(
+      'Every scripted key on this rail loses its Brush and Water color script and keeps its painted pixels. Keys without cached pixels are skipped. Move, Select and replay are lost for those keys.',
+    );
+    expect(stripSource).toContain("const dialogConfirm = railTarget ? 'Raster rail keys' : 'Raster key';");
   });
 
   it('closes on Escape and cycles Tab between the two buttons', () => {
