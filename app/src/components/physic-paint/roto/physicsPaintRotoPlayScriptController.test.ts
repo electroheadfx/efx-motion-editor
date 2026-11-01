@@ -6101,8 +6101,11 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(motionDest.controller.stackRunKind.value).toBe('motion');
     expect(motionDest.controller.mode.value).toBe('progressive');
 
-    // A non-stack apply open never seeds a stack kind.
+    // A non-stack apply open never seeds a stack kind — it RESETS one. Pick a
+    // non-default kind first so deleting the open reset fails this test.
     const create = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 30 });
+    create.controller.setStackRunKind('reveal-static');
+    expect(create.controller.stackRunKind.value).toBe('reveal-static');
     await create.controller.openConfirmation();
     expect(create.controller.confirmationOpen.value).toBe(true);
     expect(create.controller.stackRunKind.value).toBe('motion');
