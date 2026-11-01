@@ -44,6 +44,7 @@ import {
   scriptStrokeBoundsPx,
   scriptStrokeDrag,
   selectScriptStroke,
+  setDraftMode,
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeSelection,
@@ -335,6 +336,13 @@ export function setAquarelleSelectMode(
   // the delegation below — `setScriptSelectMode` early-returns on an unchanged
   // value, which would otherwise skip it on a re-entry.
   resetAquarelleStrokeFineFilters();
+  // 261101-o2m: "every dialog open starts Live" (D-07). The genuine off -> on
+  // edge attempts the Draft reset, and it must precede the delegation below
+  // for the same early-return reason as the fine-filter reset. `setDraftMode`
+  // refuses to leave while `draftPixelsDirty` is set, so this reset is a
+  // silent no-op exactly when a previous exit's settle was refused — Draft
+  // stays ON because those pixels are still stale, and the next exit retries.
+  if (on && !was) setDraftMode(false);
   setScriptSelectMode(on);
   if (on && !was && aquarelleStrokeSettingsDismissed.peek()) {
     aquarelleStrokeSettingsDismissed.value = false;

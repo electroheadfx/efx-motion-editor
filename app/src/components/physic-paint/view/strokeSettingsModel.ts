@@ -534,6 +534,20 @@ export interface StrokeSettingsDialogBundle {
    * Absent hides both affordances. The dialog never touches the engine.
    */
   readonly deleteStrokes?: (ids: readonly number[]) => boolean | Promise<boolean> | void;
+  /**
+   * 261101-o2m: the ONE recompute the sheet runs when it closes (D-04's dialog
+   * close exit). The dialog never writes `draftMode` false itself — a dirty
+   * Draft may only leave through this settle. Absent means there is nothing to
+   * settle (the sheet stays Live).
+   */
+  readonly settleDraft?: () => boolean | Promise<boolean>;
+  /**
+   * 261101-o2m: the pre-Draft base arming the switch's ON click awaits before
+   * it may write `draftMode`. It resolves the frame's durable base BEFORE the
+   * script diverges, so the later settle cannot fail closed on
+   * `durable-base-unknown`. Absent means the sheet may enter Draft directly.
+   */
+  readonly armDraft?: () => Promise<boolean>;
 }
 
 // ============================================================

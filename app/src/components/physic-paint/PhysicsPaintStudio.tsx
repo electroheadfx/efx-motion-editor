@@ -275,7 +275,11 @@ import {
 } from './view/aquarelleStrokeSelection';
 import {
   deleteSelectedScriptStroke,
+  draftMode,
+  draftPixelsDirty,
   scriptSelectedStrokeIds,
+  setDraftMode,
+  setDraftPixelsDirty,
   setScriptStrokeEditionPorts,
   type ScriptStrokeTransform,
 } from './view/scriptStrokeEdition';
@@ -307,6 +311,10 @@ const AQUARELLE_LIFT_UNKNOWN_BASE_REFUSAL = "This key's pre-script base is unava
 const AQUARELLE_LIFT_NO_CACHE_REFUSAL = "The frame's painted pixels are unavailable — nothing changed.";
 const AQUARELLE_LIFT_PERMANENT_MESSAGE = 'Erased — removed pixels are permanent (no undo).';
 const AQUARELLE_LIFT_FAILURE_MESSAGE = 'The erase did not commit — the picture is unchanged. The recorded Eraser applies on the next Apply.';
+// 261101-o2m: Draft's entry arm could not resolve the frame's pre-script base.
+// Without it every Draft commit would diverge from pixels whose base was never
+// decided, and the settle's apply would fail closed (`durable-base-unknown`).
+const DRAFT_ARM_REFUSAL_MESSAGE = 'Could not prepare this frame for Draft — the watercolor base could not be recovered.';
 /**
  * 261028-k03 D2 preflight. `normal` = the live-sheet path owns this stroke (no
  * committed paint to punch, or Script is off with no script to protect);
@@ -5058,6 +5066,96 @@ export function PhysicsPaintStudio() {
     closeClearConfirm();
     clearActiveSource();
   }, [clearActiveSource, closeClearConfirm]);
+  // 261101-o2m (Draft mode). Draft ON suspends the watercolor re-render ONLY:
+  // every edit still commits to the script (and the ledger), while the
+  // committed sheet keeps its last rendered pixels. The ONE recompute lives in
+  // `settleDraftScript` below — the strip's OFF click, the dialog close, the
+  // frame change, play and the save/export flush all join it and ACT on its
+  // result. It mints no undo entry: unlike `handleRebakeScript` it never
+  // re-rolls a paint seed.
+  const draftArmPromiseRef = useRef<Promise<boolean> | null>(null);
+  const armDraftBase = useCallback((): Promise<boolean> => {
+    // Single-flight: a double ON click must not run two base recoveries.
+    if (draftArmPromiseRef.current) return draftArmPromiseRef.current;
+    const run = (async () => {
+      const playFrame = launchContextRef.current?.startFrame ?? 0;
+      // The durable-base recovery is a PRE-EDIT contract (261028-k03d): it
+      // bakes the PRE-edit script against the committed display. Resolve it
+      // BEFORE the first Draft edit can mutate the script.
+      const armed = await ensureAquarelleDurableBaseRef.current(playFrame);
+      // Frame-binding guard: the arm resolved THIS frame's base. If the Studio
+      // moved on while it ran, the live frame is unarmed — leave Draft OFF and
+      // let the next ON click arm the new frame.
+      const liveFrame = launchContextRef.current?.startFrame ?? 0;
+      if (!armed || liveFrame !== playFrame) {
+        setLastError(DRAFT_ARM_REFUSAL_MESSAGE);
+        setApplyMessage(DRAFT_ARM_REFUSAL_MESSAGE);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+        return false;
+      }
+      return true;
+    })().finally(() => {
+      draftArmPromiseRef.current = null;
+    });
+    draftArmPromiseRef.current = run;
+    return run;
+  }, [setApplyMessage, setApplyStatus, setLastError]);
+  const draftSettlePromiseRef = useRef<Promise<boolean> | null>(null);
+  const settleDraftScript = useCallback((): Promise<boolean> => {
+    // D-04: with Draft OFF and clean pixels every exit is a pure no-op — no
+    // await, no microtask, so the Live laws keep their exact tick.
+    if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);
+    // Single-flight: two exits racing each other join ONE recompute.
+    if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;
+    if (
+      isPhysicalMutationLocked()
+      || rotoScript.applying.peek()
+      || rotoScript.mutationLocked.peek()
+      || isAquarelleScriptEditInFlight()
+    ) return Promise.resolve(false);
+    const run = (async () => {
+      const playFrame = launchContextRef.current?.startFrame ?? 0;
+      setAquarelleScriptEditInFlight(true);
+      try {
+        rotoPersistence.invalidateLivePixels(playFrame);
+        // Belt: the entry arm already resolved this base; the ensure is a fast
+        // no-op for every ordinary key.
+        await ensureAquarelleDurableBaseRef.current(playFrame);
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+        if (!ok) {
+          const error = rotoScript.error.peek();
+          const message = buildRotoScriptApplyRefusalMessage(error)
+            ?? error?.message
+            ?? 'Could not re-render the watercolor script — Draft stays on and the next exit retries.';
+          setLastError(message);
+          setApplyMessage(message);
+          setApplyStatus('error');
+          scriptApplyRefusalOwnedRef.current = true;
+          // No snapshot restore: there is no single edit to revert, and BOTH
+          // Draft and the dirty flag stay set — the next exit retries.
+          return false;
+        }
+        // The recompute landed: clear the invariant FIRST, then leave Draft —
+        // the setter refuses to leave while the pixels are dirty.
+        setDraftPixelsDirty(false);
+        setDraftMode(false);
+        // The script-snapshot write was deferred for the whole session; the
+        // recompute has landed, so re-arm it now.
+        studioScriptSnapshot.markDirty();
+        rotoScript.notifySourceRevision();
+        applyFrameModuleState(playFrame);
+        return true;
+      } finally {
+        setAquarelleScriptEditInFlight(false);
+      }
+    })().finally(() => {
+      draftSettlePromiseRef.current = null;
+    });
+    draftSettlePromiseRef.current = run;
+    return run;
+  }, [applyFrameModuleState, isPhysicalMutationLocked, rotoPersistence, rotoScript, setApplyMessage, setApplyStatus, setLastError]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -8176,6 +8274,10 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
+    // 261101-o2m (Draft): read once — the branch below differs from Live ONLY
+    // in the reset/apply tail. A `.peek()` guard: the handler must not
+    // subscribe the Studio body.
+    const draft = draftMode.peek();
     recordAquarelleRenderSplitEvent('script-move-entry', {
       playFrame,
       requestedIds: ids.length,
@@ -8195,6 +8297,18 @@ export function PhysicsPaintStudio() {
     await ensureAquarelleDurableBaseRef.current(playFrame);
     const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);
     if (editId === null) return false;
+    // 261101-o2m (Draft): the script commit above IS the edit — the engine
+    // re-render is deferred to the ONE settle, so the committed sheet keeps its
+    // last rendered pixels. Record exactly like the Live success tail and mark
+    // the pixels dirty; no in-flight flag (a Draft edit is synchronous), no
+    // reset, no apply.
+    if (draft) {
+      rotoMoveHistory.recordAquarelleScriptEdit(editId);
+      setDraftPixelsDirty(true);
+      setLastError(null);
+      clearOwnedScriptApplyRefusal();
+      return true;
+    }
     setAquarelleScriptEditInFlight(true);
     try {
       // The recorded timeline IS the script (same replay source as delete).
@@ -10343,6 +10457,10 @@ export function PhysicsPaintStudio() {
       handleAquarelleTransformStrokes,
       handleAquarellePlaceStroke,
       handleAquarelleDeleteStrokes,
+      // 261101-o2m: the Draft strip's two engine seams — the entry arm and
+      // the ONE recompute. Stable useCallbacks, so the memo identity holds.
+      settleDraftScript,
+      armDraftBase,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -10372,6 +10490,10 @@ export function PhysicsPaintStudio() {
           if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
         },
         keepOpenOnEmpty: true,
+        // 261101-o2m: the strip's Draft switch. ON awaits the pre-edit base
+        // arming; OFF routes through the ONE recompute (never a raw write).
+        settleDraft: () => settleDraftScript(),
+        armDraft: () => armDraftBase(),
       };
       return bundle;
     },

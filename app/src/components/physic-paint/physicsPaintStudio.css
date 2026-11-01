@@ -5843,6 +5843,38 @@ button.destructive {
   color: #fff;
 }
 
+/* 261101-o2m: the Move/Edit Draft strip — a dedicated row between the header
+   icon row and the view gate. Session-only view preferences: Draft (suspend
+   the watercolor re-render) on the left, the cache eye (Task 2) on the right.
+   The shared `physics-paint-script-switch` chrome is top-bar sized, so it is
+   scoped back to this row rather than restyled globally. */
+.physics-paint-stroke-settings-draft-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #2a2f36;
+}
+
+.physics-paint-stroke-settings-draft-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #b9c3ce;
+  white-space: nowrap;
+}
+
+.physics-paint-stroke-settings-draft-row-spacer {
+  flex: 1 1 auto;
+}
+
+.physics-paint-stroke-settings-draft-row .physics-paint-script-switch {
+  height: 26px;
+  margin-left: 0;
+  padding: 0;
+}
+
 /* 52.5 UAT → 261009-6ee: main-app-audio preview toggle — now the STRIP's
    Audio Preview button only (the modal's header surface was dropped by the
    one-switch law; the modal's single switch is the footer enabled pill). Same

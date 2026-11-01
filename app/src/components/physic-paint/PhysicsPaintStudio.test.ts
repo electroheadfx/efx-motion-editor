@@ -2474,8 +2474,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarelleAppearanceStrokes — same mapper, same capsule.
     // 261024-vga: a ninth site — the exact stack placement re-bake failure in
     // handleAquarellePlaceStroke — same mapper, same capsule.
+    // 261101-o2m: a tenth site — the Draft settle's recompute refusal — same
+    // mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(10); // one import + nine call sites
+    expect(mentions).toBe(11); // one import + ten call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -3455,7 +3457,9 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     const resetSite = moveHandler.indexOf('aquarelleResetSheetRef.current?.();');
     const applySite = moveHandler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = moveHandler.indexOf('if (ok) {');
-    const recordSite = moveHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    // 261101-o2m: the Draft branch is a SECOND record site ABOVE the Live
+    // path, so the Live success-tail record is anchored from `if (ok) {`.
+    const recordSite = moveHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);', successSite);
     const rollbackSite = moveHandler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
     expect(beginSite).toBeGreaterThan(-1);
     expect(resetSite).toBeGreaterThan(beginSite);
@@ -5480,7 +5484,9 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     const calls = studio.split('await ensureAquarelleDurableBaseRef.current(').length - 1;
     // 261028-k03e: the Apply/Copy target seam joins the four timeline edits.
     // 261029-lsr: the manual force-re-render (rail / Shift+R) recovers too.
-    expect(calls, 'delete + move + appearance + transform + apply + rebake target').toBe(6);
+    // 261101-o2m: the Draft entry arm and the Draft settle's belt join them —
+    // both are no-ops once the arm has resolved the frame's durable base.
+    expect(calls, 'delete + move + appearance + transform + apply + rebake target + draft arm + draft settle').toBe(8);
     for (const handler of ['handleAquarelleDeleteStrokes', 'handleAquarelleMoveStrokes', 'handleAquarelleAppearanceStrokes', 'handleAquarelleTransformStrokes']) {
       const start = studio.indexOf(`const ${handler} = useCallback`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
@@ -5491,5 +5497,88 @@ describe('quick 261028-k03d — key-payload recovery and non-blanking failures',
     expect(applyTarget).toBeGreaterThan(-1);
     expect(studio.indexOf('await ensureAquarelleDurableBaseRef.current(', applyTarget))
       .toBeGreaterThan(applyTarget);
+  });
+});
+
+describe('quick 261101-o2m — Draft mode session seam', () => {
+  function regionOf(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('arms the frame durable base before Draft turns on — single-flight, frame-bound, never a recompute', () => {
+    const arm = regionOf(studio, 'const armDraftBase = useCallback', 'const draftSettlePromiseRef');
+    // Single-flight: a double ON click must not run two recoveries.
+    expect(arm).toContain('if (draftArmPromiseRef.current) return draftArmPromiseRef.current;');
+    expect(arm).toContain('const playFrame = launchContextRef.current?.startFrame ?? 0;');
+    expect(arm).toContain('await ensureAquarelleDurableBaseRef.current(playFrame)');
+    // Frame-binding guard: the live frame is RE-READ after the await, and a
+    // mismatch leaves Draft OFF (the new frame is unarmed).
+    const ensureAt = arm.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame)');
+    const rereadAt = arm.indexOf('const liveFrame = launchContextRef.current?.startFrame ?? 0;', ensureAt);
+    expect(rereadAt, 'the live frame is re-read after the await').toBeGreaterThan(ensureAt);
+    expect(arm).toContain('liveFrame !== playFrame');
+    // A base decision, never a recompute.
+    expect(arm).not.toContain('aquarelleResetSheetRef');
+    expect(arm).not.toContain('applyAquarelleTimeline');
+    // Wired into the Stroke settings bundle the strip's ON click awaits.
+    expect(studio).toContain('armDraft: () => armDraftBase(),');
+  });
+
+  it('settles the Draft script once: joins concurrent exits, clears dirty then Draft only after the apply', () => {
+    const seam = regionOf(studio, 'const settleDraftScript = useCallback', 'const navigateToSyncedPhysicalFrame');
+    // D-04: Draft OFF and clean pixels is a pure no-op — no await, no microtask.
+    expect(seam).toContain('if (!draftMode.peek() && !draftPixelsDirty.peek()) return Promise.resolve(true);');
+    // Single-flight: two exits racing each other join ONE recompute.
+    expect(seam).toContain('if (draftSettlePromiseRef.current) return draftSettlePromiseRef.current;');
+    // The ONE recompute.
+    expect(seam).toContain('rotoPersistence.invalidateLivePixels(playFrame);');
+    expect(seam).toContain('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    expect(seam).toContain('aquarelleResetSheetRef.current?.();');
+    expect(seam).toContain('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    expect(seam).toContain('rotoScript.notifySourceRevision();');
+    expect(seam).toContain('applyFrameModuleState(playFrame);');
+    // Leave order: the apply lands, THEN dirty clears, THEN Draft flips — the
+    // setter refuses OFF while dirty, so this is the only reachable route.
+    const applyAt = seam.indexOf('await rotoScript.applyAquarelleTimeline(');
+    const dirtyAt = seam.indexOf('setDraftPixelsDirty(false);', applyAt);
+    const modeAt = seam.indexOf('setDraftMode(false);', dirtyAt);
+    expect(applyAt, 'the apply is the recompute').toBeGreaterThan(-1);
+    expect(dirtyAt, 'the dirty flag clears only after the apply').toBeGreaterThan(applyAt);
+    expect(modeAt, 'Draft flips false only after the dirty clear').toBeGreaterThan(dirtyAt);
+    // The script-snapshot write deferred for the whole session re-arms here.
+    expect(seam.indexOf('studioScriptSnapshot.markDirty();'), 'the deferred write re-arms after the clear')
+      .toBeGreaterThan(dirtyAt);
+    // Wired into the Stroke settings bundle the strip/close/exit call.
+    expect(studio).toContain('settleDraft: () => settleDraftScript(),');
+  });
+
+  it('commits the move under Draft with no reset and no re-apply, keeping the Live path intact', () => {
+    const move = regionOf(studio, 'const handleAquarelleMoveStrokes = useCallback', 'const handleAquarelleAppearanceStrokes');
+    // The Draft read precedes the first Live reset, and the Live reset/apply
+    // path survives untouched below it.
+    const draftAt = move.indexOf('const draft = draftMode.peek();');
+    const resetAt = move.indexOf('aquarelleResetSheetRef.current?.()');
+    expect(draftAt, 'the handler reads the Draft state').toBeGreaterThan(-1);
+    expect(resetAt, 'the Live reset path survives').toBeGreaterThan(draftAt);
+    expect(move).toContain('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    // The ensure stays at its Live position, BEFORE the begin.
+    const ensureAt = move.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
+    const beginAt = move.indexOf('const editId = beginAquarelleMoveEdit(');
+    expect(ensureAt).toBeGreaterThan(-1);
+    expect(beginAt).toBeGreaterThan(ensureAt);
+    // The draft branch: records the edit exactly like the success tail, marks
+    // the pixels dirty, and never resets nor re-applies the sheet.
+    const branch = regionOf(move, 'if (draft) {', 'setAquarelleScriptEditInFlight(true);');
+    expect(branch).toContain('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    expect(branch).toContain('setDraftPixelsDirty(true);');
+    expect(branch).toContain('setLastError(null);');
+    expect(branch).toContain('clearOwnedScriptApplyRefusal();');
+    expect(branch).not.toContain('aquarelleResetSheetRef');
+    expect(branch).not.toContain('applyAquarelleTimeline');
+    expect(branch).not.toContain('script-move-result');
   });
 });

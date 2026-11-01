@@ -86,7 +86,11 @@ import {
   MIN_STROKE_PAD_PX,
   clearScriptStrokeSelection,
   distanceToSegmentPx,
+  draftMode,
+  draftPixelsDirty,
   scriptSelectedStrokeIds,
+  setDraftMode,
+  setDraftPixelsDirty,
   setScriptStrokeSelection,
   setStrokeSizePreview,
   strokeSizePreview,
@@ -102,6 +106,10 @@ const SHEET = { width: 400, height: 200 };
 beforeEach(() => {
   resetAquarelleStrokeFineFilters();
   setStrokeSizePreview(false);
+  // 261101-o2m: clear the invariant before the mode (the leave guard refuses
+  // the mode reset while the pixels are dirty).
+  setDraftPixelsDirty(false);
+  setDraftMode(false);
 });
 
 function point(x: number, y: number): AquarellePoint {
@@ -377,6 +385,56 @@ describe('261022-pim aquarelle stroke select mode', () => {
       dispose();
       setAquarelleSelectMode(false);
       selectAquarelleStroke(null);
+    }
+  });
+});
+
+// 261101-o2m (D-07): every dialog open starts Live. The reset rides the
+// genuine off -> on edge of the select-mode choke point, EXCEPT while the
+// pixels are dirty — then the setter's leave guard turns the reset into a
+// silent no-op (a sheet reopened after a refused exit stays Draft ON until the
+// next successful settle).
+describe('261101-o2m Draft reset on the select-mode edge', () => {
+  it('resets Draft on a genuine off -> on entry when the pixels are clean', () => {
+    setAquarelleSelectMode(false);
+    setDraftMode(true);
+    expect(draftMode.value).toBe(true);
+
+    setAquarelleSelectMode(true);
+    expect(aquarelleSelectMode.value).toBe(true);
+    expect(draftMode.value).toBe(false);
+  });
+
+  it('leaves an already-open sheet\'s Draft untouched on a re-entry', () => {
+    setAquarelleSelectMode(true);
+    setDraftMode(true);
+    setDraftPixelsDirty(true);
+
+    // Already ON: no off -> on edge — neither the mode nor the flag moves.
+    setAquarelleSelectMode(true);
+    expect(draftMode.value).toBe(true);
+    expect(draftPixelsDirty.value).toBe(true);
+  });
+
+  it('refuses the reset while the pixels are dirty (the recorded D-07 exception)', () => {
+    setAquarelleSelectMode(false);
+    setDraftMode(true);
+    setDraftPixelsDirty(true);
+
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftMode.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setAquarelleSelectMode(true);
+      // Draft stays ON — those pixels really are stale — and no false is
+      // broadcast to a subscriber.
+      expect(draftMode.value).toBe(true);
+      expect(runs).toBe(before);
+    } finally {
+      dispose();
     }
   });
 });

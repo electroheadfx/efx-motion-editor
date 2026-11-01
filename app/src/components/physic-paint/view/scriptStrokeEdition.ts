@@ -123,6 +123,44 @@ export function setStrokeSizePreview(on: boolean): void {
 }
 
 /**
+ * 261101-o2m: the Move/Edit **Draft** VIEW mode. ON suspends ONLY the
+ * watercolor engine re-render: every edit still commits to the script exactly
+ * as today (and stays undoable), while the committed sheet keeps its last
+ * rendered pixels. Session/UI state only — never written to the document,
+ * never part of the undo stack, never persisted. Read by the Stroke settings
+ * strip leaf (render), the cached-base leaf and the Studio event handlers
+ * (`.peek()` only); NEVER the Studio render body (rule 5).
+ */
+export const draftMode = signal(false);
+
+/**
+ * 261101-o2m: the Draft CORRECTNESS invariant. True from the first committed
+ * Draft divergence until a successful recompute lands; it is the reason Draft
+ * may not be left (T-261101-o2m-08). Read only by the setter guard, the
+ * settle seam and the cross-realm publisher effect — never by a leaf.
+ */
+export const draftPixelsDirty = signal(false);
+
+/** Compare-then-write — 1000 identical calls notify zero times (rule 3). */
+export function setDraftPixelsDirty(on: boolean): void {
+  if (draftPixelsDirty.value === on) return;
+  draftPixelsDirty.value = on;
+}
+
+/**
+ * Entering Draft is a compare-then-write. LEAVING it is refused while
+ * `draftPixelsDirty` is set: the settle is the only path that clears dirty and
+ * then flips this switch, so no caller — the strip, an exit, the D-07 open
+ * reset — can reach Draft OFF over stale pixels. A refused leave is a silent
+ * no-op (nothing is written, nobody is notified).
+ */
+export function setDraftMode(on: boolean): void {
+  if (!on && draftPixelsDirty.value) return;
+  if (draftMode.value === on) return;
+  draftMode.value = on;
+}
+
+/**
  * The highlighted strokes (261024-mz5: one SET, not a single id).
  * Compare-then-write on membership — an identical membership never
  * allocates a new Set nor notifies a subscriber.

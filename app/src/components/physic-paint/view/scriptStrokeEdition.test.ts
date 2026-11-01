@@ -27,6 +27,8 @@ import {
   clearScriptStrokeSelection,
   clearScriptStrokeTransform,
   deleteSelectedScriptStroke,
+  draftMode,
+  draftPixelsDirty,
   hitsScriptStroke,
   scriptSelectedStrokeId,
   scriptSelectedStrokeIds,
@@ -36,6 +38,8 @@ import {
   scriptStrokeTransform,
   selectScriptStroke,
   selectScriptStrokeAt,
+  setDraftMode,
+  setDraftPixelsDirty,
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeEditionPort,
@@ -98,6 +102,10 @@ afterEach(() => {
   clearScriptStrokeSelection();
   clearScriptStrokeTransform();
   setScriptSelectMode(false);
+  // 261101-o2m: the Draft session signals are module-level too — clear the
+  // invariant FIRST (the leave guard would refuse the mode reset otherwise).
+  setDraftPixelsDirty(false);
+  setDraftMode(false);
 });
 
 describe('scriptStrokeEdition — shared signals', () => {
@@ -322,6 +330,110 @@ describe('scriptStrokeEdition — selection set law', () => {
     } finally {
       dispose();
     }
+  });
+});
+
+// 261101-o2m: the Move/Edit Draft mode is a SESSION view preference plus its
+// correctness invariant. Draft ON suspends only the watercolor re-render; the
+// dirty flag says the pixels now lag the script, and the setter refuses to
+// leave Draft while it is set (the settle is the only exit).
+describe('scriptStrokeEdition — Draft mode session law', () => {
+  it('is compare-then-write on the Draft mode and starts OFF', () => {
+    expect(draftMode.value).toBe(false);
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftMode.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setDraftMode(true);
+      expect(draftMode.value).toBe(true);
+      expect(runs).toBe(before + 1);
+      // A repeated write of the SAME value notifies nobody (rule 3).
+      setDraftMode(true);
+      expect(runs).toBe(before + 1);
+      setDraftMode(false);
+      expect(runs).toBe(before + 2);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('is compare-then-write on the pixels-dirty invariant', () => {
+    expect(draftPixelsDirty.value).toBe(false);
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftPixelsDirty.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      setDraftPixelsDirty(true);
+      expect(draftPixelsDirty.value).toBe(true);
+      expect(runs).toBe(before + 1);
+      setDraftPixelsDirty(true);
+      expect(runs).toBe(before + 1);
+      setDraftPixelsDirty(false);
+      expect(runs).toBe(before + 2);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('refuses to leave Draft while the pixels are dirty', () => {
+    setDraftMode(true);
+    setDraftPixelsDirty(true);
+    let runs = 0;
+    const dispose = effect(() => {
+      void draftMode.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      // The leave guard: a silent no-op — no write, no notification.
+      setDraftMode(false);
+      expect(draftMode.value).toBe(true);
+      expect(runs).toBe(before);
+
+      // The settle's exact order: clear the invariant, THEN leave Draft.
+      setDraftPixelsDirty(false);
+      setDraftMode(false);
+      expect(draftMode.value).toBe(false);
+      expect(runs).toBe(before + 1);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('never blocks entering Draft on a dirty flag and never resets the other session preference', () => {
+    setDraftPixelsDirty(true);
+    setDraftMode(true);
+    expect(draftMode.value).toBe(true);
+
+    // D-08: Draft and Preview stroke size never reset each other, both ways.
+    setStrokeSizePreview(true);
+    expect(draftMode.value).toBe(true);
+    expect(strokeSizePreview.value).toBe(true);
+    setDraftMode(false);
+    setDraftPixelsDirty(false);
+    expect(strokeSizePreview.value).toBe(true);
+
+    setDraftMode(true);
+    setStrokeSizePreview(false);
+    expect(draftMode.value).toBe(true);
+    expect(strokeSizePreview.value).toBe(false);
+
+    setDraftPixelsDirty(false);
+    setDraftMode(false);
+    setStrokeSizePreview(false);
+  });
+
+  it('survives the generic select-mode teardown (the reset lives at the aquarelle choke point)', () => {
+    setDraftMode(true);
+    setScriptSelectMode(true);
+    setScriptSelectMode(false);
+    expect(draftMode.value).toBe(true);
   });
 });
 

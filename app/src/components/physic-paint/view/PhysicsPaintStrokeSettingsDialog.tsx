@@ -42,8 +42,10 @@ import {
   type StrokeSettingsView,
 } from './strokeSettingsModel';
 import {
+  draftMode,
   scriptSelectedStrokeIds,
   scriptSelectMode,
+  setDraftMode,
   setStrokeSizePreview,
   strokeSizePreview,
 } from './scriptStrokeEdition';
@@ -421,6 +423,8 @@ export function PhysicsPaintStrokeSettingsDialog({
    * StrokeList law). Set by a plain or Cmd/Ctrl click, never by Shift itself.
    */
   const rowAnchorRef = useRef<number>(-1);
+  /** 261101-o2m: the previous render's `open` — the dialog-close exit edge. */
+  const wasOpenRef = useRef(false);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -441,6 +445,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   // preference (never a document edit, never undoable) read by this header
   // leaf and the overlay leaf — never the Studio render body.
   const previewStrokeSize = strokeSizePreview.value;
+  // 261101-o2m: the Move/Edit Draft switch. A session-only VIEW mode (never a
+  // document edit, never undoable) read by this strip leaf — never the Studio
+  // render body.
+  const draftOn = draftMode.value;
   const keepOpenOnEmpty = bundle?.keepOpenOnEmpty ?? engineModule === 'watercolor';
   const stackSyncNonce = stackSyncRef.current.value;
 
@@ -515,6 +523,12 @@ export function PhysicsPaintStrokeSettingsDialog({
   // handler to raise from — so the open transition itself is the raise seam.
   // A lifecycle effect, never a render body (efx-preact-reactivity rule 6).
   useEffect(() => {
+    // 261101-o2m (D-04): the dialog-close recompute exit. X, Escape and the
+    // rail-toggle close all land here — the sheet never writes the Draft
+    // signal itself, so a dirty Draft is settled, never silently dropped.
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (wasOpen && !open) void bundle?.settleDraft?.();
     if (!open) {
       // A closed sheet must leave the order — a stale front id would make the
       // front-only Escape gate inert for every sheet that is still open.
@@ -522,7 +536,7 @@ export function PhysicsPaintStrokeSettingsDialog({
       return;
     }
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
-  }, [open]);
+  }, [open, bundle]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -877,6 +891,52 @@ export function PhysicsPaintStrokeSettingsDialog({
           <X size={12} aria-hidden="true" />
         </button>
       </div>
+
+      {/* 261101-o2m (D-01): the Draft strip sits below the header icon row and
+          ABOVE the list/settings view gate, so it is reachable from both. The
+          switch's OFF click is ROUTED to the bundle's settle — a dirty Draft
+          may only leave through its recompute, never a raw signal write. */}
+      {engineModule === 'watercolor' ? (
+        <div
+          class="physics-paint-stroke-settings-draft-row"
+          data-testid="stroke-settings-draft-row"
+        >
+          <span class="physics-paint-stroke-settings-draft-row-label">Draft</span>
+          <button
+            type="button"
+            data-testid="stroke-settings-draft-switch"
+            role="switch"
+            aria-checked={draftOn ? 'true' : 'false'}
+            aria-label="Draft"
+            title="Draft — suspend the watercolor re-render until you turn it off"
+            class={`physics-paint-script-switch${draftOn ? ' is-on' : ''}`}
+            // The header is the drag handle: the press must not start one.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              // OFF is routed, never written: the settle clears the invariant
+              // and then flips the mode (a bundle without one leaves Draft ON).
+              if (draftMode.peek()) {
+                void bundle.settleDraft?.();
+                return;
+              }
+              // ON awaits the pre-edit base arming; a refused recovery leaves
+              // the sheet Live with the Studio's reason surfaced.
+              if (!bundle.armDraft) {
+                setDraftMode(true);
+                return;
+              }
+              void bundle.armDraft().then((armed) => {
+                if (armed) setDraftMode(true);
+              });
+            }}
+          >
+            <span class="physics-paint-script-switch-track" aria-hidden="true">
+              <span class="physics-paint-script-switch-knob" />
+            </span>
+          </button>
+          <span class="physics-paint-stroke-settings-draft-row-spacer" aria-hidden="true" />
+        </div>
+      ) : null}
 
       {engineModule === 'watercolor' && view === 'list' ? (
         <div

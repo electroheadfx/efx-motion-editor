@@ -66,7 +66,10 @@ import {
   resetStrokeSettingsDialogLayout,
 } from './PhysicsPaintStrokeSettingsDialog';
 import {
+  draftMode,
   scriptSelectedStrokeIds,
+  setDraftMode,
+  setDraftPixelsDirty,
   setScriptSelectMode,
   setScriptStrokeSelection,
   setStrokeSizePreview,
@@ -173,6 +176,11 @@ beforeEach(() => {
   // 261101-mvg: the preview-stroke-size switch is a session signal — reset it
   // so an ON case never leaks its band into the next one.
   setStrokeSizePreview(false);
+  // 261101-o2m: the Draft mode and its dirty invariant are session signals —
+  // clear the invariant FIRST (the leave guard refuses the mode reset while
+  // the pixels are dirty).
+  setDraftPixelsDirty(false);
+  setDraftMode(false);
   // The sheet order is module-global; the Escape gate reads it.
   resetFloatingSheetStack();
 });
@@ -3126,5 +3134,193 @@ describe('261101-mvg "Preview stroke size" switch', () => {
     expect(
       findByTestId(renderSettings(brush.bundle), 'stroke-settings-preview-stroke-size'),
     ).toBeUndefined();
+  });
+});
+
+// 261101-o2m: the Draft strip — a dedicated row BELOW the header and ABOVE the
+// list/settings view gate, so it is reachable from both views. Draft ON
+// suspends only the watercolor re-render; the switch's OFF click is ROUTED to
+// the bundle's settle (the sheet never writes the signal false itself).
+describe('261101-o2m Draft strip', () => {
+  function draftBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    return createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      keepOpenOnEmpty: true,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 12,
+        load: 50,
+        water: 50,
+        flow: 50,
+        bleed: 50,
+        edge: 50,
+        granulation: 50,
+        dry: 50,
+      })),
+      ...overrides,
+    });
+  }
+
+  function switchOf(tree: unknown): AnyVNode {
+    const button = findByTestId(tree, 'stroke-settings-draft-switch');
+    expect(button, 'Draft switch').toBeDefined();
+    return button!;
+  }
+
+  /** Drain the armDraft().then(...) microtask chain. */
+  async function settleMicrotasks(): Promise<void> {
+    await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+  }
+
+  it('renders below the header and above the view gate in BOTH views', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    const listTree = renderDialog(bundle);
+    const ordered = withTraversalRefs(() => childrenOf(listTree)) as AnyVNode[];
+    const indexOf = (testId: string) => ordered.findIndex(
+      (node) => node.props?.['data-testid'] === testId,
+    );
+    const headerIndex = indexOf('stroke-settings-header');
+    const stripIndex = indexOf('stroke-settings-draft-row');
+    const filterIndex = indexOf('stroke-settings-filter');
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    expect(stripIndex).toBeGreaterThan(headerIndex);
+    expect(filterIndex).toBeGreaterThan(stripIndex);
+
+    const settingsTree = renderSettings(bundle);
+    expect(findByTestId(settingsTree, 'stroke-settings-tabs')).toBeDefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-draft-row')).toBeDefined();
+    expect(findByTestId(settingsTree, 'stroke-settings-draft-switch')).toBeDefined();
+  });
+
+  it('is a role=switch control labelled Draft, OFF by default, and stops the header drag', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    const button = switchOf(renderDialog(bundle));
+    expect(draftMode.value).toBe(false);
+    expect(button.props.role).toBe('switch');
+    expect(button.props['aria-checked']).toBe('false');
+    expect(button.props['aria-label']).toBe('Draft');
+    expect(String(button.props.title)).toContain('Draft');
+    expect(String(button.props.class)).toContain('physics-paint-script-switch');
+    // The row sits under the header drag handle: the press must not start one.
+    let stopped = false;
+    (button.props.onPointerDown as (event: { stopPropagation: () => void }) => void)({
+      stopPropagation: () => { stopped = true; },
+    });
+    expect(stopped).toBe(true);
+  });
+
+  it('awaits the bundle arm before it writes Draft ON', async () => {
+    const armDraft = vi.fn(async () => true);
+    const { bundle } = draftBundle({ armDraft });
+    setAquarelleSelectMode(true);
+    const tree = renderDialog(bundle);
+
+    (switchOf(tree).props.onClick as () => void)();
+    // The signal is untouched until the arm resolves.
+    expect(armDraft).toHaveBeenCalledTimes(1);
+    expect(draftMode.value).toBe(false);
+
+    await settleMicrotasks();
+    expect(draftMode.value).toBe(true);
+    const onTree = renderDialog(bundle);
+    expect(switchOf(onTree).props['aria-checked']).toBe('true');
+  });
+
+  it('leaves Draft OFF when the arm refuses, and enters directly without an arm', async () => {
+    const refused = draftBundle({ armDraft: async () => false });
+    setAquarelleSelectMode(true);
+    (switchOf(renderDialog(refused.bundle)).props.onClick as () => void)();
+    await settleMicrotasks();
+    expect(draftMode.value).toBe(false);
+    expect(switchOf(renderDialog(refused.bundle)).props['aria-checked']).toBe('false');
+
+    // No bundle arm (tests / the brush scope): direct entry.
+    const direct = draftBundle();
+    (switchOf(renderDialog(direct.bundle)).props.onClick as () => void)();
+    expect(draftMode.value).toBe(true);
+  });
+
+  it('routes the OFF click through the bundle settle instead of writing the signal', async () => {
+    const settleDraft = vi.fn(async () => {
+      // The Studio's settle is an async recompute: the mode stays ON for the
+      // whole await and only then clears the invariant and flips the switch.
+      await Promise.resolve();
+      setDraftPixelsDirty(false);
+      setDraftMode(false);
+      return true;
+    });
+    const { bundle } = draftBundle({ settleDraft });
+    setAquarelleSelectMode(true);
+    setDraftMode(true);
+    const tree = renderDialog(bundle);
+    expect(switchOf(tree).props['aria-checked']).toBe('true');
+
+    (switchOf(tree).props.onClick as () => void)();
+    expect(settleDraft).toHaveBeenCalledTimes(1);
+    // Until the settle lands, the switch still reads ON (never a raw write).
+    expect(draftMode.value).toBe(true);
+    await settleMicrotasks();
+    expect(draftMode.value).toBe(false);
+    expect(switchOf(renderDialog(bundle)).props['aria-checked']).toBe('false');
+    setDraftMode(false);
+  });
+
+  it('leaves Draft ON and does not throw when the bundle has no settle', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    setDraftMode(true);
+    const tree = renderDialog(bundle);
+    expect(() => (switchOf(tree).props.onClick as () => void)()).not.toThrow();
+    expect(draftMode.value).toBe(true);
+  });
+
+  it('renders no strip for a brush bundle', () => {
+    const brush = createBundle();
+    setScriptStrokeSelection([7]);
+    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-draft-row')).toBeUndefined();
+    expect(findByTestId(renderSettings(brush.bundle), 'stroke-settings-draft-row')).toBeUndefined();
+  });
+
+  it('settles exactly once when the sheet closes', () => {
+    const settleDraft = vi.fn(async () => true);
+    const { bundle } = draftBundle({ settleDraft });
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+
+    // Open: the open-transition effect records the previous open state.
+    renderDialog(bundle);
+    const openEffects = [...hooks.effects];
+    expect(openEffects.length).toBeGreaterThan(0);
+    openEffects[0]!();
+
+    // Close (select mode leaves — X / Escape / the rail toggle all land here).
+    setAquarelleSelectMode(false);
+    renderDialog(bundle);
+    const closedEffects = [...hooks.effects];
+    expect(closedEffects.length).toBeGreaterThan(0);
+    closedEffects[0]!();
+    expect(settleDraft).toHaveBeenCalledTimes(1);
+
+    // A further closed render is not another exit.
+    renderDialog(bundle);
+    [...hooks.effects][0]!();
+    expect(settleDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes without a settle and does not throw', () => {
+    const { bundle } = draftBundle();
+    setAquarelleSelectMode(true);
+    setScriptStrokeSelection([7]);
+    renderDialog(bundle);
+    [...hooks.effects][0]!();
+
+    setAquarelleSelectMode(false);
+    renderDialog(bundle);
+    expect(() => [...hooks.effects][0]!()).not.toThrow();
   });
 });
