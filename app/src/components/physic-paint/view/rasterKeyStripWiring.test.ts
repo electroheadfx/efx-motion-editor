@@ -102,11 +102,14 @@ describe('quick-261025-awl Raster strip wiring', () => {
   });
 
   it('carries the exact dialog copy for the current key', () => {
-    expect(stripSource).toContain('`Raster key ${frame}?`');
+    // quick-261101-f5v: the key copy names the SCOPE frame — the current
+    // frame in key mode, the rail's own frame on a one-key rail.
+    expect(stripSource).toContain('`Raster key ${scopeFrame}?`');
     expect(stripSource).toContain(
       "This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.",
     );
-    expect(stripSource).toContain('`Raster key ${frame}`');
+    expect(stripSource).toContain('`Raster key ${scopeFrame}`');
+    expect(stripSource).toContain("const dialogConfirm = multiKeyRail ? 'Raster rail keys' : 'Raster key';");
   });
 
   it('threads the rail Raster bundle from the strip props to the leaf', () => {
@@ -141,7 +144,52 @@ describe('quick-261025-awl Raster strip wiring', () => {
     expect(stripSource).toContain(
       'Every scripted key on this rail loses its Brush and Water color script and keeps its painted pixels. Keys without cached pixels are skipped. Move, Select and replay are lost for those keys.',
     );
-    expect(stripSource).toContain("const dialogConfirm = railTarget ? 'Raster rail keys' : 'Raster key';");
+    expect(stripSource).toContain("const dialogConfirm = multiKeyRail ? 'Raster rail keys' : 'Raster key';");
+  });
+
+  it('keeps the rail copy single-sourced and out of the key branch', () => {
+    // One occurrence each: the rail copy is written once, never duplicated
+    // into the key branch.
+    expect(countOccurrences(stripSource, '`Raster rail keys ${railRange}?`')).toBe(1);
+    expect(countOccurrences(stripSource, '`Raster rail keys ${railRange}`')).toBe(1);
+    expect(countOccurrences(stripSource, "'Raster rail keys'")).toBe(1);
+    expect(countOccurrences(
+      stripSource,
+      'Every scripted key on this rail loses its Brush and Water color script and keeps its painted pixels. Keys without cached pixels are skipped. Move, Select and replay are lost for those keys.',
+    )).toBe(1);
+    // The single-key branch is reachable: one-key rails fall through to the
+    // key copy with the rail's own frame.
+    expect(stripSource).toContain('const multiKeyRail = railTarget !== null && railTarget.frames.length > 1;');
+    expect(stripSource).toContain('const scopeFrame = railTarget !== null && railTarget.frames.length === 1');
+    expect(stripSource).toContain('? railTarget.frames[0]!');
+    expect(stripSource).toContain(': frame;');
+    // The frame-mode copy literals survive.
+    expect(stripSource).toContain('Raster key');
+  });
+
+  it('names the rail scope in the accessible name and the tooltip', () => {
+    expect(stripSource).toContain("aria-label={railMode ? 'Raster the rail' : 'Raster the key'}");
+    expect(stripSource).toContain(
+      "\"Raster the rail — remove every key's script and keep the painted pixels.\"",
+    );
+    // The visible label never shifts between modes.
+    expect(stripSource).toContain('<span class="physics-paint-roto-key-icon-label">Raster</span>');
+  });
+
+  it('never dispatches a rail request from a disabled (empty) rail', () => {
+    const leafStart = stripSource.indexOf('function PhysicsPaintRasterKeyControl(');
+    const leafEnd = stripSource.indexOf('interface PhysicsPaintWorkflowStaticChromeProps {', leafStart);
+    const leaf = stripSource.slice(leafStart, leafEnd);
+    const clickStart = leaf.indexOf('onClick={() => {');
+    const clickEnd = leaf.indexOf('}}', clickStart);
+    const click = leaf.slice(clickStart, clickEnd);
+
+    expect(leaf).toContain('frameCount: railTarget.frames.length,');
+    // The disabled gate returns before the dialog can open, so neither
+    // dispatch is reachable on an empty rail.
+    expect(click).toContain('if (presentation.disabled) return;');
+    expect(click).not.toContain('onRasterRail');
+    expect(click).not.toContain('onRasterKey');
   });
 
   it('closes on Escape and cycles Tab between the two buttons', () => {

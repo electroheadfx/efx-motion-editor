@@ -1026,15 +1026,21 @@ function PhysicsPaintRasterKeyControl(props: {
   };
 
   // quick-261101-f5v (D-08): the dialog names the scope. A multi-key rail
-  // names its frame range and the skip rule; Task 2's refinement reuses the
-  // key copy for a one-key rail.
+  // names its frame range and the skip rule; a ONE-key rail reuses the exact
+  // key copy with that rail's own frame, and the key scope keeps the current
+  // frame. An empty rail never opens a dialog (the control is disabled with
+  // the empty-rail reason).
   const railRange = railTarget ? formatRasterRailRange(railTarget.frames) : '';
-  const dialogAria = railTarget ? `Raster rail keys ${railRange}` : `Raster key ${frame}`;
-  const dialogTitle = railTarget ? `Raster rail keys ${railRange}?` : `Raster key ${frame}?`;
-  const dialogBody = railTarget
+  const multiKeyRail = railTarget !== null && railTarget.frames.length > 1;
+  const scopeFrame = railTarget !== null && railTarget.frames.length === 1
+    ? railTarget.frames[0]!
+    : frame;
+  const dialogAria = multiKeyRail ? `Raster rail keys ${railRange}` : `Raster key ${scopeFrame}`;
+  const dialogTitle = multiKeyRail ? `Raster rail keys ${railRange}?` : `Raster key ${scopeFrame}?`;
+  const dialogBody = multiKeyRail
     ? 'Every scripted key on this rail loses its Brush and Water color script and keeps its painted pixels. Keys without cached pixels are skipped. Move, Select and replay are lost for those keys.'
     : "This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.";
-  const dialogConfirm = railTarget ? 'Raster rail keys' : 'Raster key';
+  const dialogConfirm = multiKeyRail ? 'Raster rail keys' : 'Raster key';
 
   const dialog = open ? (
     <div
