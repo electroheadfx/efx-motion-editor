@@ -22,6 +22,7 @@ type RailKeyScriptRecordInput = Parameters<NonNullable<RotoPlayScriptControllerP
 type StackedRailKeyBakeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeStackedRailKey']>>[0];
 type StackedRailKeyComposeInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['composeStackedRailKey']>>[0];
 type RevealStackTailInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeRevealStackTail']>>[0];
+type RevealStackRunInput = Parameters<NonNullable<RotoPlayScriptControllerPorts['bakeRevealStackRun']>>[0];
 
 interface RotoPlayScriptCoordinatorPort<EngineState> {
   executePhysicalEdit: (
@@ -96,6 +97,12 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       // forwarded only when the Studio supplies it.
       ...(ports.bakeRevealStackTail
         ? { bakeRevealStackTail: (input: RevealStackTailInput) => portsRef.current.bakeRevealStackTail!(input) }
+        : {}),
+      // 261101-1pc (Quick C2): the Reveal RUN bake, forwarded only when the
+      // Studio supplies it — an absent key keeps the controller's refusal
+      // reachable instead of a wrapper that resolves to `undefined`.
+      ...(ports.bakeRevealStackRun
+        ? { bakeRevealStackRun: (input: RevealStackRunInput) => portsRef.current.bakeRevealStackRun!(input) }
         : {}),
       getScriptNaturalDuration: (scriptId) => portsRef.current.getScriptNaturalDuration?.(scriptId) ?? null,
       stopPlayback: () => portsRef.current.stopPlayback(),

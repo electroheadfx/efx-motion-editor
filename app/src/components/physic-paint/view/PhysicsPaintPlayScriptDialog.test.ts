@@ -59,6 +59,7 @@ import {
   type RotoPlayScriptController,
   type RotoPlayScriptControllerPorts,
   type RotoPlayScriptMode,
+  type RotoPlayScriptStackRunKind,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
 import { STANDARD_RAIL_REGENERATE_REASON } from '../roto/physicsPaintRotoRunScriptStacking';
@@ -139,6 +140,8 @@ interface FakeControllerSeed {
   runDestination?: { kind: 'stack'; clipId: string } | { kind: 'create' } | { kind: 'refuse'; reason: 'ambiguous-rail' };
   // 261031-qps (Quick B): the stacked rail's kind — a reveal destination swaps the cards
   stackRailKind?: 'playscript' | 'reveal' | null;
+  // 261101-1pc (Quick C2): the stack's four-kind Rail Type (dialog state only)
+  stackRunKind?: RotoPlayScriptStackRunKind;
   stackOverrideColor?: string | null;
   repeatLocked?: boolean;
   framesMax?: number;
@@ -214,6 +217,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     // 261031-i54: Run Script stacking onto an existing Paint rail
     runDestination: sig(seed.runDestination ?? { kind: 'create' as const }),
     stackRailKind: sig(seed.stackRailKind ?? null),
+    stackRunKind: sig<RotoPlayScriptStackRunKind>(seed.stackRunKind ?? 'motion'),
     stackOverrideColor: sig<string | null>(seed.stackOverrideColor ?? null),
     repeatLocked: sig(seed.repeatLocked ?? false),
     framesMax: sig(seed.framesMax ?? 4),
@@ -256,6 +260,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     setPaintSeedVariation: vi.fn(),
     useBrushColor: vi.fn(),
     setKeepScript: vi.fn(),
+    setStackRunKind: vi.fn(),
     confirmStackCollision: vi.fn(),
   } as unknown as RotoPlayScriptController;
   return { controller, signals };
@@ -2018,5 +2023,38 @@ describe('PhysicsPaintPlayScriptDialog reveal stacking (261031-qps)', () => {
     expect(findAll(tree, byClass('physics-paint-play-script-card-colorize'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-card-photo-wiggle'))).toHaveLength(0);
     expect(findAll(tree, byClass('physics-paint-play-script-reveal-notice'))).toHaveLength(0);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog Reveal run surface (261101-1pc)', () => {
+  const STACK_READOUT = {
+    spanLabel: 'F13–F15',
+    offsetLabel: 'Source cycle +3',
+    outcomeLabel: 'Stacks onto the existing cycle.',
+  };
+
+  it('offers the 2x2 Rail Type grid on a stack and keeps two options on creation', () => {
+    const { controller } = createFakeController({
+      runDestination: { kind: 'stack', clipId: 'L1' },
+      stackRailKind: 'playscript',
+      stackRunKind: 'static',
+      repeatLocked: true,
+      framesMax: 6,
+      stackReadout: STACK_READOUT,
+      destinationRange: 'F13–F15',
+    });
+    const tree = renderDialog(controller);
+    const group = findOne(tree, byRadioGroup('Rail Type'));
+    const radios = findAll(group, (vnode) => vnode.props?.role === 'radio');
+    expect(radios.map((radio) => textOf(radio))).toEqual(['Motion', 'Static', 'Reveal Motion', 'Reveal Static']);
+    expect(radios.map((radio) => radio.props['aria-checked'])).toEqual([false, true, false, false]);
+    handler(radios[2]!, 'onClick')({ currentTarget: null });
+    expect(controller.setStackRunKind).toHaveBeenCalledWith('reveal-motion');
+
+    // Creation keeps its two-option Motion/Static group bound to `mode`.
+    const create = renderDialog(createFakeController().controller);
+    const createGroup = findOne(create, byRadioGroup('Rail Type'));
+    expect(findAll(createGroup, (vnode) => vnode.props?.role === 'radio').map((radio) => textOf(radio)))
+      .toEqual(['Motion', 'Static']);
   });
 });

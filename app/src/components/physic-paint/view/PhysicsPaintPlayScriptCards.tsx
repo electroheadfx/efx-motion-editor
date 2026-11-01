@@ -5,6 +5,7 @@ import type {
   RotoPlayScriptIdenticalSourceCycle,
   RotoPlayScriptMode,
   RotoPlayScriptStackCollision,
+  RotoPlayScriptStackRunKind,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import {
   RUN_SCRIPT_OVERWRITE_COPY,
@@ -24,6 +25,16 @@ const PLAY_SCRIPT_MODES: ReadonlyArray<{ value: RotoPlayScriptMode; label: strin
 const REVEAL_RAIL_TYPES: ReadonlyArray<{ value: RotoPlayScriptMode; label: string }> = [
   { value: 'progressive', label: 'Reveal Motion' },
   { value: 'static', label: 'Reveal Static' },
+];
+
+// 261101-1pc (Quick C2): the 2×2 Rail Type grid for a stack RUN. The kind is
+// dialog state only — the merged Standard Rail still stores the destination's
+// mode, and a Reveal kind renders the run's wash through the document reference.
+const STACK_RUN_KINDS: ReadonlyArray<{ value: RotoPlayScriptStackRunKind; label: string }> = [
+  { value: 'motion', label: 'Motion' },
+  { value: 'static', label: 'Static' },
+  { value: 'reveal-motion', label: 'Reveal Motion' },
+  { value: 'reveal-static', label: 'Reveal Static' },
 ];
 
 const PLAY_SCRIPT_SOURCE_CHOICES = [
@@ -148,6 +159,18 @@ export function RailTypeCard(props: {
       <span class="physics-paint-play-script-card-title">Rail Type</span>
       {props.standard ? (
         <span class="physics-paint-play-script-standard-rail-value">Standard</span>
+      ) : props.stacking ? (
+        /* 261101-1pc (Quick C2): a stack picks the run kind, which derives the
+           single bake mode. Creation and the Reveal tab keep their two-option
+           group bound to `mode`. */
+        <DialogRadioGroup
+          ariaLabel="Rail Type"
+          options={STACK_RUN_KINDS}
+          value={props.playScript.stackRunKind.value}
+          getValue={() => props.playScript.stackRunKind.value}
+          disabled={props.busy || props.locked}
+          onSelect={(value) => { props.playScript.setStackRunKind(value); }}
+        />
       ) : (
         <DialogRadioGroup
           ariaLabel="Rail Type"

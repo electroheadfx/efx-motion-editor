@@ -346,6 +346,31 @@ describe('useRotoPlayScriptController', () => {
     expect(captured.ports!.bakeRevealStackTail).toBeUndefined();
   });
 
+  it('261101-1pc: forwards the Reveal RUN port verbatim only when supplied', async () => {
+    const bakeRevealStackRun = vi.fn(async () => ({ kind: 'baked' as const, frames: [] }));
+    renderHook({ ...ports(1), bakeRevealStackRun });
+    const stablePorts = captured.ports!;
+    expect(stablePorts.bakeRevealStackRun).toBeTypeOf('function');
+    const input = {
+      frames: [4, 5],
+      scriptEvents: [],
+      mode: 'progressive' as const,
+      motion: { deformation: 0, position: 0 },
+      colorize: false,
+      colorizeMix: 100,
+      photoWiggle: false,
+      paintSeedVariation: false,
+      signal: new AbortController().signal,
+    };
+    await stablePorts.bakeRevealStackRun!(input);
+    expect(bakeRevealStackRun).toHaveBeenCalledWith(input);
+  });
+
+  it('261101-1pc: omits the Reveal RUN port when the Studio does not supply it', () => {
+    renderHook(ports(2));
+    expect(captured.ports!.bakeRevealStackRun).toBeUndefined();
+  });
+
   it('WR-02: omits recordRailKeyScripts when the Studio does not supply it', () => {
     renderHook(ports(1));
     expect(captured.ports!.recordRailKeyScripts).toBeUndefined();

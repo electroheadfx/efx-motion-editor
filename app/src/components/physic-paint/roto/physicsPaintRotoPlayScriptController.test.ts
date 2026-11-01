@@ -281,6 +281,13 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     })),
     anchors: [],
   }));
+  // 261101-1pc (Quick C2): the Reveal RUN bake — the run's own wash rendered
+  // through the DOCUMENT reference. Echoes one DISTINCT payload per destination
+  // frame so a test can prove the publication carries the reveal bytes.
+  const bakeRevealStackRun = vi.fn(async (input: { frames: readonly number[] }) => ({
+    kind: 'baked' as const,
+    frames: input.frames.map((appFrame) => ({ appFrame, bytes: testWebpBytes(`reveal-run-${appFrame}`) })),
+  }));
   const ports: RotoPlayScriptControllerPorts = {
     library, getLaunchContext: () => context, getActiveTrackId: () => context?.document?.activeTrackId ?? '', getSelection: () => selection, getMotion,
     getBrushColor,
@@ -288,11 +295,11 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }), requestAuthority, commit, stopPlayback, log,
     createAquarelleAdapter, createAquarelleBake,
-    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail,
+    availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail, bakeRevealStackRun,
     ...overrides,
   };
   const controller = createRotoPlayScriptController(ports);
-  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
+  return { controller, library, requestAuthority, commit, stopPlayback, log, getMotion, createAquarelleAdapter, createAquarelleBake, bakeOptions, bakeEvents, bakeAdapter, availabilityRevision, recordRailKeyScripts, bakeStackedRailKey, composeStackedRailKey, bakeRevealStackTail, bakeRevealStackRun, setMotion: (next: { deformation: number; position: number }) => { motion = next; }, setBrushColor: (next: string) => { brushColor = next; }, setSelected: (id: string | null) => { selectedId = id; selectedIdSignal.value = id; selectedSignal.value = id ? { id } : null; }, setSelection: (next: typeof selection) => { selection = next; }, setContext: (next: PhysicPaintLaunchContext | null) => { context = next; } };
 }
 
 function expectPlayScriptPublication(
@@ -6050,5 +6057,211 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     const committedTarget = publication.loopClips!.find((clip) => clip.loopId === 'L1')!;
     expect(committedTarget.originalEndExclusive).toBe(30);
     expect(committedTarget.visibleRanges).toEqual([{ start: 10, endExclusive: 30 }]);
+  });
+
+  /* ---- 261101-1pc (Quick C2): Reveal runs onto any destination ---- */
+
+  it('exposes the four stack run kinds and derives the bake mode compare-then-write (Quick C2)', () => {
+    const test = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    const writes: unknown[] = [];
+    const unsubscribeKind = test.controller.stackRunKind.subscribe(() => { writes.push(['kind', test.controller.stackRunKind.peek()]); });
+    const unsubscribeMode = test.controller.mode.subscribe(() => { writes.push(['mode', test.controller.mode.peek()]); });
+    // subscribe() emits once on registration — drop that baseline.
+    writes.length = 0;
+
+    test.controller.setStackRunKind('reveal-static');
+    expect(test.controller.stackRunKind.value).toBe('reveal-static');
+    expect(test.controller.mode.value).toBe('static');
+    expect(writes).toEqual([['kind', 'reveal-static'], ['mode', 'static']]);
+
+    // Compare-then-write on BOTH signals: the same kind writes nothing.
+    writes.length = 0;
+    test.controller.setStackRunKind('reveal-static');
+    expect(writes).toEqual([]);
+
+    test.controller.setStackRunKind('reveal-motion');
+    expect(test.controller.mode.value).toBe('progressive');
+    test.controller.setStackRunKind('static');
+    expect(test.controller.mode.value).toBe('static');
+    test.controller.setStackRunKind('motion');
+    expect(test.controller.mode.value).toBe('progressive');
+    unsubscribeKind();
+    unsubscribeMode();
+  });
+
+  it('seeds the stack run kind from the destination mode and leaves a creation open at its default (Quick C2)', async () => {
+    const staticDest = stackHarness([stackClip(2, { mode: 'static' })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    expect(staticDest.controller.stackRunKind.value).toBe('motion');
+    await staticDest.controller.openConfirmation();
+    expect(staticDest.controller.stackRunKind.value).toBe('static');
+    expect(staticDest.controller.mode.value).toBe('static');
+
+    const motionDest = stackHarness([stackClip(2, { mode: 'progressive' })], {}, {}, { kind: 'empty', keyId: null, appFrame: 11 });
+    await motionDest.controller.openConfirmation();
+    expect(motionDest.controller.stackRunKind.value).toBe('motion');
+    expect(motionDest.controller.mode.value).toBe('progressive');
+
+    // A non-stack apply open never seeds a stack kind.
+    const create = stackHarness([stackClip(2)], {}, {}, { kind: 'empty', keyId: null, appFrame: 30 });
+    await create.controller.openConfirmation();
+    expect(create.controller.confirmationOpen.value).toBe(true);
+    expect(create.controller.stackRunKind.value).toBe('motion');
+  });
+
+  it('commits ONE Standard Rail for a Reveal Motion run on a Static destination (Quick C2)', async () => {
+    const target = stackClip(2, {
+      mode: 'static',
+      overrideColor: '#abcdef',
+      paintSeedVariation: true,
+      keyScriptEdits: true,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 18,
+      visibleRanges: [{ start: 10, endExclusive: 18 }],
+      frameOverrides: [],
+    });
+    const test = stackHarness([target], { canonicalStart: 11 }, { hasPhotoReference: () => true }, { kind: 'empty', keyId: null, appFrame: 11 });
+    const preRunClips = JSON.parse(JSON.stringify([target])) as unknown[];
+    await test.controller.openConfirmation();
+    // The destination is Static, so the untouched Rail Type is Static...
+    expect(test.controller.stackRunKind.value).toBe('static');
+    // ...and the user picks the Reveal leg of the 2x2 grid and edits the
+    // Motion wiggle. Both are RUN settings: they shape this bake only.
+    test.controller.setStackRunKind('reveal-motion');
+    test.controller.dialogMotion.value = { deformation: 12, position: 30, rotation: 0, scale: 0 };
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+
+    // The run rendered through the DOCUMENT reference with the RUN's own settings.
+    expect(test.bakeRevealStackRun).toHaveBeenCalledTimes(1);
+    const runCall = test.bakeRevealStackRun.mock.calls[0]![0] as unknown as {
+      frames: readonly number[];
+      scriptEvents: readonly unknown[];
+      mode: string;
+      motion: { deformation: number; position: number };
+      colorize: boolean;
+      colorizeMix: number;
+      photoWiggle: boolean;
+      paintSeedVariation: boolean;
+    };
+    expect(runCall.frames).toEqual([11, 12]);
+    expect(runCall.scriptEvents.length).toBeGreaterThan(0);
+    expect(runCall.mode).toBe('progressive');
+    expect(runCall.motion).toMatchObject({ deformation: 12, position: 30 });
+    expect(runCall.colorize).toBe(false);
+    expect(runCall.colorizeMix).toBe(100);
+    expect(runCall.photoWiggle).toBe(false);
+    expect(runCall.paintSeedVariation).toBe(false);
+    // The tail port is the Reveal DESTINATION's seam — never the run's.
+    expect(test.bakeRevealStackTail).not.toHaveBeenCalled();
+
+    // Keep ON hands the EXISTING C1 union the reveal sheets, slot-aligned.
+    expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(1);
+    const unionCall = test.bakeStackedRailKey.mock.calls[0]![0] as {
+      keyIds: readonly string[];
+      sheets: readonly { appFrame: number; bytes: Uint8Array }[];
+    };
+    expect(unionCall.keyIds).toEqual(['S2', 'S3']);
+    expect(unionCall.sheets.map((sheet) => sheet.appFrame)).toEqual([11, 12]);
+    expect(unionCall.sheets.map((sheet) => sheet.bytes)).toEqual([
+      testWebpBytes('reveal-run-11'),
+      testWebpBytes('reveal-run-12'),
+    ]);
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+
+    expect(test.commit).toHaveBeenCalledTimes(1);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+    expect(publication.records
+      .filter((record) => record.appFrame >= 11 && record.appFrame <= 12)
+      .map((record) => record.payload.bytes)).toEqual([
+        testWebpBytes('stacked-union'),
+        testWebpBytes('stacked-union'),
+      ]);
+
+    // ONE Standard Rail: no provenance, no reveal identity, destination mode.
+    const committed = publication.loopClips![0]!;
+    expect(committed).toMatchObject({
+      loopId: 'L1',
+      placementStart: 10,
+      repeat: 2,
+      mode: 'static',
+      keyScriptEdits: true,
+      paintSeedVariation: true,
+    });
+    for (const field of ['scriptId', 'motion', 'overrideColor', 'railKind', 'colorize', 'colorizeMix', 'photoWiggle']) {
+      expect(Object.prototype.hasOwnProperty.call(committed, field), field).toBe(false);
+    }
+    // One-undo: the destination rail was never mutated in place.
+    expect([target]).toEqual(preRunClips);
+    // Keep ON records the run's own slices after the commit.
+    expect(test.recordRailKeyScripts).toHaveBeenCalledTimes(1);
+    expect(test.recordRailKeyScripts.mock.calls[0]![0]).toMatchObject({ keyIds: ['S2', 'S3'], recordMode: 'append' });
+  });
+
+  it('refuses a Reveal run when this build has no run-only port, writing nothing (Quick C2)', async () => {
+    const test = stackHarness(
+      [stackClip(2)],
+      {},
+      { hasPhotoReference: () => true, bakeRevealStackRun: undefined },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setStackRunKind('reveal-motion');
+    const authorityCallsBefore = test.requestAuthority.mock.calls.length;
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('This build cannot render a Reveal run. Nothing changed.');
+    expect(test.controller.phase.value).toBe('idle');
+    // Zero writes: no confirm-time authority, no bake, no merge, no commit.
+    expect(test.requestAuthority.mock.calls.length).toBe(authorityCallsBefore);
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.bakeRevealStackRun).not.toHaveBeenCalled();
+    expect(test.bakeRevealStackTail).not.toHaveBeenCalled();
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Reveal run with no document photo reference, writing nothing (Quick C2)', async () => {
+    const test = stackHarness(
+      [stackClip(2)],
+      {},
+      { hasPhotoReference: () => false },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setStackRunKind('reveal-motion');
+    const authorityCallsBefore = test.requestAuthority.mock.calls.length;
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toBe('This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.');
+    expect(test.controller.phase.value).toBe('idle');
+    expect(test.requestAuthority.mock.calls.length).toBe(authorityCallsBefore);
+    expect(test.bakeOptions).toHaveLength(0);
+    expect(test.bakeRevealStackRun).not.toHaveBeenCalled();
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+  });
+
+  it('aborts a Reveal run with zero writes when the run render does not cover the span exactly (Quick C2)', async () => {
+    const extra = vi.fn(async (input: { frames: readonly number[] }) => ({
+      kind: 'baked' as const,
+      frames: [...input.frames, input.frames[0]! + 100].map((appFrame) => ({ appFrame, bytes: testWebpBytes(`reveal-run-${appFrame}`) })),
+    }));
+    const test = stackHarness(
+      [stackClip(2)],
+      { canonicalStart: 11 },
+      { hasPhotoReference: () => true, bakeRevealStackRun: extra as unknown as RotoPlayScriptControllerPorts['bakeRevealStackRun'] },
+      { kind: 'empty', keyId: null, appFrame: 11 },
+    );
+    await test.controller.openConfirmation();
+    test.controller.setStackRunKind('reveal-motion');
+    test.controller.countText.value = '2';
+    expect(await test.controller.confirm()).toBe(false);
+    expect(test.controller.error.value).toContain('Reveal run render produced an unexpected frame');
+    expect(test.commit).not.toHaveBeenCalled();
+    expect(test.recordRailKeyScripts).not.toHaveBeenCalled();
+    expect(test.bakeStackedRailKey).not.toHaveBeenCalled();
+    expect(test.composeStackedRailKey).not.toHaveBeenCalled();
   });
 });

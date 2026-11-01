@@ -5216,6 +5216,41 @@ describe('261027-klx Wave 3 — the app-owned ledger owns stroke acceptance', ()
     expect(wiring).toContain('bakeRevealStackTail,');
   });
 
+  it('pins the Reveal RUN port: one whole-span render through the document reference, no union or writes (261101-1pc)', () => {
+    const runPort = slice(
+      studio,
+      'const bakeRevealStackRun = async (input: {',
+      '// 261030-np9 (D-03/D-04): per-key rail scripts',
+    );
+    // Render-only: never a destination-event union, a per-slice loop, a purge,
+    // a pin or a durable-base write. The controller owns the merge and commit.
+    expect(runPort).not.toContain('getAquarelleEventsForFrame(');
+    expect(runPort).not.toContain('hasAquarelleScriptForFrame(');
+    expect(runPort).not.toContain('purgeAquarelleFrameScript');
+    expect(runPort).not.toContain('pinScriptBase(');
+    expect(runPort).not.toContain('aquarelleDurableBaseByKeyRef');
+    expect(runPort).not.toContain('commitRevealBake');
+    expect(runPort).not.toContain('recordAquarelleStroke(');
+    expect(runPort).not.toContain('upsertCachedFrame(');
+    // A stale stage from an aborted union run is discarded, and an empty span
+    // refuses before any render.
+    expect(runPort).toContain('pendingStackedScriptBasePinsRef.current.clear();');
+    expect(runPort).toContain("if (start === undefined) return { kind: 'refused', reason: 'empty-span' };");
+    // ONE whole-span render on the shared reveal seam, frame-aligned.
+    expect(runPort).toContain('events: input.scriptEvents,');
+    expect(runPort).toContain('canonicalStart: start,');
+    expect(runPort).toContain('frameCount: input.frames.length,');
+    expect(runPort).toContain("if (!rendered.ok) return { kind: 'refused', reason: rendered.error };");
+    expect(runPort).toContain('frames: rendered.frames.map((frame) => ({ appFrame: frame.appFrame, bytes: frame.bytes }))');
+    // The ports object wires it beside the Quick B tail.
+    const wiring = slice(
+      studio,
+      "// 261031-qps (Quick B): the reveal rail's photo-reference tail bake.",
+      'getScriptNaturalDuration:',
+    );
+    expect(wiring).toContain('bakeRevealStackRun,');
+  });
+
   it('resolves a key-script rail key to the KNOWN-EMPTY base instead of the baked source payload', () => {
     // Rail frames resolve through the GROUP branch, which otherwise reads the
     // source key's baked payload as the durable base — the script would be

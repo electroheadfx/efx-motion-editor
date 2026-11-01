@@ -69,6 +69,25 @@ export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committi
 
 export type RotoPlayScriptMode = 'progressive' | 'static';
 
+/**
+ * 261101-1pc (Quick C2): the stack dialog's Rail Type for an incoming run.
+ * This axis is DIALOG STATE ONLY and is never persisted: the merged Standard
+ * Rail still stores the DESTINATION's `mode`. `motion`/`static` are C1's
+ * Paint-only runs; `reveal-motion`/`reveal-static` render the run's wash
+ * through the DOCUMENT's placed photo reference before the C1 merge.
+ */
+export type RotoPlayScriptStackRunKind = 'motion' | 'static' | 'reveal-motion' | 'reveal-static';
+
+/** True for the two Reveal run kinds (the run renders through the document reference). */
+export function isRevealRunKind(kind: RotoPlayScriptStackRunKind): boolean {
+  return kind === 'reveal-motion' || kind === 'reveal-static';
+}
+
+/** The single bake mode a run kind derives (Static holds; Motion animates). */
+export function stackRunKindMode(kind: RotoPlayScriptStackRunKind): RotoPlayScriptMode {
+  return kind === 'static' || kind === 'reveal-static' ? 'static' : 'progressive';
+}
+
 /** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
 export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
 
@@ -409,6 +428,33 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
       }
     | { kind: 'refused'; reason: string }
   >;
+  /**
+   * 261101-1pc (Quick C2): the Reveal RUN bake — the run's OWN wash rendered
+   * through the DOCUMENT's placed photo reference, on a destination that is not
+   * itself a Reveal rail. Render-only: no key record, no interpolation break,
+   * no base pin, no durable-base write. The controller composites these sheets
+   * over each touched key's current picture through the EXISTING C1 merge
+   * ports, so the destination's cached animation survives.
+   *
+   * Deliberately NOT `bakeRevealStackTail`: that port belongs to a Reveal
+   * DESTINATION and its slow path unions the destination's recorded events.
+   * A Reveal run renders ONCE for the whole span from the run's own script.
+   */
+  bakeRevealStackRun?: (input: {
+    readonly frames: readonly number[];
+    readonly scriptEvents: readonly AquarellePayloadEvent[];
+    readonly mode: RotoPlayScriptMode;
+    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    readonly colorize: boolean;
+    readonly colorizeMix: number;
+    readonly photoWiggle: boolean;
+    readonly paintSeedVariation: boolean;
+    readonly signal: AbortSignal;
+    readonly onProgress?: (completed: number, total: number) => void;
+  }) => Promise<
+    | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
+    | { kind: 'refused'; reason: string }
+  >;
   /** The script's natural duration at the current motion parameters (D-20); null → default. */
   getScriptNaturalDuration?: (scriptId: string) => number | null;
   requestAuthority: (
@@ -564,6 +610,14 @@ export interface RotoPlayScriptController {
    * editable; Rail Type, Motion wiggle, Color and Key Script hidden).
    */
   stackRailKind: ReadonlySignal<'playscript' | 'reveal' | null>;
+  /**
+   * 261101-1pc (Quick C2): the stack's Rail Type — Motion / Static / Reveal
+   * Motion / Reveal Static. Dialog state only, never persisted; the committed
+   * Standard Rail still stores the destination's `mode`.
+   */
+  stackRunKind: Signal<RotoPlayScriptStackRunKind>;
+  /** Choose the run kind and derive the single mode the bake uses (compare-then-write). */
+  setStackRunKind: (kind: RotoPlayScriptStackRunKind) => void;
   /** Keep script draft — seeded ON only for a flag-on stack target, then user-owned. */
   keepScript: Signal<boolean>;
   keepScriptVisible: ReadonlySignal<boolean>;
@@ -600,6 +654,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const capacity = signal(0);
   const canonicalStart = signal<number | null>(null);
   const mode = signal<RotoPlayScriptMode>('progressive');
+  // 261101-1pc (Quick C2): the stack dialog's Rail Type. Dialog state only —
+  // `setStackRunKind` derives `mode` and the merged rail never stores it.
+  const stackRunKind = signal<RotoPlayScriptStackRunKind>('motion');
   const overrideEnabled = signal(false);
   // UAT 261031-i54: the stack's color seed. The dialog owns the live brush
   // color for CREATION; a stack starts from the rail's stored color instead, so
@@ -1118,6 +1175,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const keepScript = signal(false);
   const unionPortPresent = (): boolean => typeof ports.bakeStackedRailKey === 'function';
   const revealTailPortPresent = (): boolean => typeof ports.bakeRevealStackTail === 'function';
+  // 261101-1pc (Quick C2): the Reveal RUN port — a Reveal run on a non-reveal
+  // destination renders through the DOCUMENT reference via this seam only.
+  const revealRunPortPresent = (): boolean => typeof ports.bakeRevealStackRun === 'function';
   /** The port the CURRENT destination's Keep ON bake runs through. */
   const stackPortPresent = computed(() => (stackRailKind.value === 'reveal' ? revealTailPortPresent() : unionPortPresent()));
   const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && stackPortPresent.value);
@@ -1163,6 +1223,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function setKeepScript(enabled: boolean): void {
     if (keepScript.peek() === enabled) return;
     keepScript.value = enabled;
+  }
+
+  /**
+   * 261101-1pc (Quick C2): choose the stack's Rail Type. The four kinds are a
+   * dialog axis; the derived `mode` is what the paint bake and the slices use,
+   * while `buildStandardStackedLoopClip` keeps storing the DESTINATION's mode.
+   * Compare-then-write on both signals (efx-preact-reactivity rule 3); called
+   * only from an event handler, never during render.
+   */
+  function setStackRunKind(kind: RotoPlayScriptStackRunKind): void {
+    if (stackRunKind.peek() !== kind) stackRunKind.value = kind;
+    const derived = stackRunKindMode(kind);
+    if (mode.peek() !== derived) mode.value = derived;
   }
 
   /* The explicit collision answer. Null while the prompt is open — `confirm`
@@ -1420,6 +1493,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261030-v1t: the per-frame paint-seed variation is an apply-mode
       // creation setting too — reset on every open (never sticky).
       if (paintSeedVariation.peek()) paintSeedVariation.value = false;
+      // 261101-1pc (Quick C2): the stack Rail Type is apply-mode dialog state —
+      // reset on every open (a stack open re-seeds it from the destination).
+      if (stackRunKind.peek() !== 'motion') stackRunKind.value = 'motion';
       if (!hasSuccessfulGeneration) {
         // First-time defaults refresh: before the first successful Generate line 1 tracks the
         // current defaults (mode/override untouched at first open, Motion from the defaults port,
@@ -1436,6 +1512,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         // rail's stored settings; the user may change them and the rail adopts
         // the run's values on confirm. Creation keeps the group defaults.
         mode.value = destination.rail.mode;
+        // 261101-1pc (Quick C2): seed the visible Rail Type from the rail's
+        // stored mode. Never seeds a Reveal kind and never writes `mode` a
+        // second time — an untouched stack stays exactly C1's Motion/Static run.
+        const seededRunKind: RotoPlayScriptStackRunKind = destination.rail.mode === 'static' ? 'static' : 'motion';
+        if (stackRunKind.peek() !== seededRunKind) stackRunKind.value = seededRunKind;
         dialogMotion.value = toDialogMotion(
           destination.rail.motion ?? { deformation: 0, position: 0 },
         );
@@ -2439,6 +2520,26 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       }
     }
 
+    // 261101-1pc (Quick C2): a Reveal RUN on a NON-reveal destination renders
+    // the run's own wash through the DOCUMENT's placed photo reference. Both
+    // gates run BEFORE `acceptedGeneration`, so a refusal can never bump a
+    // generation, request authority, bake or write. Re-validated here at
+    // confirm time: the reference can be removed while the dialog is open.
+    const isRevealRun = !isRevealTarget && isRevealRunKind(stackRunKind.peek());
+    if (isRevealRun) {
+      const revealRunRefusal = !revealRunPortPresent()
+        ? 'This build cannot render a Reveal run. Nothing changed.'
+        : !(ports.hasPhotoReference?.() ?? false)
+          ? 'This Reveal run has no photo reference. Place a reference, then run again. Nothing changed.'
+          : null;
+      if (revealRunRefusal !== null) {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = revealRunRefusal;
+        return false;
+      }
+    }
+
     // 261031-vbo UAT — the Keep-script law under the Standard merge model.
     // The PICTURE is always the same: each touched key's CURRENT payload is the
     // base and this run's own baked sheet composites over it, so the
@@ -2473,12 +2574,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261031-qps (Quick B): a Reveal stack hides Rail Type, Motion wiggle and
       // Color, so its render always uses the rail's OWN stored values; the four
       // reveal knobs come from the dialog and are adopted below.
+      // 261101-1pc (Quick C2): a Reveal RUN keeps the dialog's Rail Type and
+      // Motion wiggle (it has its own card set) but renders through the
+      // document reference, so its color is never the dialog's.
       const motion: { deformation: number; position: number; rotation?: number; scale?: number } = isRevealTarget
         ? (currentTarget.motion === undefined ? { deformation: 0, position: 0 } : { ...currentTarget.motion })
         : { ...dialogMotion.peek() };
       const renderMode = isRevealTarget ? currentTarget.mode : mode.peek();
-      const renderOverrideColor = isRevealTarget ? (currentTarget.overrideColor ?? null) : resolveOverrideColor();
-      const renderPaintSeedVariation = isRevealTarget
+      // 261101-1pc (Quick C2): a reveal run hides the Color card and renders
+      // through the document reference, so it never carries a custom tint; its
+      // paint seed is the dialog's (it must match the reveal bake).
+      const renderOverrideColor = isRevealTarget
+        ? (currentTarget.overrideColor ?? null)
+        : isRevealRun ? null : resolveOverrideColor();
+      const renderPaintSeedVariation = isRevealTarget || isRevealRun
         ? paintSeedVariation.peek()
         : currentTarget.paintSeedVariation === true;
       const rotoBackground = { ...ports.getBackgroundMetadata() };
@@ -2568,7 +2677,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261031-vbo UAT: the RUN's OWN baked frames are the merge sheet. They
       // already carry this run's mode/motion/seed, so a Motion run animates and
       // a Static run holds — the merge never re-bakes raw strokes.
-      const sheets: readonly PhysicPaintRotoStackSheet[] = destinationAppFrames.map((appFrame, index) => {
+      // 261101-1pc (Quick C2): a Reveal run REPLACES these sheets below with its
+      // own reveal render; the C1 union/composite ports never learn the source.
+      let sheets: readonly PhysicPaintRotoStackSheet[] = destinationAppFrames.map((appFrame, index) => {
         const frame = staged[index];
         if (!frame) throw new Error(`Committed run is missing frame ${appFrame}.`);
         return { appFrame, bytes: frame.bytes };
@@ -2578,10 +2689,33 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // bake reports anchors only for real brush strokes, so the slice list is
       // empty; committing the raw staged bake would overwrite every touched
       // key's existing paint with no pin and no recording. Fail closed before
-      // the single commit (the reveal path keeps its own explicit refusal).
+      // the single commit (the reveal DESTINATION keeps its own explicit
+      // refusal inside its branch; a reveal RUN is covered here, exactly like a
+      // Motion/Static run).
       if (!isRevealTarget && slices.length === 0) {
         throw new Error('This run produced no per-key strokes, so the rail was not changed. Nothing changed.');
       }
+      // 261101-1pc (Quick C2) / T-261031-QPS-03: ONE exact-coverage law for
+      // both reveal lanes — the changed-frame set must equal the touched frames
+      // exactly; any extra, duplicate or missing frame aborts with zero writes.
+      const collectExactFrameCoverage = (
+        rendered: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[],
+        label: 'Reveal tail' | 'Reveal run',
+      ): Map<number, Uint8Array> => {
+        const expectedFrames = new Set(destinationAppFrames);
+        const bytesByFrame = new Map<number, Uint8Array>();
+        for (const frame of rendered) {
+          if (!expectedFrames.has(frame.appFrame) || bytesByFrame.has(frame.appFrame)) {
+            throw new Error(`${label} render produced an unexpected frame ${frame.appFrame}. Nothing changed.`);
+          }
+          bytesByFrame.set(frame.appFrame, frame.bytes);
+        }
+        const missingFrame = destinationAppFrames.find((appFrame) => !bytesByFrame.has(appFrame));
+        if (missingFrame !== undefined) {
+          throw new Error(`${label} render is missing frame ${missingFrame}. Nothing changed.`);
+        }
+        return bytesByFrame;
+      };
       if (isRevealTarget) {
         // 261031-qps (Quick B): EVERY touched frame is re-rendered through the
         // placed photo reference (same photo, new wash) — including the run's
@@ -2611,49 +2745,70 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         if (reveal.kind !== 'baked') throw new Error(`Reveal tail render refused: ${reveal.reason}`);
         // T-261031-QPS-03: the changed-frame set must equal the touched reveal
         // frames exactly — any extra or missing frame aborts with zero writes.
-        const expectedFrames = new Set(destinationAppFrames);
-        const renderedBytesByFrame = new Map<number, Uint8Array>();
-        for (const frame of reveal.frames) {
-          if (!expectedFrames.has(frame.appFrame) || renderedBytesByFrame.has(frame.appFrame)) {
-            throw new Error(`Reveal tail render produced an unexpected frame ${frame.appFrame}. Nothing changed.`);
+        publication = withRecordBytes(publication, collectExactFrameCoverage(reveal.frames, 'Reveal tail'));
+      } else {
+        // 261101-1pc (Quick C2): a Reveal RUN renders its own wash through the
+        // DOCUMENT's placed reference, then hands those sheets to the EXISTING
+        // C1 Keep ON/OFF ports — the picture law, staged pins and recording
+        // need no fork. Render-only: no destination events, no pins, no writes.
+        if (isRevealRun) {
+          status.value = 'Rendering through the photo reference…';
+          const revealRunBake = ports.bakeRevealStackRun;
+          if (revealRunBake === undefined) {
+            throw new Error('This build cannot render a Reveal run. Nothing changed.');
           }
-          renderedBytesByFrame.set(frame.appFrame, frame.bytes);
-        }
-        const missingFrame = destinationAppFrames.find((appFrame) => !renderedBytesByFrame.has(appFrame));
-        if (missingFrame !== undefined) {
-          throw new Error(`Reveal tail render is missing frame ${missingFrame}. Nothing changed.`);
-        }
-        publication = withRecordBytes(publication, renderedBytesByFrame);
-      } else if (canRecordKeepOn && unionBake !== undefined && slices.length > 0) {
-        status.value = 'Merging the run over the rail picture…';
-        // ONE batch call: the port stages every fresh pre-run base pin through
-        // the authority, then composites each RUN sheet over that key's CURRENT
-        // cached picture — the destination's animation is never replayed from
-        // untransformed scripts.
-        const union = await unionBake({ keyIds: touchedKeyIds, sheets });
-        assertCurrent(acceptedGeneration);
-        if (union.kind !== 'baked') throw new Error(`Keep script merge refused: ${union.reason}`);
-        if (union.frames.length > 0) {
-          publication = withRecordBytes(publication, new Map(union.frames.map((entry) => [entry.appFrame, entry.bytes])));
-        }
-      } else if (slices.length > 0) {
-        // Keep OFF: flatten the run over the key's CURRENT payload. Nothing is
-        // recorded, pinned or purged — the destination's picture and per-key
-        // scripts both survive (UAT 261031-vbo).
-        status.value = 'Compositing the run…';
-        const compose = ports.composeStackedRailKey;
-        if (!compose) throw new Error('This build cannot composite the run over the rail picture. Nothing changed.');
-        const compositeBytesByFrame = new Map<number, Uint8Array>();
-        for (const sheet of sheets) {
-          const slot = sheet.appFrame - start;
-          const keyId = touchedKeyIds[slot];
-          if (keyId === undefined) continue;
-          const composed = await compose({ keyId, appFrame: sheet.appFrame, sheetBytes: sheet.bytes });
+          const rendered = await revealRunBake({
+            frames: destinationAppFrames,
+            scriptEvents: aquarelleEventsFromScript(snapshot),
+            mode: renderMode,
+            motion,
+            colorize: colorize.peek(),
+            colorizeMix: colorizeMix.peek(),
+            photoWiggle: photoWiggle.peek(),
+            paintSeedVariation: paintSeedVariation.peek(),
+            signal: bakeSignal,
+            onProgress: (completed, total) => {
+              if (disposed || generation !== acceptedGeneration) return;
+              progress.value = { completed, total };
+              status.value = `Rendering ${completed} / ${total}`;
+            },
+          });
           assertCurrent(acceptedGeneration);
-          if (composed.kind !== 'baked') throw new Error(`Picture composite refused: ${composed.reason}`);
-          compositeBytesByFrame.set(sheet.appFrame, composed.bytes);
+          if (rendered.kind !== 'baked') throw new Error(`Reveal run render refused: ${rendered.reason}`);
+          const runBytesByFrame = collectExactFrameCoverage(rendered.frames, 'Reveal run');
+          sheets = destinationAppFrames.map((appFrame) => ({ appFrame, bytes: runBytesByFrame.get(appFrame)! }));
         }
-        if (compositeBytesByFrame.size > 0) publication = withRecordBytes(publication, compositeBytesByFrame);
+        if (canRecordKeepOn && unionBake !== undefined && slices.length > 0) {
+          status.value = 'Merging the run over the rail picture…';
+          // ONE batch call: the port stages every fresh pre-run base pin through
+          // the authority, then composites each RUN sheet over that key's CURRENT
+          // cached picture — the destination's animation is never replayed from
+          // untransformed scripts.
+          const union = await unionBake({ keyIds: touchedKeyIds, sheets });
+          assertCurrent(acceptedGeneration);
+          if (union.kind !== 'baked') throw new Error(`Keep script merge refused: ${union.reason}`);
+          if (union.frames.length > 0) {
+            publication = withRecordBytes(publication, new Map(union.frames.map((entry) => [entry.appFrame, entry.bytes])));
+          }
+        } else if (slices.length > 0) {
+          // Keep OFF: flatten the run over the key's CURRENT payload. Nothing is
+          // recorded, pinned or purged — the destination's picture and per-key
+          // scripts both survive (UAT 261031-vbo).
+          status.value = 'Compositing the run…';
+          const compose = ports.composeStackedRailKey;
+          if (!compose) throw new Error('This build cannot composite the run over the rail picture. Nothing changed.');
+          const compositeBytesByFrame = new Map<number, Uint8Array>();
+          for (const sheet of sheets) {
+            const slot = sheet.appFrame - start;
+            const keyId = touchedKeyIds[slot];
+            if (keyId === undefined) continue;
+            const composed = await compose({ keyId, appFrame: sheet.appFrame, sheetBytes: sheet.bytes });
+            assertCurrent(acceptedGeneration);
+            if (composed.kind !== 'baked') throw new Error(`Picture composite refused: ${composed.reason}`);
+            compositeBytesByFrame.set(sheet.appFrame, composed.bytes);
+          }
+          if (compositeBytesByFrame.size > 0) publication = withRecordBytes(publication, compositeBytesByFrame);
+        }
       }
       // WR-02: a run that must record can never be reported complete without
       // the recording port. Fail BEFORE the commit — never publish a run whose
@@ -3189,7 +3344,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     paintSeedVariation, setPaintSeedVariation,
     /* 261031-i54: Run Script stacking onto an existing Paint rail. */
     /* 261031-qps: `stackRailKind` composes the Reveal stack card set. */
-    runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout, stackRailKind,
+    /* 261101-1pc: `stackRunKind` is the stack's four-kind Rail Type (dialog state). */
+    runDestination, runStartAppFrame: stackRailStart, stackBoundary, stackMaxCount, framesMax, stackReadout, stackRailKind, stackRunKind, setStackRunKind,
     keepScript, keepScriptVisible, keepScriptEffective, keepScriptDisabledReason, stackCollision, collisionOffers, repeatLocked,
     stackOverrideColor, useBrushColor,
     setKeepScript, confirmStackCollision,

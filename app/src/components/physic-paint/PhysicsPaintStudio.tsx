@@ -4240,6 +4240,52 @@ export function PhysicsPaintStudio() {
     }
     return { kind: 'baked', frames: baked, anchors };
   };
+  // 261101-1pc (Quick C2): the Reveal RUN bake — a Reveal run on a NON-reveal
+  // destination. The run's own wash is rendered ONCE for the whole span through
+  // the DOCUMENT's placed photo reference (the same seam the Reveal tab and the
+  // Quick B tail use) and handed back as the merge sheets for the controller's
+  // C1 union/composite. Deliberately NOT `bakeRevealStackTail`: that path unions
+  // a destination's recorded events. Render-only — never purges, pins or writes
+  // the durable base; the whole picture merge stays in the C1 ports.
+  const bakeRevealStackRun = async (input: {
+    readonly frames: readonly number[];
+    readonly scriptEvents: readonly AquarellePayloadEvent[];
+    readonly mode: 'progressive' | 'static';
+    readonly motion: Readonly<{ deformation: number; position: number; rotation?: number; scale?: number }>;
+    readonly colorize: boolean;
+    readonly colorizeMix: number;
+    readonly photoWiggle: boolean;
+    readonly paintSeedVariation: boolean;
+    readonly signal: AbortSignal;
+    readonly onProgress?: (completed: number, total: number) => void;
+  }): Promise<
+    | { kind: 'baked'; frames: readonly { readonly appFrame: number; readonly bytes: Uint8Array }[] }
+    | { kind: 'refused'; reason: string }
+  > => {
+    // A reveal run never pins a pixel base: discard any stage a previously
+    // aborted union run left behind so this run's append record applies none.
+    pendingStackedScriptBasePinsRef.current.clear();
+    const start = input.frames[0];
+    if (start === undefined) return { kind: 'refused', reason: 'empty-span' };
+    const rendered = await renderRevealTail({
+      events: input.scriptEvents,
+      canonicalStart: start,
+      frameCount: input.frames.length,
+      motion: input.motion,
+      mode: input.mode,
+      colorize: input.colorize,
+      colorizeMix: input.colorizeMix,
+      photoWiggle: input.photoWiggle,
+      paintSeedVariation: input.paintSeedVariation,
+      signal: input.signal,
+      onProgress: input.onProgress,
+    });
+    if (!rendered.ok) return { kind: 'refused', reason: rendered.error };
+    return {
+      kind: 'baked',
+      frames: rendered.frames.map((frame) => ({ appFrame: frame.appFrame, bytes: frame.bytes })),
+    };
+  };
   // 261030-np9 (D-03/D-04): per-key rail scripts land in the SAME aquarelle
   // timeline the live sheet writes, with mutation ids from the ONE ledger. A
   // replace REPLACES a key's script (purge + known-empty pin); an append adds
@@ -4386,6 +4432,8 @@ export function PhysicsPaintStudio() {
     composeStackedRailKey,
     // 261031-qps (Quick B): the reveal rail's photo-reference tail bake.
     bakeRevealStackTail,
+    // 261101-1pc (Quick C2): the Reveal RUN bake on a non-reveal destination.
+    bakeRevealStackRun,
     // D-20: the script's natural duration — the progressive schedule builds the
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,
