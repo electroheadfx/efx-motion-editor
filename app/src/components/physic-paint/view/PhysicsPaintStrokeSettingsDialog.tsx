@@ -978,6 +978,33 @@ export function PhysicsPaintStrokeSettingsDialog({
                     key={stroke.mutationId}
                     data-testid={`stroke-settings-row-${stroke.mutationId}`}
                     class={`physics-paint-stroke-settings-list-item${selected ? ' is-selected' : ''}`}
+                    onClick={(event) => {
+                      // The StrokeList multi-select law, on the ONE shared
+                      // selection signal: plain replaces, Cmd/Ctrl toggles,
+                      // Shift takes the inclusive displayed range from the
+                      // last plain/Cmd click. Shift without an anchor is a
+                      // plain click. No move code lives here — the canvas
+                      // drag, transform handles and Geometry rows already
+                      // operate on the whole selection.
+                      //
+                      // The CARD owns the press (the StrokeList precedent) so
+                      // the serial, which sits outside the button past the
+                      // trash, still selects: a button press bubbles up here
+                      // and the trash stops its own.
+                      if (event.shiftKey && rowAnchorRef.current >= 0) {
+                        setAquarelleStrokeSelection(
+                          resolveStrokeListRange(displayedIds, rowAnchorRef.current, index),
+                        );
+                        return;
+                      }
+                      if (event.metaKey || event.ctrlKey) {
+                        toggleAquarelleStrokeSelection(stroke.mutationId);
+                        rowAnchorRef.current = index;
+                        return;
+                      }
+                      selectAquarelleStroke(stroke.mutationId);
+                      rowAnchorRef.current = index;
+                    }}
                   >
                     <button
                       type="button"
@@ -985,28 +1012,6 @@ export function PhysicsPaintStrokeSettingsDialog({
                       aria-label={`${typeLabel} stroke #${stroke.serial}, ${tipName}, position ${stroke.stackPosition} of ${stroke.stackTotal}`}
                       class="physics-paint-stroke-settings-list-row"
                       style={{ textTransform: 'none' }}
-                      onClick={(event) => {
-                        // The StrokeList multi-select law, on the ONE shared
-                        // selection signal: plain replaces, Cmd/Ctrl toggles,
-                        // Shift takes the inclusive displayed range from the
-                        // last plain/Cmd click. Shift without an anchor is a
-                        // plain click. No move code lives here — the canvas
-                        // drag, transform handles and Geometry rows already
-                        // operate on the whole selection.
-                        if (event.shiftKey && rowAnchorRef.current >= 0) {
-                          setAquarelleStrokeSelection(
-                            resolveStrokeListRange(displayedIds, rowAnchorRef.current, index),
-                          );
-                          return;
-                        }
-                        if (event.metaKey || event.ctrlKey) {
-                          toggleAquarelleStrokeSelection(stroke.mutationId);
-                          rowAnchorRef.current = index;
-                          return;
-                        }
-                        selectAquarelleStroke(stroke.mutationId);
-                        rowAnchorRef.current = index;
-                      }}
                     >
                       <span
                         data-testid="stroke-settings-stroke-dot"
@@ -1018,12 +1023,6 @@ export function PhysicsPaintStrokeSettingsDialog({
                         class="physics-paint-stroke-settings-list-type"
                       >
                         {typeLabel}
-                      </span>
-                      <span
-                        data-testid="stroke-settings-stroke-serial"
-                        class="physics-paint-stroke-settings-list-serial"
-                      >
-                        {`#${stroke.serial}`}
                       </span>
                       <span class="physics-paint-stroke-settings-list-meta">
                         <span
@@ -1064,9 +1063,15 @@ export function PhysicsPaintStrokeSettingsDialog({
                           void deleteStrokes([stroke.mutationId]);
                         }}
                       >
-                        <Trash2 size={12} aria-hidden="true" />
+                        <Trash2 size={15} aria-hidden="true" />
                       </button>
                     ) : null}
+                    <span
+                      data-testid="stroke-settings-stroke-serial"
+                      class="physics-paint-stroke-settings-list-serial"
+                    >
+                      {`#${stroke.serial}`}
+                    </span>
                   </div>
                 );
               })}

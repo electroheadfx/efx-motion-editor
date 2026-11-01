@@ -2297,15 +2297,22 @@ describe('261031-euf empty-selection stroke list dialog', () => {
         .backgroundColor,
     ).toBe('#00bb00');
     expect(findByTestId(row9, 'stroke-settings-stroke-type')!.props.children).toBe('Brush');
-    expect(findByTestId(row9, 'stroke-settings-stroke-serial')!.props.children).toBe('#2');
     expect(findByTestId(row9, 'stroke-settings-stroke-position')!.props.children).toBe('1/3');
     expect(findByTestId(row9, 'stroke-settings-stroke-tip')!.props.children).toBe('Flat wash');
     expect(findByTestId(row9, 'stroke-settings-stroke-custom')!.props.children).toBe('Custom response');
 
+    // The serial is the CARD's last column (the trash sits before it), not a
+    // child of the selectable button.
+    const item9 = findByTestId(tree, 'stroke-settings-row-9')!;
+    expect(findByTestId(item9, 'stroke-settings-stroke-serial')!.props.children).toBe('#2');
+
     // The neutral row wears no Custom response marker and its own tip name.
     const row7 = rows[1]!;
     expect(findByTestId(row7, 'stroke-settings-stroke-type')!.props.children).toBe('Brush');
-    expect(findByTestId(row7, 'stroke-settings-stroke-serial')!.props.children).toBe('#1');
+    expect(
+      findByTestId(findByTestId(tree, 'stroke-settings-row-7')!, 'stroke-settings-stroke-serial')!
+        .props.children,
+    ).toBe('#1');
     expect(findByTestId(row7, 'stroke-settings-stroke-position')!.props.children).toBe('2/3');
     expect(findByTestId(row7, 'stroke-settings-stroke-tip')!.props.children).toBe('Round medium');
     expect(findByTestId(row7, 'stroke-settings-stroke-custom')).toBeUndefined();
@@ -2316,7 +2323,7 @@ describe('261031-euf empty-selection stroke list dialog', () => {
     setAquarelleSelectMode(true);
     const tree = renderDialog(bundle);
 
-    (findByTestId(tree, 'stroke-settings-stroke-9')!.props.onClick as (event: unknown) => void)({
+    (findByTestId(tree, 'stroke-settings-row-9')!.props.onClick as (event: unknown) => void)({
       shiftKey: false,
       metaKey: false,
       ctrlKey: false,
@@ -2862,7 +2869,9 @@ describe('261101-jmm list-first stroke settings sheet', () => {
   // ── 261101-jmm Task 2: multi-select + trashes ────────────────────
 
   function clickRow(tree: unknown, mutationId: number, event: Record<string, unknown>): void {
-    const row = findByTestId(tree, `stroke-settings-stroke-${mutationId}`);
+    // The card owns the press (the serial lives outside the button, past the
+    // trash), so the item is the click target; a button press bubbles to it.
+    const row = findByTestId(tree, `stroke-settings-row-${mutationId}`);
     expect(row, `row ${mutationId}`).toBeDefined();
     (row!.props.onClick as (event: unknown) => void)({
       shiftKey: false,

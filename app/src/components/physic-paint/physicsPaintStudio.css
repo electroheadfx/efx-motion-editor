@@ -1502,17 +1502,17 @@ button.destructive {
   gap: 6px;
 }
 
-/* 261101-jmm UAT: the ITEM owns the card so the sibling per-row trash sits
-   INSIDE the bordered row, right-aligned, and the card spans the full list
-   width. The button keeps the 3-column anatomy and fills the item. */
+/* 261101-jmm UAT: the ITEM owns the card and its grid, so the per-row trash
+   sits INSIDE the bordered row IMMEDIATELY BEFORE the serial, and the serial
+   is the last column flush against the card's right edge. The button keeps
+   the dot/type/meta anatomy; the serial and the trash are its siblings. */
 .physics-paint-stroke-settings-list-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: 10px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
-  flex: 1 1 0;
   min-width: 0;
-  padding: 5px 6px;
+  padding: 5px 0 5px 6px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1522,11 +1522,10 @@ button.destructive {
   cursor: pointer;
 }
 
-/* Inset so the keyboard ring stays visible inside the item's own border. */
+/* The card owns the press, so the focus ring wraps the whole row rather than
+   only the button's two columns. */
 .physics-paint-stroke-settings-list-row:focus-visible {
-  outline: 2px solid var(--color-accent, #2d5be3);
-  outline-offset: -2px;
-  border-radius: 5px;
+  outline: none;
 }
 
 .physics-paint-stroke-settings-list-dot {
@@ -1575,17 +1574,21 @@ button.destructive {
   color: #9aa5b1;
 }
 
-/* 261101-jmm UAT: a row is the selectable button plus its sibling per-row
-   trash, both INSIDE one bordered card. The case lives on the item so the
-   trash can never sit in a gutter outside the row. */
+/* 261101-jmm UAT: the card is a 3-column grid — the selectable button, the
+   per-row trash, then the serial flush right. The case lives on the item so
+   the trash can never sit in a gutter outside the row. */
 .physics-paint-stroke-settings-list-item {
-  display: flex;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: start;
+  column-gap: 6px;
   width: 100%;
   box-sizing: border-box;
+  padding-right: 6px;
   border: 1px solid #565b61;
   border-radius: 6px;
   background: transparent;
+  cursor: pointer;
   transition: border-color 0.12s, background-color 0.12s;
 }
 
@@ -1599,18 +1602,31 @@ button.destructive {
   background: #454b5a;
 }
 
+.physics-paint-stroke-settings-list-item:focus-within {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: -1px;
+}
+
+/* First-line row of the card: the serial keeps the type's baseline instead of
+   centring across the two-line button. */
+.physics-paint-stroke-settings-list-item .physics-paint-stroke-settings-list-serial {
+  align-self: start;
+  margin-top: 5px;
+  line-height: 13px;
+  white-space: nowrap;
+}
+
 /* Same reveal law as the scripts list (261022-o2a): hidden until the row is
    hovered, focused or selected. Never `display: none` — the button must stay
    focusable so `:focus-within` can reveal it after a delete round-trip. */
 .physics-paint-stroke-settings-list-row-delete {
-  flex: 0 0 auto;
   align-self: center;
-  margin-right: 4px;
+  justify-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid #5a6067;
   border-radius: 4px;
