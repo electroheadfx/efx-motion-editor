@@ -1502,18 +1502,19 @@ button.destructive {
   gap: 6px;
 }
 
+/* 261101-jmm UAT: the ITEM owns the card so the sibling per-row trash sits
+   INSIDE the bordered row, right-aligned, and the card spans the full list
+   width. The button keeps the 3-column anatomy and fills the item. */
 .physics-paint-stroke-settings-list-row {
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  width: 100%;
-  /* 261101-jmm: the row shares the item with its sibling per-row trash. */
   flex: 1 1 0;
   min-width: 0;
   padding: 5px 6px;
-  border: 1px solid #565b61;
-  border-radius: 6px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: #eef1f4;
   text-align: left;
@@ -1521,13 +1522,11 @@ button.destructive {
   cursor: pointer;
 }
 
-.physics-paint-stroke-settings-list-row:hover {
-  border-color: #747b83;
-  background: #414447;
-}
-
+/* Inset so the keyboard ring stays visible inside the item's own border. */
 .physics-paint-stroke-settings-list-row:focus-visible {
   outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: -2px;
+  border-radius: 5px;
 }
 
 .physics-paint-stroke-settings-list-dot {
@@ -1576,15 +1575,26 @@ button.destructive {
   color: #9aa5b1;
 }
 
-/* 261101-jmm: a row is the selectable button plus its sibling per-row trash.
-   The item is the flex wrapper; the button keeps its 3-column grid. */
+/* 261101-jmm UAT: a row is the selectable button plus its sibling per-row
+   trash, both INSIDE one bordered card. The case lives on the item so the
+   trash can never sit in a gutter outside the row. */
 .physics-paint-stroke-settings-list-item {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #565b61;
+  border-radius: 6px;
+  background: transparent;
+  transition: border-color 0.12s, background-color 0.12s;
 }
 
-.physics-paint-stroke-settings-list-item.is-selected .physics-paint-stroke-settings-list-row {
+.physics-paint-stroke-settings-list-item:hover {
+  border-color: #747b83;
+  background: #414447;
+}
+
+.physics-paint-stroke-settings-list-item.is-selected {
   border-color: #7e9cff;
   background: #454b5a;
 }
@@ -1595,6 +1605,7 @@ button.destructive {
 .physics-paint-stroke-settings-list-row-delete {
   flex: 0 0 auto;
   align-self: center;
+  margin-right: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
