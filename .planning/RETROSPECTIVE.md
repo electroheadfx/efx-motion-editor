@@ -2,6 +2,60 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.0.0 — Multi-Module Paint Workstation (MAJOR)
+
+**Shipped:** 2026-11-02
+**Phases:** 3 (54-56; Phase 57 retired) | **Plans:** 26 | **Commits:** 1,054 over 20 days
+
+### What Was Built
+
+- Preact 11 with `@preact/signals`, proven by a throwaway compatibility probe before any pin moved, exactly one `preact` copy workspace-wide, `paintVersion` bump+subscribe preserved
+- `efx-paint-host`: Preact-free engine-agnostic host for animation schedules, traceSeed, script envelope and a 60 Hz integer tick grid, generic over `StudioStroke<P>` / `EngineAdapter<P>`
+- Fail-closed script law: opaque per-engine payload, four named visible Apply refusals, standing no-partial-write pin
+- `efx-watercolor`: clean-room Float32 fluid sheet, wet-in-wet blooms / wet-on-dry edges / tide lines, four tools, preset brush library, FNV-1a deterministic replay, WebP bake that survives leaving the frame
+- 13-paper pack (10 procedural + 3 recovered real scans) baked into the sheet, with document-level display state and an undoable grain pair
+- `.mce` dual-language field contract extended to every new field; brush-pack snapshot inline by design
+- Signed/notarized 2.0.0 published as GitHub Latest
+
+### What Worked
+
+- **Probe-first runtime bump.** The throwaway `@preact/signals` ↔ Preact 11 probe (RUN-01) turned a milestone-wide risk into a five-plan mechanical migration.
+- **A pre-move golden for the host split.** Capturing the engine-1 golden *before* the move meant the parity proof existed when engine-1 was later retired — the evidence outlived the subject.
+- **Native UAT for the look, unit tests for determinism.** Visual watercolor judgment stayed with the user; byte-parity and replay determinism stayed in vitest. Neither tried to do the other's job.
+- **Supersession accounting in the audit.** Instead of rewriting requirement text to match reality, the audit recorded seven named, user-accepted pivots. The close is honest without being blocked.
+- **Quicks for product pivots.** The single-engine pivot (261027-klx) and the pre-publish switcher removal (261102-iv5) landed as quicks inside the milestone, not as inserted phases.
+
+### What Was Inefficient
+
+- **The shipped shape was decided days before publication.** The single-engine pivot (2026-10-27) and the switcher removal (2026-11-02) left ROADMAP, REQUIREMENTS and PROJECT describing a three-module product that no longer existed; the audit had to re-derive what actually shipped.
+- **The release version bump invalidated two verifications.** `app/package.json` and the package manifests sit in phases 54/55 `covered_files`, so bumping to 2.0.0 made both reports `stale` at the close gate with zero source drift.
+- **Artifact hygiene surfaced only at close.** Five quick SUMMARY frontmatters were invalid YAML (backtick-led bullets, `- quick <id>` without a colon); the scanner reported them "unknown" and the acknowledge writer refused them. Two debug sessions were fixed in code but left `awaiting_human_verify`.
+- **The auto-generated MILESTONES entry dumped 25 one-liners**, including retired features. Curating it took judgment the CLI cannot apply.
+
+### Patterns Established
+
+- ONE engine and ONE module is a valid, shippable end state — a "multi-module workstation" can collapse to a single engine without invalidating the MAJOR rationale.
+- Paper is baked into the watercolor sheet; a paper change is a cache miss, not a composite pass.
+- Display-only settings (paper id) stay out of the undo ledger; only the numeric grain pair is undoable.
+- Preset-only brush library: no custom-asset import surface to maintain.
+- Close-out accounting: superseded requirements are recorded with the pivot, the date, and the approver.
+
+### Key Lessons
+
+1. Decide the shipped product shape before the release phase, not during it.
+2. Version-string churn invalidates covered-file digests — re-run verifiers after the release bump, or keep manifests out of the digest set.
+3. Artifact frontmatter is part of the contract: unparseable YAML blocks the close tooling, not just the reader.
+4. An audit that records supersessions is more useful than one that forces requirement text to match reality.
+5. Delete a retired feature's placeholders and surfaces in the same change that retires it; otherwise the close has to explain ghosts.
+
+### Cost Observations
+
+- Model mix: project profile `adaptive` (opus for plan/audit/release, sonnet for execution waves)
+- Sessions: 20 days (2026-10-13 → 2026-11-02), 1,054 commits (236 feat) for 26 plans (~40 commits/plan, inflated by the injected engine-1 packages)
+- Notable: the two product pivots removed more code than they added and were the largest scope changes after planning
+
+---
+
 ## Milestone: v1.0.0 — EFX Paint Multi-Track Frames and Reveal
 
 **Shipped:** 2026-10-12
@@ -584,6 +638,8 @@
 | v0.8.0 | ~25+ | 21 | 170 | Standalone window + transport; MVP/TDD recovery phases; D-30 bounded recovery; UAT-first then regression |
 | v0.9.0 | ~10+ | 12 | 100 | Release as a first-class phase; decimal insert series (43.1-43.6); signed publish with stop-condition checklist |
 | v1.0.0 | ~15+ | 14 | 80 | Clean-break package format (no migration); 5 mid-milestone inserts (52.1-52.5); bounded async pilot (XState/Effect); override closeout with CLI acknowledgement |
+| v1.0.1 | ~3 days | 1 (+7 quicks) | 6 | Quicks-first PATCH; release as a first-class phase; override closeout (4 quick-frontmatter YAML repairs + 1 UAT row) |
+| v2.0.0 | ~20 days | 3 | 26 | Probe-first runtime bump; engine-agnostic host split with a pre-move golden; clean-room engine; late single-engine pivot; audit supersession accounting |
 
 ### Cumulative Quality
 
@@ -599,6 +655,8 @@
 | v0.8.0 | ~93,287 | 2,094 changed | 11 (6 new + 5 carried) | 3 advisory (I-01 dead field, I-02 filename, I-03 dev-only origin) |
 | v0.9.0 | ~110,000 | 2,100+ | 9 (2 new + 7 carried) | 0 new (43→44 signed-artifact boundary verified) |
 | v1.0.0 | ~137,784 | 1,740 changed this milestone | 12 (9 new incl. 3 Known Gaps + carried) | 1 blocker + 3 warnings (display setters vs change token; export decode, hide/solo duplication, silent play no-op) |
+| v1.0.1 | ~139,400 | 112 changed | 6 (5 acknowledged at close) | 0 new (7 quicks, every one with a round-trip pin) |
+| v2.0.0 | ~175,000 source (+ ~180k test) | 1,220 changed | 14 (6 new + carried) | 0 blockers; 7 requirements superseded by approved pivots, 1 partial (paper-id undo) |
 
 ### Top Lessons (Verified Across Milestones)
 

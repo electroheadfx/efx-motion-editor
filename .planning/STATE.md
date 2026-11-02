@@ -3,7 +3,7 @@ gsd_state_version: "1.0"
 milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 status: Awaiting next milestone
-stopped_at: Milestone v2.0.0 summary generated
+stopped_at: Milestone v2.0.0 completed and archived
 last_updated: "2026-11-02T14:55:13.550Z"
 last_activity: 2026-11-02
 last_activity_desc: Milestone v2.0.0 completed and archived
@@ -21,10 +21,10 @@ current_phase: 56
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
+See: .planning/PROJECT.md (updated 2026-11-02 after v2.0.0 milestone close)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 56 — efx-watercolor (engine 2, paint-aquarelle, clean-room)
+**Current focus:** Planning the next milestone — v2.0.0 shipped and archived 2026-11-02 (single-engine Water color workstation); run `/gsd-new-milestone`
 
 ## Current Position
 
@@ -183,6 +183,13 @@ Last activity: 2026-11-02 — Milestone v2.0.0 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- v2.0.0 ships ONE Water color engine and ONE module: the module switcher and the Krita placeholder were removed pre-publish (261102-iv5); Krita is neither implemented nor planned.
+- Brushes are preset-only (custom PNG/JPG tip import retired with the Brush tab); `brushPack.entries` is empty by design.
+- Watercolor paper is baked into the sheet — a paper change is a cache miss, not a `paperPass` composite; `paperPass` is skipped for transmittance sheets.
+- Paper id is display-only and not undoable; the grain pair (strength/scale) is undoable and rehydrates the settings + active-track mirror.
+- The Studio script law lives in the Preact-free `efx-paint-host`; `StudioStroke<P>` / `EngineAdapter<P>` stay generic, and Apply is fail-closed with named refusals.
+- Time is a 60 Hz integer tick grid; determinism is FNV-1a traceSeed per stroke with no `Math.random()` in the deposit/sim path.
+- `efx-spectral` is off the production path (single-engine pivot); the dead package/import is optional cleanup.
 - v1.0.0 is a clean format break: pre-v1.0 Paint projects are discarded/unsupported; no migration or compatibility shim; legacy data fails explicitly.
 - Architectural invariant locked: one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor.
 - Multi-track means internal Paint frame tracks inside one opened EFX Paint document; no `Sequence.frameTracks`, no main-editor rows for internal tracks, no direct main-renderer iteration over internal tracks.
@@ -688,9 +695,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-02T14:13:58.431Z
-Stopped at: Milestone v2.0.0 summary generated
-Resume file: .planning/reports/MILESTONE_SUMMARY-v2.0.0.md
+Last session: 2026-11-02
+Stopped at: Milestone v2.0.0 completed and archived (override_closeout)
+Resume file: .planning/milestones/v2.0.0-ROADMAP.md
 
 ## Operator Next Steps
 
