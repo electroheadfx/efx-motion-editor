@@ -4,9 +4,9 @@ plan: 261023-h9v
 subsystem: physic-paint
 tags: [preact-signals, brush-script, navigation, rehydration, move-overlay, dev-probe, budget]
 requires:
-  - quick 261023-g4p
+  - quick: 261023-g4p
     provides: per-frame brush script store, completion listener, shared Move/script-edition seam
-  - quick 261023-f9c
+  - quick: 261023-f9c
     provides: DEV script-memory probe and snapshot builder
 provides:
   - complete/partial per-frame brush script bookkeeping with sticky completeness

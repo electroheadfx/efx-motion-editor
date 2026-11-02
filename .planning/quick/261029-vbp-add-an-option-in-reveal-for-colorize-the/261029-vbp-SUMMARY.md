@@ -12,7 +12,7 @@ requires:
 
 provides:
   - Reveal Colorize option (checkbox + 0-100 mix) that tints the revealed photo with the per-stroke wash pigment
-  - 'color' draw on a scratch canvas pre-loaded with the placed-reference footprint, transferred by 'source-atop' before the destination-in mask
+  - "'color' draw on a scratch canvas pre-loaded with the placed-reference footprint, transferred by 'source-atop' before the destination-in mask"
   - Both-or-neither persisted colorize/colorizeMix pair threaded through replay, payload clone, rail-set duplicate, undo settlement, bridge equality and save/load
 
 affects: [reveal-edit-mode, phase-53, compositor-work]

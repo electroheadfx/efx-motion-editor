@@ -22,7 +22,7 @@ provides:
   - Frame overrides inside a written span are legal and resolve to the source key's base
   - Reveal rails as legal Run Script stack destinations with a render-only photo-reference tail bake
   - Reveal stack dialog composition (Colorize / Photo wiggle / Paint seed; read-only reference notice)
-  - `renderRevealTailFrames` render-only store port (no records, no interpolation break)
+  - "`renderRevealTailFrames` render-only store port (no records, no interpolation break)"
 
 affects: [physic-paint-roto, roto-play-script, roto-reveal, physics-paint-studio]
 

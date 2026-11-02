@@ -1,5 +1,35 @@
 # Milestones
 
+## v2.0.0 Multi-Module Paint Workstation (MAJOR) (Shipped: 2026-11-02)
+
+**Phases completed:** 3 phases, 26 plans, 50 tasks
+
+**Closeout type:** override_closeout
+**Known verification overrides:** 3 newly acknowledged (2 debug sessions, 1 todo); 5 quick tasks reconciled by repairing unparseable SUMMARY frontmatter; 129 carried forward from prior closes (see STATE.md Deferred Items). Phases 54 and 55 verification is stale only because the release version bump changed `package.json` version strings after the verifiers ran — no source drift; both reported `passed` on 2026-11-02.
+**Git range:** `v1.0.1` → `b373433` (1,054 commits, 236 feat), 2026-10-13 → 2026-11-02 (20 days)
+**Requirements:** 39/39 checked (38 REQ + QUICK-01) — 31 satisfied as written, 1 partial supersession (PAPER-03 paper-id undo), 7 fully superseded by approved pivots
+**Lines of code:** ~175k TS/TSX source + ~180k test lines + 13.3k Rust
+**Archives:** `milestones/v2.0.0-ROADMAP.md`, `milestones/v2.0.0-REQUIREMENTS.md`, `milestones/v2.0.0-MILESTONE-AUDIT.md`
+**Phases:** `milestones/v2.0.0-phases/` (Phases 54, 55, 56)
+
+**Delivered:** A single-engine Water color workstation. Preact 11 with exactly one `preact` copy and the `paintVersion` discipline intact; the Studio script law moved into a Preact-free engine-agnostic `efx-paint-host` (generic `StudioStroke<P>` / `EngineAdapter<P>`, 60 Hz integer tick grid, bounded-queue bake host, four named fail-closed Apply refusals); a clean-room `efx-watercolor` engine with deterministic spectral pigment, wet-in-wet blooms, wet-on-dry edges and tide lines, four tools, a preset brush library, and a 13-paper pack baked into the sheet; the dual-language `.mce` field contract extended to every new field. Published as a signed/notarized GitHub **Latest** release on 2026-11-02.
+
+**Key accomplishments:**
+
+1. Preact 11 migration proven live: compatibility probe before any pin moved, one `preact` copy workspace-wide, JSX-namespace seams migrated, A1–A5 reactivity UAT closed
+2. Engine-agnostic host split: animation schedules, traceSeed, script envelope and the 60 Hz integer tick grid moved out of engine-1 with an import-graph pin holding the API generic over the per-engine payload
+3. Fail-closed script law: `StudioScriptEnvelope<P>` with an opaque payload, four named visible Apply refusals, and a standing no-partial-write pin
+4. Clean-room watercolor engine: wet-in-wet blooms, hard wet-on-dry edges and dark tide lines survive into baked frames, with FNV-1a seeded deterministic replay
+5. Aquarelle Studio surface: four tools, 8 globals + per-brush multipliers, preset tips, recorded Dry events, and a WebP bake that survives leaving the frame
+6. Paper pack: 13 named papers (10 procedural + 3 recovered real scans) with document-level display state, undoable grain pair, and a picker in the shared panel
+7. `.mce` honesty: every new field declared in both TS and Rust, brush-pack snapshot inline by design, cross-engine Apply refuses and writes nothing
+
+**Accepted supersessions:** AQUA-03 custom tip import · MOD-01/02/06 module switcher and Krita · MOD-04 brush-pack entries · PAPER-02 paper compositing · PAPER-03 paper-id undo · SPEC-04 shared spectral package. See `milestones/v2.0.0-MILESTONE-AUDIT.md`.
+
+**Technical debt carried forward:** `paperPass` CR-01 partial-alpha wash waived (WINDOWS #79) · dual paper-fingerprint drift risk · dead `efx-spectral` path · Phase 54/55 review advisories · preact 11.0.x virtual-store residue · Phase 56 SUMMARY frontmatter omissions.
+
+---
+
 ## v1.0.1 Debt Patch Release (Shipped: 2026-10-14)
 
 **Phases completed:** 1 phases, 6 plans, 12 tasks

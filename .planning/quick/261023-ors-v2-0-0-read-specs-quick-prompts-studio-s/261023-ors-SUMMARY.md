@@ -15,9 +15,9 @@ requires:
 provides:
   - A LAST "Memory" top-pane tab in both modes showing Scripts (watercolor timeline + brush store, per frame and total) and the four frame caches as separate lines
   - Confirmed per-key purge (one frame) and clear-all (active rail only), pixels kept, editability lost and stated
-  - `persistAfterPurge`: rewrite the authoritative snapshot leg, then delete the stale app-cache fallback only when bound and clean
-  - `studio_script_snapshot_delete` (scope `cache` | `both`) + `ipcStudioScriptSnapshotDelete`
-  - The committed rail-delete cascade: `commitDeleteTrack` -> one registered hook -> `remove(..., 'both')`, binding cleared first
+  - "`persistAfterPurge`: rewrite the authoritative snapshot leg, then delete the stale app-cache fallback only when bound and clean"
+  - "`studio_script_snapshot_delete` (scope `cache` | `both`) + `ipcStudioScriptSnapshotDelete`"
+  - "The committed rail-delete cascade: `commitDeleteTrack` -> one registered hook -> `remove(..., 'both')`, binding cleared first"
 affects: [v2.0.0-milestone-close, studio-script-snapshot-hardening]
 
 actuals:

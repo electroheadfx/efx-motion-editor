@@ -12,7 +12,7 @@ requires:
     provides: Group Regenerate lifecycle shape and the per-key frozen settings
 provides:
   - buildStandardStackedLoopClip whitelist merge projection and isStandardMergedLoopClip
-  - 'standard' presentation lifecycle, Standard labels, merged status/regenerate/replay copy, no dot
+  - "'standard' presentation lifecycle, Standard labels, merged status/regenerate/replay copy, no dot"
   - gray #9CA3AF Standard rail line in the active lane and on non-active rows
   - merged-rail Regenerate/Replay refusal at both entry points with zero writes
   - Standard classification for delete scope and rail-set copy
