@@ -2,7 +2,9 @@
 
 ![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes: import key photographs, arrange them into timed sequences, composite multi-track layers with blend modes and keyframe animation, apply cinematic FX and GLSL shaders, paint and rotoscope frame-by-frame, and export PNG image sequences or video (ProRes/H.264/AV1). Alongside the photo pipeline stands a second pillar — the **Water color Studio**: a standalone window where a physical watercolour engine, a deterministic Roto timeline, a reusable Scripts library, and a per-document sound track turn hand-drawn animation into Loop Clips on the main timeline.
+**Physical watercolor painting, animated in time.** A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes: import key photographs, arrange them into timed sequences, composite multi-track layers with blend modes and keyframe animation, apply cinematic FX and GLSL shaders, paint and rotoscope frame-by-frame, and export PNG image sequences or video (ProRes/H.264/AV1). Alongside the photo pipeline stands a second pillar — the **Water color Studio**: a standalone window where a physical watercolour engine, a deterministic Roto timeline, a reusable Scripts library, and a per-document sound track turn hand-drawn animation into Loop Clips on the main timeline.
+
+[Download the latest release](https://github.com/electroheadfx/efx-motion-editor/releases/latest) · macOS (Apple Silicon)
 
 <!-- Screenshot: Main editor view -->
 
