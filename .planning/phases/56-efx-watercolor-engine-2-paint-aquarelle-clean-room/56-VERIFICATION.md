@@ -75,4 +75,4 @@ row-by-row record lives in `56-UAT.md`.
 
 ## Verdict
 
-**automated-ready.** Gates green; rows A1–A5 staged in `56-UAT.md` for the end-of-phase human batch. AQUA-08 closes only when the user asserts A1–A5 (A3 as live visual).
+**passed.** Gates green and rows A1–A5 user-asserted live on 2026-10-21 (A3 as live visual). AQUA-08 is closed; the row-by-row record lives in `56-UAT.md`.

@@ -1,8 +1,10 @@
 ---
 id: 261003-d08-tier-parity-harness-rescope
 title: "Retire or re-scope the D-08 tier-parity harness row to the one-pipeline contract"
-status: pending
+status: completed
 created: 2026-10-03
+completed: 2026-11-02
+resolution: "Obsolete by deletion, not by re-scope: quick 261027-klx (commit 79ca98046, engine-1-only module removal, native UAT approved 2026-10-27) deleted app/src/components/physic-paint/performance/depositSpeckleCapture.ts and every computeTierParityMetrics/tierParity reference. No DH1 row remains to retire or re-scope."
 resolves_phase: "53.1"
 source: 52.4-REVIEW.md CR-01
 severity: critical

@@ -52,8 +52,23 @@ fn capability_split_denies_standalone_filesystem_authority() {
     let main = fs::read_to_string(root.join("capabilities/default.json")).unwrap();
     let standalone = fs::read_to_string(root.join("capabilities/physics-paint.json")).unwrap();
     assert!(main.contains("dialog") || main.contains("fs"));
-    for forbidden in ["fs:", "dialog:", "path:", "script_library", "project_save"] {
+    // 49-04: the standalone window carries ONE user-mediated permission for its
+    // image picker — dialog:allow-open returns a chosen path and grants no
+    // filesystem authority. The split still denies fs/path/script-library/
+    // project-save surfaces and every broader dialog permission.
+    for forbidden in [
+        "fs:",
+        "path:",
+        "script_library",
+        "project_save",
+        "dialog:default",
+        "dialog:allow-save",
+        "dialog:allow-message",
+        "dialog:allow-ask",
+        "dialog:allow-confirm",
+    ] {
         assert!(!standalone.contains(forbidden), "standalone capability exposed {forbidden}");
     }
+    assert!(standalone.contains("\"dialog:allow-open\""));
     assert!(standalone.contains("core:event") && standalone.contains("core:window"));
 }
