@@ -241,6 +241,41 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
 }
 
 /**
+ * QUICK-01 (Studio sound only): a freshly imported clip LONGER than the
+ * visible timeline window lands pre-cropped to that window — the same crop the
+ * manual Fit to view applies, so a long take no longer needs hand-dragged trim
+ * handles before it is usable. A source that already fits, or an absent
+ * viewport, keeps the full-span defaults.
+ */
+export function fitImportedSoundClip(
+  clip: DocumentSoundClip,
+  viewport: { readonly visStart: number; readonly visEnd: number } | null,
+): DocumentSoundClip {
+  if (!viewport) return clip;
+  const viewSpan = Math.round(viewport.visEnd) - Math.round(viewport.visStart);
+  if (!Number.isFinite(viewSpan) || viewSpan <= 0) return clip;
+  if (clip.sourceFrames <= viewSpan) return clip;
+  const fit = computeAudioFitToView(
+    {
+      inFrame: clip.inFrame,
+      outFrame: clip.outFrame,
+      offsetFrame: clip.startFrame,
+      slipOffset: clip.slipOffset,
+      totalFramesInFile: clip.sourceFrames,
+    },
+    viewport,
+  );
+  if (!fit) return clip;
+  return {
+    ...clip,
+    startFrame: fit.offsetFrame,
+    inFrame: fit.inFrame,
+    outFrame: fit.outFrame,
+    slipOffset: fit.slipOffset,
+  };
+}
+
+/**
  * Replace path: source identity swaps; position and in/out are preserved
  * unless the new source is shorter, then outFrame clamps to the source length
  * (never below a 1-frame span; inFrame follows when the clamp would invert).
@@ -527,7 +562,7 @@ export function usePhysicsPaintAudioController({
   const applyImportedSource = (source: ImportedSoundSource): DocumentSoundResult => {
     if (!document) return { ok: false, reason: 'no-document' };
     const fps = getFps();
-    const next = buildFreshSoundClip(source, fps);
+    const next = fitImportedSoundClip(buildFreshSoundClip(source, fps), getTimelineViewport());
     const result = addSound(layerId, next);
     if (result.ok) {
       selectedSoundId.value = next.id;

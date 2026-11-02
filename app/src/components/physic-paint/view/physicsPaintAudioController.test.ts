@@ -526,6 +526,56 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(selectedSoundId.value).toBe(added.id);
   });
 
+  it('applyImportedSource auto-trims a source longer than the visible view (QUICK-01)', () => {
+    const { controller, addSound } = makeController({
+      selection: null,
+      getTimelineViewport: () => ({ visStart: 0, visEnd: 100 }),
+    });
+    const result = controller.applyImportedSource({
+      sourceId: 'asset-9',
+      sourcePath: '/Users/test/Music/long.wav',
+      durationSec: 10, // 240 frames at 24fps — longer than the 100-frame view
+    });
+    expect(result.ok).toBe(true);
+    const added = addSound.mock.calls[0][1];
+    expect(added.sourceFrames).toBe(240);
+    expect(added.inFrame).toBe(0);
+    expect(added.outFrame).toBe(100);
+    expect(added.startFrame).toBe(0);
+    expect(added.slipOffset).toBe(0);
+  });
+
+  it('applyImportedSource keeps the full span when the source fits or no viewport exists (QUICK-01)', () => {
+    const fits = makeController({
+      selection: null,
+      getTimelineViewport: () => ({ visStart: 0, visEnd: 300 }),
+    });
+    fits.controller.applyImportedSource({ sourceId: 'asset-a', sourcePath: '/a.wav', durationSec: 10 });
+    expect(fits.addSound.mock.calls[0][1]).toMatchObject({ inFrame: 0, outFrame: 240, startFrame: 0 });
+
+    const noViewport = makeController({ selection: null, getTimelineViewport: () => null });
+    noViewport.controller.applyImportedSource({ sourceId: 'asset-b', sourcePath: '/b.wav', durationSec: 10 });
+    expect(noViewport.addSound.mock.calls[0][1]).toMatchObject({ inFrame: 0, outFrame: 240, startFrame: 0 });
+  });
+
+  it('applyImportedSource moves a long source into a scrolled view (QUICK-01)', () => {
+    const { controller, addSound } = makeController({
+      selection: null,
+      getTimelineViewport: () => ({ visStart: 500, visEnd: 700 }),
+    });
+    controller.applyImportedSource({
+      sourceId: 'asset-9',
+      sourcePath: '/Users/test/Music/long.wav',
+      durationSec: 10,
+    });
+    expect(addSound.mock.calls[0][1]).toMatchObject({
+      inFrame: 0,
+      outFrame: 200,
+      startFrame: 500,
+      slipOffset: 0,
+    });
+  });
+
   it('applyReplacedSource swaps only the selected clip, preserving position and in/out', () => {
     const { controller, patchSound, addSound } = makeController({ selection: 'clip-a' });
     const result = controller.applyReplacedSource({
