@@ -28,8 +28,6 @@ const DEP_FIELDS = [
   'optionalDependencies',
 ] as const;
 
-type DepField = (typeof DEP_FIELDS)[number];
-
 interface ManifestData {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
