@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 0
 waived_count: 18
-fixed_count: 89
+fixed_count: 90
 total_count: 108
-last_updated: 2026-11-02T10:27:56.201Z
+last_updated: 2026-11-02T10:34:06.540Z
 ---
 
 # Broken Windows Ledger
@@ -105,7 +105,7 @@ last_updated: 2026-11-02T10:27:56.201Z
 | 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | waived | Target test removed (physicsPaintTemporaryMove.test.ts); feature no longer exists. | 2026-10-04T09:42:45.463Z | 2026-11-02T10:02:26.878Z |
 | 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | fixed |  | 2026-10-04T11:38:08.668Z | 2026-11-02T10:02:24.408Z |
 | 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | fixed |  | 2026-10-06T07:22:49.055Z | 2026-11-02T10:01:48.707Z |
-| 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | open |  | 2026-10-07T09:28:34.433Z |  |
+| 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | fixed |  | 2026-10-07T09:28:34.433Z | 2026-11-02T10:34:06.540Z |
 | 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | fixed |  | 2026-10-12T10:09:09.907Z | 2026-11-02T10:02:24.523Z |
 | 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | fixed |  | 2026-10-12T21:07:57.950Z | 2026-11-02T10:02:24.636Z |
 | 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | fixed |  | 2026-10-12T21:07:58.234Z | 2026-11-02T10:02:24.747Z |
@@ -1231,10 +1231,10 @@ last_updated: 2026-11-02T10:27:56.201Z
     "file": ".planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md",
     "line": null,
     "description": "01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-07T09:28:34.433Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:34:06.540Z",
     "milestone": "v1.0.0"
   },
   {
