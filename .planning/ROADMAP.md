@@ -60,6 +60,8 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 **Milestone Goal:** Change the product shape into a multi-module paint workstation — a module switcher (Brush | Water color | Krita) over ONE shared Studio engine, shipping Brush + Water color, unlocked by a Preact 11 bump and an engine-1 host split.
 
+**Shipped shape (2026-11-02 close-out):** Water color is the only active engine and module; Brush was retired with engine-1 by quick 261027-klx (native UAT approved 2026-10-27), and Krita remains the inert v2.1.0 slot. Brushes are preset-only (custom tip import was retired with the Brush tab), paper is baked into the watercolor sheet rather than composited through `paperPass`, and `@efxlab/efx-spectral` is retired from the production path. The accepted supersessions are recorded in REQUIREMENTS.md § Close-out Notes and `.planning/v2.0.0-MILESTONE-AUDIT.md`.
+
 **Phase structure LOCKED by the user (2026-10-14).** Global phase numbering continues from v1.0.1 (ended at Phase 53.1). Do not invent, merge, split, or reorder phases. v2.1.0 (Krita) is planned only AFTER this milestone closes — there is no Krita phase here.
 
 **Hard sequencing gates (encoded as phase dependencies and success criteria):**
@@ -194,3 +196,5 @@ Phases execute in numeric order: 54 → 55 → 56 (with QUICK-01 runnable as an 
 | 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 11/11 | Complete    | 2026-10-21 |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Complete | 2026-11-02 |
+
+**Close-out status (2026-11-02):** Milestone audit complete. One open item remains: PAPER-03's undo leg (see `phases/56-efx-watercolor-engine-2-paint-aquarelle-clean-room/56-VALIDATION.md`, `nyquist_compliant: false`). The release runs through the `efx-motion-release` skill outside the phase structure — no release phase is inserted for v2.0.0.
