@@ -33,7 +33,7 @@ import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPh
 // efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
 // cycle is safe: efxPaintStore references physicPaintStore ONLY inside function
 // bodies (never in its module body), so no TDZ `let` is written mid-evaluation.
-import { getDocument as getEfxPaintDocument, setBackgroundFallback } from './efxPaintStore';
+import { getDocument as getEfxPaintDocument, setBackgroundFallback, type BackgroundEditDescriptor } from './efxPaintStore';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../efx-paint/document/efxPaintDocument';
 // 49-02 Task 3 (BKG-09): the reopen-path hydration resolves each background
 // clip source ref to its library asset URL (efxasset://) and decodes bytes.
@@ -1753,9 +1753,9 @@ function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaint
 function _writePaperDisplay(
   layerId: string,
   edit: { paperId?: string; strength?: number; scale?: number },
-): boolean {
+): BackgroundEditDescriptor | null {
   const efxDocument = getEfxPaintDocument(layerId);
-  if (!efxDocument) return false;
+  if (!efxDocument) return null;
   const source = _resolveFondSource(layerId, efxDocument);
   // 261017-dc2: the legal "no paper" encoding is 'transparent' (see
   // `_resolveFondSource`) — never construct `background: ''`, which is not a
@@ -1787,13 +1787,13 @@ function _writePaperDisplay(
     current.background === nextBackground
     && current.grainStrength === grainStrength
     && current.grainScale === grainScale
-  ) return false;
+  ) return null;
 
   // 261017-dc2: a strength/scale-only edit on a non-paper source has no paper
-  // to edit — return false without writing. A transparent track mirror would
+  // to edit — return null without writing. A transparent track mirror would
   // hide a solid-colour document fond (`_resolveFondSource` returns null on a
   // transparent mirror and never falls through).
-  if (nextBackground === 'transparent' && edit.paperId === undefined) return false;
+  if (nextBackground === 'transparent' && edit.paperId === undefined) return null;
 
   // Document fallback arm — setBackgroundFallback bumps documentRevision, so
   // the display-class change token rotates (D-22 / PAPER-03 save participation).
@@ -1807,7 +1807,7 @@ function _writePaperDisplay(
       grainStrength,
       grainScale,
     });
-  if (!wrote.ok) return false;
+  if (!wrote.ok) return null;
 
   // Active track's paper mirror — the fond resolution prefers the mirror, and
   // the write clears both flattened memos (48-03 T-48-07).
@@ -1831,7 +1831,7 @@ function _writePaperDisplay(
   // Fond signature rotation (the explicit-edit arm of 260920-k34).
   const latest = getEfxPaintDocument(layerId);
   if (latest) _rotateFlattenedMemoOnFondChange(layerId, latest);
-  return true;
+  return wrote.descriptor;
 }
 
 /**
@@ -3534,16 +3534,18 @@ export const physicPaintStore = {
   // 56-05 (PAPER-03 / D-22): paper display setters — display-class edits that
   // join the document fond (id / strength / scale). Same-value sets are
   // revision-stable no-ops; different-value sets rotate the change token and
-  // clear the flattened memo. Never touch a baked WebP cache path.
-  setPaperId(layerId: string, paperId: string): boolean {
+  // clear the flattened memo. Each returns the committed
+  // BackgroundEditDescriptor (null on no-op/failure) so the Studio records one
+  // undo step per edit. Never touch a baked WebP cache path.
+  setPaperId(layerId: string, paperId: string): BackgroundEditDescriptor | null {
     return _writePaperDisplay(layerId, { paperId });
   },
 
-  setPaperStrength(layerId: string, strength: number): boolean {
+  setPaperStrength(layerId: string, strength: number): BackgroundEditDescriptor | null {
     return _writePaperDisplay(layerId, { strength });
   },
 
-  setPaperScale(layerId: string, scale: number): boolean {
+  setPaperScale(layerId: string, scale: number): BackgroundEditDescriptor | null {
     return _writePaperDisplay(layerId, { scale });
   },
 

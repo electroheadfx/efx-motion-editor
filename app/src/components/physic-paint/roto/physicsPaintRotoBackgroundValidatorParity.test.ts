@@ -130,8 +130,8 @@ describe('NO EMPTY-STRING WRITE — _writePaperDisplay never stores background: 
 
   it('strength / scale-only edits on a non-paper source never write an empty-string background', () => {
     const activeTrackId = getEfxPaintDocument(LAYER)!.activeTrackId;
-    expect(physicPaintStore.setPaperStrength(LAYER, 0.8)).toBe(false);
-    expect(physicPaintStore.setPaperScale(LAYER, 2)).toBe(false);
+    expect(physicPaintStore.setPaperStrength(LAYER, 0.8)).toBeNull();
+    expect(physicPaintStore.setPaperScale(LAYER, 2)).toBeNull();
     const mirror = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
     expect(mirror === null || mirror.background !== EMPTY_BACKGROUND).toBe(true);
     if (mirror) expect(isPhysicPaintRotoBackgroundMetadata(mirror)).toBe(true);
@@ -139,11 +139,11 @@ describe('NO EMPTY-STRING WRITE — _writePaperDisplay never stores background: 
 
   it('setPaperId writes a legal paper/* mirror; an explicit transparent clear writes the legal no-paper encoding', () => {
     const activeTrackId = getEfxPaintDocument(LAYER)!.activeTrackId;
-    expect(physicPaintStore.setPaperId(LAYER, 'paper/rough')).toBe(true);
+    expect(physicPaintStore.setPaperId(LAYER, 'paper/rough')).not.toBeNull();
     const paperMirror = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
     expect(paperMirror?.background).toBe('paper/rough');
 
-    expect(physicPaintStore.setPaperId(LAYER, 'transparent')).toBe(true);
+    expect(physicPaintStore.setPaperId(LAYER, 'transparent')).not.toBeNull();
     const cleared = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
     expect(cleared?.background).toBe('transparent');
     expect(cleared === null || cleared.background !== EMPTY_BACKGROUND).toBe(true);

@@ -3320,12 +3320,12 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(undoStart).toBeGreaterThan(-1);
     const undoBlock = studio.slice(undoStart, studio.indexOf('const redo = useCallback', undoStart));
     expect(undoBlock).toContain('if (isPlaying) return false;');
-    expect(undoBlock).toContain('}, [rotoMoveHistoryUndo, rotoScript, isPlaying]);');
+    expect(undoBlock).toContain('}, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);');
     const redoStart = studio.indexOf('const redo = useCallback(async () => {');
     expect(redoStart).toBeGreaterThan(-1);
     const redoBlock = studio.slice(redoStart, studio.indexOf('// 52.1 (undo/redo shortcut)', redoStart));
     expect(redoBlock).toContain('if (isPlaying) return false;');
-    expect(redoBlock).toContain('}, [rotoMoveHistoryRedo, rotoScript, isPlaying]);');
+    expect(redoBlock).toContain('}, [rotoMoveHistoryRedo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);');
     // The ledger itself stays playback-agnostic.
     expect(historyHook).not.toContain('stopPlayback');
   });
@@ -6049,5 +6049,28 @@ describe('quick 261101-o2m — review fixes: guarded track switch, delete close 
     const ensureAt = del.indexOf('await ensureAquarelleDurableBaseRef.current(playFrame);');
     const rereadAt = del.indexOf('if (draft && draftMode.peek()) {');
     expect(rereadAt, 'the delete re-reads Draft after the await').toBeGreaterThan(ensureAt);
+  });
+});
+
+describe('Paper display edits record one unified-ledger undo entry (PAPER-03)', () => {
+  it('records the paper setter descriptor in all three Studio paper callbacks', () => {
+    for (const handler of ['handleGrainScaleChange', 'handleGrainStrengthChange', 'handlePaperIdChange']) {
+      const start = studio.indexOf(`const ${handler} =`);
+      expect(start, `${handler} exists`).toBeGreaterThan(-1);
+      const body = studio.slice(start, studio.indexOf('\n  };', start) + 5);
+      expect(body, `${handler} records the paper edit`).toContain('recordPaperDisplayEdit(');
+    }
+  });
+
+  it('merges the paper setter and fallback write-through into ONE ledger descriptor', () => {
+    const start = studio.indexOf('const recordPaperDisplayEdit = (');
+    expect(start).toBeGreaterThan(-1);
+    const helper = studio.slice(start, studio.indexOf('\n  };', start) + 5);
+    expect(helper).toContain('rotoMoveHistory.recordBackgroundEdit(');
+    expect(helper).toContain('after: last.after');
+    // Undo/redo rehydrate the derived settings + track mirror from the
+    // restored document fallback, so the visible paper steps with the ledger.
+    expect(studio).toContain('syncBackgroundSettingsFromDocument();');
+    expect(studio).toContain('const syncBackgroundSettingsFromDocument = useCallback(');
   });
 });

@@ -38,6 +38,7 @@ import {
   setTrackOpacity,
   setTrackVisible,
   deleteBackgroundClip,
+  type BackgroundEditDescriptor,
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
@@ -2629,17 +2630,36 @@ export function PhysicsPaintStudio() {
   // paper-display record (setPaper*) so the paper-display record and the
   // document fallback / track metadata stay in sync in the same turn. The
   // paper-only pair is gone — one pair only (Q6).
+  // PAPER-03 (2026-11-02): one paper display edit can write the fond twice in
+  // one turn — the paper setter and the settings write-through. Record ONE
+  // unified-ledger entry spanning both writes so Undo returns to the pre-edit
+  // document, never to an intermediate one.
+  const recordPaperDisplayEdit = (
+    paperEdit: BackgroundEditDescriptor | null,
+    fallbackEdit: BackgroundEditDescriptor | null,
+  ) => {
+    if (!paperEdit && !fallbackEdit) return;
+    const first = paperEdit ?? fallbackEdit!;
+    const last = fallbackEdit ?? paperEdit!;
+    rotoMoveHistory.recordBackgroundEdit(
+      first === last ? first : { ...first, operationId: crypto.randomUUID(), after: last.after },
+    );
+  };
   const handleGrainScaleChange = (scale: number) => {
     const layerId = launchContext?.layerId;
     const nextSettings = { ...settings, grainScale: scale };
     setGrainScale(scale);
+    let paperEdit: BackgroundEditDescriptor | null = null;
     if (layerId) {
-      physicPaintStore.setPaperScale(layerId, scale);
+      paperEdit = physicPaintStore.setPaperScale(layerId, scale);
       physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
     }
+    let fallbackEdit: BackgroundEditDescriptor | null = null;
     if (layerId && settings.background !== 'photo') {
-      setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
+      const result = setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
+      fallbackEdit = result.ok ? result.descriptor : null;
     }
+    recordPaperDisplayEdit(paperEdit, fallbackEdit);
   };
   // 260925-iy6 UAT follow-up: same synchronous write-through as the scale —
   // the strength must clear both flattened memos and bump the version clock in
@@ -2648,21 +2668,26 @@ export function PhysicsPaintStudio() {
     const layerId = launchContext?.layerId;
     const nextSettings = { ...settings, grainStrength: strength };
     setGrainStrength(strength);
+    let paperEdit: BackgroundEditDescriptor | null = null;
     if (layerId) {
-      physicPaintStore.setPaperStrength(layerId, strength);
+      paperEdit = physicPaintStore.setPaperStrength(layerId, strength);
       physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
     }
+    let fallbackEdit: BackgroundEditDescriptor | null = null;
     if (layerId && settings.background !== 'photo') {
-      setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
+      const result = setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
+      fallbackEdit = result.ok ? result.descriptor : null;
     }
+    recordPaperDisplayEdit(paperEdit, fallbackEdit);
   };
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
   // token). Transparent / White route through handleBackgroundChange.
   const handlePaperIdChange = (paperId: string) => {
     const layerId = launchContext?.layerId;
-    if (layerId) physicPaintStore.setPaperId(layerId, paperId);
+    const paperEdit = layerId ? physicPaintStore.setPaperId(layerId, paperId) : null;
     setBackground(paperId as StudioBackgroundMode);
+    recordPaperDisplayEdit(paperEdit, null);
   };
   // key-spacing-script-loss (brush + quick-261024-m20 watercolor): both session
   // stores follow the physical key IDENTITY. Force-spacing rewrites appFrames
@@ -5913,21 +5938,56 @@ export function PhysicsPaintStudio() {
   // is byte-identical.
   const rotoMoveHistoryUndo = rotoMoveHistory.undo;
   const rotoMoveHistoryRedo = rotoMoveHistory.redo;
+  // PAPER-03 (2026-11-02): a background descriptor restores the DOCUMENT, but
+  // the Studio settings and the active track's paper mirror are derived state.
+  // Rehydrate them from the restored fallback after undo/redo so a paper edit
+  // actually steps back (and forward) on screen, not just on disk.
+  const syncBackgroundSettingsFromDocument = useCallback(() => {
+    const lc = launchContextRef.current;
+    const layerId = lc?.layerId;
+    if (!layerId) return;
+    const document = getEfxPaintDocument(layerId);
+    const fallback = document?.background.fallback;
+    if (!fallback) return;
+    const hydrated = applyBackgroundFallbackToSettings(fallback);
+    setSettings((current) => (
+      current.background === hydrated.background
+      && current.grainStrength === hydrated.grainStrength
+      && current.grainScale === hydrated.grainScale
+        ? current
+        : {
+          ...current,
+          background: hydrated.background,
+          grainStrength: hydrated.grainStrength,
+          grainScale: hydrated.grainScale,
+        }
+    ));
+    const trackId = document?.activeTrackId ?? trackIdOfLaunch(lc);
+    if (trackId) {
+      physicPaintStore.setRotoBackgroundMetadata(layerId, trackId, buildRotoBackgroundMetadata(hydrated));
+    }
+  }, [setSettings]);
   // 261029-lsr UAT row 5 (user decision): cached playback is a read-only
   // preview — undo/redo are inert until it stops. Pressing Cmd+Z while playing
   // is a no-op, never a hidden document edit under the playing frames.
   const undo = useCallback(async () => {
     if (isPlaying) return false;
     const changed = await rotoMoveHistoryUndo();
-    if (changed) rotoScript.notifySourceRevision();
+    if (changed) {
+      rotoScript.notifySourceRevision();
+      syncBackgroundSettingsFromDocument();
+    }
     return changed;
-  }, [rotoMoveHistoryUndo, rotoScript, isPlaying]);
+  }, [rotoMoveHistoryUndo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);
   const redo = useCallback(async () => {
     if (isPlaying) return false;
     const changed = await rotoMoveHistoryRedo();
-    if (changed) rotoScript.notifySourceRevision();
+    if (changed) {
+      rotoScript.notifySourceRevision();
+      syncBackgroundSettingsFromDocument();
+    }
     return changed;
-  }, [rotoMoveHistoryRedo, rotoScript, isPlaying]);
+  }, [rotoMoveHistoryRedo, rotoScript, isPlaying, syncBackgroundSettingsFromDocument]);
 
   // 52.1 (undo/redo shortcut): Cmd+Z / Cmd+Shift+Z are intercepted by the native
   // macOS menu at the Cocoa layer and emitted as menu:undo / menu:redo events —

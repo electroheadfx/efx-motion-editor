@@ -65,11 +65,21 @@ afterEach(() => {
 });
 
 describe('paper display setters on physicPaintStore (PAPER-03)', () => {
-  it('setPaperId / setPaperStrength / setPaperScale exist and return a boolean', () => {
+  it('setPaperId / setPaperStrength / setPaperScale exist and return a BackgroundEditDescriptor', () => {
     expect(typeof physicPaintStore.setPaperId).toBe('function');
     expect(typeof physicPaintStore.setPaperStrength).toBe('function');
     expect(typeof physicPaintStore.setPaperScale).toBe('function');
-    expect(typeof physicPaintStore.setPaperId(LAYER, 'paper/rough')).toBe('boolean');
+    const descriptor = physicPaintStore.setPaperId(LAYER, 'paper/rough');
+    expect(descriptor).not.toBeNull();
+    expect(descriptor!.operationKind).toBe('set-background-fallback');
+    expect(descriptor!.before.background.fallback).toEqual({
+      mode: 'paper', texture: 'canvas1', grainStrength: 0.5, grainScale: 1,
+    });
+    expect(descriptor!.after.background.fallback).toEqual({
+      mode: 'paper', texture: 'paper/rough', grainStrength: 0.5, grainScale: 1,
+    });
+    // A same-value edit is a revision-stable no-op and emits no undo entry.
+    expect(physicPaintStore.setPaperId(LAYER, 'paper/rough')).toBeNull();
   });
 
   it('getDocumentFondInstruction reflects paper id / strength / scale from the document fond', () => {
@@ -105,7 +115,7 @@ describe('paper display setters on physicPaintStore (PAPER-03)', () => {
     const revisionBefore = buildEfxPaintDocumentRevision(documentBefore);
     const versionBefore = physicPaintVersion.value;
 
-    expect(physicPaintStore.setPaperId(LAYER, 'paper/washi')).toBe(true);
+    expect(physicPaintStore.setPaperId(LAYER, 'paper/washi')).not.toBeNull();
 
     const documentAfter = getEfxPaintDocument(LAYER)!;
     // The paper id is a document-revision term (fallback arm) — the display-

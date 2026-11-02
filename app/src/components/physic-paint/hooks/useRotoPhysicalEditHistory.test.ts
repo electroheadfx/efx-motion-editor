@@ -46,6 +46,7 @@ import {
   registerDocument,
   reset as resetEfxPaintDocumentStore,
   setActiveTrackId,
+  setBackgroundFallback,
   setPhotoReferenceOpacity,
   setPhotoReferenceSource,
 } from '../../../stores/efxPaintStore';
@@ -425,6 +426,60 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
     expect(await history.redo()).toBe(true);
     expect(getDocument(layerId)!.background.clips).toHaveLength(0);
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('records a PAPER-03 paper edit as one undo step and restores the previous fond', async () => {
+    const layerId = 'layer-paper-undo';
+    registerDocument(createEfxPaintDocument(layerId));
+    expect(setBackgroundFallback(layerId, {
+      mode: 'paper',
+      texture: 'canvas1',
+      grainStrength: 0.5,
+      grainScale: 1,
+    }).ok).toBe(true);
+
+    const descriptor = physicPaintStore.setPaperId(layerId, 'paper/rough');
+    expect(descriptor).not.toBeNull();
+    if (!descriptor) throw new Error('paper edit must emit a descriptor');
+    expect(physicPaintStore.setPaperId(layerId, 'paper/rough')).toBeNull();
+
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const history = useRotoPhysicalEditHistory({
+      identity: { trackId: 'track-a', launchOperationId: 'launch-1', layerId, projectContextId: 'project-1', capacity: 100 },
+      availability,
+      coordinator: { executePhysicalEdit: (async () => false) as never, pendingOperationId, acceptedOutput },
+      recordsPort: {
+        getRecords: () => [],
+        getInterpolation: () => ({ enabled: false, mode: 'duplicate' }),
+        getCapacity: () => 100,
+        raiseCapacity: () => {},
+        getLoopClips: () => [],
+        getIncomingInterpolationBreakKeyIds: () => [],
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => spacingSnapshot([], [], null, null),
+      undoPaint: () => false,
+      redoPaint: () => false,
+    });
+
+    history.recordBackgroundEdit(descriptor);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.before);
+    expect(getDocument(layerId)!.background.fallback).toEqual({
+      mode: 'paper', texture: 'canvas1', grainStrength: 0.5, grainScale: 1,
+    });
+
+    expect(await history.redo()).toBe(true);
+    expect(getDocument(layerId)).toBe(descriptor.after);
+    expect(getDocument(layerId)!.background.fallback).toEqual({
+      mode: 'paper', texture: 'paper/rough', grainStrength: 0.5, grainScale: 1,
+    });
   });
 
   it('fails closed on Undo when an unrecorded edit diverged the live document (CR-01)', async () => {
