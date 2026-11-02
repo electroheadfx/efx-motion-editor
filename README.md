@@ -324,4 +324,4 @@ This project is licensed under the GNU General Public License v3.0 or later (GPL
 
 ## Credits
 
-The Water color engine (`packages/efx-watercolor`) vendors the MIT-licensed [Watercolor Playground](https://github.com/msurguy/watercolor-playground) by Maksim Surguy. Thank you, Maks, for making the engine and its published method available.
+The Water color engine (`packages/efx-watercolor`) vendors the MIT-licensed [msurguy/watercolor-playground](https://github.com/msurguy/watercolor-playground) by Maksim Surguy. Thank you, Maks, for making the engine and its published method available.
