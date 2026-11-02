@@ -2407,7 +2407,7 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     expect(studio).toContain('const handleSelectTrackRail');
     const frameStart = studio.indexOf('const handleSelectTrackFrame');
     const frameBlock = studio.slice(frameStart, studio.indexOf('const handleSelectTrackRail', frameStart));
-    expect(frameBlock).toContain('setActiveTrackId(layerId, trackId)');
+    expect(frameBlock).toContain('switchActiveTrack(layerId, trackId, () => {');
     expect(frameBlock).toContain('crossTrackSelectionPendingRef.current = true');
     expect(frameBlock).toContain('handleNavigateToSyncedFrame(frame)');
     expect(frameBlock).toContain('getRotoRealKeyRecordByAppFrame');

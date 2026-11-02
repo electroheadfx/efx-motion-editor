@@ -39,13 +39,17 @@ function isLiveStatement(source: string, needle: string): boolean {
 }
 
 describe('I-09 frame/key selection — swallowed-statement pins', () => {
-  it('handleSelectTrackFrame calls setActiveTrackId as live code (not on a // probe line)', () => {
+  it('handleSelectTrackFrame routes the switch through the live switchActiveTrack seam', () => {
     // bacc26f0 probe comment swallowed `setActiveTrackId(layerId, trackId);`
     // on the same line as the trailing `// …display-state change).` — the
     // cross-track activation never ran and a frame click stayed on the
     // launch frame's track.
+    // 261101-o2m: the raw write moved into ONE Draft-guarded seam. The handler
+    // must route through it, and the seam itself must keep the live raw write.
     const handler = sliceBetween(studio, 'const handleSelectTrackFrame = useCallback', 'const handleSelectTrackRail = useCallback');
-    expect(isLiveStatement(handler, 'setActiveTrackId(layerId, trackId)')).toBe(true);
+    expect(isLiveStatement(handler, 'switchActiveTrack(layerId, trackId')).toBe(true);
+    const seam = sliceBetween(studio, 'const switchActiveTrack = useCallback', 'const handleToggleRotoPlayback = useCallback');
+    expect(isLiveStatement(seam, 'setActiveTrackId(layerId, trackId)')).toBe(true);
   });
 
   it('startFrame propagation reseeds selectedKeyId as live code', () => {
