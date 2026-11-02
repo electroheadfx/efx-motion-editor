@@ -6,7 +6,7 @@ A macOS desktop application for creating **cinematic stop-motion films** from ph
 
 <!-- Screenshot: Main editor view -->
 
-## Highlights (v1.0.0)
+## Highlights
 
 - **Multi-track EFX Paint document** — one parent paint layer now holds a whole frame-animation document: internal tracks with hide/solo/opacity/blend, a deterministic compositor, a fixed Background track, a photo/reference track, and Reveal.
 - **Physics Paint Studio** — its own window (the main window hides while it is open): deterministic Roto timeline, project-scoped Scripts library, document sound track, pressure-driven physics look controls.
@@ -172,6 +172,22 @@ The library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib
 ### Project Format — `.mce`
 
 A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-file per changed paint layer, and `frames/<layerId>/<keyId>.webp` frame media — references only, never inline payloads or machine-local paths. Saves are digest-verified, changed-files-only, and published atomically; audio stays a disk reference, never copied into the package. v1.0.0 is a clean break: pre-v1.0 Physics Paint data is refused with an explicit rejection dialog.
+
+## What's New in v2.0.0
+
+Phases 54 → 56 of the v2.0.0 milestone, plus the in-milestone QUICK-01:
+
+| Area | Shipped |
+|------|---------|
+| Runtime | Preact 11 with `@preact/signals`, one `preact` copy across app and packages; the `paintVersion` bump+subscribe discipline is preserved |
+| Paint host | `@efxlab/efx-paint-host` owns the shared Studio script law — animation schedules, traceSeed, integer tick grid, script envelope — behind a generic `StudioStroke<P>` / `EngineAdapter<P>` seam |
+| Water color engine | Clean-room `@efxlab/efx-watercolor` (vendored Watercolor Playground): wet-in-wet blooms, hard wet-on-dry edges, dark tide lines, four tools (`brush | water | pen | lift`), 15 preset tips, deterministic FNV-1a replay |
+| Paper | 10 procedural papers plus the 3 recovered real backgrounds; paper is baked with the stroke, so a paper change is a cache miss |
+| Studio | Single Water color module: Brush and engine-1 retired, Krita remains the inert v2.1.0 slot; record → play physics → WebP bake (`diffusionFrames` ≤ 600) → cache, with the bake surviving leaving the frame |
+| Project format | Every new `.mce` field is declared in both TypeScript and Rust; unreadable or cross-engine scripts refuse with a named visible error |
+| Audio | QUICK-01: a Studio sound longer than the visible timeline window is imported pre-cropped to that window |
+
+v2.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. It is a major release: the paint module is now a single-engine Water color workstation on Preact 11, and the Brush engine plus the three-slot module switcher are deliberately retired as a clean break with no migration code.
 
 ## What's New in v1.0.0
 
