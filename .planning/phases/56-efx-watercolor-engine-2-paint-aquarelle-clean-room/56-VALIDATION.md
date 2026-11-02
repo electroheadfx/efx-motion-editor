@@ -17,8 +17,9 @@ created: "2026-11-02"
 > pin against the live tree. Pins added by this audit are marked **(audit)**.
 >
 > Requirement IDs were later re-scoped by user-approved quicks (MOD-01/02/06 —
-> see [Superseded requirements](#superseded-requirements)). One implementation
-> gap was found and fixed on 2026-11-02: PAPER-03's undo leg.
+> see [Superseded requirements](#superseded-requirements)). PAPER-03's paper-id
+> undo was removed by user decision on 2026-11-02; the grain undo
+> (strength/scale) was implemented and pinned.
 
 ---
 
@@ -76,7 +77,7 @@ Wave numbers follow ROADMAP §Phase 56.
 | 56-08/10/11 | 08, 10, 11 | 4–5 | AQUA-08 | — | Alpha 0 where unpainted; A1–A5 accepted | unit + live | `pnpm --filter @efxlab/efx-watercolor test src/bake/aquarelleBake.test.ts src/engine/raster.test.ts` + UAT rows A1–A5 | ✅ | ✅ green (live 2026-10-21) |
 | 56-05 | 05 | 2 | PAPER-01 | — | N/A | unit | `pnpm --filter @efxlab/efx-watercolor test src/papers/papers.test.ts` | ✅ | ✅ green |
 | 56-05 | 05 | 2 | PAPER-02 | — | One `applyPaperPass` seam; no cache path touched | unit + source-scan | `cd app && pnpm exec vitest run src/stores/physicPaintStore.paper.test.ts src/lib/paperPass.frameGuard.test.ts` | ✅ | ✅ green |
-| 56-05 | 05 | 2 | PAPER-03 | T-260923-01 | Clamped write; revision-stable no-op; token rotation for save + undo | unit | `cd app && pnpm exec vitest run src/stores/physicPaintStore.paper.test.ts src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts` | ✅ | ✅ green — undo leg fixed 2026-11-02 |
+| 56-05 | 05 | 2 | PAPER-03 | T-260923-01 | Clamped write; revision-stable no-op; token rotation for save; grain (strength/scale) undo — paper-id undo is not a feature | unit | `cd app && pnpm exec vitest run src/stores/physicPaintStore.paper.test.ts src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts` | ✅ | ✅ green — grain undo pinned; paper-id undo superseded |
 | 56-05 | 05 | 2 | PAPER-04 | — | Real ids resolve on the shared image path | unit | `pnpm --filter @efxlab/efx-watercolor test src/papers/papers.test.ts` · `cd app && pnpm exec vitest run src/lib/projectPaperRaster.test.ts src/components/physic-paint/view/PaperPicker.test.tsx.test.ts` | ✅ | ✅ green |
 | 56-09 | 09 | 4 | MOD-04 | — | `brushPack` is a two-language `.mce` field | unit | `pnpm --filter @efxlab/efx-watercolor test src/brushes/pack.test.ts` · `cd app && pnpm exec vitest run src/lib/mceFieldContract.test.ts` | ✅ | ✅ green |
 | 56-09 | 09 | 4 | MOD-05 | D-12 | Named refusal both directions; zero writes on refusal | unit | `cd app && pnpm exec vitest run src/efx-paint/host-split/hostSplitFailClosedApply.test.ts` · `pnpm --filter @efxlab/efx-watercolor test src/payload/codec.test.ts` | ✅ | ✅ green |
@@ -117,11 +118,11 @@ automated pins (`codec.test.ts`, `aquarelleBake.test.ts`, `engineAdapter.test.ts
 
 ---
 
-## Resolved Items
+## Resolved / Re-scoped Items
 
 | Requirement | Gap | Resolution | Pins |
 |-------------|-----|------------|------|
-| PAPER-03 | **Undo leg was unimplemented.** Paper display edits participated in save but never entered the undo ledger: `_writePaperDisplay` discarded the returned `BackgroundEditDescriptor`, and the three Studio paper callbacks never called `rotoMoveHistory.recordBackgroundEdit`. | Fixed 2026-11-02. `_writePaperDisplay` now returns the descriptor; `setPaperId/Strength/Scale` return `BackgroundEditDescriptor | null`; the three Studio callbacks record ONE merged ledger entry per edit; undo/redo rehydrate the Studio settings and active-track paper mirror from the restored document fallback. | `physicPaintStore.paper.test.ts` (descriptor before/after), `useRotoPhysicalEditHistory.test.ts` (undo restores `before`, redo reapplies `after`), `PhysicsPaintStudio.test.ts` (all three callbacks record the edit, merged descriptor, derived-state rehydration). |
+| PAPER-03 | **Paper-id undo and grain undo were unimplemented.** `_writePaperDisplay` discarded the returned `BackgroundEditDescriptor`, and the Studio paper callbacks never called `rotoMoveHistory.recordBackgroundEdit`. | Re-scoped 2026-11-02 by user decision: paper-id changes are a display choice and are not undoable; the grain pair (strength/scale) records ONE merged ledger entry per edit, and undo/redo rehydrate the settings + active-track mirror from the restored fallback. | `physicPaintStore.paper.test.ts` (store descriptor before/after), `useRotoPhysicalEditHistory.test.ts` (strength undo restores `before`, redo reapplies `after`), `PhysicsPaintStudio.test.ts` (grain callbacks record; paper-id does not; derived-state rehydration). |
 
 ---
 
@@ -147,6 +148,6 @@ state the user explicitly removed.
 - [x] Wave 0 covers all MISSING references (none — existing infrastructure)
 - [x] No watch-mode flags (`vitest run` everywhere)
 - [x] Feedback latency < 90 s (full app suite), < 2 s (package pins)
-- [x] `nyquist_compliant: true` — PAPER-03's undo leg is fixed (2026-11-02)
+- [x] `nyquist_compliant: true` — PAPER-03 grain undo fixed; paper-id undo superseded (2026-11-02)
 
 **Approval:** automated gates green; native UAT pending.

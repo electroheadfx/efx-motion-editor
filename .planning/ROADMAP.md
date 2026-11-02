@@ -197,4 +197,4 @@ Phases execute in numeric order: 54 → 55 → 56 (with QUICK-01 runnable as an 
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 11/11 | Complete    | 2026-10-21 |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Complete | 2026-11-02 |
 
-**Close-out status (2026-11-02):** Milestone audit complete. PAPER-03's undo leg was found by the retroactive Phase 56 validation and fixed the same day (`nyquist_compliant: true`). The release runs through the `efx-motion-release` skill outside the phase structure — no release phase is inserted for v2.0.0.
+**Close-out status (2026-11-02):** Milestone audit complete. PAPER-03's paper-id undo was removed by product decision and the grain undo was fixed the same day (`nyquist_compliant: true`). The release runs through the `efx-motion-release` skill outside the phase structure — no release phase is inserted for v2.0.0.

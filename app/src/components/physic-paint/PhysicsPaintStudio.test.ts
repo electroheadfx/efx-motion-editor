@@ -6052,14 +6052,18 @@ describe('quick 261101-o2m — review fixes: guarded track switch, delete close 
   });
 });
 
-describe('Paper display edits record one unified-ledger undo entry (PAPER-03)', () => {
-  it('records the paper setter descriptor in all three Studio paper callbacks', () => {
-    for (const handler of ['handleGrainScaleChange', 'handleGrainStrengthChange', 'handlePaperIdChange']) {
+describe('Paper grain edits record one unified-ledger undo entry (PAPER-03)', () => {
+  it('records the grain pair and leaves the paper-id choice out of the ledger', () => {
+    for (const handler of ['handleGrainScaleChange', 'handleGrainStrengthChange']) {
       const start = studio.indexOf(`const ${handler} =`);
       expect(start, `${handler} exists`).toBeGreaterThan(-1);
       const body = studio.slice(start, studio.indexOf('\n  };', start) + 5);
-      expect(body, `${handler} records the paper edit`).toContain('recordPaperDisplayEdit(');
+      expect(body, `${handler} records the grain edit`).toContain('recordPaperDisplayEdit(');
     }
+    const paperIdStart = studio.indexOf('const handlePaperIdChange =');
+    expect(paperIdStart).toBeGreaterThan(-1);
+    const paperIdBody = studio.slice(paperIdStart, studio.indexOf('\n  };', paperIdStart) + 5);
+    expect(paperIdBody, 'paper-id changes are not undoable').not.toContain('recordPaperDisplayEdit(');
   });
 
   it('merges the paper setter and fallback write-through into ONE ledger descriptor', () => {

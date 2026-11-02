@@ -2683,11 +2683,12 @@ export function PhysicsPaintStudio() {
   // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
   // display-class edit through the store's paper-id setter (fond + change
   // token). Transparent / White route through handleBackgroundChange.
+  // 2026-11-02 (user decision): the paper id is a display choice, not an
+  // undoable edit — only the grain pair enters the ledger.
   const handlePaperIdChange = (paperId: string) => {
     const layerId = launchContext?.layerId;
-    const paperEdit = layerId ? physicPaintStore.setPaperId(layerId, paperId) : null;
+    if (layerId) physicPaintStore.setPaperId(layerId, paperId);
     setBackground(paperId as StudioBackgroundMode);
-    recordPaperDisplayEdit(paperEdit, null);
   };
   // key-spacing-script-loss (brush + quick-261024-m20 watercolor): both session
   // stores follow the physical key IDENTITY. Force-spacing rewrites appFrames

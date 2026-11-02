@@ -428,7 +428,7 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
   });
 
-  it('records a PAPER-03 paper edit as one undo step and restores the previous fond', async () => {
+  it('records a PAPER-03 strength edit as one undo step and restores the previous value', async () => {
     const layerId = 'layer-paper-undo';
     registerDocument(createEfxPaintDocument(layerId));
     expect(setBackgroundFallback(layerId, {
@@ -438,10 +438,10 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
       grainScale: 1,
     }).ok).toBe(true);
 
-    const descriptor = physicPaintStore.setPaperId(layerId, 'paper/rough');
+    const descriptor = physicPaintStore.setPaperStrength(layerId, 0.8);
     expect(descriptor).not.toBeNull();
-    if (!descriptor) throw new Error('paper edit must emit a descriptor');
-    expect(physicPaintStore.setPaperId(layerId, 'paper/rough')).toBeNull();
+    if (!descriptor) throw new Error('paper strength edit must emit a descriptor');
+    expect(physicPaintStore.setPaperStrength(layerId, 0.8)).toBeNull();
 
     const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
     const pendingOperationId = signal<string | null>(null);
@@ -478,7 +478,7 @@ describe('useRotoPhysicalEditHistory Background clip delete (49-06 UAT)', () => 
     expect(await history.redo()).toBe(true);
     expect(getDocument(layerId)).toBe(descriptor.after);
     expect(getDocument(layerId)!.background.fallback).toEqual({
-      mode: 'paper', texture: 'paper/rough', grainStrength: 0.5, grainScale: 1,
+      mode: 'paper', texture: 'canvas1', grainStrength: 0.8, grainScale: 1,
     });
   });
 
