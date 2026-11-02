@@ -1,12 +1,17 @@
 ---
 phase: 55-efx-paint-host-engine-1-host-split
-verified: 2026-11-02T09:30:00Z
-status: human_needed
-score: 6/7 must-haves verified
-covered_files: [".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-SUMMARY.md", "app/package.json", "app/src-tauri/src/services/script_library.rs", "app/src/components/physic-paint/PhysicsPaintStudio.tsx", "app/src/components/physic-paint/roto/aquarelleFramePose.ts", "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts", "app/src/efx-paint/host-split/fakeEngine2Fixture.ts", "app/src/efx-paint/host-split/hostAnimationResidueContract.test.ts", "app/src/efx-paint/host-split/hostGenericityRoundTrip.test.ts", "app/src/efx-paint/host-split/hostImportGraphContract.test.ts", "app/src/efx-paint/host-split/hostSplitFailClosedApply.test.ts", "app/src/efx-paint/host-split/hostSplitSuiteGate.test.ts", "app/src/lib/playbackEngine.test.ts", "app/src/lib/playbackEngine.ts", "app/vitest.config.ts", "packages/efx-paint-host/package.json", "packages/efx-paint-host/src/animation/AnimationPlayer.test.ts", "packages/efx-paint-host/src/animation/AnimationPlayer.ts", "packages/efx-paint-host/src/animation/index.ts", "packages/efx-paint-host/src/animation/progressiveStrokeSchedule.test.ts", "packages/efx-paint-host/src/animation/progressiveStrokeSchedule.ts", "packages/efx-paint-host/src/animation/recordedStrokeMotion.test.ts", "packages/efx-paint-host/src/animation/recordedStrokeMotion.ts", "packages/efx-paint-host/src/animation/staticStrokeSchedule.test.ts", "packages/efx-paint-host/src/animation/staticStrokeSchedule.ts", "packages/efx-paint-host/src/animation/types.ts", "packages/efx-paint-host/src/bake/bakeHost.test.ts", "packages/efx-paint-host/src/bake/bakeHost.ts", "packages/efx-paint-host/src/bake/index.ts", "packages/efx-paint-host/src/index.ts", "packages/efx-paint-host/src/script/index.ts", "packages/efx-paint-host/src/script/parse.ts", "packages/efx-paint-host/src/script/payload.test.ts", "packages/efx-paint-host/src/script/payload.ts", "packages/efx-paint-host/src/script/refusal.test.ts", "packages/efx-paint-host/src/script/refusal.ts", "packages/efx-paint-host/src/time/diffusion.ts", "packages/efx-paint-host/src/time/index.ts", "packages/efx-paint-host/src/time/ticks.test.ts", "packages/efx-paint-host/src/time/ticks.ts", "packages/efx-paint-host/src/util/noise.ts", "packages/efx-paint-host/src/util/traceSeed.test.ts", "packages/efx-paint-host/src/util/traceSeed.ts", "packages/efx-watercolor/src/bake/aquarelleBake.ts", "packages/efx-watercolor/src/payload/toStudioStroke.ts"]
+verified: 2026-11-02T09:45:00Z
+status: passed
+score: 7/7 must-haves verified
+covered_files: [".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-SUMMARY.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-PLAN.md",".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-SUMMARY.md","app/package.json","app/src-tauri/src/services/script_library.rs","app/src/components/physic-paint/PhysicsPaintStudio.tsx","app/src/components/physic-paint/roto/aquarelleFramePose.ts","app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts","app/src/components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts","app/src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.ts","app/src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.ts","app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts","app/src/efx-paint/host-split/fakeEngine2Fixture.ts","app/src/efx-paint/host-split/hostAnimationResidueContract.test.ts","app/src/efx-paint/host-split/hostGenericityRoundTrip.test.ts","app/src/efx-paint/host-split/hostImportGraphContract.test.ts","app/src/efx-paint/host-split/hostSplitFailClosedApply.test.ts","app/src/efx-paint/host-split/hostSplitSuiteGate.test.ts","app/src/lib/playbackEngine.test.ts","app/src/lib/playbackEngine.ts","app/vitest.config.ts","packages/efx-paint-host/package.json","packages/efx-paint-host/src/animation/AnimationPlayer.test.ts","packages/efx-paint-host/src/animation/AnimationPlayer.ts","packages/efx-paint-host/src/animation/index.ts","packages/efx-paint-host/src/animation/progressiveStrokeSchedule.test.ts","packages/efx-paint-host/src/animation/progressiveStrokeSchedule.ts","packages/efx-paint-host/src/animation/recordedStrokeMotion.test.ts","packages/efx-paint-host/src/animation/recordedStrokeMotion.ts","packages/efx-paint-host/src/animation/staticStrokeSchedule.test.ts","packages/efx-paint-host/src/animation/staticStrokeSchedule.ts","packages/efx-paint-host/src/animation/types.ts","packages/efx-paint-host/src/bake/bakeHost.test.ts","packages/efx-paint-host/src/bake/bakeHost.ts","packages/efx-paint-host/src/bake/index.ts","packages/efx-paint-host/src/index.ts","packages/efx-paint-host/src/script/index.ts","packages/efx-paint-host/src/script/parse.ts","packages/efx-paint-host/src/script/payload.test.ts","packages/efx-paint-host/src/script/payload.ts","packages/efx-paint-host/src/script/refusal.test.ts","packages/efx-paint-host/src/script/refusal.ts","packages/efx-paint-host/src/time/diffusion.ts","packages/efx-paint-host/src/time/index.ts","packages/efx-paint-host/src/time/ticks.test.ts","packages/efx-paint-host/src/time/ticks.ts","packages/efx-paint-host/src/util/noise.ts","packages/efx-paint-host/src/util/traceSeed.test.ts","packages/efx-paint-host/src/util/traceSeed.ts","packages/efx-watercolor/src/bake/aquarelleBake.ts","packages/efx-watercolor/src/payload/toStudioStroke.ts"]
 covered_digest: "v3:sha256:da5cf9ab3a0c62023950cde8b7dffcb71c4b7320567fd1bc204caec132fc03f4"
 behavior_unverified: 0
-overrides_applied: 0
+overrides_applied: 1
+overrides:
+  - must_have: "Format-identical split proven against a pre-move golden bake (HOST-03)"
+    reason: "Engine-1 was intentionally retired by quick 261027-klx (native UAT approved 2026-10-27); watercolor is the sole paint engine and the golden parity guard's subject no longer exists."
+    accepted_by: "Laurent Marques"
+    accepted_at: "2026-11-02T09:45:00Z"
 re_verification:
   previous_status: passed
   previous_score: 5/5
@@ -14,20 +19,16 @@ re_verification:
     - "UAT row A2 (GAP-55-01) — re-judged PASS 2026-10-15 after plan 55-10; main-editor scrub and paint Studio scrub both audible"
   gaps_remaining: []
   regressions: []
-human_verification:
-  - test: "Decide whether the intentional engine-1 retirement in quick 261027-klx (2026-10-27, native UAT approved) supersedes Phase 55's HOST-03 / ROADMAP success criterion 1 (pre-split golden parity for Physic Paint)."
-    expected: "If superseded: accept the current tree and record an override for HOST-03 (the guarded engine no longer exists; watercolor is the sole paint engine). If not superseded: define how a runnable pre-split golden-parity guard can exist without restoring the removed engine-1 package."
-    why_human: "The supporting golden fixture and parity pin were intentionally deleted by a later, UAT-approved quick task, and the engine-1 package was removed. No current-tree check can prove or refute replay parity for an engine that no longer ships; this is a product-scope decision, not a code check."
 ---
 
 # Phase 55: efx-paint-host (engine-1 host split) Verification Report
 
 **Phase Goal:** The shared Studio script law (animation schedules, traceSeed, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host; engine-1 observable behavior is unchanged
-**Verified:** 2026-11-02T09:30:00Z
-**Status:** human_needed
-**Re-verification:** Yes — after quick 261027-klx retired engine-1 and removed the evidence the prior report relied on
+**Verified:** 2026-11-02T09:45:00Z
+**Status:** passed
+**Re-verification:** Yes — after quick 261027-klx retired engine-1 and removed the evidence the prior report relied on; HOST-03 supersession accepted 2026-11-02
 
-Phase 55 itself shipped on 2026-10-15. This re-verification judges the current tree after quick task 261027-klx (commits `79ca98046`, `22d0a8e91`), which deliberately removed `packages/efx-physic-paint` and every engine-1 runtime path. The prior report's frontmatter said `passed` while its body said `human_needed`; its only open human row (UAT A2) has since been re-judged PASS. The material change since then is that three files in the prior covered set no longer exist: `app/src/efx-paint/host-split/preSplitGoldenFixture.ts`, `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts`, and `packages/efx-physic-paint/src/payload/toStudioStroke.ts`. None of them is listed in `covered_files`, and none is cited as current evidence below.
+Phase 55 itself shipped on 2026-10-15. This re-verification judges the current tree after quick task 261027-klx (commits `79ca98046`, `22d0a8e91`), which deliberately removed `packages/efx-physic-paint` and every engine-1 runtime path. The prior report's frontmatter said `passed` while its body said `human_needed`; its only open human row (UAT A2) has since been re-judged PASS. The material change since then is that three files in the prior covered set no longer exist: `app/src/efx-paint/host-split/preSplitGoldenFixture.ts`, `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts`, and `packages/efx-physic-paint/src/payload/toStudioStroke.ts`. None of them is listed in `covered_files`, and none is cited as current evidence below. The HOST-03 supersession was accepted by the developer on 2026-11-02 and is recorded as an override.
 
 ## Goal Achievement
 
@@ -40,10 +41,18 @@ Phase 55 itself shipped on 2026-10-15. This re-verification judges the current t
 | 3 | A fake engine-2 payload round-trips record → play → bake on the host with assertable output (HOST-04 / ROADMAP SC2) | VERIFIED | `hostGenericityRoundTrip.test.ts` 4/4 green drives the full `EngineAdapter<P>` plug point and the `applyStroke → stepTick* → captureFrame` bake lifecycle with assertable tinted frames; `fakeEngine2Fixture.ts` carries no engine-1 imports |
 | 4 | Cross-engine or malformed Apply refuses with a named visible error and never half-applies (HOST-05 / DATA-02 / ROADMAP SC3) | VERIFIED | `hostSplitFailClosedApply.test.ts` 12/12 green: four named refusal codes, pairwise-distinct visible lines, no-partial probe, idempotency, concurrency, and Phase-56 cross-engine exact lines; `refusal.test.ts` 6/6 green; `physicsPaintRotoScriptApplyRefusal.ts` maps each code to a distinct visible message; refused library rows stay visible |
 | 5 | Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named errors; no migration code, dual-format readers, or back-compat shims exist (DATA-01 / DATA-03 / ROADMAP SC4) | VERIFIED | `HOST_TICK_HZ = 60` and integer-only `ticksFromSeconds`/`snapSampleToTick` in `src/time/ticks.ts` (14/14 tests, fractional ticks throw); `cuissonTicks` has no host cap and `clampCuissonTicks` requires caller bounds; the legacy kind is recognized only to classify `unreadable-legacy-script` (host `refusal.ts` and Rust `script_library.rs`); no migration or dual-reader branch found in the covered source |
-| 6 | The format-identical split is proven against a pre-move golden bake, so engine-1 look and baked pixels are unchanged (HOST-03 / ROADMAP SC1) | UNCERTAIN — human decision | The pre-split golden fixture and parity pin were deleted by quick 261027-klx, and `packages/efx-physic-paint` (the engine under guard) no longer exists. `hostSplitSuiteGate.test.ts` no longer lists the parity pin in `STANDING_PINS`; only a comment in `hostAnimationResidueContract.test.ts` still names it. No current-tree artifact can exercise replay parity for the retired engine; whether the later retirement supersedes this phase contract is surfaced in Human Verification |
+| 6 | The format-identical split is proven against a pre-move golden bake, so engine-1 look and baked pixels are unchanged (HOST-03 / ROADMAP SC1) | PASSED (override) | Override: engine-1 was intentionally retired by quick 261027-klx (native UAT approved 2026-10-27); watercolor is the sole paint engine and the golden parity guard's subject no longer exists. Accepted by Laurent Marques on 2026-11-02T09:45:00Z — see Overrides Applied |
 | 7 | Scrubbing the main-editor timeline dispatches the paint audio snippet for enabled document sound clips, gated and capped identically to play (GAP-55-01 / UAT A2) | VERIFIED | `playbackEngine.test.ts` 45 collected / 38 passed / 7 todo, including the GAP-55-01 family and source contracts (s1)/(s4); `startAudioSnippet` and the `startAudioPlayback` immediate arm both call the shared `collectEnabledDocumentClipsAt`; UAT row A2 PASS 2026-10-15 after plan 55-10 |
 
-**Score:** 6/7 truths verified (0 present, behavior-unverified; 1 uncertain → human decision)
+**Score:** 7/7 truths verified (6 VERIFIED + 1 PASSED (override); 0 present, behavior-unverified)
+
+### Overrides Applied
+
+| # | Must-Have | Reason | Accepted By | Accepted At |
+|---|-----------|--------|-------------|-------------|
+| 1 | Format-identical split proven against a pre-move golden bake (HOST-03) | Engine-1 was intentionally retired by quick 261027-klx (native UAT approved 2026-10-27); watercolor is the sole paint engine and the golden parity guard's subject no longer exists. | Laurent Marques | 2026-11-02T09:45:00Z |
+
+`PASSED (override)` counts toward the verified score, so the phase reads 7/7. The decision is also recorded in `55-UAT.md` row 6.
 
 ### Superseded / Removed Evidence
 
@@ -53,7 +62,7 @@ The prior report proved HOST-03 with a pre-split golden fixture plus a delta-zer
 - `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts` — deleted by quick 261027-klx
 - `packages/efx-physic-paint/src/payload/toStudioStroke.ts` — deleted with the whole `packages/efx-physic-paint` package
 
-The retirement was intentional: quick 261027-klx made `@efxlab/efx-watercolor` the only paint engine, removed the Brush module, and recorded a 7-row native UAT approval on 2026-10-27 with full automated gates green. The host remains live and consumed — `packages/efx-watercolor/src/bake/aquarelleBake.ts` imports `@efxlab/efx-paint-host/animation`, and `packages/efx-watercolor/src/payload/toStudioStroke.ts` imports the host traceSeed helpers, with `@efxlab/efx-paint-host` declared as a workspace dependency of the watercolor package. In other words, the split artifacts are not orphaned; only the engine-1 parity guard lost its subject. This report does not restate the deleted evidence as if it still existed, and it does not raise a restoration gap against the current product direction without a human decision.
+The retirement was intentional: quick 261027-klx made `@efxlab/efx-watercolor` the only paint engine, removed the Brush module, and recorded a 7-row native UAT approval on 2026-10-27 with full automated gates green. The host remains live and consumed — `packages/efx-watercolor/src/bake/aquarelleBake.ts` imports `@efxlab/efx-paint-host/animation`, and `packages/efx-watercolor/src/payload/toStudioStroke.ts` imports the host traceSeed helpers, with `@efxlab/efx-paint-host` declared as a workspace dependency of the watercolor package. In other words, the split artifacts are not orphaned; only the engine-1 parity guard lost its subject. This report does not restate the deleted evidence as if it still existed. It raises no restoration gap: the developer accepted the retirement as superseding the HOST-03 parity contract on 2026-11-02 (see Overrides Applied).
 
 ### Deferred Items
 
@@ -132,7 +141,7 @@ Not applicable — Phase 55 declares no probes and no `scripts/*/tests/probe-*.s
 | ----------- | ----------- | ----------- | ------ | -------- |
 | HOST-01 | 55-02, 55-03, 55-05, 55-09 | Host owns animation schedules, traceSeed, script envelope, ticks + diffusionFrames | SATISFIED | Package tree + exports; retired engine-1 animation subpath pinned at zero; host 78/78 |
 | HOST-02 | 55-03 | Host APIs generic over per-engine payload, never engine-specific | SATISFIED | `StudioStroke<P>` / `EngineAdapter<P>` / `StudioScriptEnvelope<P>`; import-graph pin 5/5; only `effect` dependency |
-| HOST-03 | 55-01, 55-08 | Format-identical split proven against a pre-move golden bake | NEEDS HUMAN | Golden fixture + parity pin deliberately deleted by quick 261027-klx; engine-1 package removed; supersession decision surfaced |
+| HOST-03 | 55-01, 55-08 | Format-identical split proven against a pre-move golden bake | SATISFIED (override) | Golden fixture + parity pin deliberately deleted by quick 261027-klx; engine-1 package removed; supersession accepted by Laurent Marques 2026-11-02 (see Overrides Applied) |
 | HOST-04 | 55-07 | Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by fake engine-2 with zero engine-1 types | SATISFIED | `hostGenericityRoundTrip.test.ts` 4/4 + `hostImportGraphContract.test.ts` 5/5 |
 | HOST-05 | 55-06, 55-08 | Fail-closed Apply across engines — named visible refusal, never half-apply | SATISFIED | `hostSplitFailClosedApply.test.ts` 12/12; refusal mapper wired in Studio |
 | DATA-01 | 55-05 | Clean break — no migration code, dual-format readers, or back-compat shims | SATISFIED | Legacy kind refusal-only in host + Rust; no migration branch in covered source; residue pin 4/4 |
@@ -150,29 +159,15 @@ All 8 requirement IDs declared by Phase 55 plans are accounted for. No orphaned 
 
 **Open review findings (non-blocking).** `55-REVIEW-DISPOSITION.md` (untracked) records five untriaged findings from `55-REVIEW.md`: WR-01 (D-13 owner-layer visibility gate branch unpinned on both legs) and WR-02 ((s4)/(s1) source-contract end-bound can go vacuous and stop pinning) are warnings; IN-01 (scrub family never exercises the sequence-rebased clip window), IN-02 (`effectiveEnd` ceiling clamp unpinned), and IN-03 (main-track snippet loop duplicates play-path track math) are info. WR-02's unanchored end-bound is still observable at `app/src/lib/playbackEngine.test.ts:779` and `:820` (`source.indexOf('private tick' / 'private stepForward')` used as an unchecked slice bound). These concern pin strength and coverage, not observed behavior defects, and none is a debt marker or a failed must-have. They do not block the phase.
 
-### Human Verification Required
+### Human Verification
 
-#### 1. HOST-03 supersession decision
-
-**Test:** Confirm whether quick 261027-klx's engine-1 retirement (2026-10-27, native UAT approved) supersedes Phase 55's HOST-03 / ROADMAP success criterion 1 — the pre-split golden parity guard for Physic Paint.
-**Expected:** If superseded, accept the current tree and record the override below so the phase can be read as fully closed. If not superseded, define how a runnable parity guard can exist without restoring the removed engine-1 package.
-**Why human:** The guarded engine and its golden evidence were intentionally deleted after the phase shipped, with a separate UAT approval. No current-tree check can prove or refute replay parity for an engine that no longer ships; this is a product-scope decision.
-
-Suggested override if the retirement is accepted:
-
-```yaml
-overrides:
-  - must_have: "Format-identical split proven against a pre-move golden bake (HOST-03)"
-    reason: "Engine-1 was intentionally retired by quick 261027-klx (native UAT approved 2026-10-27); watercolor is the sole paint engine and the golden parity guard's subject no longer exists."
-    accepted_by: "{name}"
-    accepted_at: "{ISO timestamp}"
-```
+None. The single open item — the HOST-03 supersession decision — was resolved by the developer on 2026-11-02 and is recorded as an accepted override above (see Overrides Applied). No human verification item remains open.
 
 ### Gaps Summary
 
-No actionable implementation gap exists against the current tree. Six of seven truths are verified from live source and passing tests. The single unresolved item is HOST-03: its evidence was deliberately deleted by a later, UAT-approved refactor that removed engine-1 entirely. The report records that deletion plainly rather than restating the old golden evidence, and it does not manufacture a restoration gap that would contradict the approved product direction. A human decision is required on supersession; accepting the retirement and adding the suggested override resolves the item, while rejecting it would require a new parity strategy that does not depend on the removed engine-1 package. The open review warnings (WR-01, WR-02) and info items are coverage/pin-strength findings and are non-blocking.
+No gaps. Seven of seven truths are verified: six from live source and passing tests, and HOST-03 via the accepted supersession override (2026-11-02). The pre-split golden evidence was deliberately deleted by a later, UAT-approved refactor that removed engine-1 entirely, and the developer accepted that retirement as superseding the parity contract. The open review warnings (WR-01, WR-02) and info items are coverage/pin-strength findings and are non-blocking.
 
 ---
 
-_Verified: 2026-11-02T09:30:00Z_
+_Verified: 2026-11-02T09:45:00Z_
 _Verifier: Claude (gsd-verifier)_

@@ -1,22 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 55-efx-paint-host-engine-1-host-split
 source: [55-VERIFICATION.md]
 started: 2026-10-15T09:55:37.331Z
-updated: 2026-11-02T09:30:00.000Z
+updated: 2026-11-02T09:45:00.000Z
 ---
 
 ## Current Test
 
-number: 6
-name: HOST-03 supersession decision
-expected: |
-  Confirm whether quick 261027-klx's engine-1 retirement (2026-10-27, native UAT approved)
-  supersedes Phase 55's HOST-03 / ROADMAP success criterion 1 (pre-split golden parity for
-  Physic Paint). If superseded, accept the current tree and record the override. If not
-  superseded, define how a runnable parity guard can exist without restoring the removed
-  engine-1 package.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -46,14 +38,19 @@ result: PASS
 
 ### 6. HOST-03 supersession decision
 expected: Confirm whether quick 261027-klx's engine-1 retirement supersedes the pre-split golden-parity contract; if superseded, record the override.
-result: [pending]
+result: PASS
+detail: |
+  Accepted 2026-11-02 by Laurent Marques: quick 261027-klx intentionally retired
+  engine-1 (native UAT approved 2026-10-27); watercolor is the sole paint engine, so
+  the golden-parity guard's subject no longer ships. HOST-03 is superseded and the
+  override is recorded in 55-VERIFICATION.md.
 
 ## Summary
 
 total: 6
-passed: 5
+passed: 6
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
