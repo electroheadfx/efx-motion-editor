@@ -1,24 +1,33 @@
 ---
 phase: 55-efx-paint-host-engine-1-host-split
-verified: 2026-10-15T13:30:00Z
-status: passed
-score: 5/5 must-haves verified
-covered_files: [".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-SUMMARY.md", "app/src/components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts", "app/src/efx-paint/host-split/fakeEngine2Fixture.ts", "app/src/efx-paint/host-split/hostAnimationResidueContract.test.ts", "app/src/efx-paint/host-split/hostGenericityRoundTrip.test.ts", "app/src/efx-paint/host-split/hostImportGraphContract.test.ts", "app/src/efx-paint/host-split/hostSplitFailClosedApply.test.ts", "app/src/efx-paint/host-split/hostSplitSuiteGate.test.ts", "app/src/efx-paint/host-split/preSplitGoldenFixture.ts", "app/src/efx-paint/host-split/preSplitGoldenParity.test.ts", "app/src/lib/playbackEngine.test.ts", "app/src/lib/playbackEngine.ts", "packages/efx-paint-host/package.json", "packages/efx-paint-host/src/animation/AnimationPlayer.ts", "packages/efx-paint-host/src/animation/types.ts", "packages/efx-paint-host/src/bake/bakeHost.ts", "packages/efx-paint-host/src/script/parse.ts", "packages/efx-paint-host/src/script/payload.ts", "packages/efx-paint-host/src/script/refusal.ts", "packages/efx-paint-host/src/time/diffusion.ts", "packages/efx-paint-host/src/time/ticks.ts", "packages/efx-paint-host/src/util/noise.ts", "packages/efx-paint-host/src/util/traceSeed.ts", "packages/efx-physic-paint/src/payload/toStudioStroke.ts"]
-covered_digest: "v3:sha256:d694a235929f4df4292221ba9d3543e7b4ba44ee9c629e5801191444e8251330"
+verified: 2026-11-02T09:30:00Z
+status: human_needed
+score: 6/7 must-haves verified
+covered_files: [".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-01-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-02-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-03-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-04-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-05-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-06-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-07-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-08-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-09-SUMMARY.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-PLAN.md", ".planning/phases/55-efx-paint-host-engine-1-host-split/55-10-SUMMARY.md", "app/package.json", "app/src-tauri/src/services/script_library.rs", "app/src/components/physic-paint/PhysicsPaintStudio.tsx", "app/src/components/physic-paint/roto/aquarelleFramePose.ts", "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.ts", "app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts", "app/src/efx-paint/host-split/fakeEngine2Fixture.ts", "app/src/efx-paint/host-split/hostAnimationResidueContract.test.ts", "app/src/efx-paint/host-split/hostGenericityRoundTrip.test.ts", "app/src/efx-paint/host-split/hostImportGraphContract.test.ts", "app/src/efx-paint/host-split/hostSplitFailClosedApply.test.ts", "app/src/efx-paint/host-split/hostSplitSuiteGate.test.ts", "app/src/lib/playbackEngine.test.ts", "app/src/lib/playbackEngine.ts", "app/vitest.config.ts", "packages/efx-paint-host/package.json", "packages/efx-paint-host/src/animation/AnimationPlayer.test.ts", "packages/efx-paint-host/src/animation/AnimationPlayer.ts", "packages/efx-paint-host/src/animation/index.ts", "packages/efx-paint-host/src/animation/progressiveStrokeSchedule.test.ts", "packages/efx-paint-host/src/animation/progressiveStrokeSchedule.ts", "packages/efx-paint-host/src/animation/recordedStrokeMotion.test.ts", "packages/efx-paint-host/src/animation/recordedStrokeMotion.ts", "packages/efx-paint-host/src/animation/staticStrokeSchedule.test.ts", "packages/efx-paint-host/src/animation/staticStrokeSchedule.ts", "packages/efx-paint-host/src/animation/types.ts", "packages/efx-paint-host/src/bake/bakeHost.test.ts", "packages/efx-paint-host/src/bake/bakeHost.ts", "packages/efx-paint-host/src/bake/index.ts", "packages/efx-paint-host/src/index.ts", "packages/efx-paint-host/src/script/index.ts", "packages/efx-paint-host/src/script/parse.ts", "packages/efx-paint-host/src/script/payload.test.ts", "packages/efx-paint-host/src/script/payload.ts", "packages/efx-paint-host/src/script/refusal.test.ts", "packages/efx-paint-host/src/script/refusal.ts", "packages/efx-paint-host/src/time/diffusion.ts", "packages/efx-paint-host/src/time/index.ts", "packages/efx-paint-host/src/time/ticks.test.ts", "packages/efx-paint-host/src/time/ticks.ts", "packages/efx-paint-host/src/util/noise.ts", "packages/efx-paint-host/src/util/traceSeed.test.ts", "packages/efx-paint-host/src/util/traceSeed.ts", "packages/efx-watercolor/src/bake/aquarelleBake.ts", "packages/efx-watercolor/src/payload/toStudioStroke.ts"]
+covered_digest: "v3:sha256:da5cf9ab3a0c62023950cde8b7dffcb71c4b7320567fd1bc204caec132fc03f4"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: passed
+  previous_score: 5/5
+  gaps_closed:
+    - "UAT row A2 (GAP-55-01) — re-judged PASS 2026-10-15 after plan 55-10; main-editor scrub and paint Studio scrub both audible"
+  gaps_remaining: []
+  regressions: []
 human_verification:
-  - test: "On the running app, open a project whose physic-paint layer carries a document sound clip. Drag the MAIN EDITOR timeline playhead across the clip window; release; then Play-from-cursor over the same window."
-    expected: "Paint audio snippet is audible while dragging (throttled short bursts ~120ms), goes silent on release, and Play-from-cursor still plays the clip from the cursor. Surface judged is the main-editor timeline, not the paint Studio."
-    why_human: "Audio audibility and scrub feel are human-judgment rows (D-05 / feedback_no_done_before_uat). A passing vitest proves the dispatch wiring, not that a human hears the snippet. GAP-55-01 closes only when A2 records PASS."
+  - test: "Decide whether the intentional engine-1 retirement in quick 261027-klx (2026-10-27, native UAT approved) supersedes Phase 55's HOST-03 / ROADMAP success criterion 1 (pre-split golden parity for Physic Paint)."
+    expected: "If superseded: accept the current tree and record an override for HOST-03 (the guarded engine no longer exists; watercolor is the sole paint engine). If not superseded: define how a runnable pre-split golden-parity guard can exist without restoring the removed engine-1 package."
+    why_human: "The supporting golden fixture and parity pin were intentionally deleted by a later, UAT-approved quick task, and the engine-1 package was removed. No current-tree check can prove or refute replay parity for an engine that no longer ships; this is a product-scope decision, not a code check."
 ---
 
 # Phase 55: efx-paint-host (engine-1 host split) Verification Report
 
 **Phase Goal:** The shared Studio script law (animation schedules, traceSeed, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host; engine-1 observable behavior is unchanged
-**Verified:** 2026-10-15T13:30:00Z
+**Verified:** 2026-11-02T09:30:00Z
 **Status:** human_needed
-**Re-verification:** No — initial verification (post gap-closure plan 55-10)
+**Re-verification:** Yes — after quick 261027-klx retired engine-1 and removed the evidence the prior report relied on
+
+Phase 55 itself shipped on 2026-10-15. This re-verification judges the current tree after quick task 261027-klx (commits `79ca98046`, `22d0a8e91`), which deliberately removed `packages/efx-physic-paint` and every engine-1 runtime path. The prior report's frontmatter said `passed` while its body said `human_needed`; its only open human row (UAT A2) has since been re-judged PASS. The material change since then is that three files in the prior covered set no longer exist: `app/src/efx-paint/host-split/preSplitGoldenFixture.ts`, `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts`, and `packages/efx-physic-paint/src/payload/toStudioStroke.ts`. None of them is listed in `covered_files`, and none is cited as current evidence below.
 
 ## Goal Achievement
 
@@ -26,108 +35,144 @@ human_verification:
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | User records, applies, bakes, and replays a Physic Paint script with the same look and baked pixels as the pre-split golden (SC1 / HOST-03) | VERIFIED | `preSplitGoldenParity.test.ts` 6/6 green — re-bakes fixture at delta zero, names drifted frame on mutation, non-empty-golden guard |
-| 2 | A fake engine-2 stroke payload compiles and round-trips through record → play → bake on the host with zero engine-1 types in the host API (SC2 / HOST-04) | VERIFIED | `hostGenericityRoundTrip.test.ts` 4/4 green; `hostImportGraphContract.test.ts` 5/5 green — zero engine imports in host, no engine dep in package.json |
-| 3 | Cross-engine or malformed Apply refuses with a named visible error and never half-applies (SC3 / HOST-05 / DATA-02) | VERIFIED | `hostSplitFailClosedApply.test.ts` 5/5 green — four named refusals, no-partial pin, idempotency, pairwise-distinct lines |
-| 4 | Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist (SC4 / DATA-01 / DATA-03) | VERIFIED | `HOST_TICK_HZ = 60` in `ticks.ts`; `clampCuissonTicks` requires caller bounds (uncapped host); `refusal.ts` clean-break code for legacy kind; zero migration/compat branches in source |
-| 5 | Scrubbing the app timeline (main editor) dispatches the paint audio snippet for enabled document sound clips, gated and capped identically to play (GAP-55-01 wiring) | VERIFIED | `playbackEngine.test.ts` GAP-55-01 family (p1–p9) + source-contract (s4) all green; `collectEnabledDocumentClipsAt` shared enumerator wired into both `startAudioSnippet` and `startAudioPlayback` |
+| 1 | The shared Studio script law (animation schedules, traceSeed/noise, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host (HOST-01) | VERIFIED | `packages/efx-paint-host` exists with `animation/`, `script/`, `time/`, `util/`, `bake/` and re-exports them from `src/index.ts`; the old package directory is absent; `hostAnimationResidueContract.test.ts` 4/4 green locks the retired engine-1 animation subpath at zero; host package tests 78/78 green |
+| 2 | Host APIs are generic over the per-engine stroke payload and carry zero engine-1 types (HOST-02 / HOST-04 seam shape) | VERIFIED | `StudioStroke<P>`, `EngineAdapter<P>`, `StudioScriptEnvelope<P>`, and `EngineId` in `src/script/payload.ts` + `src/animation/types.ts`; `hostImportGraphContract.test.ts` 5/5 green including a planted-leak self-test; host `package.json` runtime dependency is only `effect`; a source grep finds zero engine or Preact imports in host `src/` |
+| 3 | A fake engine-2 payload round-trips record → play → bake on the host with assertable output (HOST-04 / ROADMAP SC2) | VERIFIED | `hostGenericityRoundTrip.test.ts` 4/4 green drives the full `EngineAdapter<P>` plug point and the `applyStroke → stepTick* → captureFrame` bake lifecycle with assertable tinted frames; `fakeEngine2Fixture.ts` carries no engine-1 imports |
+| 4 | Cross-engine or malformed Apply refuses with a named visible error and never half-applies (HOST-05 / DATA-02 / ROADMAP SC3) | VERIFIED | `hostSplitFailClosedApply.test.ts` 12/12 green: four named refusal codes, pairwise-distinct visible lines, no-partial probe, idempotency, concurrency, and Phase-56 cross-engine exact lines; `refusal.test.ts` 6/6 green; `physicsPaintRotoScriptApplyRefusal.ts` maps each code to a distinct visible message; refused library rows stay visible |
+| 5 | Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named errors; no migration code, dual-format readers, or back-compat shims exist (DATA-01 / DATA-03 / ROADMAP SC4) | VERIFIED | `HOST_TICK_HZ = 60` and integer-only `ticksFromSeconds`/`snapSampleToTick` in `src/time/ticks.ts` (14/14 tests, fractional ticks throw); `cuissonTicks` has no host cap and `clampCuissonTicks` requires caller bounds; the legacy kind is recognized only to classify `unreadable-legacy-script` (host `refusal.ts` and Rust `script_library.rs`); no migration or dual-reader branch found in the covered source |
+| 6 | The format-identical split is proven against a pre-move golden bake, so engine-1 look and baked pixels are unchanged (HOST-03 / ROADMAP SC1) | UNCERTAIN — human decision | The pre-split golden fixture and parity pin were deleted by quick 261027-klx, and `packages/efx-physic-paint` (the engine under guard) no longer exists. `hostSplitSuiteGate.test.ts` no longer lists the parity pin in `STANDING_PINS`; only a comment in `hostAnimationResidueContract.test.ts` still names it. No current-tree artifact can exercise replay parity for the retired engine; whether the later retirement supersedes this phase contract is surfaced in Human Verification |
+| 7 | Scrubbing the main-editor timeline dispatches the paint audio snippet for enabled document sound clips, gated and capped identically to play (GAP-55-01 / UAT A2) | VERIFIED | `playbackEngine.test.ts` 45 collected / 38 passed / 7 todo, including the GAP-55-01 family and source contracts (s1)/(s4); `startAudioSnippet` and the `startAudioPlayback` immediate arm both call the shared `collectEnabledDocumentClipsAt`; UAT row A2 PASS 2026-10-15 after plan 55-10 |
 
-**Score:** 5/5 truths verified
+**Score:** 6/7 truths verified (0 present, behavior-unverified; 1 uncertain → human decision)
 
-### Requirements Coverage
+### Superseded / Removed Evidence
 
-| Requirement | Source Plan | Description | Status | Evidence |
-|------------|------------|-------------|--------|----------|
-| HOST-01 | 55-02, 55-03, 55-05, 55-09 | `packages/efx-paint-host` owns animation schedules, traceSeed, script envelope, ticks + diffusionFrames | SATISFIED | Package exists with animation/, script/, time/, util/, bake/; old `packages/efx-physic-paint/src/animation/` deleted; residue pin green |
-| HOST-02 | 55-03 | Host APIs generic over per-engine stroke payload — never engine-specific params | SATISFIED | `StudioStroke<P>` / `EngineAdapter<P>` in payload.ts; `toStudioStroke` is the single projection; no engine-1 vocab tokens in host src |
-| HOST-03 | 55-01, 55-08 | Format-identical split proven against pre-split golden bake | SATISFIED | `preSplitGoldenParity.test.ts` delta-zero pin green (6 tests) |
-| HOST-04 | 55-07 | Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by fake engine-2 with zero engine-1 types | SATISFIED | `hostGenericityRoundTrip.test.ts` + `hostImportGraphContract.test.ts` green (9 tests) |
-| HOST-05 | 55-06, 55-08 | Fail-closed Apply contract — named visible refusal, never half-apply | SATISFIED | `hostSplitFailClosedApply.test.ts` green (5 tests); refusal mapper wired |
-| DATA-01 | 55-05 | Clean break — no migration code, no dual-format readers, no backward-compat shims | SATISFIED | Legacy kind refuses via `classifyEnvelopeParseFailure`; no reader/migration path in source |
-| DATA-02 | 55-06, 55-08 | Any unreadable script/asset refuses with a named visible error — never drop data silently | SATISFIED | Four named refusals map to distinct visible lines; library refused-rows keep data visible |
-| DATA-03 | 55-04 | Time = fixed tick grid (~1/60 s), integer ticks, never raw ms | SATISFIED | `HOST_TICK_HZ = 60`; `ticksFromSeconds`/`snapSampleToTick` integer law; fractional ticks throw |
+The prior report proved HOST-03 with a pre-split golden fixture plus a delta-zero parity pin. Both files are gone, and the engine-1 package they re-baked is gone:
 
-All 8 requirement IDs accounted for. No orphaned requirements.
+- `app/src/efx-paint/host-split/preSplitGoldenFixture.ts` — deleted by quick 261027-klx
+- `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts` — deleted by quick 261027-klx
+- `packages/efx-physic-paint/src/payload/toStudioStroke.ts` — deleted with the whole `packages/efx-physic-paint` package
+
+The retirement was intentional: quick 261027-klx made `@efxlab/efx-watercolor` the only paint engine, removed the Brush module, and recorded a 7-row native UAT approval on 2026-10-27 with full automated gates green. The host remains live and consumed — `packages/efx-watercolor/src/bake/aquarelleBake.ts` imports `@efxlab/efx-paint-host/animation`, and `packages/efx-watercolor/src/payload/toStudioStroke.ts` imports the host traceSeed helpers, with `@efxlab/efx-paint-host` declared as a workspace dependency of the watercolor package. In other words, the split artifacts are not orphaned; only the engine-1 parity guard lost its subject. This report does not restate the deleted evidence as if it still existed, and it does not raise a restoration gap against the current product direction without a human decision.
+
+### Deferred Items
+
+None. No later milestone phase restores or replaces the engine-1 parity guard: Phase 56 delivered the watercolor engine, and no roadmap phase targets HOST-03. The retirement is tracked outside the phase roadmap by quick 261027-klx.
+
+### Advisory (New Scope, Unevidenced)
+
+None.
+
+### Required Artifacts
+
+Current-tree artifacts only. Deleted/superseded files are described in the section above and are not listed here or in `covered_files`.
+
+| Artifact | Expected | Status | Details |
+| -------- | -------- | ------ | ------- |
+| `packages/efx-paint-host/package.json` | Generic host package, no engine/Preact deps | VERIFIED | Name `@efxlab/efx-paint-host`; runtime dependency only `effect`; `test: vitest run` |
+| `packages/efx-paint-host/src/animation/` | Schedules + player moved out of engine-1 | VERIFIED | `AnimationPlayer`, static/progressive schedules, recorded-stroke motion, types; 25 tests across 4 files |
+| `packages/efx-paint-host/src/script/payload.ts` | Generic envelope + adapter contract | VERIFIED | `StudioStroke<P>`, `StudioScriptEnvelope<P>`, `EngineAdapter<P>`, `EngineId`; 17 payload tests |
+| `packages/efx-paint-host/src/script/parse.ts` | Total fail-closed parser | VERIFIED | Validates kind/version/engine allowlist/UUID/name/date/source/thumbnail/brushPack/strokes; no lenient branch |
+| `packages/efx-paint-host/src/script/refusal.ts` | Named refusal classification | VERIFIED | Four-code union; legacy kind classified as `unreadable-legacy-script`; 6 tests |
+| `packages/efx-paint-host/src/time/ticks.ts` | Fixed integer tick grid | VERIFIED | `HOST_TICK_HZ = 60`; integer-only conversion + snap; named `RangeError`s; 14 tests |
+| `packages/efx-paint-host/src/time/diffusion.ts` | Uncapped cuisson mechanism | VERIFIED | `cuissonTicks` has no cap; `clampCuissonTicks` requires caller-supplied bounds |
+| `packages/efx-paint-host/src/util/traceSeed.ts` | Deterministic traceSeed/noise | VERIFIED | `seededRng(strokeSeed, streamKey)` byte-stable surface; 7 tests |
+| `packages/efx-paint-host/src/bake/bakeHost.ts` | Bake host pattern port (Phase 56 API) | VERIFIED | `createBakeHost` + `BAKE_TURN_CONCURRENCY` exported from host index; 9 tests; app bake path intentionally not rewired in Phase 55 |
+| `app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts` | App envelope adapter over the host parser | VERIFIED | Imports host parse/refusal; produces only `efx-watercolor`; legacy engine id classification-only |
+| `app/src/components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts` | Host refusal codes → named visible lines | VERIFIED | Four distinct messages; engine display names; pure mapper with no store signals |
+| `app/src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.ts` | Refused rows remain visible and inert | VERIFIED | `isRefusedRotoScriptRow` gates load/rename; status shows `Refused script: ...` |
+| `app/src/lib/playbackEngine.ts` | Shared paint-clip enumerator in both arms | VERIFIED | `collectEnabledDocumentClips` / `collectEnabledDocumentClipsAt` used by `startAudioSnippet` and `startAudioPlayback` |
+| `app/src-tauri/src/services/script_library.rs` | Legacy kind refused, never read as data | VERIFIED | `LEGACY_SCRIPT_KIND` recognized and returned with `refusal: Some("unreadable-legacy-script")`; no migration reader |
+| `app/src/efx-paint/host-split/hostSplitSuiteGate.test.ts` | Standing pin-presence gate | VERIFIED | 6/6 green; `STANDING_PINS` no longer includes the retired golden parity pin |
+| `packages/efx-watercolor/src/bake/aquarelleBake.ts` | Real consumer of host animation schedules | VERIFIED | Imports `buildProgressiveStrokeSchedule` / `getProgressiveFrameStrokes` from `@efxlab/efx-paint-host/animation` |
+| `packages/efx-watercolor/src/payload/toStudioStroke.ts` | Real consumer of host traceSeed | VERIFIED | Imports `hashMutationId` / `mixStrokeSeed` from the host |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
-|------|-----|-----|--------|---------|
-| `startAudioSnippet` | `collectEnabledDocumentClipsAt` | shared enumerator call | WIRED | playbackEngine.ts:254 — paint-clip leg dispatches via `audioEngine.play` |
-| `startAudioPlayback` immediate arm | `collectEnabledDocumentClipsAt` | shared enumerator call | WIRED | playbackEngine.ts:399 — play and scrub cannot drift |
-| Engine-1 call sites | Host schedules | `toStudioStroke` projection | WIRED | physicsPaintRotoPlayScriptRenderer.ts, physicsPaintRotoScriptClipboard.ts |
-| Host refusal codes | Studio named errors | `buildRotoScriptApplyRefusalMessage` | WIRED | physicsPaintRotoScriptApplyRefusal.ts maps HostScriptRefusal to visible lines |
-| Host package | Engine-1 package | workspace dep (`@efxlab/efx-paint-host`) | WIRED | packages/efx-physic-paint/package.json declares workspace dep |
+| ---- | -- | --- | ------ | ------- |
+| `physicsPaintRotoScriptSchema.ts` | Host parser | `parseStudioScriptEnvelope` / `classifyEnvelopeParseFailure` imports | WIRED | Envelope decode and refusal classification both route through the host |
+| Host refusal codes | Visible Apply error | `buildRotoScriptApplyRefusalMessage` | WIRED | Four host codes map to four distinct user-visible lines; exercised by `hostSplitFailClosedApply.test.ts` |
+| Host animation schedules | Watercolor bake | `@efxlab/efx-paint-host/animation` import in `aquarelleBake.ts` | WIRED | Production consumer, declared workspace dependency |
+| Host traceSeed | Watercolor stroke projection | `@efxlab/efx-paint-host` imports in `toStudioStroke.ts` | WIRED | Production consumer of `hashMutationId` / `mixStrokeSeed` |
+| `app/package.json` | Host package | `workspace:*` dependency | WIRED | App consumes the host directly |
+| `packages/efx-watercolor/package.json` | Host package | `workspace:*` dependency | WIRED | Engine 2 consumes the host |
+| `startAudioSnippet` | `collectEnabledDocumentClipsAt` | Shared enumerator call | WIRED | Source contract (s4) and behavioral tests |
+| `startAudioPlayback` immediate arm | `collectEnabledDocumentClipsAt` | Shared enumerator call | WIRED | Source contract (s1); play and scrub cannot drift |
+| Rust script library | `unreadable-legacy-script` | Legacy-kind classification | WIRED | Static inspection only; cargo suite not re-run this round |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|--------------|--------|-------------------|--------|
-| `preSplitGoldenFixture.ts` | baked frame pixels | Pre-split deterministic bake path | Yes — stored RGBA digests | FLOWING |
-| `fakeEngine2Fixture.ts` | engine-2 stroke payload | Synthetic fixture (by design) | Yes — round-trips through EngineAdapter | FLOWING |
-| `playbackEngine.ts` clip dispatch | `sound.id`, `sourceOffsetSec` | `collectDocumentSoundClips` + `mainPlaybackClipEnabled` | Yes — real document state | FLOWING |
+| -------- | ------------- | ------ | ------------------ | ------ |
+| `fakeEngine2Fixture.ts` | Engine-2 stroke payload → tinted frames | Synthetic fixture driven through the real host player/bake lifecycle | Yes — assertable pixels per frame | FLOWING |
+| `playbackEngine.ts` clip dispatch | `sound.id`, `sourceOffsetSec`, enabled clip set | `collectDocumentSoundClips` behind the shared enumerator | Yes — real document state | FLOWING |
+| Host envelope parse/refusal | Refusal code | Parsed envelope contents | Yes — code drives the visible message | FLOWING |
+| `aquarelleBake.ts` schedule input | Progressive stroke schedule | Host `progressiveStrokeSchedule` | Yes — production import, unit-tested | FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
-|----------|---------|--------|--------|
-| Golden parity pin | `vitest run src/efx-paint/host-split/preSplitGoldenParity.test.ts` | 6 passed | PASS |
-| Host-split pins (all) | `vitest run src/efx-paint/host-split/` | 31 passed (6 files) | PASS |
-| Gap-closure wiring | `vitest run src/lib/playbackEngine.test.ts` | 45 passed (7 todo pre-existing) | PASS |
-| Host has zero engine-1 imports | `grep efx-physic-paint packages/efx-paint-host/src` (non-test) | Only EngineId string literals | PASS |
-| No migration/compat code | `grep migration\|backward-compat\|dual-format` in schema + host | Only refusal classification of legacy kind | PASS |
-| No engine-2/3 implementation ships | `grep efx-watercolor\|efx-krita` in packages + app/src | Only display-name map + EngineId literals | PASS |
+| -------- | ------- | ------ | ------ |
+| Host laws and genericity | `cd packages/efx-paint-host && pnpm exec vitest run` | 9 files passed, 78/78 tests passed | PASS |
+| Host-split pins + GAP-55-01 wiring | `cd app && pnpm exec vitest run src/efx-paint/host-split src/lib/playbackEngine.test.ts` | 6 files passed, 69 passed / 7 todo (31 host-split + 45 playbackEngine collected) | PASS |
+| Host typecheck | `pnpm exec tsc --noEmit -p tsconfig.json` in `packages/efx-paint-host` | exit 0 | PASS |
+| App typecheck | `pnpm run typecheck` in `app` | exit 0 | PASS |
+| Engine-1 package removed | `ls packages/efx-physic-paint` | exit 1 — no such directory | PASS (confirms retirement, not HOST-03) |
+| No debt markers in phase code | grep `TBD|FIXME|XXX` over covered code files | zero matches | PASS |
+| No engine/Preact imports in host | grep import forms in `packages/efx-paint-host/src` + package.json | zero matches | PASS |
 
 ### Probe Execution
 
-No `scripts/*/tests/probe-*.sh` probes declared or conventional for this phase. Step 7c: N/A.
+Not applicable — Phase 55 declares no probes and no `scripts/*/tests/probe-*.sh` files exist in the repository.
 
-### Decision Coverage
+### Requirements Coverage
 
-All 25 trackable CONTEXT.md decisions honored by shipped artifacts. No drift.
+| Requirement | Source Plan | Description | Status | Evidence |
+| ----------- | ----------- | ----------- | ------ | -------- |
+| HOST-01 | 55-02, 55-03, 55-05, 55-09 | Host owns animation schedules, traceSeed, script envelope, ticks + diffusionFrames | SATISFIED | Package tree + exports; retired engine-1 animation subpath pinned at zero; host 78/78 |
+| HOST-02 | 55-03 | Host APIs generic over per-engine payload, never engine-specific | SATISFIED | `StudioStroke<P>` / `EngineAdapter<P>` / `StudioScriptEnvelope<P>`; import-graph pin 5/5; only `effect` dependency |
+| HOST-03 | 55-01, 55-08 | Format-identical split proven against a pre-move golden bake | NEEDS HUMAN | Golden fixture + parity pin deliberately deleted by quick 261027-klx; engine-1 package removed; supersession decision surfaced |
+| HOST-04 | 55-07 | Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by fake engine-2 with zero engine-1 types | SATISFIED | `hostGenericityRoundTrip.test.ts` 4/4 + `hostImportGraphContract.test.ts` 5/5 |
+| HOST-05 | 55-06, 55-08 | Fail-closed Apply across engines — named visible refusal, never half-apply | SATISFIED | `hostSplitFailClosedApply.test.ts` 12/12; refusal mapper wired in Studio |
+| DATA-01 | 55-05 | Clean break — no migration code, dual-format readers, or back-compat shims | SATISFIED | Legacy kind refusal-only in host + Rust; no migration branch in covered source; residue pin 4/4 |
+| DATA-02 | 55-06, 55-08 | Any unreadable script/asset refuses with a named visible error, never silent data loss | SATISFIED | Four named host codes → four visible lines; refused library rows remain visible; Rust legacy refusal |
+| DATA-03 | 55-04 | Fixed tick grid (~1/60 s), integer ticks, never raw ms | SATISFIED | `HOST_TICK_HZ = 60`; integer conversion/snap law; 14/14 tests with fractional rejection |
 
-### Test Quality Audit
-
-| Test File | Linked Req | Active | Skipped | Circular | Assertion Level | Verdict |
-|-----------|-----------|--------|---------|----------|-----------------|---------|
-| preSplitGoldenParity.test.ts | HOST-03 | 6 | 0 | No | Value (delta-zero pixels) | OK |
-| hostGenericityRoundTrip.test.ts | HOST-04 | 4 | 0 | No | Behavioral (round-trip) | OK |
-| hostImportGraphContract.test.ts | HOST-04 | 5 | 0 | No | Behavioral (import graph) | OK |
-| hostSplitFailClosedApply.test.ts | HOST-05, DATA-02 | 5 | 0 | No | Behavioral (no-partial) | OK |
-| hostAnimationResidueContract.test.ts | HOST-01 | 5 | 0 | No | Behavioral (residue lock) | OK |
-| payload.test.ts | HOST-02 | (host pkg) | 0 | No | Value + Type | OK |
-| ticks.test.ts | DATA-03 | (host pkg) | 0 | No | Value (integer law) | OK |
-| playbackEngine.test.ts (GAP family) | A2 wiring | 10 | 0 | No | Behavioral (dispatch) | OK |
-
-**Disabled tests on requirements:** 0 (7 `it.todo` in playbackEngine.test.ts are pre-existing main-track placeholders, not requirement-linked)
-**Circular patterns detected:** 0
-**Insufficient assertions:** 0
+All 8 requirement IDs declared by Phase 55 plans are accounted for. No orphaned requirements: the REQUIREMENTS.md traceability rows for HOST-01..05 and DATA-01..03 all map to Phase 55 and every ID appears in at least one plan's `requirements` field. GAP-55-01/UAT A2 is a phase-internal gap-closure item, not a REQUIREMENTS.md ID.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| (none) | — | — | — | No TBD/FIXME/XXX without issue ref; no stubs; no placeholder returns |
+| ---- | ---- | ------- | -------- | ------ |
+| — | — | No `TBD` / `FIXME` / `XXX` debt markers in covered code | — | None |
+| — | — | No stub returns, hardcoded-empty props, or placeholder handlers in the covered host/app paths | — | None |
+
+**Open review findings (non-blocking).** `55-REVIEW-DISPOSITION.md` (untracked) records five untriaged findings from `55-REVIEW.md`: WR-01 (D-13 owner-layer visibility gate branch unpinned on both legs) and WR-02 ((s4)/(s1) source-contract end-bound can go vacuous and stop pinning) are warnings; IN-01 (scrub family never exercises the sequence-rebased clip window), IN-02 (`effectiveEnd` ceiling clamp unpinned), and IN-03 (main-track snippet loop duplicates play-path track math) are info. WR-02's unanchored end-bound is still observable at `app/src/lib/playbackEngine.test.ts:779` and `:820` (`source.indexOf('private tick' / 'private stepForward')` used as an unchecked slice bound). These concern pin strength and coverage, not observed behavior defects, and none is a debt marker or a failed must-have. They do not block the phase.
 
 ### Human Verification Required
 
-#### 1. Live UAT row A2 — paint audio snippet audible on app-timeline scrub
+#### 1. HOST-03 supersession decision
 
-**Test:** On the running app, open a project whose physic-paint layer carries a document sound clip. Drag the MAIN EDITOR timeline playhead across the clip window; release; then Play-from-cursor over the same window.
+**Test:** Confirm whether quick 261027-klx's engine-1 retirement (2026-10-27, native UAT approved) supersedes Phase 55's HOST-03 / ROADMAP success criterion 1 — the pre-split golden parity guard for Physic Paint.
+**Expected:** If superseded, accept the current tree and record the override below so the phase can be read as fully closed. If not superseded, define how a runnable parity guard can exist without restoring the removed engine-1 package.
+**Why human:** The guarded engine and its golden evidence were intentionally deleted after the phase shipped, with a separate UAT approval. No current-tree check can prove or refute replay parity for an engine that no longer ships; this is a product-scope decision.
 
-**Expected:** Paint audio snippet is audible while dragging (throttled short bursts ~120ms), goes silent on release, and Play-from-cursor still plays the clip from the cursor. Surface judged is the main-editor timeline, not the paint Studio.
+Suggested override if the retirement is accepted:
 
-**Why human:** Audio audibility and scrub feel are human-judgment rows (D-05 / feedback_no_done_before_uat). A passing vitest proves the dispatch wiring, not that a human hears the snippet. GAP-55-01 closes only when A2 records PASS.
-
-**Context:** Plan 55-10 landed the paint-clip dispatch wiring (automated green: 5053 tests, typecheck 0). The original UAT recorded A2 FAIL (silent scrub). The fix is in `playbackEngine.ts` (`collectEnabledDocumentClipsAt` shared enumerator). Live re-judgment is the remaining closure condition per 55-10's success criteria: "GAP-55-01 is closed when and only when live UAT row A2 records PASS on the running app."
+```yaml
+overrides:
+  - must_have: "Format-identical split proven against a pre-move golden bake (HOST-03)"
+    reason: "Engine-1 was intentionally retired by quick 261027-klx (native UAT approved 2026-10-27); watercolor is the sole paint engine and the golden parity guard's subject no longer exists."
+    accepted_by: "{name}"
+    accepted_at: "{ISO timestamp}"
+```
 
 ### Gaps Summary
 
-No code gaps. All 5 must-have truths verified, all 8 requirements satisfied, all key links wired, no anti-pattern blockers.
-
-The single open item is human judgment: live UAT row A2 (paint audio snippet audibility on the main-editor timeline scrub) must be re-judged by the user on the running app. The automated wiring is green; audibility is a human-sense row that no test can close. Phase 55 stays `human_needed` until A2 records PASS.
+No actionable implementation gap exists against the current tree. Six of seven truths are verified from live source and passing tests. The single unresolved item is HOST-03: its evidence was deliberately deleted by a later, UAT-approved refactor that removed engine-1 entirely. The report records that deletion plainly rather than restating the old golden evidence, and it does not manufacture a restoration gap that would contradict the approved product direction. A human decision is required on supersession; accepting the retirement and adding the suggested override resolves the item, while rejecting it would require a new parity strategy that does not depend on the removed engine-1 package. The open review warnings (WR-01, WR-02) and info items are coverage/pin-strength findings and are non-blocking.
 
 ---
 
-_Verified: 2026-10-15T13:30:00Z_
+_Verified: 2026-11-02T09:30:00Z_
 _Verifier: Claude (gsd-verifier)_
