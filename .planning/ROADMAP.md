@@ -58,11 +58,11 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 ### 🚧 v2.0.0 Multi-Module Paint Workstation (MAJOR)
 
-**Milestone Goal:** Change the product shape into a multi-module paint workstation — a module switcher (Brush | Water color | Krita) over ONE shared Studio engine, shipping Brush + Water color, unlocked by a Preact 11 bump and an engine-1 host split.
+**Milestone Goal:** Change the product shape into a multi-module paint workstation — a module switcher (Brush | Water color | Krita) over ONE shared Studio engine, shipping Brush + Water color, unlocked by a Preact 11 bump and an engine-1 host split. *Shipped note (261102-iv5): the module switcher and the Krita slot were removed pre-publish; the shipped shape is a single Water color workstation, and Krita is neither implemented nor planned.*
 
-**Shipped shape (2026-11-02 close-out):** Water color is the only active engine and module; Brush was retired with engine-1 by quick 261027-klx (native UAT approved 2026-10-27), and Krita remains the inert v2.1.0 slot. Brushes are preset-only (custom tip import was retired with the Brush tab), paper is baked into the watercolor sheet rather than composited through `paperPass`, and `@efxlab/efx-spectral` is retired from the production path. The accepted supersessions are recorded in REQUIREMENTS.md § Close-out Notes and `.planning/v2.0.0-MILESTONE-AUDIT.md`.
+**Shipped shape (2026-11-02 close-out):** Water color is the only active engine and module; Brush was retired with engine-1 by quick 261027-klx (native UAT approved 2026-10-27); the editor top bar's module switcher was removed pre-publish by 261102-iv5 (it was never a Studio concern), and Krita is neither implemented nor planned. Brushes are preset-only (custom tip import was retired with the Brush tab), paper is baked into the watercolor sheet rather than composited through `paperPass`, and `@efxlab/efx-spectral` is retired from the production path. The accepted supersessions are recorded in REQUIREMENTS.md § Close-out Notes and `.planning/v2.0.0-MILESTONE-AUDIT.md`.
 
-**Phase structure LOCKED by the user (2026-10-14).** Global phase numbering continues from v1.0.1 (ended at Phase 53.1). Do not invent, merge, split, or reorder phases. v2.1.0 (Krita) is planned only AFTER this milestone closes — there is no Krita phase here.
+**Phase structure LOCKED by the user (2026-10-14).** Global phase numbering continues from v1.0.1 (ended at Phase 53.1). Do not invent, merge, split, or reorder phases. Krita was never developed and is not planned; its placeholder and its switcher slot were removed pre-publish by 261102-iv5, so there is no Krita phase and no Krita slot.
 
 **Hard sequencing gates (encoded as phase dependencies and success criteria):**
 - No watercolour work before the Preact 11 bump (satisfied by order 54 → 56)
@@ -77,7 +77,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 **Phase checklist:**
 - [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
 - [x] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical) (completed 2026-10-15)
-- [x] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio (completed 2026-10-21)
+- [x] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio (completed 2026-10-21; the module switcher was removed pre-publish on 2026-11-02 by 261102-iv5)
 
 ## Phase Details
 
@@ -157,7 +157,7 @@ Plans:
   1. User paints with `brush | water | pen | lift` (14 tips + custom PNG/JPG import, 8 global params + per-brush multipliers) and sees wet-in-wet blooms, hard wet-on-dry edges, and dark tide lines survive into baked frames
   2. User records → plays physics (no forced Dry at frame boundaries) → WebP-bakes (`diffusionFrames` ≤ 600) → caches; same script ⇒ same pixels (FNV-1a seeded per stroke); the bake survives leaving the frame; unpainted areas stay transparent
   3. User picks among 10 named procedural papers plus the 3 recovered real paper backgrounds (`paper_1/2/3.jpg`); paper composites for ALL paints through the same `paperPass` with no rebake on paper change; paper display state (id, strength, scale) undoes and saves on the document/fond
-  4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
+  4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0") — Superseded pre-publish (261102-iv5): the top-bar module switcher was removed, the product has ONE Water color module, and Krita is neither implemented nor planned.
   5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
 
 **Plans**: 11/11 plans complete

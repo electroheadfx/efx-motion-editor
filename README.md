@@ -183,11 +183,11 @@ Phases 54 → 56 of the v2.0.0 milestone, plus the in-milestone QUICK-01:
 | Paint host | `@efxlab/efx-paint-host` owns the shared Studio script law — animation schedules, traceSeed, integer tick grid, script envelope — behind a generic `StudioStroke<P>` / `EngineAdapter<P>` seam |
 | Water color engine | Clean-room `@efxlab/efx-watercolor` (vendored Watercolor Playground): wet-in-wet blooms, hard wet-on-dry edges, dark tide lines, four tools (`brush | water | pen | lift`), 15 preset tips, deterministic FNV-1a replay |
 | Paper | 10 procedural papers plus the 3 recovered real backgrounds; paper is baked with the stroke, so a paper change is a cache miss |
-| Studio | Single Water color module: Brush and engine-1 retired, Krita remains the inert v2.1.0 slot; record → play physics → WebP bake (`diffusionFrames` ≤ 600) → cache, with the bake surviving leaving the frame |
+| Studio | Single Water color module: the Brush engine, engine-1, and the editor module switcher are retired; there is no Krita placeholder — Krita is neither implemented nor planned; record → play physics → WebP bake (`diffusionFrames` ≤ 600) → cache, with the bake surviving leaving the frame |
 | Project format | Every new `.mce` field is declared in both TypeScript and Rust; unreadable or cross-engine scripts refuse with a named visible error |
 | Audio | QUICK-01: a Studio sound longer than the visible timeline window is imported pre-cropped to that window |
 
-v2.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. It is a major release: the paint module is now a single-engine Water color workstation on Preact 11, and the Brush engine plus the three-slot module switcher are deliberately retired as a clean break with no migration code.
+v2.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. It is a major release: the paint module is now a single-engine Water color workstation on Preact 11 — the product ships ONE Water color engine with no Krita placeholder, and the Brush engine plus the top-bar module switcher are deliberately retired as a clean break with no migration code. Krita is neither implemented nor planned.
 
 ## What's New in v1.0.0
 

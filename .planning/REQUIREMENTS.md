@@ -44,14 +44,14 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 - [x] **PAPER-03**: Paper display state (id, strength, scale) lives on the document/fond in undo + save, with display-class change-token rotation (learn from PKG-06/BKG-09) — **save + strength/scale undo; paper-id undo superseded 2026-11-02**
 - [x] **PAPER-04**: The 3 real paper backgrounds already in the repo (`app/public/img/paper_1.jpg` / `paper_2.jpg` / `paper_3.jpg` — today wired as canvas1/2/3 inside physic-paint) are recovered into the Studio paper library and usable by ALL paints through the same `paperPass`, alongside the 10 procedural papers. Not watercolour-only.
 
-### Module Switcher & Shared Studio (Phase 56)
+### Shared Studio (Phase 56 — the module switcher was retired pre-publish)
 
-- [x] **MOD-01**: Top-bar MODULE SWITCHER icon with three slots "Brush | Water color | Krita"; Krita visible but inert ("coming in v2.1.0")
-- [x] **MOD-02**: Switching drains the selected module's OWN options/features into the panels
+- [x] **MOD-01**: Top-bar MODULE SWITCHER icon with three slots "Brush | Water color | Krita"; Krita visible but inert ("coming in v2.1.0") — **superseded pre-publish (261102-iv5): the top-bar switcher was removed; there is no third-engine slot**
+- [x] **MOD-02**: Switching drains the selected module's OWN options/features into the panels — **superseded pre-publish (261102-iv5): no module-switching surface ships**
 - [x] **MOD-03**: ONE shared Studio engine (script, cache management, timeline) — never forked per module
 - [x] **MOD-04**: Brush-pack snapshot travels in `.mce` (deliberate exception to the 52.2 refs-only law)
 - [x] **MOD-05**: Fail-closed cross-engine Apply — unreadable/cross-engine scripts refuse with a named visible error (53.1 law)
-- [x] **MOD-06**: v2.0.0 ships Brush + Water color only; Krita is the v2.1.0 slot (no krita implementation)
+- [x] **MOD-06**: v2.0.0 ships ONE Water color engine/module only; there is no Krita placeholder, and Krita is neither implemented nor planned (261102-iv5)
 
 ### Spectral Mixing (delivered inside Phase 56; Phase 57 retired 2026-10-21)
 
@@ -83,10 +83,10 @@ recorded here as accepted at close (see `.planning/v2.0.0-MILESTONE-AUDIT.md`):
 | Requirement | Shipped reality | Superseded by |
 |-------------|-----------------|---------------|
 | AQUA-03 (custom-import half) | 15 preset brush tips; custom PNG/JPG import retired with the Brush tab | 261017-xa0, 261027-gh9 (UAT 2026-10-27) |
-| MOD-01 | Module switcher is Water color + inert Krita; the Brush slot is gone | 261027-klx (UAT 2026-10-27) |
-| MOD-02 | Only one selectable module remains, so cross-module panel draining is moot | 261027-klx (UAT 2026-10-27) |
+| MOD-01 | The top-bar module switcher was removed pre-publish; Water color is the only module, and there is no Krita placeholder | 261027-klx (UAT 2026-10-27), 261102-iv5 (2026-11-02) |
+| MOD-02 | No module-switching surface ships; one active module means cross-module panel draining is moot | 261027-klx (UAT 2026-10-27), 261102-iv5 (2026-11-02) |
 | MOD-04 | Preset-only brushes; `brushPack.entries` is empty because there is no custom pack to carry | 261017-xa0, 261027-gh9 (UAT 2026-10-27) |
-| MOD-06 | Water color is the only shipped paint module; Brush was removed with engine-1 | 261027-klx (UAT 2026-10-27) |
+| MOD-06 | Water color is the only shipped paint engine/module; Brush was removed with engine-1 and the Krita placeholder/switcher was removed pre-publish | 261027-klx (UAT 2026-10-27), 261102-iv5 (2026-11-02) |
 | PAPER-02 | Paper is baked into the watercolor sheet; a paper change is a cache miss (re-bake), not a composite-only pass | 261017-fz3 + opaque-sheet parity (2026-10-26) |
 | PAPER-03 (paper-id undo half) | Paper-id changes are a display choice, not an undo step; the grain pair stays undoable | User decision 2026-11-02 |
 | SPEC-04 | Single-engine pivot; the production engine uses its internal spectral implementation, not the shared package | 261027-klx (UAT 2026-10-27) |
@@ -101,10 +101,10 @@ undo/redo. Phase 56 validation reports `nyquist_compliant: true`.
 
 Deferred to a later release. Tracked but not in this roadmap.
 
-### Krita Module (v2.1.0)
+### Krita — neither implemented nor planned
 
-- **KRT-01**: Third module "Krita" becomes active in the switcher (libmypaint WASM + `.myb` property-rich pack)
-- **KRT-02**: Engine 1 adopts `efx-spectral` (replaces RYB `mixSubtractive` heuristic) — Q5-gated at v2.0.0 close
+- **KRT-01**: No Krita module is implemented or planned; the v2.0.0 placeholder and its switcher slot were removed pre-publish by 261102-iv5
+- **KRT-02**: Engine 1 adopts `efx-spectral` (replaces RYB `mixSubtractive` heuristic) — an unrelated deferred engine idea, not a Krita module; Q5-gated at v2.0.0 close
 
 ### Later (v2.2+)
 
@@ -120,7 +120,7 @@ Explicitly excluded. Documented to prevent scope creep.
 
 | Feature | Reason |
 |---------|--------|
-| paint-krita / libmypaint implementation | Krita is the v2.1.0 slot — the switcher ships the inert slot only |
+| paint-krita / libmypaint implementation | Krita is neither implemented nor planned; the pre-publish 261102-iv5 fix removed the placeholder and switcher entirely |
 | Engine-1 spectral mixing | Engine 1 adopts `efx-spectral` in v2.1.0 (Q5-gated at close), not now |
 | 2K resolution | Deferred; 1920 working cap stands |
 | AI features | Out of scope for v2.0.0 |
@@ -178,12 +178,12 @@ Which phases cover which requirements. Updated 2026-10-21 after phase 56 close �
 | PAPER-02 | Phase 56 | Complete (superseded at close — engine-baked paper) |
 | PAPER-03 | Phase 56 | Complete — save + strength/scale undo; paper-id undo superseded |
 | PAPER-04 | Phase 56 | Complete |
-| MOD-01 | Phase 56 | Complete (superseded at close — single-engine switcher) |
-| MOD-02 | Phase 56 | Complete (superseded at close — single active module) |
+| MOD-01 | Phase 56 | Complete (superseded at close — single-engine switcher; top-bar switcher removed pre-publish by 261102-iv5) |
+| MOD-02 | Phase 56 | Complete (superseded at close — no module-switching surface ships; removed pre-publish by 261102-iv5) |
 | MOD-03 | Phase 56 | Complete |
 | MOD-04 | Phase 56 | Complete (superseded at close — preset-only brushes) |
 | MOD-05 | Phase 56 | Complete |
-| MOD-06 | Phase 56 | Complete (superseded at close — Water color only) |
+| MOD-06 | Phase 56 | Complete (superseded at close — ONE Water color engine; Krita placeholder removed pre-publish by 261102-iv5) |
 | SPEC-01 | Phase 56 (early spectral) | Complete |
 | SPEC-02 | Phase 56 (early spectral) | Complete |
 | SPEC-03 | Phase 56 (early spectral) | Complete |
