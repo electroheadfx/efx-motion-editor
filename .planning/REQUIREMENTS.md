@@ -72,7 +72,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 
 ## Quick Tasks (inside this milestone — never standalone)
 
-- [ ] **QUICK-01**: audio-trim-to-view (parked from pre-53)
+- [x] **QUICK-01**: audio-trim-to-view — Studio sound imports longer than the visible timeline window auto-crop to that window (UAT 2026-11-02)
 
 ## Future Requirements
 

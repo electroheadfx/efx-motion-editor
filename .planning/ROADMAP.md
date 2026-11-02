@@ -70,7 +70,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 **Locked stances (do not reopen):** CLEAN BREAK ACCEPTED — no migration code, no dual-format readers, no backward-compat shims; still never drop data silently (unreadable script/asset refuses with a named visible error, 53.1 law). ONE shared Studio engine (script, cache, timeline) for all modules. Host APIs generic over the per-engine stroke payload. Brush-pack snapshot travels in `.mce`. Time = fixed integer tick grid (~1/60 s). Determinism = same script ⇒ same pixels, FNV-1a traceSeed per stroke, no `Math.random()` in deposit/sim path. Remaining UI gray zones (top-bar placement, iconography, panel layout, option grouping) are resolved at discuss-phase — this roadmap does not pre-decide them.
 
 **In-milestone quick task (never a standalone phase, never gets a phase number):**
-- [ ] **QUICK-01**: audio-trim-to-view (parked from pre-53)
+- [x] **QUICK-01**: audio-trim-to-view — a Studio sound import longer than the visible timeline window lands pre-cropped to that window (UAT approved 2026-11-02)
 
 **Phase checklist:**
 - [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
@@ -193,4 +193,4 @@ Phases execute in numeric order: 54 → 55 → 56 (with QUICK-01 runnable as an 
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
 | 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 11/11 | Complete    | 2026-10-21 |
-| QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
+| QUICK-01 audio-trim-to-view (in-milestone quick) | — | Complete | 2026-11-02 |

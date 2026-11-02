@@ -54,7 +54,7 @@ Progress: [██████████] 100%
 - 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06)
 - `packages/efx-spectral` (SPEC-01..05) was delivered early inside Phase 56 through the dependency hook; **Phase 57 is retired** (no standalone spectral phase). Engine-1 adoption remains a future milestone concern.
 - Hard gate: 54 live UAT closes before 55 opens
-- QUICK-01 audio-trim-to-view is an in-milestone quick, never a phase
+- QUICK-01 audio-trim-to-view is COMPLETE (UAT 2026-11-02): a Studio sound import longer than the visible timeline window lands pre-cropped to it; the main-timeline import is unchanged
 
 ## Performance Metrics
 
@@ -715,6 +715,6 @@ Resume file: None
 
 - Verify the merged dev branch live (Studio paint, script/bake, modules, papers, UI)
 - Run small quicks for cosmetic fixes found on dev; open a GSD debug only for a big bug
-- QUICK-01 audio-trim-to-view remains the in-milestone quick
+- QUICK-01 audio-trim-to-view is COMPLETE (UAT 2026-11-02); open ledger: #79 paper-pass alpha (needs a GPU pass) and #91 52.5 live UAT
 - Run `/gsd-audit-milestone` before `/gsd-complete-milestone`; do not tag/publish before the audit and the signed release checklist
 - Phase 57 is retired: `packages/efx-spectral` stays as the engine-2 mixing package; engine-1 adoption is not part of v2.0.0

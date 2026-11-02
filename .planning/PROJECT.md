@@ -157,7 +157,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - [ ] Phase 56 — efx-watercolor (engine 2, paint-aquarelle, clean-room): oracle msurguy/watercolor-playground (Preact + WebGL2, engine UI-free). Paper pack (10 procedural papers for ALL paints) rides this phase. Consumes efx-spectral — if plan-time shows it needs spectral first, create `packages/efx-spectral` early inside 56 or pull 57 forward; never duplicate mixing code inside the watercolor engine. Spec: `SPECS/v1.1.0-water-color/` (00-grill-context.md + 01-gsd-context.md)
 - [ ] Phase 57 — efx-spectral (MIT spectral.js, shared — NOT watercolour-only): consumed by engine 2 now; engine 1 adopts it in v2.1.0
 - [ ] Module switcher: top-bar MODULE SWITCHER icon near the existing icons ("Brush | Water color | Krita"); each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) for all modules. v2.0.0 ships Brush + Water color only — Krita is the v2.1.0 slot (do NOT implement krita here). Gray zones (top-bar placement, iconography, panel layout, option grouping) resolved at discuss-phase
-- [ ] Quick: audio-trim-to-view (parked from pre-53) — lives inside this milestone, never standalone
+- [x] Quick: audio-trim-to-view — Studio sound imports longer than the visible view auto-crop to it (done 2026-11-02)
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
@@ -172,7 +172,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - Phase 56 — efx-watercolor engine 2 (paint-aquarelle, clean-room) + paper pack (10 procedural papers for ALL paints)
 - Phase 57 — efx-spectral shared MIT spectral.js package (consumed by engine 2 now; engine 1 adopts in v2.1.0)
 - Module switcher + per-module options panels over the one shared Studio engine (Brush + Water color ships; Krita is the v2.1.0 slot)
-- Quick inside this milestone: audio-trim-to-view (parked from pre-53)
+- Quick inside this milestone: audio-trim-to-view (done 2026-11-02)
 
 **Why 2.0.0 (user 2026-10-14):** the module switcher changes the product shape, the `.mce` clean break is accepted, and a full paint engine is not a 1.x minor. Semver law from now on: **MAJOR = new product shape / accepted break · MINOR = module or major feature · PATCH = debt.**
 
