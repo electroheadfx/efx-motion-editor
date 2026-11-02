@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 32
-waived_count: 6
-fixed_count: 70
+open_count: 2
+waived_count: 17
+fixed_count: 89
 total_count: 108
-last_updated: 2026-10-30T21:55:02.464Z
+last_updated: 2026-11-02T10:02:26.992Z
 ---
 
 # Broken Windows Ledger
@@ -87,42 +87,42 @@ last_updated: 2026-10-30T21:55:02.464Z
 | 70 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.636Z |
 | 71 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.832Z |
 | 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:15.031Z |
-| 73 | 26 | deviation | app/src/stores/projectStore.efxPaintCutover.test.ts |  | Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2) | open |  | 2026-09-23T14:17:20.987Z |  |
-| 74 | quick-260924-koa | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts | 152 | Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa | open |  | 2026-09-24T13:20:59.533Z |  |
-| 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | open |  | 2026-09-24T18:09:46.171Z |  |
+| 73 | 26 | deviation | app/src/stores/projectStore.efxPaintCutover.test.ts |  | Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2) | fixed |  | 2026-09-23T14:17:20.987Z | 2026-11-02T10:02:11.026Z |
+| 74 | quick-260924-koa | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts | 152 | Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa | waived | Target test removed with the efx-physic-paint package (261027-klx); no code action possible. | 2026-09-24T13:20:59.533Z | 2026-11-02T10:02:25.862Z |
+| 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | waived | Target test removed with the efx-physic-paint package (261027-klx); the deferred water-coupling pin no longer exists. | 2026-09-24T18:09:46.171Z | 2026-11-02T10:02:25.974Z |
 | 76 | 260924-stb | deviation | packages/efx-physic-paint/src/core/fluids.ts |  | STOP before GREEN: calibrated f(run) bounds (4/6, floor 0.25) regress pyp texture pin d(b)>=1 to 0 in every cell on the r=3 production raster — SUPERSEDED: f(run) carrier discarded (210-candidate re-calibration FALSIFIED, run=0 ambiguous), replaced by neighborhood mean-thickness field; GREEN 6341afba all pins pass | fixed |  | 2026-09-24T19:52:16.867Z | 2026-09-25T00:10:00.000Z |
 | 77 | quick-260925-b7c | deviation | .planning/quick/260925-b7c-quick-8d-recalibrate-the-spread-scale-so/260925-b7c-SUMMARY.md |  | STOPPED at Task 3 law gate: texture-presence gates (stb W2/W6, rm2 texture) fail at the new default because spreadCurveFor(50)=0.09 derives K ticks=1 (was 3); 3 harness parity edits left uncommitted pending user decision | fixed |  | 2026-09-25T06:40:20.907Z | 2026-09-25T07:04:00.127Z |
-| 78 | quick-260925-iy6 | deviation | app/vite.config.ts |  | Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol | open |  | 2026-09-25T16:28:07.934Z |  |
+| 78 | quick-260925-iy6 | deviation | app/vite.config.ts |  | Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol | fixed |  | 2026-09-25T16:28:07.934Z | 2026-11-02T10:02:24.278Z |
 | 79 | quick-260925-iy6 | unmet-truth | app/src/lib/paperPass.ts |  | CR-01 code-review BLOCKER: applyPaperPass washes partial-alpha paint (paint contribution lands at a^2 instead of a; the (1-a)*valley term washes the stroke toward the paper tone). Measured in app/src/lib/paperPass.composeLaw.test.ts (W3C software model, real pixels): paint [120,30,60] @ a=0.5 over a 230 valley produces [169,128,142] vs the law [108,27,54]. a=1.0 and a=0 are exact, so the full-opacity UAT row hides it - every AA edge and every track opacity < 1 is wrong (PIN 0 / 260924-m7w class). The directed fix (opaque tile as DESTINATION, paint as SOURCE) is PROVEN numerically identical to the shipped sequence (multiply is commutative; source-over adds the same (1-As)*Cb term). No GCO-only 5-draw sequence can yield (paint * valley) at alpha a: no GCO both multiplies two straight-alpha images and preserves source alpha. Frame-path guardrail forbids a per-pixel JS loop, so the fix is a GPU pass (WebGL fragment shader, one draw) or a deferred phase. Pinned as it.fails in paperPass.composeLaw.test.ts (flips red when a real fix lands). WR-02 (White + grain-on yields no tooth) PARKED as a separate pass by user decision - White is toothless by design per 260925-dso (no procedural fbm); the gate should stop promising tooth. | open |  | 2026-09-25T17:20:39.701Z |  |
-| 80 | 52.4 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts |  | Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified | open |  | 2026-09-29T06:47:34.799Z |  |
-| 81 | 52.4 | deviation | packages/efx-physic-paint |  | Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package) | open |  | 2026-09-29T06:47:34.944Z |  |
-| 82 | 52.4 | deviation | packages/efx-physic-paint/src/brush/footprintLanes.ts |  | Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY | open |  | 2026-09-29T08:18:02.500Z |  |
-| 83 | quick-260930-q6t | deviation | .planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md |  | 260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction | open |  | 2026-09-30T17:49:23.603Z |  |
-| 84 | quick-260930-wm6 | deviation | app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts | 236 | Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md | open |  | 2026-09-30T22:48:01.109Z |  |
-| 85 | quick-261003-vos | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | 261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations | open |  | 2026-10-03T21:44:41.596Z |  |
-| 86 | quick-261004-dn5 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts |  | Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime) | open |  | 2026-10-04T09:42:45.168Z |  |
-| 87 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase\|\|move) — honors committed precedence cell over plan literal rule | open |  | 2026-10-04T09:42:45.318Z |  |
-| 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | open |  | 2026-10-04T09:42:45.463Z |  |
-| 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | open |  | 2026-10-04T11:38:08.668Z |  |
-| 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | open |  | 2026-10-06T07:22:49.055Z |  |
+| 80 | 52.4 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts |  | Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified | waived | Target lives in the removed efx-physic-paint package (261027-klx); no code action possible. | 2026-09-29T06:47:34.799Z | 2026-11-02T10:02:26.085Z |
+| 81 | 52.4 | deviation | packages/efx-physic-paint |  | Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package) | waived | Target package removed (261027-klx); the gate workaround no longer applies. | 2026-09-29T06:47:34.944Z | 2026-11-02T10:02:26.196Z |
+| 82 | 52.4 | deviation | packages/efx-physic-paint/src/brush/footprintLanes.ts |  | Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY | waived | Target file removed with the efx-physic-paint package (261027-klx); no code action possible. | 2026-09-29T08:18:02.500Z | 2026-11-02T10:02:26.308Z |
+| 83 | quick-260930-q6t | deviation | .planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md |  | 260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction | waived | Quick target (efx-physic-paint drying parity suite) removed by 261027-klx; evidence archived, no code action possible. | 2026-09-30T17:49:23.603Z | 2026-11-02T10:02:26.422Z |
+| 84 | quick-260930-wm6 | deviation | app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts | 236 | Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md | fixed |  | 2026-09-30T22:48:01.109Z | 2026-11-02T10:01:48.587Z |
+| 85 | quick-261003-vos | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | 261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations | waived | Target file removed (physicsPaintTemporaryErase.ts); feature no longer exists. | 2026-10-03T21:44:41.596Z | 2026-11-02T10:02:26.533Z |
+| 86 | quick-261004-dn5 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts |  | Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime) | waived | Target test removed with the efx-physic-paint package (261027-klx); no code action possible. | 2026-10-04T09:42:45.168Z | 2026-11-02T10:02:26.650Z |
+| 87 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase\|\|move) — honors committed precedence cell over plan literal rule | waived | Target file removed (physicsPaintTemporaryErase.ts); feature no longer exists. | 2026-10-04T09:42:45.318Z | 2026-11-02T10:02:26.762Z |
+| 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | waived | Target test removed (physicsPaintTemporaryMove.test.ts); feature no longer exists. | 2026-10-04T09:42:45.463Z | 2026-11-02T10:02:26.878Z |
+| 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | fixed |  | 2026-10-04T11:38:08.668Z | 2026-11-02T10:02:24.408Z |
+| 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | fixed |  | 2026-10-06T07:22:49.055Z | 2026-11-02T10:01:48.707Z |
 | 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | open |  | 2026-10-07T09:28:34.433Z |  |
-| 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | open |  | 2026-10-12T10:09:09.907Z |  |
-| 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | open |  | 2026-10-12T21:07:57.950Z |  |
-| 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | open |  | 2026-10-12T21:07:58.234Z |  |
-| 95 | quick-261013-ctd | deviation | app/src-tauri/src/services/ffmpeg.rs |  | TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...) | open |  | 2026-10-13T07:28:42.229Z |  |
-| 96 | 54 | deviation | app/src/components/shared/NumericStepper.tsx |  | Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total) | open |  | 2026-10-14T15:33:20.833Z |  |
-| 97 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 140 | setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice) | open |  | 2026-10-15T22:36:41.860Z |  |
-| 98 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 175 | stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only) | open |  | 2026-10-15T22:36:41.962Z |  |
-| 99 | 56 | unrun-verify | app/src/components/physic-paint/view/PaperPicker.tsx | 78 | 56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md) | open |  | 2026-10-16T00:15:12.513Z |  |
-| 100 | quick-261017-vcn | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move) | open |  | 2026-10-17T21:05:48.124Z |  |
-| 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | open |  | 2026-10-17T21:05:48.265Z |  |
+| 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | fixed |  | 2026-10-12T10:09:09.907Z | 2026-11-02T10:02:24.523Z |
+| 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | fixed |  | 2026-10-12T21:07:57.950Z | 2026-11-02T10:02:24.636Z |
+| 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | fixed |  | 2026-10-12T21:07:58.234Z | 2026-11-02T10:02:24.747Z |
+| 95 | quick-261013-ctd | deviation | app/src-tauri/src/services/ffmpeg.rs |  | TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...) | fixed |  | 2026-10-13T07:28:42.229Z | 2026-11-02T10:02:24.861Z |
+| 96 | 54 | deviation | app/src/components/shared/NumericStepper.tsx |  | Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total) | fixed |  | 2026-10-14T15:33:20.833Z | 2026-11-02T10:02:24.973Z |
+| 97 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 140 | setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice) | waived | Inert stub: AnimationPlayer is constructed only in a test fixture, never in production, so setInputLocked/setAnimationMode have no live caller; wiring is a future-plan concern. | 2026-10-15T22:36:41.860Z | 2026-11-02T10:02:26.992Z |
+| 98 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 175 | stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only) | fixed |  | 2026-10-15T22:36:41.962Z | 2026-11-02T10:01:48.832Z |
+| 99 | 56 | unrun-verify | app/src/components/physic-paint/view/PaperPicker.tsx | 78 | 56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md) | fixed |  | 2026-10-16T00:15:12.513Z | 2026-11-02T10:01:48.962Z |
+| 100 | quick-261017-vcn | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move) | fixed |  | 2026-10-17T21:05:48.124Z | 2026-11-02T10:02:25.084Z |
+| 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | fixed |  | 2026-10-17T21:05:48.265Z | 2026-11-02T10:02:25.199Z |
 | 102 | quick-261018-cy1 | stub | none |  | no stubs | waived | Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect | 2026-10-18T07:38:06.691Z | 2026-10-18T07:38:41.483Z |
 | 103 | quick-261024-hsd | unrun-verify | app/src/lib/projectPaperRaster.test.ts |  | Task 2 gates could not pass on the pristine tree: 15 pre-existing app typecheck errors and 10 pre-existing vitest failures (identical on the preact 11.0.1 baseline), so the automated verify exits 1 for reasons unrelated to the preact 11.0.2 bump. | fixed |  | 2026-10-24T10:55:47.595Z | 2026-10-24T11:13:28.077Z |
-| 104 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: scale factor direction corrected to currentDistance/startDistance (plan text inverted the cited inline-editor oracle) | open |  | 2026-10-24T15:04:35.134Z |  |
-| 105 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance | open |  | 2026-10-24T15:04:35.281Z |  |
-| 106 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3 | open |  | 2026-10-24T15:04:35.435Z |  |
-| 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | open |  | 2026-10-24T15:04:35.585Z |  |
-| 108 | 261030-v1t | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels | open |  | 2026-10-30T21:55:02.464Z |  |
+| 104 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: scale factor direction corrected to currentDistance/startDistance (plan text inverted the cited inline-editor oracle) | fixed |  | 2026-10-24T15:04:35.134Z | 2026-11-02T10:02:25.311Z |
+| 105 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance | fixed |  | 2026-10-24T15:04:35.281Z | 2026-11-02T10:02:25.419Z |
+| 106 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3 | fixed |  | 2026-10-24T15:04:35.435Z | 2026-11-02T10:02:25.527Z |
+| 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | fixed |  | 2026-10-24T15:04:35.585Z | 2026-11-02T10:02:25.642Z |
+| 108 | 261030-v1t | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels | fixed |  | 2026-10-30T21:55:02.464Z | 2026-11-02T10:02:25.752Z |
 
 ````json
 [
@@ -997,10 +997,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/stores/projectStore.efxPaintCutover.test.ts",
     "line": null,
     "description": "Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-09-23T14:17:20.987Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:11.026Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1010,10 +1010,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts",
     "line": 152,
     "description": "Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target test removed with the efx-physic-paint package (261027-klx); no code action possible.",
     "recorded_at": "2026-09-24T13:20:59.533Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.862Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1023,10 +1023,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts",
     "line": 418,
     "description": "PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target test removed with the efx-physic-paint package (261027-klx); the deferred water-coupling pin no longer exists.",
     "recorded_at": "2026-09-24T18:09:46.171Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.974Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1062,10 +1062,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/vite.config.ts",
     "line": null,
     "description": "Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-09-25T16:28:07.934Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.278Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1088,10 +1088,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts",
     "line": null,
     "description": "Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target lives in the removed efx-physic-paint package (261027-klx); no code action possible.",
     "recorded_at": "2026-09-29T06:47:34.799Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.085Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1101,10 +1101,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint",
     "line": null,
     "description": "Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package)",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target package removed (261027-klx); the gate workaround no longer applies.",
     "recorded_at": "2026-09-29T06:47:34.944Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.196Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1114,10 +1114,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint/src/brush/footprintLanes.ts",
     "line": null,
     "description": "Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target file removed with the efx-physic-paint package (261027-klx); no code action possible.",
     "recorded_at": "2026-09-29T08:18:02.500Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.308Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1127,10 +1127,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": ".planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md",
     "line": null,
     "description": "260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Quick target (efx-physic-paint drying parity suite) removed by 261027-klx; evidence archived, no code action possible.",
     "recorded_at": "2026-09-30T17:49:23.603Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.422Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1140,10 +1140,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts",
     "line": 236,
     "description": "Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-09-30T22:48:01.109Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:01:48.587Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1153,10 +1153,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts",
     "line": null,
     "description": "261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target file removed (physicsPaintTemporaryErase.ts); feature no longer exists.",
     "recorded_at": "2026-10-03T21:44:41.596Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.533Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1166,10 +1166,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts",
     "line": null,
     "description": "Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime)",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target test removed with the efx-physic-paint package (261027-klx); no code action possible.",
     "recorded_at": "2026-10-04T09:42:45.168Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.650Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1179,10 +1179,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts",
     "line": null,
     "description": "Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase||move) — honors committed precedence cell over plan literal rule",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target file removed (physicsPaintTemporaryErase.ts); feature no longer exists.",
     "recorded_at": "2026-10-04T09:42:45.318Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.762Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1192,10 +1192,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts",
     "line": null,
     "description": "Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Target test removed (physicsPaintTemporaryMove.test.ts); feature no longer exists.",
     "recorded_at": "2026-10-04T09:42:45.463Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.878Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1205,10 +1205,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/stores/paintStore.fgBg.test.ts",
     "line": null,
     "description": "Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-04T11:38:08.668Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.408Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1218,10 +1218,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts",
     "line": null,
     "description": "Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-06T07:22:49.055Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:01:48.707Z",
     "milestone": "v1.0.0"
   },
   {
@@ -1244,10 +1244,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/lib/documentSoundPeaks.test.ts",
     "line": null,
     "description": "Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-12T10:09:09.907Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.523Z",
     "milestone": "v1.0.1"
   },
   {
@@ -1257,10 +1257,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/types/sequence.ts",
     "line": null,
     "description": "Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-12T21:07:57.950Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.636Z",
     "milestone": "v1.0.1"
   },
   {
@@ -1270,10 +1270,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/lib/previewRenderer.ts",
     "line": null,
     "description": "Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-12T21:07:58.234Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.747Z",
     "milestone": "v1.0.1"
   },
   {
@@ -1283,10 +1283,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src-tauri/src/services/ffmpeg.rs",
     "line": null,
     "description": "TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-13T07:28:42.229Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.861Z",
     "milestone": "v1.0.1"
   },
   {
@@ -1296,10 +1296,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/shared/NumericStepper.tsx",
     "line": null,
     "description": "Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-14T15:33:20.833Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:24.973Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1309,10 +1309,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-watercolor/src/adapter/engineAdapter.ts",
     "line": 140,
     "description": "setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice)",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Inert stub: AnimationPlayer is constructed only in a test fixture, never in production, so setInputLocked/setAnimationMode have no live caller; wiring is a future-plan concern.",
     "recorded_at": "2026-10-15T22:36:41.860Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:26.992Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1322,10 +1322,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "packages/efx-watercolor/src/adapter/engineAdapter.ts",
     "line": 175,
     "description": "stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-15T22:36:41.962Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:01:48.832Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1335,10 +1335,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/PaperPicker.tsx",
     "line": 78,
     "description": "56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-16T00:15:12.513Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:01:48.962Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1348,10 +1348,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/shared/NumericStepper.test.tsx",
     "line": null,
     "description": "Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-17T21:05:48.124Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.084Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1361,10 +1361,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/RightPanelPaperTab.tsx",
     "line": null,
     "description": "Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-17T21:05:48.265Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.199Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1400,10 +1400,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/scriptStrokeTransform.ts",
     "line": null,
     "description": "Rule 1 bug: scale factor direction corrected to currentDistance/startDistance (plan text inverted the cited inline-editor oracle)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-24T15:04:35.134Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.311Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1413,10 +1413,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/view/scriptStrokeTransform.ts",
     "line": null,
     "description": "Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-24T15:04:35.281Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.419Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1426,10 +1426,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
     "line": null,
     "description": "Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-24T15:04:35.435Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.527Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1439,10 +1439,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
     "line": null,
     "description": "Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-24T15:04:35.585Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.642Z",
     "milestone": "v2.0.0"
   },
   {
@@ -1452,10 +1452,10 @@ last_updated: 2026-10-30T21:55:02.464Z
     "file": "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts",
     "line": null,
     "description": "Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-30T21:55:02.464Z",
-    "resolved_at": null,
+    "resolved_at": "2026-11-02T10:02:25.752Z",
     "milestone": "v2.0.0"
   }
 ]
