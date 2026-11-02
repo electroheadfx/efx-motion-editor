@@ -2,14 +2,14 @@
 
 ![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes: import key photographs, arrange them into timed sequences, composite multi-track layers with blend modes and keyframe animation, apply cinematic FX and GLSL shaders, paint and rotoscope frame-by-frame, and export PNG image sequences or video (ProRes/H.264/AV1). Alongside the photo pipeline stands a second pillar — the **Physics Paint Studio**: a standalone window where pressure-driven wet-media physics, a deterministic Roto timeline, a reusable Scripts library, and a per-document sound track turn hand-drawn animation into Loop Clips on the main timeline.
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes: import key photographs, arrange them into timed sequences, composite multi-track layers with blend modes and keyframe animation, apply cinematic FX and GLSL shaders, paint and rotoscope frame-by-frame, and export PNG image sequences or video (ProRes/H.264/AV1). Alongside the photo pipeline stands a second pillar — the **Water color Studio**: a standalone window where a physical watercolour engine, a deterministic Roto timeline, a reusable Scripts library, and a per-document sound track turn hand-drawn animation into Loop Clips on the main timeline.
 
 <!-- Screenshot: Main editor view -->
 
 ## Highlights
 
 - **Multi-track EFX Paint document** — one parent paint layer now holds a whole frame-animation document: internal tracks with hide/solo/opacity/blend, a deterministic compositor, a fixed Background track, a photo/reference track, and Reveal.
-- **Physics Paint Studio** — its own window (the main window hides while it is open): deterministic Roto timeline, project-scoped Scripts library, document sound track, pressure-driven physics look controls.
+- **Water color Studio** — its own window (the main window hides while it is open): a physical watercolour engine with wet-in-wet blooms, wet-on-dry edges and tide lines, a deterministic Roto timeline, project-scoped Scripts library, document sound track, and Play Script animation.
 - **`.mce` project package** — manifest + per-layer JSON + WebP frame sidecars; references-only, digest-verified, changed-files-only atomic saves.
 - **Modern HD frame runtime** — byte-backed frames with native Rust WebP decoding, a 512 MB decode LRU, a raised 1920 px working-resolution cap, and free canvas formats at project creation — HD landscape, vertical, portrait, square, or custom W×H.
 - **Reveal** — photo sources revealed through paint/Script coverage, baked into keys.
@@ -53,16 +53,16 @@ Export PNG image sequences with resolution multipliers, or encode ProRes/H.264/A
 
 <!-- Screenshot: Export dialog -->
 
-## Physics Paint Studio
+## Water color Studio
 
-Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive application running in its own Tauri window (the earlier headless batch adapter was abandoned in favor of this standalone window). Opening a Physics Paint layer launches the Studio as a single-window session: while the Studio is open the main window hides and the Studio owns the layer session.
+Water colour painting ships as **efx-watercolor**, a complete interactive engine running inside the standalone Studio window. Opening a paint layer launches the Studio as a single-window session: while the Studio is open the main window hides and the Studio owns the layer session. The engine simulates wet, mobile and fixed pigment on a 60 Hz integer tick grid; **Play Script** records strokes and replays the physics across frames.
 
-<!-- Screenshot: Physics Paint Studio — Roto timeline -->
+<!-- Screenshot: Water color Studio — Roto timeline -->
 
 ### Studio Window
 
 - **Typed editor bridge** — the parent editor and the Studio communicate through a typed Tauri/postMessage bridge with exact acknowledgements ([`app/src/lib/physicPaintBridge.ts`](app/src/lib/physicPaintBridge.ts)), including native frame synchronization via the Tauri-native `physic-paint:seek-frame` path.
-- **Launch & geometry** — double-click a Physics Paint layer row in the main sidebar to open the Studio; on every open the Studio window mirrors the main window's current bounds.
+- **Launch & geometry** — double-click a paint layer row in the main sidebar to open the Studio; on every open the Studio window mirrors the main window's current bounds.
 - **Main-editor identity** — the layer row shows its display name, accent color, and entry points; the layer spans the visible timeline view at the current zoom/scroll, and new layers stack at the top of the layer list.
 
 ### Deterministic Roto Timeline
@@ -86,7 +86,7 @@ Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive
 
 ### Document Sound Track
 
-- The physics paint document carries its own sound clip (dialogue or foley for the animation being drawn): waveform in the Studio timeline, drag to reposition, trim start/end points.
+- The paint document carries its own sound clip (dialogue or foley for the animation being drawn): waveform in the Studio timeline, drag to reposition, trim start/end points.
 - Studio playback plays the clip; the main editor plays it mixed with the main-timeline audio (music/ambience keeps its role and stays read-only in the Studio).
 - Edits sync across both windows and survive save/reopen — `.mce` keeps the sound as a disk reference, never copied into the package.
 
@@ -175,17 +175,20 @@ A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-
 
 ## What's New in v2.0.0
 
-Phases 54 → 56 of the v2.0.0 milestone, plus the in-milestone QUICK-01:
+Phases 54 → 56 of the v2.0.0 milestone:
 
 | Area | Shipped |
 |------|---------|
 | Runtime | Preact 11 with `@preact/signals`, one `preact` copy across app and packages; the `paintVersion` bump+subscribe discipline is preserved |
 | Paint host | `@efxlab/efx-paint-host` owns the shared Studio script law — animation schedules, traceSeed, integer tick grid, script envelope — behind a generic `StudioStroke<P>` / `EngineAdapter<P>` seam |
-| Water color engine | Clean-room `@efxlab/efx-watercolor` (vendored Watercolor Playground): wet-in-wet blooms, hard wet-on-dry edges, dark tide lines, four tools (`brush | water | pen | lift`), 15 preset tips, deterministic FNV-1a replay |
+| Water color engine | Clean-room `@efxlab/efx-watercolor` (vendored Watercolor Playground): wet-in-wet blooms, hard wet-on-dry edges, dark tide lines, four tools (brush, water, pen, lift), 15 preset tips, deterministic FNV-1a replay |
 | Paper | 10 procedural papers plus the 3 recovered real backgrounds; paper is baked with the stroke, so a paper change is a cache miss |
 | Studio | Single Water color module: the Brush engine, engine-1, and the editor module switcher are retired; there is no Krita placeholder — Krita is neither implemented nor planned; record → play physics → WebP bake (`diffusionFrames` ≤ 600) → cache, with the bake surviving leaving the frame |
+| Play Script | Every stroke records points, pressure, tool, brush and params on the 60 Hz integer tick grid; physics replays across frames without forcing Dry at boundaries; Motion/Static runs, stacking, per-key scripts, paint-seed variation, Reveal runs |
+| Stroke editing | Select / multi-select, move, rotate, scale, restack, delete, list-first Stroke settings, Draft mode, and script-authoritative undo/redo (10 levels per brush) |
 | Project format | Every new `.mce` field is declared in both TypeScript and Rust; unreadable or cross-engine scripts refuse with a named visible error |
-| Audio | QUICK-01: a Studio sound longer than the visible timeline window is imported pre-cropped to that window |
+
+The Water color engine simulates wet, mobile and fixed pigment buffers with wet-gated diffusion, so wet-in-wet blooms, wet-on-dry edges and dark tide lines come from the simulation rather than a filter. Play Script records every stroke on the 60 Hz integer tick grid and replays the physics across frames without forcing Dry at frame boundaries; the result bakes to cached WebP frames (`diffusionFrames` ≤ 600) that survive leaving the frame. Brushes are preset-only (15 tips), and 10 procedural papers plus the 3 recovered real backgrounds are baked into the wash.
 
 v2.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. It is a major release: the paint module is now a single-engine Water color workstation on Preact 11 — the product ships ONE Water color engine with no Krita placeholder, and the Brush engine plus the top-bar module switcher are deliberately retired as a clean break with no migration code. Krita is neither implemented nor planned.
 
@@ -241,7 +244,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | GPU Effects | WebGL2 (GLSL shaders, GPU blur, per-layer motion blur) |
 | Native Backend | Rust, Tauri 2.0 |
 | Video Export | FFmpeg (auto-provisioned) |
-| Paint Engine | perfect-freehand (flat strokes), p5.brush (spectral pigment FX), fit-curve + bezier-js (path editing), @efxlab/efx-physic-paint (standalone Physics Paint engine with typed editor bridge) |
+| Paint Engine | perfect-freehand (flat strokes), p5.brush (spectral pigment FX), fit-curve + bezier-js (path editing), @efxlab/efx-watercolor (physical Water color engine), @efxlab/efx-paint-host (shared Studio script law) |
 | Monorepo | pnpm workspaces, tsup (package builds) |
 | Project Format | `.mce` package (manifest + per-layer JSON + WebP frame sidecars, references-only) |
 
@@ -263,7 +266,7 @@ cd efx-motion-editor
 pnpm install
 
 # Build the paint engine
-pnpm --filter @efxlab/efx-physic-paint build
+pnpm --filter @efxlab/efx-paint-host build && pnpm --filter @efxlab/efx-watercolor build
 
 # Run in development mode
 cd app
@@ -307,8 +310,8 @@ efx-motion-editor/                # pnpm workspace root
 │       ├── models/               # Data structures (project format)
 │       └── services/             # File I/O, image processing, thumbnails
 ├── packages/
-│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — natural-media paint
-│                                 # simulation (wet/dry physics, fluids, paper texture)
+│   ├── efx-paint-host/           # @efxlab/efx-paint-host — shared Studio script law
+│   └── efx-watercolor/           # @efxlab/efx-watercolor — physical Water color engine
 ├── docs/                         # Project docs and assets (README header artwork)
 ├── .planning/                    # GSD project planning
 ├── package.json                  # Workspace root (scripts, overrides, packageManager)
@@ -317,4 +320,8 @@ efx-motion-editor/                # pnpm workspace root
 
 ## License
 
-This project is licensed under the GNU General Public License v2.0 — see [LICENSE](LICENSE) for details.
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0-or-later) — see [LICENSE](LICENSE) for details.
+
+## Credits
+
+The Water color engine (`packages/efx-watercolor`) vendors the MIT-licensed [Watercolor Playground](https://github.com/msurguy/watercolor-playground) by Maksim Surguy. Thank you, Maks, for making the engine and its published method available.
