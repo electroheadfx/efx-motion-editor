@@ -10,7 +10,7 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 
 ### Rail Editing (RAIL)
 
-- [ ] **RAIL-01**: User can open Edit Rail for a normal Key Rail — selected (or double-clicked) in the Studio timeline — from the sidebar, using the same Edit Rail entry point loop clips already use.
+- [x] **RAIL-01**: User can open Edit Rail for a normal Key Rail — selected (or double-clicked) in the Studio timeline — from the sidebar, using the same Edit Rail entry point loop clips already use.
 - [ ] **RAIL-02**: The Key Rail Edit Rail modal shows only the cycle count and the Infinity checkbox, prefilled at 1 for both a finite count and the infinite state; no script, motion, or reveal controls are shown.
 - [x] **RAIL-03**: Confirming the modal converts the selected Key Rail segment into a provenance-free Standard loop clip — `sourceKeyIds` = the segment's keys in frame order, `placementStart` = the segment's first key frame, no `scriptId`, no `railKind`, no `motion` — and the keys become loop-owned; the Key Rail segment no longer renders and the rail presents as a Standard cycle.
 - [x] **RAIL-04**: Cancelling the Key Rail Edit Rail modal performs zero writes (no store mutation, no revision bump, no undo entry).
@@ -45,7 +45,7 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAIL-01 | Phase 58 | Pending |
+| RAIL-01 | Phase 58 | Complete |
 | RAIL-02 | Phase 58 | Pending |
 | RAIL-03 | Phase 58 | Complete |
 | RAIL-04 | Phase 58 | Complete |

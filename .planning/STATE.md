@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-02-PLAN.md
-last_updated: "2026-11-03T12:03:17.418Z"
+stopped_at: Completed 58-03-PLAN.md
+last_updated: "2026-11-03T12:14:52.698Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: 385a1670145cdcb2cf753d475312e093bc256b3d
+state_head: aa3aa0bcc804599a69fa215ede83ff4825a0e8e1
 progress:
   total_phases: 1
   completed_phases: 0
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58 (Rail editing regressions) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
@@ -178,6 +178,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase quick-261024-mz5 P261024-mz5 | 19 | 3 tasks | 23 files |
 | Phase 58 P01 | 2 min | 2 tasks | 3 files |
 | Phase 58 P02 | 8 min | 3 tasks | 5 files |
+| Phase 58 P03 | 6 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -531,6 +532,13 @@ Recent decisions affecting current work:
 - [Phase 58]: Key Rail cycle length is the span law (lastKeyFrame - firstKeyFrame + 1), never the key count; a gapped segment at 10,12,15 gets a 6-frame cycle and clamped lifecycle extents.
 - [Phase 58]: The Key Rail conversion publishes ONE loop-only commit through buildLoopOnlyPublication and records exactly one undo/redo command; every refusal and cancel writes nothing.
 - [Phase 58]: openKeyRailCycleEdit returns Promise<RotoPlayScriptLoopOpResult> on every path and confirmKeyRailCycle revalidates keys/ownership against fresh authority before any publication.
+- [Phase 58]: projectSelectedKeyRailInspector is anchor-agnostic (D-03): it takes whatever segment the caller resolved plus the set size. A 2+ set shows that rail's own facts with editDisabledReason 'Select a single rail to edit it.'; no bulk conversion action exists at any set size.
+- [Phase 58]: The Key Rail takeover uses physics-paint-scripts-panel without the loop-only physics-paint-loop-clip-panel modifier. That modifier's only declaration is justify-content: flex-start (the flex default), so visual parity is exact, and omitting it keeps four existing loop-inspector source anchors pointing at the loop branch (no CSS change is permitted).
+- [Phase 58]: The panel branches before if (selectedLoopClip) (D-01) and renders exactly Frames / Keys / Type (D-04) — the loop inspector's Name/Source/Placement/Cycle/Effective/Rail Type/Status facts never leak into the Key Rail surface.
+- [Phase 58]: The double-click detector is timestamp-only (D-02): a plain click records event.timeStamp, modifier clicks reset it to null, and an open consumes the sequence. Selection stays synchronous, so existing click timing is untouched (no 250 ms single-click delay like the loop rail).
+- [Phase 58]: The open intent is gated on gesture 'plain', !isMoveMember, and !busy (T-58-06); the onRailSetDragClickSuppressed / consumeClickSuppression early returns and the pointer-down batch routing are byte-for-byte unchanged.
+- [Phase 58]: Enter selects then opens the same entry; Space still plain-selects only and Escape still hides the tooltip. A move member or busy rail on Enter selects without opening.
+- [Phase 58]: The strip forwards onOpenKeyRailCycleEdit beside onOpenRotoLoopEdit; drag dispatch is untouched. Studio wiring is plan 58-05.
 
 ### Pending Todos
 
@@ -702,8 +710,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T12:03:17.392Z
-Stopped at: Completed 58-02-PLAN.md
+Last session: 2026-11-03T12:14:52.672Z
+Stopped at: Completed 58-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
