@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-01-PLAN.md
-last_updated: "2026-11-03T11:52:22.869Z"
+stopped_at: Completed 58-02-PLAN.md
+last_updated: "2026-11-03T12:03:17.418Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: 2892b081000b8960559d22b66dbe7b2d653a69a0
+state_head: 385a1670145cdcb2cf753d475312e093bc256b3d
 progress:
   total_phases: 1
   completed_phases: 0
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58 (Rail editing regressions) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
@@ -177,6 +177,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase quick-261018-odm P261018-odm | 12min | 4 tasks | 8 files |
 | Phase quick-261024-mz5 P261024-mz5 | 19 | 3 tasks | 23 files |
 | Phase 58 P01 | 2 min | 2 tasks | 3 files |
+| Phase 58 P02 | 8 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -527,6 +528,9 @@ Recent decisions affecting current work:
 - [Phase quick-261024-mz5]: Watercolor transform is UV-space via one aquarelleEnginePixelToUv crossing and a NEGATED screen angle (UV y is up)
 - [Phase quick-261024-mz5]: Watercolor failure path restores the raw pre-attempt snapshot and surfaces the existing refusal capsule
 - [Phase 58]: Law A is a single resolver comparator change (> 1 referencing loops); D-13 needs zero work because buildMoveCandidate never emits nextLoopClips; no-leak pins keep Force Spacing and every other linked-key guard unchanged.
+- [Phase 58]: Key Rail cycle length is the span law (lastKeyFrame - firstKeyFrame + 1), never the key count; a gapped segment at 10,12,15 gets a 6-frame cycle and clamped lifecycle extents.
+- [Phase 58]: The Key Rail conversion publishes ONE loop-only commit through buildLoopOnlyPublication and records exactly one undo/redo command; every refusal and cancel writes nothing.
+- [Phase 58]: openKeyRailCycleEdit returns Promise<RotoPlayScriptLoopOpResult> on every path and confirmKeyRailCycle revalidates keys/ownership against fresh authority before any publication.
 
 ### Pending Todos
 
@@ -698,8 +702,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T11:52:22.842Z
-Stopped at: Completed 58-01-PLAN.md
+Last session: 2026-11-03T12:03:17.392Z
+Stopped at: Completed 58-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
