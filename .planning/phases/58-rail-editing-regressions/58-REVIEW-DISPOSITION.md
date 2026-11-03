@@ -3,6 +3,18 @@ phase: 58
 review: 58-REVIEW.md
 titles: json
 findings:
+  - id: CR-01
+    severity: critical
+    disposition: open
+    title: "G-01 truncates a pasted Infinity rail whose frozen span is not a whole cycle"
+  - id: WR-01
+    severity: warning
+    disposition: open
+    title: "A real key inside a lifecycle gap is undeletable, and the locked copy points at a frame that refuses deletion"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "Unreachable `capacity === undefined` fallback in `resolveGroupBoundedEnd`"
   - id: CR-03
     severity: critical
     disposition: open
@@ -11,26 +23,14 @@ findings:
     severity: info
     disposition: open
     title: "Post-commit generation comment misstates how a cancel can reach `'committing'`"
-  - id: CR-01
-    severity: critical
-    disposition: fixed
-    title: "Cancel during `'preparing'` does not cancel the Key Rail conversion"
   - id: CR-02
     severity: critical
     disposition: fixed
     title: "Law A single-loop move can invalidate the loop's source order"
-  - id: WR-01
-    severity: warning
-    disposition: fixed
-    title: "Cancel/Close during `'committing'` nulls the target while the dialog stays open"
   - id: WR-02
     severity: warning
     disposition: fixed
     title: "Enter-to-confirm in the reduced form is blocked by an unrelated stale frames error"
-  - id: IN-01
-    severity: info
-    disposition: open
-    title: "\"Run details\" readout in the reduced modal is stale dialog state"
   - id: IN-02
     severity: info
     disposition: open
@@ -39,22 +39,22 @@ findings:
     severity: info
     disposition: open
     title: "Open-time `loopClipsOwnAnyKey` is unreachable from production call sites"
-open: 5
+open: 7
 total: 9
-recorded: 2026-11-03T14:18:37.526Z
+recorded: 2026-11-03T16:42:48.974Z
 ---
 
 # Phase 58: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-03 | critical | open | - |
-| IN-04 | info | open | - |
-| CR-01 | critical | fixed | 58-06 (not in the current review) |
+| CR-01 | critical | open | - |
+| WR-01 | warning | open | - |
+| IN-01 | info | open | - |
+| CR-03 | critical | open | - (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
 | CR-02 | critical | fixed | 58-07 (not in the current review) |
-| WR-01 | warning | fixed | 58-06 (not in the current review) |
 | WR-02 | warning | fixed | 58-08 (not in the current review) |
-| IN-01 | info | open | - (not in the current review) |
 | IN-02 | info | open | - (not in the current review) |
 | IN-03 | info | open | - (not in the current review) |
 
