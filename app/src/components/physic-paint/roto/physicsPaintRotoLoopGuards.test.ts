@@ -1221,6 +1221,21 @@ describe('Phase 58 G-01 source-derived loop extent', () => {
     expect(range.effectiveEnd).toBe(CAPACITY);
     expect(range.truncated).toBe(false);
   });
+
+  it('leaves a reveal rail at its requested span — the WR-01 stretch law owns its extent', () => {
+    // Source A@10 B@11 C@12 at repeat 1 derives 13; the reveal stretch to 15
+    // must survive (the new frames stay empty by design, D-07).
+    const revealClip: PhysicPaintRotoLoopClip = {
+      ...staleExtentLoop({ repeat: 1, storedEndExclusive: 15 }),
+      railKind: 'reveal',
+    };
+    const range = derive(EXTENT_RECORDS(), [revealClip])
+      .ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the reveal loop to derive.');
+    expect(range.requestedEnd).toBe(15);
+    expect(range.effectiveEnd).toBe(15);
+    expect(range.unresolved).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

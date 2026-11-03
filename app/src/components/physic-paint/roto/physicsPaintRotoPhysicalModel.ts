@@ -995,6 +995,10 @@ export function resolvePhysicPaintRotoLoopClipLifecycle(
  * in-memory clip must keep its stored end instead of inventing a lifecycle —
  * for an Infinity/non-positive repeat, and for a source list whose identities
  * are missing or not strictly increasing.
+ *
+ * A Reveal rail is exempt: its extent is the REQUESTED span, including the
+ * empty frames a stretch adds (WR-01 / D-07). The stretch law owns that end;
+ * G-01's surviving-source bound applies to converted Standard/Paint cycles.
  */
 export function resolvePhysicPaintRotoLoopSourceExtent(
   clip: PhysicPaintRotoLoopClip,
@@ -1002,6 +1006,7 @@ export function resolvePhysicPaintRotoLoopSourceExtent(
   capacity: number,
 ): { readonly endExclusive: number; readonly cycleLength: number } | null {
   if (PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS.some((key) => clip[key] === undefined)) return null;
+  if (clip.railKind === 'reveal') return null;
   if (typeof clip.repeat !== 'number' || !Number.isSafeInteger(clip.repeat) || clip.repeat <= 0) return null;
   if (!isNonNegativeInteger(capacity)) return null;
   const frameByKeyId = new Map<string, number>();
