@@ -1864,6 +1864,26 @@ function cutAndInsert(
 // the delta; selected offsets stay fixed and unselected identities never move.
 // ---------------------------------------------------------------------------
 
+/**
+ * CR-02 / CR-03: the derivation's strict-increase law, proven against the
+ * FINAL candidate mapping. Zero- and one-element source cycles are vacuously
+ * ordered; a source key absent from the mapping fails closed. Shared by the
+ * move-key and move-key-group branches so the order proof cannot drift.
+ */
+function loopSourceOrderIsProvable(
+  clip: PhysicPaintRotoLoopClip,
+  mapping: ReadonlyMap<string, number>,
+): boolean {
+  let previous: number | undefined;
+  for (const keyId of clip.sourceKeyIds) {
+    const position = mapping.get(keyId);
+    if (position === undefined) return false;
+    if (previous !== undefined && position <= previous) return false;
+    previous = position;
+  }
+  return true;
+}
+
 function buildMoveGroupCandidate(
   identities: ValidatedIdentities,
   movedKeyIds: readonly string[],
@@ -4526,12 +4546,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // can hide an inversion. Rejection is the only safe outcome: re-sorting
     // sourceKeyIds would silently change the cycle's playback order.
     if (referencingClips.length === 1 && moveResult.candidate.changed) {
-      const sourcePositions = referencingClips[0]!.sourceKeyIds.map((keyId) => moveResult.candidate.mapping.get(keyId));
-      const orderIsProvable = sourcePositions.every(
-        (position, index) => position !== undefined
-          && (index === 0 || sourcePositions[index - 1]! < position),
-      );
-      if (!orderIsProvable) {
+      if (!loopSourceOrderIsProvable(referencingClips[0]!, moveResult.candidate.mapping)) {
         return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
       }
     }
@@ -5018,6 +5033,24 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
+    // CR-03: the same final-mapping source-order proof move-key uses (CR-02).
+    // buildMoveGroupCandidate is a pure rigid translation and finalizeProposal
+    // never validates source order, so a partial-cycle group move could land a
+    // moved key past a non-moved source key and persist an unresolvable clip.
+    // The proof reads the FINAL candidate mapping, so that inversion is caught;
+    // rejection is the only safe outcome because re-sorting sourceKeyIds would
+    // silently change the cycle's playback order, and an unprovable order (a
+    // mapped key missing) fails closed. It is intersection-scoped: a rigid
+    // translation cannot move an untouched clip's source positions, so revisit
+    // this skip if move-key-group ever gains a ripple.
+    if (moveResult.candidate.changed) {
+      for (const clip of loopClips) {
+        if (!clip.sourceKeyIds.some((keyId) => seenMovedKeyIds.has(keyId))) continue;
+        if (!loopSourceOrderIsProvable(clip, moveResult.candidate.mapping)) {
+          return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+        }
+      }
+    }
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
