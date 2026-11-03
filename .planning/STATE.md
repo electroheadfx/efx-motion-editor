@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
-status: executing
-stopped_at: Completed 58-07-PLAN.md
-last_updated: "2026-11-03T13:53:52.641Z"
+status: verifying
+stopped_at: Completed 58-08-PLAN.md
+last_updated: "2026-11-03T13:58:34.935Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: b4dfa03be8aee9c1faab38dd01758c3967ecc302
+state_head: d3cc5510c25a4f0db1b8ab551f897fe46afec969
 progress:
   total_phases: 1
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 Phase: 58 (Rail editing regressions) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-03 — Phase 58 execution started
 
 
@@ -183,6 +183,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P05 | 4 min | 1 tasks | 2 files |
 | Phase 58 P06 | 5 | 2 tasks | 4 files |
 | Phase 58 P07 | 2min | 2 tasks | 3 files |
+| Phase 58 P08 | 3 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -555,6 +556,9 @@ Recent decisions affecting current work:
 - [Phase 58]: An order-breaking or unprovable destination is rejected with the existing loop-source-key-move-rejected code and verbatim D-16 copy; sourceKeyIds is never re-sorted or mutated.
 - [Phase 58]: The guard runs only when candidate.changed is true, so a no-change drag back to the key's own cell is accepted even in an already-unresolved cycle.
 - [Phase 58]: Two or more referencing loops keep the unchanged D-11 / D-16 rejection before any candidate is built.
+- [Phase 58]: One derived confirmBlocked value drives the Enter guard and the primary disabled state so a click and Enter can never disagree (58-08 WR-02)
+- [Phase 58]: framesValidationError is null when reducedForm is true; every other mode keeps the exact prior reveal/paint validation channel
+- [Phase 58]: stackCollision stays in the shared gate for the primary while Enter's collision branch keeps its truncate precedence
 
 ### Pending Todos
 
@@ -726,8 +730,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T13:53:52.611Z
-Stopped at: Completed 58-07-PLAN.md
+Last session: 2026-11-03T13:58:34.905Z
+Stopped at: Completed 58-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
