@@ -278,23 +278,43 @@ describe('D-11 rigid linked-key guard', () => {
   // Phase 58 D-12 (Law A): exactly one referencing loop is an independent
   // cycle and may move alone; two or more keep Phase 43 D-11 and the rigid
   // whole-cycle group drag. The locked D-16 copy stays verbatim for >= 2.
+  // CR-02: the accepted destination must also keep that single cycle's
+  // sourceKeyIds positions strictly increasing — the derivation law.
   it('accepts a single-key move when exactly one loop references the key — Law A (D-12)', () => {
     const sourceLoop = loop(10, 5);
     const loopClips = [sourceLoop];
     const loopClipsBefore = loopClips.map((clip) => ({ ...clip }));
     const proposal = expectOk(resolveEdit({
       records: SOURCE_RECORDS(),
-      intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
       loopClips,
     }));
-    expect(proposal.mapping.get('C')).toBe(22);
+    expect(proposal.mapping.get('A')).toBe(9);
     // D-13: an accepted single-key move carries no loop follow — placementStart
     // stays put because buildMoveCandidate never emits nextLoopClips.
     expect(proposal.nextLoopClips).toBeNull();
+    // CR-02: the FINAL source order (A9, B11, C12, D13, E14) still satisfies
+    // the derivation's strict-increase law, so the single referencing clip
+    // resolves instead of presenting as "Source missing".
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
     // Preservation pin: the caller's loop collection is never mutated.
     expect(loopClips).toHaveLength(1);
     expect(loopClips[0]).toBe(sourceLoop);
     expect(loopClips).toEqual(loopClipsBefore);
+  });
+
+  it('rejects a single-key move that breaks the referencing cycle order — CR-02', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
+      loopClips: [loop(10, 5)],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
   });
 
   it('rejects a single-key move when two loops reference the key with the locked copy', () => {
