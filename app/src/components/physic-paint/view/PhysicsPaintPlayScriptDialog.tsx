@@ -8,10 +8,7 @@ import {
   type RotoPlayScriptMode,
   type RotoPlayScriptRailTab,
 } from '../roto/physicsPaintRotoPlayScriptController';
-import {
-  isStandardMergedLoopClip,
-  STANDARD_RAIL_REGENERATE_REASON,
-} from '../roto/physicsPaintRotoRunScriptStacking';
+import { isStandardMergedLoopClip } from '../roto/physicsPaintRotoRunScriptStacking';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import {
   CollisionCard,
@@ -121,9 +118,7 @@ export function PhysicsPaintPlayScriptDialog({
     ? (stackReveal
       ? 'This destination is a Photo rail — it keeps its stored type.'
       : 'This run merges into the rail — the result is one Standard Rail.')
-    : standardEditTarget
-      ? null
-      : railTypeHelper(playScript.mode.value, revealTab);
+    : railTypeHelper(playScript.mode.value, revealTab);
   const referenceChip = !playScript.revealReferencePlaced.value
     ? (stacking && stackReveal)
       ? { label: 'No photo reference' }
@@ -415,7 +410,6 @@ export function PhysicsPaintPlayScriptDialog({
             busy={busy}
             locked={loopEdit}
             disabled={tabAxisLocked}
-            standard={standardEditTarget}
             helper={railHelper}
             referenceChip={referenceChip}
             keepScript={keepScriptSwitch}
@@ -559,9 +553,6 @@ export function PhysicsPaintPlayScriptDialog({
                   ref={regenerateTriggerRef}
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-ghost"
-                  disabled={standardEditTarget}
-                  title={standardEditTarget ? STANDARD_RAIL_REGENERATE_REASON : undefined}
-                  aria-disabled={standardEditTarget ? 'true' : undefined}
                   onClick={() => {
                     const targetId = playScript.loopEditTargetId.value;
                     if (targetId) void playScript.openSourceEdit(targetId);

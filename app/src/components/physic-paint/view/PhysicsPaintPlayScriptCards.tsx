@@ -162,9 +162,6 @@ export function RailTypeCard(props: {
   locked: boolean;
   /** A Photo destination owns its stored type — the control is read-only. */
   disabled?: boolean;
-  /** 261031-vbo (Quick C1): a merged edit target has no editable rail type —
-   *  the stored `mode` is internal and must never render as Motion/Static. */
-  standard?: boolean;
   helper: string | null;
   /** 261101-cd5: the reference guard rides this row as a compact chip. */
   referenceChip?: { label: string; actionLabel?: string; onAction?: () => void } | null;
@@ -174,18 +171,14 @@ export function RailTypeCard(props: {
   return (
     <div class={`physics-paint-play-script-card-mode physics-paint-play-script-rail-row${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
       <span class="physics-paint-play-script-rail-label">RAIL TYPE</span>
-      {props.standard ? (
-        <span class="physics-paint-play-script-standard-rail-value">Standard</span>
-      ) : (
-        <DialogRadioGroup
-          ariaLabel="Rail Type"
-          options={PLAY_SCRIPT_MODES}
-          value={props.modeValue}
-          getValue={() => props.getMode?.() ?? props.modeValue}
-          disabled={props.busy || props.locked || props.disabled === true}
-          onSelect={props.onSelectMode}
-        />
-      )}
+      <DialogRadioGroup
+        ariaLabel="Rail Type"
+        options={PLAY_SCRIPT_MODES}
+        value={props.modeValue}
+        getValue={() => props.getMode?.() ?? props.modeValue}
+        disabled={props.busy || props.locked || props.disabled === true}
+        onSelect={props.onSelectMode}
+      />
       {props.helper ? <span class="physics-paint-play-script-rail-helper">{props.helper}</span> : null}
       {props.referenceChip ? (
         <span class="physics-paint-play-script-ref-chip" title={props.referenceChip.label}>
