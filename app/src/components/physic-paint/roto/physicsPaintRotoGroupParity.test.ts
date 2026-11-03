@@ -493,6 +493,161 @@ describe('Group parity matrix (placementStart × Repeat)', () => {
   });
 });
 
+describe('Phase 58 G-01 source-derived group extent', () => {
+  const STALE_GROUP_SOURCE = ['A', 'B', 'C'] as const;
+
+  /** Source A@10 B@11 C@12, repeat 2 => surviving extent 16; stored end 20. */
+  const staleGroupDocument = (
+    options: { readonly repeat?: number | 'infinity' } = {},
+  ): PhysicPaintRotoPhysicalDocument => {
+    const records = [
+      ...STALE_GROUP_SOURCE.map((keyId, index) => realKey(keyId, 10 + index)),
+      realKey('D', 30),
+      realKey('E', 31),
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const group: PhysicPaintRotoLoopClip = {
+      loopId: 'group-stale',
+      placementStart: 10,
+      sourceKeyIds: Object.freeze([...STALE_GROUP_SOURCE]),
+      repeat: options.repeat ?? 2,
+      mode: 'progressive',
+      scriptId: 'action-stale',
+      motion: Object.freeze({ deformation: 0, position: 0 }),
+      overrideColor: null,
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 20,
+      visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 20 })]),
+      frameOverrides: Object.freeze([]),
+    };
+    const loopClips = [group];
+    return parsePhysicPaintRotoPhysicalDocument({
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+  };
+
+  const renderedPayload = (appFrame: number) => ({
+    frameIndex: 0,
+    appFrame,
+    bytes: pngDataUrl(`painted-${appFrame}`),
+    width: 10,
+    height: 10,
+  });
+
+  it('derives and classifies only the surviving source extent', () => {
+    const document = staleGroupDocument();
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: document.loopClips,
+      capacity: document.capacity,
+      interpolationEnabled: false,
+    });
+    const range = context.ranges.find((entry) => entry.loopId === 'group-stale');
+    if (!range) throw new Error('Expected the stale group to derive.');
+    // 10 + (12 - 10 + 1) * 2 = 16. The stored end 20 is stale.
+    expect(range).toMatchObject({
+      effectiveEnd: 16,
+      requestedEnd: 20,
+      truncated: false,
+      unresolved: null,
+    });
+
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 17 })).toMatchObject({
+      kind: 'empty',
+      appFrame: 17,
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 16 })).toMatchObject({
+      kind: 'empty',
+      appFrame: 16,
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 15 })).toMatchObject({
+      kind: 'source-occurrence',
+      sourceKeyId: 'C',
+      appFrame: 15,
+    });
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 13 })).toMatchObject({
+      kind: 'source-occurrence',
+      sourceKeyId: 'A',
+      appFrame: 13,
+    });
+  });
+
+  it('rejects Group paint and delete-frame past the surviving extent and stops affected frames there', () => {
+    const document = staleGroupDocument();
+
+    expect(proposePhysicPaintRotoGroupFramePaint({
+      document,
+      groupId: 'group-stale',
+      appFrame: 17,
+      overrideKeyId: 'override-stale',
+      renderedPayload: renderedPayload(17),
+    })).toMatchObject({ ok: false, reason: 'frame-outside-group-extent' });
+
+    const painted = proposePhysicPaintRotoGroupFramePaint({
+      document,
+      groupId: 'group-stale',
+      appFrame: 15,
+      overrideKeyId: 'override-fresh',
+      renderedPayload: renderedPayload(15),
+    });
+    expect(painted.ok).toBe(true);
+    if (!painted.ok) return;
+    expect(painted.impact.affectedAppFrames).toEqual([12, 15]);
+
+    expect(proposePhysicPaintRotoDeleteGroupFrame({
+      document,
+      groupId: 'group-stale',
+      appFrame: 17,
+    })).toMatchObject({ ok: false, reason: 'frame-outside-group-extent' });
+
+    const deleted = proposePhysicPaintRotoDeleteGroupFrame({
+      document,
+      groupId: 'group-stale',
+      appFrame: 15,
+    });
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) return;
+    expect(deleted.impact.affectedAppFrames).toEqual([12, 15]);
+  });
+
+  it('regenerates finite ranges to the bounded end and leaves an infinity clip stored', () => {
+    const finite = proposePhysicPaintRotoRegenerateGroup({
+      document: staleGroupDocument(),
+      groupId: 'group-stale',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+    });
+    expect(finite.ok).toBe(true);
+    if (!finite.ok) return;
+    expect(finite.proposal.loopClips[0]).toMatchObject({
+      visibleRanges: [{ start: 10, endExclusive: 16 }],
+    });
+
+    const infinity = proposePhysicPaintRotoRegenerateGroup({
+      document: staleGroupDocument({ repeat: 'infinity' }),
+      groupId: 'group-stale',
+      expectedActionRevision: 'action-revision-1',
+      currentActionRevision: 'action-revision-1',
+    });
+    expect(infinity.ok).toBe(true);
+    if (!infinity.ok) return;
+    expect(infinity.proposal.loopClips[0]).toMatchObject({
+      visibleRanges: [{ start: 10, endExclusive: 20 }],
+    });
+  });
+});
+
 describe('261030-ig0 per-key script editing — Regenerate keeps the opt-in', () => {
   const buildOptedInDocument = (optedIn: boolean) => {
     const records = MAIN_CYCLE.map((keyId, index) => realKey(keyId, index));

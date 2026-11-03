@@ -1130,3 +1130,94 @@ describe('D-06/D-10 materialization one-history-command coherence', () => {
     expect(test.executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 58 G-01 — a finite lifecycle extent follows the surviving source cycle.
+// The stored `originalEndExclusive` is a snapshot: a delete that removes keys
+// outside the source cycle must not let the derivation keep claiming (and
+// rendering) the removed frames.
+// ---------------------------------------------------------------------------
+
+const EXTENT_RECORDS = () => [
+  record('A', 10, 'AAAA'),
+  record('B', 11, 'BBBB'),
+  record('C', 12, 'CCCC'),
+];
+
+/** Source A@10 B@11 C@12, repeat 2 => surviving extent 16; stored end 20. */
+function staleExtentLoop(options: {
+  repeat?: number | 'infinity';
+  storedEndExclusive?: number;
+  visibleRanges?: readonly { start: number; endExclusive: number }[];
+} = {}): PhysicPaintRotoLoopClip {
+  const storedEndExclusive = options.storedEndExclusive ?? 20;
+  return {
+    loopId: 'L-extent',
+    placementStart: 10,
+    sourceKeyIds: ['A', 'B', 'C'],
+    repeat: options.repeat ?? 2,
+    mode: 'progressive',
+    scriptId: 'action-extent',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 10,
+    originalEndExclusive: storedEndExclusive,
+    visibleRanges: options.visibleRanges ?? [{ start: 10, endExclusive: storedEndExclusive }],
+    frameOverrides: [],
+  };
+}
+
+describe('Phase 58 G-01 source-derived loop extent', () => {
+  it('bounds a stale finite lifecycle clip to the surviving source extent and resolves removed frames empty', () => {
+    const records = EXTENT_RECORDS();
+    const loopClips = [staleExtentLoop()];
+    const context = derive(records, loopClips);
+    const range = context.ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the stale extent loop to derive.');
+
+    // 10 + (12 - 10 + 1) * 2 = 16. The stored end 20 is stale.
+    expect(range.effectiveEnd).toBe(16);
+    expect(range.requestedEnd).toBe(20);
+    expect(range.truncated).toBe(false);
+    expect(range.unresolved).toBeNull();
+    // Frames below the surviving extent still resolve as cycle content.
+    expect(resolvePhysicPaintRotoLoopFrame(context, 15)).toMatchObject({
+      kind: 'linked',
+      loopId: 'L-extent',
+      sourceKeyId: 'C',
+    });
+    // The half-open end and everything past it resolve empty.
+    expect(resolvePhysicPaintRotoLoopFrame(context, 16)).toEqual({ kind: 'empty' });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 17)).toEqual({ kind: 'empty' });
+  });
+
+  it('keeps a dangling source key unresolved and a non-lifecycle finite clip at its stored behavior', () => {
+    const dangling = derive(
+      EXTENT_RECORDS().filter((entry) => entry.keyId !== 'C'),
+      [staleExtentLoop()],
+    ).ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!dangling) throw new Error('Expected the dangling loop to derive.');
+    expect(dangling.unresolved).not.toBeNull();
+    expect(dangling.unresolved?.missingSourceKeyIds).toEqual(['C']);
+    expect(dangling.effectiveEnd).toBe(20);
+
+    const lifecycleLess = derive(EXTENT_RECORDS(), [loop(10, 2, 'L-plain', ['A', 'B', 'C'])])
+      .ranges.find((entry) => entry.loopId === 'L-plain');
+    if (!lifecycleLess) throw new Error('Expected the lifecycle-less loop to derive.');
+    // No lifecycle: the derivation keeps the placementStart + cycle * repeat
+    // formula and never invents a stored end.
+    expect(lifecycleLess.requestedEnd).toBe(16);
+    expect(lifecycleLess.effectiveEnd).toBe(16);
+  });
+
+  it('leaves an Infinity lifecycle clip extending to capacity as today', () => {
+    const range = derive(EXTENT_RECORDS(), [staleExtentLoop({ repeat: 'infinity' })])
+      .ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the Infinity loop to derive.');
+    expect(range.requestedEnd).toBe('infinity');
+    expect(range.effectiveEnd).toBe(CAPACITY);
+    expect(range.truncated).toBe(false);
+  });
+});
