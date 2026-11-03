@@ -40,6 +40,9 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 // frontmatter-fence.cjs is a leaf module (no imports), so this adds no cycle.
 const frontmatter_fence_cjs_1 = require("./frontmatter-fence.cjs");
+// pattern.cjs is a leaf module (escapeRegex only), so this adds no cycle.
+const pattern_cjs_1 = require("./pattern.cjs");
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdModule = require("./phase-id.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -521,6 +524,45 @@ function findOrphanSummaries(planFiles, summaryFiles) {
     }
     return summaryFiles.filter((s) => !claimed.has(s));
 }
+/**
+ * #5542: does `summaryFile` pair with ANY of `planFiles`, by the same
+ * `summaryCandidates` rule the counts use? The ROADMAP plan-checkbox writers
+ * tick a row only for a summary that does — never by id prefix, which let a
+ * leftover `47-1` summary survive because a live `47-10` plan starts with `47-1`.
+ */
+function summaryPairsWithAnyPlan(planFiles, summaryFile) {
+    return planFiles.some((plan) => countMatchedSummaries([plan], [summaryFile]) > 0);
+}
+/**
+ * #5542: lookahead that ends a plan id inside a ROADMAP checkbox row, so `47-1`
+ * never matches the start of `47-10-PLAN.md`. The id ends at `.md` or at any
+ * character that is not a word character or a `.`/`-` followed by a digit: a
+ * dotted sub-id (`01-01.1`) or a longer numeric id (`05-01-02`) is a distinct
+ * plan, not a continuation of `01-01`/`05-01`, while sentence punctuation
+ * (`01-01. Setup`) and a slug (`05-01-scaffold`) still end the id.
+ */
+const PLAN_ID_ROW_BOUNDARY_SOURCE = '(?=\\.md|(?!\\w|[.-]\\d))';
+/**
+ * #5542: the checkbox-row regex for one plan id. By default it matches an
+ * UNCHECKED row (the tick target); `anyState` matches either box state, for
+ * presence detection; `anchored` pins the row to a line start (the
+ * `phase complete` bullet flip). Capture group 1 is the opening `- [`, group 2
+ * the rest after the box, so a caller ticks with `$1x$2`.
+ */
+function planRowPattern(planId, opts = {}) {
+    const box = opts.anyState ? '[x ]' : ' ';
+    const lead = opts.anchored ? '^(\\s*-\\s*\\[)' : '(-\\s*\\[)';
+    return new RegExp(`${lead}${box}(\\]\\s*(?:\\*\\*)?${(0, pattern_cjs_1.escapeRegex)(planId)}${PLAN_ID_ROW_BOUNDARY_SOURCE}(?:\\*\\*)?)`, 'i');
+}
+/**
+ * Tick the first line-anchored unchecked row for `planId` in `text` (the
+ * `phase complete` / `roadmap update-plan-progress` bullet flip): a bullet
+ * mutation through `updateBullet`, so never a fenced line or mid-line match.
+ */
+function tickAnchoredPlanRow(text, planId) {
+    const row = planRowPattern(planId, { anchored: true });
+    return (0, markdown_sectionizer_cjs_1.updateBullet)(text, (_bulletText, rawLine) => row.test(rawLine), (rawLine) => rawLine.replace(row, '$1x$2'));
+}
 module.exports = {
     toPosixPath,
     normalizeLineEndings,
@@ -536,4 +578,7 @@ module.exports = {
     countMatchedSummaries,
     findUnsummarizedPlans,
     findOrphanSummaries,
+    summaryPairsWithAnyPlan,
+    planRowPattern,
+    tickAnchoredPlanRow,
 };

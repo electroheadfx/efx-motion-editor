@@ -21,13 +21,13 @@
  *   - Issue #4 (open-gsd/gsd-core)
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.locateProgressTable = locateProgressTable;
 exports.deriveProgressFromRoadmap = deriveProgressFromRoadmap;
 exports.clampPercentFromFraction = clampPercentFromFraction;
 exports.clampPercent = clampPercent;
 exports.progressBarFilledCells = progressBarFilledCells;
 exports.renderProgressBar = renderProgressBar;
-const markdown_table_cjs_1 = require("./markdown-table.cjs");
+// #5761: the Progress table and its milestone slice have one owner.
+const roadmap_progress_cjs_1 = require("./roadmap-progress.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- phase-id.cjs is an export= CommonJS module
 const phaseIdMod = require("./phase-id.cjs");
 const { isSentinelPhaseId } = phaseIdMod;
@@ -35,46 +35,11 @@ const { isSentinelPhaseId } = phaseIdMod;
 // to import here for the ROADMAP Status-cell reader.
 const phase_status_cjs_1 = require("./phase-status.cjs");
 /**
- * #3227: the single owner of "where is this ROADMAP's Progress table".
- * Lifted verbatim out of deriveProgressFromRoadmap so `state-contract.cts`
- * enumerates phases from THE SAME table this module derives its counts from.
- * A second copy of this locator is the DEFECT.GENERATIVE-FIX shape.
- *
- * ADR-2143 §3 ("addressed by NAME, never ordinal"): the Progress table is
- * located via the markdown-table seam's `findTableWithColumns`, which is
- * column-NAME/order/count-invariant — it matches the first table whose header
- * is a SUPERSET of the canonical `Phase` / `Plans Complete` / `Status` /
- * `Completed` names, in any order, tolerating extra/injected unrelated
- * columns (#2137's fast-check property test shuffles headers and injects
- * columns and asserts the derived counts never change). This supersedes the
- * earlier `findTableBySchema` exact-schema lookup, which required an exact
- * canonical column SET+ORDER and returned all-null on any reordering or
- * injection.
- *
- * Scoped to the `## Progress` section when the document has one (#2012 decoy
- * avoidance — a differently-headed table sharing the same column names must
- * not be picked up instead); a headingless milestone slice (#1445) falls back
- * to scanning the whole input, preserving the "Progress table not under a
- * `## Progress` heading, or not the first table in the document, still
- * resolves" behaviour.
- */
-function locateProgressTable(roadmapContent) {
-    const progressMatch = roadmapContent.match(/^##[ \t]+Progress\b/im);
-    let scoped = roadmapContent;
-    if (progressMatch && progressMatch.index !== undefined) {
-        const afterHeading = roadmapContent.slice(progressMatch.index);
-        const nextHeading = afterHeading.search(/\n#{1,2}[ \t]/);
-        scoped = nextHeading >= 0 ? afterHeading.slice(0, nextHeading) : afterHeading;
-    }
-    return (0, markdown_table_cjs_1.findTableWithColumns)(scoped, ['Phase', 'Plans Complete', 'Status', 'Completed']);
-}
-/**
  * Derive completed_phases, total_phases, and total_plans from ROADMAP content.
  * Root cause fix for issue #4 — see gen-phase-lifecycle.mjs for full documentation.
  *
- * The Progress table itself is located by `locateProgressTable` (ADR-2143 §3,
- * lifted out as #3227's single-owner extraction) — this function consumes
- * that table.
+ * The Progress table itself is located by `locateRoadmapProgress` (the Roadmap
+ * Progress Module, ADR-2143 §3) — this function consumes that table's slice.
  *
  * Cells are read by column NAME (`r['Status']`, `r['Plans Complete']`,
  * `r['Phase']`), fixing #2137 (the old position-based regex assumed "Status"
@@ -82,7 +47,7 @@ function locateProgressTable(roadmapContent) {
  * 5-column milestone-grouped variant that inserts a `Milestone` column ahead
  * of them).
  */
-function deriveProgressFromRoadmap(roadmapContent) {
+function deriveProgressFromRoadmap(roadmapContent, milestoneFilter) {
     let completedPhases = null;
     let totalPhases = null;
     let totalPlans = null;
@@ -93,12 +58,15 @@ function deriveProgressFromRoadmap(roadmapContent) {
     // `{ ok: false, reason }`, not an exception — so the catch was masking
     // nothing but dead code paths. Removed per ADR-2143 §5; the public
     // `RoadmapProgress` contract (nulls = absent) is unchanged.
-    const table = locateProgressTable(roadmapContent);
+    // #5165: the milestone-grouped Progress table keeps every milestone's rows,
+    // shipped ones included; the owner returns only the named milestone's slice.
+    // A named milestone that matches no row yields nulls (nothing countable)
+    // rather than a foreign count.
+    const { table, rows: scopedRows } = (0, roadmap_progress_cjs_1.locateRoadmapProgress)(roadmapContent, { milestone: milestoneFilter });
     if (table) {
-        const allRows = table.rows;
         // Data rows only (exclude sentinel phases 0 and 999.x).
         // #3185: canonical sentinel predicate (SENTINEL_RANGES [0,999]) — this was a local 999-only literal that admitted Phase 0.
-        const dataRows = allRows.filter((r) => {
+        const dataRows = scopedRows.filter((r) => {
             const phase = (r['Phase'] ?? '').trim();
             return /^\d/.test(phase) && !isSentinelPhaseId(phase);
         });
@@ -110,7 +78,7 @@ function deriveProgressFromRoadmap(roadmapContent) {
         const completed = dataRows.filter((r) => (0, phase_status_cjs_1.parseRoadmapStatusCell)(r['Status']) === phase_status_cjs_1.WIRE_STATUS.COMPLETE).length;
         completedPhases = completed > 0 ? completed : null;
         let totalPlansSum = 0;
-        for (const r of allRows) {
+        for (const r of scopedRows) {
             const cell = (r['Plans Complete'] ?? '').trim();
             const m = /(\d+)\s*\/\s*(\d+)/.exec(cell);
             if (m)

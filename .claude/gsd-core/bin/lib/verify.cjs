@@ -42,7 +42,7 @@ const ioMod = require("./io.cjs");
 const { output, error } = ioMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocatorMod = require("./phase-locator.cjs");
-const { findPhaseInternal } = phaseLocatorMod;
+const { phaseDirectoryOptions, findPhaseInternal } = phaseLocatorMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const roadmapParserMod = require("./roadmap-parser.cjs");
 const { stripShippedMilestones } = roadmapParserMod;
@@ -1282,7 +1282,7 @@ function cmdVerifyPhaseCompleteness(cwd, phase, raw) {
     if (!phase) {
         error('phase required');
     }
-    const phaseInfoRaw = findPhaseInternal(cwd, phase);
+    const phaseInfoRaw = findPhaseInternal(cwd, phase, undefined, phaseDirectoryOptions(cwd));
     if (!phaseInfoRaw || !phaseInfoRaw['found']) {
         // An unresolvable phase is "could not look" (#5170): there is no phase to evaluate.
         emitVerbVerdict((0, gate_verdict_cjs_1.gateUnreadable)(false, { error: 'Phase not found', phase }), 'status', raw);
@@ -1809,6 +1809,8 @@ function repairFixText(slash, action) {
             return `Run ${slash('health')} --repair to add key`;
         case REMEDY_ACTION.BACKFILL_MILESTONES:
             return `Run ${slash('health')} --backfill to synthesize missing entries from archive snapshots`;
+        case REMEDY_ACTION.REPAIR_VERIFICATION_STATUS:
+            return `Run ${slash('health')} --repair to rewrite the legacy status (original kept as legacy_status)`;
         default:
             return '';
     }

@@ -42,7 +42,7 @@
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const healthDiagnosticMod = require("../health-diagnostic-types.cjs");
-const { SEVERITY, adviseRemedy } = healthDiagnosticMod;
+const { SEVERITY, REMEDY_ACTION, REMEDY_RISK, adviseRemedy } = healthDiagnosticMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const validateMod = require("../validate.cjs");
 // #612: `isPhaseDirName` is the convention-SELECTED shape test wrapping
@@ -54,14 +54,20 @@ const validateMod = require("../validate.cjs");
 const { isPhaseDirName } = validateMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("../phase-id.cjs");
-const { extractPhaseToken, normalizePhaseName, comparePhaseNum } = phaseIdMod;
+const { extractPhaseToken, normalizePhaseName, phaseKeyFromDir, comparePhaseNum } = phaseIdMod;
 // #5060: the Phase Status Module owns the status-label ladder.
 const phase_status_cjs_1 = require("../phase-status.cjs");
+// #5291: W030 asks whether a raw report status has a known repair. The lookup is
+// a pure read of a frozen table, so `check` stays free of ambient I/O (§8.1 rule 1).
+const verification_cjs_1 = require("../verification.cjs");
 // ─── W005 — phase directory doesn't follow NN-name format (verify.cts:1893-1902) ─
 function checkW005(snapshot) {
     const diagnostics = [];
+    const context = snapshot.directoryContext ?? phaseIdMod.phaseDirectoryContext(snapshot.config.value ?? {}, '', snapshot.roadmapDeclaredPhases.value.map(({ phaseId }) => phaseId));
     for (const name of snapshot.phaseDirs.value) {
-        if (!isPhaseDirName(name, snapshot.phaseIdConvention)) {
+        const custom = snapshot.phaseIdConvention === 'bracket' ? null : phaseIdMod.customPhaseQuery(name, context);
+        const owner = custom && phaseIdMod.customDirectoryOwner(name, custom);
+        if (!owner && !isPhaseDirName(name, snapshot.phaseIdConvention)) {
             diagnostics.push({
                 code: 'W005',
                 severity: SEVERITY.WARNING,
@@ -74,17 +80,18 @@ function checkW005(snapshot) {
 }
 // ─── W023 — phase directories collide on normalized key (verify.cts:1904-1950) ─
 //
-// Groups `snapshot.phaseDirs.value` by `normalizePhaseName(extractPhaseToken(name))`
-// — the exact same two owners (`phase-id.cjs`) the original `verify.cts:1917-1918`
-// call site uses, relocated verbatim rather than reimplemented. Sorted with
-// `comparePhaseNum` + a `localeCompare` tiebreak, mirroring
+// Groups directories by the canonical identity owner, preserving recorded
+// custom IDs instead of collapsing their shared token prefixes. Sorted with
+// contextual `comparePhaseNum` + a `localeCompare` tiebreak, mirroring
 // `verify.cts:1930-1932`'s deterministic-output rationale. See the file-level
 // comment for the disclosed "described" fidelity reduction.
 function checkW023(snapshot) {
+    const context = snapshot.directoryContext;
     const groups = new Map();
     for (const name of snapshot.phaseDirs.value) {
-        const token = extractPhaseToken(name);
-        const key = normalizePhaseName(token);
+        const key = context?.phaseNaming === 'custom'
+            ? phaseKeyFromDir(name, undefined, context)
+            : normalizePhaseName(extractPhaseToken(name));
         const list = groups.get(key);
         if (list)
             list.push(name);
@@ -98,7 +105,7 @@ function checkW023(snapshot) {
             continue;
         const described = dirs
             .slice()
-            .sort((a, b) => comparePhaseNum(a, b) || String(a).localeCompare(String(b)))
+            .sort((a, b) => comparePhaseNum(a, b, context) || String(a).localeCompare(String(b)))
             .map((d) => {
             const phase = phaseByDir.get(d);
             const plans = phase ? phase.planCount : 0;
@@ -174,11 +181,21 @@ function checkW030(snapshot) {
         const invalid = phase.verificationStatusError;
         if (!invalid)
             continue;
+        // #5291: a KNOWN legacy status is repairable (rewritten to its closed-set
+        // equivalent, original kept in `legacy_status`); any other value has no
+        // mapping and keeps the advise-only remedy — it stays refused.
+        const target = (0, verification_cjs_1.legacyStatusRepairTarget)(invalid.rawStatus);
         diagnostics.push({
             code: 'W030',
             severity: SEVERITY.WARNING,
             message: `Phase ${phase.dir}: ${invalid.message}`,
-            remedy: adviseRemedy('Set the report frontmatter `status` to one of passed | gaps_found | human_needed, or delete the report and re-run the phase verification'),
+            remedy: target === null
+                ? adviseRemedy('Set the report frontmatter `status` to one of passed | gaps_found | human_needed, or delete the report and re-run the phase verification')
+                : {
+                    action: REMEDY_ACTION.REPAIR_VERIFICATION_STATUS,
+                    risk: REMEDY_RISK.NONE,
+                    args: { file: invalid.file, from: invalid.rawStatus, to: target },
+                },
         });
     }
     return diagnostics;
@@ -217,7 +234,9 @@ const RULES = [
         code: 'W030',
         severity: SEVERITY.WARNING,
         description: 'Phase verification report status is outside the closed set',
-        repairable: false,
+        // #5291: repairable per finding — a KNOWN legacy status (`pass_with_caveats`)
+        // is rewritten by `--repair`; any other value stays advise-only.
+        repairable: true,
         check: checkW030,
     },
 ];

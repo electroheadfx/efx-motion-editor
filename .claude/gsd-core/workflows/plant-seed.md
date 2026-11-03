@@ -25,9 +25,9 @@ Parse `$ARGUMENTS` for the idea summary.
 First, check for an enrich flag:
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1' || true
 $ARGUMENTS
-GSD_ARGS_END
+GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1
 GSD_ARGS=${GSD_ARGS%$'\n'}
 if echo "$GSD_ARGS" | grep -qE '\-\-enrich[[:space:]]+SEED-[0-9]+(-[a-zA-Z0-9]{3})?'; then
   # Anchor on the flag and capture the COMPLETE id — uppercase-tolerant, since

@@ -43,6 +43,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
 const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
+const read_only_git_env_cjs_1 = require("./read-only-git-env.cjs");
 const runtime_slash_cjs_1 = require("./runtime-slash.cjs");
 // #3696: the calendar-validity predicate moved to the STATE.md document module
 // so `state validate` can assert the same `last_activity` invariant this reader
@@ -68,10 +69,13 @@ const stateDocument = require("./state-document.cjs");
 const { stateFieldValue } = stateDocument;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseId = require("./phase-id.cjs");
-const { comparePhaseNum, extractPhaseToken, matchPhaseDirs, normalizePhaseName, parsePhaseFromProse, stripProjectCodePrefix } = phaseId;
+const { comparePhaseNum, extractPhaseToken, customPhaseQuery, customDirectoryOwner, parsePhaseFromProse, stripProjectCodePrefix } = phaseId;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const stateMod = require("./state.cjs");
 const { readStateHeadFreshness } = stateMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const phaseLocatorMod = require("./phase-locator.cjs");
+const { phaseDirectoryOptions, resolvePhaseDirectoryLookup, matchPhaseDirsForLookup } = phaseLocatorMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const unusableInput = require("./unusable-input.cjs");
 const { warnUnusableInput, UNUSABLE_REASON } = unusableInput;
@@ -119,8 +123,8 @@ function parseIntOrNull(s) {
     const n = Number.parseInt(cleaned, 10);
     return Number.isFinite(n) ? n : null;
 }
-function phaseTokenFromDirName(name) {
-    const token = extractPhaseToken(name);
+function phaseTokenFromDirName(name, convention) {
+    const token = extractPhaseToken(name, convention);
     // #2528: the shape probe runs on the PROJECT-CODE-STRIPPED token. A prefixed
     // directory tokenizes to `MEM-05-80-20`, which does not start with a digit,
     // so the unstripped probe rejected it and the entry was dropped before any
@@ -222,6 +226,18 @@ function readGitSignals(cwd) {
                 windowsHide: true,
                 stdio: ['pipe', 'pipe', 'pipe'],
                 timeout: 10_000,
+                // #5048: readGitSignals runs `git status`, which by default refreshes
+                // the index and takes an *optional* `.git/index.lock` to write the
+                // refreshed copy back. That lock is the one a real `git add` / `git
+                // commit` needs, so a routine "which phase am I in" probe can fail
+                // someone else's commit with `Unable to create '.git/index.lock': File
+                // exists`. GIT_OPTIONAL_LOCKS=0 turns off exactly that optional write.
+                // The `rev-parse` / `log` calls sharing this helper never open the
+                // index, so the variable is inert for them. The block itself is owned by
+                // src/read-only-git-env.cts and shared with every other read-only seam;
+                // parity across every read-only surface is asserted in
+                // tests/git-optional-locks-parity.test.cjs.
+                env: (0, read_only_git_env_cjs_1.readOnlyGitEnv)(),
             });
         }
         catch {
@@ -239,9 +255,9 @@ function readGitSignals(cwd) {
     const unpushed = run(['log', '@{u}..HEAD', '--oneline']).trim().length > 0;
     return { has_git: true, dirty, unpushed };
 }
-/** Leading numeric phase token from a STATE.md scalar or body `Phase:` value. */
-function phaseTokenFromState(raw) {
-    return parsePhaseFromProse(raw).phase;
+/** Phase identity from a STATE.md scalar or body `Phase:` value, honoring custom naming when a context is supplied. */
+function phaseTokenFromState(raw, context) {
+    return parsePhaseFromProse(raw, undefined, context).phase;
 }
 /**
  * Detect whether the current phase's verify report indicates failure. The
@@ -251,12 +267,20 @@ function phaseTokenFromState(raw) {
  */
 function detectVerifyFailed(cwd, currentPhaseRaw) {
     const phasesDir = node_path_1.default.join(planningPaths(cwd).phases);
+    // #4304: both the directory admission scan and the later selector must read
+    // the same current-checkout grammar. Bracket is the only opt-in widening.
+    const convention = resolvePhaseIdConvention(cwd) === 'bracket' ? 'bracket' : undefined;
+    const directoryContext = phaseDirectoryOptions(cwd);
     let entries = [];
     try {
         entries = node_fs_1.default.readdirSync(phasesDir)
-            .map((name) => ({ name, phaseToken: phaseTokenFromDirName(name) }))
+            .map((name) => {
+            const custom = customPhaseQuery(name, directoryContext);
+            const parts = custom && customDirectoryOwner(name, custom);
+            return { name, phaseToken: parts ? parts.id : phaseTokenFromDirName(name, convention) };
+        })
             .filter((entry) => entry.phaseToken !== null)
-            .sort((a, b) => comparePhaseNum(a.phaseToken, b.phaseToken) || a.name.localeCompare(b.name))
+            .sort((a, b) => comparePhaseNum(a.phaseToken, b.phaseToken, directoryContext) || a.name.localeCompare(b.name))
             .map((entry) => entry.name);
     }
     catch {
@@ -264,10 +288,10 @@ function detectVerifyFailed(cwd, currentPhaseRaw) {
     }
     if (entries.length === 0)
         return false;
-    const phaseToken = phaseTokenFromState(currentPhaseRaw);
+    const phaseToken = phaseTokenFromState(currentPhaseRaw, directoryContext);
     let targetDir;
     if (phaseToken) {
-        const normalized = normalizePhaseName(phaseToken);
+        const lookup = resolvePhaseDirectoryLookup(cwd, phaseToken, undefined, directoryContext);
         // #2528: the fourth directory-resolution site, and the one where a miss is
         // silent — a phase whose directory cannot be found reports "not failed",
         // which reads identically to a healthy phase. It must therefore apply the
@@ -276,7 +300,7 @@ function detectVerifyFailed(cwd, currentPhaseRaw) {
         // surfaces its own failed verification. `entries` is already sorted, and
         // `matchPhaseDirs` filters without reordering, so taking the first match
         // preserves the previous `.find()` selection exactly.
-        const { matches } = matchPhaseDirs(entries, normalized);
+        const { matches } = matchPhaseDirsForLookup(entries, lookup, undefined, directoryContext);
         targetDir = matches[0];
         if (!targetDir)
             return false;
