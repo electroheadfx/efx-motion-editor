@@ -6,6 +6,7 @@ import {
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
+  resolvePhysicPaintRotoLoopSourceExtent,
 } from './physicsPaintRotoPhysicalModel';
 import { deriveDeleteKeyRailIncomingInterpolationBreakKeyIds } from './physicsPaintRotoPhysicalResolver';
 import { deriveKeyRailSegments, type KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
@@ -98,11 +99,12 @@ export function proposePhysicPaintRotoGroupFramePaint(
   if (groupIndex < 0) return reject('group-not-found');
   const group = input.document.loopClips[groupIndex];
   if (!isLifecycleGroup(group)) return reject('group-lifecycle-unavailable');
+  const boundedEnd = resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity);
   if (!Number.isSafeInteger(input.appFrame)
     || input.appFrame < group.phaseOrigin
-    || input.appFrame >= group.originalEndExclusive) return reject('frame-outside-group-extent');
+    || input.appFrame >= boundedEnd) return reject('frame-outside-group-extent');
 
-  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame, input.document.capacity);
   if (!phase) return reject('malformed-proposal');
   const phaseOverrides = group.frameOverrides.filter((override) => (
     positiveModulo(override.appFrame - group.phaseOrigin, phase.cycleLength) === phase.cycleOffset
@@ -308,6 +310,32 @@ export function resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(
   return index >= 0 ? group.sourceKeyIds[index]! : null;
 }
 
+/**
+ * 58-09 (G-01): the source-derived end a finite lifecycle Group actually owns.
+ * The stored `originalEndExclusive` is intent; deleting or retiming a source
+ * key shrinks the surviving cycle, and every extent/classification/proposal
+ * check must stop there. Infinity and lifecycle-less groups keep the stored
+ * end — the source-extent resolver returns null for both.
+ */
+function resolveGroupBoundedEnd(
+  group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'phaseOrigin' | 'originalEndExclusive'
+  >>,
+  realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity: number | undefined,
+): number {
+  if (typeof capacity !== 'number') return group.originalEndExclusive;
+  const extent = resolvePhysicPaintRotoLoopSourceExtent(
+    group,
+    realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    capacity,
+  );
+  return extent === null
+    ? group.originalEndExclusive
+    : Math.min(group.originalEndExclusive, extent.endExclusive);
+}
+
 interface PhysicPaintRotoGroupPhaseAuthority {
   readonly cycleOffset: number;
   readonly cycleLength: number;
@@ -322,6 +350,7 @@ function resolveGroupPhaseAuthority(
     'phaseOrigin' | 'originalEndExclusive'
   >>,
   appFrame: number,
+  capacity: number | undefined,
 ): PhysicPaintRotoGroupPhaseAuthority | null {
   const recordsById = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
   const sourceFrames = group.sourceKeyIds.map((keyId) => recordsById.get(keyId)?.appFrame);
@@ -334,10 +363,11 @@ function resolveGroupPhaseAuthority(
   if (!Number.isSafeInteger(cycleLength) || cycleLength <= 0) return null;
   const cycleOffset = positiveModulo(appFrame - group.phaseOrigin, cycleLength);
   const phaseAppFrame = group.phaseOrigin + cycleOffset;
+  const boundedEnd = resolveGroupBoundedEnd(group, document.realKeyRecords, capacity);
   const affectedAppFrames: number[] = [];
   for (
     let candidate = phaseAppFrame;
-    candidate < group.originalEndExclusive;
+    candidate < boundedEnd;
     candidate += cycleLength
   ) {
     affectedAppFrames.push(candidate);
@@ -362,7 +392,7 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
     isLifecycleGroup(group)
     && Number.isSafeInteger(appFrame)
     && appFrame >= group.phaseOrigin
-    && appFrame < group.originalEndExclusive
+    && appFrame < resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity)
   ));
   if (containingGroups.length > 1) {
     return Object.freeze({
@@ -378,7 +408,7 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
       ? Object.freeze({ kind: 'ordinary-key', appFrame, keyId: record.keyId })
       : Object.freeze({ kind: 'empty', appFrame });
   }
-  const phase = resolveGroupPhaseAuthority(input.document, group, appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, appFrame, input.document.capacity);
   if (!phase) {
     const missingSourceKeyIds = group.sourceKeyIds.filter((keyId) => (
       !input.document.realKeyRecords.some((record) => record.keyId === keyId)
@@ -588,11 +618,12 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
   if (groupIndex < 0) return rejectLifecycle('group-not-found');
   const group = input.document.loopClips[groupIndex];
   if (!isLifecycleGroup(group)) return rejectLifecycle('group-lifecycle-unavailable');
-  if (input.appFrame < group.phaseOrigin || input.appFrame >= group.originalEndExclusive) {
+  const boundedEnd = resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity);
+  if (input.appFrame < group.phaseOrigin || input.appFrame >= boundedEnd) {
     return rejectLifecycle('frame-outside-group-extent');
   }
   if (!includesFrame(group.visibleRanges, input.appFrame)) return rejectLifecycle('frame-not-visible');
-  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame, input.document.capacity);
   if (!phase) return rejectLifecycle('malformed-proposal');
   const visibleTargets = phase.affectedAppFrames
     .filter((appFrame) => includesFrame(group.visibleRanges, appFrame));
@@ -713,7 +744,7 @@ export function proposePhysicPaintRotoRegenerateGroup(
     provenanceState: 'attached' as const,
     visibleRanges: Object.freeze([Object.freeze({
       start: group.phaseOrigin,
-      endExclusive: group.originalEndExclusive,
+      endExclusive: resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity),
     })]),
     frameOverrides: Object.freeze([]),
   };

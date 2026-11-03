@@ -3320,10 +3320,13 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
 
   it('prepares a duplicated-placement-only publication with no gap intervals (D-11)', () => {
     const records = [realKeyRecord('g0', 20), realKeyRecord('g1', 21)];
+    // 58-09 (G-01): both stored ends span four 2-frame source cycles, so the
+    // intent behind them is repeat 4, not the fixture helper's repeat 2.
     const loopG = lifecycleGroup({
       loopId: 'loop-G',
       placementStart: 20,
       sourceKeyIds: Object.freeze(['g0', 'g1']),
+      repeat: 4,
       phaseOrigin: 20,
       originalEndExclusive: 28,
       visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
@@ -3332,6 +3335,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
       loopId: 'loop-D',
       placementStart: 2,
       sourceKeyIds: Object.freeze(['g0', 'g1']),
+      repeat: 4,
       mode: 'static',
       phaseOrigin: 2,
       originalEndExclusive: 10,

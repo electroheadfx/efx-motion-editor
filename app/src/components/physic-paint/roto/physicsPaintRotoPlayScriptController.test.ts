@@ -5786,7 +5786,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
   });
 
   it('treats gaps between fragments as outside the rail (CR-03)', async () => {
-    const fragmented = stackClip(1, {
+    // 58-09 (G-01): the stored end 22 must stay canonical against the 4-frame
+    // source cycle at 10..13, so repeat 3 is the intent behind that end.
+    const fragmented = stackClip(3, {
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 10,

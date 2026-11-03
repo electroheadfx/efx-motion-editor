@@ -85,6 +85,7 @@ import {
   isPhysicPaintRotoRealKeyPayload,
   parsePhysicPaintRotoRealKeyRecordCollection,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  resolvePhysicPaintRotoLoopSourceExtent,
 } from './physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoLinkedSourceSpacingScope,
@@ -5575,6 +5576,16 @@ export function derivePhysicPaintRotoLoopRanges(
     const naturalEnd = lifecycleAvailable && finite
       ? clip.originalEndExclusive!
       : finite ? (requestedEnd as number) : infinityNaturalEnd;
+    // 58-09 (G-01): a finite lifecycle clip's stored end may outlive the
+    // surviving source cycle (a source key was deleted or retimed). The
+    // source-derived extent is the render/ownership truth; the stored end
+    // stays reported as `requestedEnd` so the stale intent remains visible.
+    const sourceExtent = lifecycleAvailable && finite
+      ? resolvePhysicPaintRotoLoopSourceExtent(clip, input.identities, input.capacity)
+      : null;
+    const boundedNaturalEnd = sourceExtent === null
+      ? naturalEnd
+      : Math.min(naturalEnd, sourceExtent.endExclusive);
     let visibleFragments = lifecycleAvailable
       ? clip.visibleRanges!
       : [{ start: clip.placementStart, endExclusive: naturalEnd }];
@@ -5627,7 +5638,7 @@ export function derivePhysicPaintRotoLoopRanges(
       ) return [];
       const effectiveEnd = Math.max(
         fragment.start,
-        Math.min(naturalEnd, fragment.endExclusive, boundary.frame),
+        Math.min(boundedNaturalEnd, fragment.endExclusive, boundary.frame),
       );
       return [Object.freeze({
         loopId: clip.loopId,
@@ -5645,7 +5656,7 @@ export function derivePhysicPaintRotoLoopRanges(
         requestedEnd,
         effectiveEnd,
         boundary,
-        truncated: effectiveEnd < naturalEnd,
+        truncated: effectiveEnd < boundedNaturalEnd,
         partialCycle: (effectiveEnd - phaseOrigin) % cycleLength !== 0,
         unresolved: !sourceTimingIsValid
           ? Object.freeze({
