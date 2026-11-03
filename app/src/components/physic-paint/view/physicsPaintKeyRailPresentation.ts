@@ -102,6 +102,47 @@ export function buildSelectedKeyRailCopy(
   return `${buildKeyRailIdentityCopy(segment, true)} ${dragCopy} ${deleteCopy}${setSentence ?? ''}`;
 }
 
+/**
+ * 58-03 RAIL-01: the Selected Key Rail inspector shows classification facts
+ * only (D-04) — never per-frame cells or loop-edit math. The projection is
+ * anchor-agnostic: the caller resolves which segment is selected (a plain rail
+ * or the rail-set anchor) and passes the current member count beside it.
+ */
+export const KEY_RAIL_EDIT_DISABLED_REASON = 'Select a single rail to edit it.';
+
+export interface SelectedKeyRailInspectorPresentation {
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+  readonly framesLabel: string;
+  readonly keysLabel: string;
+  readonly typeLabel: 'Standard';
+  readonly editDisabledReason: string | null;
+}
+
+export interface ProjectSelectedKeyRailInspectorOptions {
+  /** Rails in the current selection; 2+ disables Edit Rail (D-03). */
+  readonly setSize?: number;
+}
+
+export function projectSelectedKeyRailInspector(
+  segment: KeyRailSegment,
+  options: ProjectSelectedKeyRailInspectorOptions = {},
+): SelectedKeyRailInspectorPresentation {
+  const setSize = options.setSize ?? 1;
+  return Object.freeze({
+    firstKeyId: segment.firstKeyId,
+    keyIds: Object.freeze([...segment.keyIds]) as readonly string[],
+    firstKeyFrame: segment.firstKeyFrame,
+    lastKeyFrame: segment.lastKeyFrame,
+    framesLabel: `F${segment.firstKeyFrame}–F${segment.lastKeyFrame}`,
+    keysLabel: String(segment.keyIds.length),
+    typeLabel: 'Standard',
+    editDisabledReason: setSize >= 2 ? KEY_RAIL_EDIT_DISABLED_REASON : null,
+  }) as SelectedKeyRailInspectorPresentation;
+}
+
 export interface ResolvePhysicPaintPushAnchorInput {
   readonly keyIdByAppFrame: ReadonlyMap<number, string>;
   readonly loopIdByAppFrame: ReadonlyMap<number, string>;
