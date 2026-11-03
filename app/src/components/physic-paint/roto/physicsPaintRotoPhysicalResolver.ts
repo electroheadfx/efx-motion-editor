@@ -4068,7 +4068,6 @@ export interface PhysicPaintRotoRailInsertLoopClipInput {
   readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
   readonly destinationAppFrame: number;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly interpolationEnabled: boolean;
 }
 
 type PhysicPaintRotoLifecycleLoopClip = PhysicPaintRotoLoopClip & Required<Pick<
@@ -4158,7 +4157,10 @@ export function resolvePhysicPaintRotoRailInsertLoopClips(
       || clip.originalEndExclusive === undefined
       || clip.visibleRanges === undefined
       || clip.frameOverrides === undefined) return null;
-    if (!input.interpolationEnabled || clip.mode === 'static' || clip.railKind === 'reveal') return null;
+    // Static/hold rails take the same insert: the new phase follows the
+    // rail's own interior policy (held frames need no interpolation). Reveal
+    // rails stretch by a different law and stay fail-closed.
+    if (clip.railKind === 'reveal') return null;
     if (clip.frameOverrides.length > 0) return null;
     const typed = clip as PhysicPaintRotoLifecycleLoopClip;
     const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
@@ -4271,7 +4273,6 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         identities: identities.ordered,
         destinationAppFrame: intent.destinationAppFrame,
         loopClips,
-        interpolationEnabled: input.interpolationEnabled,
       });
       if (railInsertLoopClips === null) {
         return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
@@ -4698,7 +4699,35 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
       }
     }
-    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    // 58 (G-04): a single-key move inside a lifecycle Rail is a timing edit of
+    // that cycle — the rail band must follow the moved source span (grow when
+    // the last key moves outward, shrink when it moves inward) instead of
+    // ending at the stale extent. Only canonical full-span rails without
+    // painted overrides retime; anything else keeps the previous behavior.
+    let moveCandidate = moveResult.candidate;
+    if (moveResult.candidate.changed && referencingClips.length === 1) {
+      const retimed = computeSourceAttachedLoopPlacementFollow(
+        identities,
+        loopClips,
+        moveResult.candidate.mapping,
+        (clip) => clip.sourceKeyIds.includes(intent.movedKeyId)
+          && typeof clip.repeat === 'number'
+          && clip.phaseOrigin !== undefined
+          && clip.originalEndExclusive !== undefined
+          && clip.visibleRanges !== undefined
+          && clip.frameOverrides !== undefined
+          && clip.frameOverrides.length === 0
+          && clip.visibleRanges.length === 1
+          && clip.visibleRanges[0]!.start === clip.phaseOrigin
+          && clip.visibleRanges[0]!.endExclusive === clip.originalEndExclusive,
+        true,
+      );
+      if (retimed !== null
+        && retimed.every((clip) => clip.originalEndExclusive === undefined || clip.originalEndExclusive <= input.capacity)) {
+        moveCandidate = { ...moveResult.candidate, nextLoopClips: retimed };
+      }
+    }
+    const finalized = finalizeProposal(moveCandidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }

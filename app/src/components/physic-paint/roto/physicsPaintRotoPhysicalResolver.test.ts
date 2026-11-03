@@ -4112,13 +4112,18 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       payload: { frameIndex: 0, appFrame, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
     }));
 
-  it('rejects insert-slot when the selected key is Group-referenced', () => {
+  it('58 G-03: insert on a Group source key shifts the whole rail instead of failing', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
         { keyId: 'G1A', appFrame: 0 },
         { keyId: 'G1B', appFrame: 1 },
         { keyId: 'X', appFrame: 5 },
       ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
       intent: { kind: 'insert-slot', destinationAppFrame: 0 },
       parentEndExclusive: 32,
       capacity: 32,
@@ -4126,13 +4131,19 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       loopClips: [group1],
     });
 
-    expect(resolution.ok).toBe(false);
-    if (resolution.ok) throw new Error('Insert on a Group source key must fail closed');
-    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
-    expect(resolution.failure.operationKind).toBe('insert-slot');
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert on a Group source key must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 1, G1B: 2, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      placementStart: 1,
+      phaseOrigin: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 1, endExclusive: 5 }],
+    });
   });
 
-  it('rejects insert-slot when the right ripple would move a Group-referenced key', () => {
+  it('58 G-03: insert before a later Group shifts that Group whole', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
         { keyId: 'G1A', appFrame: 0 },
@@ -4141,6 +4152,13 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'G2A', appFrame: 8 },
         { keyId: 'G2B', appFrame: 9 },
       ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ]),
       intent: { kind: 'insert-slot', destinationAppFrame: 5 },
       parentEndExclusive: 32,
       capacity: 32,
@@ -4148,10 +4166,22 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       loopClips: [group1, group2],
     });
 
-    expect(resolution.ok).toBe(false);
-    if (resolution.ok) throw new Error('Insert before a Group must fail closed');
-    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
-    expect(resolution.failure.operationKind).toBe('insert-slot');
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert before a Group must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      G1A: 0,
+      G1B: 1,
+      X: 6,
+      G2A: 9,
+      G2B: 10,
+    });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({ loopId: 'group-1', placementStart: 0 });
+    expect(resolution.proposal.nextLoopClips?.[1]).toMatchObject({
+      loopId: 'group-2',
+      placementStart: 9,
+      phaseOrigin: 9,
+      originalEndExclusive: 13,
+    });
   });
 
   it('rejects delete-slot when the left ripple would move a Group-referenced key', () => {
@@ -4396,7 +4426,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     });
   });
 
-  it('58 G-03: static rails keep the fail-closed insert guard', () => {
+  it('58 G-03: static rails accept the insert with held frames', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
         { keyId: 'G1A', appFrame: 0 },
@@ -4415,8 +4445,110 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       loopClips: [{ ...group1, mode: 'static' }],
     });
 
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert on a static rail must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 0, G1B: 2, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      mode: 'static',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
+  it('58 G-04: dragging a rail last key outward extends the cycle band', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K4', target: { kind: 'physical-cell', appFrame: 5 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail last-key move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, K2: 2, K4: 5 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
+  it('58 G-04: dragging a rail last key inward shrinks the cycle band', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K4', target: { kind: 'physical-cell', appFrame: 3 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail inward move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, K2: 2, K4: 3 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+    });
+  });
+
+  it('58 G-03: reveal rails keep the fail-closed insert guard', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [{ ...group1, railKind: 'reveal' }],
+    });
+
     expect(resolution.ok).toBe(false);
-    if (resolution.ok) throw new Error('Insert on a static rail must fail closed');
+    if (resolution.ok) throw new Error('Insert on a reveal rail must fail closed');
     expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
   });
 });

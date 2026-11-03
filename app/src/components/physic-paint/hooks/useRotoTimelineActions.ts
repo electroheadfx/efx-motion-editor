@@ -146,7 +146,6 @@ export function classifyRotoInsertTarget(
         identities: input.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         destinationAppFrame: input.currentAppFrame,
         loopClips: input.loopClips ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
-        interpolationEnabled: input.interpolation?.enabled ?? false,
       })) {
       return { kind: 'generated', appFrame: input.currentAppFrame };
     }
