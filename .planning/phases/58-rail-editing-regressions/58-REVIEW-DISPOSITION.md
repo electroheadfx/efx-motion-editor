@@ -5,11 +5,11 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "G-01 truncates a pasted Infinity rail whose frozen span is not a whole cycle"
   - id: WR-01
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "A real key inside a lifecycle gap is undeletable, and the locked copy points at a frame that refuses deletion"
   - id: IN-01
     severity: info
@@ -17,7 +17,7 @@ findings:
     title: "Unreachable `capacity === undefined` fallback in `resolveGroupBoundedEnd`"
   - id: CR-03
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Partial-cycle group move bypasses the source-order invariant established for `move-key`"
   - id: IN-04
     severity: info
@@ -39,7 +39,7 @@ findings:
     severity: info
     disposition: open
     title: "Open-time `loopClipsOwnAnyKey` is unreachable from production call sites"
-open: 7
+open: 4
 total: 9
 recorded: 2026-11-03T16:42:48.974Z
 ---
@@ -48,10 +48,10 @@ recorded: 2026-11-03T16:42:48.974Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| WR-01 | warning | open | - |
+| CR-01 | critical | fixed | post-review fix e50af31c0 |
+| WR-01 | warning | fixed | post-review fix e50af31c0 |
 | IN-01 | info | open | - |
-| CR-03 | critical | open | - (not in the current review) |
+| CR-03 | critical | fixed | 58-10 (not in the current review) |
 | IN-04 | info | open | - (not in the current review) |
 | CR-02 | critical | fixed | 58-07 (not in the current review) |
 | WR-02 | warning | fixed | 58-08 (not in the current review) |
