@@ -3636,6 +3636,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // open on the SAME stack surface; only an explicit close (or a new open)
       // clears it. Unpinning here re-exposed the old silent no-op on create.
     } else {
+      // WR-01: closeConfirmation no-ops while the phase is busy, so clearing
+      // the frozen segment here would strand an open reduced dialog whose
+      // Create Cycle action can never run again. A busy-phase cancel is a
+      // true no-op; the target is only cleared when the close can happen.
+      if (isBusyPhase(phase.peek())) return;
       // 58-02 (T-58-04): cancel writes nothing — clear the frozen segment and
       // close; closeConfirmation's persistDialogDefaults no-ops outside 'apply'.
       if (dialogMode.peek() === 'key-rail-create') keyRailCycleEditTarget.value = null;
