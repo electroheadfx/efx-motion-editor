@@ -28,6 +28,7 @@ vi.mock('preact/hooks', () => ({
 
 import type {
   PhysicPaintRotoGroupFrameOverride,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
   PhysicPaintRotoLoopClip,
@@ -3831,6 +3832,230 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.bakeOptions[0]).toMatchObject({ frameCount: 3, paintSeedVariation: 'static' });
       const restored = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'G1');
       expect(restored?.paintSeedVariation).toBe(true);
+    });
+  });
+
+  // 58-02 (RAIL-03/04/05): the Key Rail → Standard cycle conversion. A gapped
+  // segment (frames 10, 12, 15) must convert through ONE loop-only commit and
+  // record as ONE undoable Standard clip — never compressed to its key count.
+  describe('Key Rail cycle conversion (58-02)', () => {
+    const RAIL_KEY_IDS = ['A', 'C', 'F'] as const;
+    const RAIL_FRAMES = [10, 12, 15] as const;
+
+    const railPhysicalRecords = () =>
+      RAIL_KEY_IDS.map((keyId, index) => physicalRecord(keyId, RAIL_FRAMES[index]!, `rail-${keyId}`));
+
+    const railAuthority = (
+      overrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+    ): PhysicPaintRotoAuthorityResult => authority({
+      canonicalStart: 10,
+      layerEndExclusive: 100,
+      capacity: 90,
+      physicalCapacity: 600,
+      physicalRecords: railPhysicalRecords(),
+      ...overrides,
+    });
+
+    const railDocument = (loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoPhysicalDocument => {
+      const interpolation = { enabled: false, mode: 'duplicate' } as const;
+      const records = asRealKeyRecords(railPhysicalRecords());
+      return {
+        capacity: 600,
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 10,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        realKeyRecords: records,
+        loopClips,
+        incomingInterpolationBreakKeyIds: [],
+      };
+    };
+
+    const railHarness = (
+      loopClips: readonly PhysicPaintRotoLoopClip[] = [],
+      authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+      portOverrides: Partial<RotoPlayScriptControllerPorts> = {},
+    ) => loopOpHarness(loopClips, {
+      canonicalStart: 10,
+      layerEndExclusive: 100,
+      capacity: 90,
+      physicalCapacity: 600,
+      physicalRecords: railPhysicalRecords(),
+      ...authorityOverrides,
+    }, {
+      getPhysicalDocument: () => railDocument(loopClips),
+      ...portOverrides,
+    });
+
+    // The real accepted-only history hook with NO accepted output: proves a
+    // cancelled/refused conversion can never surface an undo entry.
+    const zeroHistory = () => {
+      const interpolation = { enabled: true, mode: 'duplicate' } as const;
+      const records = asRealKeyRecords(railPhysicalRecords());
+      const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
+      const snapshot: RotoPhysicalEditSnapshot<null> = {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        records,
+        groupOverrideRecords: [],
+        interpolation,
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+        capacity: 600,
+        expectedRevision: revision,
+        stagedRevision: revision,
+        selectedKeyId: null,
+        selectedAppFrame: null,
+        currentAppFrame: 0,
+        dirtyFrames: new Set(),
+        editableFrames: records.map((entry) => entry.appFrame),
+        liveOverlayActionCounts: new Map(),
+        frameStates: new Map(),
+        previewFrames: new Map(),
+        capturedFrames: new Map(),
+        confirmedFrames: new Map(),
+        cachedReference: { url: null, cachedRepaintBase: null },
+        engineState: null,
+      };
+      const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+      const pendingOperationId = signal<string | null>(null);
+      const availability = signal({ undo: 0, redo: 0 });
+      useRotoPhysicalEditHistory({
+        identity: {
+          trackId: 'track-a',
+          launchOperationId: 'launch',
+          layerId: 'layer-1',
+          projectContextId: 'context-1',
+          capacity: 600,
+        },
+        availability,
+        coordinator: {
+          executePhysicalEdit: vi.fn(async () => false) as never,
+          pendingOperationId,
+          acceptedOutput,
+        },
+        recordsPort: {
+          getRecords: () => snapshot.records,
+          getInterpolation: () => snapshot.interpolation,
+          getCapacity: () => snapshot.capacity,
+          raiseCapacity: () => {},
+          getLoopClips: () => snapshot.loopClips,
+          getIncomingInterpolationBreakKeyIds: () => snapshot.incomingInterpolationBreakKeyIds,
+          replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+          replaceLoopClips: () => ({ ok: true }),
+          replaceRecords: () => ({ ok: true }),
+        },
+        getLiveSourceSnapshot: () => snapshot,
+        undoPaint: () => false,
+        redoPaint: () => false,
+      });
+      return { availability };
+    };
+
+    it('opens the create dialog from a gapped segment with Cycle 1, Infinity off, and zero writes', async () => {
+      const test = railHarness();
+      expect(typeof test.controller.openKeyRailCycleEdit).toBe('function');
+      const result = await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] });
+      expect(result).toEqual({ ok: true, reason: null });
+      expect(test.controller.dialogMode.value).toBe('key-rail-create');
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.repeatText.value).toBe('1');
+      expect(test.controller.lastFiniteRepeat.value).toBe('1');
+      expect(test.controller.infinity.value).toBe(false);
+      expect(test.controller.railTab.value).toBe('paint');
+      expect(test.controller.keyRailCycleEditTarget.value).toEqual({
+        firstKeyId: 'A',
+        keyIds: ['A', 'C', 'F'],
+        firstKeyFrame: 10,
+        lastKeyFrame: 15,
+        cycleFrameCount: 6,
+      });
+      expect(test.requestAuthority).not.toHaveBeenCalled();
+      expect(test.commit).not.toHaveBeenCalled();
+    });
+
+    it('converts the segment into ONE provenance-free Standard loop-only commit', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
+
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.semanticDelta).toMatchObject({
+        kind: 'play-script',
+        loopOnly: true,
+        affectedStartAppFrame: 10,
+        affectedEndAppFrame: 9,
+        expectedLayerCapacity: 600,
+        expectedLayerEndExclusive: 100,
+        freshKeyIds: [],
+      });
+      expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(railAuthority().physicalRecords)));
+
+      expect(publication.loopClips).toHaveLength(1);
+      const clip = publication.loopClips![0]!;
+      expect(clip).toMatchObject({
+        placementStart: 10,
+        sourceKeyIds: ['A', 'C', 'F'],
+        repeat: 1,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [],
+      });
+      expect('scriptId' in clip).toBe(false);
+      expect('motion' in clip).toBe(false);
+      expect('railKind' in clip).toBe(false);
+      expect('overrideColor' in clip).toBe(false);
+      expect(isStandardMergedLoopClip(clip)).toBe(true);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.confirmationOpen.value).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+    });
+
+    it('records the conversion as exactly one undoable command and restores the Key Rail', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      expect(await test.controller.confirm()).toBe(true);
+      const publication = test.commit.mock.calls[0][0];
+      const driver = driveLoopHistory({
+        beforeRecords: asRealKeyRecords(railAuthority().physicalRecords),
+        beforeLoopClips: [],
+        publication,
+      });
+
+      expect(driver.availability.value).toEqual({ undo: 1, redo: 0 });
+      expect(await driver.history.undo()).toBe(true);
+      expect(driver.availability.value).toEqual({ undo: 0, redo: 1 });
+      expect(driver.getCurrent().loopClips).toEqual([]);
+      expect(await driver.history.redo()).toBe(true);
+      expect(driver.availability.value).toEqual({ undo: 1, redo: 0 });
+      expect(driver.getCurrent().loopClips).toHaveLength(1);
+      expect(driver.getCurrent().loopClips[0]?.loopId).toBe(publication.loopClips?.[0]?.loopId);
+      expect(driver.getCurrent().loopClips[0]?.originalEndExclusive).toBe(16);
+    });
+
+    it('cancel after open writes nothing and leaves the history availability at {0,0}', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      test.controller.cancel();
+      expect(test.controller.confirmationOpen.value).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+      expect(test.requestAuthority).not.toHaveBeenCalled();
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
     });
   });
 });
