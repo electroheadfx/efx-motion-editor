@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
-status: executing
-stopped_at: Completed 58-09-PLAN.md
-last_updated: "2026-11-03T16:05:06.591Z"
+status: verifying
+stopped_at: Completed 58-10-PLAN.md
+last_updated: "2026-11-03T16:27:43.573Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: a0e318a241437342f4f7aeed876576cdae0bf365
+state_head: 646efaa28213ae04befeaf402a2b3841d9cf74f8
 progress:
   total_phases: 1
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 Phase: 58 (Rail editing regressions) — EXECUTING
 Plan: 10 of 10
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-03 — Phase 58 execution started
 
 
@@ -185,6 +185,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P07 | 2min | 2 tasks | 3 files |
 | Phase 58 P08 | 3 min | 2 tasks | 2 files |
 | Phase 58 P09 | 20min | 3 tasks | 14 files |
+| Phase 58 P10 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -564,6 +565,8 @@ Recent decisions affecting current work:
 - [Phase 58]: The coordinator reconciles staged loop clips and paint sheets on every non-replay accepted write before revision/payload construction, so orphaned paint prunes atomically and Undo/Redo stays byte-identical
 - [Phase 58]: Repeat contraction filters stale overrides below the source-derived survivingEnd and refuses only overrides inside [newEnd, survivingEnd) with the unchanged locked copy
 - [Phase 58]: Delete ownership is frame-based: delete-key, delete-key-group, and delete-key-rail return group-owned-key-delete-rejected after D-07, and the classifier routes selected Group-frame keys to group-frame while Group-containing multi/rail selections fail closed to no-target
+- [Phase 58]: CR-03 uses one shared loopSourceOrderIsProvable helper for move-key and move-key-group, reading the FINAL candidate mapping; the move-key-group guard is intersection-scoped and gated on candidate.changed
+- [Phase 58]: Order-breaking partial-cycle group drags reject with the unchanged loop-source-key-move-rejected code and D-16 copy; no new failure code, no copy drift, no schema/parser change
 
 ### Pending Todos
 
@@ -735,8 +738,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T16:05:06.345Z
-Stopped at: Completed 58-09-PLAN.md
+Last session: 2026-11-03T16:27:43.319Z
+Stopped at: Completed 58-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
