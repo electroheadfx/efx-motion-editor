@@ -275,11 +275,24 @@ describe('D-07 source-key deletion guard', () => {
 // ---------------------------------------------------------------------------
 
 describe('D-11 rigid linked-key guard', () => {
-  it('rejects a single-key move on a linked source key with the locked copy', () => {
-    const resolution = resolveEdit({
+  // Phase 58 D-12 (Law A): exactly one referencing loop is an independent
+  // cycle and may move alone; two or more keep Phase 43 D-11 and the rigid
+  // whole-cycle group drag. The locked D-16 copy stays verbatim for >= 2.
+  it('accepts a single-key move when exactly one loop references the key — Law A (D-12)', () => {
+    const proposal = expectOk(resolveEdit({
       records: SOURCE_RECORDS(),
       intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
       loopClips: [loop(10, 5)],
+    }));
+    expect(proposal.mapping.get('C')).toBe(22);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects a single-key move when two loops reference the key with the locked copy', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 5, 'L2')],
     });
     expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
   });
@@ -291,6 +304,15 @@ describe('D-11 rigid linked-key guard', () => {
       loopClips: [loop(10, 5)],
     }));
     expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('moves an ordinary key normally when no loops exist', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key', movedKeyId: 'G', target: { kind: 'physical-cell', appFrame: 32 } },
+    }));
+    expect(proposal.mapping.get('G')).toBe(32);
     expect(proposal.nextLoopClips).toBeNull();
   });
 
