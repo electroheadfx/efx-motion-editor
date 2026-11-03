@@ -416,4 +416,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-03 after milestone v2.0.1 started — PATCH (rail-editing regressions + v7 timeline rails), Phase 58 + an in-milestone v7 quick; no `.mce` change, no new module, no unrelated audit debt. Previous: v2.0.0 shipped 2026-11-02.*
+*Last updated: 2026-11-03 after Phase 58 completed — all v2.0.1 phases done. RAIL-01..07 validated: Key Rail Edit Rail conversion, reduced Cycle dialog, single-key drag on Motion/Static/Reveal rails under Law A, plus rail insert/delete/retime semantics from UAT; no `.mce` change. Code review carries one open Critical (CR-01, spaced-rail insert rejection) recorded in 58-REVIEW-DISPOSITION.md. Previous: v2.0.0 shipped 2026-11-02.*
