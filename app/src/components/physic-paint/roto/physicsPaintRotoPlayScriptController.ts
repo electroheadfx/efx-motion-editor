@@ -1827,12 +1827,18 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (draftRepeat === null) return false;
     const context = ports.getLaunchContext();
     if (!context) return false;
+    // CR-01 (D-11): cancel() bumps generation, so the awaited authority and
+    // commit must observe it and never write after the user cancelled. This
+    // path assigns no AbortController — requestAuthority/commit take no
+    // AbortSignal, so the generation check is the cancellation contract.
+    const acceptedGeneration = ++generation;
     // T-58-04: phase becomes busy synchronously, so a second confirm in the
     // same tick is refused before it can mint a duplicate commit.
     ports.stopPlayback();
     phase.value = 'preparing'; status.value = 'Preparing Key Rail cycle…'; error.value = null;
     try {
       const authority = await ports.requestAuthority(nextOperationId('key-rail-cycle'), target.firstKeyFrame);
+      assertCurrent(acceptedGeneration);
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
       const resolved = resolveKeyRailFrames(target.keyIds, authority.physicalRecords);
       if (!resolved.ok) return rejectKeyRailCycle(resolved.reason);
@@ -1861,6 +1867,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const statusLine = `Cycle created · F${firstKeyFrame}–F${lastKeyFrame} · ${target.keyIds.length} key(s)`;
       phase.value = 'committing'; status.value = statusLine;
       const result = await ports.commit(publication);
+      // A cancel that lands while the commit is in flight must not be upgraded
+      // into an accepted conversion: the generation check runs before ack
+      // validation and before any phase/dialog/target mutation.
+      assertCurrent(acceptedGeneration);
       if (!result.ok) throw new Error(result.error || 'Parent rejected the Key Rail cycle creation.');
       assertPublicationAck(publication, result);
       phase.value = 'complete'; status.value = statusLine;
@@ -1869,6 +1879,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ports.log(statusLine);
       return true;
     } catch (cause) {
+      if (isAbort(cause)) {
+        // CR-01 (D-11): a cancelled conversion performs zero writes and is not
+        // an error. Land in 'cancelled' and keep the frozen target so an
+        // explicit retry can commit exactly once.
+        phase.value = 'cancelled';
+        progress.value = null;
+        status.value = 'Key Rail cycle cancelled';
+        error.value = null;
+        ports.log(status.value);
+        return false;
+      }
       fail(cause);
       return false;
     }
