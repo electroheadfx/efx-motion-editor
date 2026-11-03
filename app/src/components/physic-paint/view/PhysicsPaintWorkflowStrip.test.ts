@@ -435,7 +435,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
   it('keeps source interpolation blue and restores a lighter mirrored-key rhythm inside dark repeats', () => {
@@ -452,7 +452,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
     expect(map).toContain('lifecycleTargetKind: lifecycleTarget.kind');
     expect(map).toContain("resolutionKind: frameResolution?.kind ?? 'empty'");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
     expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
@@ -1704,7 +1704,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyKeyClearIndex).toBeGreaterThan(proxyNavigateIndex);
     expect(ordinaryClearIndex).toBeGreaterThan(emptyKeyClearIndex);
     expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
-    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked');
   });
 
   it('keeps an empty frame current until replacement-style Select All owns the selection', () => {

@@ -920,6 +920,24 @@ function countLoopsReferencingSourceKey(
 }
 
 /**
+ * 58 (G-05): a canonical lifecycle Rail — finite repeat, one full-span visible
+ * range, no painted overrides. Only these clips retime their placement/band
+ * from the source-key frames after a single-key edit; duplicated/partial/
+ * overridden clips keep their stored lifecycle untouched.
+ */
+function isCanonicalLifecycleRailClip(clip: PhysicPaintRotoLoopClip): boolean {
+  return typeof clip.repeat === 'number'
+    && clip.phaseOrigin !== undefined
+    && clip.originalEndExclusive !== undefined
+    && clip.visibleRanges !== undefined
+    && clip.frameOverrides !== undefined
+    && clip.frameOverrides.length === 0
+    && clip.visibleRanges.length === 1
+    && clip.visibleRanges[0]!.start === clip.phaseOrigin
+    && clip.visibleRanges[0]!.endExclusive === clip.originalEndExclusive;
+}
+
+/**
  * D-04 rigid whole-cycle drag placement follow (placement/source correction):
  * a loop's placementStart tracks the drag ONLY when the moved set contains the
  * cycle's ENTIRE source key list AND the loop's placementStart coincided with
@@ -1862,6 +1880,46 @@ function cutAndInsert(
 ): Candidate {
   const postCut = cutSource(identities, movedKeyId, movedFrame);
   return openAndInsert(identities, postCut, movedKeyId, insertionFrame, target);
+}
+
+/**
+ * 58 (G-05): free reposition of one Rail source phase. Unlike the generic
+ * cut-and-insert ripple, every survivor keeps its physical frame — the moved
+ * key lands on the requested free cell and the cycle's in-betweens
+ * redistribute around it. Dragging the first/last source key outward or
+ * inward therefore grows or shrinks the rail band instead of shifting the
+ * neighbouring timeline keys.
+ */
+function buildRailSourceRepositionCandidate(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  targetAppFrame: number,
+  target: PhysicPaintRotoPhysicalEditTarget,
+): Candidate {
+  const mapping = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    mapping.set(identity.keyId, identity.keyId === movedKeyId ? targetAppFrame : identity.appFrame);
+  }
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  roleByKeyId.set(movedKeyId, 'moved');
+  return {
+    mapping,
+    expectedKeyIds: identities.keyIds,
+    removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+    selectedKeyId: movedKeyId,
+    operationKind: 'move-key',
+    changed: computeChanged(identities, mapping),
+    roleByKeyId,
+    drag: Object.freeze({
+      targetKind: target.kind,
+      targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
+      resolvedInsertionAppFrame: targetAppFrame,
+      movedKeyId,
+      movedKeyIds: Object.freeze([movedKeyId]) as readonly string[],
+      grabbedKeyId: movedKeyId,
+    }) as PhysicPaintRotoPhysicalDragPresentation,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -4690,12 +4748,31 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
     if (!moveResult.ok) return moveResult.resolution;
+    // 58 (G-05): dragging a source key of a canonical lifecycle Rail onto a
+    // free physical cell repositions only that phase — the survivors keep
+    // their frames, so the cycle's in-betweens redistribute and the band grows
+    // or shrinks at its ends. Occupied targets keep the insert/ripple path.
+    let moveCandidate = moveResult.candidate;
+    const movedRailClip = referencingClips.length === 1 ? referencingClips[0]! : null;
+    if (
+      movedRailClip !== null
+      && intent.target.kind === 'physical-cell'
+      && moveCandidate.changed
+      && isCanonicalLifecycleRailClip(movedRailClip)
+    ) {
+      moveCandidate = buildRailSourceRepositionCandidate(
+        identities,
+        intent.movedKeyId,
+        intent.target.appFrame,
+        intent.target,
+      );
+    }
     // CR-02: the order check reads the FINAL candidate mapping, because
     // cutSource / openAndInsert ripple survivors and the requested cell alone
     // can hide an inversion. Rejection is the only safe outcome: re-sorting
     // sourceKeyIds would silently change the cycle's playback order.
-    if (referencingClips.length === 1 && moveResult.candidate.changed) {
-      if (!loopSourceOrderIsProvable(referencingClips[0]!, moveResult.candidate.mapping)) {
+    if (referencingClips.length === 1 && moveCandidate.changed) {
+      if (!loopSourceOrderIsProvable(referencingClips[0]!, moveCandidate.mapping)) {
         return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
       }
     }
@@ -4704,27 +4781,17 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // the last key moves outward, shrink when it moves inward) instead of
     // ending at the stale extent. Only canonical full-span rails without
     // painted overrides retime; anything else keeps the previous behavior.
-    let moveCandidate = moveResult.candidate;
-    if (moveResult.candidate.changed && referencingClips.length === 1) {
+    if (moveCandidate.changed && referencingClips.length === 1) {
       const retimed = computeSourceAttachedLoopPlacementFollow(
         identities,
         loopClips,
-        moveResult.candidate.mapping,
-        (clip) => clip.sourceKeyIds.includes(intent.movedKeyId)
-          && typeof clip.repeat === 'number'
-          && clip.phaseOrigin !== undefined
-          && clip.originalEndExclusive !== undefined
-          && clip.visibleRanges !== undefined
-          && clip.frameOverrides !== undefined
-          && clip.frameOverrides.length === 0
-          && clip.visibleRanges.length === 1
-          && clip.visibleRanges[0]!.start === clip.phaseOrigin
-          && clip.visibleRanges[0]!.endExclusive === clip.originalEndExclusive,
+        moveCandidate.mapping,
+        (clip) => clip.sourceKeyIds.includes(intent.movedKeyId) && isCanonicalLifecycleRailClip(clip),
         true,
       );
       if (retimed !== null
         && retimed.every((clip) => clip.originalEndExclusive === undefined || clip.originalEndExclusive <= input.capacity)) {
-        moveCandidate = { ...moveResult.candidate, nextLoopClips: retimed };
+        moveCandidate = { ...moveCandidate, nextLoopClips: retimed };
       }
     }
     const finalized = finalizeProposal(moveCandidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);

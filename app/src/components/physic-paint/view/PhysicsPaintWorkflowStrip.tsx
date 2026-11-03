@@ -4976,7 +4976,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                     const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
                     const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
-                    const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;
+                    // 58: a Loop Clip source key keeps its Key Spacing proxy, but
+                    // it is still a real key — it must stay draggable so the rail
+                    // can be retimed by drag (interior spacing and band ends).
+                    const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;
                     // Identity-based Drag preview (D-07/D-21/D-22/D-23/D-24).
                     const previewCell = rotoDragPreviewViewModel?.cellsByAppFrame.get(frame) ?? null;
                     const isDragSource = rotoDragPreview?.sourceAppFrame === frame && rotoDragPreview?.movedKeyId === cellKeyId;

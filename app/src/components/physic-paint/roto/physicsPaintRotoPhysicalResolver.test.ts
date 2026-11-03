@@ -4528,6 +4528,150 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     });
   });
 
+  it('58 G-05: dragging a rail interior key repositions only that phase', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K2', target: { kind: 'physical-cell', appFrame: 3 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Interior rail key move must resolve');
+    // Only the moved phase lands elsewhere; every survivor keeps its frame,
+    // so the generated in-betweens redistribute around it.
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, K2: 3, K4: 4, X: 7 });
+  });
+
+  it('58 G-05: dragging the rail last key outward keeps the next timeline key fixed', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 6 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 6 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K4', target: { kind: 'physical-cell', appFrame: 7 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail outward move must resolve');
+    // The unrelated key at 6 stays put — no cut-and-insert ripple.
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, K2: 2, K4: 7, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      originalEndExclusive: 8,
+      visibleRanges: [{ start: 0, endExclusive: 8 }],
+    });
+  });
+
+  it('58 G-05: dragging the rail first key inward shrinks the band at its start', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K0', target: { kind: 'physical-cell', appFrame: 1 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail first-key move must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 1, K2: 2, K4: 4 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      placementStart: 1,
+      phaseOrigin: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 1, endExclusive: 5 }],
+    });
+  });
+
+  it('58 G-05: an order-breaking rail drag still fails closed', () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: { kind: 'move-key', movedKeyId: 'K2', target: { kind: 'physical-cell', appFrame: 5 } },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Order-breaking rail drag must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-move-rejected');
+    expect(resolution.failure.text).toContain('rigid group');
+  });
+
   it('58 G-03: reveal rails keep the fail-closed insert guard', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [

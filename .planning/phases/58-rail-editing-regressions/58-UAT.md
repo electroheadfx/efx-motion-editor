@@ -101,3 +101,15 @@ blocked: 0
 
 **Fix (direct, 2026-11-03):** the insert-slot resolver now rebuilds a generate-mode rail instead of failing the Group-ownership guard — later source keys shift right and the cycle grows by one interpolated frame (`resolvePhysicPaintRotoRailInsertLoopClips`). Spaced source cycles (generated in-betweens, e.g. keys at 0/2/4) are supported, as are the same cycles for the G-02 delete contraction. Static/reveal rails and non-canonical cycles still fail closed; the insert classifier offers the action on those rail frames. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-02:`/`58 G-03:`). Live retest pending.
 
+### G-04 — Rail key drag (interior reposition and band ends)
+
+**Reported:** 2026-11-03 (live UAT, same session).
+
+**Repro (user):** dragging any key of a Motion/Static/Reveal rail never starts. The user wants drag to move a source key inside the interpolated rail when there is room, and to shrink/grow the rail at its beginning and end directly by drag-and-drop (inserts remain the fallback when the target is occupied).
+
+**Approved behavior (user, 2026-11-03):** rail source keys are draggable; a drag onto a free frame repositions only that phase and the rail's in-betweens redistribute; dragging the first or last source key outward/inward grows or shrinks the band at that end; occupied targets keep the existing insert path; order-breaking drags stay refused with the locked rigid-group copy.
+
+**Fix (direct, 2026-11-03):** the cell drag gate no longer excludes Key Spacing proxies, so rail source keys can arm a drag. A single-key drag on a canonical lifecycle rail now free-repositions the moved phase — survivors keep their frames, so unrelated timeline keys are never rippled — and the band retimes from the new source span. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-05:`). Live retest pending.
+
+
+
