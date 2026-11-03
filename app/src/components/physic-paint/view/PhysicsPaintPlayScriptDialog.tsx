@@ -143,6 +143,18 @@ export function PhysicsPaintPlayScriptDialog({
   // 58-04 (D-05): the reduced Standard form is compact — it never grows, even
   // though its later-Standard entry point arrives through loop-edit.
   const surfaceTall = reducedForm ? false : (loopEdit || sourceEdit || stackCollision !== null);
+  /* 58-08 (WR-02): the reduced form has no frames/count field, so the frames
+     validation channel — which keeps a stale "Maximum available count is 0."
+     in key-rail-create — must not veto its confirm. Enter and the primary
+     button both read this ONE gate so they can never disagree. */
+  const framesValidationError = reducedForm
+    ? null
+    : revealTab
+      ? playScript.revealValidationError.value
+      : playScript.validationError.value;
+  const confirmBlocked = framesValidationError !== null
+    || playScript.repeatError.value !== null
+    || stackCollision !== null;
   // UAT 261031-i54: a stack starts from the rail's stored color; null falls back
   // to the live brush color (the creation behavior), so "Custom color" on a
   // rail that had none picks up the app's current brush color.
@@ -287,8 +299,7 @@ export function PhysicsPaintPlayScriptDialog({
             void playScript.confirmStackCollision('truncate');
             return;
           }
-          const tabValidationError = revealTab ? playScript.revealValidationError.value : playScript.validationError.value;
-          if (tabValidationError || playScript.repeatError.value) return;
+          if (confirmBlocked) return;
           event.preventDefault();
           void playScript.confirm();
         }
@@ -565,9 +576,7 @@ export function PhysicsPaintPlayScriptDialog({
                 <button
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-primary"
-                  disabled={reducedForm
-                    ? Boolean(playScript.repeatError.value)
-                    : ((revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value) || (stacking && stackCollision !== null))}
+                  disabled={confirmBlocked}
                   onClick={() => { void playScript.confirm(); }}
                 >
                   {keyRailCreate
