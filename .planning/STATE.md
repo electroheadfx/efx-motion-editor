@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-08-PLAN.md
-last_updated: "2026-11-03T15:42:44.545Z"
+stopped_at: Completed 58-09-PLAN.md
+last_updated: "2026-11-03T16:05:06.591Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: 7c5ac899511dcfadee4b60304cc5eb16a5cef928
+state_head: a0e318a241437342f4f7aeed876576cdae0bf365
 progress:
   total_phases: 1
   completed_phases: 0
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58 (Rail editing regressions) — EXECUTING
-Plan: 9 of 10
-Status: Executing Phase 58
+Plan: 10 of 10
+Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
 
@@ -184,6 +184,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P06 | 5 | 2 tasks | 4 files |
 | Phase 58 P07 | 2min | 2 tasks | 3 files |
 | Phase 58 P08 | 3 min | 2 tasks | 2 files |
+| Phase 58 P09 | 20min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -559,6 +560,10 @@ Recent decisions affecting current work:
 - [Phase 58]: One derived confirmBlocked value drives the Enter guard and the primary disabled state so a click and Enter can never disagree (58-08 WR-02)
 - [Phase 58]: framesValidationError is null when reducedForm is true; every other mode keeps the exact prior reveal/paint validation channel
 - [Phase 58]: stackCollision stays in the shared gate for the primary while Enter's collision branch keeps its truncate precedence
+- [Phase 58]: Source-derived extent is the render/ownership truth; the stored originalEndExclusive stays requestedEnd intent so stale extents remain diagnosable
+- [Phase 58]: The coordinator reconciles staged loop clips and paint sheets on every non-replay accepted write before revision/payload construction, so orphaned paint prunes atomically and Undo/Redo stays byte-identical
+- [Phase 58]: Repeat contraction filters stale overrides below the source-derived survivingEnd and refuses only overrides inside [newEnd, survivingEnd) with the unchanged locked copy
+- [Phase 58]: Delete ownership is frame-based: delete-key, delete-key-group, and delete-key-rail return group-owned-key-delete-rejected after D-07, and the classifier routes selected Group-frame keys to group-frame while Group-containing multi/rail selections fail closed to no-target
 
 ### Pending Todos
 
@@ -730,8 +735,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T13:58:34.905Z
-Stopped at: Completed 58-08-PLAN.md
+Last session: 2026-11-03T16:05:06.345Z
+Stopped at: Completed 58-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
