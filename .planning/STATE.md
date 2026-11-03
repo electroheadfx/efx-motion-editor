@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
-status: planning
-stopped_at: Phase 58 context gathered
-last_updated: "2026-11-03T11:40:19.675Z"
+status: executing
+stopped_at: Completed 58-01-PLAN.md
+last_updated: "2026-11-03T11:52:22.869Z"
 last_activity: 2026-11-03
-last_activity_desc: Milestone v2.0.1 roadmap created (Phase 58 + in-milestone v7 quick)
-state_head: 4052d7aee595f8b4131f2b85ae3f9293d42922bf
+last_activity_desc: Phase 58 execution started
+state_head: 2892b081000b8960559d22b66dbe7b2d653a69a0
 progress:
   total_phases: 1
   completed_phases: 0
@@ -24,14 +24,14 @@ milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
 See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH); Phase 58 fixes the two rail-editing regressions, then the in-milestone v7 timeline-rails quick
+**Current focus:** Phase 58 — Rail editing regressions
 
 ## Current Position
 
-Phase: 58 (Rail editing regressions) — READY TO EXECUTE
-Plan: 5 plans — Wave 1: 58-01, 58-02, 58-03; Wave 2: 58-04, 58-05
-Status: Plans verified — ready to execute Phase 58
-Last activity: 2026-11-03 — Phase 58 planned (5 plans, verification passed)
+Phase: 58 (Rail editing regressions) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-11-03 — Phase 58 execution started
 
 
 ## Performance Metrics
@@ -176,6 +176,7 @@ Last activity: 2026-11-03 — Phase 58 planned (5 plans, verification passed)
 | Phase quick-261018-gqo P261018-gqo | 8min | 3 tasks | 12 files |
 | Phase quick-261018-odm P261018-odm | 12min | 4 tasks | 8 files |
 | Phase quick-261024-mz5 P261024-mz5 | 19 | 3 tasks | 23 files |
+| Phase 58 P01 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -525,6 +526,7 @@ Recent decisions affecting current work:
 - [Phase quick-261024-mz5]: Handles render only when the adapter supplies onTransformStrokes; hit-testing the handle wins over the stroke hit test
 - [Phase quick-261024-mz5]: Watercolor transform is UV-space via one aquarelleEnginePixelToUv crossing and a NEGATED screen angle (UV y is up)
 - [Phase quick-261024-mz5]: Watercolor failure path restores the raw pre-attempt snapshot and surfaces the existing refusal capsule
+- [Phase 58]: Law A is a single resolver comparator change (> 1 referencing loops); D-13 needs zero work because buildMoveCandidate never emits nextLoopClips; no-leak pins keep Force Spacing and every other linked-key guard unchanged.
 
 ### Pending Todos
 
@@ -696,9 +698,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T10:02:40.250Z
-Stopped at: Phase 58 context gathered
-Resume file: .planning/phases/58-rail-editing-regressions/58-CONTEXT.md
+Last session: 2026-11-03T11:52:22.842Z
+Stopped at: Completed 58-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
