@@ -48,6 +48,7 @@ import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
 import { applyAquarelleSheetRigidWiggle, createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
 import { sliceRailKeyScripts, type RailKeyScriptResult } from './physicsPaintRotoRailKeyScripts';
 import {
+  buildKeyRailStandardLoopClip,
   buildRunScriptStackReadout,
   buildStandardStackedLoopClip,
   isStandardMergedLoopClip,
@@ -110,8 +111,12 @@ export function revealRunReferenceFailureCopy(reason: string): string | null {
   return null;
 }
 
-/** 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface. */
-export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit';
+/**
+ * 43-06 dialog modes (D-01/D-02): apply is the Phase 42 generation surface.
+ * 58-02 adds 'key-rail-create' — the reduced Cycle / Infinity surface that
+ * converts one Key Rail segment into a Standard loop clip (D-05/D-11).
+ */
+export type RotoPlayScriptDialogMode = 'apply' | 'loop-edit' | 'source-edit' | 'key-rail-create';
 
 /** 52-05 (G-52-3): the Create Rail dialog tabs — Paint Rail or Reveal Photo Rail. */
 export type RotoPlayScriptRailTab = 'paint' | 'reveal';
@@ -158,6 +163,20 @@ export type RotoRevealRailCreateResult = { readonly ok: true } | { readonly ok: 
 export interface RotoPlayScriptLoopOpResult {
   readonly ok: boolean;
   readonly reason: string | null;
+}
+
+/**
+ * 58-02 (RAIL-03/D-09): the frozen Key Rail segment being converted. The cycle
+ * length is the SPAN law (`lastKeyFrame - firstKeyFrame + 1`), never the key
+ * count, so gapped segments keep their real duration. Frozen at open so the
+ * dialog's Cycle input parses against a stable cycle length.
+ */
+export interface KeyRailCycleEditTarget {
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+  readonly cycleFrameCount: number;
 }
 
 /** Accepted child-side facts sufficient to open Loop Edit without parent authority. */
@@ -563,6 +582,10 @@ export interface RotoPlayScriptController {
   loopEditTarget: ReadonlySignal<PhysicPaintRotoLoopClip | null>;
   /** Resolved first source-key frame of the target loop; null when dangling. */
   loopEditSourceStart: ReadonlySignal<number | null>;
+  /** 58-02: frozen Key Rail segment being converted; null outside 'key-rail-create'. */
+  keyRailCycleEditTarget: Signal<KeyRailCycleEditTarget | null>;
+  /** 58-02: open the reduced Cycle / Infinity dialog for a Key Rail segment (RAIL-03). */
+  openKeyRailCycleEdit: (input: { firstKeyId: string; keyIds: readonly string[] }) => Promise<RotoPlayScriptLoopOpResult>;
   /** Loops sharing the target's source cycle (target included) — the S3 {N}. */
   sourceEditSharedLoopCount: ReadonlySignal<number>;
   /** Exact guarded reason for the current Group Regenerate target. */
@@ -718,6 +741,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   // 43-06 loop modes (D-01/D-02): apply is the default Phase 42 surface.
   const dialogMode = signal<RotoPlayScriptDialogMode>('apply');
   const loopEditTargetId = signal<string | null>(null);
+  // 58-02: the frozen Key Rail segment for 'key-rail-create'; its span drives
+  // parsedRepeat and confirm revalidates every keyId against fresh authority.
+  const keyRailCycleEditTarget = signal<KeyRailCycleEditTarget | null>(null);
   const sourceEditRepairId = signal<string | null>(null);
   const regenerateDisabledReason = signal<string | null>(null);
   const regenerateImpact = signal<RotoPlayScriptRegenerateImpact | null>(null);
@@ -813,7 +839,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   } | null>(null);
   const parsedRepeat = computed(() => {
     let cycleDuration = activeParsedCount.value.count;
-    if (dialogMode.value === 'loop-edit') {
+    if (dialogMode.value === 'key-rail-create') {
+      // 58-02 (D-09): the segment SPAN is the cycle length — a gapped Key Rail
+      // at frames 10, 12, 15 is a 6-frame cycle, never 3.
+      cycleDuration = keyRailCycleEditTarget.value?.cycleFrameCount ?? null;
+    } else if (dialogMode.value === 'loop-edit') {
       const targetId = loopEditTargetId.value;
       const target = targetId === null ? null : currentLoopClips().find((clip) => clip.loopId === targetId) ?? null;
       const snapshot = loopPreflightSnapshot.value;
@@ -1722,6 +1752,128 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return { ok: true, reason: null };
   }
 
+  // --- 58-02 (RAIL-03/RAIL-04/RAIL-05): Key Rail → Standard cycle conversion ---
+
+  /**
+   * Open the reduced Cycle / Infinity dialog for one Key Rail segment. Reads
+   * only the accepted local document (never parent authority) and freezes the
+   * segment with the span-based cycle length (D-09). Every refusal is an
+   * awaited rejection object — the same Promise contract as openLoopEdit.
+   */
+  async function openKeyRailCycleEdit(input: {
+    firstKeyId: string;
+    keyIds: readonly string[];
+  }): Promise<RotoPlayScriptLoopOpResult> {
+    const guard = loopEditOpenGuard();
+    if (guard) return { ok: false, reason: guard };
+    if (!Array.isArray(input.keyIds) || input.keyIds.length === 0
+      || input.keyIds.some((keyId) => typeof keyId !== 'string' || keyId.length === 0)) {
+      return rejectLoopOp('Choose a non-empty Key Rail segment to convert.');
+    }
+    if (input.keyIds[0] !== input.firstKeyId) {
+      return rejectLoopOp('The Key Rail segment changed. Reopen the Cycle dialog.');
+    }
+    const document = ports.getPhysicalDocument?.() ?? null;
+    if (!document) return rejectLoopOp('The accepted local Roto physical document is unavailable.');
+    const resolved = resolveKeyRailFrames(input.keyIds, document.realKeyRecords);
+    if (!resolved.ok) return rejectLoopOp(resolved.reason);
+    if (loopClipsOwnAnyKey(currentLoopClips(), input.keyIds)) {
+      return rejectLoopOp('These keys already belong to a Loop Clip. Unlink it before creating a cycle.');
+    }
+    const firstKeyFrame = resolved.frames[0]!;
+    const lastKeyFrame = resolved.frames[resolved.frames.length - 1]!;
+    const cycleFrameCount = lastKeyFrame - firstKeyFrame + 1;
+    keyRailCycleEditTarget.value = Object.freeze({
+      firstKeyId: input.firstKeyId,
+      keyIds: Object.freeze([...input.keyIds]),
+      firstKeyFrame,
+      lastKeyFrame,
+      cycleFrameCount,
+    });
+    // Detach any stale edit target before the reduced modal shows.
+    loopEditTargetId.value = null;
+    sourceEditRepairId.value = null;
+    loopPreflightSnapshot.value = null;
+    dialogMode.value = 'key-rail-create';
+    railTab.value = 'paint';
+    infinity.value = false;
+    repeatText.value = '1';
+    lastFiniteRepeat.value = '1';
+    ports.stopPlayback();
+    confirmationOpen.value = true;
+    phase.value = 'idle';
+    error.value = null;
+    status.value = `Key Rail · F${firstKeyFrame}–F${lastKeyFrame} · Cycle ${cycleFrameCount}f`;
+    return { ok: true, reason: null };
+  }
+
+  /** A refusal inside confirmKeyRailCycle: reject with copy, write nothing, keep the dialog open. */
+  function rejectKeyRailCycle(reason: string): false {
+    rejectLoopOp(reason);
+    return false;
+  }
+
+  /**
+   * Confirm the conversion as ONE loop-only transaction (D-11). Revalidates
+   * the frozen segment against fresh authority (T-58-02), builds the
+   * provenance-free Standard clip with the clamped span lifecycle (T-58-03),
+   * and publishes through the existing loop-only path.
+   */
+  async function confirmKeyRailCycle(): Promise<boolean> {
+    const target = keyRailCycleEditTarget.peek();
+    if (dialogMode.peek() !== 'key-rail-create' || target === null) return false;
+    if (loopOpGuard() !== null || repeatError.peek() !== null) return false;
+    const draftRepeat: number | 'infinity' | null = infinity.peek() ? 'infinity' : parsedRepeat.peek().count;
+    if (draftRepeat === null) return false;
+    const context = ports.getLaunchContext();
+    if (!context) return false;
+    // T-58-04: phase becomes busy synchronously, so a second confirm in the
+    // same tick is refused before it can mint a duplicate commit.
+    ports.stopPlayback();
+    phase.value = 'preparing'; status.value = 'Preparing Key Rail cycle…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('key-rail-cycle'), target.firstKeyFrame);
+      if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');
+      const resolved = resolveKeyRailFrames(target.keyIds, authority.physicalRecords);
+      if (!resolved.ok) return rejectKeyRailCycle(resolved.reason);
+      if (loopClipsOwnAnyKey(currentLoopClips(), target.keyIds)) {
+        return rejectKeyRailCycle('These keys already belong to a Loop Clip. Unlink it before creating a cycle.');
+      }
+      const firstKeyFrame = resolved.frames[0]!;
+      const lastKeyFrame = resolved.frames[resolved.frames.length - 1]!;
+      const cycleFrameCount = lastKeyFrame - firstKeyFrame + 1;
+      const lifecycle = buildNewLoopLifecycle(firstKeyFrame, cycleFrameCount, draftRepeat, authority.physicalCapacity);
+      const clip = buildKeyRailStandardLoopClip({
+        loopId: createPhysicPaintRotoKeyId(),
+        placementStart: firstKeyFrame,
+        sourceKeyIds: target.keyIds,
+        repeat: draftRepeat,
+        mode: 'progressive',
+        lifecycle,
+      });
+      const publication = buildLoopOnlyPublication({
+        authority,
+        anchor: firstKeyFrame,
+        loopClips: Object.freeze([...currentLoopClips(), clip]),
+        expectedLaunch: { operationId: context.operationId, layerId: context.layerId },
+        rotoBackground: { ...ports.getBackgroundMetadata() },
+      });
+      const statusLine = `Cycle created · F${firstKeyFrame}–F${lastKeyFrame} · ${target.keyIds.length} key(s)`;
+      phase.value = 'committing'; status.value = statusLine;
+      const result = await ports.commit(publication);
+      if (!result.ok) throw new Error(result.error || 'Parent rejected the Key Rail cycle creation.');
+      assertPublicationAck(publication, result);
+      phase.value = 'complete'; status.value = statusLine;
+      confirmationOpen.value = false;
+      keyRailCycleEditTarget.value = null;
+      ports.log(statusLine);
+      return true;
+    } catch (cause) {
+      fail(cause);
+      return false;
+    }
+  }
+
   function isRegenerableLifecycleShape(group: PhysicPaintRotoLoopClip): group is PhysicPaintRotoLoopClip & Required<Pick<
     PhysicPaintRotoLoopClip,
     'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
@@ -2190,6 +2342,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   async function confirm(): Promise<boolean> {
+    // 58-02: an explicitly opened Key Rail dialog owns its confirm — the
+    // reduced Cycle modal must never be consumed by a stack/tab branch.
+    if (dialogMode.peek() === 'key-rail-create') return confirmKeyRailCycle();
     // WR-06: a stack destination outranks the tab — the Reveal branch must never
     // consume a stack confirm (the dialog hides Reveal on a stack anyway).
     if (runDestination.peek().kind === 'stack') return confirmStack();
@@ -3459,7 +3614,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // WR-14: the pin survives an abort. Cancelling the bake leaves the dialog
       // open on the SAME stack surface; only an explicit close (or a new open)
       // clears it. Unpinning here re-exposed the old silent no-op on create.
-    } else closeConfirmation();
+    } else {
+      // 58-02 (T-58-04): cancel writes nothing — clear the frozen segment and
+      // close; closeConfirmation's persistDialogDefaults no-ops outside 'apply'.
+      if (dialogMode.peek() === 'key-rail-create') keyRailCycleEditTarget.value = null;
+      closeConfirmation();
+    }
   }
   function fail(cause: unknown): void { const message = cause instanceof Error ? cause.message : String(cause); phase.value = 'failed'; progress.value = null; status.value = 'Play Script failed'; error.value = message; ports.log(message, true); }
   function assertCurrent(expected: number): void { if (disposed || generation !== expected) throw new DOMException('Play Script generation cancelled.', 'AbortError'); }
@@ -3467,7 +3627,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 
   return {
     confirmationOpen, countText, max, lastFiniteCount, capacity, canonicalStart, mode, overrideEnabled, dialogMotion, repeatText, infinity, lastFiniteRepeat, layerEndExclusive, parsedRepeat, repeatError, loopReadout, loopShortenPreflight, appliedSummary: { line1: appliedSummaryLine1, line2: appliedSummaryLine2 }, destinationRange, validationError, disabledReason, phase, progress, status, error, canCancel,
-    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact,
+    dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, keyRailCycleEditTarget, openKeyRailCycleEdit, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact,
     loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
@@ -3908,6 +4068,46 @@ function buildNewLoopLifecycle(
     visibleRanges: Object.freeze([Object.freeze({ start: placementStart, endExclusive })]),
     frameOverrides: Object.freeze([]),
   };
+}
+
+/**
+ * 58-02 (RAIL-03, T-58-02): resolve a Key Rail segment to strictly increasing
+ * frames against a real-key record list. A missing key or a non-increasing
+ * order is refused — the segment is never reordered or inferred.
+ */
+function resolveKeyRailFrames(
+  keyIds: readonly string[],
+  records: readonly { readonly keyId: string; readonly appFrame: number }[],
+): { readonly ok: true; readonly frames: readonly number[] } | { readonly ok: false; readonly reason: string } {
+  const frameByKeyId = new Map(records.map((record) => [record.keyId, record.appFrame]));
+  const frames: number[] = [];
+  for (const keyId of keyIds) {
+    const appFrame = frameByKeyId.get(keyId);
+    if (appFrame === undefined) {
+      return { ok: false, reason: 'The Key Rail segment changed. Reopen the Cycle dialog.' };
+    }
+    const previous = frames[frames.length - 1];
+    if (previous !== undefined && appFrame <= previous) {
+      return { ok: false, reason: 'The Key Rail segment must be in strictly increasing frame order.' };
+    }
+    frames.push(appFrame);
+  }
+  if (frames.length === 0) {
+    return { ok: false, reason: 'Choose a non-empty Key Rail segment to convert.' };
+  }
+  return { ok: true, frames };
+}
+
+/**
+ * 58-02 (RAIL-03 ownership): a target key is already owned when any loop
+ * references it as a source key OR as a frame override. Conversion must never
+ * duplicate ownership.
+ */
+function loopClipsOwnAnyKey(loopClips: readonly PhysicPaintRotoLoopClip[], keyIds: readonly string[]): boolean {
+  const targets = new Set(keyIds);
+  return loopClips.some((clip) =>
+    clip.sourceKeyIds.some((keyId) => targets.has(keyId))
+    || (clip.frameOverrides ?? []).some((override) => targets.has(override.keyId)));
 }
 
 function buildPhysicalPublication(input: {
