@@ -460,8 +460,8 @@ button.destructive {
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
-  /* 261018-k1o: gap 0 — the 15px module-switcher margin is the single
-     pill-to-switcher separator (never stack both). */
+  /* 261018-k1o: gap 0 — the 15px brush-trigger margin is the single
+     pill-to-trigger separator (never stack both). */
   gap: 0;
   /* 261029-hy2: the left cluster keeps its content width; the settings cluster
      takes the remaining width and pins to the right edge. */
@@ -721,66 +721,6 @@ button.destructive {
 .physics-paint-right-panel button:focus-visible {
   outline: 2px solid var(--color-accent, #2d5be3);
   outline-offset: 2px;
-}
-
-/* 56-02 (D-01): ModuleSwitcher geometry — locked per UI-SPEC exceptions table.
-   Reuses the physics-paint-segmented-button family (one CSS language).
-   261018-k1o: 15px separator faces the status pill (left-cluster gap is 0).
-   flex-shrink 1 lets the switcher compress inside the left flex share before
-   it collides with primary (per-slot min-width 72px floor stays). */
-.module-switcher {
-  flex-shrink: 1;
-  gap: 0;
-  flex-wrap: nowrap;
-  margin-left: 15px;
-}
-
-.module-switcher-slot {
-  height: 24px;
-  min-width: 72px;
-  padding: 0 10px;
-  border-radius: 0;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-}
-
-/* First/last slot rounded to read as one inset track. */
-.module-switcher-slot:first-child {
-  border-radius: 8px 0 0 8px;
-}
-
-
-.module-switcher-slot:last-child {
-  border-radius: 0 8px 8px 0;
-}
-
-/* Krita inert slot (D-03): muted, never accent, never hover-activated. */
-.module-switcher-slot-inert,
-.module-switcher-slot-inert:hover:not(:disabled),
-.module-switcher-slot-inert.active {
-  color: var(--color-text-dim, #6b7280);
-  background: #505255;
-  border-color: #696d72;
-  cursor: default;
-  opacity: 0.55;
-  box-shadow: none;
-}
-
-/* quick-261025-awl (D-03): the Studio ownership lock — the non-owning module
-   slot for the selected key. Same muted family as the inert slot; the owner
-   slot stays fully enabled. */
-.module-switcher-slot-locked,
-.module-switcher-slot-locked:hover:not(:disabled),
-.module-switcher-slot-locked.active {
-  color: var(--color-text-dim, #6b7280);
-  background: #505255;
-  border-color: #696d72;
-  cursor: default;
-  opacity: 0.55;
-  box-shadow: none;
 }
 
 /* 261027-gh9g: the top-bar brush picker — the retired module switcher's slot.

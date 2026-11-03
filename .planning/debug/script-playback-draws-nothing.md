@@ -3,6 +3,10 @@ status: awaiting_human_verify
 trigger: script-playback-draws-nothing — watercolor script saves correctly but playback draws nothing on the canvas. Timeline advances, canvas stays empty. Engine-1 brush mode save/play worked before. Tried mouse and pen.
 created: 2026-10-18
 updated: 2026-10-18
+audit_acknowledged:
+  milestone: v2.0.0
+  at: 2026-11-02
+  status: awaiting_human_verify
 ---
 
 # Debug Session: script-playback-draws-nothing
@@ -134,8 +138,10 @@ verification: |
   - Signal 5 (constraint audit): physicPaintStore.ts contains ZERO getImageData|putImageData (grep count 0). New modules are pure functions — zero useState, no signals, no effects. Diff is additive conversion at an existing seam (not deletion-only, not a config/flag change).
   - Oracle type: `derived` (contract/model — points must land in engine-1 pixel space, derived from the two engines' documented coordinate contracts) + `specified` boundary neighbours (uv 0/1 flip endpoints, N-1/N+1 interior points, non-square canvas).
   - Blind spot remaining: painted-position accuracy is self-checked numerically (0.1687,0.1775 → 182.2,888.3 px) but NOT live-verified on screen — human UAT required per CHECKPOINT below.
+
 files_changed:
   - app/src/components/physic-paint/engine/aquarelleStrokeBridge.ts (new)
   - app/src/components/physic-paint/engine/aquarelleStrokeBridge.test.ts (new)
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx (handleAquarelleStrokeEnd routes through the bridge)
+
 guardrail_verdict: accepted

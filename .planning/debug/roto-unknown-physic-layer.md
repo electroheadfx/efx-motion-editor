@@ -17,6 +17,10 @@ trigger: |
 created: 2026-10-15
 updated: 2026-10-27T12:45:00.000Z
 goal: find_and_fix
+audit_acknowledged:
+  milestone: v2.0.0
+  at: 2026-11-02
+  status: awaiting_human_verify
 ---
 
 # Debug Session: roto-unknown-physic-layer
@@ -124,6 +128,7 @@ DATA_END
 - session-scope explanation (matches the observed repro): `projectStore.ts:592` does `kind: mceSeq.kind ?? 'content'` — a missing `kind` defaults to `'content'` on hydrate. Hydrate runs ONCE per app boot. A sequence persisted without `kind` therefore drops out of the apply lookup for the entire session and comes back clean after relaunch (save writes `kind` at `projectStore.ts:267`). This is the user's "cache problem" read and it fits "first Studio open failed several times, then `pnpm tauri dev` and it was fine" exactly.
 
 ## Evidence
+
 <!-- APPEND only - facts discovered -->
 
 - timestamp: 2026-10-15T(session-resume)
@@ -240,9 +245,11 @@ DATA_END
     stale project or a cross-realm id. Live UAT pending.
 
 ## Eliminated
+
 <!-- APPEND only - prevents re-investigating -->
 
 ## Resolution
+
 <!-- OVERWRITE as understanding evolves -->
 
 root_cause: |
@@ -273,4 +280,3 @@ verification: |
 files_changed:
   - app/src/lib/physicPaintBridge.ts
   - app/src/lib/physicPaintBridgeAuthority.test.ts
-

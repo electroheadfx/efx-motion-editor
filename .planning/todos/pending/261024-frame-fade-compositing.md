@@ -5,6 +5,9 @@ status: pending
 created: 2026-10-24
 source: debug watercolor-opacity-feasibility
 severity: low (idea, not scheduled)
+audit_acknowledged:
+  milestone: v2.0.0
+  at: 2026-11-02
 ---
 
 # Frame fade — compositing/export cumulative-frame crossfade

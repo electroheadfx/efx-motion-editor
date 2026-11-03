@@ -13,9 +13,21 @@
 - ✅ **v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity** — Phases 39-44 (shipped 2026-08-21)
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
-- 🚧 **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-57 (in progress)
+- ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
 
 ## Phases
+
+<details>
+<summary>✅ v2.0.0 Multi-Module Paint Workstation (MAJOR) — SHIPPED 2026-11-02</summary>
+
+Shipped as a **single Water color workstation**: the module switcher and the Krita placeholder were removed pre-publish (261102-iv5), brushes are preset-only, paper is baked into the watercolor sheet, and `efx-spectral` is off the production path. See `milestones/v2.0.0-ROADMAP.md` for full phase details and the accepted supersessions.
+
+- [x] Phase 54: Preact 11 update (5/5 plans) — completed 2026-10-14
+- [x] Phase 55: efx-paint-host (engine-1 host split) (10/10 plans) — completed 2026-10-15
+- [x] Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room) (11/11 plans) — completed 2026-10-21
+- [x] QUICK-01: audio-trim-to-view (in-milestone quick) — completed 2026-11-02
+
+</details>
 
 <details>
 <summary>✅ v1.0.1 Debt Patch Release (quicks + inserted Phase 53.1) — SHIPPED 2026-10-13</summary>
@@ -56,145 +68,6 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 ---
 
-### 🚧 v2.0.0 Multi-Module Paint Workstation (MAJOR)
+## Next Milestone
 
-**Milestone Goal:** Change the product shape into a multi-module paint workstation — a module switcher (Brush | Water color | Krita) over ONE shared Studio engine, shipping Brush + Water color, unlocked by a Preact 11 bump and an engine-1 host split.
-
-**Shipped shape (2026-11-02 close-out):** Water color is the only active engine and module; Brush was retired with engine-1 by quick 261027-klx (native UAT approved 2026-10-27), and Krita remains the inert v2.1.0 slot. Brushes are preset-only (custom tip import was retired with the Brush tab), paper is baked into the watercolor sheet rather than composited through `paperPass`, and `@efxlab/efx-spectral` is retired from the production path. The accepted supersessions are recorded in REQUIREMENTS.md § Close-out Notes and `.planning/v2.0.0-MILESTONE-AUDIT.md`.
-
-**Phase structure LOCKED by the user (2026-10-14).** Global phase numbering continues from v1.0.1 (ended at Phase 53.1). Do not invent, merge, split, or reorder phases. v2.1.0 (Krita) is planned only AFTER this milestone closes — there is no Krita phase here.
-
-**Hard sequencing gates (encoded as phase dependencies and success criteria):**
-- No watercolour work before the Preact 11 bump (satisfied by order 54 → 56)
-- Phase 54 live UAT CLOSES before Phase 55 opens (55 is blocked by 54's live UAT — not "automated-ready")
-- `efx-watercolor` CONSUMES `efx-spectral` — if plan-time shows 56 needs spectral first, create `packages/efx-spectral` early inside 56 (or pull 57's content forward); never duplicate the mixing code inside the watercolor engine. This is a dependency hook on 56, not a new phase.
-
-**Locked stances (do not reopen):** CLEAN BREAK ACCEPTED — no migration code, no dual-format readers, no backward-compat shims; still never drop data silently (unreadable script/asset refuses with a named visible error, 53.1 law). ONE shared Studio engine (script, cache, timeline) for all modules. Host APIs generic over the per-engine stroke payload. Brush-pack snapshot travels in `.mce`. Time = fixed integer tick grid (~1/60 s). Determinism = same script ⇒ same pixels, FNV-1a traceSeed per stroke, no `Math.random()` in deposit/sim path. Remaining UI gray zones (top-bar placement, iconography, panel layout, option grouping) are resolved at discuss-phase — this roadmap does not pre-decide them.
-
-**In-milestone quick task (never a standalone phase, never gets a phase number):**
-- [x] **QUICK-01**: audio-trim-to-view — a Studio sound import longer than the visible timeline window lands pre-cropped to that window (UAT approved 2026-11-02)
-
-**Phase checklist:**
-- [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
-- [x] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical) (completed 2026-10-15)
-- [x] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio (completed 2026-10-21)
-
-## Phase Details
-
-### Phase 54: Preact 11 update
-
-**Goal**: The workstation runs on Preact 11 with the signals reactivity law intact, proven live before any engine work begins
-**Depends on**: Nothing (first phase of the milestone)
-**Requirements**: RUN-01, RUN-02, RUN-03, RUN-04, RUN-05, RUN-06
-**Success Criteria** (what must be TRUE):
-  1. A throwaway probe proves `@preact/signals` works on Preact 11 BEFORE any bump; a red probe stops the milestone as a named blocking decision — never a shim, never an unofficial pin
-  2. User paints a stroke, undoes/redoes, and switches tracks in Studio and the canvas and timeline follow live — the `paintVersion` bump+subscribe discipline is preserved, not rewritten into effect cleanups
-  3. App and standalone packages run on Preact 11 with exactly one `preact` copy; mechanical migrations (useRef initial values, JSX types → preact namespace, defaultProps/auto-px → compat, `lucide-preact` bump) leave behavior identical
-  4. Live UAT of the reactivity paths (paintVersion, store setters — rows A1–A5) is user-asserted and CLOSED; this is the hard gate before Phase 55 opens
-
-**Plans**: 5/5 plans complete
-Plans:
-**Wave 1**
-- [x] 54-01-PLAN.md — RUN-01 two-leg throwaway compatibility probe (stop-if-red gate)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-- [x] 54-02-PLAN.md — Package legitimacy gate for the locked Preact 11 pins
-
-**Wave 3** *(blocked on Wave 2 completion)*
-- [x] 54-03-PLAN.md — D-04 one-way peer door + one-preact-copy TDD pin + workspace bump (RUN-02, RUN-03)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-- [x] 54-04-PLAN.md — JSX namespace migration in three D-07 files (RUN-04)
-
-**Wave 5** *(blocked on Wave 4 completion)*
-- [x] 54-05-PLAN.md — paintVersion discipline pin + live UAT A1-A5 close (RUN-05, RUN-06)
-
-### Phase 55: efx-paint-host (engine-1 host split)
-
-**Goal**: The shared Studio script law (animation schedules, traceSeed, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host; engine-1 observable behavior is unchanged
-**Depends on**: Phase 54 — HARD GATE: Phase 54 live UAT (RUN-06) must CLOSE before Phase 55 opens
-**Requirements**: HOST-01, HOST-02, HOST-03, HOST-04, HOST-05, DATA-01, DATA-02, DATA-03
-**Success Criteria** (what must be TRUE):
-  1. User records, applies, bakes, and replays a Physic Paint script with the same look and baked pixels as the pre-split golden — the format-identical split is a refactor guard (R5.2 / A4 replay parity), not a compatibility surface
-  2. A fake engine-2 stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides) compiles and round-trips through record → play → bake on the host with zero engine-1 types in the host API
-  3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
-  4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
-
-**Plans**: 10/10 plans complete (9 executed + 1 gap-closure)
-Plans:
-**Wave 1**
-- [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
-- [x] 55-10-PLAN.md — GAP-55-01 closure: paint audio snippet on app-timeline scrub (UAT row A2, phase 51 audible-scrub contract)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-- [x] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25) (completed 2026-10-15)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-- [x] 55-03-PLAN.md — TDD generic StudioStroke/P envelope + EngineAdapter + fail-closed parse (HOST-02, D-19; assumption-delta PROMOTE)
-- [x] 55-09-PLAN.md — Standing animation-residue + package-surface lock pin (HOST-01 clean-break guard; does not unbreak 55-02)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-- [x] 55-04-PLAN.md — TDD fixed integer tick grid + uncapped cuisson mechanism (DATA-03, D-20/D-23)
-
-**Wave 5** *(blocked on Wave 4 completion)*
-- [x] 55-05-PLAN.md — TDD engine-1 codec on StudioScriptEnvelope + clean-break refusal (DATA-01, D-13..D-16)
-
-**Wave 6** *(blocked on Wave 5 completion)*
-- [x] 55-06-PLAN.md — TDD four named Apply refusals + no-partial pin (HOST-05, DATA-02, D-09..D-12)
-
-**Wave 7** *(blocked on Wave 6 completion)*
-- [x] 55-07-PLAN.md — Fake engine-2 A5 pin + import-graph pin + bake-host pattern port (HOST-04, D-05..D-08/D-21)
-
-**Wave 8** *(blocked on Wave 7 completion)*
-- [x] 55-08-PLAN.md — Suite/typecheck green + live UAT A1–A4 close (R5.1–R5.3; A5 stays automated)
-
-### Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)
-
-**Goal**: Users can paint and animate real watercolour under the shared Studio script law, choose papers for every paint, and switch modules from the top bar
-**Depends on**: Phase 55 (and transitively Phase 54). Dependency hook: this phase CONSUMES `efx-spectral` — if plan-time shows spectral is needed first, create `packages/efx-spectral` early inside 56 (or pull 57's content forward); never duplicate the mixing code inside the watercolor engine
-**Requirements**: AQUA-01, AQUA-02, AQUA-03, AQUA-04, AQUA-05, AQUA-06, AQUA-07, AQUA-08, PAPER-01, PAPER-02, PAPER-03, PAPER-04, MOD-01, MOD-02, MOD-03, MOD-04, MOD-05, MOD-06, DATA-04
-**Success Criteria** (what must be TRUE):
-  1. User paints with `brush | water | pen | lift` (14 tips + custom PNG/JPG import, 8 global params + per-brush multipliers) and sees wet-in-wet blooms, hard wet-on-dry edges, and dark tide lines survive into baked frames
-  2. User records → plays physics (no forced Dry at frame boundaries) → WebP-bakes (`diffusionFrames` ≤ 600) → caches; same script ⇒ same pixels (FNV-1a seeded per stroke); the bake survives leaving the frame; unpainted areas stay transparent
-  3. User picks among 10 named procedural papers plus the 3 recovered real paper backgrounds (`paper_1/2/3.jpg`); paper composites for ALL paints through the same `paperPass` with no rebake on paper change; paper display state (id, strength, scale) undoes and saves on the document/fond
-  4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
-  5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
-
-**Plans**: 11/11 plans complete
-**UI hint**: yes
-
-Plans:
-**Wave 1**
-- [x] 56-01-PLAN.md — TRACER: efx-spectral (vendored MIT) + efx-watercolor thin end-to-end stroke through EngineAdapter (AQUA-06, DATA-04, D-29)
-- [x] 56-02-PLAN.md — Module switcher + shared/module panel-split shell (MOD-01/02/03/06, D-01..D-05)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-- [x] 56-03-PLAN.md — TDD engine core physics: blooms, tide lines, four tools (AQUA-01, AQUA-02)
-- [x] 56-04-PLAN.md — TDD brush set: 14 tips, categories, custom import, pack snapshot (AQUA-03)
-- [x] 56-05-PLAN.md — Paper pack (10 procedural + 3 real) + paperPass + fond state + picker (PAPER-01..04)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-- [x] 56-06-PLAN.md — TDD script codec + Dry event + deterministic record/play (AQUA-05, AQUA-06)
-- [x] 56-07-PLAN.md — Aquarelle panel + tool row + Dry button + Brushes docker UI (AQUA-02/03/04)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-- [x] 56-08-PLAN.md — Bake host + WebP cache, survives leaving the frame (AQUA-05, AQUA-07, AQUA-08)
-- [x] 56-09-PLAN.md — TDD .mce field contract + brush-pack snapshot + fail-closed Apply (DATA-04, MOD-04, MOD-05)
-
-**Wave 5** *(blocked on Wave 4 completion)*
-- [x] 56-10-PLAN.md — Suite green + live UAT A1-A5 close (AQUA-08)
-- [x] 56-11-PLAN.md — GAP-CLOSURE: live aquarelle surface, continuous stroke, tick-grid record, sheet raster (AQUA-04, AQUA-05, AQUA-08)
-
-## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 54 → 55 → 56 (with QUICK-01 runnable as an in-milestone quick alongside them). Phase 55 is blocked until Phase 54's live UAT closes. **Phase 57 (efx-spectral) was retired on 2026-10-21**: the shared `packages/efx-spectral` package was delivered inside Phase 56 through the dependency hook, is consumed by engine 2, and its public API is pinned; engine-1 adoption remains a future milestone concern. There is no standalone spectral phase.
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
-| 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
-| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 11/11 | Complete    | 2026-10-21 |
-| QUICK-01 audio-trim-to-view (in-milestone quick) | — | Complete | 2026-11-02 |
-
-**Close-out status (2026-11-02):** Milestone audit complete. PAPER-03's paper-id undo was removed by product decision and the grain undo was fixed the same day (`nyquist_compliant: true`). The release runs through the `efx-motion-release` skill outside the phase structure — no release phase is inserted for v2.0.0.
+No active milestone. Start the next one with `/gsd-new-milestone` (questioning → research → requirements → roadmap). Global phase numbering continues from Phase 56; Phase 57 was retired (spectral shipped inside Phase 56).

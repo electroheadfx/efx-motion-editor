@@ -1,7 +1,7 @@
 {
   "name": "@efxlab/efx-paint-host",
   "version": "0.1.0",
-  "license": "GPL-2.0-only",
+  "license": "GPL-3.0-or-later",
   "description": "Studio-law paint host: animation schedules, traceSeed determinism, and the generic StudioStroke contract (Preact-free)",
   "repository": {
     "type": "git",
