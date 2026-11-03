@@ -85,6 +85,8 @@ export interface RotoPhysicalKeyUtilityPort {
       readonly joinPreviousRail?: boolean;
       /** Create rail → Key: force an isolated new rail even inside a span. */
       readonly forceNewSegment?: boolean;
+      /** + Key: a repeat-occurrence destination opens the key at its first-cycle phase. */
+      readonly allowRepeatRailInsert?: boolean;
     },
   ) => Promise<boolean>;
 }

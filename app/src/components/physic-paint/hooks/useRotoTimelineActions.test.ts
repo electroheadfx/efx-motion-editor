@@ -1298,6 +1298,94 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(executePhysicalEdit).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledWith('Paste-to-empty destination is occupied.');
   });
+
+  it('58 G-06: + Key on a Rail in-between inserts a source phase instead of a detached key', async () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      loopId: 'rail-1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k4'],
+      repeat: 1,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4)],
+      loopClips: [rail],
+      currentAppFrame: 2,
+      capacity: 10,
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(2, blankPayload(2), { joinPreviousRail: true });
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        selectedKeyId: string | null;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+      intent: { kind: string; railInsertGroupId?: string };
+    };
+    expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+    const mapping = Object.fromEntries(dispatched.proposal.mapping);
+    expect(mapping.k0).toBe(0);
+    expect(mapping.k4).toBe(5);
+    expect(dispatched.proposal.selectedKeyId).toBeDefined();
+    expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(2);
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'rail-1',
+      sourceKeyIds: ['k0', dispatched.proposal.selectedKeyId, 'k4'],
+      originalEndExclusive: 6,
+    });
+  });
+
+  it('58 G-06: + Key on a repeat occurrence opens the key at its first-cycle phase', async () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      loopId: 'rail-1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k4'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+      frameOverrides: [],
+    };
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4)],
+      loopClips: [rail],
+      currentAppFrame: 7,
+      capacity: 32,
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(7, blankPayload(7), {
+      joinPreviousRail: true,
+      allowRepeatRailInsert: true,
+    });
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        selectedKeyId: string | null;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+      intent: { kind: string; destinationAppFrame: number; railInsertGroupId?: string };
+    };
+    expect(dispatched.intent.destinationAppFrame).toBe(2);
+    expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+    const mapping = Object.fromEntries(dispatched.proposal.mapping);
+    expect(mapping.k0).toBe(0);
+    expect(mapping.k4).toBe(5);
+    expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(2);
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      sourceKeyIds: ['k0', dispatched.proposal.selectedKeyId, 'k4'],
+      originalEndExclusive: 12,
+    });
+  });
 });
 
 describe('useRotoTimelineActions linked source-position Force Spacing', () => {

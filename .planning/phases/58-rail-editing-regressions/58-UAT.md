@@ -111,5 +111,17 @@ blocked: 0
 
 **Fix (direct, 2026-11-03):** the cell drag gate no longer excludes Key Spacing proxies, so rail source keys can arm a drag. A single-key drag on a canonical lifecycle rail now free-repositions the moved phase — survivors keep their frames, so unrelated timeline keys are never rippled — and the band retimes from the new source span. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-05:`). Live retest pending.
 
+### G-05 — + Key and paint on a Rail in-between must insert a source phase, not split the rail
+
+**Reported:** 2026-11-03 (live UAT).
+
+**Repro (user):**
+1. With a Motion/Static/Reveal rail active, press `+ Key` (or paint) on an interpolated or empty frame inside the rail's first cycle.
+2. The action creates a detached real key with its own rail; the PlayScript rail visually breaks into two segments around it.
+3. Painting the same frame only writes the paint cache — no key marker appears.
+
+**Approved behavior (user, 2026-11-03):** the action must add the key *inside* the rail — inter-rail frames included — and painting an in-between must auto-add the key. All rail kinds.
+
+**Fix (direct, 2026-11-03):** `addEmptyKey` now detects a frame inside one canonical lifecycle rail and raises the paste-key intent with `railInsertGroupId`; the resolver inserts a real source key at that phase (later source keys shift right by one), extends every repeat (the rail's footprint grows by `repeat`, trailing content shifts by `repeat`), moves painted phase overrides with their phases, and replaces a destination-phase override with the new source key. `+ Key` on a repeat occurrence opens the key at the same phase in the first cycle; paint promotion only promotes the painted first-cycle frame (repeats keep the source-phase override route). The paint promotion gate now lets a rail in-between/gap promote to a real key instead of keeping a cache-only/override frame. Overlapping rails, shared source cycles, and malformed rails stay fail-closed. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-06:`), `useRotoTimelineActions.test.ts`, and `physicPaint.test.ts`. Live retest pending.
 
 

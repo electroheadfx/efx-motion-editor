@@ -2002,6 +2002,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
             frameOverrides: [],
             ...movedClipOverrides,
           }],
+          nextGroupOverrideRecords: null,
           nextIncomingInterpolationBreakKeyIds: null,
           semanticDelta: null,
           status: {

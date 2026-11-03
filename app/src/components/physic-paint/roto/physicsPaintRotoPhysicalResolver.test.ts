@@ -13,6 +13,7 @@ import {
   derivePhysicPaintRailSetMove,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
+  resolvePhysicPaintRotoRailKeyInsertTarget,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from './physicsPaintRotoPhysicalResolver';
 import type { PhysicPaintRailSetMoveMember } from './physicsPaintRotoPhysicalResolver';
@@ -4694,6 +4695,299 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     expect(resolution.ok).toBe(false);
     if (resolution.ok) throw new Error('Insert on a reveal rail must fail closed');
     expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
+  });
+});
+
+describe('58 G-06 Rail key insert (+ Key / paint on an in-between)', () => {
+  const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
+    frameIndex: 0,
+    appFrame,
+    bytes: testWebpBytes('AAAA'),
+    width: 2,
+    height: 2,
+  });
+  const recordsFrom = (identities: readonly PhysicPaintRotoKeyIdentity[]): PhysicPaintRotoRealKeyRecord[] =>
+    identities.map(({ keyId, appFrame }) => ({
+      kind: 'real-key' as const,
+      keyId,
+      appFrame,
+      payload: payloadAt(appFrame),
+    }));
+  const rail: PhysicPaintRotoLoopClip = {
+    loopId: 'group-1',
+    placementStart: 0,
+    sourceKeyIds: ['K0', 'K4'],
+    repeat: 1,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 5,
+    visibleRanges: [{ start: 0, endExclusive: 5 }],
+    frameOverrides: [],
+  };
+  const insertIntent = (destinationAppFrame: number): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> => ({
+    kind: 'paste-key',
+    destinationAppFrame,
+    destinationKeyId: null,
+    newKeyId: 'NEW',
+    clipboardPayload: payloadAt(0),
+    railInsertGroupId: 'group-1',
+  });
+
+  it('58 G-06: + Key on an in-between inserts a source phase instead of a detached key', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ]),
+      intent: insertIntent(2),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail key insert must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      K0: 0,
+      NEW: 2,
+      K4: 5,
+      X: 8,
+    });
+    expect(resolution.proposal.selectedKeyId).toBe('NEW');
+    expect(resolution.proposal.selectedAppFrame).toBe(2);
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      syncState: 'modified',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      sourceKeyIds: ['K0', 'NEW', 'K4'],
+      frameOverrides: [],
+    });
+  });
+
+  it('58 G-06: every repeat grows by one phase and unrelated later keys stay fixed', () => {
+    const repeated: PhysicPaintRotoLoopClip = {
+      ...rail,
+      repeat: 2,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 13 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 13 },
+      ]),
+      intent: insertIntent(2),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [repeated],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Repeated rail key insert must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, NEW: 2, K4: 5, X: 15 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      originalEndExclusive: 12,
+      visibleRanges: [{ start: 0, endExclusive: 12 }],
+      sourceKeyIds: ['K0', 'NEW', 'K4'],
+    });
+  });
+
+  it('58 G-06: reveal rails accept the source insertion too', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: insertIntent(3),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [{ ...rail, railKind: 'reveal' }],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Reveal rail key insert must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K0: 0, NEW: 3, K4: 5 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      railKind: 'reveal',
+      sourceKeyIds: ['K0', 'NEW', 'K4'],
+      originalEndExclusive: 6,
+    });
+  });
+
+  it('58 G-06: a key just after the rail shifts with the grown footprint', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: insertIntent(2),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Trailing-key rail insert must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      K0: 0,
+      NEW: 2,
+      K4: 5,
+      X: 6,
+    });
+  });
+
+  it('58 G-06: another Rail overlapping the inserted phase fails closed', () => {
+    const overlapping: PhysicPaintRotoLoopClip = {
+      ...rail,
+      loopId: 'group-2',
+      sourceKeyIds: ['O1'],
+      phaseOrigin: 3,
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 3, endExclusive: 4 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'O1', appFrame: 3 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'O1', appFrame: 3 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: insertIntent(2),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [rail, overlapping],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Overlapping rail insert must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
+  });
+
+  it('58 G-06: a repeat occurrence maps back to its first-cycle phase', () => {
+    const repeated: PhysicPaintRotoLoopClip = {
+      ...rail,
+      repeat: 2,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+    };
+    expect(resolvePhysicPaintRotoRailKeyInsertTarget({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      loopClips: [repeated],
+      appFrame: 7,
+    })).toEqual({ loopId: 'group-1', cycleOffset: 2, insertionAppFrame: 2 });
+  });
+
+  it('58 G-06: a later phase override and its record shift with their phase', () => {
+    const overridden: PhysicPaintRotoLoopClip = {
+      ...rail,
+      frameOverrides: [{ appFrame: 3, keyId: 'OV3' }],
+    };
+    const overrideRecord = {
+      kind: 'real-key' as const,
+      keyId: 'OV3',
+      appFrame: 3,
+      payload: payloadAt(3),
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: insertIntent(1),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [overridden],
+      groupOverrideRecords: [overrideRecord],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Overridden rail insert must resolve');
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      frameOverrides: [{ appFrame: 4, keyId: 'OV3' }],
+    });
+    expect(resolution.proposal.nextGroupOverrideRecords).toEqual([
+      expect.objectContaining({ keyId: 'OV3', appFrame: 4 }),
+    ]);
+    expect(resolution.proposal.nextGroupOverrideRecords?.[0]?.payload.appFrame).toBe(4);
+  });
+
+  it('58 G-06: an override on the destination phase is replaced by the new source key', () => {
+    const overridden: PhysicPaintRotoLoopClip = {
+      ...rail,
+      frameOverrides: [{ appFrame: 2, keyId: 'OV2' }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K4', appFrame: 4 },
+      ]),
+      intent: insertIntent(2),
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [overridden],
+      groupOverrideRecords: [{
+        kind: 'real-key' as const,
+        keyId: 'OV2',
+        appFrame: 2,
+        payload: payloadAt(2),
+      }],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Destination override replacement must resolve');
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({ frameOverrides: [] });
+    expect(resolution.proposal.nextGroupOverrideRecords).toEqual([]);
   });
 });
 

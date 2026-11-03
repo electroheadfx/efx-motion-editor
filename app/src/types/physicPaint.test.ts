@@ -467,6 +467,23 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...joined, joinsPreviousRail: 1 })).toBe(false);
   });
 
+  it('58: round-trips the Rail insert group and refuses an existing destination identity', () => {
+    const payload = { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
+    const inserted = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-rail', clipboardPayload: payload, railInsertGroupId: 'rail-1' } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(inserted)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(inserted);
+    expect(serialized).toContain('"railInsertGroupId":"rail-1"');
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical rail insert must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...inserted, destinationKeyId: 'key-A', newKeyId: null })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...inserted, railInsertGroupId: '' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...inserted, railInsertGroupId: 7 })).toBe(false);
+  });
+
   it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
     const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const oversizedId = 'x'.repeat(257);

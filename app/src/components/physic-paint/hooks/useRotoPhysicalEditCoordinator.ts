@@ -2335,6 +2335,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             ?? groupLifecycleDeleteProposal?.groupOverrideRecords
             ?? groupFramePaintProposal?.groupOverrideRecords
             ?? moveGroupOverrideRecords
+            ?? proposal?.nextGroupOverrideRecords
             ?? currentGroupOverrideRecords;
         // 58-09 (G-01): a finite lifecycle clip stores its extent, and that
         // stored end does not follow a delete that removes keys outside the

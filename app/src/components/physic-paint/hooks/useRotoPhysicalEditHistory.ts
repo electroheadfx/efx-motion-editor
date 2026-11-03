@@ -650,6 +650,7 @@ export function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): 
     drag: null,
     nextRecords: null,
     nextLoopClips: null,
+    nextGroupOverrideRecords: null,
     nextIncomingInterpolationBreakKeyIds: null,
     semanticDelta: null,
     status: {

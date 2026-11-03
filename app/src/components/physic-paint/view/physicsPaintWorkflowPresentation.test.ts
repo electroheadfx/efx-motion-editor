@@ -666,6 +666,7 @@ describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43
       drag: null,
       nextRecords: null,
       nextLoopClips: null,
+      nextGroupOverrideRecords: null,
       nextIncomingInterpolationBreakKeyIds: null,
       semanticDelta: null,
       status: {

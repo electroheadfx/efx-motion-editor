@@ -31,6 +31,7 @@ import {
   resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
+  resolvePhysicPaintRotoRailKeyInsertTarget,
   type PhysicPaintRailSetMoveMember,
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLinkedSourceSpacingScope,
@@ -1527,6 +1528,8 @@ export interface RotoTimelineActionsInput {
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
   /** Durable Loop Clip collection from the store (Phase 43, Q1). */
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
+  /** 58: complete Group frame-override records, so a rail insert can retime painted phases. */
+  getRotoGroupOverrideRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
   /** Current physical projection cells (D-10). */
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
   /** Current canonical linked-frame resolution, when Loop Clips are present. */
@@ -2026,6 +2029,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // durable Loop Clip collection; absent port = pre-43 empty collection.
       loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
+      ...(input.getRotoGroupOverrideRecords
+        ? { groupOverrideRecords: input.getRotoGroupOverrideRecords() }
+        : {}),
     });
     if (!resolution.ok) {
       input.setApplyStatus?.('error');
@@ -2460,6 +2466,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       readonly joinPreviousRail?: boolean;
       /** Create rail → Key: force an isolated new rail even inside a span. */
       readonly forceNewSegment?: boolean;
+      /** + Key: a repeat-occurrence destination opens the key at its first-cycle phase. */
+      readonly allowRepeatRailInsert?: boolean;
     },
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
@@ -2497,13 +2505,31 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         : !joinsPreviousRail && !segments.some(
           (segment) => segment.firstKeyFrame < destinationAppFrame && destinationAppFrame < segment.lastKeyFrame,
         );
+      // 58: on a frame inside a Rail's first cycle the new key must become a
+      // source phase — the rail grows by one and stays contiguous instead of
+      // splitting around a detached key. Create rail → Key opts out.
+      const railInsert = options?.forceNewSegment === true
+        ? null
+        : resolvePhysicPaintRotoRailKeyInsertTarget({
+          identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+          loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+          appFrame: destinationAppFrame,
+        });
+      // A repeat occurrence maps back to its first-cycle phase; only + Key
+      // opts into that (paint promotion must create the key on the painted
+      // frame itself).
+      const railInsertFrame = railInsert !== null
+        && (railInsert.insertionAppFrame === destinationAppFrame || options?.allowRepeatRailInsert === true)
+        ? railInsert.insertionAppFrame
+        : null;
       return runPhysicalAction({
         intent: createPhysicPaintRotoPasteKeyIntent(
-          destinationAppFrame,
+          railInsertFrame ?? destinationAppFrame,
           emptyPayload,
           null,
           startsNewSegment,
           joinsPreviousRail,
+          railInsertFrame === null ? null : railInsert!.loopId,
         ),
         operationKind: 'paste-key',
         requiredKeyId: null,

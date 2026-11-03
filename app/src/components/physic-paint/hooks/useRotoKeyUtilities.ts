@@ -433,6 +433,7 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     // key's rail; only the no-previous-key blank case opens a new segment.
     void input.physicalKeyUtilities.addEmptyKey(input.currentFrame, payload, {
       joinPreviousRail: resolution.kind === 'clone',
+      allowRepeatRailInsert: true,
     }).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       input.setApplyStatus('error');

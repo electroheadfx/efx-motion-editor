@@ -68,7 +68,7 @@ import {
   type RailSetIdentity,
   type RailSetSelectionState,
 } from './roto/physicsPaintRotoRailSetSelection';
-import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
+import { resolvePhysicPaintRotoRailKeyInsertTarget, type PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { classifyLoopClipRailKind, clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
@@ -3141,6 +3141,9 @@ export function PhysicsPaintStudio() {
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
     getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
+    getRotoGroupOverrideRecords: () => launchContext
+      ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())?.groupOverrideRecords ?? []
+      : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -4976,12 +4979,27 @@ export function PhysicsPaintStudio() {
       : null;
     const isNonRealCell = currentFrameSelectionKind === 'empty'
       || currentFrameSelectionKind === 'generated-interpolation';
-    if (!launch || !isNonRealCell || paintTarget?.kind === 'group-frame') {
+    // 58: painting a Rail's in-between (or its lifecycle gap) promotes the
+    // phase to a real source key, so the rail grows instead of keeping a
+    // key-less override or cache-only frame. Every other Group frame keeps the
+    // existing source-phase paint route.
+    const railPaintTarget = paintTarget?.kind === 'group-frame' && document !== null
+      ? resolvePhysicPaintRotoRailKeyInsertTarget({
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips: document.loopClips,
+        appFrame: currentFrame,
+      })
+      : null;
+    // The painted frame itself must become the key; a repeat occurrence keeps
+    // the source-phase override route (its key belongs to the first cycle).
+    const railPaintPromotion = railPaintTarget !== null
+      && railPaintTarget.insertionAppFrame === currentFrame;
+    if (!launch || !isNonRealCell || (paintTarget?.kind === 'group-frame' && !railPaintPromotion)) {
       pendingFirstPaintTargetRef.current = null;
       rotoFrameEditing.beginFrameEdit();
       return;
     }
-    if (paintTarget?.kind !== 'empty') return;
+    if (paintTarget?.kind !== 'empty' && !railPaintPromotion) return;
     if (workflowMode !== 'roto' || isPlaying) return;
     if (event) {
       // Never intercept: the engine's own pointerdown starts the stroke on the

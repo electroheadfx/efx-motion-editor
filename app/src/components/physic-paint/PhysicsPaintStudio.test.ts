@@ -344,7 +344,9 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     // resolves the target ONCE and lets a Group frame bypass self-promotion.
     expect(studio).toContain('resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)');
     expect(studio).toContain("paintTarget?.kind === 'group-frame'");
-    expect(studio).toContain("if (paintTarget?.kind !== 'empty') return;");
+    // 58 G-06: a Rail in-between/gap is the ONE Group frame that promotes.
+    expect(studio).toContain("if (paintTarget?.kind !== 'empty' && !railPaintPromotion) return;");
+    expect(studio).toContain('resolvePhysicPaintRotoRailKeyInsertTarget({');
     expect(studio).not.toContain("groupTarget?.kind === 'group-gap'");
     expect(studio).not.toContain('shouldReloadRotoFrameAfterFailedCapture');
     // Completion arrives from the app-owned ledger and pairs the paint barrier
