@@ -93,7 +93,7 @@ interface FakeControllerSeed {
   validationError?: string | null;
   phase?: string;
   // 43-06 loop modes
-  dialogMode?: 'apply' | 'loop-edit' | 'source-edit';
+  dialogMode?: 'apply' | 'loop-edit' | 'source-edit' | 'key-rail-create';
   loopEditTargetId?: string | null;
   loopEditTarget?: PhysicPaintRotoLoopClip | null;
   loopEditSourceStart?: number | null;
@@ -192,7 +192,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     error: sig<string | null>(seed.error ?? null),
     canCancel: sig(seed.canCancel ?? false),
     // 43-06 loop modes
-    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit'>(seed.dialogMode ?? 'apply'),
+    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit' | 'key-rail-create'>(seed.dialogMode ?? 'apply'),
     loopEditTargetId: sig<string | null>(seed.loopEditTargetId ?? null),
     loopEditTarget: sig(seed.loopEditTarget ?? null),
     loopEditSourceStart: sig<number | null>(seed.loopEditSourceStart ?? null),
@@ -1307,6 +1307,82 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     expect(trigger.props.disabled).toBe(true);
     expect(trigger.props.title).toBe(STANDARD_RAIL_REGENERATE_REASON);
     expect(trigger.props['aria-disabled']).toBe('true');
+  });
+});
+
+// 58-04 (D-05/D-10/D-11): the Key Rail conversion reuses the existing Edit Rail
+// shell in a reduced mode — exactly Cycle + Infinity, Create Cycle, no tall height.
+describe('PhysicsPaintPlayScriptDialog reduced Key Rail cycle form (58-04 D-05/D-11)', () => {
+  const reducedSeed = {
+    dialogMode: 'key-rail-create' as const,
+    repeatText: '1',
+    infinity: false,
+  };
+  const primaryAction = (tree: unknown) => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+
+  it('renders the Edit Rail title with exactly one Cycle stepper (value 1) and one unchecked Infinity switch', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Rail');
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(1);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.value).toBe(1);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(1);
+    expect(findOne(tree, byId('physics-play-script-infinity')).props['aria-checked']).toBe('false');
+  });
+
+  it('renders no tabs, rail type, frames-per-cycle, motion, source cycle, seed, or Regenerate Rail', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'RAIL TYPE')).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-motion-deformation'))).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Source cycle'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-paint-seed-variation'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(0);
+  });
+
+  it('labels the primary action Create Cycle and confirms through playScript.confirm()', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    const primary = primaryAction(tree);
+    expect(textOf(primary)).toBe('Create Cycle');
+    handler(primary, 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the fixed surface height — no physics-paint-play-script-surface-tall class', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+    expect(hasClass(surface, 'physics-paint-play-script-surface-tall')).toBe(false);
+  });
+
+  it('disables the Cycle stepper while Infinity is on and routes the toggle to setInfinity', () => {
+    const infinityOn = createFakeController({ ...reducedSeed, infinity: true });
+    let tree = renderDialog(infinityOn.controller);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
+
+    const infinityOff = createFakeController(reducedSeed);
+    tree = renderDialog(infinityOff.controller);
+    const toggle = findOne(tree, byId('physics-play-script-infinity'));
+    expect(toggle.props.disabled).toBe(false);
+    handler(toggle, 'onClick')();
+    expect(infinityOff.controller.setInfinity).toHaveBeenCalledWith(true);
+  });
+
+  it('disables the primary action while a repeat error is present and shows the repeat error', () => {
+    const { controller } = createFakeController({ ...reducedSeed, repeatError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Enter a positive integer.');
+  });
+
+  it('focuses the repeat input when the reduced form opens', () => {
+    // The hook harness stubs useEffect out, so the focus branch is pinned at source level.
+    expect(source).toContain("else if (dialogMode === 'key-rail-create') repeatInputRef.current?.focus();");
   });
 });
 
