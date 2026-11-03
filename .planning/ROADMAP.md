@@ -25,9 +25,9 @@
 **Requirements**: RAIL-01, RAIL-02, RAIL-03, RAIL-04, RAIL-05, RAIL-06, RAIL-07
 **Success Criteria** (what must be TRUE):
   1. Selecting (or double-clicking) a normal Key Rail exposes the sidebar's Edit Rail action; the modal shows only the cycle count and the Infinity checkbox, prefilled at 1.
-  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail renders as a Standard cycle with gray cells + dot, and the existing Edit Rail dialog owns Repeat/Infinity afterwards.
+  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail presents as a Standard cycle via the existing `.rail-kind-standard` gray pill, and the existing Edit Rail dialog owns Repeat/Infinity afterwards. (Per D-10, per-frame cells, cycle grays, and the rail colour dot belong to the v7 quick, not Phase 58.)
   3. Cancel performs zero writes; the conversion is exactly one undo step (Undo restores the Key Rail, Redo re-applies it).
-  4. A single-key drag moves the key on Motion/Static/Reveal rails under the discuss-phase law (preferred A: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
+  4. A single-key drag moves the key on Motion/Static/Reveal rails under Law A (chosen at discuss-phase, D-12: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
   5. No `.mce` schema field is added or changed; resolver, undo and existing D-11 guard tests are green (or deliberately updated to the chosen law).
 
 **Discuss-phase gate**: choose the drag law A / B / C before planning — A preferred (independent single-reference cycle); B = unlink + whole-cycle Force Spacing; C = propagate the retime to every linked loop.
