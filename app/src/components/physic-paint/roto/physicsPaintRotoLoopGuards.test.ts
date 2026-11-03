@@ -1374,6 +1374,41 @@ describe('Phase 58 G-01 Group-owned key delete refusal', () => {
     expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key-rail', GROUP_OWNED_KEY_TEXT);
   });
 
+  it('allows deleting a real key in a lifecycle gap — the Group does not render that frame', () => {
+    const gapped: PhysicPaintRotoLoopClip = {
+      ...lifecycleGroupClip(),
+      visibleRanges: [{ start: 0, endExclusive: 3 }, { start: 5, endExclusive: 6 }],
+    };
+    const records = [
+      record('S1', 0, 'S1S1'),
+      record('S2', 1, 'S2S2'),
+      record('S3', 2, 'S3S3'),
+      record('Y', 4, 'YYYY'),
+      record('Z', 5, 'ZZZZ'),
+      record('G', 30, 'GGGG'),
+      record('H', 31, 'HHHH'),
+    ];
+    // Frame 4 sits in the gap [3,5): no Group content renders there, so the
+    // key is deletable (and the Group-frame proposer refuses that frame too).
+    const gapDelete = expectOk(resolveEdit({
+      records,
+      intent: { kind: 'delete-key', selectedKeyId: 'Y' },
+      loopClips: [gapped],
+    }));
+    expect(gapDelete.mapping.has('Y')).toBe(false);
+    // Frame 5 is visible Group content: still refused with the locked copy.
+    expectFailure(
+      resolveEdit({
+        records,
+        intent: { kind: 'delete-key', selectedKeyId: 'Z' },
+        loopClips: [gapped],
+      }),
+      'group-owned-key-delete-rejected',
+      'delete-key',
+      GROUP_OWNED_KEY_TEXT,
+    );
+  });
+
   it('keeps the D-07 source-key refusal ahead of the Group-owned refusal', () => {
     const resolution = resolveEdit({
       records: GROUP_OWNED_RECORDS(),

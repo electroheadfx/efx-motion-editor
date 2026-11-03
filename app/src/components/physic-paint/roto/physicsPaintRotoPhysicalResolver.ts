@@ -1049,7 +1049,10 @@ function validateIdentities(
  * may only be removed through the Group frame. Ownership follows the same
  * source-derived bound as the loop derivation — the stored end is intent, the
  * surviving source cycle is truth; dangling sources and Infinity keep the
- * stored end, matching every Group proposer.
+ * stored end, matching every Group proposer. A frame outside the clip's
+ * visibleRanges is a lifecycle gap: it renders no Group content, so the Group
+ * cannot own the key sitting there (the Group-frame delete proposer refuses
+ * the same frame as frame-not-visible).
  */
 function isGroupOwnedKeyFrame(
   keyId: string,
@@ -1065,7 +1068,9 @@ function isGroupOwnedKeyFrame(
     const endExclusive = extent === null
       ? clip.originalEndExclusive
       : Math.min(clip.originalEndExclusive, extent.endExclusive);
-    return appFrame >= clip.phaseOrigin && appFrame < endExclusive;
+    if (appFrame < clip.phaseOrigin || appFrame >= endExclusive) return false;
+    return clip.visibleRanges === undefined
+      || clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
   });
 }
 

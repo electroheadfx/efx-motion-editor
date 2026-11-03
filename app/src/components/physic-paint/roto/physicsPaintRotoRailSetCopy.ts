@@ -305,9 +305,12 @@ function resolveLoopCopyExtent(
     if (other.placementStart < boundary) boundary = other.placementStart;
   }
   const effectiveEndExclusive = Math.max(clip.placementStart, Math.min(document.capacity, boundary));
+  // 58-09 follow-up: G-01 bounds a lifecycle clip to phaseOrigin + cycleLength *
+  // repeat. A frozen span that is not a whole cycle must round UP, or the
+  // bound trims the tail the freeze was meant to preserve.
   return {
     effectiveEndExclusive,
-    repeat: Math.max(1, Math.round((effectiveEndExclusive - clip.placementStart) / cycleLength)),
+    repeat: Math.max(1, Math.ceil((effectiveEndExclusive - clip.placementStart) / cycleLength)),
   };
 }
 
