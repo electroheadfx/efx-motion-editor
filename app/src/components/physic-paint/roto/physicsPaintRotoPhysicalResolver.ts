@@ -4460,9 +4460,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!identities.keyIds.has(intent.movedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Move targets unknown moved identity "${intent.movedKeyId}".`);
     }
-    // D-11: a linked source key never moves alone — the cycle's internal
-    // spacing IS the loop rhythm; only a rigid whole-cycle group drag moves it.
-    if (countLoopsReferencingSourceKey(loopClips, intent.movedKeyId) > 0) {
+    // Phase 58 D-12 (Law A): a key referenced by exactly one loop clip is an
+    // independent cycle and may move alone; two or more keep the Phase 43
+    // D-11 law — the cycle's internal spacing IS the loop rhythm, so only a
+    // rigid whole-cycle group drag moves it.
+    if (countLoopsReferencingSourceKey(loopClips, intent.movedKeyId) > 1) {
       return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
     }
     if (intent.target === null || typeof intent.target !== 'object') {
