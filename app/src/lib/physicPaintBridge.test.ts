@@ -4428,11 +4428,15 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(test.proposed.proposal);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)?.cursorAppFrame).toBe(test.childCursorAppFrame);
     if (selectionKind === 'frame' && repeat === 3) {
+      // 58 (G-02): the F0 fixture anchors its source cycle at phaseOrigin, so
+      // the phase delete contracts the 3-frame cycle to 2 (6 frames over three
+      // repeats). The F8 fixture anchors its sources elsewhere and keeps the
+      // legacy span.
       expect(physicPaintStore.getRotoPhysicalLoopClips(test.layer.id, TEST_TRACK_ID)[0]).toMatchObject({
         loopId: test.group.loopId,
         placementStart,
         phaseOrigin: placementStart,
-        originalEndExclusive: placementStart + 9,
+        originalEndExclusive: placementStart + (placementStart === 0 ? 6 : 9),
       });
     }
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);

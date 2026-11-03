@@ -4163,8 +4163,9 @@ export function resolvePhysicPaintRotoRailInsertLoopClips(
     const typed = clip as PhysicPaintRotoLifecycleLoopClip;
     const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
     if (sourceFrames.length < 2 || sourceFrames[0] !== typed.phaseOrigin) return null;
-    if (sourceFrames.some((frame, index) => index > 0 && frame !== sourceFrames[index - 1]! + 1)) return null;
-    const cycleLength = sourceFrames.length;
+    // Spaced source keys (generated in-betweens) are canonical — the cycle
+    // span is the last source offset plus one, never the key count.
+    const cycleLength = sourceFrames[sourceFrames.length - 1]! - typed.phaseOrigin + 1;
     if (moved === cycleLength) {
       nextClips.push(shiftLoopClipFrames(typed, 1));
       changed = true;

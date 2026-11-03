@@ -649,18 +649,25 @@ function resolveGenerateModeContraction(
   }
   if (sourceFrames.length < 2) return null;
   if (sourceFrames[0] !== group.phaseOrigin) return null;
-  if (sourceFrames.some((frame, index) => index > 0 && frame !== sourceFrames[index - 1]! + 1)) return null;
-  const cycleLength = sourceFrames.length;
+  // Source keys may be spaced (generated in-betweens) — the cycle span is the
+  // last source offset plus one, never the key count.
+  const sourceOffsets = sourceFrames.map((frame) => frame - group.phaseOrigin);
+  const cycleLength = sourceOffsets[sourceOffsets.length - 1]! + 1;
   if (phase.cycleLength !== cycleLength) return null;
   const removedOffset = phase.cycleOffset;
   if (!Number.isSafeInteger(removedOffset) || removedOffset < 0 || removedOffset >= cycleLength) return null;
-
-  const deletedKeyId = group.sourceKeyIds[removedOffset]!;
-  const shiftedKeyIds = new Set(group.sourceKeyIds.slice(removedOffset + 1));
+  // Deleting the first key keeps the cycle anchored at `phaseOrigin` only when
+  // the next source is adjacent: the ripple then lands it on offset 0.
+  if (removedOffset === 0 && sourceOffsets[1] !== 1) return null;
+  const deletedIndex = sourceOffsets.indexOf(removedOffset);
+  const deletedKeyId = deletedIndex >= 0 ? group.sourceKeyIds[deletedIndex]! : null;
+  const shiftedKeyIds = new Set(group.sourceKeyIds.filter(
+    (_keyId, index) => sourceOffsets[index]! > removedOffset,
+  ));
   const overrideKeyIds = new Set(group.frameOverrides.map((override) => override.keyId));
   for (const clip of document.loopClips) {
     if (clip.loopId === group.loopId) continue;
-    if (clip.sourceKeyIds.includes(deletedKeyId)
+    if ((deletedKeyId !== null && clip.sourceKeyIds.includes(deletedKeyId))
       || clip.sourceKeyIds.some((keyId) => shiftedKeyIds.has(keyId))) return null;
     if ((clip.frameOverrides ?? []).some((override) => overrideKeyIds.has(override.keyId))) return null;
   }
@@ -732,7 +739,7 @@ function resolveGenerateModeContraction(
   ));
   const remainingReferences = referencedKeyIds(loopClips);
   const cleanupKeyIds = Object.freeze(
-    [deletedKeyId, ...removedOverrideKeyIds]
+    [...(deletedKeyId === null ? [] : [deletedKeyId]), ...removedOverrideKeyIds]
       .filter((keyId) => !remainingReferences.has(keyId))
       .sort(),
   );

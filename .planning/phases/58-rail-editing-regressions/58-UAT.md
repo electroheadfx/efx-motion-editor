@@ -99,5 +99,5 @@ blocked: 0
 
 **Approved behavior:** the insert should be accepted and the new frame filled by the rail's interpolation mode; the insert must not be blocked merely because the target frame is a linked rail frame.
 
-**Fix (direct, 2026-11-03):** the insert-slot resolver now rebuilds a generate-mode rail instead of failing the Group-ownership guard — later source keys shift right and the cycle grows by one interpolated frame (`resolvePhysicPaintRotoRailInsertLoopClips`). Static/reveal rails and non-canonical cycles still fail closed; the insert classifier offers the action on those rail frames. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-03:`). Live retest pending.
+**Fix (direct, 2026-11-03):** the insert-slot resolver now rebuilds a generate-mode rail instead of failing the Group-ownership guard — later source keys shift right and the cycle grows by one interpolated frame (`resolvePhysicPaintRotoRailInsertLoopClips`). Spaced source cycles (generated in-betweens, e.g. keys at 0/2/4) are supported, as are the same cycles for the G-02 delete contraction. Static/reveal rails and non-canonical cycles still fail closed; the insert classifier offers the action on those rail frames. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-02:`/`58 G-03:`). Live retest pending.
 

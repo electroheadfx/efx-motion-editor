@@ -4353,6 +4353,49 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     });
   });
 
+  it('58 G-03: insert on a spaced source cycle extends it too', () => {
+    const spacedGroup: PhysicPaintRotoLoopClip = {
+      ...group1,
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      repeat: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ],
+      records: recordsFrom([
+        { keyId: 'K0', appFrame: 0 },
+        { keyId: 'K2', appFrame: 2 },
+        { keyId: 'K4', appFrame: 4 },
+        { keyId: 'X', appFrame: 7 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 3 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [spacedGroup],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert on a spaced rail must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({
+      K0: 0,
+      K2: 2,
+      K4: 5,
+      X: 8,
+    });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
   it('58 G-03: static rails keep the fail-closed insert guard', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
@@ -4490,12 +4533,8 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     expect(result.proposal.loopClips[0]).toMatchObject({
       loopId: 'group-a',
       syncState: 'modified',
-      visibleRanges: [
-        { start: 0, endExclusive: 1 },
-        { start: 2, endExclusive: 4 },
-        { start: 5, endExclusive: 7 },
-        { start: 8, endExclusive: 9 },
-      ],
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
       frameOverrides: [],
     });
     expect(result.impact).toMatchObject({
@@ -4647,18 +4686,18 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Delete Group Frame must resolve');
     expect(result.proposal.loopClips[0].visibleRanges).toEqual([
-      { start: 0, endExclusive: 2 },
-      { start: 3, endExclusive: 4 },
-      { start: 6, endExclusive: 8 },
+      { start: 0, endExclusive: 3 },
+      { start: 4, endExclusive: 6 },
     ]);
     expect(result.proposal.loopClips[0].phaseOrigin).toBe(0);
+    expect(result.proposal.loopClips[0].originalEndExclusive).toBe(6);
     expect(result.proposal.loopClips[0].frameOverrides).toEqual([]);
-    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'A1', 'ordinary']);
-    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual(['A1']);
+    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'ordinary']);
+    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual([]);
     expect(result.impact).toMatchObject({
       phaseAppFrame: 2,
       affectedAppFrames: [2, 5, 8],
-      cleanupKeyIds: ['override-5'],
+      cleanupKeyIds: ['A1', 'override-5'],
     });
     expect(Object.isFrozen(result.proposal)).toBe(true);
     expect(Object.isFrozen(result.impact)).toBe(true);
@@ -4694,10 +4733,10 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       loopId: 'group-a',
       phaseOrigin: 0,
       syncState: 'modified',
+      originalEndExclusive: 6,
       visibleRanges: [
-        { start: 0, endExclusive: 2 },
-        { start: 3, endExclusive: 4 },
-        { start: 6, endExclusive: 8 },
+        { start: 0, endExclusive: 3 },
+        { start: 4, endExclusive: 6 },
       ],
     });
   });
@@ -4873,6 +4912,37 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       ['C3', 3],
     ]);
     expect(result.impact.cleanupKeyIds).toEqual(['C4']);
+  });
+
+  it('58 G-02: spaced source cycles (generated in-betweens) contract too', () => {
+    const spacedGroup = contiguousGroup({
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+    });
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(
+        [spacedGroup],
+        [lifecycleRecord('K0', 0), lifecycleRecord('K2', 2), lifecycleRecord('K4', 4)],
+        [],
+        [],
+      ),
+      groupId: 'group-a',
+      appFrame: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Spaced-cycle contraction must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      sourceKeyIds: ['K0', 'K4'],
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+    });
+    expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['K0', 0],
+      ['K4', 3],
+    ]);
+    expect(result.impact.cleanupKeyIds).toEqual(['K2']);
   });
 
   it('58 G-02: static rails keep the legacy gap semantics', () => {
