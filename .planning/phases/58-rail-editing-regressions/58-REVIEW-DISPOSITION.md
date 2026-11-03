@@ -13,19 +13,19 @@ findings:
     title: "Post-commit generation comment misstates how a cancel can reach `'committing'`"
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Cancel during `'preparing'` does not cancel the Key Rail conversion"
   - id: CR-02
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Law A single-loop move can invalidate the loop's source order"
   - id: WR-01
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "Cancel/Close during `'committing'` nulls the target while the dialog stays open"
   - id: WR-02
     severity: warning
-    disposition: open
+    disposition: fixed
     title: "Enter-to-confirm in the reduced form is blocked by an unrelated stale frames error"
   - id: IN-01
     severity: info
@@ -39,7 +39,7 @@ findings:
     severity: info
     disposition: open
     title: "Open-time `loopClipsOwnAnyKey` is unreachable from production call sites"
-open: 9
+open: 5
 total: 9
 recorded: 2026-11-03T14:18:37.526Z
 ---
@@ -50,10 +50,10 @@ recorded: 2026-11-03T14:18:37.526Z
 |---------|----------|-------------|--------|
 | CR-03 | critical | open | - |
 | IN-04 | info | open | - |
-| CR-01 | critical | open | - (not in the current review) |
-| CR-02 | critical | open | - (not in the current review) |
-| WR-01 | warning | open | - (not in the current review) |
-| WR-02 | warning | open | - (not in the current review) |
+| CR-01 | critical | fixed | 58-06 (not in the current review) |
+| CR-02 | critical | fixed | 58-07 (not in the current review) |
+| WR-01 | warning | fixed | 58-06 (not in the current review) |
+| WR-02 | warning | fixed | 58-08 (not in the current review) |
 | IN-01 | info | open | - (not in the current review) |
 | IN-02 | info | open | - (not in the current review) |
 | IN-03 | info | open | - (not in the current review) |
