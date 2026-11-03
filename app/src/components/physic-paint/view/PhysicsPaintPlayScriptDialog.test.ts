@@ -1257,6 +1257,16 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const tree = renderDialog(controller);
     expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Static').props.disabled).toBe(true);
   });
+
+  it('58-04: keeps the full form and Regenerate Rail for a non-Standard loop-edit', () => {
+    const { controller } = createFakeController(loopEditSeed);
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-surface-tall'))).toHaveLength(1);
+  });
 });
 
 // 261031-vbo (Quick C1): a merged Standard Rail is a merge of RESULTS, not a
@@ -1291,11 +1301,14 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
   });
 
-  it('labels the primary action Update Rail', () => {
+  it('labels the primary action Update Rail and confirms through it', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Rail'))).toBe('Update Rail');
+    const updateRail = findOne(footer, (vnode) => textOf(vnode) === 'Update Rail');
+    expect(textOf(updateRail)).toBe('Update Rail');
+    handler(updateRail, 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Static')).toHaveLength(0);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
   });
@@ -1380,6 +1393,18 @@ describe('PhysicsPaintPlayScriptDialog reduced Key Rail cycle form (58-04 D-05/D
   it('focuses the repeat input when the reduced form opens', () => {
     // The hook harness stubs useEffect out, so the focus branch is pinned at source level.
     expect(source).toContain("else if (dialogMode === 'key-rail-create') repeatInputRef.current?.focus();");
+  });
+});
+
+// 58-04 (D-07): every Standard rail, converted or merged earlier, uses the one
+// reduced form — the unreachable rail-type and Regenerate branches are gone.
+describe('PhysicsPaintPlayScriptDialog reduced Standard cleanup (58-04 D-07)', () => {
+  it('no longer carries the unreachable Standard rail-type or Regenerate Rail branches', () => {
+    // Boolean projections keep the failure message readable (the joined source is multi-line).
+    expect(source.includes('standard={standardEditTarget}')).toBe(false);
+    expect(source.includes('STANDARD_RAIL_REGENERATE_REASON')).toBe(false);
+    expect(source.includes('physics-paint-play-script-standard-rail-value')).toBe(false);
+    expect(source.includes('standard?: boolean')).toBe(false);
   });
 });
 
