@@ -3,6 +3,14 @@ phase: 58
 review: 58-REVIEW.md
 titles: json
 findings:
+  - id: CR-03
+    severity: critical
+    disposition: open
+    title: "Partial-cycle group move bypasses the source-order invariant established for `move-key`"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "Post-commit generation comment misstates how a cancel can reach `'committing'`"
   - id: CR-01
     severity: critical
     disposition: open
@@ -31,22 +39,24 @@ findings:
     severity: info
     disposition: open
     title: "Open-time `loopClipsOwnAnyKey` is unreachable from production call sites"
-open: 7
-total: 7
-recorded: 2026-11-03T12:46:12.154Z
+open: 9
+total: 9
+recorded: 2026-11-03T14:18:37.526Z
 ---
 
 # Phase 58: Code Review Disposition
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| CR-02 | critical | open | - |
-| WR-01 | warning | open | - |
-| WR-02 | warning | open | - |
-| IN-01 | info | open | - |
-| IN-02 | info | open | - |
-| IN-03 | info | open | - |
+| CR-03 | critical | open | - |
+| IN-04 | info | open | - |
+| CR-01 | critical | open | - (not in the current review) |
+| CR-02 | critical | open | - (not in the current review) |
+| WR-01 | warning | open | - (not in the current review) |
+| WR-02 | warning | open | - (not in the current review) |
+| IN-01 | info | open | - (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
 
 Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
 Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
