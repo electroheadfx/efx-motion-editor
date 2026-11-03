@@ -705,6 +705,69 @@ export interface RotoDeleteTargetClassificationInput {
 }
 
 /**
+ * 58-09 (G-01): classify one physical frame against the lifecycle Groups.
+ * Delete routes a selected real key by its OWN frame, never by the cursor.
+ */
+function classifyDeleteGroupFrame(
+  input: RotoDeleteTargetClassificationInput,
+  appFrame: number,
+  capacity: number,
+) {
+  return classifyPhysicPaintRotoGroupFrameTarget({
+    appFrame,
+    document: {
+      realKeyRecords: input.records,
+      interpolation: input.interpolation,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      capacity,
+      background: null,
+      selectedKeyId: input.selectedKeyId,
+      cursorAppFrame: appFrame,
+      revision: '',
+      loopClips: input.loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    },
+  });
+}
+
+/** The containing lifecycle Group when the frame renders Group content. */
+function resolveGroupOwnedDeleteFrame(
+  input: RotoDeleteTargetClassificationInput,
+  appFrame: number,
+  capacity: number,
+): { readonly groupId: string } | null {
+  const target = classifyDeleteGroupFrame(input, appFrame, capacity);
+  return target.kind === 'source-occurrence'
+    || target.kind === 'generated-occurrence'
+    || target.kind === 'override'
+    ? { groupId: target.groupId }
+    : null;
+}
+
+function buildGroupFrameDeleteTarget(
+  input: RotoDeleteTargetClassificationInput,
+  groupId: string,
+  appFrame: number,
+): RotoDeleteTarget {
+  const group = input.loopClips.find((candidate) => candidate.loopId === groupId);
+  if (group?.phaseOrigin === undefined || group.visibleRanges === undefined) {
+    return Object.freeze({ kind: 'unresolved-group', groupId, appFrame });
+  }
+  const visibleCount = group.visibleRanges.reduce(
+    (count, range) => count + range.endExclusive - range.start,
+    0,
+  );
+  return Object.freeze({
+    kind: 'group-frame',
+    groupId,
+    appFrame,
+    mode: group.mode,
+    phaseOrigin: group.phaseOrigin,
+    onlyOccurrence: visibleCount === 1,
+  });
+}
+
+/**
  * One activation-time Delete authority shared by keyboard and visible actions.
  * Group ownership is classified from the complete accepted records/Group facts;
  * components only render the resulting choice and never infer ownership.
@@ -722,6 +785,7 @@ export function classifyRotoDeleteTarget(
     || input.currentAppFrame >= input.capacity) {
     return Object.freeze({ kind: 'unavailable' });
   }
+  const capacity = input.capacity;
 
   // 43.6-04 D-21/D-22: the rail-set branch runs FIRST, before the loop/key-rail
   // branches it supersedes. An active non-empty set classifies as 'rail-set'
@@ -731,6 +795,19 @@ export function classifyRotoDeleteTarget(
   if (input.railSetMembers !== undefined && input.railSetMembers.length > 0) {
     const derived = deriveRailSetDeleteMembers(input);
     if (derived === null) return Object.freeze({ kind: 'stale-key-rail' });
+    // 58-09 (G-01): a rail member sitting on a Group frame belongs to that
+    // Group frame, so the whole set refuses rather than deleting a key the
+    // lifecycle still owns.
+    const frameByKeyId = new Map(input.records.map((record) => [record.keyId, record.appFrame]));
+    const membersOwnGroupFrame = derived.members.some((member) => (
+      member.kind === 'key-rail'
+      && member.keyIds.some((keyId) => {
+        const appFrame = frameByKeyId.get(keyId);
+        return appFrame !== undefined
+          && resolveGroupOwnedDeleteFrame(input, appFrame, capacity) !== null;
+      })
+    ));
+    if (membersOwnGroupFrame) return Object.freeze({ kind: 'no-target' });
     return Object.freeze({
       kind: 'rail-set',
       members: derived.members,
@@ -771,6 +848,16 @@ export function classifyRotoDeleteTarget(
       && new Set(selection.keyIds).size === selection.keyIds.length;
     if (!selectionIsWellFormed) return Object.freeze({ kind: 'stale-key-rail' });
 
+    // 58-09 (G-01): a Key Rail member whose own frame renders Group content
+    // is Group-owned; deleting the rail would remove that frame's backing key.
+    const frameByKeyId = new Map(input.records.map((record) => [record.keyId, record.appFrame]));
+    if (selection.keyIds.some((keyId) => {
+      const appFrame = frameByKeyId.get(keyId);
+      return appFrame !== undefined && resolveGroupOwnedDeleteFrame(input, appFrame, capacity) !== null;
+    })) {
+      return Object.freeze({ kind: 'no-target' });
+    }
+
     const groupOwnedKeyIds = new Set<string>();
     for (const loopClip of input.loopClips) {
       loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
@@ -801,12 +888,30 @@ export function classifyRotoDeleteTarget(
     const recordsById = new Map(input.records.map((record) => [record.keyId, record]));
     if (uniqueIds.size === input.selectedKeyIds.length
       && input.selectedKeyIds.every((keyId) => isBoundedKeyId(keyId) && recordsById.has(keyId))) {
+      // 58-09 (G-01): any member on a Group frame makes the whole selection
+      // Group-owned — Delete refuses rather than removing the backing key.
+      if (input.selectedKeyIds.some((keyId) => (
+        resolveGroupOwnedDeleteFrame(input, recordsById.get(keyId)!.appFrame, capacity) !== null
+      ))) {
+        return Object.freeze({ kind: 'no-target' });
+      }
       return Object.freeze({
         kind: 'ordinary-key-group',
         keyIds: Object.freeze([...input.selectedKeyIds]),
       });
     }
     return Object.freeze({ kind: 'no-target' });
+  }
+
+  // 58-09 (G-01): a single selected key routes by its OWN frame. When that
+  // frame renders Group content the target is the Group frame, even when the
+  // cursor moved elsewhere; ordinary keys keep the cursor classification.
+  if (isBoundedKeyId(input.selectedKeyId)) {
+    const selectedRecord = input.records.find((record) => record.keyId === input.selectedKeyId);
+    if (selectedRecord) {
+      const owned = resolveGroupOwnedDeleteFrame(input, selectedRecord.appFrame, capacity);
+      if (owned !== null) return buildGroupFrameDeleteTarget(input, owned.groupId, selectedRecord.appFrame);
+    }
   }
 
   const frameTarget = classifyPhysicPaintRotoGroupFrameTarget({

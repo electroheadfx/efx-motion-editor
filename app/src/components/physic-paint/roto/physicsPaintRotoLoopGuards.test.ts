@@ -11,6 +11,7 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import {
+  GROUP_OWNED_KEY_DELETE_REJECTED_TEXT,
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
@@ -1227,7 +1228,7 @@ describe('Phase 58 G-01 source-derived loop extent', () => {
 // only through the Group frame, never as an ordinary key.
 // ---------------------------------------------------------------------------
 
-const GROUP_OWNED_KEY_TEXT = 'This key is owned by a Rail cycle. Delete the Rail frame instead.';
+const GROUP_OWNED_KEY_TEXT = GROUP_OWNED_KEY_DELETE_REJECTED_TEXT;
 
 /** Source S1@0 S2@1 S3@2, repeat 2 => the Group owns [0,6). */
 function lifecycleGroupClip(): PhysicPaintRotoLoopClip {

@@ -371,6 +371,7 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'invalid-semantic-delta'
   | 'malformed-loop-clips'
   | 'loop-source-key-delete-rejected'
+  | 'group-owned-key-delete-rejected'
   | 'loop-source-key-insert-rejected'
   | 'loop-source-key-duplicate-rejected'
   | 'loop-source-key-move-rejected'
@@ -869,6 +870,10 @@ function loopSourceKeyDeleteRejectedText(referencingLoopCount: number): string {
   return `This key belongs to a source cycle used by ${referencingLoopCount} linked loop(s). Unlink the loop(s) before deleting it.`;
 }
 
+/** Locked 58-09 (G-01) copy: a real key backing a Group frame deletes as a frame, never as a key. */
+export const GROUP_OWNED_KEY_DELETE_REJECTED_TEXT =
+  'This key is owned by a Rail cycle. Delete the Rail frame instead.';
+
 /** Locked 43.2 insert guard copy; N counts the Group-referenced keys the right ripple would move. */
 function loopSourceKeyInsertRejectedText(movedGroupKeyCount: number): string {
   return `Insert is unavailable because the right ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Insert into an empty frame instead, or unlink the loop(s) first.`;
@@ -1037,6 +1042,31 @@ function validateIdentities(
     ok: true,
     value: { ordered: records, keyIds: seenKeyIds, framesByKeyId },
   };
+}
+
+/**
+ * 58-09 (G-01) ownership parity: a real key whose frame a lifecycle Group owns
+ * may only be removed through the Group frame. Ownership follows the same
+ * source-derived bound as the loop derivation — the stored end is intent, the
+ * surviving source cycle is truth; dangling sources and Infinity keep the
+ * stored end, matching every Group proposer.
+ */
+function isGroupOwnedKeyFrame(
+  keyId: string,
+  identities: ValidatedIdentities,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  capacity: number,
+): boolean {
+  const appFrame = identities.framesByKeyId.get(keyId);
+  if (appFrame === undefined) return false;
+  return loopClips.some((clip) => {
+    if (clip.phaseOrigin === undefined || clip.originalEndExclusive === undefined) return false;
+    const extent = resolvePhysicPaintRotoLoopSourceExtent(clip, identities.ordered, capacity);
+    const endExclusive = extent === null
+      ? clip.originalEndExclusive
+      : Math.min(clip.originalEndExclusive, extent.endExclusive);
+    return appFrame >= clip.phaseOrigin && appFrame < endExclusive;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4173,6 +4203,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (referencingLoops > 0) {
       return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
+    // 58-09 (G-01): a key whose frame a lifecycle Group owns (source, override,
+    // or a local key inside the surviving extent) is owned by that Rail frame.
+    // The D-07 source guard above still wins first for source-cycle keys.
+    if (isGroupOwnedKeyFrame(intent.selectedKeyId, identities, loopClips, input.capacity)) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
+    }
     const candidate = {
       ...buildDeleteCandidate(
         identities,
@@ -4215,8 +4251,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
       (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
     }
-    if (intent.keyIds.some((keyId) => groupOwnedKeyIds.has(keyId))) {
-      return fail('malformed-target', operationKind, 'Key Rail delete requires ordinary real-key members outside Group ownership.');
+    // 58-09 (G-01): ownership is frame-based — a member key sitting on a Group
+    // frame (including a local key the Group extent covers) belongs to that
+    // Rail frame, so the whole rail refuses. Stale overrides past the surviving
+    // extent stay ordinary and deletable.
+    if (intent.keyIds.some((keyId) => isGroupOwnedKeyFrame(keyId, identities, loopClips, input.capacity))) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
     }
 
     const segments = deriveKeyRailSegments({
@@ -4302,6 +4342,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       if (referencingLoops > 0) {
         return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
       }
+    }
+    // 58-09 (G-01): any member frame a lifecycle Group owns rejects the whole
+    // group delete; the D-07 source guard above still wins first.
+    if (intent.keyIds.some((keyId) => isGroupOwnedKeyFrame(keyId, identities, loopClips, input.capacity))) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
     }
     const removedBreakOwners = new Set(intent.keyIds);
     const candidate = {

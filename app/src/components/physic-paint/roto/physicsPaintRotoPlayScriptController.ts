@@ -14,6 +14,7 @@ import {
   compactPhysicPaintRotoMotion,
   createPhysicPaintRotoKeyId,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  resolvePhysicPaintRotoLoopSourceExtent,
   type PhysicPaintRotoGroupFrameOverride,
   type PhysicPaintRotoGroupVisibleRange,
   type PhysicPaintRotoKeyIdentity,
@@ -2233,7 +2234,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           interpolationEnabled: snapshot.interpolationEnabled,
         }).ranges.find((range) => range.loopId === target.loopId)?.cycleLength ?? target.sourceKeyIds.length
       : target.sourceKeyIds.length;
-    let rebuiltLifecycle: Pick<PhysicPaintRotoLoopClip, 'originalEndExclusive' | 'visibleRanges'> | null = null;
+    let rebuiltLifecycle: Pick<PhysicPaintRotoLoopClip, 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'> | null = null;
     if (target.phaseOrigin !== undefined
       && target.originalEndExclusive !== undefined
       && target.visibleRanges !== undefined) {
@@ -2260,7 +2261,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         : snapshot
           ? Math.min(target.phaseOrigin + cycleDuration * draftRepeat, snapshot.capacity)
           : target.phaseOrigin + cycleDuration * draftRepeat;
-      if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
+      // 58-09 (G-01): the stored end is intent; the surviving source cycle is
+      // the real bound. Overrides past the surviving extent are stale (the
+      // render already resolves those frames empty), so only overrides inside
+      // the new end AND the surviving cycle block the contraction.
+      const sourceExtent = snapshot
+        ? resolvePhysicPaintRotoLoopSourceExtent(target, snapshot.identities, snapshot.capacity)
+        : null;
+      const survivingEnd = sourceExtent === null
+        ? target.originalEndExclusive!
+        : sourceExtent.endExclusive;
+      if (target.frameOverrides?.some((override) => (
+        override.appFrame >= originalEndExclusive && override.appFrame < survivingEnd
+      ))) {
         fail(new Error('Cycle count cannot remove locally painted Rail frames. Regenerate the Rail first.'));
         return false;
       }
@@ -2284,7 +2297,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         fail(new Error('Cycle count cannot remove every surviving Rail frame.'));
         return false;
       }
-      rebuiltLifecycle = { originalEndExclusive, visibleRanges };
+      // Only entries inside the surviving cycle survive the rebuild; the
+      // bridge's staged-document parse rejects any override at/after the
+      // rebuilt end. A canonical clip filters nothing (its overrides are all
+      // below the stored end, which equals the extent).
+      const stagedFrameOverrides = target.frameOverrides === undefined
+        ? undefined
+        : target.frameOverrides.filter((override) => override.appFrame < survivingEnd);
+      rebuiltLifecycle = stagedFrameOverrides === undefined
+        ? { originalEndExclusive, visibleRanges }
+        : { originalEndExclusive, visibleRanges, frameOverrides: stagedFrameOverrides };
     }
     const stagedLoops = currentLoops.map((clip) => (clip.loopId === target.loopId
       ? { ...clip, repeat: draftRepeat, ...(rebuiltLifecycle ?? {}) }
