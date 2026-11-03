@@ -4111,6 +4111,57 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.confirmationOpen.value).toBe(false);
     });
 
+    // WR-01: Cancel during 'committing' cannot close the dialog (closeConfirmation
+    // no-ops while busy), so it must not clear the frozen target either. A failed
+    // commit must leave Create Cycle functional instead of a dead modal.
+    it('busy-phase cancel preserves the target and the retry commits', async () => {
+      let releaseFirstCommit!: () => void;
+      let commitCalls = 0;
+      const commit = vi.fn(async (
+        publication: RotoGeneratedPhysicalPublication,
+      ): Promise<RotoPlayScriptCommitResult> => {
+        commitCalls += 1;
+        if (commitCalls === 1) {
+          await new Promise<void>((resolve) => { releaseFirstCommit = resolve; });
+          return { ok: false, error: 'Parent rejected the Key Rail cycle creation.' };
+        }
+        return {
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+        };
+      });
+      const test = railHarness([], {}, { commit });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const first = test.controller.confirm();
+      await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+      expect(test.controller.phase.value).toBe('committing');
+
+      test.controller.cancel();
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.dialogMode.value).toBe('key-rail-create');
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(test.controller.phase.value).toBe('committing');
+
+      releaseFirstCommit();
+      expect(await first).toBe(false);
+      expect(test.controller.phase.value).toBe('failed');
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+
+      // Create Cycle is still functional after the failed commit.
+      expect(await test.controller.confirm()).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(2);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+    });
+
     it('refuses a STALE target at confirm with zero commits and no history entry (T-58-02)', async () => {
       // The accepted document still holds F, but fresh authority no longer does.
       const test = railHarness([], {
