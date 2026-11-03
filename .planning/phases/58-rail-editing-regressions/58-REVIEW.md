@@ -1,143 +1,140 @@
 ---
 phase: 58-rail-editing-regressions
-reviewed: 2026-11-03T16:41:49Z
+reviewed: 2026-11-03T20:27:40Z
 depth: deep
-files_reviewed: 11
+files_reviewed: 13
 files_reviewed_list:
-  - app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/hooks/useRotoKeyUtilities.ts
   - app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts
-  - app/src/components/physic-paint/hooks/useRotoTimelineActions.test.ts
+  - app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.ts
   - app/src/components/physic-paint/hooks/useRotoTimelineActions.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts
-  - app/src/components/physic-paint/roto/physicsPaintRotoGroupParity.test.ts
-  - app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts
-  - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts
+  - app/src/components/physic-paint/roto/rotoCoordinatorPorts.ts
+  - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx
+  - app/src/types/physicPaint.ts
 findings:
   critical: 1
-  warning: 1
-  info: 1
-  total: 3
+  warning: 4
+  info: 7
+  total: 12
   necessity: 1
 status: issues_found
 ---
 
-# Phase 58: Code Review Report (gap closure: 58-09 G-01 / 58-10 CR-03)
+# Phase 58: Code Review Report
 
-**Reviewed:** 2026-11-03T16:41:49Z
+**Reviewed:** 2026-11-03T20:27:40Z
 **Depth:** deep
-**Files Reviewed:** 11
+**Files Reviewed:** 13
 **Status:** issues_found
 
 ## Summary
 
-Deep re-review of the 58-09 (G-01) and 58-10 (CR-03) gap-closure work against diff base `44d36f5dd7`, cross-referenced with the copy/paste rail-set path, the parse/revision pipeline, the delete classifiers, and the residual `repeat` consumers. No structural-findings block was supplied for this round.
+This artifact replaces the stale review from `2026-11-03T16:41:49Z` and covers the CURRENT tree on `dev` at `39dc6e418`, including the six UAT-driven fix commits that landed afterwards (`eb576f1cf`, `2d2105897`, `b9691ea03`, `bdc5928ac`, `e41c2f6a4`, `9507de221`). Scope is the 13 production files actually touched by phase 58 (`git diff --name-only 578d61d51~1..39dc6e418 -- 'app/src/**'` minus tests). Five files named in the phase brief were NOT modified by phase 58 and were read for context only: `physicsPaintRotoRunScriptStacking.ts`, `physicsPaintKeyRailPresentation.ts`, `PhysicsPaintKeyRail.tsx`, `PhysicsPaintPlayScriptDialog.tsx`, `PhysicsPaintScriptsPanel.tsx`.
 
-58-10 is correct. `loopSourceOrderIsProvable` (`physicsPaintRotoPhysicalResolver.ts:1867-1887`) is a faithful extraction of the 58-07 `move-key` proof, and the `move-key-group` guard (`:5036-5052`) reads the FINAL candidate mapping, is intersection-scoped to clips whose `sourceKeyIds` contain a moved key, and is safe because `buildMoveGroupCandidate` (`:1887-2007`) is a pure rigid translation. The prior round's CR-03 is closed.
+Both findings from the stale round are closed in the current tree. `resolveLoopCopyExtent` now rounds the frozen cycle count UP (`Math.ceil`, `physicsPaintRotoRailSetCopy.ts:313`), so G-01 cannot trim a pasted Infinity rail's tail. `isGroupOwnedKeyFrame` now consults `visibleRanges` (`physicsPaintRotoPhysicalResolver.ts:1149-1151`), so a real key on a hidden gap frame is deletable instead of deadlocked between the key-delete and frame-delete paths.
 
-58-09's read-side bound is coherent: `resolvePhysicPaintRotoLoopSourceExtent` (`physicsPaintRotoPhysicalModel.ts:1003-1031`) and its consumers agree on `min(storedEnd, phaseOrigin + cycleLength * repeat)`, the reveal-rail exemption is honoured, dangling sources fall back to the stored end, and `reconcilePhysicPaintRotoGroupFrames` (`:1062-1112`) preserves every parser invariant (non-empty strictly increasing ranges inside the new end, overrides inside a visible range, unreferenced override records pruned, replay excluded, input references returned when nothing changes). Undo/Redo round-trips byte-identically.
+The main live defect is a count-vs-span confusion left by `2d2105897` in the new rail insert plan: a spaced source cycle can never take the whole-shift branch, and the fallback rejects every insert at or left of the rail's phase origin. Because the plan is all-or-nothing for the whole document, a single spaced rail blocks a global Insert at frame 0. Four warnings cover the two rail-insert routes disagreeing about trailing content, the paint route never growing capacity, the G-04 retime being silently dropped past capacity, and the spaced-cycle delete falling back to hole semantics. The remaining items are quality and consistency gaps, including one necessity finding.
 
-However, G-01 applies its "stored end is stale intent" rule to every finite lifecycle clip, while the rail-set paste path deliberately synthesizes lifecycle clips whose stored end is a duration-preserving span that is NOT a whole cycle multiple. The new clamp therefore truncates freshly pasted Infinity rails (CR-01). A second gap is the ownership disagreement between the new delete classifiers and the resolver for frames inside a lifecycle gap (WR-01). The full-suite pass and clean typecheck do not exercise either case: the pinned paste tests only use whole-cycle spans, and no test places a real key on a gap frame.
+## Critical Issues
 
-## Narrative Findings (AI reviewer)
+### CR-01: Rail insert plan compares a source-key COUNT with a cycle SPAN, rejecting every insert at or left of a spaced rail
 
-### CR-01: G-01 truncates a pasted Infinity rail whose frozen span is not a whole cycle
-
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts:307-311` (root cause), `:449-451` (synthesized lifecycle), `:898` (impact); `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:5661-5666`, `:5717-5720` (render clamp); `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1067-1092` (persistent trim); `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts:2346-2356`, `:2449-2450` (reconcile on paste + semantic delta)
-**Severity:** BLOCKER
-
-**Issue:** Copying an Infinity rail freezes its visible span and derives the cycle count with rounding:
-
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4632-4647` (failure at `:4787-4789`)
+**Issue:** `moved` counts source key IDs whose current frame is `>= destinationAppFrame`, while `cycleLength` is the cycle SPAN `lastSourceFrame - phaseOrigin + 1`. The whole-shift branch is gated on `moved === cycleLength` (`:4633`), which is only true when the source cycle is contiguous. For a spaced cycle (e.g. source offsets 0, 2, 4: count 3, span 5), any destination at or left of `phaseOrigin` falls through to the interior branch, whose `insertOffset = destination - phaseOrigin <= 0` rejects (`:4646-4647`). The plan is all-or-nothing across every clip, so ONE spaced rail to the right makes a global Insert at frame 0 fail with `loop-source-key-insert-rejected` (`:4787-4789`), and Insert directly on the spaced rail's phase origin fails too. Spaced cycles are a supported state produced by G-05 single-key drags and authorized spacing; `2d2105897` changed only `cycleLength` here, so this is a regression introduced by that fix. The existing spaced-rail test covers only an interior insert.
+**Fix:**
 ```ts
-const effectiveEndExclusive = Math.max(clip.placementStart, Math.min(document.capacity, boundary));
-return { effectiveEndExclusive, repeat: Math.max(1, Math.round((effectiveEndExclusive - clip.placementStart) / cycleLength)) };
+// :4633 — compare like units: `moved` is a key count, `cycleLength` is a span
+- if (moved === cycleLength) {
++ if (moved === typed.sourceKeyIds.length) {
 ```
+Keep `cycleLength` (the span) for `insertOffset` and `extendLoopClipCycle`. Add tests for a spaced cycle (offsets 0/2/4) with an insert at `phaseOrigin`, an insert before the rail, and a global insert at frame 0 with the spaced rail to the right.
 
-`buildDuplicatedLoopClip` then synthesizes `originalEndExclusive: destinationStart + (sourceEffectiveEndExclusive - clip.placementStart)` — the preserved duration — with that rounded `repeat`. When the span is not a whole multiple and rounds down, the clip stores `originalEndExclusive > phaseOrigin + cycleLength * repeat`. G-01's `resolvePhysicPaintRotoLoopSourceExtent` treats the formula as truth (`:1028`), so `derivePhysicPaintRotoLoopRanges` clamps:
+## Warnings
 
-```ts
-const boundedNaturalEnd = sourceExtent === null ? naturalEnd : Math.min(naturalEnd, sourceExtent.endExclusive);
-...
-const effectiveEnd = Math.max(fragment.start, Math.min(boundedNaturalEnd, fragment.endExclusive, boundary.frame));
-```
+### WR-01: Paint/+Key rail insert never grows capacity, so it fails when trailing content sits at the document tail
 
-Two consequences, both introduced by this phase:
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:1622,1637,1727,1786` and `:5154`
+**Issue:** `buildRailKeyInsertPasteCandidate` shifts every trailing non-source key by `trailingDelta = target.repeat` (`:1622`, `:1637`) and every trailing clip by the same delta (`:1727`), but the paste-key branch finalizes with the unchanged `input.capacity` and never sets `nextCapacity` (`:5154`). Contrast the insert-slot branch, which computes `nextCapacity` from the highest final key frame, the destination, and the highest lifecycle end (`:4803-4823`) and passes it through `finalizeProposal` (`:3964`). When the document's last real key sits at `capacity - 1` and a trailing shift is required, the paint promotion is rejected with `over-capacity` even though the insert-slot route would have grown the document. The two rail-insert routes must agree.
+**Fix:** Compute the same `nextCapacity` in the paste rail branch (or return it from `buildRailKeyInsertPasteCandidate`) and finalize with `{ ...candidate, nextCapacity }`, mirroring `:4813-4824`.
 
-1. **Render loss.** The pasted rail renders `cycleLength * repeat` frames, not the source's visible duration. Pre-G-01 the resolver ignored `repeat` for rendering and used `min(originalEndExclusive, boundary)`, so the trailing partial cycle was visible. Repro: Infinity rail at `placementStart 10`, source keys at 10 and 14 (`cycleLength 5`), next unowned key at 27 → copied span 17, `repeat = round(17/5) = 3`, pasted at 100 → stored end 117, extent 115 → frames 115 and 116 stop rendering the moment the paste is accepted.
-2. **Permanent trim.** `reconcilePhysicPaintRotoGroupFrames` runs on the same non-replay paste commit (the paste proposal feeds `stagedLoopClips` at `:2297`), rewrites `originalEndExclusive` to 115, trims `visibleRanges`, and prunes override records in the discarded tail. The trimmed shape is then persisted, so the loss survives later edits and Undo/Redo snapshots pair with the truncated document.
+### WR-02: G-04 retime is silently discarded when the retimed band exceeds capacity
 
-The same inconsistency also leaves the published edit's semantic delta describing a document that was never written: `proposed.impact` is built from the untrimmed proposal (`physicsPaintRotoRailSetCopy.ts:898`), stored at `useRotoPhysicalEditCoordinator.ts:2094`, and attached as the payload's `semanticDelta` (`:2449-2450`), while `stagedRevision` and the payload clips are built from the reconciled collection. `identities[].effectiveEndExclusive` and `nextRevision` therefore advertise the trimmed-away tail.
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:5273-5284`
+**Issue:** The retime is applied only when every retimed clip satisfies `originalEndExclusive === undefined || originalEndExclusive <= input.capacity` (`:5281`). When the moved source key stretches the cycle so `phaseOrigin + cycleLength * repeat` exceeds capacity, the whole retime is dropped while the base move candidate is kept: the source key moves, the rail band keeps its stale end, and the moved key lands outside its own band. `buildMoveCandidate` never touches loop clips, and the G-01 reconcile only trims when `storedEnd > extent`, so nothing repairs the stale band. With `repeat >= 2` the band grows by `repeat` per added source frame, so this is reachable on any rail near the document tail.
+**Fix:** Do not drop the retime silently. Either grow capacity via `nextCapacity` (as in the insert-slot branch) or clamp the retimed end to capacity while keeping `phaseOrigin`/`visibleRanges` consistent with the moved source frames.
 
-This contradicts the copy path's own contract: `resolveLoopCopyExtent`'s doc (`:255-264`) promises the pasted copy "reproduces the visible duration it actually had", and the synthesized-lifecycle comment in `buildDuplicatedLoopClip` (`:440-451`) promises it "renders to exactly the source's visible duration". The pinned tests only cover spans that happen to be whole multiples (`physicsPaintRotoRailSetCopy.test.ts:660-708`, 24/6) or round up (`:710-730`, 100/6 → 17), so the regression is untested.
+### WR-03: Insert-slot rail growth swallows trailing content into the grown band for repeat > 1
 
-**Fix:** Make the frozen cycle count cover the preserved span so the derived extent can never be shorter than the stored end:
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:1224-1241` and `:4423-4448`
+**Issue:** The insert-slot path ripples every identity at or after the destination by exactly +1 (`buildInsertCandidate`, `:1231-1241`), while the target rail's band grows by `repeat` frames (`extendLoopClipCycle` multiplies the new cycle by `repeat`, `:4423-4448`). The paste route deliberately compensates by shifting trailing content by `repeat` (`:1622-1727`); the insert-slot route does not. For a rail with `repeat >= 2` and a following real key adjacent to the old end, that key now falls INSIDE the rail's `[phaseOrigin, originalEndExclusive)` band, is classified as a rail frame by `classifyPhysicPaintRotoGroupFrameTarget`, and stops behaving as an ordinary key. The two insert routes therefore disagree about the same geometry.
+**Fix:** Extend the insert-slot rail plan to account for the band growth: shift trailing identities and trailing clips by `repeat` when the target rail grows, or clamp the rebuilt end so trailing keys cannot be swallowed. Add a repeat > 1 insert test with an adjacent following key.
 
-```ts
-// physicsPaintRotoRailSetCopy.ts:308-311
-return {
-  effectiveEndExclusive,
-  // Ceil, not round: the synthesized lifecycle stores the full visible span as
-  // originalEndExclusive, so phaseOrigin + cycleLength * repeat must be >= it or
-  // G-01's source-extent clamp trims the pasted tail away.
-  repeat: Math.max(1, Math.ceil((effectiveEndExclusive - clip.placementStart) / cycleLength)),
-};
-```
+### WR-04: Deleting the first phase of a spaced source cycle silently degrades from contraction to hole semantics
 
-The existing pinned values are unchanged (24/6 → 4; 100/6 → 17). Add a regression test with a span such as 17 at cycle 5: assert the pasted `originalEndExclusive`, the derived `effectiveEnd` (must equal the pasted end), and that a coordinator commit leaves the pasted clip byte-identical. Also build the paste impact/`nextRevision` from the post-reconcile document (or run the reconcile before the impact is constructed) so the semantic delta matches what is published.
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:661` and `:887-905`
+**Issue:** `resolveGenerateModeContraction` refuses whenever the removed phase is offset 0 and the next source is not adjacent (`:661`). `proposePhysicPaintRotoDeleteGroupFrame` then falls through to the legacy path (`:887-905`), which only removes frames from `visibleRanges` and drops overrides: the deleted phase's source key stays in `sourceKeyIds` and the cycle keeps its old length. The user asked to delete a phase and got a hidden hole with a surviving source key, which violates the G-02 contraction contract. The guard is documented, but the degradation is silent and the impact payload does not distinguish it from a real contraction.
+**Fix:** Either teach contraction to re-anchor `phaseOrigin` when the first source is removed from a spaced cycle, or surface a distinct failure/impact flag so the caller can explain that the phase was hidden rather than removed. At minimum, do not leave the deleted key referenced as a source of the clip.
 
-### WR-01: A real key inside a lifecycle gap is undeletable, and the locked copy points at a frame that refuses deletion
+## Info
 
-**File:** `app/src/components/physic-paint/hooks/useRotoTimelineActions.ts:734-745`, `:906-915`, `:964-967`; `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:1054-1069`, `:4226-4231`, `:873-875`; `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:614-625`
-**Severity:** WARNING
+### IN-01: Dead `frameOwners` map in the rail insert target resolver
 
-**Issue:** The new UI ownership test only accepts frames that render Group content:
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4500-4505`
+**Issue:** `frameOwners` is built and incremented but never read. The duplicate-frame detection it evidently was meant to provide is absent; the downstream collision check uses `mappedFrames.size !== frameByKeyId.size` instead (`:4564-4566`).
+**Fix:** Remove the map, or use it to reject duplicate identity frames explicitly.
 
-```ts
-return target.kind === 'source-occurrence' || target.kind === 'generated-occurrence' || target.kind === 'override'
-  ? { groupId: target.groupId } : null;
-```
+### IN-02: Unused export silently drops Group override records
 
-`classifyPhysicPaintRotoGroupFrameTarget` returns `group-gap` for any in-extent frame outside `visibleRanges` (`physicsPaintRotoGroupLifecycle.ts:439-448`), so gap frames are not "owned" in the UI. The resolver's `isGroupOwnedKeyFrame` never consults `visibleRanges` — ownership is `phaseOrigin <= appFrame < min(originalEndExclusive, extent.endExclusive)` — so the same frame IS owned there. Result: when the cursor is elsewhere, the single-key branch falls through and returns `ordinary-key`; the delete reaches the resolver, which rejects with `group-owned-key-delete-rejected` and the locked copy "This key is owned by a Rail cycle. Delete the Rail frame instead." But `proposePhysicPaintRotoDeleteGroupFrame` rejects that same frame with `frame-not-visible` (`:621-625`). The prescribed remedy cannot be executed, and the key cannot be removed at all.
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4580-4584`
+**Issue:** `resolvePhysicPaintRotoRailInsertLoopClips` has zero callers in `app/src` and returns only `plan.loopClips`, discarding `plan.groupOverrideRecords`. Any caller who adopted it on a rail with painted overrides would shift override frames without shifting their records, producing a document the parser rejects (`Group override reference mismatch`).
+**Fix:** Delete the wrapper or make it return the full plan so override records cannot be dropped.
 
-Reachability is short and follows the guard's own terms. G-01 explicitly claims ownership of "a local key inside the surviving extent" (resolver `:4227`). Such a key can sit on a rendered Group frame (rail-set paste checks occupancy against `realKeyRecords` only, so a rendered frame is "free"). Deleting that Rail frame — exactly what the locked copy instructs — removes the phase from `visibleRanges` and leaves the real key on a now-hidden gap frame. From then on, key Delete is refused as Group-owned while Rail-frame Delete is refused as not visible. The only escape is deleting the entire Group rail.
+### IN-03: Shared override keyIds are not guarded by either rail insert path
 
-**Fix:** Make the resolver's ownership predicate visibility-based, so gap frames classify as ordinary keys (this is what the UI already concludes):
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:1628-1634` and `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:667-673`
+**Issue:** Contraction refuses when another clip shares any shifted override keyId (`:667-673`); `buildRailKeyInsertPasteCandidate` guards only shared source keys (`:1628-1634`), and `resolvePhysicPaintRotoRailInsertPlan` has no sharing guard at all (identical source cycles shift together, which is safe). The parser permits two clips with disjoint sources to share an override keyId, so a shared override would have its record shifted while the other clip's `frameOverrides[].appFrame` stays stale, failing later at parse time. Production paths do not create shared override keyIds today (`duplicateLinkedLoop` has no caller, rail-set copy repoints identities), so this is latent.
+**Fix:** Apply contraction's shared-override rejection to both insert paths.
 
-```ts
-// physicsPaintRotoPhysicalResolver.ts:1062-1068
-return appFrame >= clip.phaseOrigin
-  && appFrame < endExclusive
-  && clip.visibleRanges !== undefined
-  && clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
-```
+### IN-04: Insert classifier and resolver disagree about override-record requirements
 
-Add parity tests for a source frame, an override frame, and a gap frame (visible vs hidden) across the resolver and `classifyRotoDeleteTarget`. If gap-frame keys must stay protected instead, then the UI must return a group-frame target for `group-gap` AND `proposePhysicPaintRotoDeleteGroupFrame` must accept gap frames; protecting them in the resolver while refusing the frame delete in the UI is not a coherent state.
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4692-4696`, `app/src/components/physic-paint/hooks/useRotoTimelineActions.ts:149-155`
+**Issue:** `isPhysicPaintRotoRailInsertDestination` runs the plan with `requireOverrideRecords = false` and no records, while the resolver always calls it with `true` and passes `input.groupOverrideRecords` (`:4781-4785`). The UI can advertise a rail frame as an insertable `generated` destination while the actual edit fails `loop-source-key-insert-rejected` because an override shift cannot be satisfied.
+**Fix:** Thread the override records into the classifier, or make the classifier conservative when the plan needs records it does not have.
 
-### IN-01: Unreachable `capacity === undefined` fallback in `resolveGroupBoundedEnd`
+### IN-05: Ambiguous rail target silently falls back to a detached key insert
 
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:320-337`
-**Severity:** INFO
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4540`
+**Issue:** `if (target !== null) return null;` aborts target resolution when a second rail clip also matches. Callers then take the ordinary paint/+Key path and create a detached key inside the painted band, with no user-visible rejection. The parser only forbids non-identical source sharing, so two qualifying bands can overlap in principle.
+**Fix:** Choose a deterministic owner (for example the innermost band) or return a distinct failure so the UI can report that the rail cannot accept the key at this frame.
+
+### IN-06: Impossible-state guard — nullable capacity in `resolveGroupBoundedEnd`
+
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:321-338`
 **Category:** necessity
-
-**Issue:** `resolveGroupBoundedEnd` accepts `capacity: number | undefined` and returns the stored end when `typeof capacity !== 'number'` (`:328`). Every call site passes `input.document.capacity` (`:102`, `:395`, `:621`, `:747`) or the `capacity` parameter of `resolveGroupPhaseAuthority` (`:366`), which is only ever called with `input.document.capacity` (`:107`, `:411`, `:626`). `PhysicPaintRotoPhysicalDocument.capacity` is a required `number` (`physicsPaintRotoPhysicalModel.ts:374`), and parsed documents validate it. The undefined branch cannot be reached from typed code, so the guard protects an impossible state and weakens the signature of a helper whose callers all hold the capacity.
-
-**Fix:** Type the parameter as `number` and delete the fallback:
-
+**Issue:** Subtype: impossible-state guard. `capacity` is typed `number | undefined` and the helper returns early on non-number, but every call site passes `input.document.capacity` / `document.capacity` (`:103`, `:367`, `:396`, `:822`, `:983`), and `PhysicPaintRotoPhysicalDocument.capacity` is a required `number` (`physicsPaintRotoPhysicalModel.ts:374`) validated as a positive integer by the parser. The guarded state cannot occur from typed code.
+**Fix:** Narrow the parameter to `number` and drop the branch:
 ```ts
 function resolveGroupBoundedEnd(
   group: PhysicPaintRotoLoopClip & Required<Pick<PhysicPaintRotoLoopClip, 'phaseOrigin' | 'originalEndExclusive'>>,
   realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
   capacity: number,
-): number {
-  const extent = resolvePhysicPaintRotoLoopSourceExtent(...);
-  return extent === null ? group.originalEndExclusive : Math.min(group.originalEndExclusive, extent.endExclusive);
-}
+): number { ... }
 ```
+
+### IN-07: `isCanonicalLifecycleRailClip` does not require `placementStart === phaseOrigin`, while retiming rewrites `phaseOrigin = placementStart`
+
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:988-998` and `:1043-1060`
+**Issue:** The canonicality predicate checks visible-range alignment but not that `placementStart` equals `phaseOrigin`. `computeSourceAttachedLoopPlacementFollow` then unconditionally rewrites `phaseOrigin: placementStart` and `originalEndExclusive: placementStart + cycleLength * repeat` (`:1043-1060`). A clip whose `placementStart` differs from `phaseOrigin` (the shape `duplicateLinkedLoop` produces by spreading lifecycle fields onto a new placement) would be re-anchored away from its source frames by a G-04/G-05 retime. `duplicateLinkedLoop` has no production caller, so this is latent.
+**Fix:** Add `clip.placementStart === clip.phaseOrigin` to `isCanonicalLifecycleRailClip`, or make the retime preserve the existing `phaseOrigin` relationship explicitly.
 
 ---
 
-_Reviewed: 2026-11-03T16:41:49Z_
+_Reviewed: 2026-11-03T20:27:40Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_

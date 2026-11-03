@@ -34,7 +34,7 @@
 
 **Code anchors**: `roto/physicsPaintRotoPhysicalResolver.ts` (~4463-4467, the D-11 `countLoopsReferencingSourceKey` guard and `buildMoveCandidate`); `view/PhysicsPaintScriptsPanel.tsx` + `PhysicsPaintStudio.tsx` `handleOpenRotoLoopEdit` + `physicsPaintRotoPlayScriptController.ts` `openLoopEdit` (today loop-clip only); `roto/physicsPaintRotoRunScriptStacking.ts` `isStandardMergedLoopClip` / `buildStandardStackedLoopClip` (provenance-free Standard shape); `view/PhysicsPaintWorkflowStrip.tsx` (Create rail / key-rail segment).
 
-**Plans:** 10/10 plans executed (8 executed, 2 planned gap closure)
+**Plans:** 10/10 plans complete (8 executed, 2 planned gap closure)
 **Wave 1**
 - [x] 58-01-PLAN.md — Law A: relax the single-key move guard to exactly one referencing loop
 - [x] 58-02-PLAN.md — Key Rail segment to Standard cycle conversion (record shape, gaps, publication, undo)
@@ -67,7 +67,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 58. Rail editing regressions | 10/10 | Pending | — |
+| 58. Rail editing regressions | 10/10 | Complete    | 2026-11-03 |
 | v7 timeline rails (in-milestone quick) | — | Pending | — |
 
 <details>
