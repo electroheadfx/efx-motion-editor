@@ -4673,7 +4673,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     expect(resolution.failure.text).toContain('rigid group');
   });
 
-  it('58 G-03: reveal rails keep the fail-closed insert guard', () => {
+  it('58 G-03: reveal rails accept the insert and grow their requested span', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
         { keyId: 'G1A', appFrame: 0 },
@@ -4692,8 +4692,86 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
       loopClips: [{ ...group1, railKind: 'reveal' }],
     });
 
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert on a reveal rail must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 0, G1B: 2, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      railKind: 'reveal',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
+  it('58 G-06: an insert-slot on a rail with painted overrides moves them with their phases', () => {
+    const overridden: PhysicPaintRotoLoopClip = {
+      ...group1,
+      repeat: 1,
+      originalEndExclusive: 2,
+      visibleRanges: [{ start: 0, endExclusive: 2 }],
+      frameOverrides: [{ appFrame: 1, keyId: 'OV1' }],
+    };
+    const overrideRecord = {
+      kind: 'real-key' as const,
+      keyId: 'OV1',
+      appFrame: 1,
+      payload: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [overridden],
+      groupOverrideRecords: [overrideRecord],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Overridden rail insert must resolve');
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      frameOverrides: [{ appFrame: 2, keyId: 'OV1' }],
+      originalEndExclusive: 3,
+    });
+    expect(resolution.proposal.nextGroupOverrideRecords).toEqual([
+      expect.objectContaining({ keyId: 'OV1', appFrame: 2 }),
+    ]);
+  });
+
+  it('58 G-06: an overridden rail insert without override authority fails closed', () => {
+    const overridden: PhysicPaintRotoLoopClip = {
+      ...group1,
+      repeat: 1,
+      originalEndExclusive: 2,
+      visibleRanges: [{ start: 0, endExclusive: 2 }],
+      frameOverrides: [{ appFrame: 1, keyId: 'OV1' }],
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [overridden],
+    });
+
     expect(resolution.ok).toBe(false);
-    if (resolution.ok) throw new Error('Insert on a reveal rail must fail closed');
+    if (resolution.ok) throw new Error('Overridden rail insert without authority must fail closed');
     expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
   });
 });

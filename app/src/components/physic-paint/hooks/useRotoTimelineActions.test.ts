@@ -1059,6 +1059,92 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(empty.publishStatus).toHaveBeenCalledWith('Inserted a gap in the Roto timeline.');
   });
 
+  it('58 G-06: a Reveal rail in-between accepts Insert and grows the requested span', async () => {
+    const revealRail: PhysicPaintRotoLoopClip = {
+      loopId: 'reveal-1',
+      placementStart: 0,
+      sourceKeyIds: ['r0', 'r4'],
+      repeat: 1,
+      mode: 'static',
+      railKind: 'reveal',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const harness = createHarness({
+      records: [realKeyRecord('r0', 0), realKeyRecord('r4', 4)],
+      loopClips: [revealRail],
+      currentAppFrame: 2,
+      capacity: 10,
+      frameResolution: {
+        kind: 'linked-generated',
+        loopId: 'reveal-1',
+        appFrame: 2,
+        leftSourceKeyId: 'r0',
+        rightSourceKeyId: 'r4',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        progress: 0.5,
+        sourceCycleId: 'cycle',
+        cycleOffset: 2,
+        repeatInstance: 0,
+      },
+    });
+    expect(harness.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(await harness.actions.physicalActions.insertRotoFrame()).toBe(true);
+    const dispatched = harness.executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: PhysicPaintRotoPhysicalEditProposal;
+      operationKind: string;
+    };
+    expect(dispatched.operationKind).toBe('insert-slot');
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ r0: 0, r4: 5 });
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'reveal-1',
+      railKind: 'reveal',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
+  it('58 G-06: a Reveal rail gap-policy in-between also accepts Insert', async () => {
+    const revealRail: PhysicPaintRotoLoopClip = {
+      loopId: 'reveal-1',
+      placementStart: 0,
+      sourceKeyIds: ['r0', 'r4'],
+      repeat: 1,
+      mode: 'static',
+      railKind: 'reveal',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const harness = createHarness({
+      records: [realKeyRecord('r0', 0), realKeyRecord('r4', 4)],
+      loopClips: [revealRail],
+      currentAppFrame: 2,
+      capacity: 10,
+      frameResolution: {
+        kind: 'linked-gap',
+        loopId: 'reveal-1',
+        appFrame: 2,
+        leftSourceKeyId: 'r0',
+        rightSourceKeyId: 'r4',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        cycleOffset: 2,
+        repeatInstance: 0,
+      },
+    });
+    expect(harness.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(await harness.actions.physicalActions.insertRotoFrame()).toBe(true);
+  });
+
   it('offers the tail slot at capacity and rejects beyond it', async () => {
     const tail = createHarness({
       records: [realKeyRecord('key-a', 2)],

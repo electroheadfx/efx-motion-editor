@@ -4389,6 +4389,13 @@ export interface PhysicPaintRotoRailInsertLoopClipInput {
   readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
   readonly destinationAppFrame: number;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** 58: override records so a rail insert can move painted phases. */
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+}
+
+export interface PhysicPaintRotoRailInsertLoopClipPlan {
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
 }
 
 type PhysicPaintRotoLifecycleLoopClip = PhysicPaintRotoLoopClip & Required<Pick<
@@ -4573,8 +4580,26 @@ function resolveRailKeyInsertTargetInternal(
 export function resolvePhysicPaintRotoRailInsertLoopClips(
   input: PhysicPaintRotoRailInsertLoopClipInput,
 ): readonly PhysicPaintRotoLoopClip[] | null {
+  return resolvePhysicPaintRotoRailInsertPlan(input, false)?.loopClips ?? null;
+}
+
+/**
+ * 58: the complete insert-slot rail plan — the rewritten Loop Clips plus the
+ * matching Group override records when painted phases move.
+ *
+ * Every rail kind takes the insert, including Reveal (its requested span grows
+ * by one frame per repeat) and rails carrying painted phase overrides. When
+ * `requireOverrideRecords` is true, a rail whose overrides must move without
+ * its records fails closed; the classifier calls with false while the resolver
+ * always passes the records.
+ */
+export function resolvePhysicPaintRotoRailInsertPlan(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+  requireOverrideRecords: boolean,
+): PhysicPaintRotoRailInsertLoopClipPlan | null {
   const frameByKeyId = new Map<string, number>();
   for (const identity of input.identities) frameByKeyId.set(identity.keyId, identity.appFrame);
+  const overrideShifts: { readonly keyId: string; readonly fromAppFrame: number; readonly toAppFrame: number }[] = [];
   let changed = false;
   const nextClips: PhysicPaintRotoLoopClip[] = [];
   for (const clip of input.loopClips) {
@@ -4599,11 +4624,6 @@ export function resolvePhysicPaintRotoRailInsertLoopClips(
       || clip.originalEndExclusive === undefined
       || clip.visibleRanges === undefined
       || clip.frameOverrides === undefined) return null;
-    // Static/hold rails take the same insert: the new phase follows the
-    // rail's own interior policy (held frames need no interpolation). Reveal
-    // rails stretch by a different law and stay fail-closed.
-    if (clip.railKind === 'reveal') return null;
-    if (clip.frameOverrides.length > 0) return null;
     const typed = clip as PhysicPaintRotoLifecycleLoopClip;
     const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
     if (sourceFrames.length < 2 || sourceFrames[0] !== typed.phaseOrigin) return null;
@@ -4611,22 +4631,68 @@ export function resolvePhysicPaintRotoRailInsertLoopClips(
     // span is the last source offset plus one, never the key count.
     const cycleLength = sourceFrames[sourceFrames.length - 1]! - typed.phaseOrigin + 1;
     if (moved === cycleLength) {
-      nextClips.push(shiftLoopClipFrames(typed, 1));
+      const shifted = shiftLoopClipFrames(typed, 1);
+      for (const override of typed.frameOverrides) {
+        overrideShifts.push({
+          keyId: override.keyId,
+          fromAppFrame: override.appFrame,
+          toAppFrame: override.appFrame + 1,
+        });
+      }
+      nextClips.push(shifted);
       changed = true;
       continue;
     }
     const insertOffset = input.destinationAppFrame - typed.phaseOrigin;
     if (insertOffset <= 0 || insertOffset >= cycleLength) return null;
-    nextClips.push(extendLoopClipCycle(typed, cycleLength, insertOffset));
+    const extended = extendLoopClipCycle(typed, cycleLength, insertOffset);
+    const keptOverrides: { readonly appFrame: number; readonly keyId: string }[] = [];
+    for (const override of typed.frameOverrides) {
+      const offset = override.appFrame - typed.phaseOrigin;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset >= cycleLength) return null;
+      const appFrame = offset >= insertOffset ? override.appFrame + 1 : override.appFrame;
+      if (appFrame !== override.appFrame) {
+        overrideShifts.push({ keyId: override.keyId, fromAppFrame: override.appFrame, toAppFrame: appFrame });
+      }
+      keptOverrides.push(Object.freeze({ appFrame, keyId: override.keyId }));
+    }
+    keptOverrides.sort((left, right) => left.appFrame - right.appFrame);
+    nextClips.push(Object.freeze({
+      ...extended,
+      frameOverrides: Object.freeze(keptOverrides),
+    }) as PhysicPaintRotoLoopClip);
     changed = true;
   }
-  return changed ? Object.freeze(nextClips.map((clip) => Object.freeze(clip))) : null;
+  if (!changed) return null;
+  let nextGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
+  if (overrideShifts.length > 0) {
+    if (input.groupOverrideRecords === undefined) {
+      if (requireOverrideRecords) return null;
+    } else {
+      const recordByKeyId = new Map(input.groupOverrideRecords.map((record) => [record.keyId, record]));
+      const nextById = new Map(input.groupOverrideRecords.map((record) => [record.keyId, record] as const));
+      for (const shift of overrideShifts) {
+        const record = recordByKeyId.get(shift.keyId);
+        if (!record || record.appFrame !== shift.fromAppFrame) return null;
+        nextById.set(shift.keyId, Object.freeze({
+          ...record,
+          appFrame: shift.toAppFrame,
+          payload: clonePayloadAtFrame(record.payload, shift.toAppFrame),
+        }) as PhysicPaintRotoRealKeyRecord);
+      }
+      nextGroupOverrideRecords = Object.freeze([...nextById.values()]);
+    }
+  }
+  return Object.freeze({
+    loopClips: Object.freeze(nextClips.map((clip) => Object.freeze(clip))),
+    groupOverrideRecords: nextGroupOverrideRecords,
+  });
 }
 
 export function isPhysicPaintRotoRailInsertDestination(
   input: PhysicPaintRotoRailInsertLoopClipInput,
 ): boolean {
-  return resolvePhysicPaintRotoRailInsertLoopClips(input) !== null;
+  return resolvePhysicPaintRotoRailInsertPlan(input, false) !== null;
 }
 
 /**
@@ -4706,23 +4772,30 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const rippledGroupKeys = identities.ordered.filter(
       (identity) => identity.appFrame >= intent.destinationAppFrame && loopReferencedKeyIds.has(identity.keyId),
     );
-    // 58 (G-03): Insert on a generate-mode Rail is legal — the ripple extends
-    // its source cycle by one interpolated frame. Every other Group-owned
-    // ripple keeps the 43.2 fail-closed guard.
-    let railInsertLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
+    // 58 (G-03): Insert on a Rail is legal — the ripple extends its source
+    // cycle by one interpolated frame. 58 extends this to Reveal rails and to
+    // rails carrying painted phase overrides, whose entries move with their
+    // phases. Every other Group-owned ripple keeps the 43.2 fail-closed guard.
+    let railInsertPlan: PhysicPaintRotoRailInsertLoopClipPlan | null = null;
     if (rippledGroupKeys.length > 0) {
-      railInsertLoopClips = resolvePhysicPaintRotoRailInsertLoopClips({
+      railInsertPlan = resolvePhysicPaintRotoRailInsertPlan({
         identities: identities.ordered,
         destinationAppFrame: intent.destinationAppFrame,
         loopClips,
-      });
-      if (railInsertLoopClips === null) {
+        ...(input.groupOverrideRecords === undefined ? {} : { groupOverrideRecords: input.groupOverrideRecords }),
+      }, true);
+      if (railInsertPlan === null) {
         return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
       }
     }
     const candidate: Candidate = {
       ...buildInsertCandidate(identities, intent.destinationAppFrame),
-      ...(railInsertLoopClips === null ? {} : { nextLoopClips: railInsertLoopClips }),
+      ...(railInsertPlan === null ? {} : {
+        nextLoopClips: railInsertPlan.loopClips,
+        ...(railInsertPlan.groupOverrideRecords === null
+          ? {}
+          : { nextGroupOverrideRecords: railInsertPlan.groupOverrideRecords }),
+      }),
     };
     // The ONE capacity computation: the shifted right tail may need one extra
     // slot, and a tail insert at capacity opens a brand-new slot. Downstream
@@ -4732,7 +4805,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       if (frame > highestFinalKeyFrame) highestFinalKeyFrame = frame;
     }
     let highestLifecycleEnd = 0;
-    for (const clip of railInsertLoopClips ?? []) {
+    for (const clip of railInsertPlan?.loopClips ?? []) {
       if (clip.originalEndExclusive !== undefined && clip.originalEndExclusive > highestLifecycleEnd) {
         highestLifecycleEnd = clip.originalEndExclusive;
       }

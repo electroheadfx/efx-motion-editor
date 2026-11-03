@@ -140,10 +140,10 @@ export function classifyRotoInsertTarget(
     || input.frameResolution.kind === 'linked-generated'
     || input.frameResolution.kind === 'linked-gap'
   )) {
-    // 58 (G-03): a generate-mode Rail frame accepts the insert — the resolver
-    // extends its source cycle with one interpolation-filled frame.
-    if (input.frameResolution.kind !== 'linked-gap'
-      && isPhysicPaintRotoRailInsertDestination({
+    // 58 (G-03): a Rail frame accepts the insert — the resolver extends its
+    // source cycle by one frame. 58 also allows Reveal rails and their
+    // gap-policy interiors (the inserted frame follows the rail's own policy).
+    if (isPhysicPaintRotoRailInsertDestination({
         identities: input.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         destinationAppFrame: input.currentAppFrame,
         loopClips: input.loopClips ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
