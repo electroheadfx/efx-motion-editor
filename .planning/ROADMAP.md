@@ -34,7 +34,7 @@
 
 **Code anchors**: `roto/physicsPaintRotoPhysicalResolver.ts` (~4463-4467, the D-11 `countLoopsReferencingSourceKey` guard and `buildMoveCandidate`); `view/PhysicsPaintScriptsPanel.tsx` + `PhysicsPaintStudio.tsx` `handleOpenRotoLoopEdit` + `physicsPaintRotoPlayScriptController.ts` `openLoopEdit` (today loop-clip only); `roto/physicsPaintRotoRunScriptStacking.ts` `isStandardMergedLoopClip` / `buildStandardStackedLoopClip` (provenance-free Standard shape); `view/PhysicsPaintWorkflowStrip.tsx` (Create rail / key-rail segment).
 
-**Plans:** 5/5 plans executed
+**Plans:** 8 plans (5 executed + 3 gap closure)
 **Wave 1**
 - [x] 58-01-PLAN.md — Law A: relax the single-key move guard to exactly one referencing loop
 - [x] 58-02-PLAN.md — Key Rail segment to Standard cycle conversion (record shape, gaps, publication, undo)
@@ -43,6 +43,11 @@
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 58-04-PLAN.md — Reduced conversion dialog (Cycle + Infinity only, Create Cycle / Update Rail)
 - [x] 58-05-PLAN.md — Studio wiring: stable inspector projection, Edit Rail/double-click handlers, right-panel memo
+
+**Gap closure** *(code review CR-01, CR-02, WR-01, WR-02 — wave 1, disjoint files)*
+- [ ] 58-06-PLAN.md — In-flight cancel generation contract + busy-phase cancel preserves the target (CR-01, WR-01)
+- [ ] 58-07-PLAN.md — Single-reference source-order guard for Law A moves (CR-02)
+- [ ] 58-08-PLAN.md — Shared Enter/primary confirm gate for the reduced form (WR-02)
 
 ### v7 timeline rails (in-milestone quick)
 
