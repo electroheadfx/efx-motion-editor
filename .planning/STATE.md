@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-06-PLAN.md
-last_updated: "2026-11-03T13:48:29.576Z"
+stopped_at: Completed 58-07-PLAN.md
+last_updated: "2026-11-03T13:53:52.641Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: 88345946171e6ac88259e7bb778cd2c403b7beb2
+state_head: b4dfa03be8aee9c1faab38dd01758c3967ecc302
 progress:
   total_phases: 1
   completed_phases: 0
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58 (Rail editing regressions) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
@@ -182,6 +182,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P04 | 4min | 2 tasks | 3 files |
 | Phase 58 P05 | 4 min | 1 tasks | 2 files |
 | Phase 58 P06 | 5 | 2 tasks | 4 files |
+| Phase 58 P07 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -550,6 +551,10 @@ Recent decisions affecting current work:
 - [Phase 58]: Key-rail conversion cancels through the generation contract only: requestAuthority/commit take no AbortSignal, so no AbortController is assigned and assertCurrent is the cancellation channel.
 - [Phase 58]: AbortError lands the key-rail conversion in 'cancelled' unconditionally (no generation equality guard) and nulls progress; cancel() and dispose() are the only bumpers while the path awaits.
 - [Phase 58]: cancel() returns before clearing keyRailCycleEditTarget when isBusyPhase is true; closeConfirmation no-ops while busy, so the frozen target is only cleared when the close can happen.
+- [Phase 58]: The single-reference order guard reads moveResult.candidate.mapping because cutSource/openAndInsert ripple survivors; judging the requested cell can hide an inversion.
+- [Phase 58]: An order-breaking or unprovable destination is rejected with the existing loop-source-key-move-rejected code and verbatim D-16 copy; sourceKeyIds is never re-sorted or mutated.
+- [Phase 58]: The guard runs only when candidate.changed is true, so a no-change drag back to the key's own cell is accepted even in an already-unresolved cycle.
+- [Phase 58]: Two or more referencing loops keep the unchanged D-11 / D-16 rejection before any candidate is built.
 
 ### Pending Todos
 
@@ -721,8 +726,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T13:48:24.653Z
-Stopped at: Completed 58-06-PLAN.md
+Last session: 2026-11-03T13:53:52.611Z
+Stopped at: Completed 58-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
