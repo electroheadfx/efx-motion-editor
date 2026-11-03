@@ -169,12 +169,33 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
+**v2.0.1 (PATCH) — Rail editing + v7 timeline rails:**
+- [ ] Edit Rail is reachable for a selected/double-clicked Key Rail and converts it to a provenance-free Standard cycle (cycle count + Infinity, prefill 1, cancel is a no-op, one undo restores the Key Rail)
+- [ ] Single-key drag works on Motion/Static/Reveal loop clips under the discuss-phase law (preferred A: independent cycle only; shared linked cycles keep D-11); linked behavior is never silently relaxed
+- [ ] Studio timeline ships the approved v7 rail interface (types, cells, geometry, header accent, blue playhead); no motion channels
+
+**Carried beyond v2.0.1 (not this milestone):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 - [ ] Delete the dead `efx-spectral` path (package + workspace dependency + `engine/deposit.ts` import; only tests call it) — optional cleanup, no behavior change — v2.0.0 audit
 - [ ] Dual paper-fingerprint drift: `aquarelleBake` exports `aquarellePaperCacheFingerprint` while the app re-derives the paper term in `useRotoFramePersistenceCoordinator.ts:280` — v2.0.0 audit
 - [ ] Frame fade (compositing/export cumulative-frame crossfade, separate from opacity) — idea only, not scheduled — todo 261024-frame-fade-compositing
+
+## Current Milestone: v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)
+
+**Goal:** Fix the two rail-editing regressions and apply the approved v7 timeline-rail interface — no new module, no `.mce` schema change, no unrelated audit debt.
+
+**Target features:**
+- **Phase 58 — Key Rail becomes a cycle through Edit Rail.** Selecting (or double-clicking) a normal Key Rail exposes the sidebar's Edit Rail action. It opens the standard modal with only the cycle count and the Infinity checkbox, prefilled at 1. Confirm converts the segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the keys become loop-owned and leave the Key Rail segment, so the rail renders as a Standard cycle. Cancel is a byte-for-byte no-op. One undo restores the Key Rail.
+- **Phase 58 — Single-key drag on Motion/Static/Reveal rails.** Today D-11 rejects any single-key drag when `countLoopsReferencingSourceKey > 0` (`physicsPaintRotoPhysicalResolver.ts:4463-4467`). The law is chosen at discuss-phase — preferred **A**: allow the drag when exactly one loop references the key (an independent cycle) and keep D-11 + the locked rigid-group copy for shared linked cycles; alternative B exposes `unlinkLoop` + whole-cycle Force Spacing; alternative C propagates the retime to every linked loop. Resolver, undo, and tests updated; linked behavior is never silently relaxed.
+- **In-milestone quick — v7 timeline rails** per `SPECS/v2.0.1-timeline-rails/` (README + `TIMELINE-RAILS.tsx` + `timeline-rails.css`): Standard/Motion/Static/Reveal palettes (selected bright, every other rail dim), 16×22 r3 cells with 2px gaps, 4px rounded rail line at the row top, cycle grays + rail-colour dot, interp contour + centred dash, dark surfaces, blue `#2868FC` playhead, 6px gutter, header accent + inert 14×14 motion slot, no orange anywhere. All 8 README §7 defaults as written; no DOM snapshot tests.
+
+**Scope laws:** no `.mce`/document/store/schema change · no new module · no unrelated v2.0.0 audit debt · gestures other than the named regression stay untouched · the v7 spec tokens are locked · Motion channels (lanes, curves, nav cluster, selected-rail outline) belong to v2.1.0 (`SPECS/v2.1.0-motion-channels/`).
+
+**Delivery:** Phase 58 (the two regressions) first, then the v7 quick, with atomic commits.
+
+**Release:** `efx-motion-release` at close, hard rules 10–11 (audit BEFORE tag/publish).
 
 ## Latest Milestone: v2.0.0 Multi-Module Paint Workstation (MAJOR) — Shipped 2026-11-02
 
@@ -395,4 +416,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-02 after v2.0.0 milestone close — single-engine Water color workstation shipped and published; supersessions (single-engine pivot, preset-only brushes, engine-baked paper, retired switcher/Krita, dropped paper-id undo) recorded; requirements, context, decisions, and out-of-scope audited. Previous: v1.0.1 shipped 2026-10-13.*
+*Last updated: 2026-11-03 after milestone v2.0.1 started — PATCH (rail-editing regressions + v7 timeline rails), Phase 58 + an in-milestone v7 quick; no `.mce` change, no new module, no unrelated audit debt. Previous: v2.0.0 shipped 2026-11-02.*

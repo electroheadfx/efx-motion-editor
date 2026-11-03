@@ -1,37 +1,34 @@
 ---
 gsd_state_version: "1.0"
-milestone: v2.0.0
-milestone_name: Multi-Module Paint Workstation (MAJOR)
-status: Awaiting next milestone
-stopped_at: Milestone v2.0.0 completed and archived
-last_updated: "2026-11-02T14:55:13.550Z"
-last_activity: 2026-11-02
-last_activity_desc: Milestone v2.0.0 completed and archived
-state_head: 3bab52cec41e2c3b87738ee9e9de364879514021
+milestone: v2.0.1
+milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
+status: planning
+last_updated: "2026-11-03T08:46:21.297Z"
+last_activity: 2026-11-03
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 26
-  completed_plans: 26
-  percent: 100
-current_phase: 56
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-02 after v2.0.0 milestone close)
+See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning the next milestone — v2.0.0 shipped and archived 2026-11-02 (single-engine Water color workstation); run `/gsd-new-milestone`
+**Current focus:** v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH); Phase 58 fixes the two rail-editing regressions, then the in-milestone v7 timeline-rails quick
 
 ## Current Position
 
-Phase: Milestone v2.0.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-02 — Milestone v2.0.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-03 — Milestone v2.0.1 started
+
 
 ## Performance Metrics
 
