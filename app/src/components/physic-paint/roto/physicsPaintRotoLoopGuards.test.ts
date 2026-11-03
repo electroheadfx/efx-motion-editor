@@ -317,6 +317,52 @@ describe('D-11 rigid linked-key guard', () => {
     expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
   });
 
+  it('accepts a one-element source cycle move — a single source key is vacuously ordered', () => {
+    const loopClips = [loop(10, 5, 'L1', ['A'])];
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
+      loopClips,
+    }));
+    expect(proposal.mapping.get('A')).toBe(9);
+    expect(proposal.nextLoopClips).toBeNull();
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
+  });
+
+  it('fails closed when the single referencing cycle names a source key absent from the mapping — CR-02', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
+  it('accepts a move on a key no loop references, even when another cycle is already unresolved', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key', movedKeyId: 'H', target: { kind: 'physical-cell', appFrame: 42 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('accepts a no-change drag in the dangling-source scenario — changed === false is exempt', () => {
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 10 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(10);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
   it('rejects a single-key move when two loops reference the key with the locked copy', () => {
     const resolution = resolveEdit({
       records: SOURCE_RECORDS(),
