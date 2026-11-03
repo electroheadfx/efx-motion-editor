@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-05-PLAN.md
-last_updated: "2026-11-03T13:37:24.322Z"
+stopped_at: Completed 58-06-PLAN.md
+last_updated: "2026-11-03T13:48:29.576Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: 1c102776682b6514b89b0050935d4f8c44830d91
+state_head: 88345946171e6ac88259e7bb778cd2c403b7beb2
 progress:
   total_phases: 1
   completed_phases: 0
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 ## Current Position
 
-Phase: 58 (Rail editing regressions) — READY TO EXECUTE
-Plan: 5 of 5
+Phase: 58 (Rail editing regressions) — EXECUTING
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
@@ -181,6 +181,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P03 | 6 min | 2 tasks | 10 files |
 | Phase 58 P04 | 4min | 2 tasks | 3 files |
 | Phase 58 P05 | 4 min | 1 tasks | 2 files |
+| Phase 58 P06 | 5 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -546,6 +547,9 @@ Recent decisions affecting current work:
 - [Phase 58]: 58-05: selectedKeyRailInspector is a useMemo over [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length], with the rail-set anchor fallback so a 2+ set projects the D-03 disabled reason and an unchanged selection keeps one object identity
 - [Phase 58]: 58-05: handleOpenRotoKeyRailCycleEdit selects before opening and returns Promise.resolve on the missing-segment refusal (Promise on every path); handleCloseRotoKeyRail clears BOTH selectedRotoKeyRail and railSetSelection so the anchor cannot re-supply a dismissed inspector
 - [Phase 58]: 58-05: the one key-rail anchor rule is the railSetAnchorKeyRailId const shared by the inspector memo and the WorkflowStrip bundle (replaces the :10951 inline ternary)
+- [Phase 58]: Key-rail conversion cancels through the generation contract only: requestAuthority/commit take no AbortSignal, so no AbortController is assigned and assertCurrent is the cancellation channel.
+- [Phase 58]: AbortError lands the key-rail conversion in 'cancelled' unconditionally (no generation equality guard) and nulls progress; cancel() and dispose() are the only bumpers while the path awaits.
+- [Phase 58]: cancel() returns before clearing keyRailCycleEditTarget when isBusyPhase is true; closeConfirmation no-ops while busy, so the frozen target is only cleared when the close can happen.
 
 ### Pending Todos
 
@@ -717,8 +721,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T12:28:45.967Z
-Stopped at: Completed 58-05-PLAN.md
+Last session: 2026-11-03T13:48:24.653Z
+Stopped at: Completed 58-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
