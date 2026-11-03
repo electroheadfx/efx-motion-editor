@@ -1,106 +1,143 @@
 ---
 phase: 58-rail-editing-regressions
-reviewed: 2026-11-03T14:17:45Z
+reviewed: 2026-11-03T16:41:49Z
 depth: deep
-files_reviewed: 6
+files_reviewed: 11
 files_reviewed_list:
+  - app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts
+  - app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts
+  - app/src/components/physic-paint/hooks/useRotoTimelineActions.test.ts
+  - app/src/components/physic-paint/hooks/useRotoTimelineActions.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoGroupParity.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.test.ts
   - app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts
-  - app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.test.ts
-  - app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx
 findings:
   critical: 1
-  warning: 0
+  warning: 1
   info: 1
-  total: 2
-  necessity: 0
+  total: 3
+  necessity: 1
 status: issues_found
 ---
 
-# Phase 58: Code Review Report (gap closure: 58-06 / 58-07 / 58-08)
+# Phase 58: Code Review Report (gap closure: 58-09 G-01 / 58-10 CR-03)
 
-**Reviewed:** 2026-11-03T14:17:45Z
+**Reviewed:** 2026-11-03T16:41:49Z
 **Depth:** deep
-**Files Reviewed:** 6
+**Files Reviewed:** 11
 **Status:** issues_found
 
 ## Summary
 
-Deep re-review of the three gap-closure fixes against diff base `90b20bc19dacefc62e4b8e000adc19ebb036f2c7`, with cross-file tracing into the drag routing, loop derivation, presentation, and export paths they depend on.
+Deep re-review of the 58-09 (G-01) and 58-10 (CR-03) gap-closure work against diff base `44d36f5dd7`, cross-referenced with the copy/paste rail-set path, the parse/revision pipeline, the delete classifiers, and the residual `repeat` consumers. No structural-findings block was supplied for this round.
 
-The 58-06 fix is correct: `confirmKeyRailCycle` now fences both awaits with the generation it captured (`physicsPaintRotoPlayScriptController.ts:1834,1841,1873`), routes `AbortError` to `'cancelled'` without a `fail()` (`:1882-1891`), and keeps the frozen target so a retry commits exactly once. The paired `cancel()` early return (`:3639-3643`) fixes WR-01: while `'committing'`, `canCancel` is false and `isBusyPhase` is true, so the target is no longer cleared under a dialog that cannot close; the failed-commit retry remains functional. Both new controller tests exercise the real interleavings (deferred authority / deferred commit) and assert commit counts, not just phases.
+58-10 is correct. `loopSourceOrderIsProvable` (`physicsPaintRotoPhysicalResolver.ts:1867-1887`) is a faithful extraction of the 58-07 `move-key` proof, and the `move-key-group` guard (`:5036-5052`) reads the FINAL candidate mapping, is intersection-scoped to clips whose `sourceKeyIds` contain a moved key, and is safe because `buildMoveGroupCandidate` (`:1887-2007`) is a pure rigid translation. The prior round's CR-03 is closed.
 
-The 58-07 fix is correct for the intent it guards. The final-mapping check (`physicsPaintRotoPhysicalResolver.ts:4469-4493`) reads the post-ripple mapping, so cut/insert survivors cannot hide an inversion; a source key absent from the mapping fails closed; `changed === false` stays exempt; a one-element cycle is vacuously ordered; the `> 1` rejection and the locked D-16 copy are preserved verbatim. Its sibling intent, however, is not guarded: `move-key-group` can still persist a partial source-cycle move that inverts the cycle's order (CR-03 below), with the same user-visible consequences CR-02 had before the fix. This is pre-existing relative to the 58-07 commit but sits in the reviewed file and directly undermines the invariant 58-07 established.
+58-09's read-side bound is coherent: `resolvePhysicPaintRotoLoopSourceExtent` (`physicsPaintRotoPhysicalModel.ts:1003-1031`) and its consumers agree on `min(storedEnd, phaseOrigin + cycleLength * repeat)`, the reveal-rail exemption is honoured, dangling sources fall back to the stored end, and `reconcilePhysicPaintRotoGroupFrames` (`:1062-1112`) preserves every parser invariant (non-empty strictly increasing ranges inside the new end, overrides inside a visible range, unreferenced override records pruned, replay excluded, input references returned when nothing changes). Undo/Redo round-trips byte-identically.
 
-The 58-08 fix is correct. `reducedForm` is exactly `keyRailCreate || standardEditTarget` (`PhysicsPaintPlayScriptDialog.tsx:69-72`), and both render only `ReducedCycleCard` (`:377-380`), so exempting the frames channel cannot admit an invalid confirm: `confirmKeyRailCycle` reads the frozen target and repeat, and `updateLoop` reads repeat plus the loop snapshot, never `countText`. `stackCollision` is null outside stacking (`:138`), so `confirmBlocked` matches the old button gate exactly on non-reduced surfaces. The Enter collision branch still precedes the gate (`:294-305`), and the footer button now reads the same value (`:579`).
-
-Verification: `vitest run` over the four touched suites (loop guards, physical resolver, controller, dialog) passes 633 tests. No necessity findings. Prior info items IN-01..IN-03 from the phase review remain open per `58-REVIEW-DISPOSITION.md` and are not re-reported here.
+However, G-01 applies its "stored end is stale intent" rule to every finite lifecycle clip, while the rail-set paste path deliberately synthesizes lifecycle clips whose stored end is a duration-preserving span that is NOT a whole cycle multiple. The new clamp therefore truncates freshly pasted Infinity rails (CR-01). A second gap is the ownership disagreement between the new delete classifiers and the resolver for frames inside a lifecycle gap (WR-01). The full-suite pass and clean typecheck do not exercise either case: the pinned paste tests only use whole-cycle spans, and no test places a real key on a gap frame.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
+### CR-01: G-01 truncates a pasted Infinity rail whose frozen span is not a whole cycle
 
-### CR-03: Partial-cycle group move bypasses the source-order invariant established for `move-key`
-
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:4945-4977` (with `:1836-1958`, `:1950-1955`, `:5548-5560`, `:5650-5655`)
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts:307-311` (root cause), `:449-451` (synthesized lifecycle), `:898` (impact); `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:5661-5666`, `:5717-5720` (render clamp); `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1067-1092` (persistent trim); `app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.ts:2346-2356`, `:2449-2450` (reconcile on paste + semantic delta)
 **Severity:** BLOCKER
 
-**Issue:** The 58-07 order proof is attached only to the `move-key` branch. The sibling `move-key-group` branch builds a candidate and hands it to `finalizeProposal` without ever consulting the loop clips:
+**Issue:** Copying an Infinity rail freezes its visible span and derives the cycle count with rounding:
 
 ```ts
-const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
-if (!moveResult.ok) return moveResult.resolution;
-const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+const effectiveEndExclusive = Math.max(clip.placementStart, Math.min(document.capacity, boundary));
+return { effectiveEndExclusive, repeat: Math.max(1, Math.round((effectiveEndExclusive - clip.placementStart) / cycleLength)) };
 ```
 
-`buildMoveGroupCandidate` rejects only duplicate destinations and capacity (`:1895-1921`), `finalizeProposal` proves identity coverage/unique frames/interpolation breaks but never validates `sourceKeyIds` order (`:3590-3664`), and the loop follow only runs when the moved set contains the cycle's ENTIRE `sourceKeyIds` (`:1950-1955`). A partial-cycle selection therefore produces `nextLoopClips === null` and leaves the clip referring to its original source list.
+`buildDuplicatedLoopClip` then synthesizes `originalEndExclusive: destinationStart + (sourceEffectiveEndExclusive - clip.placementStart)` — the preserved duration — with that rounded `repeat`. When the span is not a whole multiple and rounds down, the clip stores `originalEndExclusive > phaseOrigin + cycleLength * repeat`. G-01's `resolvePhysicPaintRotoLoopSourceExtent` treats the formula as truth (`:1028`), so `derivePhysicPaintRotoLoopRanges` clamps:
 
-The phase's own D-04 test pins the destructive case: source keys A..E at 10..14, cycle `[A,B,C,D,E]`, partial group move `{A,B}` to physical-cell 20 produces the mapping `A:20, B:21, C:12, D:13, E:14` and asserts `nextLoopClips` is null (`physicsPaintRotoLoopGuards.test.ts:761-771`). Its title claims "loops resolve by id" but it never calls `derive()`. In fact `derivePhysicPaintRotoLoopRanges` requires strictly increasing source positions (`:5548-5552`) and marks the clip `unresolved.invalidSourceTiming` (`:5650-5655`) because 12 < 21 at the third position.
-
-Consequences are identical to the pre-fix CR-02 state: the rail reports "Source missing" (`view/physicsPaintLoopClipPresentation.ts:321,341`) and export is blocked with "invalid source timing" (`lib/exportEngine.ts:116-117`). The only recovery is Undo: `unlinkLoop` has no production consumer (only the dialog test mock at `PhysicsPaintPlayScriptDialog.test.ts:251`), and `repairLoop`/`openSourceEdit` refuse merged Standard clips (`physicsPaintRotoPlayScriptController.ts:1947,2061`).
-
-Reachability is direct and user-facing: `PhysicsPaintWorkflowStrip.tsx:4448` arms a group drag whenever at least two keys are selected and the grabbed key is in the set; source keys are ordinary real keys in the selection source (`PhysicsPaintStudio.tsx:6645-6657` maps `rotoKeyRecordsRef`), and `prepareRotoKeyGroupDrag` forwards that selection as `move-key-group` (`useRotoTimelineActions.ts:2495-2535`). Every adjacent mutation path guards this invariant: `move-key-rail` rejects group-owned members (`:4559-4566`), Force Spacing requires a validated linked-source-spacing authorization that checks strict order at input (`:4497-4523`, `:3874-3878`), and `move-key` now checks the final order. `move-key-group` is the only remaining entry that can reorder sources.
-
-**Fix:** Apply the same final-mapping proof to every clip the group move touches, after the candidate is built and before finalization. A group move that keeps the order (for example `{A,B}` to 8) stays legal, preserving the D-04 partial-move intent:
 ```ts
-const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
-if (!moveResult.ok) return moveResult.resolution;
-if (moveResult.candidate.changed) {
-  for (const clip of loopClips) {
-    // A clip is affected when the move repositions any of its source keys.
-    if (!clip.sourceKeyIds.some((keyId) => seenMovedKeyIds.has(keyId))) continue;
-    const positions = clip.sourceKeyIds.map((keyId) => moveResult.candidate.mapping.get(keyId));
-    const orderIsProvable = positions.every(
-      (position, index) => position !== undefined
-        && (index === 0 || positions[index - 1]! < position),
-    );
-    if (!orderIsProvable) {
-      return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
-    }
-  }
+const boundedNaturalEnd = sourceExtent === null ? naturalEnd : Math.min(naturalEnd, sourceExtent.endExclusive);
+...
+const effectiveEnd = Math.max(fragment.start, Math.min(boundedNaturalEnd, fragment.endExclusive, boundary.frame));
+```
+
+Two consequences, both introduced by this phase:
+
+1. **Render loss.** The pasted rail renders `cycleLength * repeat` frames, not the source's visible duration. Pre-G-01 the resolver ignored `repeat` for rendering and used `min(originalEndExclusive, boundary)`, so the trailing partial cycle was visible. Repro: Infinity rail at `placementStart 10`, source keys at 10 and 14 (`cycleLength 5`), next unowned key at 27 → copied span 17, `repeat = round(17/5) = 3`, pasted at 100 → stored end 117, extent 115 → frames 115 and 116 stop rendering the moment the paste is accepted.
+2. **Permanent trim.** `reconcilePhysicPaintRotoGroupFrames` runs on the same non-replay paste commit (the paste proposal feeds `stagedLoopClips` at `:2297`), rewrites `originalEndExclusive` to 115, trims `visibleRanges`, and prunes override records in the discarded tail. The trimmed shape is then persisted, so the loss survives later edits and Undo/Redo snapshots pair with the truncated document.
+
+The same inconsistency also leaves the published edit's semantic delta describing a document that was never written: `proposed.impact` is built from the untrimmed proposal (`physicsPaintRotoRailSetCopy.ts:898`), stored at `useRotoPhysicalEditCoordinator.ts:2094`, and attached as the payload's `semanticDelta` (`:2449-2450`), while `stagedRevision` and the payload clips are built from the reconciled collection. `identities[].effectiveEndExclusive` and `nextRevision` therefore advertise the trimmed-away tail.
+
+This contradicts the copy path's own contract: `resolveLoopCopyExtent`'s doc (`:255-264`) promises the pasted copy "reproduces the visible duration it actually had", and the synthesized-lifecycle comment in `buildDuplicatedLoopClip` (`:440-451`) promises it "renders to exactly the source's visible duration". The pinned tests only cover spans that happen to be whole multiples (`physicsPaintRotoRailSetCopy.test.ts:660-708`, 24/6) or round up (`:710-730`, 100/6 → 17), so the regression is untested.
+
+**Fix:** Make the frozen cycle count cover the preserved span so the derived extent can never be shorter than the stored end:
+
+```ts
+// physicsPaintRotoRailSetCopy.ts:308-311
+return {
+  effectiveEndExclusive,
+  // Ceil, not round: the synthesized lifecycle stores the full visible span as
+  // originalEndExclusive, so phaseOrigin + cycleLength * repeat must be >= it or
+  // G-01's source-extent clamp trims the pasted tail away.
+  repeat: Math.max(1, Math.ceil((effectiveEndExclusive - clip.placementStart) / cycleLength)),
+};
+```
+
+The existing pinned values are unchanged (24/6 → 4; 100/6 → 17). Add a regression test with a span such as 17 at cycle 5: assert the pasted `originalEndExclusive`, the derived `effectiveEnd` (must equal the pasted end), and that a coordinator commit leaves the pasted clip byte-identical. Also build the paste impact/`nextRevision` from the post-reconcile document (or run the reconcile before the impact is constructed) so the semantic delta matches what is published.
+
+### WR-01: A real key inside a lifecycle gap is undeletable, and the locked copy points at a frame that refuses deletion
+
+**File:** `app/src/components/physic-paint/hooks/useRotoTimelineActions.ts:734-745`, `:906-915`, `:964-967`; `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts:1054-1069`, `:4226-4231`, `:873-875`; `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:614-625`
+**Severity:** WARNING
+
+**Issue:** The new UI ownership test only accepts frames that render Group content:
+
+```ts
+return target.kind === 'source-occurrence' || target.kind === 'generated-occurrence' || target.kind === 'override'
+  ? { groupId: target.groupId } : null;
+```
+
+`classifyPhysicPaintRotoGroupFrameTarget` returns `group-gap` for any in-extent frame outside `visibleRanges` (`physicsPaintRotoGroupLifecycle.ts:439-448`), so gap frames are not "owned" in the UI. The resolver's `isGroupOwnedKeyFrame` never consults `visibleRanges` — ownership is `phaseOrigin <= appFrame < min(originalEndExclusive, extent.endExclusive)` — so the same frame IS owned there. Result: when the cursor is elsewhere, the single-key branch falls through and returns `ordinary-key`; the delete reaches the resolver, which rejects with `group-owned-key-delete-rejected` and the locked copy "This key is owned by a Rail cycle. Delete the Rail frame instead." But `proposePhysicPaintRotoDeleteGroupFrame` rejects that same frame with `frame-not-visible` (`:621-625`). The prescribed remedy cannot be executed, and the key cannot be removed at all.
+
+Reachability is short and follows the guard's own terms. G-01 explicitly claims ownership of "a local key inside the surviving extent" (resolver `:4227`). Such a key can sit on a rendered Group frame (rail-set paste checks occupancy against `realKeyRecords` only, so a rendered frame is "free"). Deleting that Rail frame — exactly what the locked copy instructs — removes the phase from `visibleRanges` and leaves the real key on a now-hidden gap frame. From then on, key Delete is refused as Group-owned while Rail-frame Delete is refused as not visible. The only escape is deleting the entire Group rail.
+
+**Fix:** Make the resolver's ownership predicate visibility-based, so gap frames classify as ordinary keys (this is what the UI already concludes):
+
+```ts
+// physicsPaintRotoPhysicalResolver.ts:1062-1068
+return appFrame >= clip.phaseOrigin
+  && appFrame < endExclusive
+  && clip.visibleRanges !== undefined
+  && clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
+```
+
+Add parity tests for a source frame, an override frame, and a gap frame (visible vs hidden) across the resolver and `classifyRotoDeleteTarget`. If gap-frame keys must stay protected instead, then the UI must return a group-frame target for `group-gap` AND `proposePhysicPaintRotoDeleteGroupFrame` must accept gap frames; protecting them in the resolver while refusing the frame delete in the UI is not a coherent state.
+
+### IN-01: Unreachable `capacity === undefined` fallback in `resolveGroupBoundedEnd`
+
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoGroupLifecycle.ts:320-337`
+**Severity:** INFO
+**Category:** necessity
+
+**Issue:** `resolveGroupBoundedEnd` accepts `capacity: number | undefined` and returns the stored end when `typeof capacity !== 'number'` (`:328`). Every call site passes `input.document.capacity` (`:102`, `:395`, `:621`, `:747`) or the `capacity` parameter of `resolveGroupPhaseAuthority` (`:366`), which is only ever called with `input.document.capacity` (`:107`, `:411`, `:626`). `PhysicPaintRotoPhysicalDocument.capacity` is a required `number` (`physicsPaintRotoPhysicalModel.ts:374`), and parsed documents validate it. The undefined branch cannot be reached from typed code, so the guard protects an impossible state and weakens the signature of a helper whose callers all hold the capacity.
+
+**Fix:** Type the parameter as `number` and delete the fallback:
+
+```ts
+function resolveGroupBoundedEnd(
+  group: PhysicPaintRotoLoopClip & Required<Pick<PhysicPaintRotoLoopClip, 'phaseOrigin' | 'originalEndExclusive'>>,
+  realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity: number,
+): number {
+  const extent = resolvePhysicPaintRotoLoopSourceExtent(...);
+  return extent === null ? group.originalEndExclusive : Math.min(group.originalEndExclusive, extent.endExclusive);
 }
 ```
-(`seenMovedKeyIds` is already built and validated at `:4949-4958`.) Alternatively gate partial-cycle group selections at drag-arm time, but that is a product decision. Update `physicsPaintRotoLoopGuards.test.ts:761-771` so it stops pinning an unresolved clip: move `{A,B}` to an order-preserving destination (e.g. 8) and assert `derive(...)?.unresolved` is null, then add a rejection case for the current physical-cell 20 destination.
-
-## Warnings
-
-None. The three gap fixes introduce no warning-level defects.
-
-## Info
-
-### IN-04: Post-commit generation comment misstates how a cancel can reach `'committing'`
-
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts:1870-1873` (with `:3630-3643`, `:4296`)
-**Severity:** INFO
-
-**Issue:** The comment on the post-commit `assertCurrent` says "A cancel that lands while the commit is in flight must not be upgraded into an accepted conversion." After the WR-01 fix this cannot happen through `cancel()`: `canCancel` is false during `'committing'` (`:830`), and `cancel()` now returns before touching the target or closing whenever `isBusyPhase(phase.peek())` is true (`:3639-3643`), so Escape, the footer Cancel, and the header Close are all true no-ops for the whole await. The only remaining way to invalidate the generation during the commit is `dispose()` (`:3674`), which is a legitimate reason to keep the check. The comment is inaccurate in a way that invites a future maintainer to "align" the code with it by removing the WR-01 guard, which would reintroduce the stranded-target dialog.
-
-**Fix:** Reword the comment to name disposal as the only path that can invalidate the generation once the phase is `'committing'` (for example: "A dispose during the commit must not write phase/dialog/target state."). Optionally add a controller test that disposes during the commit and asserts no completion-side mutation occurs.
 
 ---
 
-_Reviewed: 2026-11-03T14:17:45Z_
+_Reviewed: 2026-11-03T16:41:49Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
