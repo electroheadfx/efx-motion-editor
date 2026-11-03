@@ -564,6 +564,9 @@ describe('PhysicsPaintKeyRail double-click conversion entry (58-03 RAIL-01 / D-0
 
   it('pins the 220 ms window constant and the optional prop on both interfaces', () => {
     expect(keyRailSource).toContain('export const ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS = 220;');
-    expect(keyRailSource.match(/onOpenKeyRailCycleEdit\?: \(firstKeyId: string\) => void;/g)).toHaveLength(2);
+    // The public interface declares the closed signature; the target interface
+    // forwards that exact type through the props index.
+    expect(keyRailSource).toContain('readonly onOpenKeyRailCycleEdit?: (firstKeyId: string) => void;');
+    expect(keyRailSource).toContain("readonly onOpenKeyRailCycleEdit?: PhysicsPaintKeyRailProps['onOpenKeyRailCycleEdit'];");
   });
 });

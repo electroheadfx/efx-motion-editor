@@ -27,6 +27,9 @@ import {
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
 
+/** 58-03 D-02: the fast double-click window reused from the Loop Rail idiom. */
+export const ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS = 220;
+
 export interface PhysicsPaintKeyRailGeometry {
   readonly left: number;
   readonly width: number;
@@ -80,6 +83,8 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
     selection: RotoKeyRailSelection,
     gesture: PhysicsPaintRotoSpacingSelectionGesture,
   ) => void;
+  /** 58-03 D-02: open the same conversion entry as the inspector's Edit Rail. */
+  readonly onOpenKeyRailCycleEdit?: (firstKeyId: string) => void;
   readonly prepareKeyRailDrag?: (
     firstKeyId: string,
     destinationFirstKeyAppFrame: number,
@@ -106,6 +111,7 @@ export interface PhysicsPaintKeyRailProps extends SelectedKeyRailCopyAvailabilit
 }
 
 interface RailMouseEvent {
+  readonly timeStamp: number;
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
   readonly shiftKey: boolean;
@@ -135,6 +141,7 @@ interface PhysicsPaintKeyRailTargetProps extends SelectedKeyRailCopyAvailability
    *  suppression to the batch session; absent for plain-selected single rails. */
   readonly railSetMoveMemberKeyRailIds?: readonly string[];
   readonly onSelectKeyRail: PhysicsPaintKeyRailProps['onSelectKeyRail'];
+  readonly onOpenKeyRailCycleEdit?: PhysicsPaintKeyRailProps['onOpenKeyRailCycleEdit'];
   readonly prepareKeyRailDrag?: PhysicsPaintKeyRailProps['prepareKeyRailDrag'];
   readonly commitKeyRailDrag?: PhysicsPaintKeyRailProps['commitKeyRailDrag'];
   readonly getClampInput?: PhysicsPaintKeyRailProps['getClampInput'];
@@ -162,6 +169,9 @@ function sameKeyRailSelection(
 function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
   const tooltip = useStyledTooltip();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
+  // 58-03 D-02: timestamp-only double-click detector — no pending timer, so the
+  // first click's synchronous selection timing is untouched.
+  const lastClickTimestampRef = useRef<number | null>(null);
   // 47 close-out UAT round 3: a hover timer armed before the cross-track drag
   // took the pointer capture would pop the pill mid-drag (pointerleave never
   // fires under capture) — hide it the moment a session starts crossing.
@@ -178,7 +188,9 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     firstKeyId: segment.firstKeyId,
     keyIds: segment.keyIds,
   });
-  const clearClickSequence = () => {};
+  const clearClickSequence = () => {
+    lastClickTimestampRef.current = null;
+  };
   const drag = usePhysicsPaintKeyRailDrag<RotoKeyRailDragPublication>({
     projectDestination: ({ originClientX, clientX }) => (
       segment.firstKeyFrame + Math.round((clientX - originClientX) / props.framePitch)
@@ -247,7 +259,29 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         : event.metaKey || event.ctrlKey
           ? 'toggle'
           : 'plain';
+    // 58-03 D-02: a second PLAIN click on this same rail inside the fast window
+    // is the open-editor intent. Modifier clicks reset the sequence, and the
+    // first click still selects synchronously (no pending timer exists to
+    // cancel), so selection timing is unchanged.
+    const previousTimestamp = lastClickTimestampRef.current;
+    const elapsed = previousTimestamp === null
+      ? Number.POSITIVE_INFINITY
+      : event.timeStamp - previousTimestamp;
+    lastClickTimestampRef.current = gesture === 'plain' ? event.timeStamp : null;
     props.onSelectKeyRail(selection(), gesture);
+    if (
+      gesture === 'plain'
+      && !isMoveMember
+      && !props.busy
+      && elapsed >= 0
+      && elapsed <= ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS
+    ) {
+      // Consume the sequence so a third rapid click starts over.
+      lastClickTimestampRef.current = null;
+      event.preventDefault();
+      tooltip.hide();
+      props.onOpenKeyRailCycleEdit?.(segment.firstKeyId);
+    }
   };
   const handleKeyDown = (event: RailKeyboardEvent) => {
     // 43.4 defect 9: the shared rail roving group owns ArrowLeft/ArrowRight/
@@ -258,6 +292,17 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     if (event.key === 'Escape') {
       event.stopPropagation();
       tooltip.hide();
+      return;
+    }
+    // 58-03 D-02: Enter selects the rail and opens the SAME conversion entry as
+    // the double-click; a move member or a busy rail only selects.
+    if (event.key === 'Enter') {
+      event.stopPropagation();
+      event.preventDefault();
+      tooltip.hide();
+      clearClickSequence();
+      props.onSelectKeyRail(selection(), 'plain');
+      if (!isMoveMember && !props.busy) props.onOpenKeyRailCycleEdit?.(segment.firstKeyId);
       return;
     }
     if (event.key !== ' ') return;
@@ -369,6 +414,7 @@ export function PhysicsPaintKeyRail(props: PhysicsPaintKeyRailProps) {
           isSetAnchor={props.railSetAnchorKeyRailId === segment.firstKeyId}
           railSetSize={props.railSetSize}
           onSelectKeyRail={props.onSelectKeyRail}
+          onOpenKeyRailCycleEdit={props.onOpenKeyRailCycleEdit}
           prepareKeyRailDrag={props.prepareKeyRailDrag}
           commitKeyRailDrag={props.commitKeyRailDrag}
           getClampInput={props.getClampInput}
