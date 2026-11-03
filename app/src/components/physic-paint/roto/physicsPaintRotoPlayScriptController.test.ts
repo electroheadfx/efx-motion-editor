@@ -4058,6 +4058,59 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
     });
 
+    // CR-01 (RAIL-04/RAIL-05, D-11): Cancel during 'preparing' must stop the
+    // awaited conversion before any write. The key-rail path assigns no
+    // AbortController — the generation contract is the only cancellation
+    // channel — so the phase stays 'preparing' until authority resolves, then
+    // lands in 'cancelled' with the frozen target still open for a retry.
+    it('in-flight cancel before authority commits nothing and keeps the target', async () => {
+      let releaseAuthority!: () => void;
+      let authorityCalls = 0;
+      const requestAuthority = vi.fn(async (): Promise<PhysicPaintRotoAuthorityResult> => {
+        authorityCalls += 1;
+        if (authorityCalls === 1) {
+          return new Promise<PhysicPaintRotoAuthorityResult>((resolve) => {
+            releaseAuthority = () => resolve(railAuthority());
+          });
+        }
+        return railAuthority();
+      });
+      const test = railHarness([], {}, { requestAuthority });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const pending = test.controller.confirm();
+      await vi.waitFor(() => expect(requestAuthority).toHaveBeenCalledTimes(1));
+      expect(test.controller.phase.value).toBe('preparing');
+      expect(test.controller.canCancel.value).toBe(true);
+
+      test.controller.cancel();
+      // Generation-only cancel: the phase cannot leave 'preparing' until the
+      // awaited authority settles, and no AbortController bookkeeping exists.
+      expect(test.controller.phase.value).toBe('preparing');
+      releaseAuthority();
+      expect(await pending).toBe(false);
+
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.controller.phase.value).toBe('cancelled');
+      expect(test.controller.status.value).toBe('Key Rail cycle cancelled');
+      expect(test.controller.error.value).toBeNull();
+      expect(test.log).toHaveBeenCalledWith('Key Rail cycle cancelled');
+      expect(test.log.mock.calls.some(([, isError]) => isError === true)).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+
+      // The frozen target survives cancellation: Create Cycle retries once and
+      // commits exactly once.
+      expect(await test.controller.confirm()).toBe(true);
+      expect(requestAuthority).toHaveBeenCalledTimes(2);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+      expect(test.controller.confirmationOpen.value).toBe(false);
+    });
+
     it('refuses a STALE target at confirm with zero commits and no history entry (T-58-02)', async () => {
       // The accepted document still holds F, but fresh authority no longer does.
       const test = railHarness([], {
