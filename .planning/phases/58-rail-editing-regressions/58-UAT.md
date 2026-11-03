@@ -45,7 +45,7 @@ result: [pending]
 
 ### 7. G-01 repro — surviving-cycle extent
 expected: Convert a Motion rail to a Standard (grey) cycle, delete the end keys and change the Cycle count, then close and reopen the Studio. The cycle stops at the surviving source extent: deleted frames render empty (no cached paint), stale paint sheets are gone, and the repaired extent survives reopen. A genuinely dangling source id still presents "Source missing".
-result: [pending]
+result: failed — live 2026-11-03. Motion rail on 5 frames (Cycle 1): deleting the last key empties frame 5 but the cycle keeps 5 source slots; Cycle 2 rebuilds end 10 with a hole at the deleted phase. The stale cache is gone (G-01 fix working), but the rail does not resize to the surviving 4 keys.
 
 ### 8. CR-01 — pasted Infinity rail tail
 expected: Copy an Infinity rail whose visible span is not a whole multiple of its cycle length (e.g. keys at 10 and 14, cycle 5, next unowned key at 27), paste it elsewhere, commit, then reopen. The pasted rail renders the full copied visible duration (its 17-frame tail included) and survives the commit and reopen byte-identically; no tail frames are trimmed.
@@ -63,9 +63,37 @@ result: [pending]
 
 total: 10
 passed: 0
-issues: 0
-pending: 10
+issues: 1
+pending: 9
 skipped: 0
 blocked: 0
 
 ## Gaps
+
+### G-02 — Deleting a key inside a Motion/interpolated rail must ripple the rail's keys, never leave a hole
+
+**Reported:** 2026-11-03 (live UAT).
+
+**Repro (user):**
+1. Create a Motion rail on 5 frames (Cycle 1).
+2. Delete the last key → the 5th frame empties, but the cycle still counts 5 source slots.
+3. Edit Rail → Cycle 2 → the rail rebuilds with a hole at the deleted phase (end 10, frames 5..9 appended after the gap).
+4. Deleting an **in-between** key behaves the same way: a gap appears inside the rail and the cycle does not shrink.
+
+**Approved behavior (user, 2026-11-03):**
+- A key/frame delete inside a Motion/interpolated rail removes that phase from the rail's source cycle and **shifts the following rail source keys left** (ripple) in the same accepted write, so the rail becomes a contiguous shorter cycle (5 keys → 4 keys; Cycle 2 → 8 contiguous frames).
+- No hole may exist in a rail whose interior policy is `generate` (Motion + interpolation). Trailing and in-between deletes both contract.
+- The deleted key record and any override at that phase are cleaned up; later overrides shift left with their phases.
+- A shifted source key that would collide with an unrelated real key must fail closed (refuse the delete) rather than corrupt the timeline.
+- The existing last-edge Delete Frame gap behavior is superseded for generate-mode rails; static/hold gap semantics stay unless the user says otherwise.
+
+**Current mechanism:** a single selected key at a Group frame classifies as `group-frame` (`useRotoTimelineActions.ts:734-745`), and `proposePhysicPaintRotoDeleteGroupFrame` (`physicsPaintRotoGroupLifecycle.ts:614-689`) removes the phase from `visibleRanges` while keeping `sourceKeyIds`, `phaseOrigin`, and `originalEndExclusive`. The cycle length therefore never shrinks and `updateLoop` reappends the deleted phase as a gap.
+
+### G-03 — Inserting a frame on a Motion rail must be allowed and interpolation-filled
+
+**Reported:** 2026-11-03 (live UAT, same session).
+
+**Repro:** with a Motion rail active, insert/create a frame → rejected with "Choose a valid timeline frame before inserting." (`useRotoTimelineActions.ts:160`, `:2069`, `:2078`, `:2088`).
+
+**Approved behavior:** the insert should be accepted and the new frame filled by the rail's interpolation mode; the insert must not be blocked merely because the target frame is a linked rail frame.
+
