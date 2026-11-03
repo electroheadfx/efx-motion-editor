@@ -54,6 +54,11 @@ created: "2026-11-03"
 | 58-07-02 | 07 | 1 | RAIL-06, RAIL-07 | T-58-11 | Empty, single-source, dangling-source, and unreferenced edges pinned | unit | `vitest run physicsPaintRotoLoopGuards.test.ts` | ✅ | ✅ green |
 | 58-08-01 | 08 | 1 | RAIL-02, RAIL-04 | T-58-13 | Enter and primary button share one confirm gate; stale frames error cannot veto | unit | `vitest run PhysicsPaintPlayScriptDialog.test.ts` | ✅ | ✅ green |
 | 58-08-02 | 08 | 1 | RAIL-02, RAIL-04 | T-58-13 | Full, Reveal, and stack-collision surfaces keep prior precedence | unit | `vitest run PhysicsPaintPlayScriptDialog.test.ts` | ✅ | ✅ green |
+| 58-09-01 | 09 | 1 | RAIL-03, RAIL-07 | T-58-14, T-58-15 | One accepted delete on a stale document persists the bounded extent and prunes orphan overrides atomically | unit | `vitest run useRotoPhysicalEditCoordinator.test.ts` | ✅ | ✅ green |
+| 58-09-02 | 09 | 1 | RAIL-03, RAIL-07 | T-58-14 | Derivation, classifier, and group proposers stop at the surviving source extent (reveal rails exempt) | unit | `vitest run physicsPaintRotoLoopGuards.test.ts physicsPaintRotoGroupParity.test.ts` | ✅ | ✅ green |
+| 58-09-03 | 09 | 1 | RAIL-03, RAIL-07 | T-58-15, T-58-16 | Stale-override contraction pruned in the rebuilt clip; Group-owned deletes refused with the locked copy | unit | `vitest run physicsPaintRotoPlayScriptController.test.ts physicsPaintRotoLoopGuards.test.ts useRotoTimelineActions.test.ts` | ✅ | ✅ green |
+| 58-10-01 | 10 | 2 | RAIL-06, RAIL-07 | — | Final-mapping source-order guard rejects order-breaking partial-cycle group moves with the D-16 copy | unit | `vitest run physicsPaintRotoLoopGuards.test.ts` | ✅ | ✅ green |
+| 58-10-02 | 10 | 2 | RAIL-06, RAIL-07 | — | UI dispatch: a rejected group drag never calls executePhysicalEdit; an accepted drag commits once | unit | `vitest run useRotoTimelineActions.test.ts` | ✅ | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -84,3 +89,11 @@ Existing infrastructure covers all phase requirements — no Wave 0 bootstrap ne
 - [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** approved 2026-11-03
+
+## Validation Audit 2026-11-03
+
+| Metric | Count |
+|---|---|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
