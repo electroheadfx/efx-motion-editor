@@ -128,7 +128,7 @@ status: complete
 
 1. **Task 1: Studio wiring — stable inspector projection, handlers, and prop bundles** - `9af22dd8e` (feat)
 
-**Plan metadata:** `PENDING` (docs: complete plan)
+**Plan metadata:** `6284d47d3` (docs: complete plan)
 
 _Note: this task was declared `type="auto"` without `tdd="true"`; the canonical behavior-adding predicate returned `is_behavior_adding: false`, so a RED commit was not required. The new pins are source-string consequence pins over the wiring, which cannot fail meaningfully before the wiring exists as a separate testable unit._
 
