@@ -4,11 +4,11 @@ milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
 status: executing
-stopped_at: Completed 58-03-PLAN.md
-last_updated: "2026-11-03T12:14:52.698Z"
+stopped_at: Completed 58-04-PLAN.md
+last_updated: "2026-11-03T12:24:46.969Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: aa3aa0bcc804599a69fa215ede83ff4825a0e8e1
+state_head: d716e105850204b63e9c717dc10a04c07c242286
 progress:
   total_phases: 1
   completed_phases: 0
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58 (Rail editing regressions) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-11-03 — Phase 58 execution started
 
@@ -179,6 +179,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P01 | 2 min | 2 tasks | 3 files |
 | Phase 58 P02 | 8 min | 3 tasks | 5 files |
 | Phase 58 P03 | 6 min | 2 tasks | 10 files |
+| Phase 58 P04 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -539,6 +540,8 @@ Recent decisions affecting current work:
 - [Phase 58]: The open intent is gated on gesture 'plain', !isMoveMember, and !busy (T-58-06); the onRailSetDragClickSuppressed / consumeClickSuppression early returns and the pointer-down batch routing are byte-for-byte unchanged.
 - [Phase 58]: Enter selects then opens the same entry; Space still plain-selects only and Escape still hides the tooltip. A move member or busy rail on Enter selects without opening.
 - [Phase 58]: The strip forwards onOpenKeyRailCycleEdit beside onOpenRotoLoopEdit; drag dispatch is untouched. Studio wiring is plan 58-05.
+- [Phase 58]: 58-04: reduced conversion surface is the existing dialog in reduced mode (reducedForm), not a second dialog; ReducedCycleCard shared by key-rail-create and merged-Standard loop-edit
+- [Phase 58]: 58-04: deleted the unreachable Standard branches (RailTypeCard standard prop/span, dialog standard wiring, Regenerate Rail standard block); STANDARD_RAIL_REGENERATE_REASON stays exported for shared use
 
 ### Pending Todos
 
@@ -710,8 +713,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T12:14:52.672Z
-Stopped at: Completed 58-03-PLAN.md
+Last session: 2026-11-03T12:24:43.189Z
+Stopped at: Completed 58-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
