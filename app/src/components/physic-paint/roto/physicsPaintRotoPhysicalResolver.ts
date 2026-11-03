@@ -4460,11 +4460,14 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!identities.keyIds.has(intent.movedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Move targets unknown moved identity "${intent.movedKeyId}".`);
     }
-    // Phase 58 D-12 (Law A): a key referenced by exactly one loop clip is an
-    // independent cycle and may move alone; two or more keep the Phase 43
-    // D-11 law — the cycle's internal spacing IS the loop rhythm, so only a
-    // rigid whole-cycle group drag moves it.
-    if (countLoopsReferencingSourceKey(loopClips, intent.movedKeyId) > 1) {
+    // Phase 58 D-12 (Law A) / CR-02: a key referenced by exactly one loop
+    // clip is an independent cycle and may move alone, but only when the
+    // final mapping keeps that clip's sourceKeyIds strictly increasing (the
+    // derivation law, checked below). Two or more keep the Phase 43 D-11 law
+    // — the cycle's internal spacing IS the loop rhythm, so only a rigid
+    // whole-cycle group drag moves it.
+    const referencingClips = loopClips.filter((clip) => clip.sourceKeyIds.includes(intent.movedKeyId));
+    if (referencingClips.length > 1) {
       return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
     }
     if (intent.target === null || typeof intent.target !== 'object') {
@@ -4472,6 +4475,20 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
     if (!moveResult.ok) return moveResult.resolution;
+    // CR-02: the order check reads the FINAL candidate mapping, because
+    // cutSource / openAndInsert ripple survivors and the requested cell alone
+    // can hide an inversion. Rejection is the only safe outcome: re-sorting
+    // sourceKeyIds would silently change the cycle's playback order.
+    if (referencingClips.length === 1 && moveResult.candidate.changed) {
+      const sourcePositions = referencingClips[0]!.sourceKeyIds.map((keyId) => moveResult.candidate.mapping.get(keyId));
+      const orderIsProvable = sourcePositions.every(
+        (position, index) => position !== undefined
+          && (index === 0 || sourcePositions[index - 1]! < position),
+      );
+      if (!orderIsProvable) {
+        return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+      }
+    }
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
