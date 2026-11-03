@@ -4064,6 +4064,126 @@ function projectionFailure(
   }) as PhysicPaintRotoPhysicalTimelineProjectionResolution;
 }
 
+export interface PhysicPaintRotoRailInsertLoopClipInput {
+  readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
+  readonly destinationAppFrame: number;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly interpolationEnabled: boolean;
+}
+
+type PhysicPaintRotoLifecycleLoopClip = PhysicPaintRotoLoopClip & Required<Pick<
+  PhysicPaintRotoLoopClip,
+  'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
+>>;
+
+function shiftLoopClipFrames(clip: PhysicPaintRotoLifecycleLoopClip, delta: number): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    ...clip,
+    placementStart: clip.placementStart + delta,
+    phaseOrigin: clip.phaseOrigin + delta,
+    originalEndExclusive: clip.originalEndExclusive + delta,
+    visibleRanges: Object.freeze(clip.visibleRanges.map((range) => Object.freeze({
+      start: range.start + delta,
+      endExclusive: range.endExclusive + delta,
+    }))),
+    frameOverrides: Object.freeze(clip.frameOverrides.map((override) => Object.freeze({
+      ...override,
+      appFrame: override.appFrame + delta,
+    }))),
+  }) as PhysicPaintRotoLoopClip;
+}
+
+function extendLoopClipCycle(
+  clip: PhysicPaintRotoLifecycleLoopClip,
+  cycleLength: number,
+  insertOffset: number,
+): PhysicPaintRotoLoopClip {
+  const phaseOrigin = clip.phaseOrigin;
+  const nextCycleLength = cycleLength + 1;
+  const mapFrame = (appFrame: number): number => {
+    const local = appFrame - phaseOrigin;
+    const cycleIndex = Math.floor(local / cycleLength);
+    const offset = local - cycleIndex * cycleLength;
+    // The right ripple moves every key at/after the destination, so the phase
+    // that already owns the destination frame shifts too and the inserted
+    // interpolation frame takes its place.
+    return phaseOrigin + cycleIndex * nextCycleLength + offset + (offset >= insertOffset ? 1 : 0);
+  };
+  return Object.freeze({
+    ...clip,
+    syncState: 'modified' as const,
+    originalEndExclusive: mapFrame(clip.originalEndExclusive - 1) + 1,
+    visibleRanges: Object.freeze(clip.visibleRanges.map((range) => Object.freeze({
+      start: mapFrame(range.start),
+      endExclusive: mapFrame(range.endExclusive - 1) + 1,
+    }))),
+  }) as PhysicPaintRotoLoopClip;
+}
+
+/**
+ * 58 (G-03): Insert into a generate-mode Rail extends its source cycle by one
+ * interpolated frame instead of being refused as a Group-ownership violation.
+ * The ordinary right ripple already moves every real key; this helper rebuilds
+ * every affected Loop Clip to match, or returns null so the caller keeps the
+ * fail-closed guard. Only canonical contiguous source cycles anchored at
+ * `phaseOrigin` qualify; a clip touched by the ripple receives the inserted
+ * frame at its first cycle, every other affected clip shifts right whole.
+ */
+export function resolvePhysicPaintRotoRailInsertLoopClips(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+): readonly PhysicPaintRotoLoopClip[] | null {
+  const frameByKeyId = new Map<string, number>();
+  for (const identity of input.identities) frameByKeyId.set(identity.keyId, identity.appFrame);
+  let changed = false;
+  const nextClips: PhysicPaintRotoLoopClip[] = [];
+  for (const clip of input.loopClips) {
+    let moved = 0;
+    let missing = false;
+    for (const keyId of clip.sourceKeyIds) {
+      const frame = frameByKeyId.get(keyId);
+      if (frame === undefined) {
+        missing = true;
+        continue;
+      }
+      if (frame >= input.destinationAppFrame) moved += 1;
+    }
+    if (moved === 0) {
+      nextClips.push(clip);
+      continue;
+    }
+    if (missing) return null;
+    if (clip.syncState === undefined
+      || clip.provenanceState === undefined
+      || clip.phaseOrigin === undefined
+      || clip.originalEndExclusive === undefined
+      || clip.visibleRanges === undefined
+      || clip.frameOverrides === undefined) return null;
+    if (!input.interpolationEnabled || clip.mode === 'static' || clip.railKind === 'reveal') return null;
+    if (clip.frameOverrides.length > 0) return null;
+    const typed = clip as PhysicPaintRotoLifecycleLoopClip;
+    const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
+    if (sourceFrames.length < 2 || sourceFrames[0] !== typed.phaseOrigin) return null;
+    if (sourceFrames.some((frame, index) => index > 0 && frame !== sourceFrames[index - 1]! + 1)) return null;
+    const cycleLength = sourceFrames.length;
+    if (moved === cycleLength) {
+      nextClips.push(shiftLoopClipFrames(typed, 1));
+      changed = true;
+      continue;
+    }
+    const insertOffset = input.destinationAppFrame - typed.phaseOrigin;
+    if (insertOffset <= 0 || insertOffset >= cycleLength) return null;
+    nextClips.push(extendLoopClipCycle(typed, cycleLength, insertOffset));
+    changed = true;
+  }
+  return changed ? Object.freeze(nextClips.map((clip) => Object.freeze(clip))) : null;
+}
+
+export function isPhysicPaintRotoRailInsertDestination(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+): boolean {
+  return resolvePhysicPaintRotoRailInsertLoopClips(input) !== null;
+}
+
 /**
  * Resolve a single physical timeline edit intent into one immutable complete
  * identity-to-frame proposal or a stable failure.
@@ -4141,10 +4261,25 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const rippledGroupKeys = identities.ordered.filter(
       (identity) => identity.appFrame >= intent.destinationAppFrame && loopReferencedKeyIds.has(identity.keyId),
     );
+    // 58 (G-03): Insert on a generate-mode Rail is legal — the ripple extends
+    // its source cycle by one interpolated frame. Every other Group-owned
+    // ripple keeps the 43.2 fail-closed guard.
+    let railInsertLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
     if (rippledGroupKeys.length > 0) {
-      return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
+      railInsertLoopClips = resolvePhysicPaintRotoRailInsertLoopClips({
+        identities: identities.ordered,
+        destinationAppFrame: intent.destinationAppFrame,
+        loopClips,
+        interpolationEnabled: input.interpolationEnabled,
+      });
+      if (railInsertLoopClips === null) {
+        return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
+      }
     }
-    const candidate = buildInsertCandidate(identities, intent.destinationAppFrame);
+    const candidate: Candidate = {
+      ...buildInsertCandidate(identities, intent.destinationAppFrame),
+      ...(railInsertLoopClips === null ? {} : { nextLoopClips: railInsertLoopClips }),
+    };
     // The ONE capacity computation: the shifted right tail may need one extra
     // slot, and a tail insert at capacity opens a brand-new slot. Downstream
     // modules carry this value unchanged and must never recompute it.
@@ -4152,10 +4287,17 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     for (const frame of candidate.mapping.values()) {
       if (frame > highestFinalKeyFrame) highestFinalKeyFrame = frame;
     }
+    let highestLifecycleEnd = 0;
+    for (const clip of railInsertLoopClips ?? []) {
+      if (clip.originalEndExclusive !== undefined && clip.originalEndExclusive > highestLifecycleEnd) {
+        highestLifecycleEnd = clip.originalEndExclusive;
+      }
+    }
     const nextCapacity = Math.max(
       input.capacity,
       highestFinalKeyFrame + 1,
       intent.destinationAppFrame + 1,
+      highestLifecycleEnd,
     );
     if (nextCapacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
       return fail('capacity-exhausted', operationKind, 'Insert would exceed the maximum physical frame capacity.');

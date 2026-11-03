@@ -4287,6 +4287,95 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     });
     expect(resolution.proposal.nextLoopClips).toBeNull();
   });
+
+  // 58 (G-03): Insert on a generate-mode Rail is the user's "new interpolated
+  // frame" — the ripple shifts the later source keys and grows the cycle.
+  it('58 G-03: insert at a rail source key extends the cycle by one interpolated frame', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert on a generate-mode rail must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 0, G1B: 2, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      syncState: 'modified',
+      phaseOrigin: 0,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      sourceKeyIds: ['G1A', 'G1B'],
+    });
+  });
+
+  it('58 G-03: insert at the first rail source key shifts the whole clip right', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 0 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [group1],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Insert before a generate-mode rail must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ G1A: 1, G1B: 2, X: 6 });
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'group-1',
+      placementStart: 1,
+      phaseOrigin: 1,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 1, endExclusive: 5 }],
+    });
+  });
+
+  it('58 G-03: static rails keep the fail-closed insert guard', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ],
+      records: recordsFrom([
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+      ]),
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [{ ...group1, mode: 'static' }],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Insert on a static rail must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
+  });
 });
 
 describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
@@ -4712,6 +4801,101 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       groupId: 'group-a',
       appFrame: 0,
       cleanupKeyIds: ['A0', 'A1'],
+    });
+  });
+
+  // 58 (G-02): a generate-mode rail (Motion + interpolation) must never hold an
+  // interior hole. Deleting one of its keys contracts the source cycle: later
+  // source keys ripple one frame left and every repeat loses that frame.
+  const contiguousGroup = (overrides: Partial<PhysicPaintRotoLoopClip> = {}): PhysicPaintRotoLoopClip => lifecycleGroup({
+    sourceKeyIds: ['C0', 'C1', 'C2', 'C3', 'C4'],
+    repeat: 1,
+    phaseOrigin: 0,
+    placementStart: 0,
+    originalEndExclusive: 5,
+    visibleRanges: [{ start: 0, endExclusive: 5 }],
+    frameOverrides: [],
+    ...overrides,
+  });
+  const contiguousRecords = (): PhysicPaintRotoRealKeyRecord[] => ['C0', 'C1', 'C2', 'C3', 'C4'].map(
+    (keyId, appFrame) => lifecycleRecord(keyId, appFrame),
+  );
+
+  it('58 G-02: an in-between key delete contracts the cycle across every repeat', () => {
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(
+        [contiguousGroup({ repeat: 2, originalEndExclusive: 10, visibleRanges: [{ start: 0, endExclusive: 10 }] })],
+        contiguousRecords(),
+        [],
+        [],
+      ),
+      groupId: 'group-a',
+      appFrame: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Generate-mode contraction must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      syncState: 'modified',
+      sourceKeyIds: ['C0', 'C1', 'C3', 'C4'],
+      phaseOrigin: 0,
+      originalEndExclusive: 8,
+      visibleRanges: [{ start: 0, endExclusive: 8 }],
+      frameOverrides: [],
+    });
+    expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['C0', 0],
+      ['C1', 1],
+      ['C3', 2],
+      ['C4', 3],
+    ]);
+    expect(result.impact.cleanupKeyIds).toEqual(['C2']);
+  });
+
+  it('58 G-02: a trailing key delete shrinks the cycle without any gap', () => {
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument([contiguousGroup()], contiguousRecords(), [], []),
+      groupId: 'group-a',
+      appFrame: 4,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Trailing contraction must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      sourceKeyIds: ['C0', 'C1', 'C2', 'C3'],
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+    });
+    expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['C0', 0],
+      ['C1', 1],
+      ['C2', 2],
+      ['C3', 3],
+    ]);
+    expect(result.impact.cleanupKeyIds).toEqual(['C4']);
+  });
+
+  it('58 G-02: static rails keep the legacy gap semantics', () => {
+    const result = proposePhysicPaintRotoDeleteGroupFrame({
+      document: lifecycleDocument(
+        [contiguousGroup({ mode: 'static' })],
+        contiguousRecords(),
+        [],
+        [],
+      ),
+      groupId: 'group-a',
+      appFrame: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Static rail delete must resolve');
+    expect(result.proposal.loopClips[0]).toMatchObject({
+      sourceKeyIds: ['C0', 'C1', 'C2', 'C3', 'C4'],
+      originalEndExclusive: 5,
+      visibleRanges: [
+        { start: 0, endExclusive: 2 },
+        { start: 3, endExclusive: 5 },
+      ],
     });
   });
 });

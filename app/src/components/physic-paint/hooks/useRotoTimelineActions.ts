@@ -27,6 +27,7 @@ import {
   derivePhysicPaintRotoLoopRanges,
   derivePhysicPaintPushSet,
   derivePhysicPaintRailSetMove,
+  isPhysicPaintRotoRailInsertDestination,
   resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
@@ -105,6 +106,8 @@ export interface RotoInsertTargetClassificationInput {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly physicalCells: readonly RotoPhysicalTimelineCell[];
   readonly frameResolution: PhysicPaintRotoFrameResolution | null;
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  readonly interpolation?: PhysicPaintRotoInterpolationState;
 }
 
 /**
@@ -136,6 +139,17 @@ export function classifyRotoInsertTarget(
     || input.frameResolution.kind === 'linked-generated'
     || input.frameResolution.kind === 'linked-gap'
   )) {
+    // 58 (G-03): a generate-mode Rail frame accepts the insert — the resolver
+    // extends its source cycle with one interpolation-filled frame.
+    if (input.frameResolution.kind !== 'linked-gap'
+      && isPhysicPaintRotoRailInsertDestination({
+        identities: input.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        destinationAppFrame: input.currentAppFrame,
+        loopClips: input.loopClips ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        interpolationEnabled: input.interpolation?.enabled ?? false,
+      })) {
+      return { kind: 'generated', appFrame: input.currentAppFrame };
+    }
     return { kind: 'resolved-linked', appFrame: input.currentAppFrame };
   }
   if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
@@ -3868,6 +3882,8 @@ function readRotoInsertTargetInput(input: RotoTimelineActionsInput): RotoInsertT
     records: input.getRotoKeyRecords?.() ?? [],
     physicalCells: input.getPhysicalCells?.() ?? [],
     frameResolution: currentAppFrame === null ? null : readLoopFrameResolution(input, currentAppFrame),
+    loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+    interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
   };
 }
 

@@ -89,6 +89,8 @@ blocked: 0
 
 **Current mechanism:** a single selected key at a Group frame classifies as `group-frame` (`useRotoTimelineActions.ts:734-745`), and `proposePhysicPaintRotoDeleteGroupFrame` (`physicsPaintRotoGroupLifecycle.ts:614-689`) removes the phase from `visibleRanges` while keeping `sourceKeyIds`, `phaseOrigin`, and `originalEndExclusive`. The cycle length therefore never shrinks and `updateLoop` reappends the deleted phase as a gap.
 
+**Fix (direct, 2026-11-03):** `proposePhysicPaintRotoDeleteGroupFrame` now contracts a generate-mode rail: the deleted phase leaves `sourceKeyIds`, later source keys ripple one frame left, overrides shift with their phases, and `originalEndExclusive`/`visibleRanges` follow the shorter cycle. Static/hold and reveal rails keep the legacy gap semantics; a shared source cycle or any foreign-key collision fails closed. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-02:`). Live retest pending.
+
 ### G-03 — Inserting a frame on a Motion rail must be allowed and interpolation-filled
 
 **Reported:** 2026-11-03 (live UAT, same session).
@@ -96,4 +98,6 @@ blocked: 0
 **Repro:** with a Motion rail active, insert/create a frame → rejected with "Choose a valid timeline frame before inserting." (`useRotoTimelineActions.ts:160`, `:2069`, `:2078`, `:2088`).
 
 **Approved behavior:** the insert should be accepted and the new frame filled by the rail's interpolation mode; the insert must not be blocked merely because the target frame is a linked rail frame.
+
+**Fix (direct, 2026-11-03):** the insert-slot resolver now rebuilds a generate-mode rail instead of failing the Group-ownership guard — later source keys shift right and the cycle grows by one interpolated frame (`resolvePhysicPaintRotoRailInsertLoopClips`). Static/reveal rails and non-canonical cycles still fail closed; the insert classifier offers the action on those rail frames. Regression pins in `physicsPaintRotoPhysicalResolver.test.ts` (`58 G-03:`). Live retest pending.
 
