@@ -1791,6 +1791,68 @@ describe('useRotoTimelineActions rigid group-drag settlement', () => {
   });
 });
 
+describe('useRotoTimelineActions partial-cycle group-drag source order (CR-03)', () => {
+  const D11_TEXT = 'Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.';
+  const sourceRecords = () => [
+    realKeyRecord('A', 10),
+    realKeyRecord('B', 11),
+    realKeyRecord('C', 12),
+    realKeyRecord('D', 13),
+    realKeyRecord('E', 14),
+  ];
+  const sourceLoop: PhysicPaintRotoLoopClip = {
+    loopId: 'L1',
+    placementStart: 10,
+    sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+    repeat: 5,
+    mode: 'static',
+  };
+
+  it('rejects an order-breaking partial-cycle drag with the locked copy and never dispatches', () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: sourceRecords(),
+      loopClips: [sourceLoop],
+      selectedKeyIds: ['A', 'B'],
+      capacity: 30,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('A', {
+      kind: 'physical-cell',
+      appFrame: 20,
+    });
+
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('Order-breaking group drag must reject');
+    expect(preparation.reason).toBe(D11_TEXT);
+    expect(preparation.detail).toBe(D11_TEXT);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('prepares and commits an order-preserving partial-cycle drag exactly once', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: sourceRecords(),
+      loopClips: [sourceLoop],
+      selectedKeyIds: ['A', 'B'],
+      capacity: 30,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('A', {
+      kind: 'physical-cell',
+      appFrame: 8,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Order-preserving group drag must prepare');
+    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 8, B: 9, C: 12, D: 13, E: 14 });
+
+    const accepted = await actions.physicalActions.commitRotoKeyGroupDrag(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { operationKind: string };
+    expect(dispatched.operationKind).toBe('move-key-group');
+  });
+});
+
 describe('useRotoTimelineActions Key Rail drag prepare/commit publication pair', () => {
   const railRecords = [
     realKeyRecord('A', 0),

@@ -759,16 +759,40 @@ describe('D-04 rigid group drag of the whole source cycle', () => {
     expect(resolvePhysicPaintRotoLoopFrame(context, 52)).toMatchObject({ kind: 'linked', loopId: 'L2', sourceKeyId: 'C', repeatInstance: 0 });
   });
 
-  it('a partial-cycle group move leaves every placementStart unchanged (loops resolve by id)', () => {
+  // CR-03: a partial-cycle group move stays legal only when the FINAL mapping
+  // keeps every touched clip's sourceKeyIds strictly increasing. Cells 8/9 put
+  // A,B before C@12 — the same partial-move intent, but now resolvable.
+  it('an order-preserving partial-cycle group move stays accepted and the loop still resolves', () => {
     const loopClips = [loop(10, 5, 'L1')];
     const proposal = expectOk(resolveEdit({
       records: SOURCE_RECORDS(),
-      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
       loopClips,
     }));
-    expect(proposal.mapping.get('A')).toBe(20);
-    expect(proposal.mapping.get('B')).toBe(21);
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 8, B: 9, C: 12, D: 13, E: 14 });
     expect(proposal.nextLoopClips).toBeNull();
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
+  });
+
+  it('rejects a partial-cycle group move that breaks the referencing cycle order — CR-03', () => {
+    const sourceLoop = loop(10, 5, 'L1');
+    const loopClips = [sourceLoop];
+    const loopClipsBefore = loopClips.map((clip) => ({ ...clip }));
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      loopClips,
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+    // Preservation pin: rejection never mutates the caller's loop collection.
+    expect(loopClips).toHaveLength(1);
+    expect(loopClips[0]).toBe(sourceLoop);
+    expect(loopClips).toEqual(loopClipsBefore);
   });
 
   it('a group move that excludes source keys carries no loop update', () => {
