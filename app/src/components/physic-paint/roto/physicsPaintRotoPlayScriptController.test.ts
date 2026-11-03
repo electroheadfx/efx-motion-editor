@@ -4057,6 +4057,97 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.commit).not.toHaveBeenCalled();
       expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
     });
+
+    it('refuses a STALE target at confirm with zero commits and no history entry (T-58-02)', async () => {
+      // The accepted document still holds F, but fresh authority no longer does.
+      const test = railHarness([], {
+        physicalRecords: railPhysicalRecords().filter((entry) => entry.keyId !== 'F'),
+      });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.log).toHaveBeenCalledWith('The Key Rail segment changed. Reopen the Cycle dialog.', true);
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+    });
+
+    it('refuses keys already owned through a loop source cycle at open and at confirm', async () => {
+      const opened = railHarness([loopClip('L1', 10, 1, ['A'])]);
+      expect(await opened.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: false, reason: 'These keys already belong to a Loop Clip. Unlink it before creating a cycle.' });
+      expect(opened.controller.confirmationOpen.value).toBe(false);
+      expect(opened.requestAuthority).not.toHaveBeenCalled();
+      expect(opened.commit).not.toHaveBeenCalled();
+
+      let liveLoops: readonly PhysicPaintRotoLoopClip[] = [];
+      const raced = railHarness([], {}, { getRotoLoopClips: () => liveLoops });
+      expect(await raced.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      liveLoops = [loopClip('L1', 10, 1, ['A'])];
+      expect(await raced.controller.confirm()).toBe(false);
+      expect(raced.commit).not.toHaveBeenCalled();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+    });
+
+    it('refuses keys already owned through a loop frame override at open', async () => {
+      const overrideLoop: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 1, ['Z']),
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 20,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [{ appFrame: 12, keyId: 'C' }],
+      };
+      const test = railHarness([overrideLoop]);
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: false, reason: 'These keys already belong to a Loop Clip. Unlink it before creating a cycle.' });
+      expect(test.commit).not.toHaveBeenCalled();
+    });
+
+    it('two confirm calls in the same tick produce exactly ONE commit (T-58-04)', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const first = test.controller.confirm();
+      const second = test.controller.confirm();
+      expect(await Promise.all([first, second])).toEqual([true, false]);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.controller.phase.value).toBe('complete');
+    });
+
+    it('a Standard clip opened later keeps the span-based extent through updateLoop', async () => {
+      const gappedStandard = (repeat: number): PhysicPaintRotoLoopClip => ({
+        loopId: 'L1',
+        placementStart: 10,
+        sourceKeyIds: ['A', 'C', 'F'],
+        repeat,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [],
+      });
+      const test = railHarness([gappedStandard(1)]);
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      expect(test.controller.countText.value).toBe('3');
+      test.controller.repeatText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      const updated = test.commit.mock.calls[0][0].loopClips?.find((clip) => clip.loopId === 'L1');
+      // Span law, never the 3-key count: 10 + (15 - 10 + 1) * 2 = 22.
+      expect(updated?.originalEndExclusive).toBe(22);
+      expect(updated?.visibleRanges).toEqual([{ start: 10, endExclusive: 22 }]);
+      expect(isStandardMergedLoopClip(updated)).toBe(true);
+    });
   });
 });
 
