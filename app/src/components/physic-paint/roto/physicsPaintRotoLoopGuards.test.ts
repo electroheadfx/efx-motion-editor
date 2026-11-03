@@ -279,13 +279,22 @@ describe('D-11 rigid linked-key guard', () => {
   // cycle and may move alone; two or more keep Phase 43 D-11 and the rigid
   // whole-cycle group drag. The locked D-16 copy stays verbatim for >= 2.
   it('accepts a single-key move when exactly one loop references the key — Law A (D-12)', () => {
+    const sourceLoop = loop(10, 5);
+    const loopClips = [sourceLoop];
+    const loopClipsBefore = loopClips.map((clip) => ({ ...clip }));
     const proposal = expectOk(resolveEdit({
       records: SOURCE_RECORDS(),
       intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
-      loopClips: [loop(10, 5)],
+      loopClips,
     }));
     expect(proposal.mapping.get('C')).toBe(22);
+    // D-13: an accepted single-key move carries no loop follow — placementStart
+    // stays put because buildMoveCandidate never emits nextLoopClips.
     expect(proposal.nextLoopClips).toBeNull();
+    // Preservation pin: the caller's loop collection is never mutated.
+    expect(loopClips).toHaveLength(1);
+    expect(loopClips[0]).toBe(sourceLoop);
+    expect(loopClips).toEqual(loopClipsBefore);
   });
 
   it('rejects a single-key move when two loops reference the key with the locked copy', () => {
@@ -595,6 +604,39 @@ describe('D-11 rigid linked-key guard', () => {
 
     expect(resolution.ok).toBe(false);
     if (!resolution.ok) expect(resolution.failure.code).toBe('over-capacity');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 58 Law A no-leak pins — the guards D-12/D-14/D-15 did not touch.
+// Delete-key, delete-key-group, and both Force Spacing rejections are pinned
+// by the D-07/D-11 describes above; Insert and Duplicate Group-ownership are
+// pinned by physicsPaintRotoPhysicalResolver.test.ts, which this plan's verify
+// runs alongside this spec. The two Key Rail guards live here.
+// ---------------------------------------------------------------------------
+
+describe('Phase 58 Law A no-leak guards', () => {
+  it('keeps the delete-key-rail source-cycle guard with its locked copy', () => {
+    const resolution = resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'delete-key-rail', keyIds: ['G', 'C'] },
+      loopClips: [loop(10, 5)],
+    });
+    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key-rail', D07_TEXT(1));
+  });
+
+  it('keeps the move-key-rail Group-ownership guard', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-rail', memberKeyIds: ['C'], destinationFirstKeyAppFrame: 22 },
+      loopClips: [loop(10, 5)],
+    });
+    expectFailure(
+      resolution,
+      'malformed-target',
+      'move-key-rail',
+      'Key Rail move requires ordinary real-key members outside Group ownership.',
+    );
   });
 });
 
