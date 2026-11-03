@@ -24,6 +24,7 @@ import {
   PhotoWiggleCard,
   railTypeHelper,
   RailTypeCard,
+  ReducedCycleCard,
   RevealTimingCard,
   SourceCycleCard,
 } from './PhysicsPaintPlayScriptCards';
@@ -61,11 +62,17 @@ export function PhysicsPaintPlayScriptDialog({
   const dialogMode = playScript.dialogMode.value;
   const loopEdit = dialogMode === 'loop-edit';
   const sourceEdit = dialogMode === 'source-edit';
+  /* 58-04 (D-05/D-11): a Key Rail conversion opens this same shell reduced to
+     Cycle + Infinity — no tabs, no rail type, no source controls. */
+  const keyRailCreate = dialogMode === 'key-rail-create';
   const editTarget = playScript.loopEditTarget.value;
   /* 261031-vbo (Quick C1): a merged Standard Rail has no single-script
      provenance, so it has no editable Motion/Static rail type and no
      Regenerate path. The stored `mode` stays internal. */
   const standardEditTarget = loopEdit && editTarget !== null && isStandardMergedLoopClip(editTarget);
+  /* 58-04 (D-07): the conversion and every later Standard edit share ONE
+     reduced form. */
+  const reducedForm = keyRailCreate || standardEditTarget;
   const regenerateImpact = sourceEdit ? playScript.regenerateImpact.value : null;
   const regenerateSecondaryRef = useRef<HTMLButtonElement>(null);
   const regenerateTriggerRef = useRef<HTMLButtonElement>(null);
@@ -75,7 +82,7 @@ export function PhysicsPaintPlayScriptDialog({
      and every stack (261101-cd5 UAT). A stack is not a creation surface, but
      its two Rail axes (Paint/Photo × Motion/Static) map 1:1 onto the four
      stack run kinds, so the same tab strip + Rail Type subheader drive both. */
-  const stacking = !loopEdit && !sourceEdit && playScript.runDestination.value.kind === 'stack';
+  const stacking = !loopEdit && !sourceEdit && !keyRailCreate && playScript.runDestination.value.kind === 'stack';
   // 261031-qps (Quick B): a Reveal rail is a legal stack destination. Its render
   // uses the rail's own stored type, motion and color, so those controls are
   // visible but read-only. The reference guard stays a compact chip.
@@ -83,8 +90,8 @@ export function PhysicsPaintPlayScriptDialog({
   // 261101-1pc (Quick C2): a Reveal RUN on a Paint / Standard destination.
   const stackRevealRun = stacking && !stackReveal && isRevealRunKind(playScript.stackRunKind.value);
   // Apply surface = creation + every stack; edit modes keep their own layout.
-  const applySurface = !loopEdit && !sourceEdit && !regenerateImpact;
-  const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !stacking;
+  const applySurface = !loopEdit && !sourceEdit && !keyRailCreate && !regenerateImpact;
+  const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !keyRailCreate && !stacking;
   // The visual axis (which card set / timing / theme) for the current surface.
   const activeReveal = stacking ? (stackReveal || stackRevealRun) : revealTab;
   const activeTab: RotoPlayScriptRailTab = stacking
@@ -138,7 +145,9 @@ export function PhysicsPaintPlayScriptDialog({
   // 261101-cd5 UAT: the fixed 660 shell now carries every stack too. Only edit
   // modes and an open collision prompt (a one-shot user-triggered state, never
   // a toggle) need the content-height surface.
-  const surfaceTall = loopEdit || sourceEdit || stackCollision !== null;
+  // 58-04 (D-05): the reduced Standard form is compact — it never grows, even
+  // though its later-Standard entry point arrives through loop-edit.
+  const surfaceTall = reducedForm ? false : (loopEdit || sourceEdit || stackCollision !== null);
   // UAT 261031-i54: a stack starts from the rail's stored color; null falls back
   // to the live brush color (the creation behavior), so "Custom color" on a
   // rail that had none picks up the app's current brush color.
@@ -156,7 +165,8 @@ export function PhysicsPaintPlayScriptDialog({
           restoreRegenerateTriggerFocus.current = false;
           regenerateTriggerRef.current?.focus();
         } else repeatInputRef.current?.focus();
-      } else if (playScript.railTab.value === 'reveal') revealInputRef.current?.focus();
+      } else if (dialogMode === 'key-rail-create') repeatInputRef.current?.focus();
+      else if (playScript.railTab.value === 'reveal') revealInputRef.current?.focus();
       else inputRef.current?.focus();
     } else if (previousOpen.current) returnFocusRef.current?.focus();
     previousOpen.current = confirmationOpen;
@@ -252,7 +262,7 @@ export function PhysicsPaintPlayScriptDialog({
   // sourceKeyIds, so no Source cycle card renders in source-edit.
   // 261031-i54: a stack destination reuses the rail's own cycle — linking is a
   // creation choice, so the Source cycle card never renders for a stack.
-  const identicalCycle = !loopEdit && !sourceEdit && !revealTab && !stacking ? playScript.identicalSourceCycle.value : null;
+  const identicalCycle = !loopEdit && !sourceEdit && !keyRailCreate && !revealTab && !stacking ? playScript.identicalSourceCycle.value : null;
 
   const keepLocalChanges = () => {
     const targetId = playScript.loopEditTargetId.value;
@@ -307,7 +317,7 @@ export function PhysicsPaintPlayScriptDialog({
             </span>
             <strong id="physics-play-script-title">{regenerateImpact
               ? `Regenerate “${regenerateImpact.groupName}”?`
-              : loopEdit
+              : loopEdit || keyRailCreate
                 ? 'Edit Rail'
                 : sourceEdit
                   ? 'Edit Source Cycle'
@@ -316,9 +326,11 @@ export function PhysicsPaintPlayScriptDialog({
           <div class="physics-paint-play-script-header-meta">
             {regenerateImpact
               ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
-              : loopEdit && editTarget
-                ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
-                : <span class="physics-paint-play-script-header-range">Max {playScript.framesMax.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
+              : keyRailCreate
+                ? null
+                : loopEdit && editTarget
+                  ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
+                  : <span class="physics-paint-play-script-header-range">Max {playScript.framesMax.value}{playScript.destinationRange.value ? ` · ${playScript.destinationRange.value}` : ''}</span>}
             {/* T-261101-CD5-01: Close stops pointer-down so it never starts the
                 header drag, and routes only through the existing cancel path. */}
             <button
@@ -356,7 +368,11 @@ export function PhysicsPaintPlayScriptDialog({
             </div>
           ) : null}
           <div class="physics-paint-play-script-content">
-          {regenerateImpact ? (
+          {reducedForm ? (
+            /* 58-04 (D-05/D-10): the whole Standard surface — Cycle + Infinity
+               only; every creation, stack, reveal and edit card is skipped. */
+            <ReducedCycleCard playScript={playScript} busy={busy} repeatInputRef={repeatInputRef} />
+          ) : regenerateImpact ? (
             <div class="physics-paint-play-script-regenerate">
               <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Rail changes and restores the result from the saved Script and stored Rail settings.</p>
               <dl class="physics-paint-play-script-regenerate-facts">
@@ -538,7 +554,7 @@ export function PhysicsPaintPlayScriptDialog({
               >
                 {playScript.canCancel.value ? 'Cancel generation' : 'Cancel'}
               </button>
-              {loopEdit && !playScript.canCancel.value ? (
+              {loopEdit && !reducedForm && !playScript.canCancel.value ? (
                 <button
                   ref={regenerateTriggerRef}
                   type="button"
@@ -558,16 +574,20 @@ export function PhysicsPaintPlayScriptDialog({
                 <button
                   type="button"
                   class="physics-paint-play-script-button physics-paint-play-script-button-primary"
-                  disabled={(revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value) || (stacking && stackCollision !== null)}
+                  disabled={reducedForm
+                    ? Boolean(playScript.repeatError.value)
+                    : ((revealTab ? Boolean(playScript.revealValidationError.value) : Boolean(playScript.validationError.value)) || Boolean(playScript.repeatError.value) || (stacking && stackCollision !== null))}
                   onClick={() => { void playScript.confirm(); }}
                 >
-                  {loopEdit
-                    ? standardEditTarget
-                      ? 'Update Rail'
-                      : playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
-                    : sourceEdit
-                      ? 'Regenerate source cycle'
-                      : (<><Play size={11} aria-hidden="true" />Run Script</>)}
+                  {keyRailCreate
+                    ? 'Create Cycle'
+                    : loopEdit
+                      ? standardEditTarget
+                        ? 'Update Rail'
+                        : playScript.mode.value === 'static' ? 'Update Static' : 'Update Motion'
+                      : sourceEdit
+                        ? 'Regenerate source cycle'
+                        : (<><Play size={11} aria-hidden="true" />Run Script</>)}
                 </button>
               ) : null}
             </>)}

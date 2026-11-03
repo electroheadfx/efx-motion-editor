@@ -561,6 +561,50 @@ export function PaintTimingCard(props: {
   );
 }
 
+/* 58-04 (D-05/D-07/D-10): the Standard rail's reduced surface. A converted Key
+   Rail and an existing Standard clip share this exact card — Cycle + Infinity,
+   the two fields the Standard form may express. No title, no per-frame cells,
+   no other control. */
+export function ReducedCycleCard(props: {
+  playScript: RotoPlayScriptController;
+  busy: boolean;
+  repeatInputRef: Ref<HTMLInputElement>;
+}) {
+  return (
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
+      <div class="physics-paint-play-script-timing-body">
+        <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
+          <SliderStepper
+            id="physics-play-script-repeat"
+            class="physics-paint-play-script-compact-stepper"
+            inputRef={props.repeatInputRef}
+            label="Cycle"
+            ariaLabel="Cycle"
+            value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
+            onChange={(value) => { props.playScript.repeatText.value = String(value); }}
+            min={1}
+            sliderMax={16}
+            step={1}
+            disabled={props.busy || props.playScript.infinity.value}
+            ariaInvalid={Boolean(props.playScript.repeatError.value)}
+            ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+          />
+          <div class="physics-paint-play-script-timing-foot">
+            {dialogSwitch({
+              id: 'physics-play-script-infinity',
+              label: 'Infinity',
+              checked: props.playScript.infinity.value,
+              disabled: props.busy,
+              onClick: () => props.playScript.setInfinity(!props.playScript.infinity.value),
+            })}
+          </div>
+          {props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RevealTimingCard(props: {
   playScript: RotoPlayScriptController;
   busy: boolean;

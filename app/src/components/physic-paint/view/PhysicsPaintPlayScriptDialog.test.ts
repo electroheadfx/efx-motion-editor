@@ -49,6 +49,7 @@ import {
   PaintTimingCard,
   PhotoWiggleCard,
   RailTypeCard,
+  ReducedCycleCard,
   RevealTimingCard,
   SourceCycleCard,
 } from './PhysicsPaintPlayScriptCards';
@@ -61,7 +62,6 @@ import {
   type RotoPlayScriptStackRunKind,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
-import { STANDARD_RAIL_REGENERATE_REASON } from '../roto/physicsPaintRotoRunScriptStacking';
 
 const source = [
   readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8'),
@@ -291,7 +291,7 @@ function childrenOf(vnode: TestVNode): unknown[] {
 const EXPANDABLE = new Set<unknown>([
   CollisionCard, ColorCard, ColorizeCard, DialogRadioGroup,
   KeyScriptCard, MotionWiggleCard, PaintSeedCard, PaintTimingCard,
-  PhotoWiggleCard, RailTypeCard, RevealTimingCard, SourceCycleCard,
+  PhotoWiggleCard, RailTypeCard, ReducedCycleCard, RevealTimingCard, SourceCycleCard,
 ]);
 
 const renderedByVNode = new WeakMap<object, unknown>();
@@ -1279,16 +1279,16 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     repeatText: '2',
   };
 
-  it('shows a read-only Standard rail type and no Motion/Static rail-type radios', () => {
+  it('shows the reduced Cycle + Infinity form and no rail type', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
-    const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-rail-label')))).toBe('RAIL TYPE');
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-standard-rail-value')))).toBe('Standard');
-    expect(findAll(modeCard, byClass('physics-paint-play-script-rail-helper'))).toHaveLength(0);
-    expect(findAll(modeCard, byRadioGroup('Rail Type'))).toHaveLength(0);
-    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Motion')).toHaveLength(0);
-    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Static')).toHaveLength(0);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Rail');
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'RAIL TYPE')).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
   });
 
   it('labels the primary action Update Rail', () => {
@@ -1300,13 +1300,10 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
   });
 
-  it('disables Regenerate Rail with the merged-rail reason as its title', () => {
+  it('renders no Regenerate Rail action for a merged Standard rail', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
-    const trigger = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail');
-    expect(trigger.props.disabled).toBe(true);
-    expect(trigger.props.title).toBe(STANDARD_RAIL_REGENERATE_REASON);
-    expect(trigger.props['aria-disabled']).toBe('true');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(0);
   });
 });
 
