@@ -589,7 +589,9 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
 
 describe('Physics Paint Key Rail selection authority (43.4-06)', () => {
   it('owns exact Key Rail identity as session-only Signal state', () => {
-    expect(studio).toContain("import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';");
+    // 58-05 extends the same named import with the inspector projection; the
+    // pin keeps asserting the ONE Key Rail presentation module owns it.
+    expect(studio).toContain("import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/physicsPaintKeyRailPresentation';");
     expect(studio).toContain('type RotoKeyRailSelection');
     expect(studio).toContain('const selectedRotoKeyRail = useSignal<RotoKeyRailSelection | null>(null);');
     expect(studio).toContain('Session-local Key Rail selection');
@@ -6076,5 +6078,100 @@ describe('Paper grain edits record one unified-ledger undo entry (PAPER-03)', ()
     // restored document fallback, so the visible paper steps with the ledger.
     expect(studio).toContain('syncBackgroundSettingsFromDocument();');
     expect(studio).toContain('const syncBackgroundSettingsFromDocument = useCallback(');
+  });
+});
+
+describe('58-05 Key Rail inspector Studio wiring (RAIL-01)', () => {
+  const inspectorMemoStart = studio.indexOf('const selectedKeyRailInspector = useMemo(');
+  const inspectorMemoEnd = studio.indexOf(
+    '}, [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length]);',
+    inspectorMemoStart,
+  );
+  const inspectorMemo = inspectorMemoStart >= 0 && inspectorMemoEnd > inspectorMemoStart
+    ? studio.slice(inspectorMemoStart, inspectorMemoEnd)
+    : '';
+  const openHandlerStart = studio.indexOf('const handleOpenRotoKeyRailCycleEdit = useCallback(');
+  const openHandlerEnd = studio.indexOf('const handleCloseRotoKeyRail = useCallback(', openHandlerStart);
+  const openHandler = openHandlerStart >= 0 && openHandlerEnd > openHandlerStart
+    ? studio.slice(openHandlerStart, openHandlerEnd)
+    : '';
+  const closeHandlerStart = studio.indexOf('const handleCloseRotoKeyRail = useCallback(');
+  const closeHandlerEnd = closeHandlerStart >= 0
+    ? studio.indexOf('}, []);', closeHandlerStart) + '}, []);'.length
+    : -1;
+  const closeHandler = closeHandlerStart >= 0 && closeHandlerEnd > closeHandlerStart
+    ? studio.slice(closeHandlerStart, closeHandlerEnd)
+    : '';
+
+  it('projects the inspector exactly once, inside a useMemo with the four stable inputs', () => {
+    // The projection is never a bare render-body call: one occurrence, inside
+    // the memo whose deps are exactly the stable selection, segment map,
+    // anchor, and set size (createIdentityMemo compares with Object.is).
+    expect(studio.split('projectSelectedKeyRailInspector(').length - 1).toBe(1);
+    expect(studio.split('const selectedKeyRailInspector = useMemo(').length - 1).toBe(1);
+    expect(inspectorMemoStart).toBeGreaterThanOrEqual(0);
+    expect(inspectorMemoEnd).toBeGreaterThan(inspectorMemoStart);
+    expect(inspectorMemo).toContain('const firstKeyId = effectiveSelectedRotoKeyRail?.firstKeyId ?? railSetAnchorKeyRailId;');
+    expect(inspectorMemo).toContain('const segment = keyRailSegmentByFirstKeyId.get(firstKeyId);');
+    expect(inspectorMemo).toContain('if (firstKeyId === null) return null;');
+    expect(inspectorMemo).toContain('return projectSelectedKeyRailInspector(segment, { setSize: effectiveRailSetMembers.length });');
+  });
+
+  it('resolves the rail-set anchor through ONE shared const so a 2+ set still projects (D-03)', () => {
+    // The segment map is a memo, not a per-render Map, so its identity holds.
+    expect(studio).toContain('const keyRailSegmentByFirstKeyId = useMemo(');
+    expect(studio).toContain('() => new Map(keyRailSegments.map((segment) => [segment.firstKeyId, segment] as const)),');
+    // Exactly one key-rail anchor definition in the whole Studio.
+    expect(studio.split('const railSetAnchorKeyRailId = ').length - 1).toBe(1);
+    expect(studio.split("effectiveRailSetMembers[0]?.kind === 'key-rail'").length - 1).toBe(1);
+    expect(studio).toContain(
+      'const railSetAnchorKeyRailId = effectiveRailSetMembers[0]?.kind === \'key-rail\'\n    ? effectiveRailSetMembers[0].firstKeyId\n    : null;',
+    );
+    // The strip bundle reads the const instead of re-deriving the anchor.
+    const bundleStart = studio.indexOf('railSetMemberKeyRailIds: effectiveRailSetMembers');
+    const bundleEnd = studio.indexOf('rotoParentEndExclusive:', bundleStart);
+    expect(bundleStart).toBeGreaterThanOrEqual(0);
+    expect(bundleEnd).toBeGreaterThan(bundleStart);
+    const bundle = studio.slice(bundleStart, bundleEnd);
+    expect(bundle).toContain('railSetAnchorKeyRailId,');
+    expect(bundle).not.toContain("effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null");
+    expect(bundle).toContain('onOpenKeyRailCycleEdit: handleOpenRotoKeyRailCycleEdit,');
+  });
+
+  it('selects before opening and returns a Promise on the missing-segment refusal', () => {
+    expect(openHandlerStart).toBeGreaterThanOrEqual(0);
+    expect(openHandler).toContain("return Promise.resolve({ ok: false, reason: 'This Key Rail no longer exists.' });");
+    expect(openHandler).toContain('keyRailSegmentByFirstKeyId.get(firstKeyId)');
+    expect(openHandler).toContain('selectedRotoKeyRail.value = { firstKeyId: segment.firstKeyId, keyIds: segment.keyIds };');
+    // Select-then-open: the panel already shows the inspector when the modal closes.
+    expect(openHandler.indexOf('selectedRotoKeyRail.value =')).toBeLessThan(
+      openHandler.indexOf('return rotoPlayScript.openKeyRailCycleEdit({ firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });'),
+    );
+    expect(openHandler).toContain('return rotoPlayScript.openKeyRailCycleEdit({ firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });');
+  });
+
+  it('clears BOTH selection layers on Close so the takeover is dismissible (D-01/D-03)', () => {
+    expect(closeHandlerStart).toBeGreaterThanOrEqual(0);
+    expect(closeHandler).toContain('selectedRotoKeyRail.value = null;');
+    expect(closeHandler).toContain('railSetSelection.value = null;');
+    // Consequence pin: with both layers cleared the anchor resolves null, the
+    // memo returns null before projecting, and 58-03's panel branch — which
+    // only fires on a non-null presentation — renders the normal content.
+    expect(inspectorMemo).toContain('if (firstKeyId === null) return null;');
+    expect(inspectorMemo).toContain('?.firstKeyId ?? railSetAnchorKeyRailId');
+    expect(scriptsPanel).toContain('if (selectedKeyRail) {');
+  });
+
+  it('threads the presentation and both handlers into the right-panel scripts props', () => {
+    expect(studio).toContain('selectedKeyRail: selectedKeyRailInspector,');
+    expect(studio).toContain('onOpenKeyRailEdit: handleOpenRotoKeyRailCycleEdit,');
+    expect(studio).toContain('onCloseKeyRail: handleCloseRotoKeyRail,');
+    const depsStart = studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve([');
+    const depsEnd = studio.indexOf('], () => {', depsStart);
+    expect(depsStart).toBeGreaterThanOrEqual(0);
+    expect(depsEnd).toBeGreaterThan(depsStart);
+    const deps = studio.slice(depsStart, depsEnd);
+    expect(deps).toContain('selectedLoopClip, selectedKeyRailInspector,');
+    expect(deps).toContain('handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail,');
   });
 });
