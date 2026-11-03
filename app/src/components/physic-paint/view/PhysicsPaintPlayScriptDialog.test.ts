@@ -968,6 +968,12 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
 // form; a repeat error still blocks both triggers.
 describe('PhysicsPaintPlayScriptDialog Enter confirm gate (WR-02)', () => {
   const primaryAction = (tree: unknown) => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+  // A stack collision renders its own actions row + primary-class Truncate
+  // action, so the footer confirm button is the one inside the dialog footer.
+  const footerPrimary = (tree: unknown) => findOne(
+    findOne(findOne(tree, byClass('physics-paint-play-script-footer')), byClass('physics-paint-play-script-actions')),
+    (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'),
+  );
   const rootOf = (tree: unknown) => findOne(tree, (vnode) => vnode.props?.role === 'dialog');
   const pressEnter = (root: TestVNode) => {
     const event = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: null };
@@ -1037,6 +1043,52 @@ describe('PhysicsPaintPlayScriptDialog Enter confirm gate (WR-02)', () => {
     });
     pressEnter(rootOf(renderDialog(busy.controller)));
     expect(busy.controller.confirm).not.toHaveBeenCalled();
+  });
+
+  // 58-08 (WR-02): the shared gate must not leak the reduced-form exemption into
+  // the full creation, Reveal, or stacking surfaces.
+  it('confirms on Enter on the default apply surface when nothing blocks', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks both Enter and the primary on the apply surface when the frames validation fails', () => {
+    const { controller } = createFakeController({ validationError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('blocks both Enter and the primary on the Reveal tab when only the reveal validation fails', () => {
+    const { controller } = createFakeController({
+      railTab: 'reveal',
+      validationError: null,
+      revealValidationError: 'Enter a positive integer.',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('routes Enter on a stack collision to Truncate and keeps the primary disabled', () => {
+    const { controller } = createFakeController({
+      runDestination: { kind: 'stack', clipId: 'rail-1' },
+      framesMax: 6,
+      stackCollision: { boundaryExclusive: 20, blocker: 'real-key', victimClipId: null },
+      collisionOffers: ['truncate'],
+    });
+    const tree = renderDialog(controller);
+    expect(footerPrimary(tree).props.disabled).toBe(true);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('truncate');
+    expect(controller.confirm).not.toHaveBeenCalled();
   });
 });
 
