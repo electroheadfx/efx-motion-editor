@@ -85,6 +85,7 @@ import {
   isPhysicPaintRotoRealKeyPayload,
   parsePhysicPaintRotoRealKeyRecordCollection,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+  resolvePhysicPaintRotoLoopSourceExtent,
 } from './physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoLinkedSourceSpacingScope,
@@ -211,6 +212,13 @@ export interface PhysicPaintRotoPhysicalEditInput {
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
   /** Complete stable-key-owned incoming interpolation break collection. */
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
+  /**
+   * 58: complete Group frame-override records. A rail insert shifts (and may
+   * replace) phase overrides together with their clip entries; absent means
+   * the caller cannot prove override ownership, so an overridden target rail
+   * fails closed.
+   */
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
 }
 
 /**
@@ -336,6 +344,8 @@ export interface PhysicPaintRotoPhysicalEditProposal {
    * source keys by id). Null when no loop record changes.
    */
   readonly nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+  /** 58: complete next Group override records when a rail insert shifts or replaces phase overrides; null otherwise. */
+  readonly nextGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
   /** Complete next incoming-break collection when ownership changes; null otherwise. */
   readonly nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
   /** Declared operation-specific delta validated against current and next records. */
@@ -370,6 +380,7 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'invalid-semantic-delta'
   | 'malformed-loop-clips'
   | 'loop-source-key-delete-rejected'
+  | 'group-owned-key-delete-rejected'
   | 'loop-source-key-insert-rejected'
   | 'loop-source-key-duplicate-rejected'
   | 'loop-source-key-move-rejected'
@@ -538,10 +549,14 @@ export function createPhysicPaintRotoPasteKeyIntent(
   destinationKeyId: string | null,
   startsNewSegment = false,
   joinsPreviousRail = false,
+  railInsertGroupId: string | null = null,
 ): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> {
   if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Paste requires a nonnegative destination frame.');
   if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) throw new Error('Paste destination identity is malformed.');
   if (!isPhysicPaintRotoRealKeyPayload(clipboardPayload)) throw new Error('Paste clipboard payload is malformed.');
+  if (railInsertGroupId !== null && (destinationKeyId !== null || railInsertGroupId.length === 0)) {
+    throw new Error('Rail insert requires a fresh key identity and a Group id.');
+  }
   const newKeyId = destinationKeyId === null ? createPhysicPaintRotoKeyId() : null;
   return Object.freeze({
     kind: 'paste-key',
@@ -551,6 +566,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
     clipboardPayload: clonePayloadAtFrame(clipboardPayload, clipboardPayload.appFrame),
     ...(startsNewSegment ? { startsNewSegment: true } : {}),
     ...(joinsPreviousRail ? { joinsPreviousRail: true } : {}),
+    ...(railInsertGroupId !== null ? { railInsertGroupId } : {}),
   });
 }
 
@@ -748,7 +764,10 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
   }
 
   const delta = input.semanticDelta;
-  if (!hasExactKeys(delta, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])
+  const railInsert = delta.railInsert === true;
+  if (!hasExactKeys(delta, railInsert
+    ? ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'railInsert', 'trailingShift']
+    : ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])
     || !isNonNegativeInteger(delta.destinationAppFrame)
     || delta.destinationAppFrame >= input.capacity
     || (delta.destinationKeyId !== null && !isBoundedKeyId(delta.destinationKeyId))
@@ -758,6 +777,49 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
     return { ok: false, error: 'Paste semantic declaration is malformed.' };
   }
   const retargetedClipboard = clonePayloadAtFrame(delta.clipboardPayload, delta.destinationAppFrame);
+  if (railInsert) {
+    if (delta.destinationKeyId !== null) {
+      return { ok: false, error: 'Rail insert must declare a fresh source identity.' };
+    }
+    if (!isNonNegativeInteger(delta.trailingShift) || delta.trailingShift < 1) {
+      return { ok: false, error: 'Rail insert must declare its footprint growth.' };
+    }
+    const trailingShift = delta.trailingShift;
+    const newKeyId = delta.newKeyId as string;
+    if (currentById.has(newKeyId)) return { ok: false, error: 'Rail insert new identity is not fresh.' };
+    if (current.some((record) => record.appFrame === delta.destinationAppFrame)) {
+      return { ok: false, error: 'Rail insert destination is occupied.' };
+    }
+    if (next.length !== current.length + 1) return { ok: false, error: 'Rail insert must add exactly one record.' };
+    if (input.selectedKeyId !== newKeyId || input.selectedAppFrame !== delta.destinationAppFrame) {
+      return { ok: false, error: 'Rail insert must select the fresh destination identity.' };
+    }
+    for (const record of current) {
+      const proposed = nextById.get(record.keyId);
+      if (!proposed) return { ok: false, error: `Rail insert omitted identity "${record.keyId}".` };
+      if (proposed.appFrame === record.appFrame) {
+        if (!recordsEqual(proposed, record)) return { ok: false, error: `Rail insert changed identity "${record.keyId}".` };
+        continue;
+      }
+      const shift = proposed.appFrame - record.appFrame;
+      if (shift !== 1 && shift !== trailingShift) {
+        return { ok: false, error: `Rail insert moved identity "${record.keyId}" by an undeclared amount.` };
+      }
+      if (!payloadEqualsAtFrame(proposed.payload, record.payload, proposed.appFrame)) {
+        return { ok: false, error: `Rail insert changed paint ownership for "${record.keyId}".` };
+      }
+    }
+    const inserted = nextById.get(newKeyId);
+    if (!inserted || inserted.appFrame !== delta.destinationAppFrame || !payloadEqualsAtFrame(inserted.payload, retargetedClipboard, delta.destinationAppFrame)) {
+      return { ok: false, error: 'Rail insert record does not match the declared payload.' };
+    }
+    for (const record of next) {
+      if (record.keyId !== newKeyId && !currentById.has(record.keyId)) {
+        return { ok: false, error: 'Rail insert introduced an undeclared identity.' };
+      }
+    }
+    return { ok: true };
+  }
   if (delta.destinationKeyId === null) {
     const newKeyId = delta.newKeyId as string;
     if (currentById.has(newKeyId)) return { ok: false, error: 'Paste new identity is not fresh.' };
@@ -868,6 +930,10 @@ function loopSourceKeyDeleteRejectedText(referencingLoopCount: number): string {
   return `This key belongs to a source cycle used by ${referencingLoopCount} linked loop(s). Unlink the loop(s) before deleting it.`;
 }
 
+/** Locked 58-09 (G-01) copy: a real key backing a Group frame deletes as a frame, never as a key. */
+export const GROUP_OWNED_KEY_DELETE_REJECTED_TEXT =
+  'This key is owned by a Rail cycle. Delete the Rail frame instead.';
+
 /** Locked 43.2 insert guard copy; N counts the Group-referenced keys the right ripple would move. */
 function loopSourceKeyInsertRejectedText(movedGroupKeyCount: number): string {
   return `Insert is unavailable because the right ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Insert into an empty frame instead, or unlink the loop(s) first.`;
@@ -911,6 +977,24 @@ function countLoopsReferencingSourceKey(
     if (clip.sourceKeyIds.includes(keyId)) count += 1;
   }
   return count;
+}
+
+/**
+ * 58 (G-05): a canonical lifecycle Rail — finite repeat, one full-span visible
+ * range, no painted overrides. Only these clips retime their placement/band
+ * from the source-key frames after a single-key edit; duplicated/partial/
+ * overridden clips keep their stored lifecycle untouched.
+ */
+function isCanonicalLifecycleRailClip(clip: PhysicPaintRotoLoopClip): boolean {
+  return typeof clip.repeat === 'number'
+    && clip.phaseOrigin !== undefined
+    && clip.originalEndExclusive !== undefined
+    && clip.visibleRanges !== undefined
+    && clip.frameOverrides !== undefined
+    && clip.frameOverrides.length === 0
+    && clip.visibleRanges.length === 1
+    && clip.visibleRanges[0]!.start === clip.phaseOrigin
+    && clip.visibleRanges[0]!.endExclusive === clip.originalEndExclusive;
 }
 
 /**
@@ -1038,6 +1122,36 @@ function validateIdentities(
   };
 }
 
+/**
+ * 58-09 (G-01) ownership parity: a real key whose frame a lifecycle Group owns
+ * may only be removed through the Group frame. Ownership follows the same
+ * source-derived bound as the loop derivation — the stored end is intent, the
+ * surviving source cycle is truth; dangling sources and Infinity keep the
+ * stored end, matching every Group proposer. A frame outside the clip's
+ * visibleRanges is a lifecycle gap: it renders no Group content, so the Group
+ * cannot own the key sitting there (the Group-frame delete proposer refuses
+ * the same frame as frame-not-visible).
+ */
+function isGroupOwnedKeyFrame(
+  keyId: string,
+  identities: ValidatedIdentities,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  capacity: number,
+): boolean {
+  const appFrame = identities.framesByKeyId.get(keyId);
+  if (appFrame === undefined) return false;
+  return loopClips.some((clip) => {
+    if (clip.phaseOrigin === undefined || clip.originalEndExclusive === undefined) return false;
+    const extent = resolvePhysicPaintRotoLoopSourceExtent(clip, identities.ordered, capacity);
+    const endExclusive = extent === null
+      ? clip.originalEndExclusive
+      : Math.min(clip.originalEndExclusive, extent.endExclusive);
+    if (appFrame < clip.phaseOrigin || appFrame >= endExclusive) return false;
+    return clip.visibleRanges === undefined
+      || clip.visibleRanges.some((range) => appFrame >= range.start && appFrame < range.endExclusive);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Operation candidate builders (private).
 // ---------------------------------------------------------------------------
@@ -1066,6 +1180,8 @@ interface Candidate {
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   /** Phase 43: complete next Loop Clip collection for rigid whole-cycle group drags; absent/null otherwise. */
   readonly nextLoopClips?: readonly PhysicPaintRotoLoopClip[] | null;
+  /** 58: complete next Group override records for a rail insert; absent/null otherwise. */
+  readonly nextGroupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[] | null;
   /** Complete next incoming-break collection when ownership changes; absent otherwise. */
   readonly nextIncomingInterpolationBreakKeyIds?: readonly string[];
   /** Quick 261019-mj2: cursor authority override (Insert keeps the opened slot). */
@@ -1473,6 +1589,206 @@ function buildPasteCandidate(
   };
 }
 
+/**
+ * 58: insert a real key as a new source phase of one canonical Rail.
+ *
+ * The new identity owns the destination frame; every later source key of that
+ * Rail ripples right by one and everything at/after the rail's old end shifts
+ * right by `repeat`, because every repeat grows by one frame. Phase overrides
+ * move with their phases (and the destination phase's override is replaced by
+ * the new source key). Fails closed on shared source cycles, overlapping
+ * Rails, override-reference mismatches, or missing override authority.
+ */
+function buildRailKeyInsertPasteCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }>,
+  target: PhysicPaintRotoRailKeyInsertTargetInternal,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | undefined,
+): { readonly ok: true; readonly candidate: Candidate } | { readonly ok: false; readonly text: string } {
+  const destination = intent.destinationAppFrame;
+  const newKeyId = intent.newKeyId as string;
+  const targetClip = target.clip;
+  const sourceKeyFrames = new Map<string, number>();
+  for (const keyId of targetClip.sourceKeyIds) {
+    sourceKeyFrames.set(keyId, identities.framesByKeyId.get(keyId) as number);
+  }
+  const shiftedSourceKeyIds = new Set<string>();
+  for (const [keyId, frame] of sourceKeyFrames) {
+    if (frame >= destination) shiftedSourceKeyIds.add(keyId);
+  }
+  const railOldEnd = targetClip.originalEndExclusive;
+  const trailingDelta = target.repeat;
+  for (const clip of loopClips) {
+    if (clip.loopId === targetClip.loopId) continue;
+    if (clip.sourceKeyIds.some((keyId) => shiftedSourceKeyIds.has(keyId))) {
+      return { ok: false, text: 'A shared source cycle cannot accept a new Rail key.' };
+    }
+  }
+
+  const mapping = new Map<string, number>();
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  for (const identity of identities.ordered) {
+    let nextFrame = identity.appFrame;
+    if (shiftedSourceKeyIds.has(identity.keyId)) {
+      nextFrame += 1;
+    } else if (!sourceKeyFrames.has(identity.keyId) && identity.appFrame >= railOldEnd) {
+      nextFrame += trailingDelta;
+    }
+    mapping.set(identity.keyId, nextFrame);
+    if (nextFrame !== identity.appFrame) roleByKeyId.set(identity.keyId, 'ripple-right');
+  }
+  mapping.set(newKeyId, destination);
+
+  const nextRecords: PhysicPaintRotoRealKeyRecord[] = records.map((record) => {
+    const nextFrame = mapping.get(record.keyId) as number;
+    if (nextFrame === record.appFrame) return record;
+    return Object.freeze({
+      ...record,
+      appFrame: nextFrame,
+      payload: clonePayloadAtFrame(record.payload, nextFrame),
+    }) as PhysicPaintRotoRealKeyRecord;
+  });
+  nextRecords.push(Object.freeze({
+    kind: 'real-key' as const,
+    keyId: newKeyId,
+    appFrame: destination,
+    payload: clonePayloadAtFrame(intent.clipboardPayload, destination),
+  }) as PhysicPaintRotoRealKeyRecord);
+  nextRecords.sort((left, right) => left.appFrame - right.appFrame);
+
+  const overrideShifts: { readonly keyId: string; readonly fromAppFrame: number; readonly toAppFrame: number }[] = [];
+  const removedOverrideKeyIds = new Set<string>();
+  let nextClip: PhysicPaintRotoLoopClip = extendLoopClipCycle(targetClip, target.cycleLength, target.cycleOffset);
+  if (targetClip.frameOverrides.length > 0) {
+    const keptOverrides: { readonly appFrame: number; readonly keyId: string }[] = [];
+    for (const override of targetClip.frameOverrides) {
+      const offset = override.appFrame - targetClip.phaseOrigin;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset >= target.cycleLength) {
+        return { ok: false, text: 'The Rail carries a malformed phase override.' };
+      }
+      if (offset === target.cycleOffset) {
+        removedOverrideKeyIds.add(override.keyId);
+        continue;
+      }
+      const appFrame = offset > target.cycleOffset ? override.appFrame + 1 : override.appFrame;
+      if (appFrame !== override.appFrame) {
+        overrideShifts.push({ keyId: override.keyId, fromAppFrame: override.appFrame, toAppFrame: appFrame });
+      }
+      keptOverrides.push(Object.freeze({ appFrame, keyId: override.keyId }));
+    }
+    keptOverrides.sort((left, right) => left.appFrame - right.appFrame);
+    nextClip = Object.freeze({
+      ...nextClip,
+      frameOverrides: Object.freeze(keptOverrides),
+    }) as PhysicPaintRotoLoopClip;
+  }
+
+  let insertIndex = 0;
+  for (const keyId of targetClip.sourceKeyIds) {
+    if ((sourceKeyFrames.get(keyId) as number) < destination) insertIndex += 1;
+  }
+  const nextSourceKeyIds = [...targetClip.sourceKeyIds];
+  nextSourceKeyIds.splice(insertIndex, 0, newKeyId);
+  nextClip = Object.freeze({
+    ...nextClip,
+    sourceKeyIds: Object.freeze(nextSourceKeyIds),
+  }) as PhysicPaintRotoLoopClip;
+
+  const nextLoopClips: PhysicPaintRotoLoopClip[] = [];
+  for (const clip of loopClips) {
+    if (clip.loopId === targetClip.loopId) {
+      nextLoopClips.push(nextClip);
+      continue;
+    }
+    if (clip.sourceKeyIds.length === 0) {
+      nextLoopClips.push(clip);
+      continue;
+    }
+    let trailing = true;
+    let overlaps = false;
+    for (const keyId of clip.sourceKeyIds) {
+      const frame = identities.framesByKeyId.get(keyId);
+      if (frame === undefined) return { ok: false, text: 'A Rail source identity is missing.' };
+      if (frame < railOldEnd) trailing = false;
+      if (frame >= destination) overlaps = true;
+    }
+    if (trailing) {
+      if (clip.syncState === undefined
+        || clip.provenanceState === undefined
+        || clip.phaseOrigin === undefined
+        || clip.originalEndExclusive === undefined
+        || clip.visibleRanges === undefined
+        || clip.frameOverrides === undefined) {
+        return { ok: false, text: 'A trailing Rail cannot be retimed safely.' };
+      }
+      const typed = clip as PhysicPaintRotoLifecycleLoopClip;
+      nextLoopClips.push(shiftLoopClipFrames(typed, trailingDelta));
+      for (const override of typed.frameOverrides) {
+        overrideShifts.push({
+          keyId: override.keyId,
+          fromAppFrame: override.appFrame,
+          toAppFrame: override.appFrame + trailingDelta,
+        });
+      }
+      continue;
+    }
+    if (overlaps) return { ok: false, text: 'Another Rail overlaps the inserted phase.' };
+    nextLoopClips.push(clip);
+  }
+
+  let nextGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
+  if (removedOverrideKeyIds.size > 0 || overrideShifts.length > 0) {
+    if (groupOverrideRecords === undefined) {
+      return { ok: false, text: 'Painted Rail overrides cannot be retimed safely.' };
+    }
+    const recordByKeyId = new Map(groupOverrideRecords.map((record) => [record.keyId, record]));
+    const nextOverrideRecordsById = new Map(groupOverrideRecords.map((record) => [record.keyId, record] as const));
+    for (const keyId of removedOverrideKeyIds) nextOverrideRecordsById.delete(keyId);
+    for (const shift of overrideShifts) {
+      const record = recordByKeyId.get(shift.keyId);
+      if (!record || record.appFrame !== shift.fromAppFrame) {
+        return { ok: false, text: 'The Rail phase overrides no longer match their records.' };
+      }
+      nextOverrideRecordsById.set(shift.keyId, Object.freeze({
+        ...record,
+        appFrame: shift.toAppFrame,
+        payload: clonePayloadAtFrame(record.payload, shift.toAppFrame),
+      }) as PhysicPaintRotoRealKeyRecord);
+    }
+    nextGroupOverrideRecords = Object.freeze([...nextOverrideRecordsById.values()]);
+  }
+  const nextLoopClipsFrozen = Object.freeze(nextLoopClips);
+
+  return {
+    ok: true,
+    candidate: {
+      mapping,
+      expectedKeyIds: new Set([...identities.keyIds, newKeyId]),
+      removedKeyId: null,
+      removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+      selectedKeyId: newKeyId,
+      operationKind: 'paste-key',
+      changed: true,
+      roleByKeyId,
+      drag: null,
+      nextRecords: Object.freeze(nextRecords),
+      nextLoopClips: nextLoopClipsFrozen,
+      ...(nextGroupOverrideRecords === null ? {} : { nextGroupOverrideRecords }),
+      semanticDelta: Object.freeze({
+        kind: 'paste-key' as const,
+        destinationAppFrame: destination,
+        destinationKeyId: null,
+        newKeyId,
+        clipboardPayload: clonePayloadAtFrame(intent.clipboardPayload, intent.clipboardPayload.appFrame),
+        railInsert: true as const,
+        trailingShift: trailingDelta,
+      }),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Phase 38 group paste (paste-key-group) candidate builder. The earliest copied
 // key anchors the group at the requested destination; every other entry lands
@@ -1828,10 +2144,70 @@ function cutAndInsert(
   return openAndInsert(identities, postCut, movedKeyId, insertionFrame, target);
 }
 
+/**
+ * 58 (G-05): free reposition of one Rail source phase. Unlike the generic
+ * cut-and-insert ripple, every survivor keeps its physical frame — the moved
+ * key lands on the requested free cell and the cycle's in-betweens
+ * redistribute around it. Dragging the first/last source key outward or
+ * inward therefore grows or shrinks the rail band instead of shifting the
+ * neighbouring timeline keys.
+ */
+function buildRailSourceRepositionCandidate(
+  identities: ValidatedIdentities,
+  movedKeyId: string,
+  targetAppFrame: number,
+  target: PhysicPaintRotoPhysicalEditTarget,
+): Candidate {
+  const mapping = new Map<string, number>();
+  for (const identity of identities.ordered) {
+    mapping.set(identity.keyId, identity.keyId === movedKeyId ? targetAppFrame : identity.appFrame);
+  }
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  roleByKeyId.set(movedKeyId, 'moved');
+  return {
+    mapping,
+    expectedKeyIds: identities.keyIds,
+    removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+    selectedKeyId: movedKeyId,
+    operationKind: 'move-key',
+    changed: computeChanged(identities, mapping),
+    roleByKeyId,
+    drag: Object.freeze({
+      targetKind: target.kind,
+      targetKeyId: target.kind === 'physical-cell' ? null : target.targetKeyId,
+      resolvedInsertionAppFrame: targetAppFrame,
+      movedKeyId,
+      movedKeyIds: Object.freeze([movedKeyId]) as readonly string[],
+      grabbedKeyId: movedKeyId,
+    }) as PhysicPaintRotoPhysicalDragPresentation,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Group Drag is one rigid physical-frame translation. The grabbed key anchors
 // the delta; selected offsets stay fixed and unselected identities never move.
 // ---------------------------------------------------------------------------
+
+/**
+ * CR-02 / CR-03: the derivation's strict-increase law, proven against the
+ * FINAL candidate mapping. Zero- and one-element source cycles are vacuously
+ * ordered; a source key absent from the mapping fails closed. Shared by the
+ * move-key and move-key-group branches so the order proof cannot drift.
+ */
+function loopSourceOrderIsProvable(
+  clip: PhysicPaintRotoLoopClip,
+  mapping: ReadonlyMap<string, number>,
+): boolean {
+  let previous: number | undefined;
+  for (const keyId of clip.sourceKeyIds) {
+    const position = mapping.get(keyId);
+    if (position === undefined) return false;
+    if (previous !== undefined && position <= previous) return false;
+    previous = position;
+  }
+  return true;
+}
 
 function buildMoveGroupCandidate(
   identities: ValidatedIdentities,
@@ -3746,6 +4122,7 @@ function finalizeProposal(
     drag: candidate.drag,
     nextRecords: candidate.nextRecords ?? null,
     nextLoopClips: candidate.nextLoopClips ?? null,
+    nextGroupOverrideRecords: candidate.nextGroupOverrideRecords ?? null,
     nextIncomingInterpolationBreakKeyIds:
       candidate.nextIncomingInterpolationBreakKeyIds ?? null,
     semanticDelta: candidate.semanticDelta ?? null,
@@ -4008,6 +4385,316 @@ function projectionFailure(
   }) as PhysicPaintRotoPhysicalTimelineProjectionResolution;
 }
 
+export interface PhysicPaintRotoRailInsertLoopClipInput {
+  readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
+  readonly destinationAppFrame: number;
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** 58: override records so a rail insert can move painted phases. */
+  readonly groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+}
+
+export interface PhysicPaintRotoRailInsertLoopClipPlan {
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null;
+}
+
+type PhysicPaintRotoLifecycleLoopClip = PhysicPaintRotoLoopClip & Required<Pick<
+  PhysicPaintRotoLoopClip,
+  'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
+>>;
+
+function shiftLoopClipFrames(clip: PhysicPaintRotoLifecycleLoopClip, delta: number): PhysicPaintRotoLoopClip {
+  return Object.freeze({
+    ...clip,
+    placementStart: clip.placementStart + delta,
+    phaseOrigin: clip.phaseOrigin + delta,
+    originalEndExclusive: clip.originalEndExclusive + delta,
+    visibleRanges: Object.freeze(clip.visibleRanges.map((range) => Object.freeze({
+      start: range.start + delta,
+      endExclusive: range.endExclusive + delta,
+    }))),
+    frameOverrides: Object.freeze(clip.frameOverrides.map((override) => Object.freeze({
+      ...override,
+      appFrame: override.appFrame + delta,
+    }))),
+  }) as PhysicPaintRotoLoopClip;
+}
+
+function extendLoopClipCycle(
+  clip: PhysicPaintRotoLifecycleLoopClip,
+  cycleLength: number,
+  insertOffset: number,
+): PhysicPaintRotoLoopClip {
+  const phaseOrigin = clip.phaseOrigin;
+  const nextCycleLength = cycleLength + 1;
+  const mapFrame = (appFrame: number): number => {
+    const local = appFrame - phaseOrigin;
+    const cycleIndex = Math.floor(local / cycleLength);
+    const offset = local - cycleIndex * cycleLength;
+    // The right ripple moves every key at/after the destination, so the phase
+    // that already owns the destination frame shifts too and the inserted
+    // interpolation frame takes its place.
+    return phaseOrigin + cycleIndex * nextCycleLength + offset + (offset >= insertOffset ? 1 : 0);
+  };
+  return Object.freeze({
+    ...clip,
+    syncState: 'modified' as const,
+    originalEndExclusive: mapFrame(clip.originalEndExclusive - 1) + 1,
+    visibleRanges: Object.freeze(clip.visibleRanges.map((range) => Object.freeze({
+      start: mapFrame(range.start),
+      endExclusive: mapFrame(range.endExclusive - 1) + 1,
+    }))),
+  }) as PhysicPaintRotoLoopClip;
+}
+
+export interface PhysicPaintRotoRailKeyInsertTargetInput {
+  readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly appFrame: number;
+}
+
+export interface PhysicPaintRotoRailKeyInsertTarget {
+  readonly loopId: string;
+  readonly cycleOffset: number;
+  /** First-cycle frame that receives the new source key (a repeat maps back). */
+  readonly insertionAppFrame: number;
+}
+
+interface PhysicPaintRotoRailKeyInsertTargetInternal extends PhysicPaintRotoRailKeyInsertTarget {
+  readonly clip: PhysicPaintRotoLifecycleLoopClip;
+  readonly cycleLength: number;
+  readonly repeat: number;
+}
+
+/**
+ * 58: the destination of a NEW Rail source key (+ Key / paint-on-in-between).
+ *
+ * A frame qualifies anywhere inside exactly one canonical lifecycle Rail —
+ * finite repeat, one full-span visible range anchored at `phaseOrigin`,
+ * contiguous or spaced source keys whose first frame IS the phase origin. The
+ * new identity always lands in the FIRST cycle (`insertionAppFrame`); a repeat
+ * occurrence maps back to its phase. Inserting a phase grows every repeat, so
+ * the rail's footprint grows by `repeat` frames: later source keys of that
+ * Rail move right by one and every key/rail at or after the rail's old end
+ * moves right by `repeat`. Any final-frame collision, or an overlapping Rail
+ * inside the inserted span, fails closed. Non-canonical rails return null.
+ */
+export function resolvePhysicPaintRotoRailKeyInsertTarget(
+  input: PhysicPaintRotoRailKeyInsertTargetInput,
+): PhysicPaintRotoRailKeyInsertTarget | null {
+  const target = resolveRailKeyInsertTargetInternal(input);
+  return target === null
+    ? null
+    : Object.freeze({
+      loopId: target.clip.loopId,
+      cycleOffset: target.cycleOffset,
+      insertionAppFrame: target.insertionAppFrame,
+    });
+}
+
+function resolveRailKeyInsertTargetInternal(
+  input: PhysicPaintRotoRailKeyInsertTargetInput,
+): PhysicPaintRotoRailKeyInsertTargetInternal | null {
+  if (!isNonNegativeInteger(input.appFrame) || !Array.isArray(input.identities) || !Array.isArray(input.loopClips)) return null;
+  const frameByKeyId = new Map<string, number>();
+  const frameOwners = new Map<number, number>();
+  for (const identity of input.identities) {
+    if (!isBoundedKeyId(identity.keyId) || !isNonNegativeInteger(identity.appFrame)) return null;
+    if (frameByKeyId.has(identity.keyId)) return null;
+    frameByKeyId.set(identity.keyId, identity.appFrame);
+    frameOwners.set(identity.appFrame, (frameOwners.get(identity.appFrame) ?? 0) + 1);
+  }
+  if (frameByKeyId.has('')) return null;
+  let target: PhysicPaintRotoRailKeyInsertTargetInternal | null = null;
+  for (const clip of input.loopClips) {
+    if (clip.repeat === undefined
+      || typeof clip.repeat !== 'number'
+      || !Number.isSafeInteger(clip.repeat)
+      || clip.repeat <= 0) continue;
+    if (clip.syncState === undefined
+      || clip.provenanceState === undefined
+      || clip.phaseOrigin === undefined
+      || clip.originalEndExclusive === undefined
+      || clip.visibleRanges === undefined
+      || clip.frameOverrides === undefined) continue;
+    if (clip.visibleRanges.length !== 1) continue;
+    const range = clip.visibleRanges[0]!;
+    if (range.start !== clip.phaseOrigin || range.endExclusive !== clip.originalEndExclusive) continue;
+    if (clip.sourceKeyIds.length < 2) continue;
+    const sourceFrames: number[] = [];
+    let resolvable = true;
+    for (const keyId of clip.sourceKeyIds) {
+      const frame = frameByKeyId.get(keyId);
+      if (frame === undefined) { resolvable = false; break; }
+      sourceFrames.push(frame);
+    }
+    if (!resolvable) continue;
+    if (sourceFrames.some((frame, index) => index > 0 && sourceFrames[index - 1]! >= frame)) continue;
+    if (sourceFrames[0] !== clip.phaseOrigin) continue;
+    const cycleLength = sourceFrames[sourceFrames.length - 1]! - clip.phaseOrigin + 1;
+    // The stored end must describe exactly this many full repeats; otherwise
+    // the footprint growth (one frame per repeat) is not provable.
+    if (clip.originalEndExclusive !== clip.phaseOrigin + cycleLength * clip.repeat) continue;
+    if (input.appFrame < clip.phaseOrigin || input.appFrame >= clip.originalEndExclusive) continue;
+    if (sourceFrames.includes(input.appFrame)) continue;
+    if (target !== null) return null;
+    const local = input.appFrame - clip.phaseOrigin;
+    const cycleOffset = local - Math.floor(local / cycleLength) * cycleLength;
+    target = {
+      loopId: clip.loopId,
+      cycleOffset,
+      insertionAppFrame: clip.phaseOrigin + cycleOffset,
+      clip: clip as PhysicPaintRotoLifecycleLoopClip,
+      cycleLength,
+      repeat: clip.repeat,
+    };
+  }
+  if (target === null) return null;
+  const sourceKeyIds = new Set(target.clip.sourceKeyIds);
+  const mappedFrames = new Set<number>();
+  for (const [keyId, frame] of frameByKeyId) {
+    if (sourceKeyIds.has(keyId)) {
+      mappedFrames.add(frame >= target.insertionAppFrame ? frame + 1 : frame);
+    } else if (frame >= target.clip.originalEndExclusive) {
+      mappedFrames.add(frame + target.repeat);
+    } else {
+      mappedFrames.add(frame);
+    }
+  }
+  // A duplicate final frame means the shift collides with another identity.
+  if (mappedFrames.size !== frameByKeyId.size) return null;
+  // The new key must land on a free frame.
+  if (mappedFrames.has(target.insertionAppFrame)) return null;
+  return target;
+}
+
+/**
+ * 58 (G-03): Insert into a generate-mode Rail extends its source cycle by one
+ * interpolated frame instead of being refused as a Group-ownership violation.
+ * The ordinary right ripple already moves every real key; this helper rebuilds
+ * every affected Loop Clip to match, or returns null so the caller keeps the
+ * fail-closed guard. Only canonical contiguous source cycles anchored at
+ * `phaseOrigin` qualify; a clip touched by the ripple receives the inserted
+ * frame at its first cycle, every other affected clip shifts right whole.
+ */
+export function resolvePhysicPaintRotoRailInsertLoopClips(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+): readonly PhysicPaintRotoLoopClip[] | null {
+  return resolvePhysicPaintRotoRailInsertPlan(input, false)?.loopClips ?? null;
+}
+
+/**
+ * 58: the complete insert-slot rail plan — the rewritten Loop Clips plus the
+ * matching Group override records when painted phases move.
+ *
+ * Every rail kind takes the insert, including Reveal (its requested span grows
+ * by one frame per repeat) and rails carrying painted phase overrides. When
+ * `requireOverrideRecords` is true, a rail whose overrides must move without
+ * its records fails closed; the classifier calls with false while the resolver
+ * always passes the records.
+ */
+export function resolvePhysicPaintRotoRailInsertPlan(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+  requireOverrideRecords: boolean,
+): PhysicPaintRotoRailInsertLoopClipPlan | null {
+  const frameByKeyId = new Map<string, number>();
+  for (const identity of input.identities) frameByKeyId.set(identity.keyId, identity.appFrame);
+  const overrideShifts: { readonly keyId: string; readonly fromAppFrame: number; readonly toAppFrame: number }[] = [];
+  let changed = false;
+  const nextClips: PhysicPaintRotoLoopClip[] = [];
+  for (const clip of input.loopClips) {
+    let moved = 0;
+    let missing = false;
+    for (const keyId of clip.sourceKeyIds) {
+      const frame = frameByKeyId.get(keyId);
+      if (frame === undefined) {
+        missing = true;
+        continue;
+      }
+      if (frame >= input.destinationAppFrame) moved += 1;
+    }
+    if (moved === 0) {
+      nextClips.push(clip);
+      continue;
+    }
+    if (missing) return null;
+    if (clip.syncState === undefined
+      || clip.provenanceState === undefined
+      || clip.phaseOrigin === undefined
+      || clip.originalEndExclusive === undefined
+      || clip.visibleRanges === undefined
+      || clip.frameOverrides === undefined) return null;
+    const typed = clip as PhysicPaintRotoLifecycleLoopClip;
+    const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
+    if (sourceFrames.length < 2 || sourceFrames[0] !== typed.phaseOrigin) return null;
+    // Spaced source keys (generated in-betweens) are canonical — the cycle
+    // span is the last source offset plus one, never the key count.
+    const cycleLength = sourceFrames[sourceFrames.length - 1]! - typed.phaseOrigin + 1;
+    if (moved === cycleLength) {
+      const shifted = shiftLoopClipFrames(typed, 1);
+      for (const override of typed.frameOverrides) {
+        overrideShifts.push({
+          keyId: override.keyId,
+          fromAppFrame: override.appFrame,
+          toAppFrame: override.appFrame + 1,
+        });
+      }
+      nextClips.push(shifted);
+      changed = true;
+      continue;
+    }
+    const insertOffset = input.destinationAppFrame - typed.phaseOrigin;
+    if (insertOffset <= 0 || insertOffset >= cycleLength) return null;
+    const extended = extendLoopClipCycle(typed, cycleLength, insertOffset);
+    const keptOverrides: { readonly appFrame: number; readonly keyId: string }[] = [];
+    for (const override of typed.frameOverrides) {
+      const offset = override.appFrame - typed.phaseOrigin;
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset >= cycleLength) return null;
+      const appFrame = offset >= insertOffset ? override.appFrame + 1 : override.appFrame;
+      if (appFrame !== override.appFrame) {
+        overrideShifts.push({ keyId: override.keyId, fromAppFrame: override.appFrame, toAppFrame: appFrame });
+      }
+      keptOverrides.push(Object.freeze({ appFrame, keyId: override.keyId }));
+    }
+    keptOverrides.sort((left, right) => left.appFrame - right.appFrame);
+    nextClips.push(Object.freeze({
+      ...extended,
+      frameOverrides: Object.freeze(keptOverrides),
+    }) as PhysicPaintRotoLoopClip);
+    changed = true;
+  }
+  if (!changed) return null;
+  let nextGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | null = null;
+  if (overrideShifts.length > 0) {
+    if (input.groupOverrideRecords === undefined) {
+      if (requireOverrideRecords) return null;
+    } else {
+      const recordByKeyId = new Map(input.groupOverrideRecords.map((record) => [record.keyId, record]));
+      const nextById = new Map(input.groupOverrideRecords.map((record) => [record.keyId, record] as const));
+      for (const shift of overrideShifts) {
+        const record = recordByKeyId.get(shift.keyId);
+        if (!record || record.appFrame !== shift.fromAppFrame) return null;
+        nextById.set(shift.keyId, Object.freeze({
+          ...record,
+          appFrame: shift.toAppFrame,
+          payload: clonePayloadAtFrame(record.payload, shift.toAppFrame),
+        }) as PhysicPaintRotoRealKeyRecord);
+      }
+      nextGroupOverrideRecords = Object.freeze([...nextById.values()]);
+    }
+  }
+  return Object.freeze({
+    loopClips: Object.freeze(nextClips.map((clip) => Object.freeze(clip))),
+    groupOverrideRecords: nextGroupOverrideRecords,
+  });
+}
+
+export function isPhysicPaintRotoRailInsertDestination(
+  input: PhysicPaintRotoRailInsertLoopClipInput,
+): boolean {
+  return resolvePhysicPaintRotoRailInsertPlan(input, false) !== null;
+}
+
 /**
  * Resolve a single physical timeline edit intent into one immutable complete
  * identity-to-frame proposal or a stable failure.
@@ -4085,10 +4772,31 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     const rippledGroupKeys = identities.ordered.filter(
       (identity) => identity.appFrame >= intent.destinationAppFrame && loopReferencedKeyIds.has(identity.keyId),
     );
+    // 58 (G-03): Insert on a Rail is legal — the ripple extends its source
+    // cycle by one interpolated frame. 58 extends this to Reveal rails and to
+    // rails carrying painted phase overrides, whose entries move with their
+    // phases. Every other Group-owned ripple keeps the 43.2 fail-closed guard.
+    let railInsertPlan: PhysicPaintRotoRailInsertLoopClipPlan | null = null;
     if (rippledGroupKeys.length > 0) {
-      return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
+      railInsertPlan = resolvePhysicPaintRotoRailInsertPlan({
+        identities: identities.ordered,
+        destinationAppFrame: intent.destinationAppFrame,
+        loopClips,
+        ...(input.groupOverrideRecords === undefined ? {} : { groupOverrideRecords: input.groupOverrideRecords }),
+      }, true);
+      if (railInsertPlan === null) {
+        return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
+      }
     }
-    const candidate = buildInsertCandidate(identities, intent.destinationAppFrame);
+    const candidate: Candidate = {
+      ...buildInsertCandidate(identities, intent.destinationAppFrame),
+      ...(railInsertPlan === null ? {} : {
+        nextLoopClips: railInsertPlan.loopClips,
+        ...(railInsertPlan.groupOverrideRecords === null
+          ? {}
+          : { nextGroupOverrideRecords: railInsertPlan.groupOverrideRecords }),
+      }),
+    };
     // The ONE capacity computation: the shifted right tail may need one extra
     // slot, and a tail insert at capacity opens a brand-new slot. Downstream
     // modules carry this value unchanged and must never recompute it.
@@ -4096,10 +4804,17 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     for (const frame of candidate.mapping.values()) {
       if (frame > highestFinalKeyFrame) highestFinalKeyFrame = frame;
     }
+    let highestLifecycleEnd = 0;
+    for (const clip of railInsertPlan?.loopClips ?? []) {
+      if (clip.originalEndExclusive !== undefined && clip.originalEndExclusive > highestLifecycleEnd) {
+        highestLifecycleEnd = clip.originalEndExclusive;
+      }
+    }
     const nextCapacity = Math.max(
       input.capacity,
       highestFinalKeyFrame + 1,
       intent.destinationAppFrame + 1,
+      highestLifecycleEnd,
     );
     if (nextCapacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
       return fail('capacity-exhausted', operationKind, 'Insert would exceed the maximum physical frame capacity.');
@@ -4172,6 +4887,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (referencingLoops > 0) {
       return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
     }
+    // 58-09 (G-01): a key whose frame a lifecycle Group owns (source, override,
+    // or a local key inside the surviving extent) is owned by that Rail frame.
+    // The D-07 source guard above still wins first for source-cycle keys.
+    if (isGroupOwnedKeyFrame(intent.selectedKeyId, identities, loopClips, input.capacity)) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
+    }
     const candidate = {
       ...buildDeleteCandidate(
         identities,
@@ -4214,8 +4935,12 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
       (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
     }
-    if (intent.keyIds.some((keyId) => groupOwnedKeyIds.has(keyId))) {
-      return fail('malformed-target', operationKind, 'Key Rail delete requires ordinary real-key members outside Group ownership.');
+    // 58-09 (G-01): ownership is frame-based — a member key sitting on a Group
+    // frame (including a local key the Group extent covers) belongs to that
+    // Rail frame, so the whole rail refuses. Stale overrides past the surviving
+    // extent stay ordinary and deletable.
+    if (intent.keyIds.some((keyId) => isGroupOwnedKeyFrame(keyId, identities, loopClips, input.capacity))) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
     }
 
     const segments = deriveKeyRailSegments({
@@ -4301,6 +5026,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       if (referencingLoops > 0) {
         return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteRejectedText(referencingLoops));
       }
+    }
+    // 58-09 (G-01): any member frame a lifecycle Group owns rejects the whole
+    // group delete; the D-07 source guard above still wins first.
+    if (intent.keyIds.some((keyId) => isGroupOwnedKeyFrame(keyId, identities, loopClips, input.capacity))) {
+      return fail('group-owned-key-delete-rejected', operationKind, GROUP_OWNED_KEY_DELETE_REJECTED_TEXT);
     }
     const removedBreakOwners = new Set(intent.keyIds);
     const candidate = {
@@ -4389,7 +5119,38 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('unknown-operation-identity', operationKind, 'Paste-to-existing destination identity and frame disagree.');
       }
     }
-    const candidate = buildPasteCandidate(identities, recordsResult.records, intent, incomingInterpolationBreakKeyIds);
+    let candidate: Candidate;
+    if (intent.railInsertGroupId !== undefined) {
+      if (intent.destinationKeyId !== null || intent.newKeyId === null) {
+        return fail('malformed-identity', operationKind, 'A Rail insert requires one fresh source identity.');
+      }
+      const railTarget = resolveRailKeyInsertTargetInternal({
+        identities: identities.ordered,
+        loopClips,
+        appFrame: intent.destinationAppFrame,
+      });
+      if (railTarget === null || railTarget.clip.loopId !== intent.railInsertGroupId) {
+        return fail(
+          'loop-source-key-insert-rejected',
+          operationKind,
+          'This Rail can no longer accept a new source key at this frame.',
+        );
+      }
+      const built = buildRailKeyInsertPasteCandidate(
+        identities,
+        recordsResult.records,
+        intent,
+        railTarget,
+        loopClips,
+        input.groupOverrideRecords,
+      );
+      if (!built.ok) {
+        return fail('loop-source-key-insert-rejected', operationKind, built.text);
+      }
+      candidate = built.candidate;
+    } else {
+      candidate = buildPasteCandidate(identities, recordsResult.records, intent, incomingInterpolationBreakKeyIds);
+    }
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
@@ -4460,9 +5221,14 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     if (!identities.keyIds.has(intent.movedKeyId)) {
       return fail('unknown-operation-identity', operationKind, `Move targets unknown moved identity "${intent.movedKeyId}".`);
     }
-    // D-11: a linked source key never moves alone — the cycle's internal
-    // spacing IS the loop rhythm; only a rigid whole-cycle group drag moves it.
-    if (countLoopsReferencingSourceKey(loopClips, intent.movedKeyId) > 0) {
+    // Phase 58 D-12 (Law A) / CR-02: a key referenced by exactly one loop
+    // clip is an independent cycle and may move alone, but only when the
+    // final mapping keeps that clip's sourceKeyIds strictly increasing (the
+    // derivation law, checked below). Two or more keep the Phase 43 D-11 law
+    // — the cycle's internal spacing IS the loop rhythm, so only a rigid
+    // whole-cycle group drag moves it.
+    const referencingClips = loopClips.filter((clip) => clip.sourceKeyIds.includes(intent.movedKeyId));
+    if (referencingClips.length > 1) {
       return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
     }
     if (intent.target === null || typeof intent.target !== 'object') {
@@ -4470,7 +5236,53 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveCandidate(identities, intent.movedKeyId, intent.target, input.capacity);
     if (!moveResult.ok) return moveResult.resolution;
-    const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
+    // 58 (G-05): dragging a source key of a canonical lifecycle Rail onto a
+    // free physical cell repositions only that phase — the survivors keep
+    // their frames, so the cycle's in-betweens redistribute and the band grows
+    // or shrinks at its ends. Occupied targets keep the insert/ripple path.
+    let moveCandidate = moveResult.candidate;
+    const movedRailClip = referencingClips.length === 1 ? referencingClips[0]! : null;
+    if (
+      movedRailClip !== null
+      && intent.target.kind === 'physical-cell'
+      && moveCandidate.changed
+      && isCanonicalLifecycleRailClip(movedRailClip)
+    ) {
+      moveCandidate = buildRailSourceRepositionCandidate(
+        identities,
+        intent.movedKeyId,
+        intent.target.appFrame,
+        intent.target,
+      );
+    }
+    // CR-02: the order check reads the FINAL candidate mapping, because
+    // cutSource / openAndInsert ripple survivors and the requested cell alone
+    // can hide an inversion. Rejection is the only safe outcome: re-sorting
+    // sourceKeyIds would silently change the cycle's playback order.
+    if (referencingClips.length === 1 && moveCandidate.changed) {
+      if (!loopSourceOrderIsProvable(referencingClips[0]!, moveCandidate.mapping)) {
+        return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+      }
+    }
+    // 58 (G-04): a single-key move inside a lifecycle Rail is a timing edit of
+    // that cycle — the rail band must follow the moved source span (grow when
+    // the last key moves outward, shrink when it moves inward) instead of
+    // ending at the stale extent. Only canonical full-span rails without
+    // painted overrides retime; anything else keeps the previous behavior.
+    if (moveCandidate.changed && referencingClips.length === 1) {
+      const retimed = computeSourceAttachedLoopPlacementFollow(
+        identities,
+        loopClips,
+        moveCandidate.mapping,
+        (clip) => clip.sourceKeyIds.includes(intent.movedKeyId) && isCanonicalLifecycleRailClip(clip),
+        true,
+      );
+      if (retimed !== null
+        && retimed.every((clip) => clip.originalEndExclusive === undefined || clip.originalEndExclusive <= input.capacity)) {
+        moveCandidate = { ...moveCandidate, nextLoopClips: retimed };
+      }
+    }
+    const finalized = finalizeProposal(moveCandidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
@@ -4953,6 +5765,24 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const moveResult = buildMoveGroupCandidate(identities, intent.movedKeyIds, intent.grabbedKeyId, intent.target, input.capacity, loopClips);
     if (!moveResult.ok) return moveResult.resolution;
+    // CR-03: the same final-mapping source-order proof move-key uses (CR-02).
+    // buildMoveGroupCandidate is a pure rigid translation and finalizeProposal
+    // never validates source order, so a partial-cycle group move could land a
+    // moved key past a non-moved source key and persist an unresolvable clip.
+    // The proof reads the FINAL candidate mapping, so that inversion is caught;
+    // rejection is the only safe outcome because re-sorting sourceKeyIds would
+    // silently change the cycle's playback order, and an unprovable order (a
+    // mapped key missing) fails closed. It is intersection-scoped: a rigid
+    // translation cannot move an untouched clip's source positions, so revisit
+    // this skip if move-key-group ever gains a ripple.
+    if (moveResult.candidate.changed) {
+      for (const clip of loopClips) {
+        if (!clip.sourceKeyIds.some((keyId) => seenMovedKeyIds.has(keyId))) continue;
+        if (!loopSourceOrderIsProvable(clip, moveResult.candidate.mapping)) {
+          return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
+        }
+      }
+    }
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
@@ -5556,6 +6386,16 @@ export function derivePhysicPaintRotoLoopRanges(
     const naturalEnd = lifecycleAvailable && finite
       ? clip.originalEndExclusive!
       : finite ? (requestedEnd as number) : infinityNaturalEnd;
+    // 58-09 (G-01): a finite lifecycle clip's stored end may outlive the
+    // surviving source cycle (a source key was deleted or retimed). The
+    // source-derived extent is the render/ownership truth; the stored end
+    // stays reported as `requestedEnd` so the stale intent remains visible.
+    const sourceExtent = lifecycleAvailable && finite
+      ? resolvePhysicPaintRotoLoopSourceExtent(clip, input.identities, input.capacity)
+      : null;
+    const boundedNaturalEnd = sourceExtent === null
+      ? naturalEnd
+      : Math.min(naturalEnd, sourceExtent.endExclusive);
     let visibleFragments = lifecycleAvailable
       ? clip.visibleRanges!
       : [{ start: clip.placementStart, endExclusive: naturalEnd }];
@@ -5608,7 +6448,7 @@ export function derivePhysicPaintRotoLoopRanges(
       ) return [];
       const effectiveEnd = Math.max(
         fragment.start,
-        Math.min(naturalEnd, fragment.endExclusive, boundary.frame),
+        Math.min(boundedNaturalEnd, fragment.endExclusive, boundary.frame),
       );
       return [Object.freeze({
         loopId: clip.loopId,
@@ -5626,7 +6466,7 @@ export function derivePhysicPaintRotoLoopRanges(
         requestedEnd,
         effectiveEnd,
         boundary,
-        truncated: effectiveEnd < naturalEnd,
+        truncated: effectiveEnd < boundedNaturalEnd,
         partialCycle: (effectiveEnd - phaseOrigin) % cycleLength !== 0,
         unresolved: !sourceTimingIsValid
           ? Object.freeze({

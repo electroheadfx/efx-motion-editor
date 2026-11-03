@@ -28,6 +28,7 @@ vi.mock('preact/hooks', () => ({
 
 import type {
   PhysicPaintRotoGroupFrameOverride,
+  PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
   PhysicPaintRotoLoopClip,
@@ -2533,6 +2534,41 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.error.value).toBe('Cycle count cannot remove locally painted Rail frames. Regenerate the Rail first.');
     });
 
+    it('drops stale out-of-extent overrides on Repeat contraction and keeps overrides inside the new end', async () => {
+      // 58-09 (G-01): source S1..S5 at 10..14 with repeat 3 owns [10,25); the
+      // stored end 30 and its override at 27 are stale. Contracting to repeat 2
+      // must drop the stale override, keep the in-extent override at 15, and
+      // publish one clip the bridge's staged-document parse accepts.
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        originalEndExclusive: 30,
+        visibleRanges: [{ start: 10, endExclusive: 30 }],
+        frameOverrides: [
+          { appFrame: 15, keyId: 'override-15' },
+          { appFrame: 27, keyId: 'override-27' },
+        ],
+      };
+      const test = loopOpHarness([beforeGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+
+      const published = test.commit.mock.calls[0]![0].loopClips ?? [];
+      expect(published[0]).toMatchObject({
+        loopId: 'L1',
+        repeat: 2,
+        originalEndExclusive: 20,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [{ appFrame: 15, keyId: 'override-15' }],
+      });
+      // The bridge parses the staged document against the rebuilt end (Task 3
+      // requirement: the published collection must satisfy the lifecycle rule).
+      expect(() => parsePhysicPaintRotoLoopClips(published)).not.toThrow();
+    });
+
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
       let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)];
       const localAuthority = loopAuthority();
@@ -3831,6 +3867,425 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.bakeOptions[0]).toMatchObject({ frameCount: 3, paintSeedVariation: 'static' });
       const restored = test.commit.mock.calls[0][0].loopClips?.find((entry) => entry.loopId === 'G1');
       expect(restored?.paintSeedVariation).toBe(true);
+    });
+  });
+
+  // 58-02 (RAIL-03/04/05): the Key Rail → Standard cycle conversion. A gapped
+  // segment (frames 10, 12, 15) must convert through ONE loop-only commit and
+  // record as ONE undoable Standard clip — never compressed to its key count.
+  describe('Key Rail cycle conversion (58-02)', () => {
+    const RAIL_KEY_IDS = ['A', 'C', 'F'] as const;
+    const RAIL_FRAMES = [10, 12, 15] as const;
+
+    const railPhysicalRecords = () =>
+      RAIL_KEY_IDS.map((keyId, index) => physicalRecord(keyId, RAIL_FRAMES[index]!, `rail-${keyId}`));
+
+    const railAuthority = (
+      overrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+    ): PhysicPaintRotoAuthorityResult => authority({
+      canonicalStart: 10,
+      layerEndExclusive: 100,
+      capacity: 90,
+      physicalCapacity: 600,
+      physicalRecords: railPhysicalRecords(),
+      ...overrides,
+    });
+
+    const railDocument = (loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPaintRotoPhysicalDocument => {
+      const interpolation = { enabled: false, mode: 'duplicate' } as const;
+      const records = asRealKeyRecords(railPhysicalRecords());
+      return {
+        capacity: 600,
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: 10,
+        revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, loopClips),
+        interpolation,
+        scriptMotion: { deformation: 0, position: 0 },
+        realKeyRecords: records,
+        loopClips,
+        incomingInterpolationBreakKeyIds: [],
+      };
+    };
+
+    const railHarness = (
+      loopClips: readonly PhysicPaintRotoLoopClip[] = [],
+      authorityOverrides: Partial<PhysicPaintRotoAuthorityResult> = {},
+      portOverrides: Partial<RotoPlayScriptControllerPorts> = {},
+    ) => loopOpHarness(loopClips, {
+      canonicalStart: 10,
+      layerEndExclusive: 100,
+      capacity: 90,
+      physicalCapacity: 600,
+      physicalRecords: railPhysicalRecords(),
+      ...authorityOverrides,
+    }, {
+      getPhysicalDocument: () => railDocument(loopClips),
+      ...portOverrides,
+    });
+
+    // The real accepted-only history hook with NO accepted output: proves a
+    // cancelled/refused conversion can never surface an undo entry.
+    const zeroHistory = () => {
+      const interpolation = { enabled: true, mode: 'duplicate' } as const;
+      const records = asRealKeyRecords(railPhysicalRecords());
+      const revision = buildPhysicPaintRotoPhysicalRevision(records, interpolation, []);
+      const snapshot: RotoPhysicalEditSnapshot<null> = {
+        launchOperationId: 'launch',
+        layerId: 'layer-1',
+        projectContextId: 'context-1',
+        records,
+        groupOverrideRecords: [],
+        interpolation,
+        loopClips: [],
+        incomingInterpolationBreakKeyIds: [],
+        capacity: 600,
+        expectedRevision: revision,
+        stagedRevision: revision,
+        selectedKeyId: null,
+        selectedAppFrame: null,
+        currentAppFrame: 0,
+        dirtyFrames: new Set(),
+        editableFrames: records.map((entry) => entry.appFrame),
+        liveOverlayActionCounts: new Map(),
+        frameStates: new Map(),
+        previewFrames: new Map(),
+        capturedFrames: new Map(),
+        confirmedFrames: new Map(),
+        cachedReference: { url: null, cachedRepaintBase: null },
+        engineState: null,
+      };
+      const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+      const pendingOperationId = signal<string | null>(null);
+      const availability = signal({ undo: 0, redo: 0 });
+      useRotoPhysicalEditHistory({
+        identity: {
+          trackId: 'track-a',
+          launchOperationId: 'launch',
+          layerId: 'layer-1',
+          projectContextId: 'context-1',
+          capacity: 600,
+        },
+        availability,
+        coordinator: {
+          executePhysicalEdit: vi.fn(async () => false) as never,
+          pendingOperationId,
+          acceptedOutput,
+        },
+        recordsPort: {
+          getRecords: () => snapshot.records,
+          getInterpolation: () => snapshot.interpolation,
+          getCapacity: () => snapshot.capacity,
+          raiseCapacity: () => {},
+          getLoopClips: () => snapshot.loopClips,
+          getIncomingInterpolationBreakKeyIds: () => snapshot.incomingInterpolationBreakKeyIds,
+          replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+          replaceLoopClips: () => ({ ok: true }),
+          replaceRecords: () => ({ ok: true }),
+        },
+        getLiveSourceSnapshot: () => snapshot,
+        undoPaint: () => false,
+        redoPaint: () => false,
+      });
+      return { availability };
+    };
+
+    it('opens the create dialog from a gapped segment with Cycle 1, Infinity off, and zero writes', async () => {
+      const test = railHarness();
+      expect(typeof test.controller.openKeyRailCycleEdit).toBe('function');
+      const result = await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] });
+      expect(result).toEqual({ ok: true, reason: null });
+      expect(test.controller.dialogMode.value).toBe('key-rail-create');
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.repeatText.value).toBe('1');
+      expect(test.controller.lastFiniteRepeat.value).toBe('1');
+      expect(test.controller.infinity.value).toBe(false);
+      expect(test.controller.railTab.value).toBe('paint');
+      expect(test.controller.keyRailCycleEditTarget.value).toEqual({
+        firstKeyId: 'A',
+        keyIds: ['A', 'C', 'F'],
+        firstKeyFrame: 10,
+        lastKeyFrame: 15,
+        cycleFrameCount: 6,
+      });
+      expect(test.requestAuthority).not.toHaveBeenCalled();
+      expect(test.commit).not.toHaveBeenCalled();
+    });
+
+    it('converts the segment into ONE provenance-free Standard loop-only commit', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.createAquarelleBake).not.toHaveBeenCalled();
+
+      const publication = test.commit.mock.calls[0][0];
+      expect(publication.semanticDelta).toMatchObject({
+        kind: 'play-script',
+        loopOnly: true,
+        affectedStartAppFrame: 10,
+        affectedEndAppFrame: 9,
+        expectedLayerCapacity: 600,
+        expectedLayerEndExclusive: 100,
+        freshKeyIds: [],
+      });
+      expect(JSON.stringify(publication.records)).toBe(JSON.stringify(asRealKeyRecords(railAuthority().physicalRecords)));
+
+      expect(publication.loopClips).toHaveLength(1);
+      const clip = publication.loopClips![0]!;
+      expect(clip).toMatchObject({
+        placementStart: 10,
+        sourceKeyIds: ['A', 'C', 'F'],
+        repeat: 1,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [],
+      });
+      expect('scriptId' in clip).toBe(false);
+      expect('motion' in clip).toBe(false);
+      expect('railKind' in clip).toBe(false);
+      expect('overrideColor' in clip).toBe(false);
+      expect(isStandardMergedLoopClip(clip)).toBe(true);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.confirmationOpen.value).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+    });
+
+    it('records the conversion as exactly one undoable command and restores the Key Rail', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      expect(await test.controller.confirm()).toBe(true);
+      const publication = test.commit.mock.calls[0][0];
+      const driver = driveLoopHistory({
+        beforeRecords: asRealKeyRecords(railAuthority().physicalRecords),
+        beforeLoopClips: [],
+        publication,
+      });
+
+      expect(driver.availability.value).toEqual({ undo: 1, redo: 0 });
+      expect(await driver.history.undo()).toBe(true);
+      expect(driver.availability.value).toEqual({ undo: 0, redo: 1 });
+      expect(driver.getCurrent().loopClips).toEqual([]);
+      expect(await driver.history.redo()).toBe(true);
+      expect(driver.availability.value).toEqual({ undo: 1, redo: 0 });
+      expect(driver.getCurrent().loopClips).toHaveLength(1);
+      expect(driver.getCurrent().loopClips[0]?.loopId).toBe(publication.loopClips?.[0]?.loopId);
+      expect(driver.getCurrent().loopClips[0]?.originalEndExclusive).toBe(16);
+    });
+
+    it('cancel after open writes nothing and leaves the history availability at {0,0}', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      test.controller.cancel();
+      expect(test.controller.confirmationOpen.value).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+      expect(test.requestAuthority).not.toHaveBeenCalled();
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+    });
+
+    // CR-01 (RAIL-04/RAIL-05, D-11): Cancel during 'preparing' must stop the
+    // awaited conversion before any write. The key-rail path assigns no
+    // AbortController — the generation contract is the only cancellation
+    // channel — so the phase stays 'preparing' until authority resolves, then
+    // lands in 'cancelled' with the frozen target still open for a retry.
+    it('in-flight cancel before authority commits nothing and keeps the target', async () => {
+      let releaseAuthority!: () => void;
+      let authorityCalls = 0;
+      const requestAuthority = vi.fn(async (): Promise<PhysicPaintRotoAuthorityResult> => {
+        authorityCalls += 1;
+        if (authorityCalls === 1) {
+          return new Promise<PhysicPaintRotoAuthorityResult>((resolve) => {
+            releaseAuthority = () => resolve(railAuthority());
+          });
+        }
+        return railAuthority();
+      });
+      const test = railHarness([], {}, { requestAuthority });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const pending = test.controller.confirm();
+      await vi.waitFor(() => expect(requestAuthority).toHaveBeenCalledTimes(1));
+      expect(test.controller.phase.value).toBe('preparing');
+      expect(test.controller.canCancel.value).toBe(true);
+
+      test.controller.cancel();
+      // Generation-only cancel: the phase cannot leave 'preparing' until the
+      // awaited authority settles, and no AbortController bookkeeping exists.
+      expect(test.controller.phase.value).toBe('preparing');
+      releaseAuthority();
+      expect(await pending).toBe(false);
+
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.controller.phase.value).toBe('cancelled');
+      expect(test.controller.status.value).toBe('Key Rail cycle cancelled');
+      expect(test.controller.error.value).toBeNull();
+      expect(test.log).toHaveBeenCalledWith('Key Rail cycle cancelled');
+      expect(test.log.mock.calls.some(([, isError]) => isError === true)).toBe(false);
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+
+      // The frozen target survives cancellation: Create Cycle retries once and
+      // commits exactly once.
+      expect(await test.controller.confirm()).toBe(true);
+      expect(requestAuthority).toHaveBeenCalledTimes(2);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+      expect(test.controller.confirmationOpen.value).toBe(false);
+    });
+
+    // WR-01: Cancel during 'committing' cannot close the dialog (closeConfirmation
+    // no-ops while busy), so it must not clear the frozen target either. A failed
+    // commit must leave Create Cycle functional instead of a dead modal.
+    it('busy-phase cancel preserves the target and the retry commits', async () => {
+      let releaseFirstCommit!: () => void;
+      let commitCalls = 0;
+      const commit = vi.fn(async (
+        publication: RotoGeneratedPhysicalPublication,
+      ): Promise<RotoPlayScriptCommitResult> => {
+        commitCalls += 1;
+        if (commitCalls === 1) {
+          await new Promise<void>((resolve) => { releaseFirstCommit = resolve; });
+          return { ok: false, error: 'Parent rejected the Key Rail cycle creation.' };
+        }
+        return {
+          ok: true,
+          operationId: 'accepted-operation',
+          acceptedRevision: 'revision-2',
+          records: publication.records,
+          interpolationMode: publication.interpolationMode,
+          selectedKeyId: publication.selectedKeyId,
+          selectedAppFrame: publication.selectedAppFrame,
+          ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+        };
+      });
+      const test = railHarness([], {}, { commit });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const first = test.controller.confirm();
+      await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+      expect(test.controller.phase.value).toBe('committing');
+
+      test.controller.cancel();
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.dialogMode.value).toBe('key-rail-create');
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(test.controller.phase.value).toBe('committing');
+
+      releaseFirstCommit();
+      expect(await first).toBe(false);
+      expect(test.controller.phase.value).toBe('failed');
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+
+      // Create Cycle is still functional after the failed commit.
+      expect(await test.controller.confirm()).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(2);
+      expect(test.controller.phase.value).toBe('complete');
+      expect(test.controller.keyRailCycleEditTarget.value).toBeNull();
+    });
+
+    it('refuses a STALE target at confirm with zero commits and no history entry (T-58-02)', async () => {
+      // The accepted document still holds F, but fresh authority no longer does.
+      const test = railHarness([], {
+        physicalRecords: railPhysicalRecords().filter((entry) => entry.keyId !== 'F'),
+      });
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.requestAuthority).toHaveBeenCalledTimes(1);
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(test.log).toHaveBeenCalledWith('The Key Rail segment changed. Reopen the Cycle dialog.', true);
+      expect(test.controller.confirmationOpen.value).toBe(true);
+      expect(test.controller.keyRailCycleEditTarget.value).not.toBeNull();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+    });
+
+    it('refuses keys already owned through a loop source cycle at open and at confirm', async () => {
+      const opened = railHarness([loopClip('L1', 10, 1, ['A'])]);
+      expect(await opened.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: false, reason: 'These keys already belong to a Loop Clip. Unlink it before creating a cycle.' });
+      expect(opened.controller.confirmationOpen.value).toBe(false);
+      expect(opened.requestAuthority).not.toHaveBeenCalled();
+      expect(opened.commit).not.toHaveBeenCalled();
+
+      let liveLoops: readonly PhysicPaintRotoLoopClip[] = [];
+      const raced = railHarness([], {}, { getRotoLoopClips: () => liveLoops });
+      expect(await raced.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+      liveLoops = [loopClip('L1', 10, 1, ['A'])];
+      expect(await raced.controller.confirm()).toBe(false);
+      expect(raced.commit).not.toHaveBeenCalled();
+      expect(zeroHistory().availability.value).toEqual({ undo: 0, redo: 0 });
+    });
+
+    it('refuses keys already owned through a loop frame override at open', async () => {
+      const overrideLoop: PhysicPaintRotoLoopClip = {
+        ...loopClip('L1', 10, 1, ['Z']),
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 20,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [{ appFrame: 12, keyId: 'C' }],
+      };
+      const test = railHarness([overrideLoop]);
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: false, reason: 'These keys already belong to a Loop Clip. Unlink it before creating a cycle.' });
+      expect(test.commit).not.toHaveBeenCalled();
+    });
+
+    it('two confirm calls in the same tick produce exactly ONE commit (T-58-04)', async () => {
+      const test = railHarness();
+      expect(await test.controller.openKeyRailCycleEdit({ firstKeyId: 'A', keyIds: ['A', 'C', 'F'] }))
+        .toEqual({ ok: true, reason: null });
+
+      const first = test.controller.confirm();
+      const second = test.controller.confirm();
+      expect(await Promise.all([first, second])).toEqual([true, false]);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      expect(test.controller.phase.value).toBe('complete');
+    });
+
+    it('a Standard clip opened later keeps the span-based extent through updateLoop', async () => {
+      const gappedStandard = (repeat: number): PhysicPaintRotoLoopClip => ({
+        loopId: 'L1',
+        placementStart: 10,
+        sourceKeyIds: ['A', 'C', 'F'],
+        repeat,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 10,
+        originalEndExclusive: 16,
+        visibleRanges: [{ start: 10, endExclusive: 16 }],
+        frameOverrides: [],
+      });
+      const test = railHarness([gappedStandard(1)]);
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      expect(test.controller.countText.value).toBe('3');
+      test.controller.repeatText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      const updated = test.commit.mock.calls[0][0].loopClips?.find((clip) => clip.loopId === 'L1');
+      // Span law, never the 3-key count: 10 + (15 - 10 + 1) * 2 = 22.
+      expect(updated?.originalEndExclusive).toBe(22);
+      expect(updated?.visibleRanges).toEqual([{ start: 10, endExclusive: 22 }]);
+      expect(isStandardMergedLoopClip(updated)).toBe(true);
     });
   });
 });
@@ -5366,7 +5821,9 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
   });
 
   it('treats gaps between fragments as outside the rail (CR-03)', async () => {
-    const fragmented = stackClip(1, {
+    // 58-09 (G-01): the stored end 22 must stay canonical against the 4-frame
+    // source cycle at 10..13, so repeat 3 is the intent behind that end.
+    const fragmented = stackClip(3, {
       syncState: 'synchronized',
       provenanceState: 'attached',
       phaseOrigin: 10,

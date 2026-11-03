@@ -10,13 +10,13 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 
 ### Rail Editing (RAIL)
 
-- [ ] **RAIL-01**: User can open Edit Rail for a normal Key Rail — selected (or double-clicked) in the Studio timeline — from the sidebar, using the same Edit Rail entry point loop clips already use.
-- [ ] **RAIL-02**: The Key Rail Edit Rail modal shows only the cycle count and the Infinity checkbox, prefilled at 1 for both a finite count and the infinite state; no script, motion, or reveal controls are shown.
-- [ ] **RAIL-03**: Confirming the modal converts the selected Key Rail segment into a provenance-free Standard loop clip — `sourceKeyIds` = the segment's keys in frame order, `placementStart` = the segment's first key frame, no `scriptId`, no `railKind`, no `motion` — and the keys become loop-owned; the Key Rail segment no longer renders and the rail presents as a Standard cycle.
-- [ ] **RAIL-04**: Cancelling the Key Rail Edit Rail modal performs zero writes (no store mutation, no revision bump, no undo entry).
-- [ ] **RAIL-05**: The Key Rail → cycle conversion is exactly one undo step: Undo restores the original Key Rail segment with its keys and Redo re-applies the conversion; cancel and refusal leave the ledger untouched.
-- [ ] **RAIL-06**: A single-key drag works on Motion/Static/Reveal loop clips under the law chosen at discuss-phase — preferred A: allowed when exactly one loop references the key (an independent cycle), while a key referenced by more than one loop keeps D-11 and the locked rigid-group copy; B (unlink + whole-cycle Force Spacing) and C (propagate retime to every linked loop) are the alternatives. Shared linked-cycle behavior is never silently relaxed.
-- [ ] **RAIL-07**: The new rail-editing behavior is regression-locked: resolver tests cover the conversion and the drag law, undo/redo pins cover both directions, existing D-11 guard tests remain green (or are deliberately updated with the chosen law), and no `.mce` schema field is added or changed.
+- [x] **RAIL-01**: User can open Edit Rail for a normal Key Rail — selected (or double-clicked) in the Studio timeline — from the sidebar, using the same Edit Rail entry point loop clips already use.
+- [x] **RAIL-02**: The Key Rail Edit Rail modal shows only the cycle count and the Infinity checkbox, prefilled at 1 for both a finite count and the infinite state; no script, motion, or reveal controls are shown.
+- [x] **RAIL-03**: Confirming the modal converts the selected Key Rail segment into a provenance-free Standard loop clip — `sourceKeyIds` = the segment's keys in frame order, `placementStart` = the segment's first key frame, no `scriptId`, no `railKind`, no `motion` — and the keys become loop-owned; the Key Rail segment no longer renders and the rail presents as a Standard cycle.
+- [x] **RAIL-04**: Cancelling the Key Rail Edit Rail modal performs zero writes (no store mutation, no revision bump, no undo entry).
+- [x] **RAIL-05**: The Key Rail → cycle conversion is exactly one undo step: Undo restores the original Key Rail segment with its keys and Redo re-applies the conversion; cancel and refusal leave the ledger untouched.
+- [x] **RAIL-06**: A single-key drag works on Motion/Static/Reveal loop clips under the law chosen at discuss-phase — preferred A: allowed when exactly one loop references the key (an independent cycle), while a key referenced by more than one loop keeps D-11 and the locked rigid-group copy; B (unlink + whole-cycle Force Spacing) and C (propagate retime to every linked loop) are the alternatives. Shared linked-cycle behavior is never silently relaxed.
+- [x] **RAIL-07**: The new rail-editing behavior is regression-locked: resolver tests cover the conversion and the drag law, undo/redo pins cover both directions, existing D-11 guard tests remain green (or are deliberately updated with the chosen law), and no `.mce` schema field is added or changed.
 
 ### v7 Timeline Rails (VIS)
 
@@ -45,13 +45,13 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAIL-01 | Phase 58 | Pending |
-| RAIL-02 | Phase 58 | Pending |
-| RAIL-03 | Phase 58 | Pending |
-| RAIL-04 | Phase 58 | Pending |
-| RAIL-05 | Phase 58 | Pending |
-| RAIL-06 | Phase 58 | Pending |
-| RAIL-07 | Phase 58 | Pending |
+| RAIL-01 | Phase 58 | Complete |
+| RAIL-02 | Phase 58 | Complete |
+| RAIL-03 | Phase 58 | Complete |
+| RAIL-04 | Phase 58 | Complete |
+| RAIL-05 | Phase 58 | Complete |
+| RAIL-06 | Phase 58 | Complete |
+| RAIL-07 | Phase 58 | Complete |
 | VIS-01 | v7 quick (in-milestone) | Pending |
 | VIS-02 | v7 quick (in-milestone) | Pending |
 | VIS-03 | v7 quick (in-milestone) | Pending |

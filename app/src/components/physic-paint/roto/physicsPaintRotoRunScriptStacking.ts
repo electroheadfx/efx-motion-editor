@@ -580,3 +580,35 @@ export function buildStandardStackedLoopClip(input: {
     ...(lifecycle ?? {}),
   };
 }
+
+/**
+ * 58-02 (RAIL-03): the Standard record a Key Rail segment converts into.
+ *
+ * The conversion creates a brand-new rail from the Key Rail's existing keys, so
+ * this is a strict-whitelist literal like `buildStandardStackedLoopClip` — no
+ * source record is ever spread. The record carries only the required loop
+ * identity (`loopId`, `placementStart`, `repeat`, `sourceKeyIds`, `mode`) and
+ * the clamped creation lifecycle. By omission it can never carry
+ * `scriptId` / `motion` / `overrideColor` (single-script provenance would make
+ * Regenerate rebuild one script over the segment) or the Reveal identity
+ * (`railKind` / `colorize` / `colorizeMix` / `photoWiggle`). A null lifecycle
+ * (infinity) stamps nothing — the parser never invents lifecycle members.
+ */
+export function buildKeyRailStandardLoopClip(input: {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly sourceKeyIds: readonly string[];
+  readonly repeat: number | 'infinity';
+  readonly mode: 'progressive' | 'static';
+  readonly lifecycle: RunScriptStackLifecycle | null;
+}): PhysicPaintRotoLoopClip {
+  const { loopId, placementStart, sourceKeyIds, repeat, mode, lifecycle } = input;
+  return {
+    loopId,
+    placementStart,
+    repeat,
+    sourceKeyIds: Object.freeze([...sourceKeyIds]),
+    mode,
+    ...(lifecycle ?? {}),
+  };
+}

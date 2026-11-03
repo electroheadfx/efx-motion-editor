@@ -1,11 +1,13 @@
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
+  type PhysicPaintRotoGroupFrameOverride,
   type PhysicPaintRotoGroupVisibleRange,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
+  resolvePhysicPaintRotoLoopSourceExtent,
 } from './physicsPaintRotoPhysicalModel';
 import { deriveDeleteKeyRailIncomingInterpolationBreakKeyIds } from './physicsPaintRotoPhysicalResolver';
 import { deriveKeyRailSegments, type KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
@@ -98,11 +100,12 @@ export function proposePhysicPaintRotoGroupFramePaint(
   if (groupIndex < 0) return reject('group-not-found');
   const group = input.document.loopClips[groupIndex];
   if (!isLifecycleGroup(group)) return reject('group-lifecycle-unavailable');
+  const boundedEnd = resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity);
   if (!Number.isSafeInteger(input.appFrame)
     || input.appFrame < group.phaseOrigin
-    || input.appFrame >= group.originalEndExclusive) return reject('frame-outside-group-extent');
+    || input.appFrame >= boundedEnd) return reject('frame-outside-group-extent');
 
-  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame, input.document.capacity);
   if (!phase) return reject('malformed-proposal');
   const phaseOverrides = group.frameOverrides.filter((override) => (
     positiveModulo(override.appFrame - group.phaseOrigin, phase.cycleLength) === phase.cycleOffset
@@ -308,6 +311,32 @@ export function resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(
   return index >= 0 ? group.sourceKeyIds[index]! : null;
 }
 
+/**
+ * 58-09 (G-01): the source-derived end a finite lifecycle Group actually owns.
+ * The stored `originalEndExclusive` is intent; deleting or retiming a source
+ * key shrinks the surviving cycle, and every extent/classification/proposal
+ * check must stop there. Infinity and lifecycle-less groups keep the stored
+ * end — the source-extent resolver returns null for both.
+ */
+function resolveGroupBoundedEnd(
+  group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'phaseOrigin' | 'originalEndExclusive'
+  >>,
+  realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  capacity: number | undefined,
+): number {
+  if (typeof capacity !== 'number') return group.originalEndExclusive;
+  const extent = resolvePhysicPaintRotoLoopSourceExtent(
+    group,
+    realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    capacity,
+  );
+  return extent === null
+    ? group.originalEndExclusive
+    : Math.min(group.originalEndExclusive, extent.endExclusive);
+}
+
 interface PhysicPaintRotoGroupPhaseAuthority {
   readonly cycleOffset: number;
   readonly cycleLength: number;
@@ -322,6 +351,7 @@ function resolveGroupPhaseAuthority(
     'phaseOrigin' | 'originalEndExclusive'
   >>,
   appFrame: number,
+  capacity: number | undefined,
 ): PhysicPaintRotoGroupPhaseAuthority | null {
   const recordsById = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
   const sourceFrames = group.sourceKeyIds.map((keyId) => recordsById.get(keyId)?.appFrame);
@@ -334,10 +364,11 @@ function resolveGroupPhaseAuthority(
   if (!Number.isSafeInteger(cycleLength) || cycleLength <= 0) return null;
   const cycleOffset = positiveModulo(appFrame - group.phaseOrigin, cycleLength);
   const phaseAppFrame = group.phaseOrigin + cycleOffset;
+  const boundedEnd = resolveGroupBoundedEnd(group, document.realKeyRecords, capacity);
   const affectedAppFrames: number[] = [];
   for (
     let candidate = phaseAppFrame;
-    candidate < group.originalEndExclusive;
+    candidate < boundedEnd;
     candidate += cycleLength
   ) {
     affectedAppFrames.push(candidate);
@@ -362,7 +393,7 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
     isLifecycleGroup(group)
     && Number.isSafeInteger(appFrame)
     && appFrame >= group.phaseOrigin
-    && appFrame < group.originalEndExclusive
+    && appFrame < resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity)
   ));
   if (containingGroups.length > 1) {
     return Object.freeze({
@@ -378,7 +409,7 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
       ? Object.freeze({ kind: 'ordinary-key', appFrame, keyId: record.keyId })
       : Object.freeze({ kind: 'empty', appFrame });
   }
-  const phase = resolveGroupPhaseAuthority(input.document, group, appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, appFrame, input.document.capacity);
   if (!phase) {
     const missingSourceKeyIds = group.sourceKeyIds.filter((keyId) => (
       !input.document.realKeyRecords.some((record) => record.keyId === keyId)
@@ -526,6 +557,200 @@ function normalizeRangesAfterFrameRemoval(
   return Object.freeze(next.map((range) => Object.freeze(range)));
 }
 
+/**
+ * 58 (G-02): a generate-mode Rail (Motion + interpolation) must never carry an
+ * interior hole. Deleting one of its phases contracts the source cycle
+ * instead: every later source key ripples one frame left and every repeat
+ * loses that frame. The mapping below is the ONE frame transform for that
+ * contraction — a frame on the removed phase maps to null.
+ */
+function transformContractedFrame(
+  appFrame: number,
+  phaseOrigin: number,
+  cycleLength: number,
+  removedOffset: number,
+): number | null {
+  const local = appFrame - phaseOrigin;
+  if (local < 0) return null;
+  const cycleIndex = Math.floor(local / cycleLength);
+  const offset = local - cycleIndex * cycleLength;
+  if (offset === removedOffset) return null;
+  return phaseOrigin
+    + cycleIndex * (cycleLength - 1)
+    + (offset > removedOffset ? offset - 1 : offset);
+}
+
+function transformContractedBoundary(
+  endExclusive: number,
+  phaseOrigin: number,
+  cycleLength: number,
+  removedOffset: number,
+): number {
+  const local = endExclusive - phaseOrigin;
+  const cycleIndex = Math.floor(local / cycleLength);
+  const tail = local - cycleIndex * cycleLength;
+  return phaseOrigin
+    + cycleIndex * (cycleLength - 1)
+    + tail
+    - (removedOffset < tail ? 1 : 0);
+}
+
+function transformContractedRanges(
+  ranges: readonly PhysicPaintRotoGroupVisibleRange[],
+  phaseOrigin: number,
+  cycleLength: number,
+  removedOffset: number,
+): readonly PhysicPaintRotoGroupVisibleRange[] {
+  const next: { start: number; endExclusive: number }[] = [];
+  for (const range of ranges) {
+    for (let appFrame = range.start; appFrame < range.endExclusive; appFrame += 1) {
+      const mapped = transformContractedFrame(appFrame, phaseOrigin, cycleLength, removedOffset);
+      if (mapped === null) continue;
+      const last = next[next.length - 1];
+      if (last && mapped <= last.endExclusive) {
+        last.endExclusive = Math.max(last.endExclusive, mapped + 1);
+      } else {
+        next.push({ start: mapped, endExclusive: mapped + 1 });
+      }
+    }
+  }
+  return Object.freeze(next.map((range) => Object.freeze(range)));
+}
+
+interface PhysicPaintRotoGroupContractionPlan {
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly cleanupKeyIds: readonly string[];
+}
+
+/**
+ * The contraction plan for one generate-mode phase delete, or null when the
+ * legacy gap semantics must apply (static/hold rails, reveal rails,
+ * non-contiguous source cycles, shared source keys). A 'reject' result means
+ * contraction is the only legal behavior but a shifted source key would land
+ * on an unrelated real key — fail closed rather than corrupt the timeline.
+ */
+function resolveGenerateModeContraction(
+  document: PhysicPaintRotoPhysicalDocument,
+  group: PhysicPaintRotoLoopClip & Required<Pick<
+    PhysicPaintRotoLoopClip,
+    'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'
+  >>,
+  phase: PhysicPaintRotoGroupPhaseAuthority,
+): PhysicPaintRotoGroupContractionPlan | 'reject' | null {
+  if (!document.interpolation.enabled || group.mode === 'static' || group.railKind === 'reveal') return null;
+  const recordsById = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  const sourceFrames: number[] = [];
+  for (const keyId of group.sourceKeyIds) {
+    const record = recordsById.get(keyId);
+    if (!record) return null;
+    sourceFrames.push(record.appFrame);
+  }
+  if (sourceFrames.length < 2) return null;
+  if (sourceFrames[0] !== group.phaseOrigin) return null;
+  // Source keys may be spaced (generated in-betweens) — the cycle span is the
+  // last source offset plus one, never the key count.
+  const sourceOffsets = sourceFrames.map((frame) => frame - group.phaseOrigin);
+  const cycleLength = sourceOffsets[sourceOffsets.length - 1]! + 1;
+  if (phase.cycleLength !== cycleLength) return null;
+  const removedOffset = phase.cycleOffset;
+  if (!Number.isSafeInteger(removedOffset) || removedOffset < 0 || removedOffset >= cycleLength) return null;
+  // Deleting the first key keeps the cycle anchored at `phaseOrigin` only when
+  // the next source is adjacent: the ripple then lands it on offset 0.
+  if (removedOffset === 0 && sourceOffsets[1] !== 1) return null;
+  const deletedIndex = sourceOffsets.indexOf(removedOffset);
+  const deletedKeyId = deletedIndex >= 0 ? group.sourceKeyIds[deletedIndex]! : null;
+  const shiftedKeyIds = new Set(group.sourceKeyIds.filter(
+    (_keyId, index) => sourceOffsets[index]! > removedOffset,
+  ));
+  const overrideKeyIds = new Set(group.frameOverrides.map((override) => override.keyId));
+  for (const clip of document.loopClips) {
+    if (clip.loopId === group.loopId) continue;
+    if ((deletedKeyId !== null && clip.sourceKeyIds.includes(deletedKeyId))
+      || clip.sourceKeyIds.some((keyId) => shiftedKeyIds.has(keyId))) return null;
+    if ((clip.frameOverrides ?? []).some((override) => overrideKeyIds.has(override.keyId))) return null;
+  }
+  const frameByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record.appFrame]));
+  const realKeyFrames = new Set(document.realKeyRecords.map((record) => record.appFrame));
+  for (const keyId of shiftedKeyIds) {
+    const frame = frameByKeyId.get(keyId)!;
+    if (!realKeyFrames.has(frame - 1)) continue;
+    const occupant = document.realKeyRecords.find((record) => record.appFrame === frame - 1);
+    if (occupant && occupant.keyId !== deletedKeyId && !shiftedKeyIds.has(occupant.keyId)) return 'reject';
+  }
+
+  const nextRealKeyRecords = document.realKeyRecords
+    .filter((record) => record.keyId !== deletedKeyId)
+    .map((record) => (shiftedKeyIds.has(record.keyId)
+      ? Object.freeze({
+          kind: 'real-key' as const,
+          keyId: record.keyId,
+          appFrame: record.appFrame - 1,
+          payload: Object.freeze({ ...record.payload, appFrame: record.appFrame - 1 }),
+        })
+      : record));
+
+  const removedOverrideKeyIds: string[] = [];
+  const nextFrameOverrides: PhysicPaintRotoGroupFrameOverride[] = [];
+  for (const override of group.frameOverrides) {
+    const mapped = transformContractedFrame(override.appFrame, group.phaseOrigin, cycleLength, removedOffset);
+    if (mapped === null) {
+      removedOverrideKeyIds.push(override.keyId);
+      continue;
+    }
+    nextFrameOverrides.push(Object.freeze({ appFrame: mapped, keyId: override.keyId }));
+  }
+  nextFrameOverrides.sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId));
+  const overrideFrameById = new Map(nextFrameOverrides.map((override) => [override.keyId, override.appFrame]));
+  const nextGroupOverrideRecords = (document.groupOverrideRecords ?? []).map((record) => {
+    const mapped = overrideFrameById.get(record.keyId);
+    if (mapped === undefined) return record;
+    return Object.freeze({
+      kind: 'real-key' as const,
+      keyId: record.keyId,
+      appFrame: mapped,
+      payload: Object.freeze({ ...record.payload, appFrame: mapped }),
+    });
+  });
+
+  const visibleRanges = transformContractedRanges(
+    group.visibleRanges,
+    group.phaseOrigin,
+    cycleLength,
+    removedOffset,
+  );
+  if (visibleRanges.length === 0) return null;
+  const nextGroup = Object.freeze({
+    ...group,
+    syncState: 'modified' as const,
+    sourceKeyIds: Object.freeze(group.sourceKeyIds.filter((keyId) => keyId !== deletedKeyId)),
+    originalEndExclusive: transformContractedBoundary(
+      group.originalEndExclusive,
+      group.phaseOrigin,
+      cycleLength,
+      removedOffset,
+    ),
+    visibleRanges,
+    frameOverrides: Object.freeze(nextFrameOverrides),
+  });
+  const loopClips = document.loopClips.map((candidate) => (
+    candidate.loopId === group.loopId ? nextGroup : candidate
+  ));
+  const remainingReferences = referencedKeyIds(loopClips);
+  const cleanupKeyIds = Object.freeze(
+    [...(deletedKeyId === null ? [] : [deletedKeyId]), ...removedOverrideKeyIds]
+      .filter((keyId) => !remainingReferences.has(keyId))
+      .sort(),
+  );
+  return Object.freeze({
+    loopClips,
+    realKeyRecords: Object.freeze(nextRealKeyRecords),
+    groupOverrideRecords: Object.freeze(nextGroupOverrideRecords),
+    cleanupKeyIds,
+  });
+}
+
 function referencedKeyIds(groups: readonly PhysicPaintRotoLoopClip[]): ReadonlySet<string> {
   return new Set(groups.flatMap((group) => [
     ...group.sourceKeyIds,
@@ -548,10 +773,16 @@ function buildLifecycleProposal(
   document: PhysicPaintRotoPhysicalDocument,
   loopClips: readonly PhysicPaintRotoLoopClip[],
   cleanupKeyIds: readonly string[],
+  nextRecords?: {
+    readonly realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[];
+    readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  },
 ): PhysicPaintRotoPhysicalDocument {
   const cleanup = new Set(cleanupKeyIds);
-  const realKeyRecords = document.realKeyRecords.filter((record) => !cleanup.has(record.keyId));
-  const groupOverrideRecords = (document.groupOverrideRecords ?? []).filter((record) => !cleanup.has(record.keyId));
+  const realKeyRecords = (nextRecords?.realKeyRecords ?? document.realKeyRecords)
+    .filter((record) => !cleanup.has(record.keyId));
+  const groupOverrideRecords = (nextRecords?.groupOverrideRecords ?? document.groupOverrideRecords ?? [])
+    .filter((record) => !cleanup.has(record.keyId));
   const incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds
     .filter((keyId) => !cleanup.has(keyId));
   const selectedKeyId = document.selectedKeyId !== null && cleanup.has(document.selectedKeyId)
@@ -588,11 +819,12 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
   if (groupIndex < 0) return rejectLifecycle('group-not-found');
   const group = input.document.loopClips[groupIndex];
   if (!isLifecycleGroup(group)) return rejectLifecycle('group-lifecycle-unavailable');
-  if (input.appFrame < group.phaseOrigin || input.appFrame >= group.originalEndExclusive) {
+  const boundedEnd = resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity);
+  if (input.appFrame < group.phaseOrigin || input.appFrame >= boundedEnd) {
     return rejectLifecycle('frame-outside-group-extent');
   }
   if (!includesFrame(group.visibleRanges, input.appFrame)) return rejectLifecycle('frame-not-visible');
-  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame);
+  const phase = resolveGroupPhaseAuthority(input.document, group, input.appFrame, input.document.capacity);
   if (!phase) return rejectLifecycle('malformed-proposal');
   const visibleTargets = phase.affectedAppFrames
     .filter((appFrame) => includesFrame(group.visibleRanges, appFrame));
@@ -615,6 +847,41 @@ export function proposePhysicPaintRotoDeleteGroupFrame(
         affectedAppFrames: phase.affectedAppFrames,
       }),
     });
+  }
+
+  // 58 (G-02): a generate-mode rail contracts here — the deleted phase leaves
+  // the source cycle, later source keys ripple one frame left, and every
+  // repeat loses that frame. `hold` rails keep the legacy gap semantics.
+  const contraction = resolveGenerateModeContraction(input.document, group, phase);
+  if (contraction === 'reject') return rejectLifecycle('malformed-proposal');
+  if (contraction) {
+    try {
+      const proposal = buildLifecycleProposal(
+        input.document,
+        contraction.loopClips,
+        contraction.cleanupKeyIds,
+        {
+          realKeyRecords: contraction.realKeyRecords,
+          groupOverrideRecords: contraction.groupOverrideRecords,
+        },
+      );
+      return Object.freeze({
+        ok: true,
+        proposal,
+        impact: Object.freeze({
+          kind: 'delete-group-frame',
+          groupId: input.groupId,
+          appFrame: input.appFrame,
+          phaseAppFrame: phase.phaseAppFrame,
+          affectedAppFrames: phase.affectedAppFrames,
+          cleanupKeyIds: contraction.cleanupKeyIds,
+          previousRevision: input.document.revision,
+          nextRevision: proposal.revision,
+        }),
+      });
+    } catch {
+      return rejectLifecycle('malformed-proposal');
+    }
   }
 
   const removedOverrides = group.frameOverrides.filter((override) => (
@@ -713,7 +980,7 @@ export function proposePhysicPaintRotoRegenerateGroup(
     provenanceState: 'attached' as const,
     visibleRanges: Object.freeze([Object.freeze({
       start: group.phaseOrigin,
-      endExclusive: group.originalEndExclusive,
+      endExclusive: resolveGroupBoundedEnd(group, input.document.realKeyRecords, input.document.capacity),
     })]),
     frameOverrides: Object.freeze([]),
   };

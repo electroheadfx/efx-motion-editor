@@ -27,9 +27,11 @@ import {
   derivePhysicPaintRotoLoopRanges,
   derivePhysicPaintPushSet,
   derivePhysicPaintRailSetMove,
+  isPhysicPaintRotoRailInsertDestination,
   resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
+  resolvePhysicPaintRotoRailKeyInsertTarget,
   type PhysicPaintRailSetMoveMember,
   type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoLinkedSourceSpacingScope,
@@ -105,6 +107,8 @@ export interface RotoInsertTargetClassificationInput {
   readonly records: readonly PhysicPaintRotoRealKeyRecord[];
   readonly physicalCells: readonly RotoPhysicalTimelineCell[];
   readonly frameResolution: PhysicPaintRotoFrameResolution | null;
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  readonly interpolation?: PhysicPaintRotoInterpolationState;
 }
 
 /**
@@ -136,6 +140,16 @@ export function classifyRotoInsertTarget(
     || input.frameResolution.kind === 'linked-generated'
     || input.frameResolution.kind === 'linked-gap'
   )) {
+    // 58 (G-03): a Rail frame accepts the insert — the resolver extends its
+    // source cycle by one frame. 58 also allows Reveal rails and their
+    // gap-policy interiors (the inserted frame follows the rail's own policy).
+    if (isPhysicPaintRotoRailInsertDestination({
+        identities: input.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        destinationAppFrame: input.currentAppFrame,
+        loopClips: input.loopClips ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+      })) {
+      return { kind: 'generated', appFrame: input.currentAppFrame };
+    }
     return { kind: 'resolved-linked', appFrame: input.currentAppFrame };
   }
   if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
@@ -705,6 +719,69 @@ export interface RotoDeleteTargetClassificationInput {
 }
 
 /**
+ * 58-09 (G-01): classify one physical frame against the lifecycle Groups.
+ * Delete routes a selected real key by its OWN frame, never by the cursor.
+ */
+function classifyDeleteGroupFrame(
+  input: RotoDeleteTargetClassificationInput,
+  appFrame: number,
+  capacity: number,
+) {
+  return classifyPhysicPaintRotoGroupFrameTarget({
+    appFrame,
+    document: {
+      realKeyRecords: input.records,
+      interpolation: input.interpolation,
+      scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+      capacity,
+      background: null,
+      selectedKeyId: input.selectedKeyId,
+      cursorAppFrame: appFrame,
+      revision: '',
+      loopClips: input.loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    },
+  });
+}
+
+/** The containing lifecycle Group when the frame renders Group content. */
+function resolveGroupOwnedDeleteFrame(
+  input: RotoDeleteTargetClassificationInput,
+  appFrame: number,
+  capacity: number,
+): { readonly groupId: string } | null {
+  const target = classifyDeleteGroupFrame(input, appFrame, capacity);
+  return target.kind === 'source-occurrence'
+    || target.kind === 'generated-occurrence'
+    || target.kind === 'override'
+    ? { groupId: target.groupId }
+    : null;
+}
+
+function buildGroupFrameDeleteTarget(
+  input: RotoDeleteTargetClassificationInput,
+  groupId: string,
+  appFrame: number,
+): RotoDeleteTarget {
+  const group = input.loopClips.find((candidate) => candidate.loopId === groupId);
+  if (group?.phaseOrigin === undefined || group.visibleRanges === undefined) {
+    return Object.freeze({ kind: 'unresolved-group', groupId, appFrame });
+  }
+  const visibleCount = group.visibleRanges.reduce(
+    (count, range) => count + range.endExclusive - range.start,
+    0,
+  );
+  return Object.freeze({
+    kind: 'group-frame',
+    groupId,
+    appFrame,
+    mode: group.mode,
+    phaseOrigin: group.phaseOrigin,
+    onlyOccurrence: visibleCount === 1,
+  });
+}
+
+/**
  * One activation-time Delete authority shared by keyboard and visible actions.
  * Group ownership is classified from the complete accepted records/Group facts;
  * components only render the resulting choice and never infer ownership.
@@ -722,6 +799,7 @@ export function classifyRotoDeleteTarget(
     || input.currentAppFrame >= input.capacity) {
     return Object.freeze({ kind: 'unavailable' });
   }
+  const capacity = input.capacity;
 
   // 43.6-04 D-21/D-22: the rail-set branch runs FIRST, before the loop/key-rail
   // branches it supersedes. An active non-empty set classifies as 'rail-set'
@@ -731,6 +809,19 @@ export function classifyRotoDeleteTarget(
   if (input.railSetMembers !== undefined && input.railSetMembers.length > 0) {
     const derived = deriveRailSetDeleteMembers(input);
     if (derived === null) return Object.freeze({ kind: 'stale-key-rail' });
+    // 58-09 (G-01): a rail member sitting on a Group frame belongs to that
+    // Group frame, so the whole set refuses rather than deleting a key the
+    // lifecycle still owns.
+    const frameByKeyId = new Map(input.records.map((record) => [record.keyId, record.appFrame]));
+    const membersOwnGroupFrame = derived.members.some((member) => (
+      member.kind === 'key-rail'
+      && member.keyIds.some((keyId) => {
+        const appFrame = frameByKeyId.get(keyId);
+        return appFrame !== undefined
+          && resolveGroupOwnedDeleteFrame(input, appFrame, capacity) !== null;
+      })
+    ));
+    if (membersOwnGroupFrame) return Object.freeze({ kind: 'no-target' });
     return Object.freeze({
       kind: 'rail-set',
       members: derived.members,
@@ -771,6 +862,16 @@ export function classifyRotoDeleteTarget(
       && new Set(selection.keyIds).size === selection.keyIds.length;
     if (!selectionIsWellFormed) return Object.freeze({ kind: 'stale-key-rail' });
 
+    // 58-09 (G-01): a Key Rail member whose own frame renders Group content
+    // is Group-owned; deleting the rail would remove that frame's backing key.
+    const frameByKeyId = new Map(input.records.map((record) => [record.keyId, record.appFrame]));
+    if (selection.keyIds.some((keyId) => {
+      const appFrame = frameByKeyId.get(keyId);
+      return appFrame !== undefined && resolveGroupOwnedDeleteFrame(input, appFrame, capacity) !== null;
+    })) {
+      return Object.freeze({ kind: 'no-target' });
+    }
+
     const groupOwnedKeyIds = new Set<string>();
     for (const loopClip of input.loopClips) {
       loopClip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
@@ -801,12 +902,30 @@ export function classifyRotoDeleteTarget(
     const recordsById = new Map(input.records.map((record) => [record.keyId, record]));
     if (uniqueIds.size === input.selectedKeyIds.length
       && input.selectedKeyIds.every((keyId) => isBoundedKeyId(keyId) && recordsById.has(keyId))) {
+      // 58-09 (G-01): any member on a Group frame makes the whole selection
+      // Group-owned — Delete refuses rather than removing the backing key.
+      if (input.selectedKeyIds.some((keyId) => (
+        resolveGroupOwnedDeleteFrame(input, recordsById.get(keyId)!.appFrame, capacity) !== null
+      ))) {
+        return Object.freeze({ kind: 'no-target' });
+      }
       return Object.freeze({
         kind: 'ordinary-key-group',
         keyIds: Object.freeze([...input.selectedKeyIds]),
       });
     }
     return Object.freeze({ kind: 'no-target' });
+  }
+
+  // 58-09 (G-01): a single selected key routes by its OWN frame. When that
+  // frame renders Group content the target is the Group frame, even when the
+  // cursor moved elsewhere; ordinary keys keep the cursor classification.
+  if (isBoundedKeyId(input.selectedKeyId)) {
+    const selectedRecord = input.records.find((record) => record.keyId === input.selectedKeyId);
+    if (selectedRecord) {
+      const owned = resolveGroupOwnedDeleteFrame(input, selectedRecord.appFrame, capacity);
+      if (owned !== null) return buildGroupFrameDeleteTarget(input, owned.groupId, selectedRecord.appFrame);
+    }
   }
 
   const frameTarget = classifyPhysicPaintRotoGroupFrameTarget({
@@ -1409,6 +1528,8 @@ export interface RotoTimelineActionsInput {
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
   /** Durable Loop Clip collection from the store (Phase 43, Q1). */
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
+  /** 58: complete Group frame-override records, so a rail insert can retime painted phases. */
+  getRotoGroupOverrideRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
   /** Current physical projection cells (D-10). */
   getPhysicalCells?: () => readonly RotoPhysicalTimelineCell[];
   /** Current canonical linked-frame resolution, when Loop Clips are present. */
@@ -1908,6 +2029,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // durable Loop Clip collection; absent port = pre-43 empty collection.
       loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
+      ...(input.getRotoGroupOverrideRecords
+        ? { groupOverrideRecords: input.getRotoGroupOverrideRecords() }
+        : {}),
     });
     if (!resolution.ok) {
       input.setApplyStatus?.('error');
@@ -2342,6 +2466,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       readonly joinPreviousRail?: boolean;
       /** Create rail → Key: force an isolated new rail even inside a span. */
       readonly forceNewSegment?: boolean;
+      /** + Key: a repeat-occurrence destination opens the key at its first-cycle phase. */
+      readonly allowRepeatRailInsert?: boolean;
     },
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
@@ -2379,13 +2505,31 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         : !joinsPreviousRail && !segments.some(
           (segment) => segment.firstKeyFrame < destinationAppFrame && destinationAppFrame < segment.lastKeyFrame,
         );
+      // 58: on a frame inside a Rail's first cycle the new key must become a
+      // source phase — the rail grows by one and stays contiguous instead of
+      // splitting around a detached key. Create rail → Key opts out.
+      const railInsert = options?.forceNewSegment === true
+        ? null
+        : resolvePhysicPaintRotoRailKeyInsertTarget({
+          identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+          loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+          appFrame: destinationAppFrame,
+        });
+      // A repeat occurrence maps back to its first-cycle phase; only + Key
+      // opts into that (paint promotion must create the key on the painted
+      // frame itself).
+      const railInsertFrame = railInsert !== null
+        && (railInsert.insertionAppFrame === destinationAppFrame || options?.allowRepeatRailInsert === true)
+        ? railInsert.insertionAppFrame
+        : null;
       return runPhysicalAction({
         intent: createPhysicPaintRotoPasteKeyIntent(
-          destinationAppFrame,
+          railInsertFrame ?? destinationAppFrame,
           emptyPayload,
           null,
           startsNewSegment,
           joinsPreviousRail,
+          railInsertFrame === null ? null : railInsert!.loopId,
         ),
         operationKind: 'paste-key',
         requiredKeyId: null,
@@ -3763,6 +3907,8 @@ function readRotoInsertTargetInput(input: RotoTimelineActionsInput): RotoInsertT
     records: input.getRotoKeyRecords?.() ?? [],
     physicalCells: input.getPhysicalCells?.() ?? [],
     frameResolution: currentAppFrame === null ? null : readLoopFrameResolution(input, currentAppFrame),
+    loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+    interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
   };
 }
 

@@ -7,6 +7,7 @@ import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScrip
 import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
+import type { SelectedKeyRailInspectorPresentation } from './physicsPaintKeyRailPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 
 export interface PhysicsPaintScriptsPanelProps {
@@ -15,6 +16,7 @@ export interface PhysicsPaintScriptsPanelProps {
   rotoScript: RotoScriptClipboardController;
   playButtonRef: RefObject<HTMLButtonElement | null>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
+  selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;
   linkedGroupNavigation?: {
     currentIndex: number;
     total: number;
@@ -23,7 +25,9 @@ export interface PhysicsPaintScriptsPanelProps {
     onGoToGroup: () => void;
   } | null;
   onOpenLoopEdit: (loopId: string) => Promise<unknown>;
+  onOpenKeyRailEdit?: (firstKeyId: string) => Promise<unknown> | void;
   onCloseLoopClip: () => void;
+  onCloseKeyRail?: () => void;
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
@@ -36,9 +40,12 @@ export function PhysicsPaintScriptsPanel({
   rotoScript,
   playButtonRef,
   selectedLoopClip = null,
+  selectedKeyRail = null,
   linkedGroupNavigation = null,
   onOpenLoopEdit,
+  onOpenKeyRailEdit,
   onCloseLoopClip,
+  onCloseKeyRail,
   onSave,
   onActivateRow,
   onLoadAndApply,
@@ -86,6 +93,7 @@ export function PhysicsPaintScriptsPanel({
   const nextRailReasonId = useId();
   const refreshReasonId = useId();
   const scopeSelectId = useId();
+  const keyRailEditReasonId = useId();
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -129,6 +137,32 @@ export function PhysicsPaintScriptsPanel({
   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () => void }) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
   };
+
+  // 58-03 RAIL-01 (D-01): selecting a Key Rail takes over the Scripts pane with
+  // exactly three facts (D-04) and one conversion entry. The branch returns
+  // before the loop-clip inspector so a plain rail selection can never be
+  // shadowed by a stale loop target, and it intentionally omits the loop-only
+  // panel modifier (its declaration is a no-op CSS default) so the existing
+  // loop-inspector source anchors keep pointing at their own branch.
+  if (selectedKeyRail) {
+    const railLabel = selectedKeyRail.framesLabel;
+    const editDisabledReason = selectedKeyRail.editDisabledReason;
+    return (
+      <div class="physics-paint-scripts-panel" role="tabpanel" aria-label={`Selected Key Rail — ${railLabel}`}>
+        <div class="physics-paint-loop-clip-inspector-top-actions">
+          <IconButton buttonRef={playButtonRef} label={`Edit Rail — ${railLabel}`} title={`Edit Rail — ${railLabel}`} disabled={editDisabledReason !== null} disabledReason={editDisabledReason ?? undefined} descriptionId={keyRailEditReasonId} onClick={() => { void onOpenKeyRailEdit?.(selectedKeyRail.firstKeyId); }} className="physics-paint-loop-clip-nav-compact-button primary labeled" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><Pencil size={16} aria-hidden="true" /><span class="physics-paint-roto-key-icon-label">Edit Rail</span></IconButton>
+          <IconButton label={`Close Rail inspector — ${railLabel}`} title={`Close Rail inspector — ${railLabel}`} onClick={() => { onCloseKeyRail?.(); }} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
+        </div>
+        <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
+          <dl class="physics-paint-loop-clip-inspector">
+            <div><dt>Frames</dt><dd>{selectedKeyRail.framesLabel}</dd></div>
+            <div><dt>Keys</dt><dd>{selectedKeyRail.keysLabel}</dd></div>
+            <div><dt>Type</dt><dd>{selectedKeyRail.typeLabel}</dd></div>
+          </dl>
+        </SidebarScrollArea>
+      </div>
+    );
+  }
 
   if (selectedLoopClip) {
     return (

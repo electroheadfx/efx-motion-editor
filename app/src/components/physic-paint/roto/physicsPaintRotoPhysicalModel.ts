@@ -981,6 +981,137 @@ export function resolvePhysicPaintRotoLoopClipLifecycle(
 }
 
 /**
+ * 58-09 (G-01): the source-derived extent of a finite lifecycle Loop Clip.
+ *
+ * The stored `originalEndExclusive` is a snapshot taken when the clip was
+ * created or last rebuilt; deleting real keys outside the source cycle does
+ * not shrink it. The clip can therefore keep claiming — and painting — frames
+ * whose source keys no longer exist. This helper re-derives the bound from the
+ * CURRENT ordered source positions:
+ * `phaseOrigin + (last - first + 1) * repeat`, clamped to capacity.
+ *
+ * Returns null (HEAD behavior) for any clip that does not carry the complete
+ * six-field lifecycle — parsed clips carry all six or none, so a lifecycle-less
+ * in-memory clip must keep its stored end instead of inventing a lifecycle —
+ * for an Infinity/non-positive repeat, and for a source list whose identities
+ * are missing or not strictly increasing.
+ *
+ * A Reveal rail is exempt: its extent is the REQUESTED span, including the
+ * empty frames a stretch adds (WR-01 / D-07). The stretch law owns that end;
+ * G-01's surviving-source bound applies to converted Standard/Paint cycles.
+ */
+export function resolvePhysicPaintRotoLoopSourceExtent(
+  clip: PhysicPaintRotoLoopClip,
+  identities: readonly PhysicPaintRotoKeyIdentity[],
+  capacity: number,
+): { readonly endExclusive: number; readonly cycleLength: number } | null {
+  if (PHYSIC_PAINT_ROTO_GROUP_LIFECYCLE_KEYS.some((key) => clip[key] === undefined)) return null;
+  if (clip.railKind === 'reveal') return null;
+  if (typeof clip.repeat !== 'number' || !Number.isSafeInteger(clip.repeat) || clip.repeat <= 0) return null;
+  if (!isNonNegativeInteger(capacity)) return null;
+  const frameByKeyId = new Map<string, number>();
+  for (const identity of identities) frameByKeyId.set(identity.keyId, identity.appFrame);
+  let firstFrame = -1;
+  let lastFrame = -1;
+  let index = 0;
+  for (const keyId of clip.sourceKeyIds) {
+    const appFrame = frameByKeyId.get(keyId);
+    if (!isNonNegativeInteger(appFrame)) return null;
+    if (index > 0 && appFrame <= lastFrame) return null;
+    if (index === 0) firstFrame = appFrame;
+    lastFrame = appFrame;
+    index += 1;
+  }
+  if (index === 0) return null;
+  const cycleLength = lastFrame - firstFrame + 1;
+  return Object.freeze({
+    endExclusive: Math.min(clip.phaseOrigin! + cycleLength * clip.repeat, capacity),
+    cycleLength,
+  });
+}
+
+export interface PhysicPaintRotoGroupFrameReconcileInput {
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly identities: readonly PhysicPaintRotoKeyIdentity[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly capacity: number;
+}
+
+export interface PhysicPaintRotoGroupFrameReconcileResult {
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly changed: boolean;
+}
+
+/**
+ * 58-09 (G-01): bound every finite lifecycle clip to its source-derived
+ * extent and prune the paint sheets that backed the removed frames.
+ *
+ * A clip is reconciled only when its stored end exceeds the surviving source
+ * extent. The trimmed `visibleRanges` are clamped to `[phaseOrigin, end)`;
+ * overrides outside the bounded end or outside every trimmed range are
+ * dropped. A clip whose ranges would trim to nothing is left unchanged — the
+ * parser rejects an empty lifecycle, and the caller has no authority to
+ * invent a visible range. Override records remain only while some clip still
+ * references them.
+ *
+ * Pure: never mutates inputs. Returns the input array references with
+ * `changed: false` when nothing needed trimming, so canonical documents pass
+ * through byte-identically.
+ */
+export function reconcilePhysicPaintRotoGroupFrames(
+  input: PhysicPaintRotoGroupFrameReconcileInput,
+): PhysicPaintRotoGroupFrameReconcileResult {
+  let changed = false;
+  const reconciledClips = input.loopClips.map((clip) => {
+    const extent = resolvePhysicPaintRotoLoopSourceExtent(clip, input.identities, input.capacity);
+    if (extent === null) return clip;
+    const storedEnd = clip.originalEndExclusive;
+    if (storedEnd === undefined || storedEnd <= extent.endExclusive) return clip;
+    const phaseOrigin = clip.phaseOrigin!;
+    const boundedEnd = extent.endExclusive;
+    const trimmedRanges = clip.visibleRanges!
+      .map((range) => ({
+        start: Math.max(range.start, phaseOrigin),
+        endExclusive: Math.min(range.endExclusive, boundedEnd),
+      }))
+      .filter((range) => range.endExclusive > range.start);
+    if (trimmedRanges.length === 0) return clip;
+    const keptOverrides = (clip.frameOverrides ?? []).filter((override) => (
+      override.appFrame < boundedEnd
+      && trimmedRanges.some((range) => (
+        override.appFrame >= range.start && override.appFrame < range.endExclusive
+      ))
+    ));
+    changed = true;
+    return Object.freeze({
+      ...clip,
+      originalEndExclusive: boundedEnd,
+      visibleRanges: Object.freeze(trimmedRanges.map((range) => Object.freeze(range))),
+      frameOverrides: Object.freeze(keptOverrides.map((override) => Object.freeze({ ...override }))),
+    }) as PhysicPaintRotoLoopClip;
+  });
+  if (!changed) {
+    return Object.freeze({
+      loopClips: input.loopClips,
+      groupOverrideRecords: input.groupOverrideRecords,
+      changed: false as const,
+    });
+  }
+  const referencedOverrideKeyIds = new Set<string>();
+  for (const clip of reconciledClips) {
+    for (const override of clip.frameOverrides ?? []) referencedOverrideKeyIds.add(override.keyId);
+  }
+  return Object.freeze({
+    loopClips: Object.freeze(reconciledClips),
+    groupOverrideRecords: Object.freeze(
+      input.groupOverrideRecords.filter((record) => referencedOverrideKeyIds.has(record.keyId)),
+    ),
+    changed: true as const,
+  });
+}
+
+/**
  * Project a Loop Clip onto its resolved canonical shape. Used by every
  * structural comparison that pits a store-derived collection against a
  * wire-derived one, so the two shapes compare equal by construction.

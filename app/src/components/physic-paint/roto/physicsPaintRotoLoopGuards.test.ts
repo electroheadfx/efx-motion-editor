@@ -11,6 +11,7 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import {
+  GROUP_OWNED_KEY_DELETE_REJECTED_TEXT,
   createPhysicPaintRotoPasteKeyGroupIntent,
   createPhysicPaintRotoPasteKeyIntent,
   derivePhysicPaintRotoLoopRanges,
@@ -275,11 +276,99 @@ describe('D-07 source-key deletion guard', () => {
 // ---------------------------------------------------------------------------
 
 describe('D-11 rigid linked-key guard', () => {
-  it('rejects a single-key move on a linked source key with the locked copy', () => {
+  // Phase 58 D-12 (Law A): exactly one referencing loop is an independent
+  // cycle and may move alone; two or more keep Phase 43 D-11 and the rigid
+  // whole-cycle group drag. The locked D-16 copy stays verbatim for >= 2.
+  // CR-02: the accepted destination must also keep that single cycle's
+  // sourceKeyIds positions strictly increasing — the derivation law.
+  it('accepts a single-key move when exactly one loop references the key — Law A (D-12)', () => {
+    const sourceLoop = loop(10, 5);
+    const loopClips = [sourceLoop];
+    const loopClipsBefore = loopClips.map((clip) => ({ ...clip }));
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
+      loopClips,
+    }));
+    expect(proposal.mapping.get('A')).toBe(9);
+    // D-13: an accepted single-key move carries no loop follow — placementStart
+    // stays put because buildMoveCandidate never emits nextLoopClips.
+    expect(proposal.nextLoopClips).toBeNull();
+    // CR-02: the FINAL source order (A9, B11, C12, D13, E14) still satisfies
+    // the derivation's strict-increase law, so the single referencing clip
+    // resolves instead of presenting as "Source missing".
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
+    // Preservation pin: the caller's loop collection is never mutated.
+    expect(loopClips).toHaveLength(1);
+    expect(loopClips[0]).toBe(sourceLoop);
+    expect(loopClips).toEqual(loopClipsBefore);
+  });
+
+  it('rejects a single-key move that breaks the referencing cycle order — CR-02', () => {
     const resolution = resolveEdit({
       records: SOURCE_RECORDS(),
       intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
       loopClips: [loop(10, 5)],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
+  it('accepts a one-element source cycle move — a single source key is vacuously ordered', () => {
+    const loopClips = [loop(10, 5, 'L1', ['A'])];
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
+      loopClips,
+    }));
+    expect(proposal.mapping.get('A')).toBe(9);
+    expect(proposal.nextLoopClips).toBeNull();
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
+  });
+
+  it('fails closed when the single referencing cycle names a source key absent from the mapping — CR-02', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 9 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
+  it('accepts a move on a key no loop references, even when another cycle is already unresolved', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key', movedKeyId: 'H', target: { kind: 'physical-cell', appFrame: 42 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('accepts a no-change drag in the dangling-source scenario — changed === false is exempt', () => {
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 10 } },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(10);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects a single-key move when two loops reference the key with the locked copy', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'C', target: { kind: 'physical-cell', appFrame: 22 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 5, 'L2')],
     });
     expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
   });
@@ -291,6 +380,15 @@ describe('D-11 rigid linked-key guard', () => {
       loopClips: [loop(10, 5)],
     }));
     expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('moves an ordinary key normally when no loops exist', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key', movedKeyId: 'G', target: { kind: 'physical-cell', appFrame: 32 } },
+    }));
+    expect(proposal.mapping.get('G')).toBe(32);
     expect(proposal.nextLoopClips).toBeNull();
   });
 
@@ -577,6 +675,39 @@ describe('D-11 rigid linked-key guard', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Phase 58 Law A no-leak pins — the guards D-12/D-14/D-15 did not touch.
+// Delete-key, delete-key-group, and both Force Spacing rejections are pinned
+// by the D-07/D-11 describes above; Insert and Duplicate Group-ownership are
+// pinned by physicsPaintRotoPhysicalResolver.test.ts, which this plan's verify
+// runs alongside this spec. The two Key Rail guards live here.
+// ---------------------------------------------------------------------------
+
+describe('Phase 58 Law A no-leak guards', () => {
+  it('keeps the delete-key-rail source-cycle guard with its locked copy', () => {
+    const resolution = resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'delete-key-rail', keyIds: ['G', 'C'] },
+      loopClips: [loop(10, 5)],
+    });
+    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key-rail', D07_TEXT(1));
+  });
+
+  it('keeps the move-key-rail Group-ownership guard', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-rail', memberKeyIds: ['C'], destinationFirstKeyAppFrame: 22 },
+      loopClips: [loop(10, 5)],
+    });
+    expectFailure(
+      resolution,
+      'malformed-target',
+      'move-key-rail',
+      'Key Rail move requires ordinary real-key members outside Group ownership.',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // D-04 — rigid group drag of the whole source cycle (placement/source correction).
 // ---------------------------------------------------------------------------
 
@@ -628,16 +759,40 @@ describe('D-04 rigid group drag of the whole source cycle', () => {
     expect(resolvePhysicPaintRotoLoopFrame(context, 52)).toMatchObject({ kind: 'linked', loopId: 'L2', sourceKeyId: 'C', repeatInstance: 0 });
   });
 
-  it('a partial-cycle group move leaves every placementStart unchanged (loops resolve by id)', () => {
+  // CR-03: a partial-cycle group move stays legal only when the FINAL mapping
+  // keeps every touched clip's sourceKeyIds strictly increasing. Cells 8/9 put
+  // A,B before C@12 — the same partial-move intent, but now resolvable.
+  it('an order-preserving partial-cycle group move stays accepted and the loop still resolves', () => {
     const loopClips = [loop(10, 5, 'L1')];
     const proposal = expectOk(resolveEdit({
       records: SOURCE_RECORDS(),
-      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
       loopClips,
     }));
-    expect(proposal.mapping.get('A')).toBe(20);
-    expect(proposal.mapping.get('B')).toBe(21);
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ A: 8, B: 9, C: 12, D: 13, E: 14 });
     expect(proposal.nextLoopClips).toBeNull();
+    const movedRecords = SOURCE_RECORDS().map((entry) => ({
+      ...entry,
+      appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame,
+      payload: { ...entry.payload, appFrame: proposal.mapping.get(entry.keyId) ?? entry.appFrame },
+    }));
+    expect(derive(movedRecords, loopClips).ranges.find((entry) => entry.loopId === 'L1')?.unresolved).toBeNull();
+  });
+
+  it('rejects a partial-cycle group move that breaks the referencing cycle order — CR-03', () => {
+    const sourceLoop = loop(10, 5, 'L1');
+    const loopClips = [sourceLoop];
+    const loopClipsBefore = loopClips.map((clip) => ({ ...clip }));
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      loopClips,
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+    // Preservation pin: rejection never mutates the caller's loop collection.
+    expect(loopClips).toHaveLength(1);
+    expect(loopClips[0]).toBe(sourceLoop);
+    expect(loopClips).toEqual(loopClipsBefore);
   });
 
   it('a group move that excludes source keys carries no loop update', () => {
@@ -650,6 +805,56 @@ describe('D-04 rigid group drag of the whole source cycle', () => {
     expect(proposal.mapping.get('G')).toBe(32);
     expect(proposal.mapping.get('H')).toBe(42);
     expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('accepts a one-element source cycle — a single source key is vacuously ordered', () => {
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
+      loopClips: [loop(10, 5, 'L1', ['A'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(8);
+    expect(proposal.mapping.get('B')).toBe(9);
+  });
+
+  it('accepts a move on keys no clip references, even beside a dangling clip — CR-03', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['G', 'H'], grabbedKeyId: 'G', target: { kind: 'physical-cell', appFrame: 32 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('G')).toBe(32);
+    expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('fails closed when the move touches a dangling clip — CR-03', () => {
+    const resolution = resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+  });
+
+  it('accepts a no-change partial drag in the dangling scenario — changed === false is exempt', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 10 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(10);
+    expect(proposal.mapping.get('B')).toBe(11);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects the whole move when one touched clip stays ordered and another breaks — CR-03', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B']), loop(100, 2, 'L2', ['A', 'C', 'D'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
   });
 });
 
@@ -998,5 +1203,242 @@ describe('D-06/D-10 materialization one-history-command coherence', () => {
     expect(effectiveEndOf(test.getCurrent().records, test.getCurrent().loopClips, 'L1')).toBe(22);
     expect(test.availability.value).toEqual({ undo: 1, redo: 0 });
     expect(test.executePhysicalEdit.mock.calls.map(([input]) => input.operationKind)).toEqual(['undo', 'redo']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 58 G-01 — a finite lifecycle extent follows the surviving source cycle.
+// The stored `originalEndExclusive` is a snapshot: a delete that removes keys
+// outside the source cycle must not let the derivation keep claiming (and
+// rendering) the removed frames.
+// ---------------------------------------------------------------------------
+
+const EXTENT_RECORDS = () => [
+  record('A', 10, 'AAAA'),
+  record('B', 11, 'BBBB'),
+  record('C', 12, 'CCCC'),
+];
+
+/** Source A@10 B@11 C@12, repeat 2 => surviving extent 16; stored end 20. */
+function staleExtentLoop(options: {
+  repeat?: number | 'infinity';
+  storedEndExclusive?: number;
+  visibleRanges?: readonly { start: number; endExclusive: number }[];
+} = {}): PhysicPaintRotoLoopClip {
+  const storedEndExclusive = options.storedEndExclusive ?? 20;
+  return {
+    loopId: 'L-extent',
+    placementStart: 10,
+    sourceKeyIds: ['A', 'B', 'C'],
+    repeat: options.repeat ?? 2,
+    mode: 'progressive',
+    scriptId: 'action-extent',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 10,
+    originalEndExclusive: storedEndExclusive,
+    visibleRanges: options.visibleRanges ?? [{ start: 10, endExclusive: storedEndExclusive }],
+    frameOverrides: [],
+  };
+}
+
+describe('Phase 58 G-01 source-derived loop extent', () => {
+  it('bounds a stale finite lifecycle clip to the surviving source extent and resolves removed frames empty', () => {
+    const records = EXTENT_RECORDS();
+    const loopClips = [staleExtentLoop()];
+    const context = derive(records, loopClips);
+    const range = context.ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the stale extent loop to derive.');
+
+    // 10 + (12 - 10 + 1) * 2 = 16. The stored end 20 is stale.
+    expect(range.effectiveEnd).toBe(16);
+    expect(range.requestedEnd).toBe(20);
+    expect(range.truncated).toBe(false);
+    expect(range.unresolved).toBeNull();
+    // Frames below the surviving extent still resolve as cycle content.
+    expect(resolvePhysicPaintRotoLoopFrame(context, 15)).toMatchObject({
+      kind: 'linked',
+      loopId: 'L-extent',
+      sourceKeyId: 'C',
+    });
+    // The half-open end and everything past it resolve empty.
+    expect(resolvePhysicPaintRotoLoopFrame(context, 16)).toEqual({ kind: 'empty' });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 17)).toEqual({ kind: 'empty' });
+  });
+
+  it('keeps a dangling source key unresolved and a non-lifecycle finite clip at its stored behavior', () => {
+    const dangling = derive(
+      EXTENT_RECORDS().filter((entry) => entry.keyId !== 'C'),
+      [staleExtentLoop()],
+    ).ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!dangling) throw new Error('Expected the dangling loop to derive.');
+    expect(dangling.unresolved).not.toBeNull();
+    expect(dangling.unresolved?.missingSourceKeyIds).toEqual(['C']);
+    expect(dangling.effectiveEnd).toBe(20);
+
+    const lifecycleLess = derive(EXTENT_RECORDS(), [loop(10, 2, 'L-plain', ['A', 'B', 'C'])])
+      .ranges.find((entry) => entry.loopId === 'L-plain');
+    if (!lifecycleLess) throw new Error('Expected the lifecycle-less loop to derive.');
+    // No lifecycle: the derivation keeps the placementStart + cycle * repeat
+    // formula and never invents a stored end.
+    expect(lifecycleLess.requestedEnd).toBe(16);
+    expect(lifecycleLess.effectiveEnd).toBe(16);
+  });
+
+  it('leaves an Infinity lifecycle clip extending to capacity as today', () => {
+    const range = derive(EXTENT_RECORDS(), [staleExtentLoop({ repeat: 'infinity' })])
+      .ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the Infinity loop to derive.');
+    expect(range.requestedEnd).toBe('infinity');
+    expect(range.effectiveEnd).toBe(CAPACITY);
+    expect(range.truncated).toBe(false);
+  });
+
+  it('leaves a reveal rail at its requested span — the WR-01 stretch law owns its extent', () => {
+    // Source A@10 B@11 C@12 at repeat 1 derives 13; the reveal stretch to 15
+    // must survive (the new frames stay empty by design, D-07).
+    const revealClip: PhysicPaintRotoLoopClip = {
+      ...staleExtentLoop({ repeat: 1, storedEndExclusive: 15 }),
+      railKind: 'reveal',
+    };
+    const range = derive(EXTENT_RECORDS(), [revealClip])
+      .ranges.find((entry) => entry.loopId === 'L-extent');
+    if (!range) throw new Error('Expected the reveal loop to derive.');
+    expect(range.requestedEnd).toBe(15);
+    expect(range.effectiveEnd).toBe(15);
+    expect(range.unresolved).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 58-09 (G-01) — a real key whose frame a lifecycle Group owns is deletable
+// only through the Group frame, never as an ordinary key.
+// ---------------------------------------------------------------------------
+
+const GROUP_OWNED_KEY_TEXT = GROUP_OWNED_KEY_DELETE_REJECTED_TEXT;
+
+/** Source S1@0 S2@1 S3@2, repeat 2 => the Group owns [0,6). */
+function lifecycleGroupClip(): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'L-group',
+    placementStart: 0,
+    sourceKeyIds: ['S1', 'S2', 'S3'],
+    repeat: 2,
+    mode: 'static',
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 6,
+    visibleRanges: [{ start: 0, endExclusive: 6 }],
+    frameOverrides: [],
+  };
+}
+
+/** X@5 is inside the Group extent; G@30/H@31 are ordinary. */
+const GROUP_OWNED_RECORDS = () => [
+  record('S1', 0, 'S1S1'),
+  record('S2', 1, 'S2S2'),
+  record('S3', 2, 'S3S3'),
+  record('X', 5, 'XXXX'),
+  record('G', 30, 'GGGG'),
+  record('H', 31, 'HHHH'),
+];
+
+describe('Phase 58 G-01 Group-owned key delete refusal', () => {
+  it('rejects delete-key on a real key whose frame a lifecycle Group owns', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('rejects delete-key-group as a whole when any member frame is Group-owned', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-group', keyIds: ['G', 'X'] },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key-group', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('rejects delete-key-rail when any member frame is Group-owned', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-rail', keyIds: ['X', 'G', 'H'] },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key-rail', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('allows deleting a real key in a lifecycle gap — the Group does not render that frame', () => {
+    const gapped: PhysicPaintRotoLoopClip = {
+      ...lifecycleGroupClip(),
+      visibleRanges: [{ start: 0, endExclusive: 3 }, { start: 5, endExclusive: 6 }],
+    };
+    const records = [
+      record('S1', 0, 'S1S1'),
+      record('S2', 1, 'S2S2'),
+      record('S3', 2, 'S3S3'),
+      record('Y', 4, 'YYYY'),
+      record('Z', 5, 'ZZZZ'),
+      record('G', 30, 'GGGG'),
+      record('H', 31, 'HHHH'),
+    ];
+    // Frame 4 sits in the gap [3,5): no Group content renders there, so the
+    // key is deletable (and the Group-frame proposer refuses that frame too).
+    const gapDelete = expectOk(resolveEdit({
+      records,
+      intent: { kind: 'delete-key', selectedKeyId: 'Y' },
+      loopClips: [gapped],
+    }));
+    expect(gapDelete.mapping.has('Y')).toBe(false);
+    // Frame 5 is visible Group content: still refused with the locked copy.
+    expectFailure(
+      resolveEdit({
+        records,
+        intent: { kind: 'delete-key', selectedKeyId: 'Z' },
+        loopClips: [gapped],
+      }),
+      'group-owned-key-delete-rejected',
+      'delete-key',
+      GROUP_OWNED_KEY_TEXT,
+    );
+  });
+
+  it('keeps the D-07 source-key refusal ahead of the Group-owned refusal', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'S2' },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key', D07_TEXT(1));
+  });
+
+  it('still deletes keys past the surviving extent and ordinary Groups and rails', () => {
+    const pastTheExtent = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'G' },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(pastTheExtent.mapping.has('G')).toBe(false);
+
+    const ordinaryGroup = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-group', keyIds: ['G'] },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(ordinaryGroup.mapping.has('G')).toBe(false);
+
+    const ordinaryRail = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS().filter((entry) => entry.keyId !== 'X'),
+      intent: { kind: 'delete-key-rail', keyIds: ['G', 'H'] },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(ordinaryRail.mapping.has('G')).toBe(false);
+    expect(ordinaryRail.mapping.has('H')).toBe(false);
   });
 });

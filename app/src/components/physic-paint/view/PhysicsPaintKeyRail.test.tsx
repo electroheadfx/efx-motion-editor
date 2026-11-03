@@ -117,6 +117,10 @@ const css = readFileSync(
   fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)),
   'utf8',
 );
+const keyRailSource = readFileSync(
+  fileURLToPath(new URL('./PhysicsPaintKeyRail.tsx', import.meta.url)),
+  'utf8',
+);
 
 function cssRule(selector: string): string {
   const start = css.indexOf(selector);
@@ -234,29 +238,41 @@ describe('PhysicsPaintKeyRail', () => {
     expect(cssRule('.physics-paint-rail-target:focus,')).toContain('outline: none');
   });
 
-  it('supports Space selection, leaves Enter inert, and hides the tooltip on Escape', () => {
+  it('supports Space selection, opens on Enter, and hides the tooltip on Escape', () => {
     const onSelectKeyRail = vi.fn();
-    const target = findAll(render({ onSelectKeyRail }), (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'))[0];
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const target = findAll(
+      render({ onSelectKeyRail, onOpenKeyRailCycleEdit }),
+      (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'),
+    )[0];
     expect(target.props.role).toBe('button');
     expect(target.props.tabIndex).toBe(0);
 
+    // D-02 parity: Space stays a plain selection and never opens the dialog.
     const space = { key: ' ', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof space) => void)(space);
     expect(space.preventDefault).toHaveBeenCalledOnce();
     // 43.6 D-04: Space on a focused member plain-selects it (collapses the set).
     expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] }, 'plain');
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
 
     onSelectKeyRail.mockClear();
     const enter = { key: 'Enter', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof enter) => void)(enter);
-    expect(onSelectKeyRail).not.toHaveBeenCalled();
-    expect(enter.preventDefault).not.toHaveBeenCalled();
+    expect(enter.stopPropagation).toHaveBeenCalledOnce();
+    expect(enter.preventDefault).toHaveBeenCalledOnce();
+    expect(tooltip.hide).toHaveBeenCalled();
+    // 58-03 D-02: Enter selects the rail and then opens the same conversion entry.
+    expect(onSelectKeyRail).toHaveBeenCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] }, 'plain');
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledTimes(1);
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledWith('A');
 
     tooltip.hide.mockClear();
     const escape = { key: 'Escape', stopPropagation: vi.fn(), preventDefault: vi.fn() };
     (target.props.onKeyDown as (event: typeof escape) => void)(escape);
     expect(tooltip.hide).toHaveBeenCalledOnce();
-    expect(onSelectKeyRail).not.toHaveBeenCalled();
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(1);
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledTimes(1);
   });
 
   it('shows endpoint and boundary-cell classes only at real unclipped boundaries', () => {
@@ -433,5 +449,124 @@ describe('PhysicsPaintKeyRail', () => {
     expect(cssRule('.physics-paint-key-rail-ghost {')).toContain('pointer-events: none');
     expect(cssRule('.physics-paint-key-rail-ghost-blocked-edge {')).toContain('background: #ff6b6b');
     expect(css).not.toContain('physics-paint-key-rail-transition');
+  });
+});
+
+describe('PhysicsPaintKeyRail double-click conversion entry (58-03 RAIL-01 / D-02)', () => {
+  interface ClickOptions {
+    readonly metaKey?: boolean;
+    readonly ctrlKey?: boolean;
+    readonly shiftKey?: boolean;
+  }
+
+  function plainClick(timeStamp: number, overrides: ClickOptions = {}) {
+    return {
+      timeStamp,
+      shiftKey: false,
+      metaKey: false,
+      ctrlKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  function firstTarget(tree: unknown): TestVNode {
+    return findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'))[0];
+  }
+
+  it('opens once on the second plain click inside the 220 ms window while selecting synchronously both times', () => {
+    const onSelectKeyRail = vi.fn();
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const target = firstTarget(render({ onSelectKeyRail, onOpenKeyRailCycleEdit }));
+
+    const first = plainClick(1_000);
+    (target.props.onClick as (event: typeof first) => void)(first);
+    // The first click is a plain selection — no pending timer, no open.
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(1);
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+
+    const second = plainClick(1_100);
+    (target.props.onClick as (event: typeof second) => void)(second);
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(2);
+    expect(onSelectKeyRail).toHaveBeenLastCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] }, 'plain');
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledTimes(1);
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledWith('A');
+    expect(second.preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('never opens after the 220 ms window, and a later plain click starts a fresh sequence', () => {
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const target = firstTarget(render({ onOpenKeyRailCycleEdit }));
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_000));
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_300));
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_400));
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledTimes(1);
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledWith('A');
+  });
+
+  it('resets the sequence on a modifier click so the next plain click is not a double-click', () => {
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const onSelectKeyRail = vi.fn();
+    const target = firstTarget(render({ onOpenKeyRailCycleEdit, onSelectKeyRail }));
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_000));
+    // A toggle click is set membership, never open-editor intent.
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_050, { metaKey: true }));
+    expect(onSelectKeyRail).toHaveBeenLastCalledWith({ firstKeyId: 'A', keyIds: ['A', 'B'] }, 'toggle');
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_100));
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_150));
+    expect(onOpenKeyRailCycleEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('never opens on a move member, and the batch click suppression still wins unchanged', () => {
+    const onSelectKeyRail = vi.fn();
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const onRailSetDragClickSuppressed = vi.fn(() => false);
+    const target = firstTarget(render({
+      railSetMoveMemberKeyRailIds: ['A'],
+      onSelectKeyRail,
+      onOpenKeyRailCycleEdit,
+      onRailSetDragClickSuppressed,
+    }));
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_000));
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_100));
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(2);
+    // 43.6-03 D-08 routing stays exact: the batch suppression is consulted first.
+    expect(onRailSetDragClickSuppressed).toHaveBeenCalledTimes(2);
+
+    // A consumed trailing click never selects and never opens.
+    onRailSetDragClickSuppressed.mockReturnValue(true);
+    const suppressed = plainClick(1_150);
+    (target.props.onClick as (event: typeof suppressed) => void)(suppressed);
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(2);
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+    expect(suppressed.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('never opens while the rail is busy', () => {
+    const onSelectKeyRail = vi.fn();
+    const onOpenKeyRailCycleEdit = vi.fn();
+    const target = firstTarget(render({ busy: true, onSelectKeyRail, onOpenKeyRailCycleEdit }));
+
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_000));
+    (target.props.onClick as (event: ReturnType<typeof plainClick>) => void)(plainClick(1_100));
+    expect(onOpenKeyRailCycleEdit).not.toHaveBeenCalled();
+    expect(onSelectKeyRail).toHaveBeenCalledTimes(2);
+  });
+
+  it('pins the 220 ms window constant and the optional prop on both interfaces', () => {
+    expect(keyRailSource).toContain('export const ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS = 220;');
+    // The public interface declares the closed signature; the target interface
+    // forwards that exact type through the props index.
+    expect(keyRailSource).toContain('readonly onOpenKeyRailCycleEdit?: (firstKeyId: string) => void;');
+    expect(keyRailSource).toContain("readonly onOpenKeyRailCycleEdit?: PhysicsPaintKeyRailProps['onOpenKeyRailCycleEdit'];");
   });
 });

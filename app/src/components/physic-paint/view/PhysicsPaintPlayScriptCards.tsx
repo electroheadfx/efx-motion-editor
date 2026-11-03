@@ -162,9 +162,6 @@ export function RailTypeCard(props: {
   locked: boolean;
   /** A Photo destination owns its stored type — the control is read-only. */
   disabled?: boolean;
-  /** 261031-vbo (Quick C1): a merged edit target has no editable rail type —
-   *  the stored `mode` is internal and must never render as Motion/Static. */
-  standard?: boolean;
   helper: string | null;
   /** 261101-cd5: the reference guard rides this row as a compact chip. */
   referenceChip?: { label: string; actionLabel?: string; onAction?: () => void } | null;
@@ -174,18 +171,14 @@ export function RailTypeCard(props: {
   return (
     <div class={`physics-paint-play-script-card-mode physics-paint-play-script-rail-row${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
       <span class="physics-paint-play-script-rail-label">RAIL TYPE</span>
-      {props.standard ? (
-        <span class="physics-paint-play-script-standard-rail-value">Standard</span>
-      ) : (
-        <DialogRadioGroup
-          ariaLabel="Rail Type"
-          options={PLAY_SCRIPT_MODES}
-          value={props.modeValue}
-          getValue={() => props.getMode?.() ?? props.modeValue}
-          disabled={props.busy || props.locked || props.disabled === true}
-          onSelect={props.onSelectMode}
-        />
-      )}
+      <DialogRadioGroup
+        ariaLabel="Rail Type"
+        options={PLAY_SCRIPT_MODES}
+        value={props.modeValue}
+        getValue={() => props.getMode?.() ?? props.modeValue}
+        disabled={props.busy || props.locked || props.disabled === true}
+        onSelect={props.onSelectMode}
+      />
       {props.helper ? <span class="physics-paint-play-script-rail-helper">{props.helper}</span> : null}
       {props.referenceChip ? (
         <span class="physics-paint-play-script-ref-chip" title={props.referenceChip.label}>
@@ -555,6 +548,50 @@ export function PaintTimingCard(props: {
             })}
           </div>
           {!props.stacking && props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* 58-04 (D-05/D-07/D-10): the Standard rail's reduced surface. A converted Key
+   Rail and an existing Standard clip share this exact card — Cycle + Infinity,
+   the two fields the Standard form may express. No title, no per-frame cells,
+   no other control. */
+export function ReducedCycleCard(props: {
+  playScript: RotoPlayScriptController;
+  busy: boolean;
+  repeatInputRef: Ref<HTMLInputElement>;
+}) {
+  return (
+    <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
+      <div class="physics-paint-play-script-timing-body">
+        <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
+          <SliderStepper
+            id="physics-play-script-repeat"
+            class="physics-paint-play-script-compact-stepper"
+            inputRef={props.repeatInputRef}
+            label="Cycle"
+            ariaLabel="Cycle"
+            value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
+            onChange={(value) => { props.playScript.repeatText.value = String(value); }}
+            min={1}
+            sliderMax={16}
+            step={1}
+            disabled={props.busy || props.playScript.infinity.value}
+            ariaInvalid={Boolean(props.playScript.repeatError.value)}
+            ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+          />
+          <div class="physics-paint-play-script-timing-foot">
+            {dialogSwitch({
+              id: 'physics-play-script-infinity',
+              label: 'Infinity',
+              checked: props.playScript.infinity.value,
+              disabled: props.busy,
+              onClick: () => props.playScript.setInfinity(!props.playScript.infinity.value),
+            })}
+          </div>
+          {props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
         </div>
       </div>
     </div>

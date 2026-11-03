@@ -68,7 +68,7 @@ import {
   type RailSetIdentity,
   type RailSetSelectionState,
 } from './roto/physicsPaintRotoRailSetSelection';
-import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
+import { resolvePhysicPaintRotoRailKeyInsertTarget, type PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { classifyLoopClipRailKind, clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
@@ -116,7 +116,7 @@ import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadata
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
-import { deriveKeyRailSegments } from './view/physicsPaintKeyRailPresentation';
+import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
@@ -1146,6 +1146,13 @@ export function PhysicsPaintStudio() {
     incomingInterpolationBreakKeyIds: new Set(rotoIncomingInterpolationBreakKeyIds),
     groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
   }), [keyRailGroupOwnedKeyIds, rotoIncomingInterpolationBreakKeyIds, rotoKeyRecords]);
+  // 58-05 (RAIL-01): the segment lookup the inspector projection and the open
+  // handler share. A memo, not a per-render Map, so its identity is usable as
+  // a right-panel memo dependency (createIdentityMemo compares with Object.is).
+  const keyRailSegmentByFirstKeyId = useMemo(
+    () => new Map(keyRailSegments.map((segment) => [segment.firstKeyId, segment] as const)),
+    [keyRailSegments],
+  );
   const effectiveSelectedRotoKeyRail = reconcileRotoKeyRailSelection(
     selectedRotoKeyRail.value,
     keyRailSegments,
@@ -1767,6 +1774,13 @@ export function PhysicsPaintStudio() {
     ),
     [effectiveRailSetSelection, effectiveSelectedRotoKeyRail, effectiveSelectedLoopClipIds],
   );
+  // 58-05 (D-03): the ONE key-rail anchor rule. Modifier gestures null the
+  // single-rail selection but populate the set, so the Selected Key Rail
+  // inspector must fall back to the first ordered member when it is a Key
+  // Rail. The WorkflowStrip bundle and the inspector memo read this same const.
+  const railSetAnchorKeyRailId = effectiveRailSetMembers[0]?.kind === 'key-rail'
+    ? effectiveRailSetMembers[0].firstKeyId
+    : null;
   const hasEffectiveRailSetScope = effectiveRailSetMembers.length > 0;
   // 43.6-03: the explicit set members in Plan 01 canonical order, resolved to
   // the exact segment keyIds the resolver validates (D-17 — membership is
@@ -3127,6 +3141,9 @@ export function PhysicsPaintStudio() {
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
     getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
+    getRotoGroupOverrideRecords: () => launchContext
+      ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())?.groupOverrideRecords ?? []
+      : [],
     getPhysicalCells: () => rotoTimelineModel.physicalCells.value,
     getSelectedKeyId: () => selectedKeyId.value,
     getSelectedKeyIds: () => selectedKeyIds.value,
@@ -4792,6 +4809,31 @@ export function PhysicsPaintStudio() {
     },
     [rotoPlayScript],
   );
+  // 58-05 (D-01/D-02): Edit Rail and the rail's double-click/Enter both land
+  // here. Select FIRST so the Scripts panel is already on the inspector when
+  // the modal closes, then open the reduced Cycle dialog. Every branch returns
+  // a Promise: the panel prop types the handoff as Promise<unknown> | void and
+  // the controller's openKeyRailCycleEdit is always awaited by its caller.
+  const handleOpenRotoKeyRailCycleEdit = useCallback(
+    (firstKeyId: string) => {
+      const segment = keyRailSegmentByFirstKeyId.get(firstKeyId);
+      if (segment === undefined) {
+        return Promise.resolve({ ok: false, reason: 'This Key Rail no longer exists.' });
+      }
+      selectedRotoKeyRail.value = { firstKeyId: segment.firstKeyId, keyIds: segment.keyIds };
+      return rotoPlayScript.openKeyRailCycleEdit({ firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+    },
+    [keyRailSegmentByFirstKeyId, rotoPlayScript],
+  );
+  // 58-05 (D-01/D-03): Close dismisses BOTH selection layers. In a 2+ rail set
+  // the modifier gesture already nulled selectedRotoKeyRail, so clearing only
+  // that signal would let railSetAnchorKeyRailId re-supply the dismissed rail
+  // and the takeover would survive Close. Mirrors the key-selection clear path
+  // in handleSelectRotoSpacingProxy (setter-only writes; signal refs are stable).
+  const handleCloseRotoKeyRail = useCallback(() => {
+    selectedRotoKeyRail.value = null;
+    railSetSelection.value = null;
+  }, []);
   const handleCloseRotoLoopClip = useCallback(() => {
     clearRotoLoopSelection();
   }, [clearRotoLoopSelection]);
@@ -4831,6 +4873,22 @@ export function PhysicsPaintStudio() {
   const selectedLoopClip = selectedLoopClipId.value === null
     ? null
     : loopPresentations.get(selectedLoopClipId.value) ?? null;
+  // 58-05 (D-01/D-03): the Selected Key Rail inspector, memoized so the
+  // right-panel identity memo can compare it with Object.is. Every dependency
+  // is stable for an unchanged selection: reconcileRotoKeyRailSelection
+  // returns the SAME object while it stays valid, the segment map changes only
+  // with keyRailSegments, the anchor is a string | null primitive, and the set
+  // size is a number. The anchor fallback is what makes a 2+ rail set reachable
+  // (modifier gestures null selectedRotoKeyRail but populate the set), and a
+  // null anchor — e.g. after Close cleared both layers — resolves null so the
+  // Scripts panel renders its normal content.
+  const selectedKeyRailInspector = useMemo(() => {
+    const firstKeyId = effectiveSelectedRotoKeyRail?.firstKeyId ?? railSetAnchorKeyRailId;
+    if (firstKeyId === null) return null;
+    const segment = keyRailSegmentByFirstKeyId.get(firstKeyId);
+    if (segment === undefined) return null;
+    return projectSelectedKeyRailInspector(segment, { setSize: effectiveRailSetMembers.length });
+  }, [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length]);
   const resetRotoSpacingSelectionSession = useCallback((options?: { clearClipboard?: boolean }) => {
     rotoSpacingSelection.value = null;
     selectedRotoKeyRail.value = null;
@@ -4921,12 +4979,27 @@ export function PhysicsPaintStudio() {
       : null;
     const isNonRealCell = currentFrameSelectionKind === 'empty'
       || currentFrameSelectionKind === 'generated-interpolation';
-    if (!launch || !isNonRealCell || paintTarget?.kind === 'group-frame') {
+    // 58: painting a Rail's in-between (or its lifecycle gap) promotes the
+    // phase to a real source key, so the rail grows instead of keeping a
+    // key-less override or cache-only frame. Every other Group frame keeps the
+    // existing source-phase paint route.
+    const railPaintTarget = paintTarget?.kind === 'group-frame' && document !== null
+      ? resolvePhysicPaintRotoRailKeyInsertTarget({
+        identities: document.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        loopClips: document.loopClips,
+        appFrame: currentFrame,
+      })
+      : null;
+    // The painted frame itself must become the key; a repeat occurrence keeps
+    // the source-phase override route (its key belongs to the first cycle).
+    const railPaintPromotion = railPaintTarget !== null
+      && railPaintTarget.insertionAppFrame === currentFrame;
+    if (!launch || !isNonRealCell || (paintTarget?.kind === 'group-frame' && !railPaintPromotion)) {
       pendingFirstPaintTargetRef.current = null;
       rotoFrameEditing.beginFrameEdit();
       return;
     }
-    if (paintTarget?.kind !== 'empty') return;
+    if (paintTarget?.kind !== 'empty' && !railPaintPromotion) return;
     if (workflowMode !== 'roto' || isPlaying) return;
     if (event) {
       // Never intercept: the engine's own pointerdown starts the stroke on the
@@ -7035,7 +7108,7 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return;
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, selectedKeyRailInspector, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -7123,6 +7196,11 @@ export function PhysicsPaintStudio() {
         },
       onOpenLoopEdit: handleOpenRotoLoopEdit,
       onCloseLoopClip: handleCloseRotoLoopClip,
+      // 58-05 (RAIL-01): the Selected Key Rail takeover consumes the memoized
+      // projection plus the two rail-session handlers 58-03 typed.
+      selectedKeyRail: selectedKeyRailInspector,
+      onOpenKeyRailEdit: handleOpenRotoKeyRailCycleEdit,
+      onCloseKeyRail: handleCloseRotoKeyRail,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
@@ -10948,7 +11026,7 @@ export function PhysicsPaintStudio() {
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')
-          .map((member) => member.firstKeyId), railSetAnchorKeyRailId: effectiveRailSetMembers[0]?.kind === 'key-rail' ? effectiveRailSetMembers[0].firstKeyId : null, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
+          .map((member) => member.firstKeyId), railSetAnchorKeyRailId, selectedRotoKeyRail: effectiveSelectedRotoKeyRail, linkedRotoLoopClipIds: linkedRotoGroups.map((group) => group.loopId), linkedRotoActionName: selectedAction?.name ?? null, onSelectRotoLoopClip: handleSelectRotoLoopClip, onSelectRotoKeyRail: handleSelectRotoKeyRail, onOpenRotoLoopEdit: handleOpenRotoLoopEdit, onOpenKeyRailCycleEdit: handleOpenRotoKeyRailCycleEdit, onRotoKeyRailDragRejected: handleRotoKeyRailDragRejected, rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, trackIdOfLaunch(launchContext)) : 0, rotoDragContextKey: launchContext ? `${launchContext.layerId}:${launchContext.operationId}` : 'none', hasCopiedRotoKey: rotoSession.copiedKey.value !== null, rotoKeyState: effectiveRotoKeyState,
         // Multi-selection gestures (37-04; D-01/D-02): keyId intents routed
         // through the pure 37-02 reducers over the store-ordered identity
         // list. Selection-only changes publish no status entry (UI-SPEC).

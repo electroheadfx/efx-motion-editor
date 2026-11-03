@@ -25,16 +25,35 @@
 **Requirements**: RAIL-01, RAIL-02, RAIL-03, RAIL-04, RAIL-05, RAIL-06, RAIL-07
 **Success Criteria** (what must be TRUE):
   1. Selecting (or double-clicking) a normal Key Rail exposes the sidebar's Edit Rail action; the modal shows only the cycle count and the Infinity checkbox, prefilled at 1.
-  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail renders as a Standard cycle with gray cells + dot, and the existing Edit Rail dialog owns Repeat/Infinity afterwards.
+  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail presents as a Standard cycle via the existing `.rail-kind-standard` gray pill, and the existing Edit Rail dialog owns Repeat/Infinity afterwards. (Per D-10, per-frame cells, cycle grays, and the rail colour dot belong to the v7 quick, not Phase 58.)
   3. Cancel performs zero writes; the conversion is exactly one undo step (Undo restores the Key Rail, Redo re-applies it).
-  4. A single-key drag moves the key on Motion/Static/Reveal rails under the discuss-phase law (preferred A: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
+  4. A single-key drag moves the key on Motion/Static/Reveal rails under Law A (chosen at discuss-phase, D-12: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
   5. No `.mce` schema field is added or changed; resolver, undo and existing D-11 guard tests are green (or deliberately updated to the chosen law).
 
 **Discuss-phase gate**: choose the drag law A / B / C before planning — A preferred (independent single-reference cycle); B = unlink + whole-cycle Force Spacing; C = propagate the retime to every linked loop.
 
 **Code anchors**: `roto/physicsPaintRotoPhysicalResolver.ts` (~4463-4467, the D-11 `countLoopsReferencingSourceKey` guard and `buildMoveCandidate`); `view/PhysicsPaintScriptsPanel.tsx` + `PhysicsPaintStudio.tsx` `handleOpenRotoLoopEdit` + `physicsPaintRotoPlayScriptController.ts` `openLoopEdit` (today loop-clip only); `roto/physicsPaintRotoRunScriptStacking.ts` `isStandardMergedLoopClip` / `buildStandardStackedLoopClip` (provenance-free Standard shape); `view/PhysicsPaintWorkflowStrip.tsx` (Create rail / key-rail segment).
 
-**Plans**: TBD
+**Plans:** 10/10 plans executed (8 executed, 2 planned gap closure)
+**Wave 1**
+- [x] 58-01-PLAN.md — Law A: relax the single-key move guard to exactly one referencing loop
+- [x] 58-02-PLAN.md — Key Rail segment to Standard cycle conversion (record shape, gaps, publication, undo)
+- [x] 58-03-PLAN.md — Selected Key Rail inspector, Edit Rail action, double-click/Enter entry surfaces
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [x] 58-04-PLAN.md — Reduced conversion dialog (Cycle + Infinity only, Create Cycle / Update Rail)
+- [x] 58-05-PLAN.md — Studio wiring: stable inspector projection, Edit Rail/double-click handlers, right-panel memo
+
+**Gap closure** *(CR-01, CR-02, WR-01, WR-02 executed; G-01 live UAT + CR-03 review planned)*
+- [x] 58-06-PLAN.md — In-flight cancel generation contract + busy-phase cancel preserves the target (CR-01, WR-01)
+- [x] 58-07-PLAN.md — Single-reference source-order guard for Law A moves (CR-02)
+- [x] 58-08-PLAN.md — Shared Enter/primary confirm gate for the reduced form (WR-02)
+
+**Gap closure wave 1**
+- [x] 58-09-PLAN.md — Source-extent reconcile and override ownership across delete, derivation, repeat, and routing (G-01)
+
+**Gap closure wave 2** *(blocked on 58-09; same resolver and specs)*
+- [x] 58-10-PLAN.md — Final-mapping source-order guard for partial-cycle group moves (CR-03)
 
 ### v7 timeline rails (in-milestone quick)
 
@@ -48,7 +67,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 58. Rail editing regressions | 0/TBD | Pending | — |
+| 58. Rail editing regressions | 10/10 | Pending | — |
 | v7 timeline rails (in-milestone quick) | — | Pending | — |
 
 <details>

@@ -1059,6 +1059,92 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(empty.publishStatus).toHaveBeenCalledWith('Inserted a gap in the Roto timeline.');
   });
 
+  it('58 G-06: a Reveal rail in-between accepts Insert and grows the requested span', async () => {
+    const revealRail: PhysicPaintRotoLoopClip = {
+      loopId: 'reveal-1',
+      placementStart: 0,
+      sourceKeyIds: ['r0', 'r4'],
+      repeat: 1,
+      mode: 'static',
+      railKind: 'reveal',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const harness = createHarness({
+      records: [realKeyRecord('r0', 0), realKeyRecord('r4', 4)],
+      loopClips: [revealRail],
+      currentAppFrame: 2,
+      capacity: 10,
+      frameResolution: {
+        kind: 'linked-generated',
+        loopId: 'reveal-1',
+        appFrame: 2,
+        leftSourceKeyId: 'r0',
+        rightSourceKeyId: 'r4',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        progress: 0.5,
+        sourceCycleId: 'cycle',
+        cycleOffset: 2,
+        repeatInstance: 0,
+      },
+    });
+    expect(harness.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(await harness.actions.physicalActions.insertRotoFrame()).toBe(true);
+    const dispatched = harness.executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: PhysicPaintRotoPhysicalEditProposal;
+      operationKind: string;
+    };
+    expect(dispatched.operationKind).toBe('insert-slot');
+    expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ r0: 0, r4: 5 });
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'reveal-1',
+      railKind: 'reveal',
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+    });
+  });
+
+  it('58 G-06: a Reveal rail gap-policy in-between also accepts Insert', async () => {
+    const revealRail: PhysicPaintRotoLoopClip = {
+      loopId: 'reveal-1',
+      placementStart: 0,
+      sourceKeyIds: ['r0', 'r4'],
+      repeat: 1,
+      mode: 'static',
+      railKind: 'reveal',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const harness = createHarness({
+      records: [realKeyRecord('r0', 0), realKeyRecord('r4', 4)],
+      loopClips: [revealRail],
+      currentAppFrame: 2,
+      capacity: 10,
+      frameResolution: {
+        kind: 'linked-gap',
+        loopId: 'reveal-1',
+        appFrame: 2,
+        leftSourceKeyId: 'r0',
+        rightSourceKeyId: 'r4',
+        leftSourceIndex: 0,
+        rightSourceIndex: 1,
+        cycleOffset: 2,
+        repeatInstance: 0,
+      },
+    });
+    expect(harness.actions.physicalActions.canInsertFrame.value).toBe(true);
+    expect(await harness.actions.physicalActions.insertRotoFrame()).toBe(true);
+  });
+
   it('offers the tail slot at capacity and rejects beyond it', async () => {
     const tail = createHarness({
       records: [realKeyRecord('key-a', 2)],
@@ -1297,6 +1383,94 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(accepted).toBe(false);
     expect(executePhysicalEdit).not.toHaveBeenCalled();
     expect(publishStatus).toHaveBeenCalledWith('Paste-to-empty destination is occupied.');
+  });
+
+  it('58 G-06: + Key on a Rail in-between inserts a source phase instead of a detached key', async () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      loopId: 'rail-1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k4'],
+      repeat: 1,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 5,
+      visibleRanges: [{ start: 0, endExclusive: 5 }],
+      frameOverrides: [],
+    };
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4)],
+      loopClips: [rail],
+      currentAppFrame: 2,
+      capacity: 10,
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(2, blankPayload(2), { joinPreviousRail: true });
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        selectedKeyId: string | null;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+      intent: { kind: string; railInsertGroupId?: string };
+    };
+    expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+    const mapping = Object.fromEntries(dispatched.proposal.mapping);
+    expect(mapping.k0).toBe(0);
+    expect(mapping.k4).toBe(5);
+    expect(dispatched.proposal.selectedKeyId).toBeDefined();
+    expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(2);
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      loopId: 'rail-1',
+      sourceKeyIds: ['k0', dispatched.proposal.selectedKeyId, 'k4'],
+      originalEndExclusive: 6,
+    });
+  });
+
+  it('58 G-06: + Key on a repeat occurrence opens the key at its first-cycle phase', async () => {
+    const rail: PhysicPaintRotoLoopClip = {
+      loopId: 'rail-1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k4'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 10,
+      visibleRanges: [{ start: 0, endExclusive: 10 }],
+      frameOverrides: [],
+    };
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4)],
+      loopClips: [rail],
+      currentAppFrame: 7,
+      capacity: 32,
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(7, blankPayload(7), {
+      joinPreviousRail: true,
+      allowRepeatRailInsert: true,
+    });
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        selectedKeyId: string | null;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+      };
+      intent: { kind: string; destinationAppFrame: number; railInsertGroupId?: string };
+    };
+    expect(dispatched.intent.destinationAppFrame).toBe(2);
+    expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+    const mapping = Object.fromEntries(dispatched.proposal.mapping);
+    expect(mapping.k0).toBe(0);
+    expect(mapping.k4).toBe(5);
+    expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(2);
+    expect(dispatched.proposal.nextLoopClips?.[0]).toMatchObject({
+      sourceKeyIds: ['k0', dispatched.proposal.selectedKeyId, 'k4'],
+      originalEndExclusive: 12,
+    });
   });
 });
 
@@ -1788,6 +1962,68 @@ describe('useRotoTimelineActions rigid group-drag settlement', () => {
     expect(preparation.conflictingAppFrames).toEqual([7]);
     expect(preparation.detail).toContain('occupied by an unselected real key');
     expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useRotoTimelineActions partial-cycle group-drag source order (CR-03)', () => {
+  const D11_TEXT = 'Linked source-cycle keys move only as a rigid group. Select the whole cycle to drag it.';
+  const sourceRecords = () => [
+    realKeyRecord('A', 10),
+    realKeyRecord('B', 11),
+    realKeyRecord('C', 12),
+    realKeyRecord('D', 13),
+    realKeyRecord('E', 14),
+  ];
+  const sourceLoop: PhysicPaintRotoLoopClip = {
+    loopId: 'L1',
+    placementStart: 10,
+    sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+    repeat: 5,
+    mode: 'static',
+  };
+
+  it('rejects an order-breaking partial-cycle drag with the locked copy and never dispatches', () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: sourceRecords(),
+      loopClips: [sourceLoop],
+      selectedKeyIds: ['A', 'B'],
+      capacity: 30,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('A', {
+      kind: 'physical-cell',
+      appFrame: 20,
+    });
+
+    expect(preparation.ok).toBe(false);
+    if (preparation.ok) throw new Error('Order-breaking group drag must reject');
+    expect(preparation.reason).toBe(D11_TEXT);
+    expect(preparation.detail).toBe(D11_TEXT);
+    expect(executePhysicalEdit).not.toHaveBeenCalled();
+  });
+
+  it('prepares and commits an order-preserving partial-cycle drag exactly once', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: sourceRecords(),
+      loopClips: [sourceLoop],
+      selectedKeyIds: ['A', 'B'],
+      capacity: 30,
+    });
+
+    const preparation = actions.physicalActions.prepareRotoKeyGroupDrag('A', {
+      kind: 'physical-cell',
+      appFrame: 8,
+    });
+    expect(preparation.ok).toBe(true);
+    if (!preparation.ok) throw new Error('Order-preserving group drag must prepare');
+    expect(Object.fromEntries(preparation.publication.proposal.mapping)).toEqual({ A: 8, B: 9, C: 12, D: 13, E: 14 });
+
+    const accepted = await actions.physicalActions.commitRotoKeyGroupDrag(preparation.publication);
+
+    expect(accepted).toBe(true);
+    expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as { operationKind: string };
+    expect(dispatched.operationKind).toBe('move-key-group');
   });
 });
 
@@ -3320,10 +3556,13 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
 
   it('prepares a duplicated-placement-only publication with no gap intervals (D-11)', () => {
     const records = [realKeyRecord('g0', 20), realKeyRecord('g1', 21)];
+    // 58-09 (G-01): both stored ends span four 2-frame source cycles, so the
+    // intent behind them is repeat 4, not the fixture helper's repeat 2.
     const loopG = lifecycleGroup({
       loopId: 'loop-G',
       placementStart: 20,
       sourceKeyIds: Object.freeze(['g0', 'g1']),
+      repeat: 4,
       phaseOrigin: 20,
       originalEndExclusive: 28,
       visibleRanges: Object.freeze([Object.freeze({ start: 20, endExclusive: 28 })]),
@@ -3332,6 +3571,7 @@ describe('useRotoTimelineActions batch Move prepare + locked copy family (43.6-0
       loopId: 'loop-D',
       placementStart: 2,
       sourceKeyIds: Object.freeze(['g0', 'g1']),
+      repeat: 4,
       mode: 'static',
       phaseOrigin: 2,
       originalEndExclusive: 10,
@@ -3960,5 +4200,97 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     expect(await harness.actions.physicalActions.pasteRailSet()).toBe(false);
     expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalled();
+  });
+});
+
+describe('Phase 58 G-01 frame-aware Group delete routing', () => {
+  // Source S1@10 S2@11 S3@12, repeat 2 => the Group owns [10,16).
+  const group = lifecycleGroup({
+    loopId: 'group-g01',
+    sourceKeyIds: Object.freeze(['S1', 'S2', 'S3']),
+    repeat: 2,
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
+    frameOverrides: Object.freeze([]),
+  });
+  const groupRecords = [
+    realKeyRecord('S1', 10),
+    realKeyRecord('S2', 11),
+    realKeyRecord('S3', 12),
+    realKeyRecord('local-15', 15),
+    realKeyRecord('ordinary', 30),
+    realKeyRecord('ordinary-2', 31),
+  ];
+  const base = {
+    launchReady: true,
+    pendingOperationId: null,
+    selectedKeyId: null,
+    selectedKeyIds: [] as readonly string[],
+    selectedLoopClipIds: [] as readonly string[],
+    currentAppFrame: 30,
+    capacity: 40,
+    records: groupRecords,
+    loopClips: [group] as readonly PhysicPaintRotoLoopClip[],
+    interpolation: { enabled: false, mode: 'duplicate' as const },
+    incomingInterpolationBreakKeyIds: ['ordinary'] as readonly string[],
+    physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+  };
+
+  it('classifies a selected key at a Group frame as group-frame even when the cursor moved', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyId: 'local-15',
+      selectedKeyIds: ['local-15'],
+    })).toEqual({
+      kind: 'group-frame',
+      groupId: 'group-g01',
+      appFrame: 15,
+      mode: 'progressive',
+      phaseOrigin: 10,
+      onlyOccurrence: false,
+    });
+  });
+
+  it('returns no-target for a multi-key selection containing a Group-owned frame', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyIds: ['local-15', 'ordinary'],
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyIds: ['ordinary', 'ordinary-2'],
+    })).toEqual({ kind: 'ordinary-key-group', keyIds: ['ordinary', 'ordinary-2'] });
+  });
+
+  it('returns no-target for a Key Rail whose member frame is Group-owned', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyRail: { firstKeyId: 'local-15', keyIds: ['local-15'] },
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyRail: { firstKeyId: 'ordinary', keyIds: ['ordinary', 'ordinary-2'] },
+    })).toEqual({
+      kind: 'key-rail',
+      firstKeyId: 'ordinary',
+      keyIds: ['ordinary', 'ordinary-2'],
+      firstKeyFrame: 30,
+      lastKeyFrame: 31,
+    });
+  });
+
+  it('returns no-target for a rail set whose member frame is Group-owned', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'local-15' }] as readonly RailSetIdentity[],
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'ordinary' }] as readonly RailSetIdentity[],
+    }).kind).toBe('rail-set');
   });
 });

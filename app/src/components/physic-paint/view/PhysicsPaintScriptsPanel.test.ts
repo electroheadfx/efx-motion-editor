@@ -1328,3 +1328,97 @@ describe('Physics Paint Actions layer scope (quick-260922-al1)', () => {
     expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(4,\s*auto\)/);
   });
 });
+
+describe('Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01)', () => {
+  const projection = {
+    firstKeyId: 'A',
+    keyIds: ['A', 'B'],
+    firstKeyFrame: 10,
+    lastKeyFrame: 14,
+    framesLabel: 'F10–F14',
+    keysLabel: '2',
+    typeLabel: 'Standard',
+    editDisabledReason: null,
+  };
+
+  it('replaces the Scripts surface with the Selected Key Rail takeover and exactly Frames, Keys, and Type', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), { selectedKeyRail: projection });
+
+    // The takeover replaces the Scripts toolbar/list entirely (D-01).
+    expect(findAll(tree, (vnode) => vnode.props?.label === 'Save Script')).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'listbox')).toHaveLength(0);
+    expect(findOne(tree, (vnode) => vnode.type === 'dl' && hasClass(vnode, 'physics-paint-loop-clip-inspector'))).toBeTruthy();
+    expect(findAll(tree, (vnode) => vnode.type === 'dt').map((vnode) => textOf(vnode)))
+      .toEqual(['Frames', 'Keys', 'Type']);
+    expect(textOf(tree)).toContain('F10–F14');
+    expect(textOf(tree)).toContain('Standard');
+    expect(findOne(tree, (vnode) => vnode.props?.role === 'tabpanel' && vnode.props?.['aria-label'] === 'Selected Key Rail — F10–F14')).toBeTruthy();
+    // D-04: no fourth fact leaks into the inspector.
+    for (const absent of ['Name', 'Source Script', 'Placement', 'Cycle', 'Effective', 'Rail Type', 'Status']) {
+      expect(findAll(tree, (vnode) => vnode.type === 'dt' && textOf(vnode) === absent)).toHaveLength(0);
+    }
+  });
+
+  it('fires onOpenKeyRailEdit with the segment first key id and onCloseKeyRail from the top actions', () => {
+    const onOpenKeyRailEdit = vi.fn(async () => undefined);
+    const onCloseKeyRail = vi.fn();
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedKeyRail: projection,
+      onOpenKeyRailEdit,
+      onCloseKeyRail,
+    });
+
+    const edit = findOne(tree, (vnode) => vnode.props?.label === 'Edit Rail — F10–F14');
+    expect(edit.props.disabled).toBe(false);
+    (edit.props.onClick as () => void)();
+    expect(onOpenKeyRailEdit).toHaveBeenCalledTimes(1);
+    // The controller handoff always opens on the FIRST key id, never the others.
+    expect(onOpenKeyRailEdit).toHaveBeenCalledWith('A');
+
+    const close = findOne(tree, (vnode) => vnode.props?.label === 'Close Rail inspector — F10–F14');
+    (close.props.onClick as () => void)();
+    expect(onCloseKeyRail).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Edit Rail visible but guarded with the multi-select reason and its description id', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedKeyRail: { ...projection, editDisabledReason: 'Select a single rail to edit it.' },
+    });
+
+    const edit = findOne(tree, (vnode) => vnode.props?.label === 'Edit Rail — F10–F14');
+    expect(edit.props.disabled).toBe(true);
+    expect(edit.props.disabledReason).toBe('Select a single rail to edit it.');
+    expect(typeof edit.props.descriptionId).toBe('string');
+    expect(String(edit.props.descriptionId).length).toBeGreaterThan(0);
+    // The guarded IconButton still renders (the reason is announced, not hidden).
+    expect(edit).toBeTruthy();
+  });
+
+  it('pins the branch order, the three fact rows, and the guarded Edit Rail contract in source', () => {
+    const branchStart = panel.indexOf('if (selectedKeyRail)');
+    expect(branchStart).toBeGreaterThanOrEqual(0);
+    const branchEnd = panel.indexOf('if (selectedLoopClip)');
+    expect(branchEnd).toBeGreaterThan(branchStart);
+    const branch = panel.slice(branchStart, branchEnd);
+
+    expectInOrder(branch, ['<dt>Frames</dt>', '<dt>Keys</dt>', '<dt>Type</dt>']);
+    expect(branch).not.toContain('<dt>Name</dt>');
+    expect(branch).not.toContain('<dt>Cycle</dt>');
+    expect(branch).toContain('label={`Edit Rail — ${railLabel}`}');
+    expect(branch).toContain('label={`Close Rail inspector — ${railLabel}`}');
+    expect(branch).toContain('disabled={editDisabledReason !== null}');
+    expect(branch).toContain('disabledReason={editDisabledReason ?? undefined}');
+    expect(branch).toContain('descriptionId={keyRailEditReasonId}');
+    expect(branch).toContain('void onOpenKeyRailEdit?.(selectedKeyRail.firstKeyId)');
+    expect(branch).toContain('class="physics-paint-loop-clip-inspector-top-actions"');
+    expect(branch).toContain('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
+    // D-01: the takeover branch returns before the loop-clip branch can fire.
+    expect(branchStart).toBeLessThan(panel.indexOf('<dt>Source Script</dt>'));
+  });
+
+  it('types the Edit Rail handoff so 58-05\'s always-Promise handler assigns cleanly', () => {
+    expect(panel).toContain('selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;');
+    expect(panel).toContain('onOpenKeyRailEdit?: (firstKeyId: string) => Promise<unknown> | void;');
+    expect(panel).toContain('onCloseKeyRail?: () => void;');
+  });
+});

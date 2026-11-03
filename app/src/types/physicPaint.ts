@@ -472,6 +472,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly startsNewSegment?: boolean;
       /** Quick 261019-mj2 UAT: + Key clones the nearest previous real key's paint and must JOIN that key's rail, not open a new segment. Takes precedence over startsNewSegment/boundary breaks. */
       readonly joinsPreviousRail?: boolean;
+      /** 58: the destination lies inside one canonical Rail's first cycle — insert the new key as a source phase (the rail grows) instead of creating a detached key that splits it. */
+      readonly railInsertGroupId?: string;
     }
   | {
       readonly kind: 'paste-key-group';
@@ -639,12 +641,15 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
-    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment', 'joinsPreviousRail'])) return false;
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment', 'joinsPreviousRail', 'railInsertGroupId'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame) || !isPhysicPaintRotoRealKeyPayload(value.clipboardPayload)) return false;
     if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
     if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
     if (value.startsNewSegment !== undefined && typeof value.startsNewSegment !== 'boolean') return false;
     if (value.joinsPreviousRail !== undefined && typeof value.joinsPreviousRail !== 'boolean') return false;
+    if (value.railInsertGroupId !== undefined && (typeof value.railInsertGroupId !== 'string' || value.railInsertGroupId.length === 0)) return false;
+    // 58: a rail insert always creates a fresh source identity.
+    if (value.railInsertGroupId !== undefined && value.destinationKeyId !== null) return false;
     return (value.destinationKeyId === null) !== (value.newKeyId === null);
   }
   if (value.kind === 'paste-key-group') {
@@ -927,6 +932,7 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
       };
       if (intent.startsNewSegment === true) canonical.startsNewSegment = true;
       if (intent.joinsPreviousRail === true) canonical.joinsPreviousRail = true;
+      if (intent.railInsertGroupId !== undefined) canonical.railInsertGroupId = intent.railInsertGroupId;
       return JSON.stringify(canonical);
     }
     case 'paste-key-group':
@@ -1066,6 +1072,10 @@ export type PhysicPaintRotoPhysicalEditSemanticDelta =
       readonly destinationKeyId: string | null;
       readonly newKeyId: string | null;
       readonly clipboardPayload: PhysicPaintRotoPhysicalEditRecord['payload'];
+      /** 58: the key was inserted as a new source phase of a Rail; later rail sources shift right by one. */
+      readonly railInsert?: true;
+      /** 58: trailing content at/after the rail's old end shifts right by the rail's repeat (footprint growth). */
+      readonly trailingShift?: number;
     }
   | {
       readonly kind: 'paste-key-group';
@@ -1559,11 +1569,18 @@ export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): valu
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
-    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
+    const railInsert = value.railInsert === true;
+    if (!hasOnlyKeys(value, railInsert
+      ? ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'railInsert', 'trailingShift']
+      : ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame)) return false;
     if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
     if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
     if ((value.destinationKeyId === null) === (value.newKeyId === null)) return false;
+    if (railInsert) {
+      if (value.destinationKeyId !== null) return false;
+      if (!isNonNegativeInteger(value.trailingShift) || value.trailingShift < 1) return false;
+    }
     return isPhysicPaintRotoPhysicalEditPayload(value.clipboardPayload);
   }
   if (value.kind === 'paste-key-group') {

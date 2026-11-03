@@ -38,7 +38,11 @@ import {
 import {
   getPhysicsPaintRotoSourceCycleId,
 } from '../roto/physicsPaintRotoSpacingSelection';
-import { resolvePhysicPaintRotoPhysicalEdit } from '../roto/physicsPaintRotoPhysicalResolver';
+import {
+  derivePhysicPaintRotoLoopRanges,
+  resolvePhysicPaintRotoLoopFrame,
+  resolvePhysicPaintRotoPhysicalEdit,
+} from '../roto/physicsPaintRotoPhysicalResolver';
 import { proposePhysicPaintRotoRegenerateGroup } from '../roto/physicsPaintRotoGroupLifecycle';
 import {
   createRotoPlayScriptController,
@@ -4477,5 +4481,178 @@ describe('261029-lsr capture cursor authority', () => {
     if (!accepted) throw new Error('Expected accepted paste command.');
     expect(accepted.before.selectedKeyId).toBeNull();
     expect(accepted.before.currentAppFrame).toBe(4);
+  });
+});
+
+/**
+ * G-01 (58-UAT.md): a finite converted Standard rail stores its lifecycle
+ * extent. Deleting the real keys past the surviving source cycle still leaves
+ * `originalEndExclusive` and the baked paint-sheet references behind, so the
+ * deleted frames keep rendering cached paint. The coordinator must reconcile
+ * every staged edit: bound the clip to the source-derived extent and prune the
+ * paint sheets that were backing the removed frames.
+ */
+function staleCycleDocument(options: {
+  repeat?: number | 'infinity';
+  storedEndExclusive?: number;
+  visibleRanges?: readonly { start: number; endExclusive: number }[];
+  frameOverrides?: readonly { appFrame: number; keyId: string }[];
+  includeOverrideRecord?: boolean;
+} = {}) {
+  const records = [record('A', 0), record('B', 1), record('C', 2), record('D', 7)];
+  const visibleRanges = options.visibleRanges ?? [{ start: 0, endExclusive: 9 }];
+  const frameOverrides = options.frameOverrides ?? [{ appFrame: 7, keyId: 'override-7' }];
+  const groupOverrideRecords = options.includeOverrideRecord === false
+    ? []
+    : [record('override-7', 7)];
+  const clip: PhysicPaintRotoLoopClip = {
+    loopId: 'group-stale',
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B', 'C'],
+    repeat: options.repeat ?? 2,
+    mode: 'progressive',
+    scriptId: 'action-1',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: options.storedEndExclusive ?? 9,
+    visibleRanges,
+    frameOverrides,
+  };
+  const loopClips = [clip];
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity: 30,
+    realKeyRecords: records,
+    groupOverrideRecords,
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 4,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips, [], groupOverrideRecords),
+    loopClips,
+    incomingInterpolationBreakKeyIds: [],
+  });
+}
+
+describe('Phase 58 G-01 stale-cycle write repair', () => {
+  it('repairs a stale finite cycle when the key outside its source extent is deleted', async () => {
+    const test = harness();
+    const before = staleCycleDocument();
+    test.seedGroupDocument(before);
+
+    // The stale document parses: A/B/C cycle (repeat 2 => extent 6) stored as
+    // an end-9 lifecycle, with the paint sheet at frame 7 referenced by the
+    // clip. D@7 is outside the source cycle, so the ordinary delete is legal.
+    expect(await test.executeDeleteKey('D')).toBe(true);
+    expect(test.getCanonicalDocument()).toEqual(before);
+    expect(test.accept()).toBe('accepted');
+
+    const accepted = test.getCanonicalDocument();
+    const clip = accepted.loopClips[0]!;
+    expect(clip.originalEndExclusive).toBe(6);
+    expect(clip.visibleRanges).toEqual([{ start: 0, endExclusive: 6 }]);
+    expect(clip.frameOverrides).toEqual([]);
+    expect(accepted.groupOverrideRecords).toEqual([]);
+    expect(accepted.realKeyRecords.map(({ keyId }) => keyId)).toEqual(['A', 'B', 'C']);
+    // The payload must carry the same reconciled collections, or the parent's
+    // accepted revision and the child's staged revision cannot agree.
+    expect(test.getPayload()?.loopClips).toEqual(accepted.loopClips);
+    expect(test.getPayload()?.groupOverrideRecords).toEqual([]);
+
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: accepted.realKeyRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      loopClips: accepted.loopClips,
+      capacity: accepted.capacity,
+      interpolationEnabled: false,
+    });
+    expect(context.ranges[0]?.effectiveEnd).toBe(6);
+    expect(resolvePhysicPaintRotoLoopFrame(context, 6)).toEqual({ kind: 'empty' });
+    expect(resolvePhysicPaintRotoLoopFrame(context, 7)).toEqual({ kind: 'empty' });
+  });
+
+  it('undoes the stale-cycle repair in one command', async () => {
+    const test = harness();
+    const before = staleCycleDocument();
+    test.seedGroupDocument(before);
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    expect(await test.executeDeleteKey('D')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected the stale-cycle delete to be accepted.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await history.undo()).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const undoOperationId = test.getPayload()?.operationId;
+    if (!undoOperationId) throw new Error('Expected the undo operation to stage.');
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(undoOperationId, 'release')).toBe(true);
+
+    const restored = test.getCanonicalDocument();
+    expect(restored).toEqual(before);
+    expect(restored.realKeyRecords.map(({ keyId }) => keyId)).toContain('D');
+    expect(restored.loopClips[0]?.frameOverrides).toEqual([{ appFrame: 7, keyId: 'override-7' }]);
+    expect(restored.groupOverrideRecords?.map(({ keyId }) => keyId)).toEqual(['override-7']);
+    expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('passes an already-canonical lifecycle clip through the staged reconcile byte-identically', async () => {
+    const test = harness();
+    const canonical = staleCycleDocument({
+      storedEndExclusive: 6,
+      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      frameOverrides: [],
+      includeOverrideRecord: false,
+    });
+    test.seedGroupDocument(canonical);
+
+    expect(await test.executePasteKey(12)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    const accepted = test.getCanonicalDocument();
+    expect(accepted.loopClips).toEqual(canonical.loopClips);
+    expect(accepted.groupOverrideRecords).toEqual([]);
+    expect(test.getPayload()?.loopClips).toEqual(canonical.loopClips);
+    const command = test.coordinator.acceptedOutput.value;
+    if (!command) throw new Error('Expected the canonical paste to be accepted.');
+    expect(command.after.loopClips).toEqual(command.before.loopClips);
+    expect(command.after.groupOverrideRecords).toEqual(command.before.groupOverrideRecords);
+  });
+
+  it('leaves an infinity lifecycle clip and its paint sheet untouched', async () => {
+    const test = harness();
+    const infinity = staleCycleDocument({ repeat: 'infinity' });
+    test.seedGroupDocument(infinity);
+
+    expect(await test.executePasteKey(12)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    const accepted = test.getCanonicalDocument();
+    expect(accepted.loopClips).toEqual(infinity.loopClips);
+    expect(accepted.groupOverrideRecords?.map(({ keyId }) => keyId)).toEqual(['override-7']);
+    expect(test.getPayload()?.loopClips).toEqual(infinity.loopClips);
+  });
+
+  it('leaves a clip whose visible ranges would trim empty unchanged', async () => {
+    const test = harness();
+    const unfixable = staleCycleDocument({
+      visibleRanges: [{ start: 6, endExclusive: 9 }],
+      frameOverrides: [],
+      includeOverrideRecord: false,
+    });
+    test.seedGroupDocument(unfixable);
+
+    expect(await test.executeDeleteKey('D')).toBe(true);
+    expect(test.accept()).toBe('accepted');
+
+    // Bounding to [0, 6) would intersect the stored [6, 9) range to nothing.
+    // The reconcile must leave the clip unchanged rather than publish an
+    // invalid empty-range lifecycle.
+    const accepted = test.getCanonicalDocument();
+    expect(accepted.loopClips).toEqual(unfixable.loopClips);
   });
 });

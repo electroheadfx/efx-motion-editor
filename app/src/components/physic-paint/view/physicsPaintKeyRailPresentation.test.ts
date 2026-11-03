@@ -5,6 +5,7 @@ import {
   deriveKeyRailSegments,
   resolvePhysicPaintPushAnchor,
 } from './physicsPaintKeyRailPresentation';
+import * as keyRailPresentationModule from './physicsPaintKeyRailPresentation';
 
 describe('deriveKeyRailSegments', () => {
   it('derives ordinary rails from ordered real keys, breaks, and Group ownership', () => {
@@ -124,5 +125,95 @@ describe('Key Rail copy family', () => {
     })).toBe(
       'Selected Key Rail — frames 2–8, 3 keys. No empty space in that direction. Delete is unavailable.',
     );
+  });
+});
+
+/**
+ * 58-03 RAIL-01: the Selected Key Rail inspector projection. The namespace
+ * import keeps this spec loadable before the export exists, so RED fails on the
+ * planned `typeof ... === 'function'` assertion rather than a module error.
+ */
+interface ProjectedInspectorShape {
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+  readonly framesLabel: string;
+  readonly keysLabel: string;
+  readonly typeLabel: string;
+  readonly editDisabledReason: string | null;
+}
+
+type ProjectInspector = (
+  segment: KeyRailSegmentShape,
+  options?: { readonly setSize?: number },
+) => ProjectedInspectorShape;
+
+interface KeyRailSegmentShape {
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+}
+
+function requireProjectInspector(): ProjectInspector {
+  const candidate = (keyRailPresentationModule as unknown as {
+    projectSelectedKeyRailInspector?: unknown;
+  }).projectSelectedKeyRailInspector;
+  expect(typeof candidate).toBe('function');
+  if (typeof candidate !== 'function') {
+    throw new Error('projectSelectedKeyRailInspector is not implemented yet');
+  }
+  return candidate as ProjectInspector;
+}
+
+describe('projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector)', () => {
+  const segment: KeyRailSegmentShape = Object.freeze({
+    firstKeyId: 'A',
+    keyIds: Object.freeze(['A', 'B', 'C', 'D', 'E']),
+    firstKeyFrame: 10,
+    lastKeyFrame: 14,
+  });
+
+  it('projects exactly the three facts plus the controller handoff fields for a single Rail', () => {
+    const projection = requireProjectInspector()(segment);
+
+    expect(projection.framesLabel).toBe('F10–F14');
+    expect(projection.keysLabel).toBe('5');
+    expect(projection.typeLabel).toBe('Standard');
+    expect(projection.editDisabledReason).toBeNull();
+    expect(projection.firstKeyId).toBe('A');
+    expect(projection.keyIds).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(projection.firstKeyFrame).toBe(10);
+    expect(projection.lastKeyFrame).toBe(14);
+    expect(Object.isFrozen(projection)).toBe(true);
+    expect(Object.isFrozen(projection.keyIds)).toBe(true);
+  });
+
+  it('disables Edit Rail with the locked reason for a multi-Rail set while keeping this Rail\'s own facts', () => {
+    const project = requireProjectInspector();
+    const projection = project(segment, { setSize: 2 });
+
+    expect(projection.framesLabel).toBe('F10–F14');
+    expect(projection.keysLabel).toBe('5');
+    expect(projection.typeLabel).toBe('Standard');
+    expect(projection.editDisabledReason).toBe('Select a single rail to edit it.');
+    expect(project(segment, { setSize: 3 }).editDisabledReason).toBe('Select a single rail to edit it.');
+    expect(project(segment, { setSize: 1 }).editDisabledReason).toBeNull();
+  });
+
+  it('is anchor-agnostic — any segment the caller resolves projects its own facts', () => {
+    const anchor = requireProjectInspector()(Object.freeze({
+      firstKeyId: 'C',
+      keyIds: Object.freeze(['C']),
+      firstKeyFrame: 20,
+      lastKeyFrame: 20,
+    }), { setSize: 2 });
+
+    expect(anchor.firstKeyId).toBe('C');
+    expect(anchor.framesLabel).toBe('F20–F20');
+    expect(anchor.keysLabel).toBe('1');
+    expect(anchor.typeLabel).toBe('Standard');
+    expect(anchor.editDisabledReason).toBe('Select a single rail to edit it.');
   });
 });

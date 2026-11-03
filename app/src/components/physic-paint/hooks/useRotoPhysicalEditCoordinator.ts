@@ -73,6 +73,7 @@ import {
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
+  reconcilePhysicPaintRotoGroupFrames,
   resolvePhysicPaintRotoLoopClipLifecycle,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
@@ -2334,13 +2335,32 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             ?? groupLifecycleDeleteProposal?.groupOverrideRecords
             ?? groupFramePaintProposal?.groupOverrideRecords
             ?? moveGroupOverrideRecords
+            ?? proposal?.nextGroupOverrideRecords
             ?? currentGroupOverrideRecords;
+        // 58-09 (G-01): a finite lifecycle clip stores its extent, and that
+        // stored end does not follow a delete that removes keys outside the
+        // surviving source cycle. Reconcile every staged edit so the accepted
+        // write persists the bounded extent and drops the paint sheets that
+        // backed the removed frames — otherwise those frames keep rendering
+        // cached paint. Replay is the exception: its stored target must
+        // round-trip byte-identically.
+        const reconciledGroupFrames = isReplay && replayTarget
+          ? null
+          : reconcilePhysicPaintRotoGroupFrames({
+              loopClips: stagedLoopClips,
+              identities: validatedStagedRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+              groupOverrideRecords: stagedGroupOverrideRecords,
+              capacity,
+            });
+        const publicationLoopClips = reconciledGroupFrames?.loopClips ?? stagedLoopClips;
+        const publicationGroupOverrideRecords = reconciledGroupFrames?.groupOverrideRecords
+          ?? stagedGroupOverrideRecords;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
           validatedStagedRecords,
           stagedInterpolation,
-          stagedLoopClips,
+          publicationLoopClips,
           stagedIncomingInterpolationBreakKeyIds,
-          stagedGroupOverrideRecords,
+          publicationGroupOverrideRecords,
         );
         if (isReplay && (
           !historyProvenance
@@ -2365,13 +2385,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             // capacity authority used for staging (the raised tail slot).
             capacity: targetCapacity ?? currentDocument.capacity,
             realKeyRecords: validatedStagedRecords,
-            groupOverrideRecords: stagedGroupOverrideRecords,
+            groupOverrideRecords: publicationGroupOverrideRecords,
             interpolation: stagedInterpolation,
             background: playScriptInput?.rotoBackground ?? currentDocument.background,
             selectedKeyId: targetSelectedKeyId,
             cursorAppFrame: targetCursorAppFrame,
             revision: stagedRevision,
-            loopClips: stagedLoopClips,
+            loopClips: publicationLoopClips,
             incomingInterpolationBreakKeyIds: stagedIncomingInterpolationBreakKeyIds,
           });
         } catch (error) {
@@ -2401,14 +2421,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           projectContextId: leaseToken.projectContextId,
           expectedRevision,
           records: recordsToApplyPayloadRecords(validatedStagedRecords),
-          groupOverrideRecords: recordsToApplyPayloadRecords(stagedGroupOverrideRecords),
+          groupOverrideRecords: recordsToApplyPayloadRecords(publicationGroupOverrideRecords),
           interpolationEnabled: stagedInterpolation.enabled,
           interpolationMode: stagedInterpolation.mode,
           // Quick 261019-mj2: carry the resolver-computed capacity unchanged
           // to the parent authority, which owns the FX span extension.
           ...(targetCapacity !== undefined ? { targetCapacity } : {}),
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
-          loopClips: cloneLoopClips(stagedLoopClips),
+          loopClips: cloneLoopClips(publicationLoopClips),
           incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
             stagedIncomingInterpolationBreakKeyIds,
           ),

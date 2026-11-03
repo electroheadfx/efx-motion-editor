@@ -707,6 +707,43 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infini
     expect(duplicated.frameOverrides).toEqual([]);
   });
 
+  it('rounds a non-whole-cycle infinity span UP so the G-01 source extent cannot trim the tail', () => {
+    // Source: cycleLength 5 (keys at 0 and 4), unowned key at 17 → visible 0..17.
+    const clip: PhysicPaintRotoLoopClip = {
+      loopId: 'g1',
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k4'],
+      repeat: 'infinity',
+      mode: 'progressive',
+    };
+    const sourceDocument = buildDocument(
+      [recordKey('k0', 0), recordKey('k4', 4), recordKey('k17', 17)],
+      [clip],
+    );
+    const built = buildRotoRailSetCopyPayload({ document: sourceDocument, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Loop payload must resolve: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected loop member');
+    expect(member.effectiveEndExclusive).toBe(17);
+    // ceil(17 / 5) = 4 — round(3.4) = 3 would leave the frozen end past the
+    // source-derived extent, and 58-09's bound would trim frames 55-56.
+    expect(member.repeat).toBe(4);
+
+    const destinationDocument = buildDocument([recordKey('k0', 0), recordKey('k4', 4)]);
+    const pasted = proposeRails({ document: destinationDocument, payload: built.payload, placementMode: 'paste', destinationAppFrame: 40 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Infinity-loop paste must resolve: ${pasted.reason}`);
+    const duplicated = pasted.proposal.loopClips.filter((candidate) => candidate.loopId !== 'g1')[0];
+    expect(duplicated.repeat).toBe(4);
+    expect(duplicated.originalEndExclusive).toBe(57);
+    expect(duplicated.visibleRanges).toEqual([{ start: 40, endExclusive: 57 }]);
+    expect(pasted.impact.identities[0].effectiveEndExclusive).toBe(57);
+    // The frozen repeat covers the stored end (40 + 5 * 4 = 60 >= 57), so the
+    // G-01 source-extent bound is inert on the pasted clip.
+    expect(duplicated.phaseOrigin! + 5 * (duplicated.repeat as number))
+      .toBeGreaterThanOrEqual(duplicated.originalEndExclusive!);
+  });
+
   it('captures a truly-unbounded infinity source at the parent end and freezes it finite', () => {
     // No neighbor, so the source renders to capacity 100 (0..100).
     const clip: PhysicPaintRotoLoopClip = {

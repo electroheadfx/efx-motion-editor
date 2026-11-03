@@ -1,16 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v2.0.1
-milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
-status: planning
-last_updated: "2026-11-03T09:05:00.000Z"
+current_phase: 58
+current_phase_name: Rail editing regressions
+status: verifying
+stopped_at: Completed 58-10-PLAN.md
+last_updated: "2026-11-03T16:27:43.573Z"
 last_activity: 2026-11-03
+last_activity_desc: Phase 58 execution started
+state_head: 646efaa28213ae04befeaf402a2b3841d9cf74f8
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 10
   completed_plans: 0
-  percent: 0
+milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
 ---
 
 # Project State
@@ -20,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH); Phase 58 fixes the two rail-editing regressions, then the in-milestone v7 timeline-rails quick
+**Current focus:** Phase 58 — Rail editing regressions
 
 ## Current Position
 
-Phase: 58 — Rail editing regressions
-Plan: —
-Status: Roadmap created — ready to discuss Phase 58
-Last activity: 2026-11-03 — Milestone v2.0.1 roadmap created (Phase 58 + in-milestone v7 quick)
+Phase: 58 (Rail editing regressions) — EXECUTING
+Plan: 10 of 10
+Status: Phase complete — ready for verification
+Last activity: 2026-11-03 — Phase 58 execution started
 
 
 ## Performance Metrics
@@ -172,6 +176,16 @@ Last activity: 2026-11-03 — Milestone v2.0.1 roadmap created (Phase 58 + in-mi
 | Phase quick-261018-gqo P261018-gqo | 8min | 3 tasks | 12 files |
 | Phase quick-261018-odm P261018-odm | 12min | 4 tasks | 8 files |
 | Phase quick-261024-mz5 P261024-mz5 | 19 | 3 tasks | 23 files |
+| Phase 58 P01 | 2 min | 2 tasks | 3 files |
+| Phase 58 P02 | 8 min | 3 tasks | 5 files |
+| Phase 58 P03 | 6 min | 2 tasks | 10 files |
+| Phase 58 P04 | 4min | 2 tasks | 3 files |
+| Phase 58 P05 | 4 min | 1 tasks | 2 files |
+| Phase 58 P06 | 5 | 2 tasks | 4 files |
+| Phase 58 P07 | 2min | 2 tasks | 3 files |
+| Phase 58 P08 | 3 min | 2 tasks | 2 files |
+| Phase 58 P09 | 20min | 3 tasks | 14 files |
+| Phase 58 P10 | 3min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -521,6 +535,38 @@ Recent decisions affecting current work:
 - [Phase quick-261024-mz5]: Handles render only when the adapter supplies onTransformStrokes; hit-testing the handle wins over the stroke hit test
 - [Phase quick-261024-mz5]: Watercolor transform is UV-space via one aquarelleEnginePixelToUv crossing and a NEGATED screen angle (UV y is up)
 - [Phase quick-261024-mz5]: Watercolor failure path restores the raw pre-attempt snapshot and surfaces the existing refusal capsule
+- [Phase 58]: Law A is a single resolver comparator change (> 1 referencing loops); D-13 needs zero work because buildMoveCandidate never emits nextLoopClips; no-leak pins keep Force Spacing and every other linked-key guard unchanged.
+- [Phase 58]: Key Rail cycle length is the span law (lastKeyFrame - firstKeyFrame + 1), never the key count; a gapped segment at 10,12,15 gets a 6-frame cycle and clamped lifecycle extents.
+- [Phase 58]: The Key Rail conversion publishes ONE loop-only commit through buildLoopOnlyPublication and records exactly one undo/redo command; every refusal and cancel writes nothing.
+- [Phase 58]: openKeyRailCycleEdit returns Promise<RotoPlayScriptLoopOpResult> on every path and confirmKeyRailCycle revalidates keys/ownership against fresh authority before any publication.
+- [Phase 58]: projectSelectedKeyRailInspector is anchor-agnostic (D-03): it takes whatever segment the caller resolved plus the set size. A 2+ set shows that rail's own facts with editDisabledReason 'Select a single rail to edit it.'; no bulk conversion action exists at any set size.
+- [Phase 58]: The Key Rail takeover uses physics-paint-scripts-panel without the loop-only physics-paint-loop-clip-panel modifier. That modifier's only declaration is justify-content: flex-start (the flex default), so visual parity is exact, and omitting it keeps four existing loop-inspector source anchors pointing at the loop branch (no CSS change is permitted).
+- [Phase 58]: The panel branches before if (selectedLoopClip) (D-01) and renders exactly Frames / Keys / Type (D-04) — the loop inspector's Name/Source/Placement/Cycle/Effective/Rail Type/Status facts never leak into the Key Rail surface.
+- [Phase 58]: The double-click detector is timestamp-only (D-02): a plain click records event.timeStamp, modifier clicks reset it to null, and an open consumes the sequence. Selection stays synchronous, so existing click timing is untouched (no 250 ms single-click delay like the loop rail).
+- [Phase 58]: The open intent is gated on gesture 'plain', !isMoveMember, and !busy (T-58-06); the onRailSetDragClickSuppressed / consumeClickSuppression early returns and the pointer-down batch routing are byte-for-byte unchanged.
+- [Phase 58]: Enter selects then opens the same entry; Space still plain-selects only and Escape still hides the tooltip. A move member or busy rail on Enter selects without opening.
+- [Phase 58]: The strip forwards onOpenKeyRailCycleEdit beside onOpenRotoLoopEdit; drag dispatch is untouched. Studio wiring is plan 58-05.
+- [Phase 58]: 58-04: reduced conversion surface is the existing dialog in reduced mode (reducedForm), not a second dialog; ReducedCycleCard shared by key-rail-create and merged-Standard loop-edit
+- [Phase 58]: 58-04: deleted the unreachable Standard branches (RailTypeCard standard prop/span, dialog standard wiring, Regenerate Rail standard block); STANDARD_RAIL_REGENERATE_REASON stays exported for shared use
+- [Phase 58]: 58-05: selectedKeyRailInspector is a useMemo over [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length], with the rail-set anchor fallback so a 2+ set projects the D-03 disabled reason and an unchanged selection keeps one object identity
+- [Phase 58]: 58-05: handleOpenRotoKeyRailCycleEdit selects before opening and returns Promise.resolve on the missing-segment refusal (Promise on every path); handleCloseRotoKeyRail clears BOTH selectedRotoKeyRail and railSetSelection so the anchor cannot re-supply a dismissed inspector
+- [Phase 58]: 58-05: the one key-rail anchor rule is the railSetAnchorKeyRailId const shared by the inspector memo and the WorkflowStrip bundle (replaces the :10951 inline ternary)
+- [Phase 58]: Key-rail conversion cancels through the generation contract only: requestAuthority/commit take no AbortSignal, so no AbortController is assigned and assertCurrent is the cancellation channel.
+- [Phase 58]: AbortError lands the key-rail conversion in 'cancelled' unconditionally (no generation equality guard) and nulls progress; cancel() and dispose() are the only bumpers while the path awaits.
+- [Phase 58]: cancel() returns before clearing keyRailCycleEditTarget when isBusyPhase is true; closeConfirmation no-ops while busy, so the frozen target is only cleared when the close can happen.
+- [Phase 58]: The single-reference order guard reads moveResult.candidate.mapping because cutSource/openAndInsert ripple survivors; judging the requested cell can hide an inversion.
+- [Phase 58]: An order-breaking or unprovable destination is rejected with the existing loop-source-key-move-rejected code and verbatim D-16 copy; sourceKeyIds is never re-sorted or mutated.
+- [Phase 58]: The guard runs only when candidate.changed is true, so a no-change drag back to the key's own cell is accepted even in an already-unresolved cycle.
+- [Phase 58]: Two or more referencing loops keep the unchanged D-11 / D-16 rejection before any candidate is built.
+- [Phase 58]: One derived confirmBlocked value drives the Enter guard and the primary disabled state so a click and Enter can never disagree (58-08 WR-02)
+- [Phase 58]: framesValidationError is null when reducedForm is true; every other mode keeps the exact prior reveal/paint validation channel
+- [Phase 58]: stackCollision stays in the shared gate for the primary while Enter's collision branch keeps its truncate precedence
+- [Phase 58]: Source-derived extent is the render/ownership truth; the stored originalEndExclusive stays requestedEnd intent so stale extents remain diagnosable
+- [Phase 58]: The coordinator reconciles staged loop clips and paint sheets on every non-replay accepted write before revision/payload construction, so orphaned paint prunes atomically and Undo/Redo stays byte-identical
+- [Phase 58]: Repeat contraction filters stale overrides below the source-derived survivingEnd and refuses only overrides inside [newEnd, survivingEnd) with the unchanged locked copy
+- [Phase 58]: Delete ownership is frame-based: delete-key, delete-key-group, and delete-key-rail return group-owned-key-delete-rejected after D-07, and the classifier routes selected Group-frame keys to group-frame while Group-containing multi/rail selections fail closed to no-target
+- [Phase 58]: CR-03 uses one shared loopSourceOrderIsProvable helper for move-key and move-key-group, reading the FINAL candidate mapping; the move-key-group guard is intersection-scoped and gated on candidate.changed
+- [Phase 58]: Order-breaking partial-cycle group drags reject with the unchanged loop-source-key-move-rejected code and D-16 copy; no new failure code, no copy drift, no schema/parser change
 
 ### Pending Todos
 
@@ -692,9 +738,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-02
-Stopped at: Milestone v2.0.0 completed and archived (override_closeout)
-Resume file: .planning/milestones/v2.0.0-ROADMAP.md
+Last session: 2026-11-03T16:27:43.319Z
+Stopped at: Completed 58-10-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

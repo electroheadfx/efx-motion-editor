@@ -1,0 +1,63 @@
+---
+phase: 58
+review: 58-REVIEW.md
+titles: json
+findings:
+  - id: CR-01
+    severity: critical
+    disposition: fixed
+    title: "G-01 truncates a pasted Infinity rail whose frozen span is not a whole cycle"
+  - id: WR-01
+    severity: warning
+    disposition: fixed
+    title: "A real key inside a lifecycle gap is undeletable, and the locked copy points at a frame that refuses deletion"
+  - id: IN-01
+    severity: info
+    disposition: open
+    title: "Unreachable `capacity === undefined` fallback in `resolveGroupBoundedEnd`"
+  - id: CR-03
+    severity: critical
+    disposition: fixed
+    title: "Partial-cycle group move bypasses the source-order invariant established for `move-key`"
+  - id: IN-04
+    severity: info
+    disposition: open
+    title: "Post-commit generation comment misstates how a cancel can reach `'committing'`"
+  - id: CR-02
+    severity: critical
+    disposition: fixed
+    title: "Law A single-loop move can invalidate the loop's source order"
+  - id: WR-02
+    severity: warning
+    disposition: fixed
+    title: "Enter-to-confirm in the reduced form is blocked by an unrelated stale frames error"
+  - id: IN-02
+    severity: info
+    disposition: open
+    title: "Dead CSS rule after the Standard read-only value was removed"
+  - id: IN-03
+    severity: info
+    disposition: open
+    title: "Open-time `loopClipsOwnAnyKey` is unreachable from production call sites"
+open: 4
+total: 9
+recorded: 2026-11-03T16:42:48.974Z
+---
+
+# Phase 58: Code Review Disposition
+
+| Finding | Severity | Disposition | Source |
+|---------|----------|-------------|--------|
+| CR-01 | critical | fixed | post-review fix e50af31c0 |
+| WR-01 | warning | fixed | post-review fix e50af31c0 |
+| IN-01 | info | open | - |
+| CR-03 | critical | fixed | 58-10 (not in the current review) |
+| IN-04 | info | open | - (not in the current review) |
+| CR-02 | critical | fixed | 58-07 (not in the current review) |
+| WR-02 | warning | fixed | 58-08 (not in the current review) |
+| IN-02 | info | open | - (not in the current review) |
+| IN-03 | info | open | - (not in the current review) |
+
+Dispositions: `open` (recorded, not yet triaged), `fixed`, `skipped`, `deferred`.
+Set `deferred` by hand and put the reason in the Source cell; both are preserved. A `|` in the reason is kept as prose and escaped on the next run.
+Re-running the gate keeps every row it can. A row the current review no longer reports is kept and its Source cell flagged, so a finding does not leave this record silently. ONE exception: when a finding id is REUSED by a different finding, the earlier decision cannot keep a row — the id is taken — and it is dropped. A RECORDED decision (anything but `open`) is named on the console when that happens; a row still at `open` is replaced silently, because `open` records no decision to lose.

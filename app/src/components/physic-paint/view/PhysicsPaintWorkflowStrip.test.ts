@@ -435,7 +435,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
   });
 
   it('keeps source interpolation blue and restores a lighter mirrored-key rhythm inside dark repeats', () => {
@@ -452,7 +452,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(map).toContain('const fillClass = getRotoAcceptedCellFillClass({');
     expect(map).toContain('lifecycleTargetKind: lifecycleTarget.kind');
     expect(map).toContain("resolutionKind: frameResolution?.kind ?? 'empty'");
-    expect(map).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
+    expect(map).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked && frameInteraction?.dragEligible !== false;');
     expect(map).toContain('getRotoResolutionCellTooltipCopy(frameResolution, existingCellTooltipKind, loopSourceFrameCountById)');
     expect(map).toContain('const cellAriaLabel =');
 
@@ -1704,7 +1704,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyKeyClearIndex).toBeGreaterThan(proxyNavigateIndex);
     expect(ordinaryClearIndex).toBeGreaterThan(emptyKeyClearIndex);
     expect(ordinaryToggleIndex).toBeGreaterThan(ordinaryClearIndex);
-    expect(code).toContain('const dragEligible = isPhysicalRealKey && spacingProxy === null && !rotoDragLocked');
+    expect(code).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked');
   });
 
   it('keeps an empty frame current until replacement-style Select All owns the selection', () => {
@@ -1860,6 +1860,16 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(keyRailGate).not.toContain('onOpenRotoLoopEdit');
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeGreaterThan(code.indexOf('class={`physics-paint-lane'));
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
+  });
+
+  it('forwards the Key Rail conversion open intent to the rail host (58-03 RAIL-01)', () => {
+    const code = source();
+    // D-02: the strip renders the Key Rails, so the gesture intent must thread
+    // through this layer without touching drag dispatch.
+    expect(getWorkflowStripPropsInterface(code)).toContain('onOpenKeyRailCycleEdit?: (firstKeyId: string) => void;');
+    const start = code.indexOf('<PhysicsPaintKeyRail');
+    const rail = code.slice(start, code.indexOf('/>', start));
+    expect(rail).toContain('onOpenKeyRailCycleEdit={props.onOpenKeyRailCycleEdit}');
   });
 
   it('derives ordinary segments by excluding all Motion and Static Group-owned identities', () => {

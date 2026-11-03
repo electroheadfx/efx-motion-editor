@@ -49,6 +49,7 @@ import {
   PaintTimingCard,
   PhotoWiggleCard,
   RailTypeCard,
+  ReducedCycleCard,
   RevealTimingCard,
   SourceCycleCard,
 } from './PhysicsPaintPlayScriptCards';
@@ -61,7 +62,6 @@ import {
   type RotoPlayScriptStackRunKind,
 } from '../roto/physicsPaintRotoPlayScriptController';
 import type { PhysicPaintRotoLoopClip } from '../roto/physicsPaintRotoPhysicalModel';
-import { STANDARD_RAIL_REGENERATE_REASON } from '../roto/physicsPaintRotoRunScriptStacking';
 
 const source = [
   readFileSync(fileURLToPath(new URL('./PhysicsPaintPlayScriptDialog.tsx', import.meta.url)), 'utf8'),
@@ -93,7 +93,7 @@ interface FakeControllerSeed {
   validationError?: string | null;
   phase?: string;
   // 43-06 loop modes
-  dialogMode?: 'apply' | 'loop-edit' | 'source-edit';
+  dialogMode?: 'apply' | 'loop-edit' | 'source-edit' | 'key-rail-create';
   loopEditTargetId?: string | null;
   loopEditTarget?: PhysicPaintRotoLoopClip | null;
   loopEditSourceStart?: number | null;
@@ -192,7 +192,7 @@ function createFakeController(seed: FakeControllerSeed = {}) {
     error: sig<string | null>(seed.error ?? null),
     canCancel: sig(seed.canCancel ?? false),
     // 43-06 loop modes
-    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit'>(seed.dialogMode ?? 'apply'),
+    dialogMode: sig<'apply' | 'loop-edit' | 'source-edit' | 'key-rail-create'>(seed.dialogMode ?? 'apply'),
     loopEditTargetId: sig<string | null>(seed.loopEditTargetId ?? null),
     loopEditTarget: sig(seed.loopEditTarget ?? null),
     loopEditSourceStart: sig<number | null>(seed.loopEditSourceStart ?? null),
@@ -291,7 +291,7 @@ function childrenOf(vnode: TestVNode): unknown[] {
 const EXPANDABLE = new Set<unknown>([
   CollisionCard, ColorCard, ColorizeCard, DialogRadioGroup,
   KeyScriptCard, MotionWiggleCard, PaintSeedCard, PaintTimingCard,
-  PhotoWiggleCard, RailTypeCard, RevealTimingCard, SourceCycleCard,
+  PhotoWiggleCard, RailTypeCard, ReducedCycleCard, RevealTimingCard, SourceCycleCard,
 ]);
 
 const renderedByVNode = new WeakMap<object, unknown>();
@@ -962,6 +962,136 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
   });
 });
 
+// 58-08 (WR-02): Enter and the primary button must take the SAME confirm
+// decision. In key-rail-create the controller still carries the stale frames
+// validation ('Maximum available count is 0.'), which must not veto the reduced
+// form; a repeat error still blocks both triggers.
+describe('PhysicsPaintPlayScriptDialog Enter confirm gate (WR-02)', () => {
+  const primaryAction = (tree: unknown) => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+  // A stack collision renders its own actions row + primary-class Truncate
+  // action, so the footer confirm button is the one inside the dialog footer.
+  const footerPrimary = (tree: unknown) => findOne(
+    findOne(findOne(tree, byClass('physics-paint-play-script-footer')), byClass('physics-paint-play-script-actions')),
+    (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'),
+  );
+  const rootOf = (tree: unknown) => findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+  const pressEnter = (root: TestVNode) => {
+    const event = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: null };
+    handler(root, 'onKeyDown')(event);
+    return event;
+  };
+
+  it('confirms on Enter in the reduced Key Rail form despite a stale frames validation error', () => {
+    const { controller } = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      repeatError: null,
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks both Enter and the primary when the reduced Key Rail form has a repeat error', () => {
+    const { controller } = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      repeatError: 'Enter a positive integer.',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('confirms on Enter for a merged Standard loop edit despite a stale frames validation error', () => {
+    const mergedTarget: PhysicPaintRotoLoopClip = {
+      loopId: 'M1',
+      placementStart: 10,
+      sourceKeyIds: ['S1', 'S2', 'S3'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const { controller } = createFakeController({
+      dialogMode: 'loop-edit',
+      loopEditTargetId: 'M1',
+      loopEditTarget: mergedTarget,
+      validationError: 'Maximum available count is 0.',
+      repeatError: null,
+      repeatText: '2',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Escape on cancel and leaves Enter inert while a generate can be cancelled', () => {
+    const escape = createFakeController({ dialogMode: 'key-rail-create' });
+    const escapeEvent = { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: null };
+    handler(rootOf(renderDialog(escape.controller)), 'onKeyDown')(escapeEvent);
+    expect(escape.controller.cancel).toHaveBeenCalledTimes(1);
+    expect(escape.controller.confirm).not.toHaveBeenCalled();
+
+    const busy = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      canCancel: true,
+    });
+    pressEnter(rootOf(renderDialog(busy.controller)));
+    expect(busy.controller.confirm).not.toHaveBeenCalled();
+  });
+
+  // 58-08 (WR-02): the shared gate must not leak the reduced-form exemption into
+  // the full creation, Reveal, or stacking surfaces.
+  it('confirms on Enter on the default apply surface when nothing blocks', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks both Enter and the primary on the apply surface when the frames validation fails', () => {
+    const { controller } = createFakeController({ validationError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('blocks both Enter and the primary on the Reveal tab when only the reveal validation fails', () => {
+    const { controller } = createFakeController({
+      railTab: 'reveal',
+      validationError: null,
+      revealValidationError: 'Enter a positive integer.',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('routes Enter on a stack collision to Truncate and keeps the primary disabled', () => {
+    const { controller } = createFakeController({
+      runDestination: { kind: 'stack', clipId: 'rail-1' },
+      framesMax: 6,
+      stackCollision: { boundaryExclusive: 20, blocker: 'real-key', victimClipId: null },
+      collisionOffers: ['truncate'],
+    });
+    const tree = renderDialog(controller);
+    expect(footerPrimary(tree).props.disabled).toBe(true);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('truncate');
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+});
+
 describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked copy)', () => {
   it('keeps the locked copy and prohibitions in the dialog source', () => {
     // 261101-cd5: the segmented labels are the short forms; the custom color
@@ -1257,6 +1387,16 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     const tree = renderDialog(controller);
     expect(findOne(tree, (vnode) => textOf(vnode) === 'Update Static').props.disabled).toBe(true);
   });
+
+  it('58-04: keeps the full form and Regenerate Rail for a non-Standard loop-edit', () => {
+    const { controller } = createFakeController(loopEditSeed);
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(1);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(1);
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-surface-tall'))).toHaveLength(1);
+  });
 });
 
 // 261031-vbo (Quick C1): a merged Standard Rail is a merge of RESULTS, not a
@@ -1279,34 +1419,122 @@ describe('PhysicsPaintPlayScriptDialog merged Standard Rail edit target (261031-
     repeatText: '2',
   };
 
-  it('shows a read-only Standard rail type and no Motion/Static rail-type radios', () => {
+  it('shows the reduced Cycle + Infinity form and no rail type', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
-    const modeCard = findOne(tree, byClass('physics-paint-play-script-card-mode'));
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-rail-label')))).toBe('RAIL TYPE');
-    expect(textOf(findOne(modeCard, byClass('physics-paint-play-script-standard-rail-value')))).toBe('Standard');
-    expect(findAll(modeCard, byClass('physics-paint-play-script-rail-helper'))).toHaveLength(0);
-    expect(findAll(modeCard, byRadioGroup('Rail Type'))).toHaveLength(0);
-    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Motion')).toHaveLength(0);
-    expect(findAll(modeCard, (vnode) => textOf(vnode) === 'Static')).toHaveLength(0);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Rail');
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(1);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'RAIL TYPE')).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
   });
 
-  it('labels the primary action Update Rail', () => {
+  it('labels the primary action Update Rail and confirms through it', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
     const footer = findOne(tree, byClass('physics-paint-play-script-actions'));
-    expect(textOf(findOne(footer, (vnode) => textOf(vnode) === 'Update Rail'))).toBe('Update Rail');
+    const updateRail = findOne(footer, (vnode) => textOf(vnode) === 'Update Rail');
+    expect(textOf(updateRail)).toBe('Update Rail');
+    handler(updateRail, 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Static')).toHaveLength(0);
     expect(findAll(tree, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
   });
 
-  it('disables Regenerate Rail with the merged-rail reason as its title', () => {
+  it('renders no Regenerate Rail action for a merged Standard rail', () => {
     const { controller } = createFakeController(mergedSeed);
     const tree = renderDialog(controller);
-    const trigger = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail');
-    expect(trigger.props.disabled).toBe(true);
-    expect(trigger.props.title).toBe(STANDARD_RAIL_REGENERATE_REASON);
-    expect(trigger.props['aria-disabled']).toBe('true');
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(0);
+  });
+});
+
+// 58-04 (D-05/D-10/D-11): the Key Rail conversion reuses the existing Edit Rail
+// shell in a reduced mode — exactly Cycle + Infinity, Create Cycle, no tall height.
+describe('PhysicsPaintPlayScriptDialog reduced Key Rail cycle form (58-04 D-05/D-11)', () => {
+  const reducedSeed = {
+    dialogMode: 'key-rail-create' as const,
+    repeatText: '1',
+    infinity: false,
+  };
+  const primaryAction = (tree: unknown) => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+
+  it('renders the Edit Rail title with exactly one Cycle stepper (value 1) and one unchecked Infinity switch', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe('Edit Rail');
+    expect(findAll(tree, byId('physics-play-script-repeat'))).toHaveLength(1);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.value).toBe(1);
+    expect(findAll(tree, byId('physics-play-script-infinity'))).toHaveLength(1);
+    expect(findOne(tree, byId('physics-play-script-infinity')).props['aria-checked']).toBe('false');
+  });
+
+  it('renders no tabs, rail type, frames-per-cycle, motion, source cycle, seed, or Regenerate Rail', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'tablist')).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-card-mode'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => textOf(vnode) === 'RAIL TYPE')).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-count'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-motion-deformation'))).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Rail Type'))).toHaveLength(0);
+    expect(findAll(tree, byRadioGroup('Source cycle'))).toHaveLength(0);
+    expect(findAll(tree, byId('physics-play-script-paint-seed-variation'))).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail')).toHaveLength(0);
+  });
+
+  it('labels the primary action Create Cycle and confirms through playScript.confirm()', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    const primary = primaryAction(tree);
+    expect(textOf(primary)).toBe('Create Cycle');
+    handler(primary, 'onClick')();
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the fixed surface height — no physics-paint-play-script-surface-tall class', () => {
+    const { controller } = createFakeController(reducedSeed);
+    const tree = renderDialog(controller);
+    const surface = findOne(tree, byClass('physics-paint-play-script-surface'));
+    expect(hasClass(surface, 'physics-paint-play-script-surface-tall')).toBe(false);
+  });
+
+  it('disables the Cycle stepper while Infinity is on and routes the toggle to setInfinity', () => {
+    const infinityOn = createFakeController({ ...reducedSeed, infinity: true });
+    let tree = renderDialog(infinityOn.controller);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
+
+    const infinityOff = createFakeController(reducedSeed);
+    tree = renderDialog(infinityOff.controller);
+    const toggle = findOne(tree, byId('physics-play-script-infinity'));
+    expect(toggle.props.disabled).toBe(false);
+    handler(toggle, 'onClick')();
+    expect(infinityOff.controller.setInfinity).toHaveBeenCalledWith(true);
+  });
+
+  it('disables the primary action while a repeat error is present and shows the repeat error', () => {
+    const { controller } = createFakeController({ ...reducedSeed, repeatError: 'Enter a positive integer.' });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    expect(textOf(findOne(tree, byId('physics-play-script-repeat-error')))).toBe('Enter a positive integer.');
+  });
+
+  it('focuses the repeat input when the reduced form opens', () => {
+    // The hook harness stubs useEffect out, so the focus branch is pinned at source level.
+    expect(source).toContain("else if (dialogMode === 'key-rail-create') repeatInputRef.current?.focus();");
+  });
+});
+
+// 58-04 (D-07): every Standard rail, converted or merged earlier, uses the one
+// reduced form — the unreachable rail-type and Regenerate branches are gone.
+describe('PhysicsPaintPlayScriptDialog reduced Standard cleanup (58-04 D-07)', () => {
+  it('no longer carries the unreachable Standard rail-type or Regenerate Rail branches', () => {
+    // Boolean projections keep the failure message readable (the joined source is multi-line).
+    expect(source.includes('standard={standardEditTarget}')).toBe(false);
+    expect(source.includes('STANDARD_RAIL_REGENERATE_REASON')).toBe(false);
+    expect(source.includes('physics-paint-play-script-standard-rail-value')).toBe(false);
+    expect(source.includes('standard?: boolean')).toBe(false);
   });
 });
 
