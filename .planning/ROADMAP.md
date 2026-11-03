@@ -14,8 +14,42 @@
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
+- 🚧 **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (in progress)
 
 ## Phases
+
+### Phase 58: Rail editing regressions
+
+**Goal**: A normal Key Rail becomes a Standard cycle through the existing Edit Rail flow, and a single key on a Motion/Static/Reveal rail can be dragged to choose its spacing — without silently relaxing linked-cycle ownership.
+**Depends on**: Nothing (first phase of v2.0.1)
+**Requirements**: RAIL-01, RAIL-02, RAIL-03, RAIL-04, RAIL-05, RAIL-06, RAIL-07
+**Success Criteria** (what must be TRUE):
+  1. Selecting (or double-clicking) a normal Key Rail exposes the sidebar's Edit Rail action; the modal shows only the cycle count and the Infinity checkbox, prefilled at 1.
+  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail renders as a Standard cycle with gray cells + dot, and the existing Edit Rail dialog owns Repeat/Infinity afterwards.
+  3. Cancel performs zero writes; the conversion is exactly one undo step (Undo restores the Key Rail, Redo re-applies it).
+  4. A single-key drag moves the key on Motion/Static/Reveal rails under the discuss-phase law (preferred A: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
+  5. No `.mce` schema field is added or changed; resolver, undo and existing D-11 guard tests are green (or deliberately updated to the chosen law).
+
+**Discuss-phase gate**: choose the drag law A / B / C before planning — A preferred (independent single-reference cycle); B = unlink + whole-cycle Force Spacing; C = propagate the retime to every linked loop.
+
+**Code anchors**: `roto/physicsPaintRotoPhysicalResolver.ts` (~4463-4467, the D-11 `countLoopsReferencingSourceKey` guard and `buildMoveCandidate`); `view/PhysicsPaintScriptsPanel.tsx` + `PhysicsPaintStudio.tsx` `handleOpenRotoLoopEdit` + `physicsPaintRotoPlayScriptController.ts` `openLoopEdit` (today loop-clip only); `roto/physicsPaintRotoRunScriptStacking.ts` `isStandardMergedLoopClip` / `buildStandardStackedLoopClip` (provenance-free Standard shape); `view/PhysicsPaintWorkflowStrip.tsx` (Create rail / key-rail segment).
+
+**Plans**: TBD
+
+### v7 timeline rails (in-milestone quick)
+
+**Goal**: Apply the approved v7 rail interface to the real Studio timeline without motion channels.
+**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, VIS-08
+**Build prompt**: `SPECS/v2.0.1-timeline-rails/GSD-QUICK-PROMPT.md` (locked README + `TIMELINE-RAILS.tsx` + `timeline-rails.css`; all 8 README §7 defaults).
+**Delivery**: `/gsd-quick` inside v2.0.1 — never a standalone quick. Motion channels stay in v2.1.0.
+**Plans**: quick (pending)
+
+### Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 58. Rail editing regressions | 0/TBD | Pending | — |
+| v7 timeline rails (in-milestone quick) | — | Pending | — |
 
 <details>
 <summary>✅ v2.0.0 Multi-Module Paint Workstation (MAJOR) — SHIPPED 2026-11-02</summary>
@@ -70,4 +104,4 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 ## Next Milestone
 
-No active milestone. Start the next one with `/gsd-new-milestone` (questioning → research → requirements → roadmap). Global phase numbering continues from Phase 56; Phase 57 was retired (spectral shipped inside Phase 56).
+**v2.0.1 is active.** Execution order: Phase 58 (rail-editing regressions) → the in-milestone v7 timeline-rails quick → release through `efx-motion-release` (audit BEFORE tag/publish). Global phase numbering continues at Phase 58; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.
