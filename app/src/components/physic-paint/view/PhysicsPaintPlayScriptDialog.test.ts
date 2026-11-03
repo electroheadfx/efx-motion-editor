@@ -962,6 +962,84 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
   });
 });
 
+// 58-08 (WR-02): Enter and the primary button must take the SAME confirm
+// decision. In key-rail-create the controller still carries the stale frames
+// validation ('Maximum available count is 0.'), which must not veto the reduced
+// form; a repeat error still blocks both triggers.
+describe('PhysicsPaintPlayScriptDialog Enter confirm gate (WR-02)', () => {
+  const primaryAction = (tree: unknown) => findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-play-script-button-primary'));
+  const rootOf = (tree: unknown) => findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+  const pressEnter = (root: TestVNode) => {
+    const event = { key: 'Enter', preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: null };
+    handler(root, 'onKeyDown')(event);
+    return event;
+  };
+
+  it('confirms on Enter in the reduced Key Rail form despite a stale frames validation error', () => {
+    const { controller } = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      repeatError: null,
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks both Enter and the primary when the reduced Key Rail form has a repeat error', () => {
+    const { controller } = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      repeatError: 'Enter a positive integer.',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(true);
+    pressEnter(rootOf(tree));
+    expect(controller.confirm).not.toHaveBeenCalled();
+  });
+
+  it('confirms on Enter for a merged Standard loop edit despite a stale frames validation error', () => {
+    const mergedTarget: PhysicPaintRotoLoopClip = {
+      loopId: 'M1',
+      placementStart: 10,
+      sourceKeyIds: ['S1', 'S2', 'S3'],
+      repeat: 2,
+      mode: 'static',
+    };
+    const { controller } = createFakeController({
+      dialogMode: 'loop-edit',
+      loopEditTargetId: 'M1',
+      loopEditTarget: mergedTarget,
+      validationError: 'Maximum available count is 0.',
+      repeatError: null,
+      repeatText: '2',
+    });
+    const tree = renderDialog(controller);
+    expect(primaryAction(tree).props.disabled).toBe(false);
+    const event = pressEnter(rootOf(tree));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(controller.confirm).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Escape on cancel and leaves Enter inert while a generate can be cancelled', () => {
+    const escape = createFakeController({ dialogMode: 'key-rail-create' });
+    const escapeEvent = { key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn(), currentTarget: null };
+    handler(rootOf(renderDialog(escape.controller)), 'onKeyDown')(escapeEvent);
+    expect(escape.controller.cancel).toHaveBeenCalledTimes(1);
+    expect(escape.controller.confirm).not.toHaveBeenCalled();
+
+    const busy = createFakeController({
+      dialogMode: 'key-rail-create',
+      validationError: 'Maximum available count is 0.',
+      canCancel: true,
+    });
+    pressEnter(rootOf(renderDialog(busy.controller)));
+    expect(busy.controller.confirm).not.toHaveBeenCalled();
+  });
+});
+
 describe('PhysicsPaintPlayScriptDialog source contract (D-04/D-06/D-08R, locked copy)', () => {
   it('keeps the locked copy and prohibitions in the dialog source', () => {
     // 261101-cd5: the segmented labels are the short forms; the custom color
