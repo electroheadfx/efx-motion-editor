@@ -2534,6 +2534,41 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(test.controller.error.value).toBe('Cycle count cannot remove locally painted Rail frames. Regenerate the Rail first.');
     });
 
+    it('drops stale out-of-extent overrides on Repeat contraction and keeps overrides inside the new end', async () => {
+      // 58-09 (G-01): source S1..S5 at 10..14 with repeat 3 owns [10,25); the
+      // stored end 30 and its override at 27 are stale. Contracting to repeat 2
+      // must drop the stale override, keep the in-extent override at 15, and
+      // publish one clip the bridge's staged-document parse accepts.
+      const beforeGroup: PhysicPaintRotoLoopClip = {
+        ...lifecycleLoopClip(10, 3),
+        syncState: 'modified',
+        originalEndExclusive: 30,
+        visibleRanges: [{ start: 10, endExclusive: 30 }],
+        frameOverrides: [
+          { appFrame: 15, keyId: 'override-15' },
+          { appFrame: 27, keyId: 'override-27' },
+        ],
+      };
+      const test = loopOpHarness([beforeGroup]);
+
+      expect(await test.controller.openLoopEdit('L1')).toEqual({ ok: true, reason: null });
+      test.controller.repeatText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+
+      const published = test.commit.mock.calls[0]![0].loopClips ?? [];
+      expect(published[0]).toMatchObject({
+        loopId: 'L1',
+        repeat: 2,
+        originalEndExclusive: 20,
+        visibleRanges: [{ start: 10, endExclusive: 20 }],
+        frameOverrides: [{ appFrame: 15, keyId: 'override-15' }],
+      });
+      // The bridge parses the staged document against the rebuilt end (Task 3
+      // requirement: the published collection must satisfy the lifecycle rule).
+      expect(() => parsePhysicPaintRotoLoopClips(published)).not.toThrow();
+    });
+
     it('supports repeated decrease through 1 and increase again when no real key is selected', async () => {
       let loops: readonly PhysicPaintRotoLoopClip[] = [loopClip('L1', 10, 3)];
       const localAuthority = loopAuthority();

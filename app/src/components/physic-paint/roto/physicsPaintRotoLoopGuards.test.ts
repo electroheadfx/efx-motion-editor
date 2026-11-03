@@ -1221,3 +1221,99 @@ describe('Phase 58 G-01 source-derived loop extent', () => {
     expect(range.truncated).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 58-09 (G-01) — a real key whose frame a lifecycle Group owns is deletable
+// only through the Group frame, never as an ordinary key.
+// ---------------------------------------------------------------------------
+
+const GROUP_OWNED_KEY_TEXT = 'This key is owned by a Rail cycle. Delete the Rail frame instead.';
+
+/** Source S1@0 S2@1 S3@2, repeat 2 => the Group owns [0,6). */
+function lifecycleGroupClip(): PhysicPaintRotoLoopClip {
+  return {
+    loopId: 'L-group',
+    placementStart: 0,
+    sourceKeyIds: ['S1', 'S2', 'S3'],
+    repeat: 2,
+    mode: 'static',
+    syncState: 'modified',
+    provenanceState: 'attached',
+    phaseOrigin: 0,
+    originalEndExclusive: 6,
+    visibleRanges: [{ start: 0, endExclusive: 6 }],
+    frameOverrides: [],
+  };
+}
+
+/** X@5 is inside the Group extent; G@30/H@31 are ordinary. */
+const GROUP_OWNED_RECORDS = () => [
+  record('S1', 0, 'S1S1'),
+  record('S2', 1, 'S2S2'),
+  record('S3', 2, 'S3S3'),
+  record('X', 5, 'XXXX'),
+  record('G', 30, 'GGGG'),
+  record('H', 31, 'HHHH'),
+];
+
+describe('Phase 58 G-01 Group-owned key delete refusal', () => {
+  it('rejects delete-key on a real key whose frame a lifecycle Group owns', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'X' },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('rejects delete-key-group as a whole when any member frame is Group-owned', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-group', keyIds: ['G', 'X'] },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key-group', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('rejects delete-key-rail when any member frame is Group-owned', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-rail', keyIds: ['X', 'G', 'H'] },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'group-owned-key-delete-rejected', 'delete-key-rail', GROUP_OWNED_KEY_TEXT);
+  });
+
+  it('keeps the D-07 source-key refusal ahead of the Group-owned refusal', () => {
+    const resolution = resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'S2' },
+      loopClips: [lifecycleGroupClip()],
+    });
+    expectFailure(resolution, 'loop-source-key-delete-rejected', 'delete-key', D07_TEXT(1));
+  });
+
+  it('still deletes keys past the surviving extent and ordinary Groups and rails', () => {
+    const pastTheExtent = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key', selectedKeyId: 'G' },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(pastTheExtent.mapping.has('G')).toBe(false);
+
+    const ordinaryGroup = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS(),
+      intent: { kind: 'delete-key-group', keyIds: ['G'] },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(ordinaryGroup.mapping.has('G')).toBe(false);
+
+    const ordinaryRail = expectOk(resolveEdit({
+      records: GROUP_OWNED_RECORDS().filter((entry) => entry.keyId !== 'X'),
+      intent: { kind: 'delete-key-rail', keyIds: ['G', 'H'] },
+      loopClips: [lifecycleGroupClip()],
+    }));
+    expect(ordinaryRail.mapping.has('G')).toBe(false);
+    expect(ordinaryRail.mapping.has('H')).toBe(false);
+  });
+});

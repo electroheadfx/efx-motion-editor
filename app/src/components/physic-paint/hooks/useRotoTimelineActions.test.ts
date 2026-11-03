@@ -3966,3 +3966,95 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     expect(harness.publishStatus).toHaveBeenCalled();
   });
 });
+
+describe('Phase 58 G-01 frame-aware Group delete routing', () => {
+  // Source S1@10 S2@11 S3@12, repeat 2 => the Group owns [10,16).
+  const group = lifecycleGroup({
+    loopId: 'group-g01',
+    sourceKeyIds: Object.freeze(['S1', 'S2', 'S3']),
+    repeat: 2,
+    phaseOrigin: 10,
+    originalEndExclusive: 16,
+    visibleRanges: Object.freeze([Object.freeze({ start: 10, endExclusive: 16 })]),
+    frameOverrides: Object.freeze([]),
+  });
+  const groupRecords = [
+    realKeyRecord('S1', 10),
+    realKeyRecord('S2', 11),
+    realKeyRecord('S3', 12),
+    realKeyRecord('local-15', 15),
+    realKeyRecord('ordinary', 30),
+    realKeyRecord('ordinary-2', 31),
+  ];
+  const base = {
+    launchReady: true,
+    pendingOperationId: null,
+    selectedKeyId: null,
+    selectedKeyIds: [] as readonly string[],
+    selectedLoopClipIds: [] as readonly string[],
+    currentAppFrame: 30,
+    capacity: 40,
+    records: groupRecords,
+    loopClips: [group] as readonly PhysicPaintRotoLoopClip[],
+    interpolation: { enabled: false, mode: 'duplicate' as const },
+    incomingInterpolationBreakKeyIds: ['ordinary'] as readonly string[],
+    physicalCells: [] as readonly PhysicPaintRotoPhysicalCell[],
+  };
+
+  it('classifies a selected key at a Group frame as group-frame even when the cursor moved', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyId: 'local-15',
+      selectedKeyIds: ['local-15'],
+    })).toEqual({
+      kind: 'group-frame',
+      groupId: 'group-g01',
+      appFrame: 15,
+      mode: 'progressive',
+      phaseOrigin: 10,
+      onlyOccurrence: false,
+    });
+  });
+
+  it('returns no-target for a multi-key selection containing a Group-owned frame', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyIds: ['local-15', 'ordinary'],
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyIds: ['ordinary', 'ordinary-2'],
+    })).toEqual({ kind: 'ordinary-key-group', keyIds: ['ordinary', 'ordinary-2'] });
+  });
+
+  it('returns no-target for a Key Rail whose member frame is Group-owned', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyRail: { firstKeyId: 'local-15', keyIds: ['local-15'] },
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      selectedKeyRail: { firstKeyId: 'ordinary', keyIds: ['ordinary', 'ordinary-2'] },
+    })).toEqual({
+      kind: 'key-rail',
+      firstKeyId: 'ordinary',
+      keyIds: ['ordinary', 'ordinary-2'],
+      firstKeyFrame: 30,
+      lastKeyFrame: 31,
+    });
+  });
+
+  it('returns no-target for a rail set whose member frame is Group-owned', () => {
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'local-15' }] as readonly RailSetIdentity[],
+    })).toEqual({ kind: 'no-target' });
+
+    expect(classifyRotoDeleteTarget({
+      ...base,
+      railSetMembers: [{ kind: 'key-rail', firstKeyId: 'ordinary' }] as readonly RailSetIdentity[],
+    }).kind).toBe('rail-set');
+  });
+});
