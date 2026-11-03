@@ -3,12 +3,12 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 current_phase_name: Rail editing regressions
-status: executing
-stopped_at: Completed 58-04-PLAN.md
-last_updated: "2026-11-03T12:24:46.969Z"
+status: verifying
+stopped_at: Completed 58-05-PLAN.md
+last_updated: "2026-11-03T12:28:45.998Z"
 last_activity: 2026-11-03
 last_activity_desc: Phase 58 execution started
-state_head: d716e105850204b63e9c717dc10a04c07c242286
+state_head: 9af22dd8e3fa73801a2ff469e30a41729e39be89
 progress:
   total_phases: 1
   completed_phases: 0
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 Phase: 58 (Rail editing regressions) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-03 — Phase 58 execution started
 
 
@@ -180,6 +180,7 @@ Last activity: 2026-11-03 — Phase 58 execution started
 | Phase 58 P02 | 8 min | 3 tasks | 5 files |
 | Phase 58 P03 | 6 min | 2 tasks | 10 files |
 | Phase 58 P04 | 4min | 2 tasks | 3 files |
+| Phase 58 P05 | 4 min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -542,6 +543,9 @@ Recent decisions affecting current work:
 - [Phase 58]: The strip forwards onOpenKeyRailCycleEdit beside onOpenRotoLoopEdit; drag dispatch is untouched. Studio wiring is plan 58-05.
 - [Phase 58]: 58-04: reduced conversion surface is the existing dialog in reduced mode (reducedForm), not a second dialog; ReducedCycleCard shared by key-rail-create and merged-Standard loop-edit
 - [Phase 58]: 58-04: deleted the unreachable Standard branches (RailTypeCard standard prop/span, dialog standard wiring, Regenerate Rail standard block); STANDARD_RAIL_REGENERATE_REASON stays exported for shared use
+- [Phase 58]: 58-05: selectedKeyRailInspector is a useMemo over [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length], with the rail-set anchor fallback so a 2+ set projects the D-03 disabled reason and an unchanged selection keeps one object identity
+- [Phase 58]: 58-05: handleOpenRotoKeyRailCycleEdit selects before opening and returns Promise.resolve on the missing-segment refusal (Promise on every path); handleCloseRotoKeyRail clears BOTH selectedRotoKeyRail and railSetSelection so the anchor cannot re-supply a dismissed inspector
+- [Phase 58]: 58-05: the one key-rail anchor rule is the railSetAnchorKeyRailId const shared by the inspector memo and the WorkflowStrip bundle (replaces the :10951 inline ternary)
 
 ### Pending Todos
 
@@ -713,8 +717,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T12:24:43.189Z
-Stopped at: Completed 58-04-PLAN.md
+Last session: 2026-11-03T12:28:45.967Z
+Stopped at: Completed 58-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
