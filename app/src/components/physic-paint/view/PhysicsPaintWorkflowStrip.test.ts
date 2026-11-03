@@ -1862,6 +1862,16 @@ describe('PhysicsPaintWorkflowStrip Key Rail integration (43.4-06)', () => {
     expect(code.indexOf('<PhysicsPaintKeyRail')).toBeLessThan(code.indexOf('class="physics-paint-roto-cells"'));
   });
 
+  it('forwards the Key Rail conversion open intent to the rail host (58-03 RAIL-01)', () => {
+    const code = source();
+    // D-02: the strip renders the Key Rails, so the gesture intent must thread
+    // through this layer without touching drag dispatch.
+    expect(getWorkflowStripPropsInterface(code)).toContain('onOpenKeyRailCycleEdit?: (firstKeyId: string) => void;');
+    const start = code.indexOf('<PhysicsPaintKeyRail');
+    const rail = code.slice(start, code.indexOf('/>', start));
+    expect(rail).toContain('onOpenKeyRailCycleEdit={props.onOpenKeyRailCycleEdit}');
+  });
+
   it('derives ordinary segments by excluding all Motion and Static Group-owned identities', () => {
     const code = source();
     expect(code).toContain('const keyRailGroupOwnedKeyIds = useMemo(() => {');
