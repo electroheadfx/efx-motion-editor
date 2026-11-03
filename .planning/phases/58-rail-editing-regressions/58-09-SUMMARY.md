@@ -231,9 +231,17 @@ Each task was committed atomically (TDD: RED then GREEN):
 - **Verification:** RED failed for the planned reason (`expected true to be false` on `resolution.ok`); GREEN returns the new code and copy
 - **Committed in:** `a4a53487d` (Task 3 RED)
 
+**4. [Rule 1 - Bug] Exempted Reveal rails from the G-01 source extent (post-merge gate)**
+- **Found during:** Wave 1 post-merge full-suite gate
+- **Issue:** The source-extent clamp also bounded `railKind: 'reveal'` clips, breaking the locked WR-01 reveal stretch law (a span stretch to 15 derived 12 because the baked source cycle ends at 12). Reveal stretches deliberately leave the new frames empty (D-07); their extent is the requested span.
+- **Fix:** `resolvePhysicPaintRotoLoopSourceExtent` returns null for reveal clips, so G-01's surviving-source bound applies to converted Standard/Paint cycles while the reveal stretch law owns reveal extents. Added a derivation pin in physicsPaintRotoLoopGuards.test.ts.
+- **Files modified:** app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts, app/src/components/physic-paint/roto/physicsPaintRotoLoopGuards.test.ts
+- **Verification:** 657 targeted tests passed; full suite 7103 passed; typecheck clean
+- **Committed in:** `b25482a9c` (post-merge fix)
+
 ---
 
-**Total deviations:** 3 auto-fixed (3 Rule 1 test corrections/canonicalizations, no production behavior weakened)
+**Total deviations:** 4 auto-fixed (3 Rule 1 test corrections/canonicalizations + 1 post-merge reveal scope correction, no production behavior weakened)
 **Impact on plan:** No scope creep; the fixture and pin corrections keep every pre-existing assertion and only make their encoded extents canonical under the new bound.
 
 ## Issues Encountered
