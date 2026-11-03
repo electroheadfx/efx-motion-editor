@@ -806,6 +806,56 @@ describe('D-04 rigid group drag of the whole source cycle', () => {
     expect(proposal.mapping.get('H')).toBe(42);
     expect(proposal.nextLoopClips).toBeNull();
   });
+
+  it('accepts a one-element source cycle — a single source key is vacuously ordered', () => {
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
+      loopClips: [loop(10, 5, 'L1', ['A'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(8);
+    expect(proposal.mapping.get('B')).toBe(9);
+  });
+
+  it('accepts a move on keys no clip references, even beside a dangling clip — CR-03', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['G', 'H'], grabbedKeyId: 'G', target: { kind: 'physical-cell', appFrame: 32 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('G')).toBe(32);
+    expect(proposal.mapping.get('H')).toBe(42);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('fails closed when the move touches a dangling clip — CR-03', () => {
+    const resolution = resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 8 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+  });
+
+  it('accepts a no-change partial drag in the dangling scenario — changed === false is exempt', () => {
+    const proposal = expectOk(resolveEdit({
+      records: [...SOURCE_RECORDS(), ...ORDINARY_RECORDS()],
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: { kind: 'physical-cell', appFrame: 10 } },
+      loopClips: [loop(10, 5, 'L1'), loop(100, 2, 'L2', ['A', 'B', 'C', 'D', 'Z'])],
+    }));
+    expect(proposal.mapping.get('A')).toBe(10);
+    expect(proposal.mapping.get('B')).toBe(11);
+    expect(proposal.nextLoopClips).toBeNull();
+  });
+
+  it('rejects the whole move when one touched clip stays ordered and another breaks — CR-03', () => {
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
+      loopClips: [loop(10, 5, 'L1', ['A', 'B']), loop(100, 2, 'L2', ['A', 'C', 'D'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+  });
 });
 
 // ---------------------------------------------------------------------------
