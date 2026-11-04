@@ -1632,7 +1632,7 @@ button.destructive {
 .physics-paint-options-tab-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 15px;
   min-width: 0;
   padding: 20px 14px 14px;
   border: 0;
