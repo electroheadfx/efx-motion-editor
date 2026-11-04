@@ -104,6 +104,10 @@ import {
   type PhysicsPaintRotoSpacingProxy,
 } from './physicsPaintRotoSpacingSelection';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+// v2.0.1: the Standard-rail discriminator is the stacking authority's pure
+// decision predicate, imported instead of re-derived here. The stacking module
+// imports only a TYPE from this resolver, so this value edge stays acyclic.
+import { isStandardMergedLoopClip } from './physicsPaintRotoRunScriptStacking';
 
 export function buildCanonicalMoveGroupOverrideRecords(input: {
   readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
@@ -550,12 +554,19 @@ export function createPhysicPaintRotoPasteKeyIntent(
   startsNewSegment = false,
   joinsPreviousRail = false,
   railInsertGroupId: string | null = null,
+  dissolveRailGroupId: string | null = null,
 ): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> {
   if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Paste requires a nonnegative destination frame.');
   if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) throw new Error('Paste destination identity is malformed.');
   if (!isPhysicPaintRotoRealKeyPayload(clipboardPayload)) throw new Error('Paste clipboard payload is malformed.');
   if (railInsertGroupId !== null && (destinationKeyId !== null || railInsertGroupId.length === 0)) {
     throw new Error('Rail insert requires a fresh key identity and a Group id.');
+  }
+  // v2.0.1: a dissolve is a distinct rail authority — one fresh key that joins,
+  // never alongside a rail insert and never onto an existing key.
+  if (dissolveRailGroupId !== null
+    && (railInsertGroupId !== null || destinationKeyId !== null || dissolveRailGroupId.length === 0)) {
+    throw new Error('Rail dissolve requires a fresh key identity and one Group id.');
   }
   const newKeyId = destinationKeyId === null ? createPhysicPaintRotoKeyId() : null;
   return Object.freeze({
@@ -567,6 +578,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
     ...(startsNewSegment ? { startsNewSegment: true } : {}),
     ...(joinsPreviousRail ? { joinsPreviousRail: true } : {}),
     ...(railInsertGroupId !== null ? { railInsertGroupId } : {}),
+    ...(dissolveRailGroupId !== null ? { dissolveRailGroupId } : {}),
   });
 }
 
@@ -4568,6 +4580,160 @@ function resolveRailKeyInsertTargetInternal(
   return target;
 }
 
+export interface PhysicPaintRotoRailDissolveTargetInput {
+  readonly identities: readonly { readonly keyId: string; readonly appFrame: number }[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly appFrame: number;
+}
+
+export interface PhysicPaintRotoRailDissolveTarget {
+  readonly loopId: string;
+}
+
+interface PhysicPaintRotoRailDissolveTargetInternal {
+  readonly clip: PhysicPaintRotoLifecycleLoopClip;
+}
+
+/**
+ * v2.0.1 (user-approved 2026-11-04): the destination of a key created on an
+ * EMPTY frame strictly AFTER one complete Standard merged rail.
+ *
+ * The law: such a destination dissolves that rail's Loop Clip instead of
+ * opening a detached one-key rail behind a rail line that stops at its old
+ * end. The clip is removed in the same atomic edit that lands the new key
+ * joined to the rail's last source key, so the derived Key Rail is one
+ * continuous segment from the first source key to the new key; the user
+ * rebuilds a cycle afterwards if wanted.
+ *
+ * Every qualification must be proven or the caller keeps today's behaviour:
+ * - the nearest real key strictly below the destination is the LAST source
+ *   key of exactly one clip (that rule also proves no real key sits between
+ *   the rail's last source key and the destination — every source key is below
+ *   `originalEndExclusive`);
+ * - that clip is a complete canonical lifecycle rail carrying `syncState` and
+ *   `provenanceState`, one full-span visible range, no painted phase override,
+ *   a finite positive repeat, at least two ascending source keys anchored at
+ *   `phaseOrigin`, and a stored end that is exactly `repeat` cycles long;
+ * - it is a STANDARD merged rail (`isStandardMergedLoopClip`: no single-script
+ *   provenance, not a Reveal rail) — scripted and Reveal rails keep their own
+ *   edit law;
+ * - the destination is at/after the rail's stored end (inside the footprint
+ *   the 58 in-rail insert keeps precedence);
+ * - no other clip references a target source key, no other clip's derived
+ *   extent reaches the destination, and no other clip owns a source key at or
+ *   after the destination.
+ */
+export function resolvePhysicPaintRotoRailDissolveTarget(
+  input: PhysicPaintRotoRailDissolveTargetInput,
+): PhysicPaintRotoRailDissolveTarget | null {
+  const target = resolveRailDissolveTargetInternal(input);
+  return target === null ? null : Object.freeze({ loopId: target.clip.loopId });
+}
+
+function resolveRailDissolveTargetInternal(
+  input: PhysicPaintRotoRailDissolveTargetInput,
+): PhysicPaintRotoRailDissolveTargetInternal | null {
+  if (!isNonNegativeInteger(input.appFrame) || !Array.isArray(input.identities) || !Array.isArray(input.loopClips)) return null;
+  // Re-annotate after the runtime array guards: `Array.isArray` narrows to
+  // `any[]`, which would erase the clip/identity contract for the loops below.
+  const identities: readonly { readonly keyId: string; readonly appFrame: number }[] = input.identities;
+  const loopClips: readonly PhysicPaintRotoLoopClip[] = input.loopClips;
+  const frameByKeyId = new Map<string, number>();
+  for (const identity of identities) {
+    if (!isBoundedKeyId(identity.keyId) || !isNonNegativeInteger(identity.appFrame)) return null;
+    if (frameByKeyId.has(identity.keyId)) return null;
+    frameByKeyId.set(identity.keyId, identity.appFrame);
+  }
+  let leftBelowKeyId: string | null = null;
+  let leftBelowAppFrame = -1;
+  for (const [keyId, appFrame] of frameByKeyId) {
+    if (appFrame >= input.appFrame) continue;
+    if (appFrame > leftBelowAppFrame) {
+      leftBelowKeyId = keyId;
+      leftBelowAppFrame = appFrame;
+    }
+  }
+  if (leftBelowKeyId === null) return null;
+  // Exactly ONE clip may end its source cycle on that key; a shared or
+  // ambiguous ending is not provable ownership.
+  const endingClips = loopClips.filter((clip) => clip.sourceKeyIds.length > 0
+    && clip.sourceKeyIds[clip.sourceKeyIds.length - 1] === leftBelowKeyId);
+  if (endingClips.length !== 1) return null;
+  const candidate = endingClips[0]!;
+  if (!isCompleteStandardRailClip(candidate)) return null;
+  const clip = candidate;
+  const repeat = clip.repeat;
+  if (typeof repeat !== 'number' || !Number.isSafeInteger(repeat) || repeat <= 0) return null;
+  if (input.appFrame < clip.originalEndExclusive) return null;
+  const sourceFrames: number[] = [];
+  for (const keyId of clip.sourceKeyIds) {
+    const frame = frameByKeyId.get(keyId);
+    if (frame === undefined) return null;
+    sourceFrames.push(frame);
+  }
+  if (sourceFrames.some((frame, index) => index > 0 && sourceFrames[index - 1]! >= frame)) return null;
+  if (sourceFrames[0] !== clip.phaseOrigin) return null;
+  const cycleLength = sourceFrames[sourceFrames.length - 1]! - clip.phaseOrigin + 1;
+  // The stored end must describe exactly this many full repeats, otherwise the
+  // rail's footprint (and therefore "strictly after the rail") is not provable.
+  if (clip.originalEndExclusive !== clip.phaseOrigin + cycleLength * repeat) return null;
+  const sourceKeyIds = new Set<string>(clip.sourceKeyIds);
+  for (const other of loopClips) {
+    if (other.loopId === clip.loopId) continue;
+    if (other.sourceKeyIds.some((keyId) => sourceKeyIds.has(keyId))) return null;
+    for (const keyId of other.sourceKeyIds) {
+      const frame = frameByKeyId.get(keyId);
+      if (frame !== undefined && frame >= input.appFrame) return null;
+    }
+    const extent = resolvePhysicPaintRotoLoopSourceExtent(other, identities, PHYSIC_PAINT_MAX_APPLY_FRAMES);
+    if (extent !== null && input.appFrame < extent.endExclusive) return null;
+  }
+  return { clip };
+}
+
+/** v2.0.1: a complete Standard merged lifecycle rail (see the dissolve law). */
+function isCompleteStandardRailClip(clip: PhysicPaintRotoLoopClip): clip is PhysicPaintRotoLifecycleLoopClip {
+  if (clip.syncState === undefined || clip.provenanceState === undefined) return false;
+  if (!isCanonicalLifecycleRailClip(clip)) return false;
+  if (typeof clip.repeat !== 'number' || !Number.isSafeInteger(clip.repeat) || clip.repeat <= 0) return false;
+  if (clip.sourceKeyIds.length < 2) return false;
+  // The Standard discriminator comes from the stacking authority.
+  return isStandardMergedLoopClip(clip);
+}
+
+/**
+ * v2.0.1: the dissolve proposal. Records come from the ordinary paste
+ * candidate (the new key lands on the clicked frame joined to the rail's last
+ * source key, so it adds no break), the clip leaves the collection through the
+ * existing `nextLoopClips` proposal field, and stale non-leading source-key
+ * breaks are dropped in the SAME edit so the derived Key Rail cannot split.
+ * The leading source key keeps its break: it starts the rail either way.
+ */
+function buildDissolvedRailPasteCandidate(
+  identities: ValidatedIdentities,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }>,
+  incomingInterpolationBreakKeyIds: readonly string[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  targetClip: PhysicPaintRotoLifecycleLoopClip,
+): Candidate {
+  const base = buildPasteCandidate(identities, records, intent, incomingInterpolationBreakKeyIds);
+  const nextLoopClips = Object.freeze(loopClips.filter((clip) => clip.loopId !== targetClip.loopId));
+  const firstSourceKeyId = targetClip.sourceKeyIds[0] as string;
+  const sourceKeyIds = new Set(targetClip.sourceKeyIds);
+  const currentBreaks = base.nextIncomingInterpolationBreakKeyIds ?? incomingInterpolationBreakKeyIds;
+  const nextBreaks = currentBreaks.filter((keyId) => keyId === firstSourceKeyId || !sourceKeyIds.has(keyId));
+  return {
+    ...base,
+    nextLoopClips,
+    // The resolver's absent-means-unchanged convention: only report the
+    // collection when the dissolve actually dropped a stale break.
+    ...(nextBreaks.length === currentBreaks.length
+      ? {}
+      : { nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks) }),
+  };
+}
+
 /**
  * 58 (G-03): Insert into a generate-mode Rail extends its source cycle by one
  * interpolated frame instead of being refused as a Group-ownership violation.
@@ -5119,6 +5285,20 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('unknown-operation-identity', operationKind, 'Paste-to-existing destination identity and frame disagree.');
       }
     }
+    // v2.0.1: the dissolve is its OWN rail authority and is re-validated here
+    // before either rail branch runs — never trusted from the caller. It always
+    // creates one fresh key that JOINS the previous Rail, never onto an existing
+    // identity, never as a broken new segment, and never beside a rail insert.
+    if (intent.dissolveRailGroupId !== undefined
+      && (typeof intent.dissolveRailGroupId !== 'string'
+        || intent.dissolveRailGroupId.length === 0
+        || intent.railInsertGroupId !== undefined
+        || intent.destinationKeyId !== null
+        || intent.newKeyId === null
+        || intent.joinsPreviousRail !== true
+        || intent.startsNewSegment === true)) {
+      return fail('malformed-identity', operationKind, 'A Rail dissolve requires one fresh key that joins the previous Rail.');
+    }
     let candidate: Candidate;
     if (intent.railInsertGroupId !== undefined) {
       if (intent.destinationKeyId !== null || intent.newKeyId === null) {
@@ -5148,6 +5328,26 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         return fail('loop-source-key-insert-rejected', operationKind, built.text);
       }
       candidate = built.candidate;
+    } else if (intent.dissolveRailGroupId !== undefined) {
+      // Re-resolve from our own validated identities and clip collection so a
+      // child realm can never remove a clip the canonical parent did not
+      // authorise. A stale identity fails closed with the rail insert code.
+      const dissolveTarget = resolveRailDissolveTargetInternal({
+        identities: identities.ordered,
+        loopClips,
+        appFrame: intent.destinationAppFrame,
+      });
+      if (dissolveTarget === null || dissolveTarget.clip.loopId !== intent.dissolveRailGroupId) {
+        return fail('loop-source-key-insert-rejected', operationKind, 'This Rail can no longer be dissolved at this frame.');
+      }
+      candidate = buildDissolvedRailPasteCandidate(
+        identities,
+        recordsResult.records,
+        intent,
+        incomingInterpolationBreakKeyIds,
+        loopClips,
+        dissolveTarget.clip,
+      );
     } else {
       candidate = buildPasteCandidate(identities, recordsResult.records, intent, incomingInterpolationBreakKeyIds);
     }

@@ -484,6 +484,33 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...inserted, railInsertGroupId: 7 })).toBe(false);
   });
 
+  it('v2.0.1: round-trips the Rail dissolve group and refuses every unproven pairing', () => {
+    const payload = { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
+    const dissolved = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-dissolve', clipboardPayload: payload, joinsPreviousRail: true, dissolveRailGroupId: 'rail-1' } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(dissolved)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(dissolved);
+    // The dissolve slot follows the rail-insert slot so the canonical order is
+    // stable across every intent that carries rail fields.
+    expect(serialized.indexOf('"joinsPreviousRail":true')).toBeGreaterThan(-1);
+    expect(serialized.indexOf('"dissolveRailGroupId":"rail-1"')).toBeGreaterThan(serialized.indexOf('"joinsPreviousRail":true'));
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical rail dissolve must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    const withoutDissolve = { ...dissolved, dissolveRailGroupId: undefined };
+    expect(serializePhysicPaintRotoPhysicalEditIntent(withoutDissolve)).not.toContain('dissolveRailGroupId');
+
+    // Exclusivity with the rail insert, an existing destination identity, a
+    // missing fresh identity, a broken-key dissolve, and malformed ids.
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...dissolved, railInsertGroupId: 'rail-2' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...dissolved, destinationKeyId: 'key-A', newKeyId: null })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...dissolved, startsNewSegment: true })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...dissolved, dissolveRailGroupId: '' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...dissolved, dissolveRailGroupId: 7 })).toBe(false);
+  });
+
   it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
     const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const oversizedId = 'x'.repeat(257);

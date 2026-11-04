@@ -474,6 +474,13 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly joinsPreviousRail?: boolean;
       /** 58: the destination lies inside one canonical Rail's first cycle — insert the new key as a source phase (the rail grows) instead of creating a detached key that splits it. */
       readonly railInsertGroupId?: string;
+      /**
+       * v2.0.1: the destination lies strictly AFTER one complete Standard
+       * merged rail, so the resolver removes that clip and joins the new key
+       * to its last source key in the same atomic edit. The user rebuilds a
+       * cycle afterwards if wanted; never used by ordinary Copy/Paste.
+       */
+      readonly dissolveRailGroupId?: string;
     }
   | {
       readonly kind: 'paste-key-group';
@@ -641,7 +648,7 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
-    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment', 'joinsPreviousRail', 'railInsertGroupId'])) return false;
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment', 'joinsPreviousRail', 'railInsertGroupId', 'dissolveRailGroupId'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame) || !isPhysicPaintRotoRealKeyPayload(value.clipboardPayload)) return false;
     if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
     if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
@@ -650,6 +657,14 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
     if (value.railInsertGroupId !== undefined && (typeof value.railInsertGroupId !== 'string' || value.railInsertGroupId.length === 0)) return false;
     // 58: a rail insert always creates a fresh source identity.
     if (value.railInsertGroupId !== undefined && value.destinationKeyId !== null) return false;
+    // v2.0.1: a rail dissolve is a DIFFERENT rail authority — it needs one
+    // fresh joining key and can never share an intent with a rail insert.
+    if (value.dissolveRailGroupId !== undefined) {
+      if (typeof value.dissolveRailGroupId !== 'string' || value.dissolveRailGroupId.length === 0) return false;
+      if (value.railInsertGroupId !== undefined) return false;
+      if (value.destinationKeyId !== null || value.newKeyId === null) return false;
+      if (value.startsNewSegment === true) return false;
+    }
     return (value.destinationKeyId === null) !== (value.newKeyId === null);
   }
   if (value.kind === 'paste-key-group') {
@@ -933,6 +948,7 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
       if (intent.startsNewSegment === true) canonical.startsNewSegment = true;
       if (intent.joinsPreviousRail === true) canonical.joinsPreviousRail = true;
       if (intent.railInsertGroupId !== undefined) canonical.railInsertGroupId = intent.railInsertGroupId;
+      if (intent.dissolveRailGroupId !== undefined) canonical.dissolveRailGroupId = intent.dissolveRailGroupId;
       return JSON.stringify(canonical);
     }
     case 'paste-key-group':

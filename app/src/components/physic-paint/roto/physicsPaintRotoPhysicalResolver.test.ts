@@ -13,6 +13,7 @@ import {
   derivePhysicPaintRailSetMove,
   projectPhysicPaintRotoPhysicalTimeline,
   resolvePhysicPaintRotoPhysicalEdit,
+  resolvePhysicPaintRotoRailDissolveTarget,
   resolvePhysicPaintRotoRailKeyInsertTarget,
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from './physicsPaintRotoPhysicalResolver';
@@ -5066,6 +5067,284 @@ describe('58 G-06 Rail key insert (+ Key / paint on an in-between)', () => {
     if (!resolution.ok) throw new Error('Destination override replacement must resolve');
     expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({ frameOverrides: [] });
     expect(resolution.proposal.nextGroupOverrideRecords).toEqual([]);
+  });
+});
+
+describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', () => {
+  const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
+    frameIndex: 0,
+    appFrame,
+    bytes: testWebpBytes('AAAA'),
+    width: 2,
+    height: 2,
+  });
+  const recordsFrom = (identities: readonly PhysicPaintRotoKeyIdentity[]): PhysicPaintRotoRealKeyRecord[] =>
+    identities.map(({ keyId, appFrame }) => ({
+      kind: 'real-key' as const,
+      keyId,
+      appFrame,
+      payload: payloadAt(appFrame),
+    }));
+  // The user-approved law (2026-11-04) only applies to a merged Standard rail:
+  // no script provenance, not a Reveal rail.
+  const standardRail: PhysicPaintRotoLoopClip = {
+    loopId: 'rail-1',
+    placementStart: 1,
+    sourceKeyIds: ['K1', 'K3', 'K5'],
+    repeat: 1,
+    mode: 'progressive',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 1,
+    originalEndExclusive: 6,
+    visibleRanges: [{ start: 1, endExclusive: 6 }],
+    frameOverrides: [],
+  };
+  const sourceIdentities: readonly PhysicPaintRotoKeyIdentity[] = [
+    { keyId: 'K1', appFrame: 1 },
+    { keyId: 'K3', appFrame: 3 },
+    { keyId: 'K5', appFrame: 5 },
+  ];
+  const dissolveIntent = (
+    destinationAppFrame: number,
+  ): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> => ({
+    kind: 'paste-key',
+    destinationAppFrame,
+    destinationKeyId: null,
+    newKeyId: 'NEW',
+    clipboardPayload: payloadAt(destinationAppFrame),
+    joinsPreviousRail: true,
+    dissolveRailGroupId: 'rail-1',
+  });
+  const resolveDissolve = (
+    intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }>,
+    options: {
+      readonly identities?: readonly PhysicPaintRotoKeyIdentity[];
+      readonly records?: readonly PhysicPaintRotoRealKeyRecord[];
+      readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+      readonly incoming?: readonly string[];
+      readonly interpolationEnabled?: boolean;
+      readonly capacity?: number;
+    } = {},
+  ) => {
+    const identities = options.identities ?? sourceIdentities;
+    return resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      records: options.records ?? recordsFrom(identities),
+      intent,
+      parentEndExclusive: 32,
+      capacity: options.capacity ?? 32,
+      interpolationEnabled: options.interpolationEnabled ?? true,
+      loopClips: options.loopClips ?? [standardRail],
+      incomingInterpolationBreakKeyIds: options.incoming ?? [],
+    });
+  };
+
+  it('v2.0.1: qualifies a complete Standard rail strictly beyond its footprint', () => {
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [standardRail],
+      appFrame: 6,
+    })).toEqual({ loopId: 'rail-1' });
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [standardRail],
+      appFrame: 8,
+    })).toEqual({ loopId: 'rail-1' });
+    // Occupied frame: the nearest key below is K3, not the rail's last source key.
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [standardRail],
+      appFrame: 5,
+    })).toBeNull();
+    // Inside the footprint: the 58 in-rail insert keeps precedence.
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [standardRail],
+      appFrame: 4,
+    })).toBeNull();
+  });
+
+  it('v2.0.1: a cycled rail qualifies at and beyond its stored end', () => {
+    const repeated: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      repeat: 2,
+      originalEndExclusive: 11,
+      visibleRanges: [{ start: 1, endExclusive: 11 }],
+    };
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [repeated],
+      appFrame: 11,
+    })).toEqual({ loopId: 'rail-1' });
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [repeated],
+      appFrame: 14,
+    })).toEqual({ loopId: 'rail-1' });
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [repeated],
+      appFrame: 5,
+    })).toBeNull();
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [repeated],
+      appFrame: 8,
+    })).toBeNull();
+  });
+
+  it('v2.0.1: every unproven qualification refuses to dissolve', () => {
+    const target = (loopClips: readonly PhysicPaintRotoLoopClip[], appFrame = 8, identities: readonly PhysicPaintRotoKeyIdentity[] = sourceIdentities) =>
+      resolvePhysicPaintRotoRailDissolveTarget({ identities, loopClips, appFrame });
+
+    expect(target([])).toBeNull();
+    expect(target([standardRail], 8, [])).toBeNull();
+    expect(target([standardRail], -1)).toBeNull();
+    expect(target([standardRail], 8, [
+      { keyId: 'K1', appFrame: 1 },
+      { keyId: 'K1', appFrame: 3 },
+      { keyId: 'K5', appFrame: 5 },
+    ])).toBeNull();
+    // A scripted and a Reveal rail keep today's detached-key behaviour.
+    expect(target([{ ...standardRail, scriptId: 'action-1' }])).toBeNull();
+    expect(target([{ ...standardRail, railKind: 'reveal' }])).toBeNull();
+    // Incomplete lifecycle members, split ranges, painted overrides.
+    expect(target([{ ...standardRail, phaseOrigin: undefined }])).toBeNull();
+    expect(target([{
+      ...standardRail,
+      visibleRanges: [{ start: 1, endExclusive: 4 }, { start: 4, endExclusive: 6 }],
+    }])).toBeNull();
+    expect(target([{ ...standardRail, frameOverrides: [{ appFrame: 2, keyId: 'OV1' }] }])).toBeNull();
+    // Fewer than two source keys, unresolvable sources, descending sources.
+    expect(target([{
+      ...standardRail,
+      placementStart: 5,
+      sourceKeyIds: ['K5'],
+      phaseOrigin: 5,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 5, endExclusive: 6 }],
+    }])).toBeNull();
+    expect(target([{ ...standardRail, sourceKeyIds: ['K1', 'K9', 'K5'] }])).toBeNull();
+    expect(target([{ ...standardRail, sourceKeyIds: ['K1', 'K5', 'K3'] }])).toBeNull();
+    // A source cycle shared with another clip, or two clips ending on the key.
+    expect(target([
+      standardRail,
+      { ...standardRail, loopId: 'rail-2', sourceKeyIds: ['K1', 'K5'] },
+    ])).toBeNull();
+    expect(target([
+      standardRail,
+      { ...standardRail, loopId: 'rail-2' },
+    ])).toBeNull();
+    // Another clip whose derived extent covers the destination.
+    expect(target([
+      standardRail,
+      {
+        ...standardRail,
+        loopId: 'rail-2',
+        sourceKeyIds: ['K0'],
+        phaseOrigin: 0,
+        originalEndExclusive: 9,
+        visibleRanges: [{ start: 0, endExclusive: 9 }],
+        repeat: 9,
+      },
+    ], 8, [{ keyId: 'K0', appFrame: 0 }, ...sourceIdentities])).toBeNull();
+    // Another clip owning a source key at/after the destination.
+    expect(target([
+      standardRail,
+      {
+        ...standardRail,
+        loopId: 'rail-2',
+        sourceKeyIds: ['K9'],
+        phaseOrigin: 9,
+        originalEndExclusive: 10,
+        visibleRanges: [{ start: 9, endExclusive: 10 }],
+      },
+    ], 8, [...sourceIdentities, { keyId: 'K9', appFrame: 9 }])).toBeNull();
+  });
+
+  it('v2.0.1: the dissolve proposal removes the clip and lands the key joined at the destination', () => {
+    const currentRecords = recordsFrom(sourceIdentities);
+    const resolution = resolveDissolve(dissolveIntent(8), { records: currentRecords });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A Standard rail dissolve must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ K1: 1, K3: 3, K5: 5, NEW: 8 });
+    // The clip is gone (its repeats were derived, never real keys).
+    expect(proposal.nextLoopClips).toEqual([]);
+    // The new key joins the rail: no incoming break is added anywhere.
+    expect(proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(proposal.nextGroupOverrideRecords).toBeNull();
+    expect(proposal.selectedKeyId).toBe('NEW');
+    expect(proposal.selectedAppFrame).toBe(8);
+    // Interpolation on: the extended rail derives 6..7 between K5 and the new key.
+    expect(proposal.generatedCells
+      .filter((cell) => cell.kind === 'generated' && cell.leftKeyId === 'K5')
+      .map((cell) => cell.appFrame)).toEqual([6, 7]);
+    // Every source record survives byte-identically: same frame, same payload.
+    const nextById = new Map((proposal.nextRecords ?? []).map((record) => [record.keyId, record]));
+    for (let index = 0; index < sourceIdentities.length; index += 1) {
+      const source = sourceIdentities[index]!;
+      expect(nextById.get(source.keyId)).toEqual(currentRecords[index]);
+      expect(nextById.get(source.keyId)?.appFrame).toBe(source.appFrame);
+    }
+    // The derived Key Rail is ONE contiguous segment from the first source key
+    // to the new key.
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...(proposal.nextRecords ?? [])].sort((left, right) => left.appFrame - right.appFrame),
+      incomingInterpolationBreakKeyIds: new Set(proposal.nextIncomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds: new Set((proposal.nextLoopClips ?? []).flatMap((clip) => clip.sourceKeyIds)),
+    });
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({
+      keyIds: ['K1', 'K3', 'K5', 'NEW'],
+      firstKeyFrame: 1,
+      lastKeyFrame: 8,
+    });
+  });
+
+  it('v2.0.1: stale non-leading source breaks are dropped in the same proposal', () => {
+    const resolution = resolveDissolve(dissolveIntent(8), { incoming: ['K1', 'K3'] });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A stale-break dissolve must resolve');
+    // The leading source key keeps its break; every other source-key break is
+    // dropped so the extended line cannot split.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['K1']);
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...(resolution.proposal.nextRecords ?? [])].sort((left, right) => left.appFrame - right.appFrame),
+      incomingInterpolationBreakKeyIds: new Set(resolution.proposal.nextIncomingInterpolationBreakKeyIds ?? []),
+      groupOwnedKeyIds: new Set(),
+    });
+    expect(segments).toHaveLength(1);
+    expect(segments[0]?.keyIds).toEqual(['K1', 'K3', 'K5', 'NEW']);
+  });
+
+  it('v2.0.1: an unchanged break collection stays reported as null', () => {
+    const resolution = resolveDissolve(dissolveIntent(8), { incoming: ['K1'] });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A leading-break dissolve must resolve');
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+  });
+
+  it('v2.0.1: the resolver re-validates the dissolve identity and fails closed', () => {
+    const mismatched = resolveDissolve({ ...dissolveIntent(8), dissolveRailGroupId: 'rail-2' });
+    expect(mismatched.ok).toBe(false);
+    if (mismatched.ok) throw new Error('A stale dissolve identity must fail closed');
+    expect(mismatched.failure.code).toBe('loop-source-key-insert-rejected');
+
+    for (const malformed of [
+      { ...dissolveIntent(8), joinsPreviousRail: false as const },
+      { ...dissolveIntent(8), startsNewSegment: true },
+      { ...dissolveIntent(8), railInsertGroupId: 'rail-1' },
+      { ...dissolveIntent(5), destinationKeyId: 'K5', newKeyId: null },
+    ]) {
+      const resolution = resolveDissolve(malformed);
+      expect(resolution.ok).toBe(false);
+      if (resolution.ok) throw new Error('A malformed dissolve must fail closed');
+      expect(resolution.failure.code).toBe('malformed-identity');
+    }
   });
 });
 
