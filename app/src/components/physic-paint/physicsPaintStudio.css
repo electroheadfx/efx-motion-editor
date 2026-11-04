@@ -1091,9 +1091,11 @@ button.destructive {
   width: 100%;
 }
 
-/* 261104: the tools pane reads as a bordered card that starts BELOW its tab
-   strip (Paint / Track / Audio) — the border never wraps the header row. */
-.physics-paint-right-pane-tools .physics-paint-right-pane-scroll-area {
+/* 261104: every sidebar pane reads as a bordered card that starts BELOW its
+   tab strip — the border never wraps the header row. The Scripts tab swaps
+   the scroll area for its own panel, which takes the same card edge. */
+.physics-paint-right-pane-scroll-area,
+.physics-paint-scripts-panel {
   border: solid 1px #696d72;
   border-top: 0;
   border-bottom-left-radius: 10px;
@@ -1392,10 +1394,17 @@ button.destructive {
   flex: 1 1 0;
 }
 
-/* 261104: the tool tabs run edge to edge so the first and last tabs line up
-   with the bordered card below them. */
-.physics-paint-options-tabs-tool {
+/* 261104: each pane's tabs run edge to edge so the first and last tabs line up
+   with the bordered card below them. Top-pane tabs were content-sized, so they
+   also split the strip evenly to reach the right end. */
+.physics-paint-options-tabs-top,
+.physics-paint-options-tabs-tool,
+.physics-paint-options-tabs-navigation {
   padding: 0;
+}
+
+.physics-paint-options-tabs-top .physics-paint-options-tab {
+  flex: 1 1 0;
 }
 
 .physics-paint-options-tab:hover:not(.active) {
