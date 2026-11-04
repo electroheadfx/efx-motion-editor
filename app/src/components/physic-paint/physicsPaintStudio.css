@@ -4258,10 +4258,11 @@ button.destructive {
 .physics-paint-push-hover-rail {
   position: absolute;
   top: 0;
-  /* v2.0.1 v7: 4px radius-2 preview pills keyed off the dim palette classes;
-     a loop ghost without a mode class reads the motion dim colour. */
+  /* v2.0.1 v7: 4px preview pills keyed off the dim palette classes; a loop
+     ghost without a mode class reads the motion dim colour. 261104 UAT: the
+     cap is the train nose — top radius 2x the bottom radius. */
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: #B27A1A;
   pointer-events: none;
 }
@@ -4309,9 +4310,10 @@ button.destructive {
 .physics-paint-push-ghost {
   position: absolute;
   top: 0;
-  /* v2.0.1 v7: 4px radius-2 preview pills keyed off the dim palette classes. */
+  /* v2.0.1 v7: 4px preview pills keyed off the dim palette classes.
+     261104 UAT: train-nose cap — top radius 2x the bottom radius. */
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: #B27A1A;
   opacity: 0.55;
   pointer-events: none;
@@ -4356,9 +4358,10 @@ button.destructive {
 .physics-paint-rail-set-ghost {
   position: absolute;
   top: 0;
-  /* v2.0.1 v7: 4px radius-2 preview pills keyed off the dim palette classes. */
+  /* v2.0.1 v7: 4px preview pills keyed off the dim palette classes.
+     261104 UAT: train-nose cap — top radius 2x the bottom radius. */
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: #B27A1A;
   opacity: 0.55;
   pointer-events: none;
@@ -4942,10 +4945,11 @@ button.destructive {
   position: absolute;
   /* v2.0.1 v7: the rail line sits at the row top inside the 6px band; the
      colour comes from the data-attribute palette. left/right must be pinned:
-     an absolute empty span with auto width collapses to 0px. */
+     an absolute empty span with auto width collapses to 0px. 261104 UAT: the
+     start/end caps are the train nose — top radius 2x the bottom radius. */
   inset: 0 0 auto 0;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: var(--rail-line, #6C8A35);
   pointer-events: none;
 }
@@ -5104,9 +5108,10 @@ button.destructive {
 .physics-paint-loop-clip-rail-ghost {
   position: absolute;
   top: 0;
-  /* v2.0.1 v7: 4px radius-2 pill, colour from the data-rail-type palette. */
+  /* v2.0.1 v7: 4px pill, colour from the data-rail-type palette.
+     261104 UAT: train-nose cap — top radius 2x the bottom radius. */
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: var(--rail-line, #6C8A35);
   opacity: 0.55;
   pointer-events: none;
@@ -5250,11 +5255,12 @@ button.destructive {
   content: '';
   position: absolute;
   /* v2.0.1 v7: the line sits at the row top inside the 6px band, matching
-     the Paint rails' 4px radius-2 pill. left/right must be pinned or the
-     auto-width pseudo-element collapses to 0px. */
+     the Paint rails' 4px line. left/right must be pinned or the auto-width
+     pseudo-element collapses to 0px. 261104 UAT: train-nose cap — top
+     radius 2x the bottom radius. */
   inset: 0 0 auto 0;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   /* 49-06 (UAT round 7): the RESTING line color is #195991 (the user's
      requested darker blue). The line does NOT change during a move/resize —
      only the white phantom preview is drawn on top of it. */
@@ -5406,10 +5412,12 @@ button.destructive {
   position: absolute;
   /* v2.0.1 v7: the rail line sits at the row top; the colour comes from the
      data-attribute palette (bright when selected, dim otherwise). left/right
-     must be pinned: an absolute empty span with auto width collapses to 0px. */
+     must be pinned: an absolute empty span with auto width collapses to 0px.
+     261104 UAT: the start/end caps are the train nose — top radius 2x the
+     bottom radius. */
   inset: 0 0 auto 0;
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: var(--rail-line, #6C8A35);
   pointer-events: none;
 }
@@ -5427,9 +5435,10 @@ button.destructive {
   position: absolute;
   top: 0;
   z-index: 1;
-  /* v2.0.1 v7: 4px radius-2 pill, colour from the data-rail-type palette. */
+  /* v2.0.1 v7: 4px pill, colour from the data-rail-type palette.
+     261104 UAT: train-nose cap — top radius 2x the bottom radius. */
   height: 4px;
-  border-radius: 2px;
+  border-radius: 2px 2px 1px 1px;
   background: var(--rail-line, #6C8A35);
   opacity: 0.55;
   pointer-events: none;

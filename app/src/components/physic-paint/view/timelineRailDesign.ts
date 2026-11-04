@@ -98,7 +98,9 @@ export const TIMELINE_GEOMETRY = {
   rowHeight: 30,
   railBand: 6,
   railLineHeight: 4,
-  railLineRadius: 2,
+  /** Train-nose cap (261104 UAT): the top corners round 2x the bottom ones. */
+  railLineRadiusTop: 2,
+  railLineRadiusBottom: 1,
   cellWidth: 16,
   cellHeight: 22,
   cellRadius: 3,
