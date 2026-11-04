@@ -842,12 +842,16 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 
   it('paints the shared anchor tick with the D-01 geometry and pointer-events none', () => {
-    const tickRule = css.slice(css.indexOf('.physics-paint-rail-anchor-tick {'));
+    // v2.0.1 v7: the tick is clamped to the 4px rail pill flush at the row top
+    // (top 0), staying inside the 6px band. Slice to the rule's closing brace so
+    // the assertions cannot match a later rule.
+    const tickStart = css.indexOf('.physics-paint-rail-anchor-tick {');
+    const tickRule = css.slice(tickStart, css.indexOf('}', tickStart) + 1);
     expect(tickRule).toContain('width: 2px;');
-    expect(tickRule).toContain('height: 8px;');
+    expect(tickRule).toContain('height: 4px;');
     expect(tickRule).toContain('background: #f2f5f7;');
     expect(tickRule).toContain('opacity: 0.7;');
-    expect(tickRule).toContain('top: 4px;');
+    expect(tickRule).toContain('top: 0;');
     expect(tickRule).toContain('pointer-events: none;');
   });
 });
