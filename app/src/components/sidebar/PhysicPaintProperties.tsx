@@ -123,10 +123,12 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
         </div>
       </div>
 
-      <div class="space-y-2">
-        <PaintSectionLabel text="Compositing" />
-        <div class="flex items-end gap-3">
-          <div class="relative flex-1 min-w-0">
+      <div class="flex items-end gap-3">
+        <div class="flex flex-1 min-w-0 flex-col gap-1">
+          <span class="flex h-[17px] items-center text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>
+            Blend mode
+          </span>
+          <div class="relative">
             <select
               class="w-full h-[22px] leading-[22px] text-[11px] rounded px-2 py-0 outline-none cursor-pointer appearance-none pr-5"
               style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
@@ -143,21 +145,21 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
             </select>
             <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
           </div>
-          <SliderStepper
-            label="Opacity"
-            value={Math.round(layer.opacity * 100)}
-            step={1}
-            min={0}
-            max={100}
-            ariaLabel="Opacity"
-            onChange={(next) => {
-              layerStore.updateLayerVisual(layer.id, { opacity: next / 100 });
-            }}
-          />
         </div>
+        <SliderStepper
+          label="Opacity"
+          value={Math.round(layer.opacity * 100)}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Opacity"
+          onChange={(next) => {
+            layerStore.updateLayerVisual(layer.id, { opacity: next / 100 });
+          }}
+        />
       </div>
 
-      <div class="space-y-2">
+      <div class="mt-3 space-y-2">
         <div class="space-y-2">
           <button
             type="button"
