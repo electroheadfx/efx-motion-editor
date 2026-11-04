@@ -125,14 +125,16 @@ The regression pin was confirmed red before the fix (`frame 7 = empty`), then gr
 
 - `e30dc5967` — fix(261104-so5): paint a Group painted phase on a generated in-between as interp (row fix + regression pins, one atomic commit).
 
-## UAT Rows — PENDING USER EVIDENCE (not passed)
+## UAT Rows — APPROVED 2026-11-04 (all passed)
 
-These are live native rows; the automated gates are green but the fix is **not** claimed done until the user's UAT pass:
+Live native evidence from the user, all four rows passed:
 
-1. **PENDING** — With Paint 1 selected, Track 1's rail shows the interp dash at the previously empty override frame.
-2. **PENDING** — Selecting Track 1 leaves that frame visually identical (no glyph change on selection swap).
-3. **PENDING** — Group-gap / deleted-phase frames still read empty on non-active rows.
-4. **PENDING** — Real keys and repeat cycle cells on non-active rows are unchanged.
+1. **PASSED** — With Paint 1 selected, Track 1's rail shows the interp dash at the previously empty override frame.
+2. **PASSED** — Selecting Track 1 leaves that frame visually identical (no glyph change on selection swap).
+3. **PASSED** — Group-gap / deleted-phase frames still read empty on non-active rows.
+4. **PASSED** — Real keys and repeat cycle cells on non-active rows are unchanged.
+
+**UAT approved 2026-11-04 — all rows passed.**
 
 ## Deviations from Plan
 
@@ -140,7 +142,7 @@ None — plan executed exactly as written.
 
 ## Next
 
-The user's live UAT pass on the four rows above. Nothing was pushed.
+Quick closed. Nothing was pushed.
 
 ## Self-Check: PASSED
 
