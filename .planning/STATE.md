@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-03T20:30:15.384Z"
-last_activity: 2026-11-03
-last_activity_desc: Phase 58 complete
-state_head: 39dc6e418c0ec5c7615a3dbbf9db760fd44dd511
+last_updated: "2026-11-04T08:25:46.000Z"
+last_activity: 2026-11-04
+last_activity_desc: Quick 261104-bop landed the v7 Studio timeline rails redesign (quick-261104-bop) — automated gates green, awaiting live UAT
+state_head: ab0d1f9b2e1ae9f2c15ae6b55df5d7bf154d7d07
 progress:
   total_phases: 1
   completed_phases: 1
@@ -30,8 +30,9 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 
 Phase: 58
 Plan: 10 of 10 complete
-Status: All phases complete — milestone ready to close
-Last activity: 2026-11-03 — Phase 58 complete
+Status: All phases complete — quick 261104-bop (v7 Studio timeline rails) landed, awaiting live UAT; milestone ready to close after that pass
+Last activity: 2026-11-04 — Completed quick task 261104-bop (automated gates green; live UAT rows open): the Studio timeline paints the locked v2.0.1 v7 design. `timelineRailDesign.ts` is the single source for rail types, dim/bright palettes, cycle parity grays, the key/interp/cycle/empty cell cascade, frame ownership, the track accent and the `frames x 18 - 2` rail-width rule, covered by 30 unit tests. All five presentation hosts emit `data-rail-type` / `data-rail-selected` / `data-cell-kind` / `data-cycle`, every rail geometry projection shares the 2px end inset, the active header accent follows the same selected-or-rail-set predicate that paints rails bright (with the #8A939C fallback), and each Paint header carries the inert 14x14 motion-minus slot (none on Background). `physicsPaintStudio.css` is a replacement, not a layer: dark surfaces, a 6px band with 4px radius-2 rails, 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px gutter, the blue #2868FC playhead, the inset-ring cursor and the family drag-preview pills; the orange/purple/cyan families, white caps and per-family focus forks are gone. No gesture, store, drag hook, dependency, CSP or .mce schema change. Commits f924b46b2..ab0d1f9b2. Gates: typecheck clean, full suite 368 files / 7173 passed / 1 skipped / 96 todo. Live UAT rows 1-8 (surfaces, geometry, palettes, cell matrix, playhead, header accent/slot, Loop Clip families, gestures + save/load) are the user's step; nothing was marked passed. The docs artifacts are intentionally left uncommitted for the orchestrator's docs commit.
+Previous: 2026-11-03 - Phase 58 complete
 
 
 ## Performance Metrics
@@ -683,6 +684,7 @@ None yet.
 | 261101-mvg | Preview stroke size switch in the Move/Edit Stroke settings dialog | 2026-11-01 | f9009013f | [261101-mvg-preview-stroke-size-switch-in-the-move-e](./quick/261101-mvg-preview-stroke-size-switch-in-the-move-e/) |
 | 261101-o2m | Draft mode in the Move/Edit Stroke settings dialog | 2026-11-01 | 8fc6fcfcb | [261101-o2m-add-a-draft-mode-to-the-move-edit-stroke](./quick/261101-o2m-add-a-draft-mode-to-the-move-edit-stroke/) |
 | 261102-iv5 | Remove the editor module switcher; one Water color engine, Krita neither implemented nor planned | 2026-11-02 | f21dcd3f1 | [261102-iv5-remove-the-moduleswitcher-from-the-main-](./quick/261102-iv5-remove-the-moduleswitcher-from-the-main-/) |
+| 261104-bop | v2.0.1 v7 Studio timeline rails: one pure design module (palettes, rail types, cell cascade, ownership, accent, rail-width rule), data-attribute wiring across the five hosts, 2px rail end inset, header accent + inert motion slot, and a stylesheet replacement (dark surfaces, 6px band, 4px pill rails, 16x22 cells, blue playhead, inset-ring cursor, family drag pills); retired design pins re-valued, none deleted. Automated gates green; live UAT rows 1-8 open. | 2026-11-04 | ab0d1f9b2 | [261104-bop-v2-0-1-studio-timeline-rails-redesign-v7](./quick/261104-bop-v2-0-1-studio-timeline-rails-redesign-v7/) |
 
 ### Roadmap Evolution
 
