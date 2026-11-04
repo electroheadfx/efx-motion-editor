@@ -31,6 +31,7 @@ import {
   resolvePhysicPaintRotoGroupEffectiveEnd,
   resolvePhysicPaintRotoLoopFrame,
   resolvePhysicPaintRotoPhysicalEdit,
+  resolvePhysicPaintRotoRailDissolveTarget,
   resolvePhysicPaintRotoRailKeyInsertTarget,
   type PhysicPaintRailSetMoveMember,
   type PhysicPaintRotoFrameResolution,
@@ -2484,8 +2485,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       // derived Key Rail segment span instead joins the existing rail — the
       // rail re-derives over it (0/4/6/8) — while trailing-space, intentional
       // gap, and any position outside a span keep the own-one-key-rail break.
+      // v2.0.1: a destination strictly AFTER one complete Standard merged rail
+      // dissolves that rail's clip and joins the new key, because the
+      // group-owned source keys would otherwise leave a detached key behind a
+      // rail line that stops at the old end. The 58 in-rail insert keeps
+      // precedence and Create rail → Key (`forceNewSegment`) opts out.
+      const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
       const groupOwnedKeyIds = new Set<string>();
-      for (const clip of input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY) {
+      for (const clip of loopClips) {
         clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
         (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
       }
@@ -2512,7 +2519,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         ? null
         : resolvePhysicPaintRotoRailKeyInsertTarget({
           identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
-          loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+          loopClips,
           appFrame: destinationAppFrame,
         });
       // A repeat occurrence maps back to its first-cycle phase; only + Key
@@ -2522,14 +2529,26 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         && (railInsert.insertionAppFrame === destinationAppFrame || options?.allowRepeatRailInsert === true)
         ? railInsert.insertionAppFrame
         : null;
+      // v2.0.1: consulted only AFTER the 58 insert target returned null and
+      // never under forceNewSegment, so every in-rail destination keeps the
+      // insert path. Read from the same records/clip collection as above.
+      const dissolveTarget = railInsert === null && options?.forceNewSegment !== true
+        ? resolvePhysicPaintRotoRailDissolveTarget({
+          identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+          loopClips,
+          appFrame: destinationAppFrame,
+        })
+        : null;
+      const joinedByDissolve = dissolveTarget !== null;
       return runPhysicalAction({
         intent: createPhysicPaintRotoPasteKeyIntent(
           railInsertFrame ?? destinationAppFrame,
           emptyPayload,
           null,
-          startsNewSegment,
-          joinsPreviousRail,
+          joinedByDissolve ? false : startsNewSegment,
+          joinsPreviousRail || joinedByDissolve,
           railInsertFrame === null ? null : railInsert!.loopId,
+          dissolveTarget?.loopId ?? null,
         ),
         operationKind: 'paste-key',
         requiredKeyId: null,

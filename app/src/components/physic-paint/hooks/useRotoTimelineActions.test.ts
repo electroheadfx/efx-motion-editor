@@ -1472,6 +1472,183 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       originalEndExclusive: 12,
     });
   });
+
+  describe('v2.0.1 Rail dissolve (destination strictly AFTER a Standard rail)', () => {
+    const standardRail = (repeat: number): PhysicPaintRotoLoopClip => ({
+      loopId: 'rail-1',
+      placementStart: 1,
+      sourceKeyIds: ['k1', 'k3', 'k5'],
+      repeat,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 1 + 5 * repeat,
+      visibleRanges: [{ start: 1, endExclusive: 1 + 5 * repeat }],
+      frameOverrides: [],
+    });
+    const sourceRecords = [realKeyRecord('k1', 1), realKeyRecord('k3', 3), realKeyRecord('k5', 5)];
+    type Dispatched = {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        selectedKeyId: string | null;
+        nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+        generatedCells: readonly { kind: string; appFrame: number; leftKeyId?: string; rightKeyId?: string }[];
+      };
+      intent: {
+        kind: string;
+        destinationAppFrame: number;
+        railInsertGroupId?: string;
+        dissolveRailGroupId?: string;
+        joinsPreviousRail?: boolean;
+        startsNewSegment?: boolean;
+      };
+    };
+
+    it('dissolves a repeat-1 rail and lands the new key joined at the clicked frame', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(1)],
+        capacity: 20,
+        getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { joinPreviousRail: true });
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.destinationAppFrame).toBe(8);
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping.k3).toBe(3);
+      expect(mapping.k5).toBe(5);
+      const newKeyId = dispatched.proposal.selectedKeyId as string;
+      expect(mapping[newKeyId]).toBe(8);
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+      expect(dispatched.proposal.generatedCells
+        .filter((cell) => cell.kind === 'generated' && cell.leftKeyId === 'k5')
+        .map((cell) => cell.appFrame)).toEqual([6, 7]);
+    });
+
+    it('dissolves a repeat-2 rail: the repeats vanish with the clip', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(2)],
+        capacity: 40,
+        getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(14, blankPayload(14), { joinPreviousRail: true });
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      const newKeyId = dispatched.proposal.selectedKeyId as string;
+      expect(mapping[newKeyId]).toBe(14);
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+      expect(dispatched.proposal.generatedCells
+        .filter((cell) => cell.kind === 'generated' && cell.leftKeyId === 'k5')
+        .map((cell) => cell.appFrame)).toEqual([6, 7, 8, 9, 10, 11, 12, 13]);
+    });
+
+    it('the paint-promotion shape dispatches the same dissolve', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(1)],
+        capacity: 20,
+      });
+      // The Studio promotion passes `{ joinPreviousRail }` only (no repeat
+      // insert, no forceNewSegment) — the paint path needs no Studio change.
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(11, blankPayload(11), { joinPreviousRail: true });
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+    });
+
+    it('keeps the 58 in-rail insert and never dissolves inside the footprint', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4)],
+        loopClips: [{
+          loopId: 'rail-1',
+          placementStart: 0,
+          sourceKeyIds: ['k0', 'k4'],
+          repeat: 1,
+          mode: 'progressive',
+          syncState: 'synchronized',
+          provenanceState: 'attached',
+          phaseOrigin: 0,
+          originalEndExclusive: 5,
+          visibleRanges: [{ start: 0, endExclusive: 5 }],
+          frameOverrides: [],
+        }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(2, blankPayload(2), { joinPreviousRail: true });
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+    });
+
+    it('forceNewSegment opts out of the dissolve at a post-rail destination', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(1)],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { forceNewSegment: true });
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
+    it('a scripted rail beyond its end keeps the detached key and its own break', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+        }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
+    it('a Reveal rail beyond its end keeps the detached key and its own break', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{ ...standardRail(1), railKind: 'reveal' }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
+    it('a destination with no previous real key never dissolves', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: [],
+        loopClips: [standardRail(1)],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+    });
+  });
 });
 
 describe('useRotoTimelineActions linked source-position Force Spacing', () => {
