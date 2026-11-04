@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T21:08:33.758Z"
+last_updated: "2026-11-04T21:10:19.185Z"
 last_activity: 2026-11-04
 last_activity_desc: "Sidebar tab cards: 1px #696d72 border with rounded bottom corners below every pane's tab header, edge-to-edge tabs. UAT approved 2026-11-04"
-state_head: f1aa5b5023b9e50b359e00731a000fe34b4137eb
+state_head: 5ec6658d6f0b7c4ebb3b9c3a5b4187f5f9b06ae4
 progress:
   total_phases: 1
   completed_phases: 1
@@ -702,6 +702,7 @@ None yet.
 | 110 | Sidebar compositing row: blend select and opacity stepper share the row 50/50 | 2026-11-04 | 72edc695e | — |
 | 111 | Paint sidebar: blend select bottom-aligned with the opacity bar; section labels lose letter spacing | 2026-11-04 | 461bc8332 | — |
 | 112 | Paint sidebar: Blend mode label inline with the select; extra space above Roto paint | 2026-11-04 | f1aa5b502 | — |
+| 113 | Paint sidebar: uniform 32px gap between Physics Paint, blend+opacity, and Roto paint sections | 2026-11-04 | 5ec6658d6 | — |
 
 ### Roadmap Evolution
 
