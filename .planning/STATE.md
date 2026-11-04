@@ -4,9 +4,9 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T18:09:15.553Z"
+last_updated: "2026-11-04T19:55:00.000Z"
 last_activity: 2026-11-04
-last_activity_desc: Quick 261104-bop (v7 Studio timeline rails) UAT approved — all 11 live rows passed after the follow-up rounds; gates green
+last_activity_desc: Quick 261104-so5 (non-active row interp cell for a Group painted phase on a generated in-between) — gates green, 4 live UAT rows pending user evidence
 state_head: 124081278b768a97538520afa270e41a4cdbc61a
 progress:
   total_phases: 1
@@ -32,6 +32,7 @@ Phase: 58
 Plan: 10 of 10 complete
 Status: All phases complete — quick 261104-bop (v7 Studio timeline rails) UAT approved; milestone ready to close
 Last activity: 2026-11-04 — Quick task 261104-q82 UAT approved (all rounds): the Editor timeline's physic-paint FX rows flatten every Roto track onto one row — keys unioned at the frame's left edge, cycle ranges unioned, a straight interp baseline under the cycle sine (amplitude 5, period 30; the wave starts on the key before the repeat), brighter key-rim connectors, and `[` / `]` rail start/end flags with a blended double sign at shared boundaries. The layer bar keeps its own FX accent; no rail pill or strip sits above the row. Commits 73147d445..0ad0da982. Gates: typecheck clean, full vitest run 7209 passed / 2 files skipped.
+Current quick: 2026-11-04 — 261104-so5 Studio non-active row interp cell — status: awaiting live UAT. A lifecycle Group frame override on a projection-generated in-between now paints interp on the read-only row (source kind 'real' + no app-frame record + projection 'generated'); group gaps and stale cached frames stay empty. Commit e30dc5967. Gates: typecheck clean, full vitest 7212 passed / 368 files. Next: the user's UAT pass on the 4 live rows.
 Previous: 2026-11-03 - Phase 58 complete
 
 
@@ -688,6 +689,7 @@ None yet.
 | 261104-l0i | v2.0.1 rails: +Key/paint on an empty frame after a Standard rail now dissolves that rail's cycle and joins the new key contiguously (one atomic edit) | 2026-11-04 | bd2c9fdff | [261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke](./quick/261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke/) |
 | 99 | Rail line start/end caps are the train nose (top radius 4x the bottom radius; raised stepwise from 2x after live looks). UAT approved 2026-11-04 | 2026-11-04 | 4df371d79 | — |
 | 261104-q82 | Align the Editor paint rail line, keys and colours with the Studio v7 rails: every Roto track flattened onto one row — keys unioned on the frame's left edge, cycle ranges unioned — a straight interp baseline under the cycle sine (amp 5, period 30; wave starts on the key before the repeat), brighter key-rim connectors, and `[` / `]` rail start/end flags with a blended double sign at shared boundaries; no rail pill/strip above the row, layer bar keeps its own accent. UAT approved 2026-11-04 (all rounds) | 2026-11-04 | 0ad0da982 | [261104-q82-verify-editor-paint-layer-line-position-](./quick/261104-q82-verify-editor-paint-layer-line-position-/) |
+| 261104-so5 | Studio non-active row loses one interpolated frame: a lifecycle Group frame override on a projection-generated in-between now classifies as interp (render source 'real' + no app-frame real-key record + own-track projection 'generated'), with the key/interp/cycle/empty matrix pinned plus group-gap and stale-cache guards. Gates green (typecheck, 7212 tests); 4 live UAT rows pending user evidence. | 2026-11-04 | e30dc5967 | [261104-so5-studio-interpolated-preview-issue-when-p](./quick/261104-so5-studio-interpolated-preview-issue-when-p/) |
 
 ### Roadmap Evolution
 
