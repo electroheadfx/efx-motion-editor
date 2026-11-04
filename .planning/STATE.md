@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T14:36:50.985Z"
+last_updated: "2026-11-04T16:24:33.935Z"
 last_activity: 2026-11-04
 last_activity_desc: Quick 261104-bop (v7 Studio timeline rails) UAT approved — all 11 live rows passed after the follow-up rounds; gates green
-state_head: bd2c9fdff35d0c4db1b22c36105f66c7e8bc44c6
+state_head: ceaba8fe2d0c6a0fe629515a23fe4d4365794d44
 progress:
   total_phases: 1
   completed_phases: 1
@@ -686,6 +686,7 @@ None yet.
 | 261102-iv5 | Remove the editor module switcher; one Water color engine, Krita neither implemented nor planned | 2026-11-02 | f21dcd3f1 | [261102-iv5-remove-the-moduleswitcher-from-the-main-](./quick/261102-iv5-remove-the-moduleswitcher-from-the-main-/) |
 | 261104-bop | v2.0.1 v7 Studio timeline rails: one pure design module (palettes, rail types, cell cascade, ownership, accent, rail-width rule), data-attribute wiring across the five hosts, 2px rail end inset, header accent + inert motion slot, and a stylesheet replacement (dark surfaces, 6px band, 4px pill rails, 16x22 cells, blue playhead confined to the ruler, white current/selected marker, family drag pills); retired design pins re-valued, none deleted. UAT approved 2026-11-04 (11/11 rows) after the follow-up rounds (ghost keys, light selected-rail tint, 31px rows, generated-frame paint gate, compact Cycle modal, parent override-records fix). | 2026-11-04 | 1bfbf2672 | [261104-bop-v2-0-1-studio-timeline-rails-redesign-v7](./quick/261104-bop-v2-0-1-studio-timeline-rails-redesign-v7/) |
 | 261104-l0i | v2.0.1 rails: +Key/paint on an empty frame after a Standard rail now dissolves that rail's cycle and joins the new key contiguously (one atomic edit) | 2026-11-04 | bd2c9fdff | [261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke](./quick/261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke/) |
+| 99 | Rail line start/end caps are the train nose (top radius 2x the bottom radius) in the Studio timeline | 2026-11-04 | ceaba8fe2 | — |
 
 ### Roadmap Evolution
 
