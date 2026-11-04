@@ -4866,12 +4866,12 @@ button.destructive {
   outline-offset: -1px;
 }
 
-/* 260827-s52 Task 2: the playhead bar. v2.0.1 UAT: the blue line is limited
-   to the 36px ruler band — it no longer draws across the keys/rows (the
-   full-height line cut every cell and read as a decoration on the current
-   key). The scrub handle stays inside the ruler, so seeking is unchanged.
-   pointer-events: none is the hard contract (T-s52-03): cells, rails,
-   capsules, and the ruler receive every click/drag as before. */
+/* 260827-s52 Task 2: the playhead bar. v2.0.1 UAT: the solid 2px blue line is
+   limited to the 36px ruler band — the full-height line cut every cell and
+   read as a decoration on the current key. Seeking stays inside the ruler,
+   and the rows get the softer trail below. pointer-events: none is the hard
+   contract (T-s52-03): cells, rails, capsules, and the ruler receive every
+   click/drag as before. */
 .physics-paint-playhead-bar {
   position: absolute;
   top: 0;
@@ -4881,6 +4881,19 @@ button.destructive {
   background: #2868FC;
   pointer-events: none;
   z-index: 30;
+}
+
+/* The playhead's soft continuation below the ruler band: a 1px translucent
+   line that keeps the current frame traceable through the key cells and rows
+   without cutting them the way the retired full-height solid line did. */
+.physics-paint-playhead-trail {
+  position: absolute;
+  top: 36px;
+  bottom: 0;
+  width: 1px;
+  background: rgba(40, 104, 252, 0.35);
+  pointer-events: none;
+  z-index: 29;
 }
 
 /* 52.5 UAT round 3: the dedicated scrub handle — a small square on the

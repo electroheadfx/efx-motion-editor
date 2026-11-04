@@ -905,17 +905,27 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
   // (18/2 = 9) minus half the 2px line → the bar centers on the frame.
   const left = 6 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
   return (
-    <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }}>
-      {/* UAT round 3: the dedicated scrub handle — a small square on the
-          playhead. Dragging it scrubs without ever touching the clip (the
-          clip is a selection/drag target, never a scrub target). The bar
-          stays pointer-events:none (T-s52-03); only this square takes input. */}
+    <>
+      <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }}>
+        {/* UAT round 3: the dedicated scrub handle — a small square on the
+            playhead. Dragging it scrubs without ever touching the clip (the
+            clip is a selection/drag target, never a scrub target). The bar
+            stays pointer-events:none (T-s52-03); only this square takes input. */}
+        <div
+          class="physics-paint-playhead-handle"
+          title="Drag to scrub"
+          onPointerDown={(event) => props.onHandlePointerDown?.(event as unknown as PointerEvent)}
+        ></div>
+      </div>
+      {/* The band-edge continuation: a 1px translucent line spanning the key
+          cells and rows, painted separately so the ruler-band accent keeps its
+          solid 2px weight. +0.5px centres the 1px line on the 2px bar. */}
       <div
-        class="physics-paint-playhead-handle"
-        title="Drag to scrub"
-        onPointerDown={(event) => props.onHandlePointerDown?.(event as unknown as PointerEvent)}
+        class="physics-paint-playhead-trail"
+        aria-hidden="true"
+        style={{ left: `${left + 0.5}px` }}
       ></div>
-    </div>
+    </>
   );
 }
 
@@ -5675,9 +5685,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 </>
               ) : renderActiveLane()}
             </div>
-            {/* 260827-s52 Task 2: the playhead bar is the LAST child so it
-                overlays the ruler + every row + the Bg row; pointer-events:
-                none keeps every cell/rail/capsule/ruler gesture untouched. */}
+            {/* 260827-s52 Task 2: the playhead bar + its soft trail are the
+                LAST children; pointer-events: none keeps every cell/rail/
+                capsule/ruler gesture untouched. */}
             <PhysicsPaintPlayheadBar
               currentFrame={currentFrameSignal}
               scrubFrame={props.rotoScrubFrame}
