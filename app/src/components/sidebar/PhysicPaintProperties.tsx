@@ -104,7 +104,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
 
   return (
-    <div class="px-3 py-2 space-y-3 text-[13px]" style={{ color: 'var(--sidebar-text-primary)' }}>
+    <div class="px-3 py-2 space-y-8 text-[13px]" style={{ color: 'var(--sidebar-text-primary)' }}>
       <div class="space-y-1">
         <PaintSectionLabel text="Physics Paint" />
         <div
@@ -159,7 +159,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
         />
       </div>
 
-      <div class="mt-3 space-y-2">
+      <div class="space-y-2">
         <div class="space-y-2">
           <button
             type="button"
