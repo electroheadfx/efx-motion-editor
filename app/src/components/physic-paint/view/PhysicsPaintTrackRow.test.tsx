@@ -27,7 +27,11 @@ import {
 } from '../../../stores/physicPaintStore';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { BackgroundTrack } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoRealKeyPayload,
+  type PhysicPaintRotoRealKeyRecord,
+} from '../roto/physicsPaintRotoPhysicalModel';
 
 // The Bg clip rail target uses the styled-tooltip hook and useRef; the render
 // tests materialize the vnode tree as plain function calls (no DOM/hook
@@ -688,5 +692,131 @@ describe('PhysicsPaintTrackRow — 261023-bji solo focus dimming', () => {
     const rule = cssRule('.physics-paint-track-row-solo-dimmed {');
     expect(rule).toContain('opacity: 0.4');
     expect(rule).toContain('filter: grayscale(0.9)');
+  });
+});
+
+describe('PhysicsPaintTrackRow — 261104-so5 painted phase on a generated in-between', () => {
+  const INTERPOLATION_ON = { enabled: true, mode: 'duplicate' } as const;
+
+  /** The first row cell materialized for one frame (the row emits one span per frame). */
+  function cellAt(tree: unknown, frame: number): TestVNode {
+    const cell = findAll(tree, (vnode) => Number(vnode.props['data-roto-app-frame']) === frame)[0];
+    if (!cell) throw new Error(`No row cell materialized at frame ${frame}`);
+    return cell;
+  }
+
+  function cellKinds(tree: unknown): string[] {
+    return FRAME_CELLS.map((frame) => String(cellAt(tree, frame).props['data-cell-kind']));
+  }
+
+  /**
+   * The reported fixture: source keys A@2 / B@9 (a strict generated interior
+   * 3..8) inside a lifecycle loop over phaseOrigin 2, originalEndExclusive 18.
+   * `visibleRanges` / `frameOverrides` vary per pin.
+   */
+  function seedLifecycleDocument(input: {
+    readonly visibleRanges: readonly { readonly start: number; readonly endExclusive: number }[];
+    readonly frameOverrides?: readonly { readonly appFrame: number; readonly keyId: string }[];
+    readonly overrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
+  }): void {
+    const records = [makeRecord('A', 2, 'a@2'), makeRecord('B', 9, 'b@9')];
+    const overrideRecords = input.overrideRecords ?? [];
+    const loop = {
+      loopId: 'loop-1',
+      placementStart: 2,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 2,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 2,
+      originalEndExclusive: 18,
+      visibleRanges: input.visibleRanges,
+      frameOverrides: input.frameOverrides ?? [],
+    };
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TRACK, {
+      capacity: CAPACITY,
+      realKeyRecords: records,
+      groupOverrideRecords: overrideRecords,
+      interpolation: INTERPOLATION_ON,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        INTERPOLATION_ON,
+        [loop],
+        [],
+        overrideRecords,
+      ),
+      loopClips: [loop],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(`Lifecycle document seed failed: ${seeded.error}`);
+  }
+
+  it('paints the interp dash for a lifecycle override on a generated in-between (the reported regression)', () => {
+    seedLifecycleDocument({
+      visibleRanges: [{ start: 2, endExclusive: 18 }],
+      frameOverrides: [{ appFrame: 7, keyId: 'ov1' }],
+      overrideRecords: [makeRecord('ov1', 7, 'ov1@7')],
+    });
+
+    // The store seam reproduces the bug exactly: the structural projection
+    // reports a generated in-between at frame 7 while the render source
+    // resolves the Group frame override as a 'real' key, and no app-frame
+    // real-key record exists there.
+    const projection = physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK);
+    expect(projection?.cells[7]?.kind).toBe('generated');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK, 7)?.kind).toBe('real');
+    expect(physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TRACK, 7)).toBeNull();
+
+    const tree = render();
+    // The full key/interp/cycle/empty matrix at the row's cells: frame 7 is
+    // interp here, exactly like the active lane's structural classification.
+    expect(cellKinds(tree)).toEqual([
+      'empty', 'empty', // 0-1
+      'key', // 2 — source key A
+      'interp', 'interp', 'interp', 'interp', // 3-6
+      'interp', // 7 — the painted phase (the fix)
+      'interp', // 8
+      'key', // 9 — source key B
+      'cycle', 'cycle', 'cycle', 'cycle', 'cycle', 'cycle', 'cycle', 'cycle', // 10-17
+      'empty', 'empty', 'empty', 'empty', 'empty', 'empty', // 18-23
+    ]);
+    expect(cellAt(tree, 10).props['data-cycle']).toBe(2);
+    expect(cellAt(tree, 17).props['data-cycle']).toBe(2);
+  });
+
+  it('keeps a group-gap frame empty even though its projection reports generated (guard)', () => {
+    // A visible-range gap at frame 7: the projection still derives the strict
+    // interior from A@2/B@9, but the lifecycle classifier reports 'group-gap'
+    // and the render source is null — a projection-only fix would wrongly
+    // paint interp here.
+    seedLifecycleDocument({
+      visibleRanges: [{ start: 2, endExclusive: 6 }, { start: 10, endExclusive: 18 }],
+    });
+
+    const projection = physicPaintStore.getRotoPhysicalProjection(LAYER, TRACK);
+    expect(projection?.cells[7]?.kind).toBe('generated');
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TRACK, 7)).toBeNull();
+
+    const tree = render();
+    expect(cellAt(tree, 7).props['data-cell-kind']).toBe('empty');
+    expect(hasClass(cellAt(tree, 7), 'roto-fill-empty')).toBe(true);
+  });
+
+  it('keeps a stale cached frame with no record empty (guard)', () => {
+    // Runtime pixels left behind at a frame with no app-frame real-key record
+    // (the deleted-key case): the cell has a cached fill but is not a rail
+    // state, so the v7 matrix must stay 'empty' — never interp.
+    seedTrack(TRACK, [makeRecord('A', 2, 'a@2'), makeRecord('B', 9, 'b@9')]);
+    physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK, 5, makeFrame(5, 'stale'));
+
+    expect(physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TRACK, 5)).toBeNull();
+    const tree = render();
+    expect(cellAt(tree, 5).props['data-cell-kind']).toBe('empty');
+    expect(hasClass(cellAt(tree, 5), 'roto-fill-cached')).toBe(true);
   });
 });

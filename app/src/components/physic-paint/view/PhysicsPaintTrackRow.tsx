@@ -195,13 +195,30 @@ type TrackRowCellState = 'cached' | 'generated' | 'empty';
  * else is transparent (roto-fill-empty). The render-source authority stays
  * the store — the row never reads the active track's projection for another
  * track's cells (T-47-04).
+ *
+ * 261104-so5: the resolved `sourceKind` is carried out because the state alone
+ * cannot tell a real key from a painted phase. A lifecycle Group frame
+ * override resolves through `getRotoRealKeyRecord` (which searches both
+ * `_rotoRealKeyRecords` and `_rotoGroupOverrideRecords`), so it reports kind
+ * 'real' even though it has no app-frame real-key record — the cell loop needs
+ * that distinction to match the active lane's projection-based classification.
  */
-function resolveTrackRowCellState(layerId: string, trackId: string, frame: number): TrackRowCellState {
+function resolveTrackRowCellSignals(
+  layerId: string,
+  trackId: string,
+  frame: number,
+): { state: TrackRowCellState; sourceKind: 'real' | 'generated' | null } {
   const source = physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, frame);
   if (source && source.kind !== 'loop-placeholder') {
-    return source.kind === 'generated' ? 'generated' : 'cached';
+    return {
+      state: source.kind === 'generated' ? 'generated' : 'cached',
+      sourceKind: source.kind,
+    };
   }
-  return physicPaintStore.getFrame(layerId, trackId, frame) ? 'cached' : 'empty';
+  return {
+    state: physicPaintStore.getFrame(layerId, trackId, frame) ? 'cached' : 'empty',
+    sourceKind: null,
+  };
 }
 
 const TRACK_ROW_CELL_FILL_CLASS: Record<TrackRowCellState, string> = {
@@ -413,7 +430,7 @@ function resolveTrackRowLoopVisuals(
     if ('repeatInstance' in resolution && resolution.repeatInstance > 0) {
       repeatByFrame.set(frame, resolution.repeatInstance);
     }
-    const state = resolveTrackRowCellState(layerId, trackId, frame);
+    const state = resolveTrackRowCellSignals(layerId, trackId, frame).state;
     const linkedClass = mapTrackRowLinkedClass(resolution, state === 'generated');
     if (linkedClass !== '') linkedClassByFrame.set(frame, linkedClass);
   }
@@ -623,6 +640,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const ghostSourceKeyIds = kind === 'paint' && layerId
     ? resolveGhostSourceKeyIds(layerId, trackId)
     : EMPTY_GHOST_SOURCE_KEY_IDS;
+  // 261104-so5: this row's OWN track structural projection — the same memoized
+  // authority the active lane classifies from (`buildRotoTimelineStructuralIndex`).
+  // One O(1) read per row, never per cell: it tells a painted-phase override on
+  // a generated in-between apart from a real key, which the render source
+  // alone cannot (the override resolves through the real-key record door).
+  const projectionCells = kind === 'paint' && layerId
+    ? physicPaintStore.getRotoPhysicalProjection(layerId, trackId)?.cells ?? null
+    : null;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
   // of the ownership inputs of the cell matrix. Loop coverage comes from the
@@ -680,7 +705,8 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           }}
         >
           {frameCells.map((frame) => {
-            const state = resolveTrackRowCellState(layerId, trackId, frame);
+            const cellSignals = resolveTrackRowCellSignals(layerId, trackId, frame);
+            const state = cellSignals.state;
             // studio-realm-divergence: a real key's cell carries its identity so
             // a key grab starts here (the same concept as a rail grab — no need
             // to activate this track first). The cross-track resolver reads it.
@@ -692,6 +718,18 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             const keyRecord = rawKeyRecord !== null && ghostSourceKeyIds.has(rawKeyRecord.keyId)
               ? null
               : rawKeyRecord;
+            // 261104-so5 (the reported regression): a lifecycle Group frame
+            // override lands on a projection-generated in-between, so the render
+            // source reports kind 'real' (the override resolves through the
+            // real-key record door) while no app-frame real-key record exists.
+            // The active lane classifies that same cell from the structural
+            // projection and paints interp — match it here so the cell glyph
+            // never changes when the track becomes selected. Group gaps keep a
+            // null source kind and stale cached frames keep a null record, so
+            // neither becomes interp.
+            const paintedPhaseOnGeneratedFrame = cellSignals.sourceKind === 'real'
+              && keyRecord === null
+              && projectionCells?.[frame]?.kind === 'generated';
             // UAT round 10: linked-loop cells carry the same repeat/source
             // classes as the active lane — the repeat design (gray + dot)
             // never changes when the track is selected or not.
@@ -715,7 +753,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                 inRail: keyRecord !== null || isLoopCovered || keyRailCoveredFrames.has(frame) || state !== 'empty',
                 repeatInstance: loopVisuals.repeatByFrame.get(frame) ?? 0,
                 isRealKey: keyRecord !== null,
-                isGenerated: state === 'generated',
+                isGenerated: state === 'generated' || paintedPhaseOnGeneratedFrame,
                 // v2.0.1 UAT: stale cached pixels left by a deleted key must
                 // read EMPTY, not interp — cached-only is not a rail state.
                 isCachedOnly: false,
