@@ -19,9 +19,9 @@ affects: [v2.1.0-motion-channels, future timeline work, any rail CSS assertions]
 actuals:
   tokens: 40868
   tasks: 3
-  commits: 4
+  commits: 5
   plan_head_before: 5e0230d4a66323e1489a8f41daa04dc710c9834c
-  plan_head_after: ab0d1f9b2e1ae9f2c15ae6b55df5d7bf154d7d07
+  plan_head_after: 1bfbf2672
 
 tech-stack:
   added: []
@@ -73,7 +73,7 @@ coverage:
     verification: []
     rationale: "Surface colours and separator absence are a visual judgment only live UAT can confirm."
   - id: D2
-    description: "v7 geometry: 30px rows, 6px rail band, 4px radius-2 line at the row top, 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px gutter"
+    description: "v7 geometry: 31px rows (30px layout + 1px between stacked tracks), 6px rail band, 4px radius-2 line at the row top, 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px gutter"
     human_judgment: true
     verification:
       - kind: unit
@@ -89,7 +89,7 @@ coverage:
         status: pass
     rationale: "Palette variables are pinned; the perceived brightness delta needs a human eye."
   - id: D4
-    description: "Key/interp/cycle/empty cell matrix with parity dot and the ring cursor instead of an orange fill"
+    description: "Key/interp/cycle/empty cell matrix; the current/selected marker is a white border + white glow overlay, the interp dash and cycle circle turn white, and no orange fill is used"
     human_judgment: true
     verification:
       - kind: unit
@@ -97,7 +97,7 @@ coverage:
         status: pass
     rationale: "The cell matrix and ring rule are pinned in CSS; parity dot legibility is visual."
   - id: D5
-    description: "Blue #2868FC playhead centred on the cell with 10px normal-weight ruler labels"
+    description: "Blue #2868FC playhead inside the 36px ruler band (never across the key rows), centred on the cell, with 10px normal-weight ruler labels"
     human_judgment: true
     verification:
       - kind: unit
@@ -125,7 +125,7 @@ coverage:
     human_judgment: true
     verification:
       - kind: unit
-        ref: "full vitest suite (368 files / 7173 passed)"
+        ref: "full vitest suite (368 files / 7181 passed)"
         status: pass
     rationale: "Regression suites are green, but the gesture feel and .mce save/load round trip need the user's live pass."
 
@@ -163,6 +163,7 @@ Each task was committed atomically (code/CSS/tests only):
 2. **Task 2: Emit design attributes, 2px rail end inset, header accent and motion slot** - `7ccd0bdd7` (feat)
 3. **Task 3: Replace the timeline CSS and re-value the retired design pins** - `829445ab0` (feat)
 4. **Missed pin: anchor tick geometry** - `ab0d1f9b2` (test)
+5. **Live UAT follow-up rounds** - `1bfbf2672` (fix): ghost keys, white marker, selected rail tint, playhead band, 31px rows, generated-frame paint gate, compact Cycle modal, parent override-records fix.
 
 **Plan metadata:** not committed by the executor (dispatch constraint — the orchestrator commits the docs artifacts in its Step 8).
 
@@ -233,35 +234,60 @@ See `key-decisions` in the frontmatter. The substantive ones: specificity-safe p
 
 None — no dependency, lockfile, Tauri configuration, CSP or `.mce` schema change.
 
-## UAT Rows (all PENDING user evidence — none marked passed)
+## UAT Rows (user-approved 2026-11-04)
 
 | # | Row | Status |
 |---|-----|--------|
-| 1 | Surfaces read as the v7 dark card/rows/ruler/header set, with no per-row separators | pending |
-| 2 | 30px rows; 4px radius-2 rail line at the row top; 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px content gutter | pending |
-| 3 | The selected rail paints bright, every other rail paints dim, and no selection shows an orange fill | pending |
-| 4 | Key / interp / cycle / empty cells render the matrix, cycle parity shows the dot, and the cursor is the inset ring plus brightness | pending |
-| 5 | The playhead is a blue #2868FC line centred on the cell with 10px normal-weight ruler labels | pending |
-| 6 | The active header accent matches the selected rail type (#8A939C fallback) and shows the inert 14x14 minus slot; the Background header shows none | pending |
-| 7 | Loop Clip rails paint their family colours in dim and bright palettes, with the 2px end inset and no white caps | pending |
-| 8 | Every gesture (select, drag, resize, scrub, keyboard) and save/load behaves exactly as before | pending |
+| 1 | Surfaces read as the v7 dark card/rows/ruler/header set, with no per-row separators | passed |
+| 2 | Rows as implemented (31px after the UAT +1px spacing round); 4px radius-2 rail line at the row top; 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px content gutter | passed |
+| 3 | The selected rail paints its light tint with the rail-colour glow, every other rail paints dim, and no selection shows an orange fill | passed |
+| 4 | Key / interp / cycle / empty cells render the matrix; the current/selected marker is the white border + white glow overlay and the interp dash + cycle circle turn white; an empty current frame stays white (no rail green) | passed |
+| 5 | The playhead is the blue #2868FC line inside the 36px ruler band (no line across the rows) with 10px normal-weight ruler labels | passed |
+| 6 | The active header accent matches the selected rail type (#8A939C fallback) and shows the inert 14x14 minus slot; the Background header shows none | passed |
+| 7 | Loop Clip rails paint their family colours in dim and bright palettes, with the 2px end inset, no white caps and no white anchor tick | passed |
+| 8 | Every gesture (select, drag, resize, scrub, keyboard) and save/load behaves exactly as before | passed |
+| 9 | Painting a generated in-between is refused with a +Key prompt; empty frames still promote; painting a rail repeat still records its phase override | passed |
+| 10 | The Edit Rail / Key Rail Cycle modal is compact with numeric steppers, no progress bar, no Run-details info control and no duplicate header range | passed |
+| 11 | The +Key / rail insert on a rail carrying painted overrides is accepted end-to-end (parent canonical re-check fixed) | passed |
 
-## Open Decisions
+### UAT follow-up rounds (2026-11-04)
 
-- Motion-minus default: the slot is inert and grey; whether it grows into the v2.1.0 motion-channel control is open.
+The live pass found and fixed, in order:
+
+1. **Ghost source keys** — group-owned clip source records outside every visible range painted as green keys with no rail and blocked +Key/+Rail. They now paint as empty and are excluded from the click map, drag eligibility and the "already has a key" reason.
+2. **Persistent current/selected marker** — the marker is the dedicated white overlay plus the white cell border/glow; the interp dash and cycle circle turn white on a current/selected cell.
+3. **Empty-frame marker** — an empty current frame uses the same white glow explicitly instead of borrowing the row rail's green.
+4. **Removed decorative marks** — the blue interpolation-segment start cut and the white set-anchor tick are gone from every Paint rail; the playhead line is limited to the ruler band so it never crosses a key.
+5. **Selected rail line** — a 35% white tint of the rail's own colour (`--rail-line-light`) over the bright rail-colour glow, replacing the pure-white line.
+6. **One-key rail width** — `projectTimelineRailLineWidth` floors at the 16px cell width (not the 18px pitch), so a single-key rail ends on its key's right edge.
+7. **Row spacing** — rows are 31px (30px layout + 1px between stacked tracks); strip height, cross-track hit-testing and header reorder pitch all use 31.
+8. **Generated-frame paint gate** — a paint press on a generated in-between is consumed at the canvas-stack capture phase (no live stroke, no auto-key/override); the explicit +Key owns promotion.
+9. **Cycle modal** — compact 420px surface, NumericStepper for the Cycle value, and the reduced footer/header omit the progress bar, the Run-details info control and the duplicate range text.
+10. **Parent canonical rail insert** — the parent bridge now passes the current Group override records into the canonical resolver and trusts the proposal's `nextGroupOverrideRecords`, so inserts on painted rails are no longer rejected with "Painted Rail overrides cannot be retimed safely." The stale-document diagnostic now names the failing sub-check.
+11. **Phase 58 G-02** — deleting a key inside an interpolated rail restores the legacy gap semantics (record survives, visible ranges lose the phase, no 1px contraction).
+
+## Decisions (resolved by the 2026-11-04 UAT pass)
+
+- Motion-minus default: the slot is inert and grey; whether it grows into the v2.1.0 motion-channel control is still open.
 - 16x16 header chips are kept as-is.
-- The cursor treatment is the inset ring plus `brightness(1.18)` (no fill).
+- The current/selected cell marker is a WHITE border plus white glow overlay (keys, in-betweens and empty frames alike); the interp dash and cycle circle turn white on a current/selected cell. The earlier rail-colour inset ring was rejected.
+- The selected rail line is a 35% white tint of its own colour (`--rail-line-light`), never white; the bright rail-colour glow stays.
+- The anchor tick is removed from every Paint rail (white at the rail start read as stray decoration).
+- The blue interpolation-segment start cut is removed from every cell.
+- The playhead line is limited to the 36px ruler band; it never draws across the key rows.
+- Rows are 31px (30px layout + 1px between stacked tracks); the header rows, strip height, cross-track hit-testing and reorder pitch all use 31.
 - Background selected blue `#3F8FD0` replaces the former amber selected treatment.
 - Accent fallback `#8A939C` when no rail is selected.
 - The header accent follows the same selected-or-rail-set predicate as the bright rails.
-- The 185px header and 30px accent rail are kept.
+- The 185px header and the selected rail's accent line are kept.
 - No selected-rail outline — that is v2.1.0 scope.
 - Rail palette pairs stay bright-first then dim; cycle-parity pairs are dim-first then selected. Both orders are specificity-safe, so this is defence-in-depth, not a corrected reference defect.
-- The anchor tick is clamped to the 4px pill.
 - Reveal `overrideColor` is superseded by the locked palette (the per-rail colour is no longer read).
 - Drag-preview pills are 4px radius-2 pills with the family palettes; motion is the base rule.
 - The motion slot is present on every Paint header and absent on the Background header.
 - The blend-armed amber control state is kept.
+- Generated in-betweens are render-only: a paint press is refused with a +Key prompt; empty frames still auto-promote.
+- The reduced Cycle modal (Key Rail create / Standard Rail edit) omits the progress bar, the Run-details info control and the duplicate header range; the full Run Script surface keeps them.
 
 ## Known Stubs
 
@@ -274,7 +300,8 @@ No new network endpoint, auth path, file-access pattern or schema boundary. The 
 ## Next Phase Readiness
 
 - The v7 design module is the single source future timeline work imports; motion channels (v2.1.0) can build on `TIMELINE_GEOMETRY` / `resolveTimelineRailType` without touching the stylesheet again.
-- Blocker: live UAT rows 1–8 are the user's step. Nothing in `.mce` persistence, gestures or the store layer changed.
+- Live UAT rows 1–11 are user-approved (2026-11-04). Nothing in `.mce` persistence, gestures or the store layer changed.
+- Final gate: `tsc --noEmit` clean, full suite 368 files / 7181 passed / 1 skipped / 96 todo.
 
 ## Self-Check: PASSED
 
