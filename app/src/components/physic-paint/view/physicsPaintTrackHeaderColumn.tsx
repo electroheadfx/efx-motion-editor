@@ -31,10 +31,11 @@ import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './Phys
 import type { TimelineRailType } from './timelineRailDesign';
 
 /** Row pitch of the pinned header cells (mirrors the strip's
- *  `STRIP_ROW_HEIGHT_PX` — 47-01 UAT round 3 approved 30px rows). The insertion
- *  indicator positions itself at `index * HEADER_ROW_HEIGHT_PX` inside the
- *  band, so it lands exactly on the target row boundary. */
-const HEADER_ROW_HEIGHT_PX = 30;
+ *  `STRIP_ROW_HEIGHT_PX` — 31px rows: the 30px layout + 1px between stacked
+ *  rows). The insertion indicator positions itself at
+ *  `index * HEADER_ROW_HEIGHT_PX` inside the band, so it lands exactly on the
+ *  target row boundary. */
+const HEADER_ROW_HEIGHT_PX = 31;
 
 /** Vertical pill-scrollbar geometry produced by the strip's scroll math. */
 export interface PhysicsPaintHeaderVerticalScrollbar {
@@ -127,7 +128,7 @@ export interface PhysicsPaintTrackHeaderColumnProps {
 
 /**
  * The pinned 160px header column: the "Tracks N" strip with the '+' add
- * button, then one 30px header cell per Paint track plus the fixed muted
+ * button, then one 31px header cell per Paint track plus the fixed muted
  * 'Bg' row, and the sidebar vertical pill scrollbar that only appears on
  * overflow. Hook-free by contract — the strip (or the test) invokes it as a
  * plain function.

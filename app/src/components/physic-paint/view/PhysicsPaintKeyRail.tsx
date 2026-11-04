@@ -342,6 +342,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         aria-busy={props.busy ? 'true' : undefined}
         data-rail-first-frame={segment.firstKeyFrame}
         data-rail-type="standard"
+        data-rail-active="true"
         data-rail-selected={props.selected ? 'true' : undefined}
         onPointerDown={(event) => {
           // 43.6-03 D-08: a move member hands the pointer-down to the batch
@@ -367,9 +368,6 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-key-rail-segment" aria-hidden="true" />
-        {props.isSetAnchor ? (
-          <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
-        ) : null}
       </button>
       {drag.ghost.active ? (
         <span

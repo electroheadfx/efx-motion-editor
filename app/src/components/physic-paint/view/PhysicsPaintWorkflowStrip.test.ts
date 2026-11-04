@@ -431,7 +431,10 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const code = source(); const map = getRotoMapBlock(code);
     expect(code).toContain("marker.source !== 'generated-interpolation'");
     expect(map).toContain("const isGenerated = semanticCell?.kind === 'generated'");
-    expect(map).toContain("const isPhysicalRealKey = semanticCell?.kind === 'real'");
+    expect(map).toContain("const rawIsPhysicalRealKey = semanticCell?.kind === 'real'");
+    // v2.0.1 UAT: clip source records outside every visible range are ghosts —
+    // they must never paint or behave as real keys.
+    expect(map).toContain('const isPhysicalRealKey = rawIsPhysicalRealKey && !isGhostSourceKey;');
     // 43-02 Pitfall 7: the interaction gate is a no-op for real keys (a
     // physical real key always resolves 'real') and hard-excludes virtual
     // linked occurrences when a loop resolution context is present.
@@ -483,39 +486,22 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
   });
 
-  it('renders an accepted predecessor-aware interpolation cut inside the existing cell target', () => {
+  it('retires the blue interpolation-segment start cut (v2.0.1 UAT)', () => {
     const code = source();
-    const map = getRotoMapBlock(code);
-    const propsInterface = getWorkflowStripPropsInterface(code);
     const buttonStart = code.indexOf('function RotoTimelineCellButtonImpl');
     const buttonEnd = code.indexOf('const RotoTimelineCellButton = memo', buttonStart);
     const button = code.slice(buttonStart, buttonEnd);
-    const markerStart = button.indexOf('class="physics-paint-roto-segment-start-cut"');
-    const marker = button.slice(button.lastIndexOf('<span', markerStart), button.indexOf('/>', markerStart) + 2);
-
-    expect(propsInterface).toContain('rotoIncomingInterpolationBreakKeyIds?: readonly string[]');
-    expect(map).toContain('getRotoCellPresentationViewModel({');
-    expect(map).toContain("kind: hasLinkedLoopBadge ? 'linked' : isPhysicalRealKey ? 'real' : isGenerated ? 'generated' : 'empty'");
-    expect(map).toContain('incomingInterpolationBreakKeyIds');
-    expect(map).toContain("cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''");
-    expect(map).toContain('startsInterpolationSegment={cellPresentation.startsInterpolationSegment}');
+    // The permanent blue marker sat on the first key of every rail; the break
+    // is already expressed by the new rail start / 2px gap.
+    expect(button).not.toContain('physics-paint-roto-segment-start-cut');
+    expect(css()).not.toContain('.physics-paint-roto-segment-start-cut');
     expect(countOccurrences(button, '<button')).toBe(1);
-    expect(marker).toContain('aria-hidden="true"');
-    expect(marker).not.toMatch(/on[A-Z]|tabIndex|role=|aria-label/);
   });
 
-  it('styles the segment cut as a non-white 2px accent without changing cell or Loop Rail geometry', () => {
+  it('keeps the cell and Loop Rail boundary geometry unchanged', () => {
     const styles = css();
-    const cut = getCssRuleBlock(styles, '.physics-paint-roto-cell.starts-interpolation-segment .physics-paint-roto-segment-start-cut {');
-
-    expect(cut).toContain('width: 2px');
-    expect(cut).toContain('background: #6f90ff');
-    expect(cut).toContain('pointer-events: none');
-    expect(cut).not.toMatch(/background:\s*(?:white|#fff(?:fff)?|#f8fafc|rgba?\(255)/i);
-    expect(cut).not.toMatch(/(?:^|\n)\s*(?:height|padding|margin|min-width|max-width):/);
-    // 47-01 UAT round 5: the cell is 18px wide × 22px tall (17px wide + 1px
-    // border, 21px tall + 1px border), centered vertically in the 30px row —
-    // the frames must not stretch to fill the row height.
+    // 47-01 UAT round 5: the cell is 16px wide × 22px tall (v2.0.1 v7), and
+    // the Loop Clip boundary edges keep their white 2px border.
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell {')).toContain('height: 22px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-loop-boundary-start {')).toContain('border-left-color: #f8fafc');
@@ -1039,7 +1025,7 @@ describe('PhysicsPaintWorkflowStrip dynamic band stack contract (36.15-06 task 2
     expect(region).toContain('flex: 1 1 auto');
     expect(region).toContain('min-height: 0');
     const lane = getCssRuleBlock(styles, '.physics-paint-lane {');
-    expect(lane).toContain('height: 30px');
+    expect(lane).toContain('height: 31px');
     expect(lane).not.toContain('min-height');
     expect(lane).not.toContain('padding: 8px 0');
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
@@ -1275,18 +1261,36 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     expect(apply).toContain('border-radius: 4px');
   });
 
-  it('paints the cursor/selection as a rail-colour inset ring plus brightness, never an orange fill', () => {
+  it('paints the cursor/selection as a bright white border plus glow, never an orange fill', () => {
     const styles = css();
-    const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current,');
+    const current = getCssRuleBlock(styles, '.physics-paint-roto-cells .physics-paint-roto-cell.current,');
     expect(current).not.toBe('');
-    // v2.0.1 v7 (README section 7.3 default): the marker is a rail-colour
-    // inset ring plus a brightness step — no fill, no outline box, no lift.
-    expect(current).toContain('box-shadow: inset 0 0 0 1px var(--rail-line, #8A939C)');
+    // v2.0.1 UAT: keys, in-betweens and empty frames all need a visible
+    // marker; the white border + glow + brightness is that marker. No fill,
+    // no outline box, no size change, no squared radius.
+    expect(current).toContain('border-color: #EAF0FF !important');
+    expect(current).toContain('0 0 7px 1px var(--rail-line, #8A939C)');
     expect(current).toContain('filter: brightness(1.18)');
     expect(current).not.toContain('background:');
     expect(current).not.toContain('#f5a623');
     expect(current).not.toContain('outline:');
     expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
+  });
+
+  it('paints a selected rail line in a very light tint of its own colour', () => {
+    const styles = css();
+    const selected = getCssRuleBlock(
+      styles,
+      '.physics-paint-rail-target[data-rail-selected="true"] .physics-paint-rail-segment {',
+    );
+    expect(selected).not.toBe('');
+    expect(selected).toContain('background: var(--rail-line-light, #C5E27B)');
+    expect(selected).toContain('box-shadow: 0 0 6px var(--rail-line, #6C8A35)');
+    // Each rail family owns its light tint (a 35% white mix — a tint, not a
+    // near-white wash).
+    for (const light of ['#C5E27B', '#F8C570', '#B395F9', '#77BEFF']) {
+      expect(styles).toContain(`--rail-line-light: ${light}`);
+    }
   });
 
   it('retires the 48-06 per-fill current fills in favour of the ring treatment', () => {
@@ -1431,7 +1435,7 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 36px');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 31px');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-timeline-scrollbar {')).toContain('height: 14px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
@@ -1701,7 +1705,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(code).toContain('const dragEligible = isPhysicalRealKey && !rotoDragLocked');
   });
 
-  it('keeps an empty frame current until replacement-style Select All owns the selection', () => {
+  it('keeps an empty frame current regardless of a replacement-style multi-selection', () => {
     const code = source();
     const map = getRotoMapBlock(code);
     const handlerStart = code.indexOf('const handleRotoTimelineCellClick = useCallback(');
@@ -1713,9 +1717,39 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(emptyBranchStart).toBeGreaterThanOrEqual(0);
     expect(emptyBranch).toContain('current.onNavigateToSyncedFrame(frame);');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = isCurrentFrame || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
+    // v2.0.1 UAT: the persistent current-frame marker is its own white
+    // overlay, so no selection/memo state can make the highlight flash away —
+    // and an empty frame reads white, never the row's rail green.
+    expect(code).toContain('class="physics-paint-current-frame-outline"');
+    expect(css()).toContain('.physics-paint-current-frame-outline {');
+    expect(getCssRuleBlock(css(), '.physics-paint-current-frame-outline {')).toContain('border: 1px solid #EAF0FF');
+    expect(getCssRuleBlock(css(), '.physics-paint-current-frame-outline {')).toContain('rgba(234, 240, 255, 0.55)');
+  });
+
+  it('paints cycle cells with a rail-colour border and a centred circle', () => {
+    const styles = css();
+    const cycle = getCssRuleBlock(styles, '.physics-paint-roto-cells .physics-paint-roto-cell[data-cell-kind="cycle"],');
+    expect(cycle).toContain('border-color: var(--rail-line');
+    const dot = getCssRuleBlock(styles, '.physics-paint-roto-cell[data-cell-kind="cycle"]::before {');
+    expect(dot).toContain('top: 50%');
+    expect(dot).toContain('left: 50%');
+    expect(dot).toContain('transform: translate(-50%, -50%)');
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell[data-cell-kind="cycle"]::after {')).toContain('content: none');
+  });
+
+  it('turns the in-between dash and the cycle circle white on a current/selected cell', () => {
+    const styles = css();
+    const glyph = getCssRuleBlock(styles, '.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="interp"]::before,');
+    expect(glyph).not.toBe('');
+    expect(glyph).toContain('background: #EAF0FF');
+    // Both glyph families are in the same selector list.
+    const ruleStart = styles.indexOf('.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="interp"]::before,');
+    const rule = styles.slice(ruleStart, styles.indexOf('}', ruleStart) + 1);
+    expect(rule).toContain('.physics-paint-roto-cell.selected[data-cell-kind="interp"]::before');
+    expect(rule).toContain('.physics-paint-roto-cell.current[data-cell-kind="cycle"]::before');
+    expect(rule).toContain('.physics-paint-roto-cell.selected[data-cell-kind="cycle"]::before');
   });
 
   it('keeps physical-cell activation scoped to Group selection while rail linkage inputs stay independent', () => {
@@ -1760,7 +1794,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 0');
     expect(styles).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
-    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
+    expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 31px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
   });
 
@@ -1787,22 +1821,21 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain('const isSecondarySelected = !isSpacingProxySelected');
     expect(map).toContain('&& !isPrimarySelected;');
     expect(map).toContain("const isCurrentFrame = vm.overlays.includes('current');");
-    expect(map).toContain('const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;');
-    expect(map).toContain('const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;');
+    expect(map).toContain('const hasCurrentTreatment = isCurrentFrame || isPrimarySelected;');
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
     // 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
     // lighter blue-gray (NOT the selection — the cursor/selection treatment is
-    // the inset ring + brightness). Restored after the round-12 deletion.
+    // the rail-colour inset ring). Restored after the round-12 deletion.
     expect(css()).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
     expect(css()).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
-    const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.current,');
-    // v2.0.1 v7: the selection is a rail-colour inset ring plus brightness —
-    // no fill, no border recolor, no outline.
-    expect(ordinarySelection).toContain('box-shadow: inset 0 0 0 1px var(--rail-line, #8A939C)');
+    const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cells .physics-paint-roto-cell.current,');
+    // v2.0.1 UAT: the selection is a white border plus a soft rail-colour glow
+    // plus brightness — no fill, no outline, no size/radius change.
+    expect(ordinarySelection).toContain('border-color: #EAF0FF !important');
+    expect(ordinarySelection).toContain('0 0 7px 1px var(--rail-line, #8A939C)');
     expect(ordinarySelection).toContain('filter: brightness(1.18)');
     expect(ordinarySelection).not.toContain('background:');
-    expect(ordinarySelection).not.toContain('border-color:');
     expect(ordinarySelection).not.toContain('outline:');
   });
 });

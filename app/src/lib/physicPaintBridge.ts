@@ -1139,6 +1139,11 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     interpolationEnabled: input.currentInterpolation.enabled,
     loopClips: input.currentLoopClips,
     incomingInterpolationBreakKeyIds: input.currentIncomingInterpolationBreakKeyIds,
+    // 58: a Rail insert shifts/replaces phase overrides together with their
+    // clip entries. Without this authority the canonical resolver fails every
+    // such insert closed ("Painted Rail overrides cannot be retimed safely"),
+    // even though the child staged the exact same proposal.
+    groupOverrideRecords: input.currentGroupOverrideRecords,
   });
   if (!canonicalResolution.ok) {
     return `Canonical physical edit rejected the submitted intent: ${canonicalResolution.failure.text}`;
@@ -1159,7 +1164,10 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
         movedLoopId: input.intent.loopId,
         capacity: input.capacity,
       })
-    : input.currentGroupOverrideRecords;
+    // 58: Rail inserts (and every other intent) retime phase overrides through
+    // the resolver proposal. Falling back to the CURRENT records here rejected
+    // the child's canonical staged collection.
+    : (proposal.nextGroupOverrideRecords ?? input.currentGroupOverrideRecords);
   if (canonicalGroupOverrideRecords === null) {
     return 'Submitted physical document does not match the canonical parent-resolved edit.';
   }

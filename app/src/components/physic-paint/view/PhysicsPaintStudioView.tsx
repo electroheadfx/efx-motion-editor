@@ -55,6 +55,9 @@ interface PhysicsPaintCanvasStackViewProps {
    * intercepting the gesture — the engine still receives the same event.
    */
   onInputIntent?: (event: PointerEvent) => void;
+  /** v2.0.1 UAT: consume a paint press on a render-only frame before any
+   *  stroke handler runs; true means the press was blocked and explained. */
+  blockPaintPointerDown?: (event: PointerEvent) => boolean;
   /**
    * 261030-cnq: the color picker. Returns true when the press was a pick
    * and MUST NOT reach the Roto edit intent or any paint listener under
@@ -219,6 +222,13 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
         // 261030-cnq: the picker consumes the press at the capture phase — before
         // beginRotoFrameEdit and before the engine/stroke-overlay listeners below.
         if (props.onColorPick?.(event, event.currentTarget as HTMLElement)) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        // v2.0.1 UAT: a generated in-between is render-only — consume the
+        // paint press here, before the engine/sheet listeners start a stroke.
+        if (props.blockPaintPointerDown?.(event)) {
           event.preventDefault();
           event.stopPropagation();
           return;

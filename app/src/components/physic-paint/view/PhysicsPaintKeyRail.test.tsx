@@ -159,7 +159,7 @@ describe('PhysicsPaintKeyRail', () => {
       { firstKeyId: 'A', keyIds: ['A'], firstKeyFrame: 4, lastKeyFrame: 4 },
       { startFrame: 0, endFrameExclusive: 10 },
       18,
-    )).toEqual({ left: 72, width: 18, showStartBoundary: true, showEndBoundary: true });
+    )).toEqual({ left: 72, width: 16, showStartBoundary: true, showEndBoundary: true });
     expect(projectPhysicsPaintKeyRailGeometry(
       { firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 2, lastKeyFrame: 8 },
       { startFrame: 4, endFrameExclusive: 7 },
@@ -173,7 +173,7 @@ describe('PhysicsPaintKeyRail', () => {
     const anchors = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-anchor'));
     expect(anchors.map((anchor) => anchor.props.style)).toEqual([
       { left: '36px', width: '70px' },
-      { left: '108px', width: '18px' },
+      { left: '108px', width: '16px' },
     ]);
     // 43.4 defect 9: the canonical first-key frame feeds the shared rail
     // roving group's cross-type ordering.

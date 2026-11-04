@@ -5181,8 +5181,13 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     expect(result.proposal.loopClips[0]).toMatchObject({
       loopId: 'group-a',
       syncState: 'modified',
-      originalEndExclusive: 6,
-      visibleRanges: [{ start: 0, endExclusive: 6 }],
+      originalEndExclusive: 9,
+      visibleRanges: [
+        { start: 0, endExclusive: 1 },
+        { start: 2, endExclusive: 4 },
+        { start: 5, endExclusive: 7 },
+        { start: 8, endExclusive: 9 },
+      ],
       frameOverrides: [],
     });
     expect(result.impact).toMatchObject({
@@ -5334,18 +5339,19 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Delete Group Frame must resolve');
     expect(result.proposal.loopClips[0].visibleRanges).toEqual([
-      { start: 0, endExclusive: 3 },
-      { start: 4, endExclusive: 6 },
+      { start: 0, endExclusive: 2 },
+      { start: 3, endExclusive: 4 },
+      { start: 6, endExclusive: 8 },
     ]);
     expect(result.proposal.loopClips[0].phaseOrigin).toBe(0);
-    expect(result.proposal.loopClips[0].originalEndExclusive).toBe(6);
+    expect(result.proposal.loopClips[0].originalEndExclusive).toBe(9);
     expect(result.proposal.loopClips[0].frameOverrides).toEqual([]);
-    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'ordinary']);
-    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual([]);
+    expect(result.proposal.realKeyRecords.map((record) => record.keyId)).toEqual(['A0', 'A1', 'ordinary']);
+    expect(result.proposal.incomingInterpolationBreakKeyIds).toEqual(['A1']);
     expect(result.impact).toMatchObject({
       phaseAppFrame: 2,
       affectedAppFrames: [2, 5, 8],
-      cleanupKeyIds: ['A1', 'override-5'],
+      cleanupKeyIds: ['override-5'],
     });
     expect(Object.isFrozen(result.proposal)).toBe(true);
     expect(Object.isFrozen(result.impact)).toBe(true);
@@ -5381,10 +5387,11 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       loopId: 'group-a',
       phaseOrigin: 0,
       syncState: 'modified',
-      originalEndExclusive: 6,
+      originalEndExclusive: 9,
       visibleRanges: [
-        { start: 0, endExclusive: 3 },
-        { start: 4, endExclusive: 6 },
+        { start: 0, endExclusive: 2 },
+        { start: 3, endExclusive: 4 },
+        { start: 6, endExclusive: 8 },
       ],
     });
   });
@@ -5508,7 +5515,7 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     (keyId, appFrame) => lifecycleRecord(keyId, appFrame),
   );
 
-  it('58 G-02: an in-between key delete contracts the cycle across every repeat', () => {
+  it('v2.0.1 UAT: an in-between key delete leaves an empty gap in every repeat (no ripple)', () => {
     const result = proposePhysicPaintRotoDeleteGroupFrame({
       document: lifecycleDocument(
         [contiguousGroup({ repeat: 2, originalEndExclusive: 10, visibleRanges: [{ start: 0, endExclusive: 10 }] })],
@@ -5521,25 +5528,30 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('Generate-mode contraction must resolve');
+    if (!result.ok) throw new Error('Gap delete must resolve');
     expect(result.proposal.loopClips[0]).toMatchObject({
       syncState: 'modified',
-      sourceKeyIds: ['C0', 'C1', 'C3', 'C4'],
+      sourceKeyIds: ['C0', 'C1', 'C2', 'C3', 'C4'],
       phaseOrigin: 0,
-      originalEndExclusive: 8,
-      visibleRanges: [{ start: 0, endExclusive: 8 }],
+      originalEndExclusive: 10,
+      visibleRanges: [
+        { start: 0, endExclusive: 2 },
+        { start: 3, endExclusive: 7 },
+        { start: 8, endExclusive: 10 },
+      ],
       frameOverrides: [],
     });
     expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
       ['C0', 0],
       ['C1', 1],
-      ['C3', 2],
-      ['C4', 3],
+      ['C2', 2],
+      ['C3', 3],
+      ['C4', 4],
     ]);
-    expect(result.impact.cleanupKeyIds).toEqual(['C2']);
+    expect(result.impact.cleanupKeyIds).toEqual([]);
   });
 
-  it('58 G-02: a trailing key delete shrinks the cycle without any gap', () => {
+  it('v2.0.1 UAT: a trailing key delete ends the rail one frame early (no ripple)', () => {
     const result = proposePhysicPaintRotoDeleteGroupFrame({
       document: lifecycleDocument([contiguousGroup()], contiguousRecords(), [], []),
       groupId: 'group-a',
@@ -5547,10 +5559,10 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('Trailing contraction must resolve');
+    if (!result.ok) throw new Error('Gap delete must resolve');
     expect(result.proposal.loopClips[0]).toMatchObject({
-      sourceKeyIds: ['C0', 'C1', 'C2', 'C3'],
-      originalEndExclusive: 4,
+      sourceKeyIds: ['C0', 'C1', 'C2', 'C3', 'C4'],
+      originalEndExclusive: 5,
       visibleRanges: [{ start: 0, endExclusive: 4 }],
     });
     expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
@@ -5558,11 +5570,12 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       ['C1', 1],
       ['C2', 2],
       ['C3', 3],
+      ['C4', 4],
     ]);
-    expect(result.impact.cleanupKeyIds).toEqual(['C4']);
+    expect(result.impact.cleanupKeyIds).toEqual([]);
   });
 
-  it('58 G-02: spaced source cycles (generated in-betweens) contract too', () => {
+  it('v2.0.1 UAT: spaced source cycles keep their frames and leave a gap (no ripple)', () => {
     const spacedGroup = contiguousGroup({
       sourceKeyIds: ['K0', 'K2', 'K4'],
       originalEndExclusive: 5,
@@ -5580,17 +5593,21 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('Spaced-cycle contraction must resolve');
+    if (!result.ok) throw new Error('Gap delete must resolve');
     expect(result.proposal.loopClips[0]).toMatchObject({
-      sourceKeyIds: ['K0', 'K4'],
-      originalEndExclusive: 4,
-      visibleRanges: [{ start: 0, endExclusive: 4 }],
+      sourceKeyIds: ['K0', 'K2', 'K4'],
+      originalEndExclusive: 5,
+      visibleRanges: [
+        { start: 0, endExclusive: 2 },
+        { start: 3, endExclusive: 5 },
+      ],
     });
     expect(result.proposal.realKeyRecords.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
       ['K0', 0],
-      ['K4', 3],
+      ['K2', 2],
+      ['K4', 4],
     ]);
-    expect(result.impact.cleanupKeyIds).toEqual(['K2']);
+    expect(result.impact.cleanupKeyIds).toEqual([]);
   });
 
   it('58 G-02: static rails keep the legacy gap semantics', () => {

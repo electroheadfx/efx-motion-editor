@@ -143,6 +143,10 @@ export function PhysicsPaintPlayScriptDialog({
   // 58-04 (D-05): the reduced Standard form is compact — it never grows, even
   // though its later-Standard entry point arrives through loop-edit.
   const surfaceTall = reducedForm ? false : (loopEdit || sourceEdit || stackCollision !== null);
+  // v2.0.1 UAT: the reduced Standard surface carries ONE Cycle field — the
+  // fixed 700×660 creation shell left it floating in empty space. Size the
+  // modal to its content instead.
+  const surfaceCompact = reducedForm;
   /* 58-08 (WR-02): the reduced form has no frames/count field, so the frames
      validation channel — which keeps a stale "Maximum available count is 0."
      in key-rail-create — must not veto its confirm. Enter and the primary
@@ -307,7 +311,7 @@ export function PhysicsPaintPlayScriptDialog({
     >
       <div
         ref={surfaceRef}
-        class={`physics-paint-play-script-surface${surfaceTall ? ' physics-paint-play-script-surface-tall' : ''}`}
+        class={`physics-paint-play-script-surface${surfaceTall ? ' physics-paint-play-script-surface-tall' : ''}${surfaceCompact ? ' physics-paint-play-script-surface-compact' : ''}`}
         style={dragOffset.x !== 0 || dragOffset.y !== 0 ? { transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` } : undefined}
       >
         <div
@@ -330,9 +334,12 @@ export function PhysicsPaintPlayScriptDialog({
                   : 'Run Script'}</strong>
           </div>
           <div class="physics-paint-play-script-header-meta">
+            {/* v2.0.1 UAT: the reduced Cycle surface already names the rail in
+                the footer status ("Loop Clip · F1 · Cycle 3f") — no duplicate
+                range in the header. */}
             {regenerateImpact
               ? <span class="physics-paint-play-script-header-range">{regenerateImpact.restoredRange}</span>
-              : keyRailCreate
+              : keyRailCreate || standardEditTarget
                 ? null
                 : loopEdit && editTarget
                   ? <span class="physics-paint-play-script-header-range">{`F${editTarget.placementStart} · Cycle ${editTarget.sourceKeyIds.length}f`}</span>
@@ -488,15 +495,20 @@ export function PhysicsPaintPlayScriptDialog({
         <div class="physics-paint-play-script-footer">
           <div class="physics-paint-play-script-progress-line">
             {/* 261101-cd5: the 160 × 4 track is persistent; the real <progress>
-                exists only while generating. */}
-            <span class="physics-paint-play-script-progress-track">
-              {progressValue ? (
-                <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
-              ) : progressBusy ? (
-                <progress aria-label={progressLabel} />
-              ) : null}
-            </span>
-            {readoutRequested ? (
+                exists only while generating. v2.0.1 UAT: the reduced Cycle
+                surface (Key Rail create / Standard Rail edit) has no run to
+                report — the bar and the Run-details info control are omitted
+                there; the status/error slot stays. */}
+            {!reducedForm ? (
+              <span class="physics-paint-play-script-progress-track">
+                {progressValue ? (
+                  <progress max={progressValue.total} value={progressValue.completed} aria-label={progressLabel} />
+                ) : progressBusy ? (
+                  <progress aria-label={progressLabel} />
+                ) : null}
+              </span>
+            ) : null}
+            {!reducedForm && readoutRequested ? (
               /* Borderless tooltip on hover AND keyboard focus — CSS only, no
                  state, no width work. Out of flow so the 56px footer never moves. */
               <span class="physics-paint-play-script-readout">

@@ -3,6 +3,7 @@ import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@pr
 import type { CompletedPaintMutation, PaintHistoryAvailability, RotoEditableState } from './types/paintCore';
 import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { SoundBandGesturePatch } from './view/soundBandGeometry';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../types/physicPaint';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -1690,6 +1691,19 @@ export function PhysicsPaintStudio() {
     fps: Math.max(1, Math.min(60, previewFps)),
   };
   const rotoPhysicalCapacity = launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1;
+  // v2.0.1 UAT: the visible timeline is the DOCUMENT extent, not the active
+  // track's own capacity — selecting a shorter track must not shrink the
+  // ruler. Tracks that were never launched report the MAX sentinel, so they
+  // are ignored instead of blowing the ruler up to the capacity ceiling.
+  const rotoTimelineCapacity = (() => {
+    if (!launchContext) return rotoPhysicalCapacity;
+    let capacity = rotoPhysicalCapacity;
+    for (const track of getEfxPaintDocument(launchContext.layerId)?.tracks ?? []) {
+      const trackCapacity = physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, track.id);
+      if (trackCapacity !== PHYSIC_PAINT_MAX_APPLY_FRAMES && trackCapacity > capacity) capacity = trackCapacity;
+    }
+    return capacity;
+  })();
   // 47 close-out UAT round 9: the lane's cached-frame fills are track-scoped —
   // reseed the ref SYNCHRONOUSLY when the active track changes, before the
   // model below reads it. The post-render reseed effect let the previous
@@ -1720,7 +1734,7 @@ export function PhysicsPaintStudio() {
     currentFrame,
     rotoKeyRecords,
     rotoInterpolationState,
-    capacity: rotoPhysicalCapacity,
+    capacity: rotoTimelineCapacity,
     selectedKeyId: selectedKeyId.value,
     incomingInterpolationBreakKeyIds: rotoIncomingInterpolationBreakKeyIds,
     rotoLoopClips,
@@ -5083,6 +5097,37 @@ export function PhysicsPaintStudio() {
   const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {
     beginRotoFrameEditImplRef.current(event);
   }, []);
+  // v2.0.1 UAT: a generated in-between is RENDER-ONLY. A paint press on one is
+  // consumed at the canvas-stack capture phase (before any stroke handler), so
+  // no live stroke is drawn and no key/override is auto-created — the explicit
+  // +Key gesture owns the promotion. Reference/background transforms keep
+  // their gestures.
+  const blockGeneratedFramePaintPointerDown = useCallback((event: PointerEvent) => {
+    if (workflowMode !== 'roto' || isPlaying || currentFrameSelectionKind !== 'generated-interpolation') return false;
+    const target = event.target;
+    if (typeof Element !== 'undefined'
+      && target instanceof Element
+      && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform')) return false;
+    const paintToolActive = activeModule.value === 'watercolor'
+      ? (aquarelleActiveTool.value === 'brush'
+        || aquarelleActiveTool.value === 'water'
+        || aquarelleActiveTool.value === 'pen')
+      : settings.tool === 'paint';
+    if (!paintToolActive) return false;
+    pendingFirstPaintTargetRef.current = null;
+    setApplyStatus('error');
+    setApplyMessage('The current frame is a generated in-between — add a key (+Key) before painting.');
+    return true;
+  }, [
+    workflowMode,
+    isPlaying,
+    currentFrameSelectionKind,
+    activeModule.value,
+    aquarelleActiveTool.value,
+    settings.tool,
+    setApplyStatus,
+    setApplyMessage,
+  ]);
   acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
   // 38-11: rotoFrameEditing's wrapper object is rebuilt per render (its inner
   // callbacks close over a per-render input literal), so callbacks that must
@@ -9735,7 +9780,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, blockGeneratedFramePaintPointerDown, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -9810,6 +9855,7 @@ export function PhysicsPaintStudio() {
       inputDisabled: rotoInputDisabled,
       inputDisabledMessage: rotoInputDisabledMessage,
       onInputIntent: beginRotoFrameEdit,
+      blockPaintPointerDown: blockGeneratedFramePaintPointerDown,
       onColorPick: handleAquarelleColorPick,
       onionOverlay,
       canvasKey,

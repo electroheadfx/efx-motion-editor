@@ -1971,8 +1971,19 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
                 },
               });
             }
+            const staleChecks: string[] = [];
+            if (currentDocument.capacity !== capacity) staleChecks.push('capacity');
+            if (currentDocument.revision !== expectedRevision) staleChecks.push('document-revision');
+            if (documentRevision !== expectedRevision) staleChecks.push('computed-revision');
+            if (!recordsEqual(currentDocument.realKeyRecords, currentRecords)) staleChecks.push('records');
+            if (currentDocument.interpolation.enabled !== currentInterpolation.enabled) staleChecks.push('interpolation-enabled');
+            if (currentDocument.interpolation.mode !== currentInterpolation.mode) staleChecks.push('interpolation-mode');
+            if (currentDocument.selectedKeyId !== currentSelectedKeyIdForEdit) staleChecks.push('selection');
+            if (currentDocument.cursorAppFrame !== currentAppFrameForEdit) staleChecks.push('cursor');
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
-            portsRef.current.status.logDiagnostic('Group lifecycle physical document became stale before proposal staging.');
+            portsRef.current.status.logDiagnostic(
+              `Group lifecycle physical document became stale before proposal staging (${staleChecks.join(', ')}).`,
+            );
             clearPendingOnce();
             return false;
           }

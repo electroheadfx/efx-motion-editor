@@ -600,12 +600,13 @@ const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
    52.5-01b D-07 band 28 -> 36 for the waveform stain) + 34 (action row) +
    14 (scrollbar), i.e. 46 + 1 + 1 + 36 + 34 + 14 = 132. The strip
    defaults to exactly enough
-   height for every track row + the Bg row (30px each, UAT round 4 compact
-   rows), capped at 270px so the canvas keeps room; the top-edge drag handle
-   lets the user shrink (vertical scroll appears) or grow up to the full
-   content height — never beyond the number of tracks. */
-// 47-01 UAT round 7: the row is 30px (8px rail band + 22px cells, no overlap).
-const STRIP_ROW_HEIGHT_PX = 30;
+   height for every track row + the Bg row (31px each — 30px layout + 1px
+   between stacked rows, v2.0.1 UAT), capped at 270px so the canvas keeps
+   room; the top-edge drag handle lets the user shrink (vertical scroll
+   appears) or grow up to the full content height — never beyond the number
+   of tracks. */
+// 47-01 UAT round 7: the row is 31px (6px rail band + 22px cells + 3px floor).
+const STRIP_ROW_HEIGHT_PX = 31;
 const STRIP_CHROME_HEIGHT_PX = 132;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
@@ -675,6 +676,7 @@ const EMPTY_LOOP_PRESENTATIONS: ReadonlyMap<string, PhysicsPaintLoopClipPresenta
 const EMPTY_SPACING_PROXIES: ReadonlyMap<number, PhysicsPaintRotoSpacingProxy> = new Map();
 const EMPTY_CACHED_ROTO_FRAMES: readonly PhysicPaintRotoCacheFrame[] = [];
 const EMPTY_STRING_IDS: readonly string[] = [];
+const EMPTY_KEY_ID_SET: ReadonlySet<string> = new Set<string>();
 const EMPTY_RAIL_SET_MOVE_MEMBERS: readonly PhysicPaintRailSetMoveMember[] = [];
 const EMPTY_RAIL_SET_GAP_PREVIEW_FRAMES: ReadonlySet<number> = new Set<number>();
 const NOOP_KEY_RAIL_SELECTION = (_selection: RotoKeyRailSelection): void => {};
@@ -1948,7 +1950,7 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
     : { kind: props.railCellKind, cycle: props.railCellCycle };
   const railCellStyle = timelineRailCellStyle(
     railCellPresentation,
-    resolveTimelineRailPalette(props.railType, props.railSelected),
+    resolveTimelineRailPalette(props.railType, props.railSelected ? 'selected' : 'active'),
     props.railSelected,
   ) as unknown as CSSProperties;
   return (
@@ -1983,9 +1985,6 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
           props.onCellClick(props.frame, props.vm, event as unknown as MouseEvent);
         }}
       >
-        {props.startsInterpolationSegment ? (
-          <span class="physics-paint-roto-segment-start-cut" aria-hidden="true" />
-        ) : null}
         <span>{props.frame}</span>
       </button>
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">{props.tooltipCopy}</PhysicsPaintStyledTooltip>
@@ -2528,6 +2527,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
     return owned;
   }, [props.rotoLoopClips]);
+  // v2.0.1 UAT (ghost-key fix): a clip source key whose physical frame is
+  // outside EVERY visible range of EVERY clip referencing it is internal source
+  // payload, not a timeline key. A linked clip placed away from its source
+  // cycle (or trimmed/gapped past it) left these records rendering as ordinary
+  // key cells with no rail over them — "keys which do not exist". They also
+  // captured clicks and parked the playhead on a frame +Key/+Rail consider
+  // occupied. Paint them empty and drop them from hit-testing.
+  const ghostSourceKeyIds = useMemo(() => {
+    const rangesByKeyId = new Map<string, { start: number; endExclusive: number }[]>();
+    for (const clip of props.rotoLoopClips ?? []) {
+      const ranges = clip.visibleRanges;
+      if (!ranges || ranges.length === 0) continue;
+      for (const keyId of clip.sourceKeyIds) {
+        const existing = rangesByKeyId.get(keyId);
+        if (existing) existing.push(...ranges);
+        else rangesByKeyId.set(keyId, [...ranges]);
+      }
+    }
+    if (rangesByKeyId.size === 0) return EMPTY_KEY_ID_SET;
+    const frameByKeyId = new Map((props.rotoKeyRecords ?? []).map((record) => [record.keyId, record.appFrame]));
+    const ghosts = new Set<string>();
+    for (const [keyId, ranges] of rangesByKeyId) {
+      const frame = frameByKeyId.get(keyId);
+      if (frame === undefined) continue;
+      if (!ranges.some((range) => frame >= range.start && frame < range.endExclusive)) ghosts.add(keyId);
+    }
+    return ghosts.size === 0 ? EMPTY_KEY_ID_SET : ghosts;
+  }, [props.rotoLoopClips, props.rotoKeyRecords]);
   const keyRailSegments = useMemo(() => deriveKeyRailSegments({
     orderedRealKeys: [...rotoKeyRecords]
       .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
@@ -2884,9 +2911,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : null;
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
-    for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
+    for (const record of rotoKeyRecords) {
+      // v2.0.1 UAT: a ghost source record must behave as an EMPTY frame on
+      // click (navigate / clear selection), never select an invisible key.
+      if (ghostSourceKeyIds.has(record.keyId)) continue;
+      map.set(record.appFrame, record.keyId);
+    }
     return map;
-  }, [rotoKeyRecords]);
+  }, [rotoKeyRecords, ghostSourceKeyIds]);
   // ── 43.5-05 directional Push armed-tool session wiring ─────────────────────
   // The push session is gesture + presentation only; resolver/store/model enter
   // exclusively through the session hook's injected ports (T-43.5-02). Armed
@@ -5068,7 +5100,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     // change; the value is byte-identical to the pre-cache
                     // inline derivation.
                     const { vm, fill } = getRotoCellDerivation(frame);
-                    const isPhysicalRealKey = semanticCell?.kind === 'real';
+                    const rawIsPhysicalRealKey = semanticCell?.kind === 'real';
+                    const rawCellKeyId = rawIsPhysicalRealKey ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                    // v2.0.1 UAT: ghost source records are internal clip payload
+                    // — they paint and behave as empty frames (no key fill, no
+                    // drag, no selection, no "already has a key" tooltip).
+                    const isGhostSourceKey = rawCellKeyId !== null && ghostSourceKeyIds.has(rawCellKeyId);
+                    const isPhysicalRealKey = rawIsPhysicalRealKey && !isGhostSourceKey;
                     const lifecycleTarget = lifecycleTargetByAppFrame.get(frame)!;
                     const fillClass = getRotoAcceptedCellFillClass({
                       lifecycleTargetKind: lifecycleTarget.kind,
@@ -5080,7 +5118,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     const isOccupiedRealKey = isPhysicalRealKey;
                     const semanticKind = isGenerated ? 'generated' : isOccupiedRealKey ? 'real-key' : 'empty';
                     const generatedTitle = isGenerated ? getGeneratedRotoTitle(frame) : null;
-                    const cellKeyId = semanticCell?.kind === 'real' ? semanticCell.keyId : keyIdByAppFrame.get(frame) ?? null;
+                    const cellKeyId = isGhostSourceKey ? null : rawCellKeyId;
                     // 58: a Loop Clip source key keeps its Key Spacing proxy, but
                     // it is still a real key — it must stay draggable so the rail
                     // can be retimed by drag (interior spacing and band ends).
@@ -5127,14 +5165,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       && rotoSelectedKeyIdSet.has(cellKeyId)
                       && rotoSelectedKeyIdSet.size >= 2
                       && !isPrimarySelected;
-                    const hasReplacementSelection = props.rotoPrimarySelectedKeyId === null && rotoSelectedKeyIdSet.size >= 2;
                     // 47 close-out: the current-frame cell paints orange even
                     // when it is a real key — real keys previously painted ONLY
                     // via the primary-selection match, so a key at the playhead
                     // stayed dark when that match didn't land (the persistent
                     // "real keys never turn orange" bug). The selection match
                     // still applies for non-current selected keys.
-                    const hasCurrentTreatment = (isCurrentFrame && !hasReplacementSelection) || isPrimarySelected;
+                    // v2.0.1 UAT: the playhead frame ALWAYS carries the current
+                    // treatment. Suppressing it behind a multi-selection made
+                    // every click look like "the highlight comes and disappears"
+                    // whenever a rail/spacing proxy owned ≥2 keys with no
+                    // primary — the clicked cell was never the highlighted one.
+                    const hasCurrentTreatment = isCurrentFrame || isPrimarySelected;
                     const cellBaseTooltipCopy = isSpacingProxySelected
                       ? projectPhysicsPaintGroupProductReason('spacing-source-selected')
                       : isSecondarySelected
@@ -5170,19 +5212,31 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       keyRailCoversFrame: railDesign.keyRailCoveredFrames.has(frame),
                     });
                     const railType: TimelineRailType = railOwnership?.railType ?? 'standard';
+                    // v2.0.1 UAT: three brightness tiers — the selected rail
+                    // is the brightest, every other rail on the active track
+                    // one step brighter than an inactive track's base.
                     const railSelected = railOwnership?.selected ?? false;
-                    const railCellPresentation = resolveTimelineCellPresentation({
-                      inRail: railOwnership !== null
-                        || isPhysicalRealKey
-                        || isGenerated
-                        || vm.baseMeaning === 'cached',
-                      repeatInstance: frameResolution !== null && 'repeatInstance' in frameResolution
-                        ? frameResolution.repeatInstance
-                        : 0,
-                      isRealKey: isPhysicalRealKey,
-                      isGenerated,
-                      isCachedOnly: vm.baseMeaning === 'cached',
-                    });
+                    // v2.0.1 UAT: a deleted Rail phase is a lifecycle GAP —
+                    // the key record survives as the clip's source, but the
+                    // frame must read EMPTY exactly like the pre-v7 fill did.
+                    const isLifecycleGap = lifecycleTarget.kind === 'group-gap'
+                      || frameResolution?.kind === 'linked-gap';
+                    const railCellPresentation = isLifecycleGap
+                      ? { kind: 'empty' as const }
+                      : resolveTimelineCellPresentation({
+                          inRail: railOwnership !== null
+                            || isPhysicalRealKey
+                            || isGenerated,
+                          repeatInstance: frameResolution !== null && 'repeatInstance' in frameResolution
+                            ? frameResolution.repeatInstance
+                            : 0,
+                          isRealKey: isPhysicalRealKey,
+                          isGenerated,
+                          // v2.0.1 UAT: stale cached pixels left by a deleted
+                          // key must read EMPTY, not interp — cached-only is
+                          // not a rail state.
+                          isCachedOnly: false,
+                        });
                     // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
                     // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
                     // gap treatment (D-02). Class application only — no new DOM nodes.
@@ -5196,7 +5250,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     // preview as ordinary roto-fill-empty cells, byte-identical
                     // to the 43.2-43.5 gap treatment (D-09).
                     const isRailSetGapPreview = railSetGapPreviewAppFrames.has(frame);
-                    const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview
+                    const effectiveFillClass = isRotoGroupDragGapPreview || isRotoKeyRailDragGapPreview || isPushGapPreview || isRailSetGapPreview || isGhostSourceKey
                       ? 'roto-fill-empty' : fillClass;
                     const cellClass = `physics-paint-roto-cell ${effectiveFillClass} ${hasLinkedLoopBadge ? `roto-linked-loop-badge ${linkedLoopClass}` : ''} ${cellPresentation.startsInterpolationSegment ? 'starts-interpolation-segment' : ''} ${isLoopBoundaryStart ? 'roto-loop-boundary-start' : ''} ${isLoopBoundaryEnd ? 'roto-loop-boundary-end' : ''} ${isOccupiedRealKey ? 'occupied' : ''} ${isPhysicalRealKey || isSavedFrame(props.savedRotoFrames, frame) ? 'saved' : ''} ${vm.overlays.includes('dirty') ? 'dirty' : ''} ${vm.overlays.includes('pending') ? 'pending' : ''} ${hasCurrentTreatment ? 'current' : ''} ${isSecondarySelected ? 'selected' : ''} ${isSpacingProxySelected ? 'roto-spacing-proxy-selected' : ''} ${dragEligible ? 'roto-drag-eligible' : ''} ${isDragSource ? 'roto-drag-source' : ''} ${isDragMoved ? 'roto-drag-moved' : ''} ${isDragShifted ? 'roto-drag-shifted' : ''} ${isDragTarget ? 'roto-drag-target' : ''} ${isDragGenerated ? 'roto-drag-generated' : ''} ${isDragVacated ? 'roto-drag-vacated' : ''} ${isDragTarget && previewCell?.targetBoundary === 'before' ? 'roto-drag-target-before' : ''} ${isDragTarget && previewCell?.targetBoundary === 'after' ? 'roto-drag-target-after' : ''} ${rotoDragPreview && !rotoDragPreview.candidateValid && rotoDragPreview.publication === null && (isDragMoved || isDragSource) ? 'roto-drag-target-invalid' : ''} ${rotoDragPreview?.groupDrag && rotoDragPreview.conflictingAppFrames?.includes(frame) ? 'roto-drag-target-blocked' : ''} ${rotoDragPreview?.groupDrag && !rotoDragPreview.candidateValid && isDragSource ? 'roto-drag-cannot-drop' : ''} ${isDragCommitting ? 'roto-drag-committing' : ''}`;
                     return (
@@ -5222,6 +5276,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     );
                   })}
                 </div>
+                {/* v2.0.1 UAT: the current-frame marker is its OWN white
+                    overlay, not a per-cell class — selection bookkeeping can
+                    never remove it, and it reads white on key, in-between and
+                    empty frames alike. */}
+                {props.currentFrame >= frameCells[0]!
+                  && props.currentFrame <= frameCells[frameCells.length - 1]! ? (
+                  <div
+                    class="physics-paint-current-frame-outline"
+                    style={{ left: `${(props.currentFrame - frameCells[0]!) * ROTO_CELL_WIDTH_PX}px` }}
+                    aria-hidden="true"
+                  />
+                ) : null}
                 {/* 43.5-05 design revision: armed anchor pre-highlight — the
                     selected Rail shows the prospective-set treatment as soon as
                     armed (the direction is chosen by the drag, so no pivot tick
@@ -5513,7 +5579,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 />
               ) : null}
               {rotoRulerTicks.map(frame => (
-                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
+                <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>
+                  <span class="physics-paint-ruler-label">{frame}</span>
+                </span>
               ))}
               {/* 52.5 UAT round 3 + 261008-ig1 Task 2: the vertical end bars
                   are the in/out trim handles — ONE pair per placed clip (the

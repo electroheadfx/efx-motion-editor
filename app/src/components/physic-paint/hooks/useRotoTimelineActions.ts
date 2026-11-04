@@ -3997,6 +3997,31 @@ function computeDragAvailability(input: RotoTimelineActionsInput): ActionAvailab
   return { eligible: true, reason: null };
 }
 
+/**
+ * v2.0.1 UAT: true when `keyId` is a Rail source identity whose physical frame
+ * lies outside every visible range of every clip referencing it. Those records
+ * are internal clip payload — they paint as empty cells and must never read as
+ * ordinary timeline keys.
+ */
+function isGhostRailSourceKey(
+  keyId: string,
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): boolean {
+  const frame = records.find((record) => record.keyId === keyId)?.appFrame;
+  if (frame === undefined) return false;
+  let owned = false;
+  for (const clip of loopClips) {
+    if (!clip.sourceKeyIds.includes(keyId)) continue;
+    owned = true;
+    const ranges = clip.visibleRanges;
+    // A legacy clip without a lifecycle keeps its source keys visible.
+    if (!ranges || ranges.length === 0) return false;
+    if (ranges.some((range) => frame >= range.start && frame < range.endExclusive)) return false;
+  }
+  return owned;
+}
+
 function computeAddEmptyKeyAvailability(input: RotoTimelineActionsInput): ActionAvailability {
   if (!input.getLaunchContext || !input.getLaunchContext()) {
     return { eligible: false, reason: 'Select a Physics Paint Roto timeline before adding a key.' };
@@ -4009,8 +4034,16 @@ function computeAddEmptyKeyAvailability(input: RotoTimelineActionsInput): Action
     return { eligible: false, reason: 'Select a valid Roto frame before adding a key.' };
   }
   const records = input.getRotoKeyRecords?.() ?? [];
-  if (records.some((record) => record.appFrame === currentAppFrame)) {
-    return { eligible: false, reason: 'The current frame already has a real Roto key.' };
+  const occupant = records.find((record) => record.appFrame === currentAppFrame);
+  if (occupant) {
+    // v2.0.1 UAT: a clip source key hidden outside its Rail's visible ranges is
+    // not a timeline key the user can see — never claim "already has a key".
+    return {
+      eligible: false,
+      reason: isGhostRailSourceKey(occupant.keyId, records, input.getRotoLoopClips?.() ?? [])
+        ? 'The current frame holds a Rail source key. Move to an empty frame.'
+        : 'The current frame already has a real Roto key.',
+    };
   }
   return { eligible: true, reason: null };
 }

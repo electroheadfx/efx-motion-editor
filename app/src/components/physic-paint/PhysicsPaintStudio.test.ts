@@ -841,18 +841,15 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(studio.slice(spacingStart, spacingEnd)).toContain('railSetSelection.value = null;');
   });
 
-  it('paints the shared anchor tick with the D-01 geometry and pointer-events none', () => {
-    // v2.0.1 v7: the tick is clamped to the 4px rail pill flush at the row top
-    // (top 0), staying inside the 6px band. Slice to the rule's closing brace so
-    // the assertions cannot match a later rule.
-    const tickStart = css.indexOf('.physics-paint-rail-anchor-tick {');
-    const tickRule = css.slice(tickStart, css.indexOf('}', tickStart) + 1);
-    expect(tickRule).toContain('width: 2px;');
-    expect(tickRule).toContain('height: 4px;');
-    expect(tickRule).toContain('background: #f2f5f7;');
-    expect(tickRule).toContain('opacity: 0.7;');
-    expect(tickRule).toContain('top: 0;');
-    expect(tickRule).toContain('pointer-events: none;');
+  it('retires the white anchor tick from every Paint rail (v2.0.1 UAT)', () => {
+    // The white 2x4 tick painted as a stray cap at the start of the rail line.
+    // It is gone from the CSS and from both rail components; the bright
+    // selected palette is the only "which rail" signal.
+    expect(css).not.toContain('.physics-paint-rail-anchor-tick');
+    const keyRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintKeyRail.tsx', import.meta.url)), 'utf8');
+    const loopRail = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintLoopClipRail.tsx', import.meta.url)), 'utf8');
+    expect(keyRail).not.toContain('physics-paint-rail-anchor-tick');
+    expect(loopRail).not.toContain('physics-paint-rail-anchor-tick');
   });
 });
 
@@ -2767,6 +2764,27 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(pickStart).toBeGreaterThan(captureStart);
     expect(intentStart).toBeGreaterThan(pickStart);
     expect(studio).toContain('beginRotoFrameEditImplRef.current(event);');
+  });
+
+  it('blocks a paint press on a generated in-between at the canvas-stack capture seam', () => {
+    // v2.0.1 UAT: render-only frames must not auto-create a key/override from
+    // a stroke; the explicit +Key gesture owns that promotion. The press is
+    // consumed before the sheet/engine listeners, so no live stroke lands.
+    const block = section(
+      studio,
+      'const blockGeneratedFramePaintPointerDown = useCallback(',
+      'acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;',
+    );
+    expect(block).toContain("currentFrameSelectionKind !== 'generated-interpolation'");
+    expect(block).toContain('add a key (+Key) before painting');
+    expect(block).toContain('physics-paint-reference-transform');
+    expect(block).toContain('physics-paint-background-transform');
+    expect(studio).toContain('blockPaintPointerDown: blockGeneratedFramePaintPointerDown,');
+    expect(studioView).toContain('if (props.blockPaintPointerDown?.(event)) {');
+    const captureStart = studioView.indexOf('if (props.blockPaintPointerDown?.(event)) {');
+    const intentStart = studioView.indexOf('props.onInputIntent?.(event);');
+    expect(captureStart).toBeGreaterThan(-1);
+    expect(intentStart).toBeGreaterThan(captureStart);
   });
 
   it('gates promotion on the effective paint-producing tool and a non-transform target', () => {

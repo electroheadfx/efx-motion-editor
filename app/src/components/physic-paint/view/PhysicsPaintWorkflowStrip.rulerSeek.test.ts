@@ -83,11 +83,14 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     expect(block).toContain('props.currentFrame.value');
   });
 
-  it('is pointer-transparent, full-height, and accent-colored in CSS above the cell layers', () => {
+  it('is pointer-transparent, ruler-band height, and accent-colored in CSS above the cell layers', () => {
     const block = getPlayheadCssBlock(css());
     expect(block).toContain('position: absolute');
     expect(block).toContain('top: 0');
-    expect(block).toContain('bottom: 0');
+    // v2.0.1 UAT: the blue line stays inside the 36px ruler band; it no
+    // longer cuts across the key cells.
+    expect(block).toContain('height: 36px');
+    expect(block).not.toContain('bottom: 0');
     expect(block).toContain('pointer-events: none');
     expect(block).toContain('#2868FC');
     expect(block).toContain('z-index: 30');

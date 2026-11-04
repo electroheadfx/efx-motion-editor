@@ -847,7 +847,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     // palette segment is the whole selected treatment for every rail family.
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 31px');
     expect(cssRule('.physics-paint-roto-action-row {')).toContain('height: 34px');
     expect(physicsPaintStudioCss).not.toContain('physics-paint-group-lifecycle-lane');
   });
@@ -1434,7 +1434,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-lane'))).toHaveLength(1);
     expect(findAll(strip, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-lane'))).toHaveLength(0);
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
-    expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
+    expect(cssRule('.physics-paint-lane {')).toContain('height: 31px');
 
     const linkedCells = findAll(workflowTree, (vnode) => String(vnode.props.cellClass ?? '').includes('roto-linked-loop-badge'));
     expect(linkedCells.length).toBeGreaterThan(0);

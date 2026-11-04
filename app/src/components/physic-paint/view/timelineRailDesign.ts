@@ -24,30 +24,44 @@ export interface TimelineRailPalette {
   readonly keyRim: string;
 }
 
+/**
+ * Three brightness tiers per rail type:
+ * - `unselected` — rails on an inactive track (the base colour);
+ * - `active` — every rail on the selected track (one step brighter);
+ * - `selected` — the selected rail itself (the full bright colour).
+ */
+export type TimelineRailTier = 'selected' | 'active' | 'unselected';
+
 export interface TimelineRailPalettePair {
   readonly selected: TimelineRailPalette;
+  readonly active: TimelineRailPalette;
   readonly unselected: TimelineRailPalette;
 }
 
 /**
  * The locked four-palette table. `selected` is used ONLY by the selected rail
- * (or a rail-set member); every other rail uses `unselected`.
+ * (or a rail-set member); `active` by every other rail on the selected track;
+ * `unselected` by rails on inactive tracks.
  */
 export const TIMELINE_RAIL_PALETTES: Record<TimelineRailType, TimelineRailPalettePair> = {
   standard: {
     selected: { line: '#A6D334', keyFill: '#86C55A', keyRim: '#A6D334' },
+    active: { line: '#89AE35', keyFill: '#72A34C', keyRim: '#9ABE41' },
     unselected: { line: '#6C8A35', keyFill: '#5E823F', keyRim: '#8FA94F' },
   },
   motion: {
     selected: { line: '#F5A623', keyFill: '#F5A623', keyRim: '#FFD18A' },
+    active: { line: '#D3901E', keyFill: '#CE8A1A', keyRim: '#E6B265' },
     unselected: { line: '#B27A1A', keyFill: '#A86F12', keyRim: '#CE9440' },
   },
   static: {
     selected: { line: '#8B5CF6', keyFill: '#8B5CF6', keyRim: '#C3A6FF' },
+    active: { line: '#7850CA', keyFill: '#744EC8', keyRim: '#A688E1' },
     unselected: { line: '#66459E', keyFill: '#5E419B', keyRim: '#8A6BC4' },
   },
   reveal: {
     selected: { line: '#2F9BFF', keyFill: '#2F9BFF', keyRim: '#9AD4FF' },
+    active: { line: '#2981CE', keyFill: '#2880CF', keyRim: '#73B1E0' },
     unselected: { line: '#24689E', keyFill: '#2266A0', keyRim: '#4C8FC2' },
   },
 };
@@ -112,11 +126,9 @@ export function resolveTimelineRailType(
 
 export function resolveTimelineRailPalette(
   railType: TimelineRailType,
-  selected: boolean,
+  tier: TimelineRailTier,
 ): TimelineRailPalette {
-  return selected
-    ? TIMELINE_RAIL_PALETTES[railType].selected
-    : TIMELINE_RAIL_PALETTES[railType].unselected;
+  return TIMELINE_RAIL_PALETTES[railType][tier];
 }
 
 export interface TimelineCycleGray {
@@ -230,7 +242,9 @@ export function resolveTrackAccentColor(
 /**
  * The locked rail-line width: `frameCount × pitch − 2` when the rail end is
  * visible (the line ends on the last cell's right edge), the full extent when
- * the viewport clips it, and never shorter than one frame pitch.
+ * the viewport clips it, and never shorter than one CELL (pitch − gap). The
+ * floor is the cell width, not the pitch: a single-key rail must end exactly
+ * on its key's right edge instead of overhanging into the 2px gap.
  */
 export function projectTimelineRailLineWidth(
   frameCount: number,
@@ -238,5 +252,5 @@ export function projectTimelineRailLineWidth(
   endVisible: boolean = true,
   gap: number = TIMELINE_GEOMETRY.cellGap,
 ): number {
-  return Math.max(pitch, frameCount * pitch - (endVisible ? gap : 0));
+  return Math.max(pitch - gap, frameCount * pitch - (endVisible ? gap : 0));
 }

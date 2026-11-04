@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Minus, Plus } from 'lucide-preact';
-import type { ComponentChildren, CSSProperties, JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 
 /**
@@ -90,6 +90,12 @@ export interface NumericStepperProps {
   disabled?: boolean;
   /** Renders `aria-disabled` on the field (the Studio guarded-pattern contract). */
   ariaDisabled?: boolean;
+  /** Marks the field invalid (PlayScript Cycle validation). */
+  ariaInvalid?: boolean;
+  /** The editable value box — dialogs focus it on open. */
+  inputRef?: Ref<HTMLInputElement>;
+  /** Root element id (PlayScript dialog focus/target hooks). */
+  id?: string;
   /**
    * Runs in addition to the stepper's own focus/blur handling — the Studio
    * guarded-pattern sites hang their styled tooltip off the field's focus.
@@ -280,6 +286,9 @@ export function NumericStepper({
   ariaLabel,
   disabled = false,
   ariaDisabled,
+  ariaInvalid,
+  inputRef,
+  id,
   onFocus,
   onBlur,
   ariaDescribedBy,
@@ -290,7 +299,12 @@ export function NumericStepper({
   buttonStyle,
   children,
 }: NumericStepperProps): JSX.Element {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRefInternal = useRef<HTMLInputElement | null>(null);
+  const assignValueInput = (element: HTMLInputElement | null) => {
+    inputRefInternal.current = element;
+    if (typeof inputRef === 'function') inputRef(element);
+    else if (inputRef) (inputRef as { current: HTMLInputElement | null }).current = element;
+  };
   const delayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pressing = useRef(false);
@@ -313,7 +327,7 @@ export function NumericStepper({
    */
   const canStepInDirection = (direction: 1 | -1): boolean => {
     if (presets == null || presets.length === 0) return true;
-    const typed = parseStepperInput(inputRef.current?.value ?? '');
+    const typed = parseStepperInput(inputRefInternal.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
     return nextPresetFrom(presets, base, direction) !== undefined;
   };
@@ -338,7 +352,7 @@ export function NumericStepper({
 
   /** Every emission route funnels through here: presets walk or snap+clamp. */
   const stepBy = (direction: 1 | -1) => {
-    const typed = parseStepperInput(inputRef.current?.value ?? '');
+    const typed = parseStepperInput(inputRefInternal.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
     if (presets && presets.length > 0) {
       const next = nextPresetFrom(presets, base, direction);
@@ -403,7 +417,7 @@ export function NumericStepper({
   const resolvedButtonClass = buttonClass ? `numeric-stepper-button ${buttonClass}` : 'numeric-stepper-button';
 
   return (
-    <div class={className ? `numeric-stepper ${className}` : 'numeric-stepper'} style={WRAPPER_STYLE}>
+    <div id={id} class={className ? `numeric-stepper ${className}` : 'numeric-stepper'} style={WRAPPER_STYLE}>
       {children}
       {/* 261009-6ee: the pill wraps EXACTLY the three controls — NumericInput's
           label (children) stays a sibling OUTSIDE it, so the label drag-to-scrub
@@ -425,7 +439,7 @@ export function NumericStepper({
           <Minus size={BUTTON_ICON_SIZE} aria-hidden="true" />
         </button>
         <input
-          ref={inputRef}
+          ref={assignValueInput}
           type="text"
           inputMode="decimal"
           class={inputClass ? `numeric-stepper-input ${inputClass}` : 'numeric-stepper-input'}
@@ -434,6 +448,7 @@ export function NumericStepper({
           disabled={disabled}
           aria-label={ariaLabel}
           aria-disabled={ariaDisabled ? 'true' : undefined}
+          aria-invalid={ariaInvalid ? 'true' : undefined}
           aria-describedby={ariaDescribedBy}
           onFocus={(event) => {
             startCoalescing();

@@ -319,10 +319,11 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // the track's Key Rail graphic line.
     expect(cssRule('.physics-paint-bg-clip-rail-line {')).toContain('cursor: grab');
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('height: 4px');
-    // v2.0.1 v7: the line sits flush at the row top (`top: 0`) in the 6px
-    // band — the SAME position as the track Key Rail segment and every other
-    // rail family, so all rails share one baseline.
-    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('top: 0');
+    // v2.0.1 v7: the line sits flush at the row top in the 6px band — the
+    // SAME position as the track Key Rail segment and every other rail
+    // family, so all rails share one baseline. The pseudo-element pins
+    // left/right too or its auto width collapses to 0px.
+    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('inset: 0 0 auto 0');
     // 49-06 (UAT round 7): the RESTING line is #195991; v7 retires the orange
     // selected line for the brighter Bg blue (#3F8FD0), matching the rail
     // palette law. The rail's own line does NOT change during a move/resize —

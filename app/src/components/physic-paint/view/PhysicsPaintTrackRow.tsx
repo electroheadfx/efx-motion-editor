@@ -212,6 +212,39 @@ const TRACK_ROW_CELL_FILL_CLASS: Record<TrackRowCellState, string> = {
 
 const EMPTY_TRACK_ROW_RAIL_SEGMENTS: readonly KeyRailSegment[] = Object.freeze([]);
 const EMPTY_TRACK_ROW_LOOP_LINES: readonly TrackRowLoopLine[] = Object.freeze([]);
+const EMPTY_GHOST_SOURCE_KEY_IDS: ReadonlySet<string> = new Set<string>();
+
+/**
+ * v2.0.1 UAT (ghost-key fix): a clip source key whose physical frame sits
+ * outside every visible range of every clip that references it is internal
+ * source payload, not a timeline key. It must not paint as an ordinary key
+ * cell (the green "keys which do not exist" on non-active rows).
+ */
+function resolveGhostSourceKeyIds(layerId: string, trackId: string): ReadonlySet<string> {
+  const clips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
+  if (clips.length === 0) return EMPTY_GHOST_SOURCE_KEY_IDS;
+  const rangesByKeyId = new Map<string, { start: number; endExclusive: number }[]>();
+  for (const clip of clips) {
+    const ranges = clip.visibleRanges;
+    if (!ranges || ranges.length === 0) continue;
+    for (const keyId of clip.sourceKeyIds) {
+      const existing = rangesByKeyId.get(keyId);
+      if (existing) existing.push(...ranges);
+      else rangesByKeyId.set(keyId, [...ranges]);
+    }
+  }
+  if (rangesByKeyId.size === 0) return EMPTY_GHOST_SOURCE_KEY_IDS;
+  const frameByKeyId = new Map(
+    physicPaintStore.getRotoRealKeyRecords(layerId, trackId).map((record) => [record.keyId, record.appFrame]),
+  );
+  const ghosts = new Set<string>();
+  for (const [keyId, ranges] of rangesByKeyId) {
+    const frame = frameByKeyId.get(keyId);
+    if (frame === undefined) continue;
+    if (!ranges.some((range) => frame >= range.start && frame < range.endExclusive)) ghosts.add(keyId);
+  }
+  return ghosts.size === 0 ? EMPTY_GHOST_SOURCE_KEY_IDS : ghosts;
+}
 
 /**
  * One read-only Loop Clip rail line on a non-active row: the same drawn extent
@@ -587,6 +620,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const loopVisuals = kind === 'paint' && layerId
     ? resolveTrackRowLoopVisuals(layerId, trackId, frameCells)
     : EMPTY_TRACK_ROW_LOOP_VISUALS;
+  const ghostSourceKeyIds = kind === 'paint' && layerId
+    ? resolveGhostSourceKeyIds(layerId, trackId)
+    : EMPTY_GHOST_SOURCE_KEY_IDS;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
   // of the ownership inputs of the cell matrix. Loop coverage comes from the
@@ -648,9 +684,14 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             // studio-realm-divergence: a real key's cell carries its identity so
             // a key grab starts here (the same concept as a rail grab — no need
             // to activate this track first). The cross-track resolver reads it.
-            const keyRecord = kind === 'paint' && layerId
+            const rawKeyRecord = kind === 'paint' && layerId
               ? physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame)
               : null;
+            // v2.0.1 UAT: ghost source records paint as empty cells — never as
+            // an ordinary green key with no rail over it.
+            const keyRecord = rawKeyRecord !== null && ghostSourceKeyIds.has(rawKeyRecord.keyId)
+              ? null
+              : rawKeyRecord;
             // UAT round 10: linked-loop cells carry the same repeat/source
             // classes as the active lane — the repeat design (gray + dot)
             // never changes when the track is selected or not.
@@ -675,11 +716,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                 repeatInstance: loopVisuals.repeatByFrame.get(frame) ?? 0,
                 isRealKey: keyRecord !== null,
                 isGenerated: state === 'generated',
-                isCachedOnly: state === 'cached' && keyRecord === null,
+                // v2.0.1 UAT: stale cached pixels left by a deleted key must
+                // read EMPTY, not interp — cached-only is not a rail state.
+                isCachedOnly: false,
               });
               cellStyle = timelineRailCellStyle(
                 railCellPresentation,
-                resolveTimelineRailPalette(railCellType, false),
+                resolveTimelineRailPalette(railCellType, 'unselected'),
                 false,
               ) as unknown as CSSProperties;
             }

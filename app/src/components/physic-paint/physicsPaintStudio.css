@@ -2358,6 +2358,13 @@ button.destructive {
    their content. A static render-time state rule — never a runtime measurement. */
 .physics-paint-play-script-surface-tall { height: auto; }
 
+/* v2.0.1 UAT: the reduced Standard Edit Rail surface carries one Cycle field —
+   size the modal to its content instead of the fixed 700×660 creation shell. */
+.physics-paint-play-script-surface-compact {
+  width: 420px;
+  height: auto;
+}
+
 /* 48px header: badge + title left, range meta + Close right, drag handle. */
 .physics-paint-play-script-header {
   display: flex;
@@ -3051,8 +3058,20 @@ button.destructive {
 }
 
 .physics-paint-play-script-cycle-field {
-  flex: 0 0 156px;
-  width: 156px;
+  flex: 0 0 170px;
+  width: 170px;
+}
+
+/* v2.0.1 UAT: the reduced Standard surface sizes to its content — the Cycle
+   field spans the card instead of sitting in a fixed 156px column. */
+.physics-paint-play-script-surface-compact .physics-paint-play-script-cycle-field {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+/* The reduced card carries one stepper row — no 150px timing hero. */
+.physics-paint-play-script-surface-compact .physics-paint-play-script-card-timing {
+  height: auto;
 }
 
 .physics-paint-play-script-timing-divider {
@@ -3260,6 +3279,43 @@ button.destructive {
   padding: 0 2px !important;
   border-radius: 8px !important;
   background: var(--ps-inset) !important;
+}
+
+/* v2.0.1 UAT: every Cycle input is a numeric stepper (− value +), not a
+   slider. Label left, pill right, themed for the modal's dark surface. */
+.physics-paint-play-script-dialog .physics-paint-play-script-cycle-label {
+  flex: 0 0 auto;
+  color: var(--ps-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-cycle-stepper {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-cycle-stepper .numeric-stepper-pill {
+  height: 28px !important;
+  border-radius: 8px !important;
+  border-color: var(--ps-border) !important;
+  background: var(--ps-inset) !important;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-cycle-stepper .numeric-stepper-input {
+  color: var(--ps-fg) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.physics-paint-play-script-dialog .physics-paint-play-script-cycle-stepper .numeric-stepper-button {
+  color: var(--ps-muted) !important;
 }
 
 .physics-paint-play-script-dialog .physics-paint-play-script-slim-stepper .slider-stepper-label-row {
@@ -4717,9 +4773,10 @@ button.destructive {
   flex: 0 0 54px;
   box-sizing: border-box;
   align-self: stretch;
-  /* v2.0.1 v7: the label sits 4px right of the tick, which is centred on
-     the frame cell (x + 8). */
-  padding-left: 12px;
+  /* v2.0.1 v7: the number is centred on the tick, which is centred on the
+     frame cell (x + 8). The label is absolutely positioned so it can straddle
+     the tick instead of starting 4px right of it. */
+  padding-left: 0;
   color: #eceff2;
   font-size: 10px;
   font-weight: 400;
@@ -4731,6 +4788,15 @@ button.destructive {
   /* The numbers are painted OVER the stain; they carry no hit-testing — the
      stain body and plain band receive every pointer event via the ruler. */
   pointer-events: none;
+}
+
+.physics-paint-ruler-label {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  transform: translateX(-50%);
+  line-height: 36px;
+  white-space: nowrap;
 }
 
 .physics-paint-ruler-tick::after {
@@ -4797,17 +4863,17 @@ button.destructive {
   outline-offset: -1px;
 }
 
-/* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
-   the visible ruler-through-Bg band (the rows-region scrolls vertically
-   INSIDE itself; timeline-scroll only scrolls horizontally, so the bar rides
-   the horizontal scroll with the content). v2.0.1 v7: the locked #2868FC
-   blue line; z-index 30 clears the cell/rail layers while staying under
-   tooltips. pointer-events: none is the hard contract (T-s52-03): cells,
-   rails, capsules, and the ruler receive every click/drag as before. */
+/* 260827-s52 Task 2: the playhead bar. v2.0.1 UAT: the blue line is limited
+   to the 36px ruler band — it no longer draws across the keys/rows (the
+   full-height line cut every cell and read as a decoration on the current
+   key). The scrub handle stays inside the ruler, so seeking is unchanged.
+   pointer-events: none is the hard contract (T-s52-03): cells, rails,
+   capsules, and the ruler receive every click/drag as before. */
 .physics-paint-playhead-bar {
   position: absolute;
   top: 0;
-  bottom: 0;
+  bottom: auto;
+  height: 36px;
   width: 2px;
   background: #2868FC;
   pointer-events: none;
@@ -4875,8 +4941,9 @@ button.destructive {
 .physics-paint-loop-clip-rail-segment {
   position: absolute;
   /* v2.0.1 v7: the rail line sits at the row top inside the 6px band; the
-     colour comes from the data-attribute palette. */
-  top: 0;
+     colour comes from the data-attribute palette. left/right must be pinned:
+     an absolute empty span with auto width collapses to 0px. */
+  inset: 0 0 auto 0;
   height: 4px;
   border-radius: 2px;
   background: var(--rail-line, #6C8A35);
@@ -4894,6 +4961,9 @@ button.destructive {
 .physics-paint-rail-target[data-rail-type="standard"],
 .physics-paint-roto-cell[data-rail-type="standard"] {
   --rail-line: #6C8A35; --rail-key: #5E823F; --rail-key-rim: #8FA94F;
+  /* v2.0.1 UAT: selected rail line reads a very light tint of this rail's
+     own colour (not white). */
+  --rail-line-light: #C5E27B;
 }
 .physics-paint-rail-target[data-rail-type="motion"][data-rail-selected="true"],
 .physics-paint-roto-cell[data-rail-type="motion"][data-rail-selected="true"] {
@@ -4902,6 +4972,7 @@ button.destructive {
 .physics-paint-rail-target[data-rail-type="motion"],
 .physics-paint-roto-cell[data-rail-type="motion"] {
   --rail-line: #B27A1A; --rail-key: #A86F12; --rail-key-rim: #CE9440;
+  --rail-line-light: #F8C570;
 }
 .physics-paint-rail-target[data-rail-type="static"][data-rail-selected="true"],
 .physics-paint-roto-cell[data-rail-type="static"][data-rail-selected="true"] {
@@ -4910,6 +4981,7 @@ button.destructive {
 .physics-paint-rail-target[data-rail-type="static"],
 .physics-paint-roto-cell[data-rail-type="static"] {
   --rail-line: #66459E; --rail-key: #5E419B; --rail-key-rim: #8A6BC4;
+  --rail-line-light: #B395F9;
 }
 .physics-paint-rail-target[data-rail-type="reveal"][data-rail-selected="true"],
 .physics-paint-roto-cell[data-rail-type="reveal"][data-rail-selected="true"] {
@@ -4918,6 +4990,32 @@ button.destructive {
 .physics-paint-rail-target[data-rail-type="reveal"],
 .physics-paint-roto-cell[data-rail-type="reveal"] {
   --rail-line: #24689E; --rail-key: #2266A0; --rail-key-rim: #4C8FC2;
+  --rail-line-light: #77BEFF;
+}
+
+/* v2.0.1 UAT: three brightness tiers. Rails on the ACTIVE track read the
+   one-step-brighter palette; the selected rail keeps the full bright palette
+   (the :not() keeps that rule in charge); inactive tracks stay at the base.
+   Cells take the same decision through their inline custom properties. */
+.physics-paint-rail-target[data-rail-type="standard"][data-rail-active="true"]:not([data-rail-selected="true"]) {
+  --rail-line: #89AE35; --rail-key: #72A34C; --rail-key-rim: #9ABE41;
+}
+.physics-paint-rail-target[data-rail-type="motion"][data-rail-active="true"]:not([data-rail-selected="true"]) {
+  --rail-line: #D3901E; --rail-key: #CE8A1A; --rail-key-rim: #E6B265;
+}
+.physics-paint-rail-target[data-rail-type="static"][data-rail-active="true"]:not([data-rail-selected="true"]) {
+  --rail-line: #7850CA; --rail-key: #744EC8; --rail-key-rim: #A688E1;
+}
+.physics-paint-rail-target[data-rail-type="reveal"][data-rail-active="true"]:not([data-rail-selected="true"]) {
+  --rail-line: #2981CE; --rail-key: #2880CF; --rail-key-rim: #73B1E0;
+}
+
+/* A genuinely selected rail paints a VERY LIGHT tint of its own rail colour
+   (not white) over the bright rail-colour glow, so the selected rail is
+   unambiguous against its siblings while keeping its type identity. */
+.physics-paint-rail-target[data-rail-selected="true"] .physics-paint-rail-segment {
+  background: var(--rail-line-light, #C5E27B);
+  box-shadow: 0 0 6px var(--rail-line, #6C8A35);
 }
 
 /* The component drag ghosts carry data-rail-type but no rail-kind class, so
@@ -4993,24 +5091,10 @@ button.destructive {
   outline: none;
 }
 
-/* 43.6 D-01 anchor tick: painted on the set anchor rail's leading edge so the
-   user can always identify which member anchors the range/union expansion.
-   2px wide x 4px high #F2F5F7 at 70% opacity, clamped to the 4px pill at the
-   row top (v2.0.1 v7); aria-hidden in markup and pointer-events none here so
-   the 12px hit target stays unchanged. Shared across every rail family via
-   the shared class. */
-.physics-paint-rail-anchor-tick {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1;
-  width: 2px;
-  height: 4px;
-  border-radius: 1px;
-  background: #f2f5f7;
-  opacity: 0.7;
-  pointer-events: none;
-}
+/* v2.0.1 UAT: the white set-anchor tick was removed from every Paint rail.
+   It painted as a white cap at the start of the rail line — the user reads
+   it as a stray decoration, and the bright selected palette already names
+   the selected/set rail. No replacement graphic is drawn. */
 
 /* 43.3 G2 ghost rail: presentation-only destination proposal. Painted above
    the accepted 3px rail paint (layer 7) and below the rail focus ring and
@@ -5166,8 +5250,9 @@ button.destructive {
   content: '';
   position: absolute;
   /* v2.0.1 v7: the line sits at the row top inside the 6px band, matching
-     the Paint rails' 4px radius-2 pill. */
-  top: 0;
+     the Paint rails' 4px radius-2 pill. left/right must be pinned or the
+     auto-width pseudo-element collapses to 0px. */
+  inset: 0 0 auto 0;
   height: 4px;
   border-radius: 2px;
   /* 49-06 (UAT round 7): the RESTING line color is #195991 (the user's
@@ -5320,8 +5405,9 @@ button.destructive {
 .physics-paint-key-rail-segment {
   position: absolute;
   /* v2.0.1 v7: the rail line sits at the row top; the colour comes from the
-     data-attribute palette (bright when selected, dim otherwise). */
-  top: 0;
+     data-attribute palette (bright when selected, dim otherwise). left/right
+     must be pinned: an absolute empty span with auto width collapses to 0px. */
+  inset: 0 0 auto 0;
   height: 4px;
   border-radius: 2px;
   background: var(--rail-line, #6C8A35);
@@ -5415,10 +5501,11 @@ button.destructive {
   position: relative;
   display: grid;
   align-items: start;
-  /* v2.0.1 v7: compact 30px row — the 6px rail band sits at the row top
-     (the 4px rail line at top 0) and the 22px cells start 6px down, so a
-     rail/cell click is never ambiguous. */
-  height: 30px;
+  /* v2.0.1 v7: compact row — the 6px rail band sits at the row top (the 4px
+     rail line at top 0) and the 22px cells start 6px down, so a rail/cell
+     click is never ambiguous. v2.0.1 UAT: 31px — the extra bottom pixel
+     separates stacked track rails from the cells above them. */
+  height: 31px;
   padding-top: 6px;
   background: transparent;
 }
@@ -6646,8 +6733,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
    header cell lives in the pinned header column (PhysicsPaintTrackRowHeader),
    so the row itself carries no label column. */
 .physics-paint-track-row {
-  height: 30px;
-  min-height: 30px;
+  height: 31px;
+  min-height: 31px;
   /* v2.0.1 v7 (locked): row separator lines are removed — rows sit on the
      region surface with no inset shadow and no background fill. */
   box-shadow: none;
@@ -6666,8 +6753,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   align-items: start;
   /* v2.0.1 v7: the row lane matches the active lane's layout exactly — 6px
      rail band on top, 22px cells below (padding-top pushes the cells to
-     y6-30), full 30px height (100% of the row). Same rail line position on
-     every track at all times. */
+     y6-28), full row height. Same rail line position on every track at all
+     times. */
   height: 100%;
   padding-top: 6px;
   box-sizing: border-box;
@@ -6726,10 +6813,10 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   box-shadow: none;
 }
 
-/* One 30px header cell in the pinned header column. Every row — including
-   the active lane and the fixed Background row — gets exactly one header
-   cell showing its track name (UI-SPEC header column layout). The 30px
-   height matches the frame lanes so headers align 1:1 with their rows.
+/* One header cell in the pinned header column. Every row — including the
+   active lane and the fixed Background row — gets exactly one header cell
+   showing its track name (UI-SPEC header column layout). The 31px height
+   matches the frame lanes so headers align 1:1 with their rows.
    47-01 mockup redesign: reorder grip + truncated name + hover/replace
    tools (eye/pencil/copy/trash); a reserved 3px left border keeps content
    from shifting when the active accent appears. */
@@ -6738,8 +6825,8 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 30px;
-  min-height: 30px;
+  height: 31px;
+  min-height: 31px;
   padding: 0 6px 0 5px;
   border-bottom: 1px solid #4C4E50;
   border-left: 3px solid transparent;
@@ -6892,7 +6979,7 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 /* 47-02 Task 2 (TML-05, D-08): the live reorder insertion indicator — a 2px
    accent line at the target row boundary inside the pinned header band. The
    band is the containing block (position: relative), the top lands on the
-   row boundary via the inline style (index * 30px row pitch), and it scrolls
+   row boundary via the inline style (index * 31px row pitch), and it scrolls
    with the band's content while a header-grab drag is live. */
 .physics-paint-header-rows {
   position: relative;
@@ -7405,16 +7492,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   background: #252A30;
 }
 
-.physics-paint-roto-cell.starts-interpolation-segment .physics-paint-roto-segment-start-cut {
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 1px;
-  width: 2px;
-  border-radius: 1px;
-  background: #6f90ff;
-  pointer-events: none;
-}
+/* v2.0.1 UAT: the blue interpolation-segment start cut is retired. It painted
+   a permanent blue marker on the first key of every rail; the break is
+   already expressed by the 2px gap/new rail start. */
 
 .physics-paint-roto-cell.roto-fill-cached,
 .physics-paint-roto-cell.roto-fill-cached-only {
@@ -7510,8 +7590,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 
 .physics-paint-roto-cell[data-cell-kind="interp"]::before {
   position: absolute;
-  top: 10px;
-  left: 2px;
+  /* The 1px border leaves a 14x20 padding box; 1/9px centres the 12x2 dash. */
+  top: 9px;
+  left: 1px;
   width: 12px;
   height: 2px;
   border: 0;
@@ -7523,7 +7604,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
 .physics-paint-roto-cells .physics-paint-roto-cell[data-cell-kind="cycle"],
 .physics-paint-track-row-cells .physics-paint-roto-cell[data-cell-kind="cycle"] {
   background: var(--cycle-fill, #2F363D) !important;
-  border-color: var(--cycle-border, #4E5760) !important;
+  /* v2.0.1 UAT: a cycle/repeat cell wears the owning rail's colour on its
+     border — the gray-only rim made the repeat family read as empty. */
+  border-color: var(--rail-line, #6C8A35) !important;
   box-shadow: none;
 }
 
@@ -7533,19 +7616,37 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   border-color: #3A4047 !important;
 }
 
-.physics-paint-roto-cell[data-cell-kind="cycle"]::before {
+/* A deleted key leaves stale cache behind; the legacy cached/generated
+   ::before rings and dashes must not leak into an empty cell. */
+.physics-paint-roto-cell[data-cell-kind="empty"]::before {
   content: none;
 }
 
-.physics-paint-roto-cell[data-cell-kind="cycle"]::after {
+/* v2.0.1 UAT: cycle/repeat cells carry a CENTERED circle (both axes) — the
+   top-right dot read as a badge and broke the cell rhythm. */
+.physics-paint-roto-cell[data-cell-kind="cycle"]::before {
   position: absolute;
-  top: 3px;
-  right: 2px;
-  width: 4px;
-  height: 4px;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--rail-line, #6C8A35);
+  transform: translate(-50%, -50%);
   content: '';
+}
+
+/* v2.0.1 UAT: the in-between dash and the cycle circle join the white
+   current/selected marker, so the glyph reads on the highlighted cell. */
+.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="interp"]::before,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected[data-cell-kind="interp"]::before,
+.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="cycle"]::before,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected[data-cell-kind="cycle"]::before {
+  background: #EAF0FF;
+}
+
+.physics-paint-roto-cell[data-cell-kind="cycle"]::after {
+  content: none;
 }
 
 /* Cycle parity — unselected rails first, selected-parity after (the selected
@@ -7587,32 +7688,56 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   animation: roto-cell-pending 1.2s ease-in-out 4;
 }
 
-/* Cursor + multi-select (v2.0.1 v7, README section 7.3 default): no orange.
-   The marker is a rail-colour inset ring plus a brightness step — never a
-   fill — so the cell keeps its key/interp/cycle/empty family colour. */
-.physics-paint-roto-cell.current,
-.physics-paint-roto-cell.selected,
-.physics-paint-roto-cell.current:hover,
-.physics-paint-roto-cell.current:focus,
-.physics-paint-roto-cell.current:focus-visible,
-.physics-paint-roto-cell.selected:hover,
-.physics-paint-roto-cell.selected:focus,
-.physics-paint-roto-cell.selected:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--rail-line, #8A939C);
+/* Cursor + multi-select (v2.0.1 UAT): no orange. The marker is a bright
+   WHITE border plus a soft glow plus a brightness step, so a key, an
+   in-between and an empty current frame all read the same. The white belongs
+   to the selection marker only — the rail's start carries no white tick. */
+.physics-paint-roto-cells .physics-paint-roto-cell.current,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected,
+.physics-paint-roto-cells .physics-paint-roto-cell.current:hover,
+.physics-paint-roto-cells .physics-paint-roto-cell.current:focus,
+.physics-paint-roto-cells .physics-paint-roto-cell.current:focus-visible,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected:hover,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected:focus,
+.physics-paint-roto-cells .physics-paint-roto-cell.selected:focus-visible {
+  border-color: #EAF0FF !important;
+  box-shadow: 0 0 7px 1px var(--rail-line, #8A939C);
   filter: brightness(1.18);
 }
 
-/* The cell buttons' default blue focus outline is suppressed — the inset
-   ring plus brightness is the whole selection/focus treatment. */
+/* An empty current frame has no rail of its own; the selection glow must not
+   borrow the row's green — it stays white like every other current marker. */
+.physics-paint-roto-cells .physics-paint-roto-cell.current[data-cell-kind="empty"],
+.physics-paint-roto-cells .physics-paint-roto-cell.selected[data-cell-kind="empty"] {
+  box-shadow: 0 0 7px 1px rgba(234, 240, 255, 0.55);
+}
+
+/* v2.0.1 UAT: the current-frame marker is a dedicated overlay (never a cell
+   class) — selection bookkeeping can no longer make it flash and vanish.
+   White rounded border + soft glow, above cells/rails, below the playhead. */
+.physics-paint-current-frame-outline {
+  position: absolute;
+  top: 6px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 22px;
+  border: 1px solid #EAF0FF;
+  border-radius: 3px;
+  box-shadow: 0 0 7px 1px rgba(234, 240, 255, 0.55);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* The cell buttons' default blue focus outline is suppressed — the white
+   border plus glow plus brightness is the whole selection/focus treatment. */
 .physics-paint-roto-cell:focus,
 .physics-paint-roto-cell:focus-visible {
   outline: none;
 }
 
 /* 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
-   lighter blue-gray — they are NOT the selection itself (which is the inset
-   ring cursor treatment) but show WHICH frames are the mirrors of the
-   clicked key. */
+   lighter blue-gray — they are NOT the selection itself (which is the white
+   cursor marker) but show WHICH frames are the mirrors of the clicked key. */
 .physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current):not(.roto-linked-repeat) {
   background: #4b6382;
 }

@@ -1,4 +1,5 @@
 import type { Ref } from 'preact';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { SliderStepper } from '../../shared/SliderStepper';
 import type {
   RotoPlayScriptController,
@@ -523,21 +524,21 @@ export function PaintTimingCard(props: {
         </div>
         <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
         <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
-          <SliderStepper
+          <NumericStepper
             id="physics-play-script-repeat"
-            class="physics-paint-play-script-compact-stepper"
+            class="physics-paint-play-script-cycle-stepper"
             inputRef={props.repeatInputRef}
-            label="Cycle"
             ariaLabel="Cycle"
             value={cycleValue}
             onChange={(value) => { if (!props.stacking) props.playScript.repeatText.value = String(value); }}
             min={1}
-            sliderMax={16}
             step={1}
             disabled={props.busy || props.stacking || props.playScript.infinity.value}
             ariaInvalid={!props.stacking && Boolean(props.playScript.repeatError.value)}
             ariaDescribedBy={!props.stacking && props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
-          />
+          >
+            <span class="physics-paint-play-script-cycle-label">Cycle</span>
+          </NumericStepper>
           <div class="physics-paint-play-script-timing-foot">
             {dialogSwitch({
               id: 'physics-play-script-infinity',
@@ -567,21 +568,21 @@ export function ReducedCycleCard(props: {
     <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
       <div class="physics-paint-play-script-timing-body">
         <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
-          <SliderStepper
+          <NumericStepper
             id="physics-play-script-repeat"
-            class="physics-paint-play-script-compact-stepper"
+            class="physics-paint-play-script-cycle-stepper"
             inputRef={props.repeatInputRef}
-            label="Cycle"
             ariaLabel="Cycle"
             value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
             onChange={(value) => { props.playScript.repeatText.value = String(value); }}
             min={1}
-            sliderMax={16}
             step={1}
             disabled={props.busy || props.playScript.infinity.value}
             ariaInvalid={Boolean(props.playScript.repeatError.value)}
             ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
-          />
+          >
+            <span class="physics-paint-play-script-cycle-label">Cycle</span>
+          </NumericStepper>
           <div class="physics-paint-play-script-timing-foot">
             {dialogSwitch({
               id: 'physics-play-script-infinity',
@@ -631,20 +632,20 @@ export function RevealTimingCard(props: {
         </div>
         <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
         <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
-          <SliderStepper
+          <NumericStepper
             id="physics-play-script-repeat"
-            class="physics-paint-play-script-compact-stepper"
-            label="Cycle"
+            class="physics-paint-play-script-cycle-stepper"
             ariaLabel="Cycle"
             value={dialogIntegerValue(props.playScript.repeatText.value, 1)}
             onChange={(value) => { props.playScript.repeatText.value = String(value); }}
             min={1}
-            sliderMax={16}
             step={1}
             disabled={props.busy || props.playScript.infinity.value}
             ariaInvalid={Boolean(props.playScript.repeatError.value)}
             ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
-          />
+          >
+            <span class="physics-paint-play-script-cycle-label">Cycle</span>
+          </NumericStepper>
           <div class="physics-paint-play-script-timing-foot">
             {dialogSwitch({
               id: 'physics-play-script-infinity',

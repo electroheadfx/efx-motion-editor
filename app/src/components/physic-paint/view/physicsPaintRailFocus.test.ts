@@ -14,11 +14,12 @@ function cssRule(selector: string): string {
   return css.slice(start, end === -1 ? css.length : end + 1);
 }
 
-// Documented rail geometry (v2.0.1 v7): a 30px row with a 6px rail band. The
-// 4px rail line sits at the row top; the cells start 6px down. The selection
-// ring was removed in 47 close-out and v7 keeps the no-ring contract: the
-// selected rail reads the bright data-attribute palette, never an orange fill.
-const LANE_HEIGHT_PX = 30;
+// Documented rail geometry (v2.0.1 v7): a 6px rail band in a 31px row (30px
+// layout + 1px between stacked rows). The 4px rail line sits at the row top;
+// the cells start 6px down. The selection ring was removed in 47 close-out and
+// v7 keeps the no-ring contract: the selected rail reads the data-attribute
+// palette, never an orange fill.
+const LANE_HEIGHT_PX = 31;
 const TARGET_HEIGHT_PX = 6;
 const SEGMENT_TOP_PX = 0;
 const SEGMENT_HEIGHT_PX = 4;
@@ -54,8 +55,8 @@ describe('shared rail focus treatment (43.4 defect 8 / 47 close-out UAT round 10
     expect(css).not.toContain('.physics-paint-loop-clip-rail-target:focus-visible {');
   });
 
-  it('keeps the documented 30px lane geometry (6px band, 4px rail line at the row top)', () => {
-    expect(LANE_HEIGHT_PX).toBe(30);
+  it('keeps the documented 31px lane geometry (6px band, 4px rail line at the row top)', () => {
+    expect(LANE_HEIGHT_PX).toBe(31);
     expect(TARGET_HEIGHT_PX).toBe(6);
     // v2.0.1 v7: the 4px radius-2 line is flush at the row top and fits
     // inside the 6px band; the cells start at the band height (6px), so the

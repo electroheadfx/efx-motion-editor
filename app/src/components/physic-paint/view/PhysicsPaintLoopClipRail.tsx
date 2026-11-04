@@ -335,6 +335,7 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         aria-pressed={props.selected}
         data-rail-first-frame={range.placementStart}
         data-rail-type={railType}
+        data-rail-active="true"
         data-rail-selected={props.selected ? 'true' : undefined}
         onPointerDown={(event) => {
           // 43.6-03 D-08: a move member hands the pointer-down to the batch
@@ -360,9 +361,6 @@ function PhysicsPaintLoopClipRailTarget(props: RailTargetProps) {
         onBlur={tooltip.onBlur}
       >
         <span class="physics-paint-rail-segment physics-paint-loop-clip-rail-segment" aria-hidden="true" />
-        {props.isSetAnchor ? (
-          <span class="physics-paint-rail-anchor-tick" aria-hidden="true" />
-        ) : null}
       </button>
       {ghost.active ? (
         <span

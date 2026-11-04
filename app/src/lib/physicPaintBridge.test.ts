@@ -2221,6 +2221,127 @@ describe('physicPaintBridge', async () => {
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
   });
 
+  it('accepts a Rail source-key insert on a rail carrying painted overrides (58 UAT)', async () => {
+    // Live parent-rejection: "Painted Rail overrides cannot be retimed safely."
+    // The child staged the exact canonical proposal, but the parent's canonical
+    // resolver got no Group override records — every override-carrying rail
+    // insert (and gap insert) was rejected after acceptance.
+    const layer = physicLayer();
+    mockLayers([layer], null);
+    sequenceStore.add({
+      id: 'bridge-rail-insert-override-sequence',
+      kind: 'fx',
+      extrapolation: 'hold',
+      name: 'Bridge rail insert override authority',
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 10,
+      outFrame: 60,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const records = [
+      makePhysicalRecord('A', 10),
+      makePhysicalRecord('B', 12),
+    ];
+    const groupOverrideRecords = [makePhysicalRecord('override-11', 11)];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips = [{
+      loopId: 'loop-1',
+      placementStart: 10,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 2 as const,
+      mode: 'static' as const,
+      syncState: 'synchronized' as const,
+      provenanceState: 'attached' as const,
+      phaseOrigin: 10,
+      originalEndExclusive: 16,
+      visibleRanges: [{ start: 10, endExclusive: 16 }],
+      frameOverrides: [{ appFrame: 11, keyId: 'override-11' }],
+    }];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity: 50,
+      realKeyRecords: records,
+      groupOverrideRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 10,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        loopClips,
+        [],
+        groupOverrideRecords,
+      ),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 10 });
+    if (!launch.ok) throw new Error('Expected physical launch authority.');
+    const intent = {
+      kind: 'paste-key' as const,
+      destinationAppFrame: 11,
+      destinationKeyId: null,
+      newKeyId: 'new-phase',
+      clipboardPayload: records[0]!.payload,
+      railInsertGroupId: 'loop-1',
+    };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: 50,
+      capacity: 50,
+      interpolationEnabled: false,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+      groupOverrideRecords,
+    });
+    expect(resolution.ok, resolution.ok ? undefined : resolution.failure.text).toBe(true);
+    if (!resolution.ok) return;
+    const proposal = resolution.proposal;
+    // The inserted phase replaces the destination override (moved to a real
+    // source key), so the whole override record collection empties.
+    expect(proposal.nextGroupOverrideRecords).toEqual([]);
+    expect(proposal.nextLoopClips?.[0]?.frameOverrides).toEqual([]);
+
+    const leaseToken = acquirePhysicalLease(layer.id);
+    const payload = {
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'rail-insert-with-override',
+      operationKind: 'paste-key',
+      intent,
+      layerId: layer.id,
+      leaseToken,
+      startFrame: proposal.selectedAppFrame ?? 0,
+      cursorAppFrame: proposal.cursorAppFrame,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
+      records: (proposal.nextRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      groupOverrideRecords: (proposal.nextGroupOverrideRecords ?? []).map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: proposal.nextLoopClips ?? loopClips,
+      incomingInterpolationBreakKeyIds: proposal.nextIncomingInterpolationBreakKeyIds ?? [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+      ...(proposal.semanticDelta ? { semanticDelta: proposal.semanticDelta } : {}),
+    } as Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
+
+    const accepted = await applyPhysicPaintPayload(payload);
+    expect(accepted.ok, accepted.ok ? undefined : accepted.error).toBe(true);
+    const document = physicPaintStore.getRotoPhysicalDocument(layer.id, TEST_TRACK_ID);
+    expect(document?.groupOverrideRecords).toEqual([]);
+    expect(document?.loopClips[0]?.frameOverrides).toEqual([]);
+    expect(document?.realKeyRecords.some((record) => record.keyId === 'new-phase' && record.appFrame === 11)).toBe(true);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(leaseToken)).toBe(true);
+  });
+
   it('accepts and replays a moved Key Rail through the parent replay-target snapshot (43.4 defect 2)', async () => {
     const layer = physicLayer();
     mockLayers([layer], null);
@@ -4428,15 +4549,13 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)).toEqual(test.proposed.proposal);
     expect(physicPaintStore.getRotoPhysicalDocument(test.layer.id, TEST_TRACK_ID)?.cursorAppFrame).toBe(test.childCursorAppFrame);
     if (selectionKind === 'frame' && repeat === 3) {
-      // 58 (G-02): the F0 fixture anchors its source cycle at phaseOrigin, so
-      // the phase delete contracts the 3-frame cycle to 2 (6 frames over three
-      // repeats). The F8 fixture anchors its sources elsewhere and keeps the
-      // legacy span.
+      // v2.0.1 UAT: a phase delete leaves an empty gap and keeps the rail
+      // span — the source cycle is never contracted.
       expect(physicPaintStore.getRotoPhysicalLoopClips(test.layer.id, TEST_TRACK_ID)[0]).toMatchObject({
         loopId: test.group.loopId,
         placementStart,
         phaseOrigin: placementStart,
-        originalEndExclusive: placementStart + (placementStart === 0 ? 6 : 9),
+        originalEndExclusive: placementStart + 9,
       });
     }
     expect(physicPaintStore.releaseRotoPhysicalOperationLease(test.leaseToken)).toBe(true);

@@ -1045,6 +1045,18 @@ describe('PhysicsPaintPlayScriptDialog Enter confirm gate (WR-02)', () => {
     expect(busy.controller.confirm).not.toHaveBeenCalled();
   });
 
+  it('omits the progress bar and Run-details info control on the reduced Cycle surface', () => {
+    // v2.0.1 UAT: the Edit Rail / Key Rail Cycle modal has no run to report.
+    const { controller } = createFakeController({ dialogMode: 'key-rail-create', loopReadout: 'Cycle 4f' });
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-progress-track'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-readout'))).toHaveLength(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-readout-info'))).toHaveLength(0);
+    // The status/error slot and the actions stay.
+    expect(findAll(tree, byClass('physics-paint-play-script-progress-status')).length).toBeGreaterThan(0);
+    expect(findAll(tree, byClass('physics-paint-play-script-actions')).length).toBeGreaterThan(0);
+  });
+
   // 58-08 (WR-02): the shared gate must not leak the reduced-form exemption into
   // the full creation, Reveal, or stacking surfaces.
   it('confirms on Enter on the default apply surface when nothing blocks', () => {
@@ -1313,6 +1325,17 @@ describe('PhysicsPaintPlayScriptDialog loop-edit mode (S2, D-01)', () => {
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Update Motion')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Run Script')).toHaveLength(0);
     expect(findAll(footer, (vnode) => textOf(vnode) === 'Regenerate source cycle')).toHaveLength(0);
+  });
+
+  it('v2.0.1 UAT: the reduced Standard Rail edit omits the duplicate header range', () => {
+    // The footer status already reads "Loop Clip · F1 · Cycle 3f"; the header
+    // must not repeat it on the compact Cycle surface.
+    const { controller } = createFakeController({
+      dialogMode: 'loop-edit',
+      loopEditTarget: { loopId: 'L1', placementStart: 1, sourceKeyIds: ['S1', 'S2', 'S3'], repeat: 3, mode: 'static' },
+    });
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byClass('physics-paint-play-script-header-range'))).toHaveLength(0);
   });
 
   it('uses Update Motion for a Motion Rail without changing the loop-edit action route', () => {

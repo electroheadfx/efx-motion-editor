@@ -915,10 +915,10 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content;
+      // 2 Paint rows + 1 Bg row = 3 rows × 31px = 93px content;
       // chrome 132px (52.5-01b D-07: ruler band 28 -> 36) → default =
-      // min(132 + 90, 270) = 222px (all rows visible, no dead space, no scroll).
-      expect(String(stripStyle.height)).toBe('222px');
+      // min(132 + 93, 270) = 225px (all rows visible, no dead space, no scroll).
+      expect(String(stripStyle.height)).toBe('225px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -939,7 +939,7 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
 
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
-      // 5 Paint rows + 1 Bg row = 6 rows × 30px = 180px content; default is
+      // 5 Paint rows + 1 Bg row = 6 rows × 31px = 186px content; default is
       // capped at 270px so the canvas keeps room — the rows region scrolls.
       expect(String(stripStyle.height)).toBe('270px');
     });
