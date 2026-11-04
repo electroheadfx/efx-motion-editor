@@ -15,6 +15,13 @@ export interface TimelineRepeatDurationMarker {
   mode: 'progressive' | 'static';
 }
 
+/** Layer-local half-open range of frames inside repeat cycle 2+ — the frames the
+ *  Studio paints as cycle cells (dots). */
+export interface TimelineCycleRange {
+  startFrame: number;
+  frameCount: number;
+}
+
 export interface TimelineState {
   currentFrame: number;
   isPlaying: boolean;
@@ -114,6 +121,7 @@ export interface FxTrackLayout {
   playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
   rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
   repeatDurationMarkers?: TimelineRepeatDurationMarker[];
+  rotoCycleRanges?: TimelineCycleRange[];
   /** One entry per placed document clip (261008-ig1 — was a singleton). */
   soundClips?: readonly TimelineSoundClip[];
   fadeIn?: { duration: number };

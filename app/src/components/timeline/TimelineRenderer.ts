@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker, TimelineRepeatDurationMarker} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker, TimelineCycleRange} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
@@ -727,7 +727,7 @@ export class TimelineRenderer {
   private drawRotoKeyMarkers(
     ctx: CanvasRenderingContext2D,
     rotoKeyFrames: number[],
-    cycleRanges: readonly TimelineRepeatDurationMarker[],
+    cycleRanges: readonly TimelineCycleRange[],
     inFrame: number,
     barX: number,
     barW: number,
@@ -772,6 +772,26 @@ export class TimelineRenderer {
       const startX = (inFrame + range.startFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
       return { startX, endX: startX + range.frameCount * frameWidth };
     });
+    const isCycleX = (x: number): boolean =>
+      cycleSpans.some((span) => x >= span.startX && x < span.endX);
+
+    const strokeRun = (startX: number, endX: number, cycle: boolean): void => {
+      if (endX - startX < 0.5) return;
+      ctx.beginPath();
+      if (cycle) {
+        const amplitude = 2;
+        const period = 10;
+        for (let x = startX; x <= endX; x += 1) {
+          const y = centerY + Math.sin(((x - startX) / period) * Math.PI * 2) * amplitude;
+          if (x === startX) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+      } else {
+        ctx.moveTo(startX, centerY);
+        ctx.lineTo(endX, centerY);
+      }
+      ctx.stroke();
+    };
 
     ctx.strokeStyle = palette.line;
     ctx.lineWidth = 1;
@@ -780,24 +800,19 @@ export class TimelineRenderer {
       const fromX = keyXs[index - 1];
       const toX = keyXs[index];
       if (toX - fromX < 2) continue;
-      const isCycle = cycleSpans.some((span) => {
-        const midX = (fromX + toX) / 2;
-        return midX >= span.startX && midX < span.endX;
-      });
-      ctx.beginPath();
-      if (isCycle) {
-        const amplitude = 2;
-        const period = 10;
-        for (let x = fromX; x <= toX; x += 1) {
-          const y = centerY + Math.sin(((x - fromX) / period) * Math.PI * 2) * amplitude;
-          if (x === fromX) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+      // Split the key-to-key span at every cycle boundary so a mixed span
+      // reads `-~--~--`: straight over interpolated frames, sine over cycles.
+      let runStart = fromX;
+      let runIsCycle = isCycleX(fromX);
+      for (let x = Math.floor(fromX) + 1; x <= toX; x += 1) {
+        const inCycle = isCycleX(x);
+        if (inCycle !== runIsCycle) {
+          strokeRun(runStart, x, runIsCycle);
+          runStart = x;
+          runIsCycle = inCycle;
         }
-      } else {
-        ctx.moveTo(fromX, centerY);
-        ctx.lineTo(toX, centerY);
       }
-      ctx.stroke();
+      strokeRun(runStart, toX, runIsCycle);
     }
 
     ctx.fillStyle = palette.keyFill;
@@ -963,7 +978,7 @@ export class TimelineRenderer {
         this.drawRotoKeyMarkers(
           ctx,
           fxTrack.rotoKeyFrames,
-          fxTrack.repeatDurationMarkers ?? [],
+          fxTrack.rotoCycleRanges ?? [],
           fxTrack.inFrame,
           barX,
           barW,

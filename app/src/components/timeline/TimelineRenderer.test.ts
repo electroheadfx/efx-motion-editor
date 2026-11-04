@@ -164,17 +164,19 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('drawnX.add(stackedKey)');
   });
 
-  it('joins keys with a straight line, and a sine line across a cycle range', () => {
+  it('joins keys with a straight line, splitting to a sine line across cycle frames', () => {
     const code = source();
     const markerSource = code.slice(code.indexOf('private drawRotoKeyMarkers'), code.indexOf('private drawFxTrack'));
 
     // Key-to-key connector at the diamond centre line.
     expect(markerSource).toContain('for (let index = 1; index < keyXs.length; index += 1)');
     expect(markerSource).toContain('ctx.strokeStyle = palette.line');
-    expect(markerSource).toContain('ctx.moveTo(fromX, centerY)');
-    expect(markerSource).toContain('ctx.lineTo(toX, centerY)');
-    // Cycle ranges come from the repeat markers and paint a sinusoid instead.
-    expect(markerSource).toContain('cycleRanges.map(');
+    expect(markerSource).toContain('ctx.lineTo(endX, centerY)');
+    // Per-frame split: straight outside cycle frames, sine inside them. A mixed
+    // span therefore renders `-~--~--` rather than one style for the whole gap.
+    expect(markerSource).toContain('const isCycleX = (x: number): boolean =>');
+    expect(markerSource).toContain('if (inCycle !== runIsCycle)');
+    expect(markerSource).toContain('strokeRun(runStart, x, runIsCycle)');
     expect(markerSource).toContain('Math.sin(');
     expect(markerSource).toContain('const amplitude = 2');
     expect(markerSource).toContain('const period = 10');
@@ -324,12 +326,12 @@ describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)
     );
 
     // UAT 261104: the repeat strip read as a rail line above the bar. The
-    // Editor row shows the bar + labelled key connectors; the repeat ranges
-    // are consumed only to style the connector (sine vs straight), never as a
-    // bar above the row.
+    // Editor row shows the bar + key connectors; cycle ranges only style the
+    // connector runs (sine vs straight), never a bar above the row.
     expect(code).not.toContain('drawPhysicPaintRepeatDurationMarkers');
     expect(code).not.toContain('getTimelineRepeatDurationMarkerGeometry');
-    expect(fxTrackSource).toContain('fxTrack.repeatDurationMarkers ?? []');
+    expect(fxTrackSource).toContain('fxTrack.rotoCycleRanges ?? []');
+    expect(fxTrackSource).not.toContain('fxTrack.repeatDurationMarkers');
     for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip']) {
       expect(fxTrackSource).not.toContain(interactionSurface);
     }
@@ -477,6 +479,16 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     // The Editor row is per LAYER: keys from every rail/track, one per frame.
     expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames)
       .toEqual([1, 3, 5]);
+  });
+
+  it('derives cycle ranges from one source cycle after the loop phase origin', () => {
+    const code = frameMapSource();
+
+    // The Studio paints repeatInstance > 0 as cycles: those start one source
+    // cycle after phaseOrigin, not at the whole loop placement start.
+    expect(code).toContain('getTimelineRepeatProjection');
+    expect(code).toContain('Math.max(range.placementStart, range.phaseOrigin + range.cycleLength)');
+    expect(code).toContain('rotoCycleRanges: repeatProjection.cycleRanges');
   });
 
   it('leaves rotoKeyFrames undefined for non-physic-paint FX layers', async () => {

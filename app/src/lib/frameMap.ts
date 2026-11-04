@@ -4,7 +4,7 @@ import {audioStore} from '../stores/audioStore';
 import {physicPaintStore, physicPaintVersion} from '../stores/physicPaintStore';
 import {getDocument as getEfxPaintDocument, efxPaintVersion} from '../stores/efxPaintStore';
 import {audioPeaksCache, peaksCacheRevision} from './audioPeaksCache';
-import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineRepeatDurationMarker} from '../types/timeline';
+import type {FrameEntry, TrackLayout, FxTrackLayout, AudioTrackLayout, KeyPhotoRange, TimelineRepeatDurationMarker, TimelineCycleRange} from '../types/timeline';
 import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -223,29 +223,41 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
   });
 }
 
-function getTimelineRepeatDurationMarkers(
-  layer: Layer,
-  seq: Sequence,
-): TimelineRepeatDurationMarker[] | undefined {
+interface TimelineRepeatProjection {
+  markers: TimelineRepeatDurationMarker[] | undefined;
+  cycleRanges: TimelineCycleRange[] | undefined;
+}
+
+function getTimelineRepeatProjection(layer: Layer, seq: Sequence): TimelineRepeatProjection {
   const context = deriveMainEditorLoopRanges(layer, seq);
-  if (!context) return undefined;
+  if (!context) return { markers: undefined, cycleRanges: undefined };
   const modeByLoopId = new Map(
     physicPaintStore.getRotoPhysicalLoopClips(getLayerId(layer), getActiveTrackId(layer))
       .map((clip) => [clip.loopId, clip.mode] as const),
   );
 
-  const markers = context.ranges.flatMap((range) => {
+  const markers: TimelineRepeatDurationMarker[] = [];
+  const cycleRanges: TimelineCycleRange[] = [];
+  for (const range of context.ranges) {
     const frameCount = range.effectiveEnd - range.placementStart;
-    return frameCount > 0
-      ? [{
-          startFrame: range.placementStart,
-          frameCount,
-          mode: modeByLoopId.get(range.loopId) ?? 'progressive',
-        }]
-      : [];
-  });
+    if (frameCount > 0) {
+      markers.push({
+        startFrame: range.placementStart,
+        frameCount,
+        mode: modeByLoopId.get(range.loopId) ?? 'progressive',
+      });
+    }
+    // The Studio paints repeatInstance > 0 as cycle cells: from one source
+    // cycle after the phase origin (clamped to this visible fragment).
+    const cycleStart = Math.max(range.placementStart, range.phaseOrigin + range.cycleLength);
+    const cycleCount = range.effectiveEnd - cycleStart;
+    if (cycleCount > 0) cycleRanges.push({ startFrame: cycleStart, frameCount: cycleCount });
+  }
 
-  return markers.length > 0 ? markers : undefined;
+  return {
+    markers: markers.length > 0 ? markers : undefined,
+    cycleRanges: cycleRanges.length > 0 ? cycleRanges : undefined,
+  };
 }
 
 /** Loop-aware display end frame on the main editor: max(last real key + 1,
@@ -415,6 +427,9 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
     // effective out only widens the bar, never creates a hatch inside its own
     // content. LOOP clips are covered by the same rule — the tail is past an
     // authoritative out, independent of extrapolation (D-08 gap-tail pin).
+    const repeatProjection = primaryLayer?.type === 'physic-paint'
+      ? getTimelineRepeatProjection(primaryLayer, seq)
+      : { markers: undefined, cycleRanges: undefined };
     const skipRange = getOverlaySkipRange(
       {
         inFrame: seq.inFrame ?? 0,
@@ -444,9 +459,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
               .map((record) => record.appFrame),
           ))
         : undefined,
-      repeatDurationMarkers: primaryLayer?.type === 'physic-paint'
-        ? getTimelineRepeatDurationMarkers(primaryLayer, seq)
-        : undefined,
+      repeatDurationMarkers: repeatProjection.markers,
+      rotoCycleRanges: repeatProjection.cycleRanges,
       soundClips: documentAudios.map((documentSound) => ({
         id: documentSound.id,
         sourceId: documentSound.sourceId,
