@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T20:58:22.526Z"
+last_updated: "2026-11-04T20:59:38.927Z"
 last_activity: 2026-11-04
 last_activity_desc: "Sidebar tab cards: 1px #696d72 border with rounded bottom corners below every pane's tab header, edge-to-edge tabs. UAT approved 2026-11-04"
-state_head: 5434e1044f84649906283bb6498372868a43a461
+state_head: b7d7ca212714f064d4039957d68b5566104448d8
 progress:
   total_phases: 1
   completed_phases: 1
@@ -697,6 +697,7 @@ None yet.
 | 105 | Studio-wide SliderStepper palette: bar #444a4f, value input #54606a | 2026-11-04 | 7612aab79 | — |
 | 106 | SliderStepper: -/+ glyphs raised 1px (optical centering) in every slider | 2026-11-04 | 9aaa8410b | — |
 | 107 | SliderStepper: -/+ glyphs raised to 2px total; Studio label color #a8b1ba | 2026-11-04 | 5434e1044 | — |
+| 108 | Options tab panel gap 12px -> 15px | 2026-11-04 | b7d7ca212 | — |
 
 ### Roadmap Evolution
 
