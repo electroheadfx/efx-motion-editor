@@ -119,34 +119,36 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
       <div class="space-y-2">
         <SectionLabel text="Compositing" />
-        <div class="relative" style={{ width: '90px' }}>
-          <select
-            class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
-            style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
-            value={layer.blendMode}
-            onChange={(event) => {
-              layerStore.updateLayerVisual(layer.id, {
-                blendMode: (event.target as HTMLSelectElement).value as BlendMode,
-              });
+        <div class="flex items-start gap-3">
+          <div class="relative flex-1 min-w-0">
+            <select
+              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
+              value={layer.blendMode}
+              onChange={(event) => {
+                layerStore.updateLayerVisual(layer.id, {
+                  blendMode: (event.target as HTMLSelectElement).value as BlendMode,
+                });
+              }}
+            >
+              {BLEND_MODES.map((mode) => (
+                <option key={mode} value={mode}>{capitalize(mode)}</option>
+              ))}
+            </select>
+            <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
+          </div>
+          <SliderStepper
+            label="Opacity"
+            value={Math.round(layer.opacity * 100)}
+            step={1}
+            min={0}
+            max={100}
+            ariaLabel="Opacity"
+            onChange={(next) => {
+              layerStore.updateLayerVisual(layer.id, { opacity: next / 100 });
             }}
-          >
-            {BLEND_MODES.map((mode) => (
-              <option key={mode} value={mode}>{capitalize(mode)}</option>
-            ))}
-          </select>
-          <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
+          />
         </div>
-        <SliderStepper
-          label="Opacity"
-          value={Math.round(layer.opacity * 100)}
-          step={1}
-          min={0}
-          max={100}
-          ariaLabel="Opacity"
-          onChange={(next) => {
-            layerStore.updateLayerVisual(layer.id, { opacity: next / 100 });
-          }}
-        />
       </div>
 
       <div class="space-y-2">
