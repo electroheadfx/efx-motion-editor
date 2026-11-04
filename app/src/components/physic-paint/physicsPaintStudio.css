@@ -1091,6 +1091,16 @@ button.destructive {
   width: 100%;
 }
 
+/* 261104: the tools pane reads as a bordered card that starts BELOW its tab
+   strip (Paint / Track / Audio) — the border never wraps the header row. */
+.physics-paint-right-pane-tools .physics-paint-right-pane-scroll-area {
+  border: solid 1px #222;
+  border-top: 0;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  overflow: hidden;
+}
+
 .physics-paint-scripts-list-scroll-area {
   width: 100%;
 }
