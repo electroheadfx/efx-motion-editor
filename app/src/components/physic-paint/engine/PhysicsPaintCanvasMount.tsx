@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
-import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
+import { physicsPaintCanvasZoom } from '../view/physicsPaintCanvasZoom';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { AquarelleCanvasLayer } from './AquarelleCanvasLayer';
 import { AquarelleCachedBaseLayer } from './AquarelleCachedBaseLayer';
@@ -72,7 +72,6 @@ export function PhysicsPaintCanvasMount(props: {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
-  const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
   const onCanvasMountedRef = useRef(props.onCanvasMounted);
   const onAquarelleStrokeEndRef = useRef(props.onAquarelleStrokeEnd);
   const onAquarelleStrokeSettledRef = useRef(props.onAquarelleStrokeSettled);
@@ -118,7 +117,12 @@ export function PhysicsPaintCanvasMount(props: {
     const updateDisplaySize = () => {
       if (!region) return;
       const rect = region.getBoundingClientRect();
-      setDisplaySize(getContainedCanvasDisplaySize(rect.width, rect.height, props.width, props.height));
+      // 261104-uyv: the zoom store is the ONE display-size authority. Both
+      // writes are idempotent (compare-then-write), so this observer callback
+      // cannot produce a render loop; the measured group is absolutely inset
+      // and its size never depends on the shell, so there is no feedback cycle.
+      physicsPaintCanvasZoom.setWorkSize(props.width, props.height);
+      physicsPaintCanvasZoom.setContainerSize(rect.width, rect.height);
     };
     updateDisplaySize();
     const resizeObserver = region ? new ResizeObserver(updateDisplaySize) : null;
@@ -145,11 +149,32 @@ export function PhysicsPaintCanvasMount(props: {
   const trackOpacity = props.trackOpacity ?? 1;
   const trackBlendMode = props.trackBlendMode ?? 'normal';
   const trackTintActive = trackOpacity < 1 || trackBlendMode !== 'normal';
+  // 261104-uyv: the shell grows by REAL CSS size from the zoom store's
+  // effective scale (never a scale transform — every client-rect-derived
+  // mapping would double-scale). The store counts as measured for THIS mount
+  // only when its working size matches the props, so a remount on `canvasKey`
+  // never paints the previous layer's scale for a frame. Before the first
+  // measurement the shell stays unsized and the existing CSS caps apply.
+  const zoomScale = physicsPaintCanvasZoom.effectiveScale.value;
+  const zoomSized =
+    zoomScale > 0 &&
+    physicsPaintCanvasZoom.workWidth.value === props.width &&
+    physicsPaintCanvasZoom.workHeight.value === props.height;
   const shellStyle = {
     position: 'relative' as const,
     aspectRatio: `${props.width} / ${props.height}`,
     '--physics-paint-paper-texture-scale': props.paperTextureScale,
-    ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
+    ...(zoomSized
+      ? {
+          width: `${props.width * zoomScale}px`,
+          height: `${props.height * zoomScale}px`,
+          // The CSS caps would otherwise clamp a zoomed shell back into the
+          // region; neutralize them ONLY while sized — the pre-measure
+          // fallback above still relies on them.
+          maxWidth: 'none',
+          maxHeight: 'none',
+        }
+      : {}),
     // N2/N3: the tint group must keep painting ABOVE the z-0 program monitor —
     // opacity<1 / mix-blend-mode create a stacking context that would otherwise
     // paint in tree order (the shell precedes the monitor in the DOM) and slip
