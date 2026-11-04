@@ -6,7 +6,7 @@ status: completed
 stopped_at: Phase 58 complete — all phases complete
 last_updated: "2026-11-04T20:40:33.734Z"
 last_activity: 2026-11-04
-last_activity_desc: Studio roto action-row restyle UAT approved — 4px gap, 1px bottom / 3px side padding,
+last_activity_desc: "Studio tools pane: 1px #222 card border with rounded bottom corners, starting below the Paint/Track/Audio tab header"
 state_head: 62c86b51951459a5c7e08c8a67b2dab5c0f1d4c4
 progress:
   total_phases: 1
