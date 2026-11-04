@@ -3233,6 +3233,10 @@ button.destructive {
   background: #54606a !important;
 }
 
+.physics-paint-studio .slider-stepper-label {
+  color: #a8b1ba !important;
+}
+
 /* 261101-cd5 SliderStepper skins. SliderStepper writes these properties inline,
    so every override needs !important; the shared component stays untouched. */
 .physics-paint-play-script-dialog .physics-paint-play-script-hero-stepper .slider-stepper-label-row {
