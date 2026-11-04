@@ -3,7 +3,7 @@ status: complete
 phase: 58-rail-editing-regressions
 source: [58-VERIFICATION.md]
 started: 2026-11-03T17:56:00Z
-updated: 2026-11-03T19:14:48.844Z
+updated: 2026-11-03T20:40:03.000Z
 ---
 
 ## Current Test
@@ -62,6 +62,25 @@ skipped: 0
 blocked: 0
 
 ## Gaps
+
+- truth: "G-02 — Deleting a key inside a Motion/interpolated rail must ripple the rail's keys, never leave a hole"
+  status: resolved
+  reason: "Fixed direct 2026-11-03; UAT passed."
+  severity: blocker
+- truth: "G-03 — Inserting a frame on a Motion rail must be allowed and interpolation-filled"
+  status: resolved
+  reason: "Fixed direct 2026-11-03; UAT passed."
+  severity: blocker
+- truth: "G-04 — Rail key drag (interior reposition and band ends)"
+  status: resolved
+  reason: "Fixed direct 2026-11-03; UAT passed."
+  severity: blocker
+- truth: "G-05 — + Key and paint on a Rail in-between must insert a source phase, not split the rail"
+  status: resolved
+  reason: "Fixed direct 2026-11-03; UAT passed."
+  severity: blocker
+
+## Gap Details
 
 ### G-02 — Deleting a key inside a Motion/interpolated rail must ripple the rail's keys, never leave a hole
 
