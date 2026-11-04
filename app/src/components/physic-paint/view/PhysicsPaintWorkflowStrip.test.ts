@@ -1332,15 +1332,15 @@ describe('PhysicsPaintWorkflowStrip Gap F grouping and casing contract (36.15-10
     expect(identity).toContain('physics-paint-roto-key-context');
   });
 
-  it('separates the three bottom-row groups with top-bar-style spacing and gives the identity group its own pill', () => {
+  it('separates the bottom-row groups with 261104 tight spacing and a bare identity chip', () => {
     const styles = css();
-    // Same visual language as the top bar pill islands (8px gaps, Plan 04).
+    // 261104: 4px gaps and a borderless/transparent identity chip.
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
-    expect(actionRow).toContain('gap: 8px');
+    expect(actionRow).toContain('gap: 4px');
     const identity = getCssRuleBlock(styles, '.physics-paint-roto-key-identity {');
     expect(identity).not.toBe('');
-    expect(identity).toContain('border:');
-    expect(identity).toContain('background:');
+    expect(identity).not.toMatch(/border:\s*1px/);
+    expect(identity).not.toContain('#20262d');
     // The 34px band stays intact; the strip shell is dynamic (47-01 UAT round 3).
     expect(actionRow).toContain('height: 34px');
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-strip {')).toContain('min-height: 0');
@@ -1379,10 +1379,10 @@ describe('PhysicsPaintWorkflowStrip Gap G bottom-row polish contract (36.15-11, 
     expect(utilities).toContain('background: transparent');
     expect(utilities).not.toMatch(/border:\s*1px/);
     expect(utilities).not.toContain('#20262d');
-    // The identity group keeps its own pill — only the tools group goes bare.
+    // 261104: the identity chip is bare too — no pill border or background.
     const identity = getCssRuleBlock(styles, '.physics-paint-roto-key-identity {');
-    expect(identity).toContain('border:');
-    expect(identity).toContain('background:');
+    expect(identity).not.toMatch(/border:\s*1px/);
+    expect(identity).not.toContain('#20262d');
   });
 
   it('vertically centers all three bottom-row groups within the 34px band', () => {
@@ -1460,12 +1460,11 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
 });
 
 describe('PhysicsPaintWorkflowStrip Gap I action-row padding contract (36.15-13, UAT Gap I-1)', () => {
-  it('adds 6px bottom padding to the action row without changing the 34px band or the dynamic strip shell', () => {
+  it('keeps the 34px action-row band with the 261104 1px bottom padding', () => {
     const styles = css();
     const actionRow = getCssRuleBlock(styles, '.physics-paint-roto-action-row {');
-    // UAT Gap I-1 (user's final polish round): padding-bottom: 6px on the
-    // action-row div.
-    expect(actionRow).toContain('padding-bottom: 6px');
+    // 261104: bottom padding reduced from 6px to 1px.
+    expect(actionRow).toContain('padding-bottom: 1px');
     // The stylesheet sets box-sizing: border-box globally, so the padding
     // shrinks the content box instead of growing the band: the 34px band stays
     // intact and the strip shell stays dynamic (47-01 UAT round 3).
@@ -2239,30 +2238,30 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Rail, Insert, Trash, Push, Duplicate, Copy, Paste, Cut, Scissor (261022-ne3 push relocation)', () => {
+  it('orders the action row as Key, Rail, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor, All, Push (261104 push move to row end)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
       'aria-label="Create rail"',
       getActionAriaLabelToken('Insert key before'),
       getActionAriaLabelToken('Delete Frame'),
-      'aria-label="Push"',
       'aria-label="Duplicate key"',
       'aria-label="Copy key"',
       'aria-label="Paste key"',
       'aria-label="Cut key"',
       getActionAriaLabelToken('Split Key Rail'),
+      'aria-label="Select all keys"',
+      'aria-label="Push"',
     ];
     const indices = tokens.map((token) => row.indexOf(token));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
     }
-    // 261022-ne3: the whole Push group sits immediately after the delete-key
-    // button and before Duplicate — the block itself is untouched.
+    // 261104: the whole Push group is the row's last child, after Select all.
     const pushGroupIndex = row.indexOf('physics-paint-push-tool-group');
-    expect(pushGroupIndex).toBeGreaterThan(row.indexOf('aria-label={deleteRotoScopeLabel}'));
-    expect(pushGroupIndex).toBeLessThan(row.indexOf('aria-label="Duplicate key"'));
+    expect(pushGroupIndex).toBeGreaterThan(row.indexOf('aria-label="Select all keys"'));
+    expect(pushGroupIndex).toBeLessThan(row.indexOf('aria-label="Push"'));
     const pushButton = getButtonBlock(row, 'Push');
     expect(pushButton).toContain('togglePushTool()');
     expect(pushButton).toContain('aria-pressed');

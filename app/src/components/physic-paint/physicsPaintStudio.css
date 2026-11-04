@@ -7425,19 +7425,17 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   align-items: center;
   /* Three visually separated groups (identity / tools / key spacing) with the
      top bar's 8px pill-island gaps (36.15-10, UAT Gap F-2). */
-  gap: 8px;
-  /* 34px band (36.15-12, UAT Gap H-6) + 6px bottom padding weighting the
-     clearance below the 26px groups (36.15-13, UAT Gap I-1; border-box sizing
-     keeps the 34px band and the 47-01 dynamic band sum intact). */
+  gap: 4px;
   flex: 0 0 34px;
   height: 34px;
   min-width: 0;
   max-width: 100%;
-  padding-bottom: 6px;
+  padding-bottom: 1px;
+  padding-left: 3px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  background: #37393a;
+  background: #2b2c2d;
 }
 
 .physics-paint-roto-action-row::-webkit-scrollbar {
@@ -7453,9 +7451,14 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   gap: 6px;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid #69727c;
   border-radius: 8px;
-  background: #20262d;
+}
+
+/* 261104: Push sits at the far end of the action row, pinned right. */
+.physics-paint-push-tool-group {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 
