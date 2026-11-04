@@ -1648,6 +1648,22 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
     });
+
+    it('ordinary Copy/Paste at the same destination never dissolves the rail', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(1)],
+        capacity: 20,
+      });
+      const accepted = await actions.physicalKeyUtilities.pasteKey(8, blankPayload(8), null);
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.kind).toBe('paste-key');
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
   });
 });
 

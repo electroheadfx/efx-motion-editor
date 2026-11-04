@@ -5346,6 +5346,23 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       expect(resolution.failure.code).toBe('malformed-identity');
     }
   });
+
+  it('v2.0.1: ordinary Copy/Paste at the same post-rail destination never dissolves', () => {
+    // The dissolve is opt-in through the intent field: a plain paste keeps the
+    // clip, keeps the source keys group-owned and opens its own Key Rail.
+    const resolution = resolveDissolve({
+      kind: 'paste-key',
+      destinationAppFrame: 8,
+      destinationKeyId: null,
+      newKeyId: 'NEW',
+      clipboardPayload: payloadAt(8),
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Ordinary paste after a rail must resolve');
+    expect(resolution.proposal.nextLoopClips).toBeNull();
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['NEW']);
+  });
 });
 
 describe('Phase 43.2 source-phase Group lifecycle proposals', () => {

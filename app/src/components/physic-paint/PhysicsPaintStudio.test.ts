@@ -2734,6 +2734,20 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(newRailBlock).toContain("currentFrameSelectionKind === 'real-key'");
   });
 
+  it('v2.0.1: the paint promotion keeps its ONE addEmptyKey route with join semantics', () => {
+    // The post-rail dissolve rides addEmptyKey, so the paint promotion reaches
+    // it without a second path. The helper stays the only promotion seam and
+    // still passes the join option that makes the dissolve fire.
+    const promotionHelper = section(
+      studio,
+      'promoteRotoPaintTargetRef.current = async (',
+      'prepareRotoScriptTargetRef.current = async (',
+    );
+    expect(promotionHelper).toContain('rotoTimelineActions.physicalKeyUtilities.addEmptyKey(');
+    expect(promotionHelper).toContain('{ joinPreviousRail },');
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(2);
+  });
+
   it('never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).not.toContain('preventDefault');
