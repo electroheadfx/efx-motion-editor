@@ -221,9 +221,9 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
       const start = styles.indexOf(selector);
       return start === -1 ? null : styles.slice(start, styles.indexOf('}', start));
     };
-    expect(ruleBackground('.physics-paint-push-hover-rail.rail-kind-standard {')).toContain('background: #D1D5DB');
-    expect(ruleBackground('.physics-paint-push-ghost.rail-kind-standard {')).toContain('background: #9CA3AF');
-    expect(ruleBackground('.physics-paint-rail-set-ghost.rail-kind-standard {')).toContain('background: #9CA3AF');
+    expect(ruleBackground('.physics-paint-push-hover-rail.rail-kind-standard {')).toContain('background: #6C8A35');
+    expect(ruleBackground('.physics-paint-push-ghost.rail-kind-standard {')).toContain('background: #6C8A35');
+    expect(ruleBackground('.physics-paint-rail-set-ghost.rail-kind-standard {')).toContain('background: #6C8A35');
     for (const [standardRule, modeRule] of [
       ['.physics-paint-push-hover-rail.rail-kind-standard {', '.physics-paint-push-hover-rail.mode-static {'],
       ['.physics-paint-push-ghost.rail-kind-standard {', '.physics-paint-push-ghost.mode-static {'],
@@ -1275,41 +1275,31 @@ describe('PhysicsPaintWorkflowStrip Gap E cosmetic contract (36.15-09, UAT Gap E
     expect(apply).toContain('border-radius: 4px');
   });
 
-  it('paints the selected key cell as an in-frame orange border with no outline or lift', () => {
+  it('paints the cursor/selection as a rail-colour inset ring plus brightness, never an orange fill', () => {
     const styles = css();
-    const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current {');
+    const current = getCssRuleBlock(styles, '.physics-paint-roto-cell.current,');
     expect(current).not.toBe('');
-    // 47 close-out UAT round 7/9: the selection is the cell's own orange
-    // border (green fill stays for keys, blue + '-' dash for interpolated
-    // frames) — no outer outline box, and no z-index lift (the lift existed
-    // to clear the removed outline's right edge; with a plain border it only
-    // doubled the abutting neighbors' borders).
-    expect(current).toContain('background: #f5a623');
+    // v2.0.1 v7 (README section 7.3 default): the marker is a rail-colour
+    // inset ring plus a brightness step — no fill, no outline box, no lift.
+    expect(current).toContain('box-shadow: inset 0 0 0 1px var(--rail-line, #8A939C)');
+    expect(current).toContain('filter: brightness(1.18)');
+    expect(current).not.toContain('background:');
+    expect(current).not.toContain('#f5a623');
     expect(current).not.toContain('outline:');
     expect(current).not.toMatch(/z-index:\s*[1-9]\d*;/);
   });
 
-  it('tracks the primary current treatment per fill family (48-06 UAT cosmetics)', () => {
+  it('retires the 48-06 per-fill current fills in favour of the ring treatment', () => {
     const styles = css();
-    // 48-06 UAT: the PRIMARY selection/cursor (`.current`) follows the cell's
-    // fill family — painted key #86c55a (over #2d6f48), interpolated #4d98f9
-    // (over #365ed6), empty #a0adbb (over #4d535a) — while secondary
-    // multi-select members (`.selected`) and the other fill families keep the
-    // blanket orange. Hover/focus variants ride along at higher specificity.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-cached.current,')).not.toBe('');
-    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached-only.current');
-    expect(styles).toContain('background: #86c55a !important;');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-empty.current {')).toContain('background: #a0adbb !important;');
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-cell.roto-fill-generated.current {')).toContain('background: #4d98f9 !important;');
-    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-cached.current:hover');
-    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-empty.current:hover');
-    expect(styles).toContain('.physics-paint-roto-cell.roto-fill-generated.current:hover');
-    // The per-fill rules must come AFTER the blanket orange current/hover
-    // rules (equal !important specificity is settled by source order).
-    const blanketIndex = styles.indexOf('.physics-paint-roto-cell.current:hover,');
-    const perFillIndex = styles.indexOf('.physics-paint-roto-cell.roto-fill-cached.current,');
-    expect(blanketIndex).toBeGreaterThanOrEqual(0);
-    expect(perFillIndex).toBeGreaterThan(blanketIndex);
+    // v2.0.1 v7: no per-family selection fill survives — the inset ring plus
+    // brightness is the only selection treatment for every fill family.
+    expect(styles).not.toContain('.physics-paint-roto-cell.roto-fill-cached.current');
+    expect(styles).not.toContain('.physics-paint-roto-cell.roto-fill-empty.current');
+    expect(styles).not.toContain('.physics-paint-roto-cell.roto-fill-generated.current');
+    expect(styles).not.toContain('background: #86c55a !important;');
+    expect(styles).not.toContain('background: #a0adbb !important;');
+    expect(styles).not.toContain('background: #4d98f9 !important;');
+    expect(styles).not.toContain('background: #f5a623 !important;');
   });
 });
 
@@ -1411,15 +1401,14 @@ describe('PhysicsPaintWorkflowStrip Gap G bottom-row polish contract (36.15-11, 
 });
 
 describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT Gap H-5/H-6)', () => {
-  it('offsets the timeline lane from the left edge so the selected frame-0 cell renders its full orange ring', () => {
+  it('offsets the timeline lane from the left edge so the selected frame-0 cell renders its full inset ring', () => {
     const styles = css();
-    // UAT Gap H-5: the .current outline (2px) + offset (1px) + shadow (1px)
-    // extends 4px past the cell's left edge and was clipped by the scroll
-    // container at frame 0; a 4px left padding on the shared scroll container
-    // shifts ruler, lane, and action row together so the 18px pitch and the
-    // ruler-to-cell alignment stay consistent.
+    // v2.0.1 v7: the 6px content gutter is the shared horizontal origin — the
+    // ruler, lane, and action row all start after it, so the 18px pitch and
+    // the ruler-to-cell alignment stay consistent and the frame-0 cell's
+    // inset ring is never clipped by the scroll edge.
     const scroll = getCssRuleBlock(styles, '.physics-paint-timeline-scroll {');
-    expect(scroll).toContain('padding-left: 4px');
+    expect(scroll).toContain('padding-left: 6px');
     // The lane geometry itself remains projection-derived with 18px abutting
     // cells and 54px ticks; CSS owns no fixed extent fallback.
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('grid-template-columns');
@@ -1666,11 +1655,16 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
       context.ranges[0],
       { startFrame: 0, endFrameExclusive: 120 },
       18,
-    )).toEqual({ left: 180, width: 450 });
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*4px[^}]*background:\s*#8b5cf6/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target:hover:not\(\.selected\)[^}]*background:\s*#c4b5fd/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\.selected[^}]*background:\s*#f59e0b/s);
-    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*8px/s);
+    )).toEqual({ left: 180, width: 448 });
+    // v2.0.1 v7: the segment reads the palette variable; hover is a
+    // brightness step; the selected/retired purple family is gone.
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-segment\s*\{[^}]*height:\s*4px[^}]*background:\s*var\(--rail-line, #6C8A35\)/s);
+    expect(getCssRuleBlock(css(), '.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,'))
+      .toContain('filter: brightness(1.12)');
+    expect(css()).not.toContain('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment');
+    expect(css()).not.toContain('#8b5cf6');
+    expect(css()).not.toContain('#c4b5fd');
+    expect(css()).toMatch(/\.physics-paint-loop-clip-rail-target\s*\{[^}]*height:\s*6px/s);
     expect(css()).not.toContain('.physics-paint-loop-clip-rail-target::after');
   });
 
@@ -1751,16 +1745,19 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
 
   it('rejects target-level linked paint while preserving selected, endpoint, focus, and strip geometry', () => {
     const styles = css();
-    expect(styles).not.toMatch(/\.physics-paint-loop-clip-rail-target\.mode-(?:progressive|static)\.action-linked:not\(\.selected\)\s*\{/);
-    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.mode-progressive.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #c4b5fd');
-    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.mode-static.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #67e8f9');
-    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #f59e0b');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,')).toContain('height: 4px');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
-    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
+    // v2.0.1 v7: the action-linked purple/cyan forks are retired — every rail
+    // family reads the same palette variable and hover is a brightness step.
+    expect(styles).not.toContain('.physics-paint-loop-clip-rail-target.mode-progressive.action-linked');
+    expect(styles).not.toContain('.physics-paint-loop-clip-rail-target.mode-static.action-linked');
+    expect(getCssRuleBlock(styles, '.physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
+    expect(styles).not.toContain('background: #c4b5fd');
+    expect(styles).not.toContain('background: #67e8f9');
+    expect(styles).not.toContain('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment');
+    // The white boundary caps and full-height cell edges are removed.
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,')).toContain('content: none');
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 0');
+    expect(getCssRuleBlock(styles, '.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 0');
     expect(styles).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(getCssRuleBlock(styles, '.physics-paint-roto-cells {')).not.toContain('repeat(120, 18px)');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
@@ -1795,17 +1792,18 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(map).toContain("${hasCurrentTreatment ? 'current' : ''}");
     expect(map).not.toContain("${vm.overlays.includes('current') ? 'current' : ''}");
     // 47 close-out: the mirror/repeat frames of a SELECTED source key paint a
-    // lighter blue-gray (NOT the orange selection — only the selected/current
-    // cell is orange). Restored after the round-12 deletion.
+    // lighter blue-gray (NOT the selection — the cursor/selection treatment is
+    // the inset ring + brightness). Restored after the round-12 deletion.
     expect(css()).toContain('.physics-paint-roto-cell.roto-spacing-proxy-selected:not(.current)');
     expect(css()).toContain('.physics-paint-roto-cell.roto-linked-repeat.roto-spacing-proxy-selected:not(.current)');
-    const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.selected {');
-    // 47 close-out UAT rounds 10-11: the selection is an orange background
-    // fill only — no border recolor, no box, no hover variant.
-    expect(ordinarySelection).toContain('background: #f5a623');
+    const ordinarySelection = getCssRuleBlock(css(), '.physics-paint-roto-cell.current,');
+    // v2.0.1 v7: the selection is a rail-colour inset ring plus brightness —
+    // no fill, no border recolor, no outline.
+    expect(ordinarySelection).toContain('box-shadow: inset 0 0 0 1px var(--rail-line, #8A939C)');
+    expect(ordinarySelection).toContain('filter: brightness(1.18)');
+    expect(ordinarySelection).not.toContain('background:');
     expect(ordinarySelection).not.toContain('border-color:');
     expect(ordinarySelection).not.toContain('outline:');
-    expect(ordinarySelection).not.toContain('box-shadow:');
   });
 });
 

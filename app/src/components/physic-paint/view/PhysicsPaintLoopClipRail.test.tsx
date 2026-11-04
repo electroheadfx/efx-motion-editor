@@ -477,7 +477,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const rail = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail'));
     expect(rail.props['aria-label']).toBe('Rails');
     const anchor = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-anchor'));
-    expect(anchor.props.style).toEqual({ left: '36px', width: '108px' });
+    expect(anchor.props.style).toEqual({ left: '36px', width: '106px' });
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(target.props['aria-pressed']).toBe(true);
     expect(target.props['aria-label']).toBe(
@@ -547,9 +547,11 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     // 47-01 UAT round 5: geometry is expressed in the strip's actual pitch
     // (18px) so a future pitch change never hardcodes stale pixel offsets here.
     const pitch = rail.props.framePitch as number;
+    // v2.0.1 v7: the end is visible inside the 0..600 window, so the 2px
+    // rail-end inset applies to the 4-frame extent.
     expect(anchors.map((anchor) => anchor.props.style)).toEqual([
-      { left: `${540 * pitch}px`, width: `${4 * pitch}px` },
-      { left: `${570 * pitch}px`, width: `${4 * pitch}px` },
+      { left: `${540 * pitch}px`, width: `${4 * pitch - 2}px` },
+      { left: `${570 * pitch}px`, width: `${4 * pitch - 2}px` },
     ]);
     expect(targets).toHaveLength(2);
     expect(hasClass(targets[0], 'mode-progressive')).toBe(true);
@@ -755,10 +757,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(target.props['aria-label']).not.toContain('private-key-id');
   });
 
-  it.each([
-    ['progressive', '#c4b5fd'],
-    ['static', '#67e8f9'],
-  ] as const)('keeps linked-only %s Groups to one passive 3px segment', (mode, linkedColor) => {
+  it.each(['progressive', 'static'] as const)('keeps linked-only %s Groups to one passive 4px segment', (mode) => {
     const ranges = [
       explicitGroupRange(10, 12, { requestedEnd: 16 }),
       explicitGroupRange(13, 16, { requestedEnd: 16 }),
@@ -793,13 +792,18 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(String(target.props['aria-label'])).not.toContain('Fragment');
     expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
 
-    const linkedSegmentRule = cssRule(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment {`);
-    expect(linkedSegmentRule).toContain(`background: ${linkedColor}`);
-    expect(linkedSegmentRule).not.toMatch(/box-shadow|border|outline|::before|::after/);
+    // v2.0.1 v7: there is no action-linked colour fork — the segment reads the
+    // shared palette variable and the retired purple/cyan values are gone.
+    const segmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
+    expect(segmentRule).toContain('background: var(--rail-line, #6C8A35)');
+    expect(segmentRule).not.toMatch(/box-shadow|outline|::before|::after/);
     expect(physicsPaintStudioCss).not.toContain(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) {`);
+    expect(physicsPaintStudioCss).not.toContain(`.physics-paint-loop-clip-rail-target.mode-${mode}.action-linked:not(.selected) .physics-paint-loop-clip-rail-segment`);
+    expect(physicsPaintStudioCss).not.toContain('#c4b5fd');
+    expect(physicsPaintStudioCss).not.toContain('#67e8f9');
   });
 
-  it('keeps selected orange authoritative when the same Group remains Action-linked', () => {
+  it('keeps the bright palette authoritative when the same Group remains Action-linked', () => {
     const range = explicitGroupRange(10, 16);
     const clip: PhysicPaintRotoLoopClip = {
       loopId: 'group-a', placementStart: 10, sourceKeyIds: ['A'], repeat: 1,
@@ -825,19 +829,22 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'selected')).toBe(true);
     expect(target.props['aria-pressed']).toBe(true);
     expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
-    expect(cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #f59e0b');
+    // v2.0.1 v7: the selected rule collapsed into the palette variable; there
+    // is no separate selected colour rule.
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment');
   });
 
   it('pins exact rail, target, endpoint, focus, and zero-added-height geometry', () => {
     expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('height: 4px');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 6px');
     expect(cssRule('.physics-paint-loop-clip-rail-anchor {')).toContain('min-width: 12px');
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');
     expect(focusRule).toContain('outline: none');
-    // 47 close-out UAT round 10: the selection box is gone — the orange
-    // segment is the whole selected treatment for every rail family.
+    // 47 close-out UAT round 10: the selection box is gone — the bright
+    // palette segment is the whole selected treatment for every rail family.
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-rail-target:focus-visible::after');
     expect(cssRule('.physics-paint-workflow-strip {')).toContain('min-height: 0');
     expect(cssRule('.physics-paint-lane {')).toContain('height: 30px');
@@ -1280,24 +1287,24 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'mode-progressive')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(false);
-    // A Motion Rail exposes the same full-height cell edges as a Key Rail:
-    // the boundary-cell classes ride the shared rail-target base, and the
-    // shared rule paints the 1px #f8fafc edge borders.
+    // A Motion Rail keeps the boundary-cell classes on the shared rail-target
+    // base; v2.0.1 v7 removes the full-height cell edges (border 0).
     expect(hasClass(target, 'boundary-cell-start')).toBe(true);
     expect(hasClass(target, 'boundary-cell-end')).toBe(false);
     expect(segment).toBeTruthy();
-    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
-    expect(cssRule('.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 1px solid #f8fafc');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 0');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-end {')).toContain('border-right: 0');
     const railSegmentRule = cssRule('.physics-paint-loop-clip-rail-segment {');
     expect(railSegmentRule).toContain('height: 4px');
-    expect(railSegmentRule).toContain('background: #8b5cf6');
-    const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(.selected) .physics-paint-loop-clip-rail-segment,');
-    expect(railHoverRule).toContain('background: #c4b5fd');
-    const railSelectedRule = cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {');
-    expect(railSelectedRule).toContain('background: #f59e0b');
+    expect(railSegmentRule).toContain('background: var(--rail-line, #6C8A35)');
+    const railHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,');
+    expect(railHoverRule).toContain('filter: brightness(1.12)');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment');
+    expect(physicsPaintStudioCss).not.toContain('#8b5cf6');
+    expect(physicsPaintStudioCss).not.toContain('#c4b5fd');
     expect(physicsPaintStudioCss).not.toContain('background: #a78bfa');
     expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.truncated .physics-paint-loop-clip-rail-segment');
-    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 8px');
+    expect(cssRule('.physics-paint-loop-clip-rail-target {')).toContain('height: 6px');
     const railTargetHoverRule = cssRule('.physics-paint-loop-clip-rail-target:hover:not(:disabled),');
     expect(railTargetHoverRule).toContain('background: transparent');
     expect(railTargetHoverRule).toContain('box-shadow: none');
@@ -1695,23 +1702,25 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'mode-static')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
     expect(hasClass(target, 'boundary-end')).toBe(true);
-    // Static Rails draw the identical full-height cell edges as Key Rails via
-    // the shared boundary treatment (band cap + cell edge on one rule set).
+    // v2.0.1 v7: the Static Rail reads the same palette variable as every
+    // other family — the cyan fork and the white caps/cell edges are gone.
     expect(hasClass(target, 'boundary-cell-start')).toBe(true);
     expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     expect(`${String(target.props['aria-label'])} ${textOf(tree)}`).toContain('Type: Static');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #06b6d4');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static:hover:not(.selected) .physics-paint-loop-clip-rail-segment,'))
-      .toContain('background: #67e8f9');
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
+    expect(cssRule('.physics-paint-loop-clip-rail-target:hover .physics-paint-loop-clip-rail-segment,'))
+      .toContain('filter: brightness(1.12)');
     expect(cssRule('.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,'))
-      .toContain('background: #f8fafc');
+      .toContain('content: none');
     expect(cssRule('.physics-paint-rail-target.boundary-end .physics-paint-rail-segment::after {'))
-      .toContain('background: #f8fafc');
+      .toContain('content: none');
     expect(cssRule('.physics-paint-rail-target.boundary-cell-start {'))
-      .toContain('border-left: 1px solid #f8fafc');
+      .toContain('border-left: 0');
     expect(cssRule('.physics-paint-rail-target.boundary-cell-end {'))
-      .toContain('border-right: 1px solid #f8fafc');
+      .toContain('border-right: 0');
+    expect(physicsPaintStudioCss).not.toContain('#06b6d4');
+    expect(physicsPaintStudioCss).not.toContain('#67e8f9');
   });
 
   it('261031-vbo: paints a merged Standard Rail neutral gray with no typed identity', () => {
@@ -1750,12 +1759,14 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(hasClass(target, 'rail-kind-reveal')).toBe(false);
     expect(String(target.props['aria-label'])).toContain('Standard Rail');
     expect(String(target.props['aria-label'])).not.toContain('Motion Rail');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment,'))
-      .toContain('background: #9CA3AF');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.selected .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #f59e0b');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.unresolved .physics-paint-loop-clip-rail-segment {'))
+    // v2.0.1 v7: the merged standard rail reads the standard dim palette from
+    // the data-rail-type map — the standalone gray family is gone, and the
+    // unresolved treatment is the generic red rule.
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
+    expect(cssRule('.physics-paint-loop-clip-rail-target.unresolved .physics-paint-loop-clip-rail-segment {'))
       .toContain('background: #ff6b6b');
+    expect(physicsPaintStudioCss).not.toContain('.physics-paint-loop-clip-rail-target.rail-kind-standard');
   });
 
   it('renders source-cycle generated cells blue and their repeated counterparts dark', () => {
@@ -2270,7 +2281,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       const ghostRule = cssRule('.physics-paint-loop-clip-rail-ghost {');
       expect(ghostRule).toContain('pointer-events: none');
       expect(ghostRule).toContain('opacity: 0.55');
-      expect(ghostRule).toContain('height: 3px');
+      expect(ghostRule).toContain('height: 4px');
     });
 
     it('uses finite moved visible geometry instead of a deleted-tail lifecycle end for the ghost', () => {

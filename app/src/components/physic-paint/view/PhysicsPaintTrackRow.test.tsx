@@ -188,8 +188,9 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     const tree = render();
     const rails = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-track-row-rail'));
     expect(rails).toHaveLength(1);
-    // Segment spans frames 2..5 inclusive → left 2×18, width 4×18.
-    expect(rails[0].props.style).toMatchObject({ left: '36px', width: '72px' });
+    // Segment spans frames 2..5 inclusive → left 2×18, width 4×18 − 2 (v7's
+    // 2px rail-end inset so the next segment never abuts this one).
+    expect(rails[0].props.style).toMatchObject({ left: '36px', width: '70px' });
     // The shared active-lane classes carry the visuals (caps, cell edges,
     // colors) — pixel-identical rails on every track.
     expect(String(rails[0].props.class)).toContain('physics-paint-rail-target');
@@ -239,10 +240,12 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     const motionLine = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(motionLine).toHaveLength(1);
     expect(String(motionLine[0].props.class)).toContain('mode-progressive');
-    // Colors come from the shared family rules — the same ones the active
-    // lane's loop rails paint with.
-    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('background: #8b5cf6');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {')).toContain('background: #06b6d4');
+    // v2.0.1 v7: the per-mode family colors collapsed into the shared palette
+    // variable on the base segment rule — motion and static now paint from
+    // --rail-line, exactly like the active lane's loop rails.
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('background: var(--rail-line, #6C8A35)');
+    expect(css()).not.toContain('.physics-paint-loop-clip-rail-target.mode-static .physics-paint-loop-clip-rail-segment {');
+    expect(css().toLowerCase()).not.toContain('#06b6d4');
 
     const staticClip = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
       loopId: 'loop-static',
@@ -281,9 +284,11 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     expect(className).toContain('mode-progressive');
     expect(className).not.toContain('rail-kind-reveal');
     expect(String(line[0]!.props['aria-label'])).toContain('Standard rail at frame ');
-    // The gray paints from the same stylesheet rule the active lane uses.
-    expect(cssRule('.physics-paint-loop-clip-rail-target.rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment,'))
-      .toContain('background: #9CA3AF');
+    // v2.0.1 v7: the merged Standard Rail no longer forks a gray rule — it
+    // paints from the shared base segment rule (the palette variable) exactly
+    // like the active lane's loop rails.
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {')).toContain('background: var(--rail-line, #6C8A35)');
+    expect(css().toLowerCase()).not.toContain('rail-kind-standard.mode-progressive .physics-paint-loop-clip-rail-segment');
   });
 
   it('renders no in-line lifecycle status dot on non-active rows (AM-2: the status lives in the tooltip)', () => {
@@ -314,25 +319,25 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // the track's Key Rail graphic line.
     expect(cssRule('.physics-paint-bg-clip-rail-line {')).toContain('cursor: grab');
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('height: 4px');
-    // 49-06 (UAT round 6): the line sits 4px into the 8px band — the SAME
-    // position as the track Key Rail segment, so the freed 4px reads as the
-    // gap between stacked Bg clips.
-    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('inset: 4px 0 auto 0');
-    // 49-06 (UAT round 7): the RESTING line is #195991; the SELECTED line is
-    // the SAME orange as the selected cells (#f5a623). The rail's own line does
-    // NOT change during a move/resize — only the drag/resize GHOST is a white
-    // line drawn on top of it (white on orange).
+    // v2.0.1 v7: the line sits flush at the row top (`top: 0`) in the 6px
+    // band — the SAME position as the track Key Rail segment and every other
+    // rail family, so all rails share one baseline.
+    expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('top: 0');
+    // 49-06 (UAT round 7): the RESTING line is #195991; v7 retires the orange
+    // selected line for the brighter Bg blue (#3F8FD0), matching the rail
+    // palette law. The rail's own line does NOT change during a move/resize —
+    // only the drag/resize GHOST is a white line drawn on top of it.
     expect(cssRule('.physics-paint-bg-clip-rail-line::before {')).toContain('background: #195991');
-    expect(cssRule('.physics-paint-bg-clip-rail-anchor .physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #f5a623');
+    expect(cssRule('.physics-paint-bg-clip-rail-anchor .physics-paint-bg-clip-rail-line.selected::before {')).toContain('background: #3F8FD0');
     expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('background: #f8fafc');
     expect(cssRule('.physics-paint-bg-clip-rail-ghost {')).toContain('z-index: 4');
     // The START/END markers are the resize handles (ew-resize cursor) — the
     // element IS the 2px x 4px #f8fafc cap (the track's shared boundary cap,
-    // no extra rectangle), anchored to the line's outer edges at the same
-    // 4px-into-the-band position as the track cap.
+    // no extra rectangle), anchored to the line's outer edges flush at the row
+    // top (v7: the same `top: 0` baseline as every rail family).
     expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('cursor: ew-resize');
     expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('background: #f8fafc');
-    expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('top: 4px');
+    expect(cssRule('.physics-paint-bg-clip-rail-marker {')).toContain('top: 0');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-start {')).toContain('left: 0');
     expect(cssRule('.physics-paint-bg-clip-rail-marker-end {')).toContain('right: 0');
     // 49-06 (UAT round 6): the clip's START/END full-height #f8fafc cell edges —
@@ -346,7 +351,9 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
     // UAT round 5: the band is clickable (select rail + activate track) with
     // the select cursor; cells carry the select cursor too.
     expect(cssRule('.physics-paint-track-row-rail {')).toContain('cursor: pointer');
-    expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 8px');
+    // v2.0.1 v7: the rail band is 6px (the 4px rail line plus its 2px gap
+    // before the 22px cells below).
+    expect(cssRule('.physics-paint-track-row-rail {')).toContain('height: 6px');
     expect(cssRule('.physics-paint-track-row:not(.physics-paint-track-row-background) {')).toContain('cursor: pointer');
 
     physicPaintStore.replaceRotoPhysicalRecords(LAYER, TRACK, [makeRecord('k0', 2, 'a@2')], INTERPOLATION, CAPACITY);

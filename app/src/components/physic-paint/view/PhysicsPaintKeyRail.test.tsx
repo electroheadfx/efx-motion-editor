@@ -172,7 +172,7 @@ describe('PhysicsPaintKeyRail', () => {
     expect(group.props['aria-label']).toBe('Rails');
     const anchors = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-anchor'));
     expect(anchors.map((anchor) => anchor.props.style)).toEqual([
-      { left: '36px', width: '72px' },
+      { left: '36px', width: '70px' },
       { left: '108px', width: '18px' },
     ]);
     // 43.4 defect 9: the canonical first-key frame feeds the shared rail
@@ -283,16 +283,16 @@ describe('PhysicsPaintKeyRail', () => {
       expect(hasClass(target, 'boundary-cell-start')).toBe(true);
       expect(hasClass(target, 'boundary-cell-end')).toBe(true);
     }
-    // The Key Rail draws its band cap from the shared segment class, so a
-    // regression that drops it would silently remove the endpoint caps.
+    // The Key Rail draws its (now removed) band cap from the shared segment
+    // class; v2.0.1 v7 removes the white caps and the cell edges.
     const segments = findAll(render(), (vnode) => hasClass(vnode, 'physics-paint-key-rail-segment'));
     expect(segments.length).toBeGreaterThan(0);
     for (const segment of segments) {
       expect(hasClass(segment, 'physics-paint-rail-segment')).toBe(true);
     }
     expect(cssRule('.physics-paint-rail-target.boundary-start .physics-paint-rail-segment::before,'))
-      .toContain('background: #f8fafc');
-    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 1px solid #f8fafc');
+      .toContain('content: none');
+    expect(cssRule('.physics-paint-rail-target.boundary-cell-start {')).toContain('border-left: 0');
     const clipped = findOne(render({
       segments: [{ firstKeyId: 'A', keyIds: ['A', 'B'], firstKeyFrame: 2, lastKeyFrame: 8 }],
       visibleFrameWindow: { startFrame: 4, endFrameExclusive: 7 },
@@ -307,7 +307,7 @@ describe('PhysicsPaintKeyRail', () => {
     drag.ghost = { active: true, left: 90, width: 72, blockedEdge: 'right' };
     const tree = render({ segments: [segments[0]] });
     const anchor = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-anchor'));
-    expect(anchor.props.style).toEqual({ left: '36px', width: '72px' });
+    expect(anchor.props.style).toEqual({ left: '36px', width: '70px' });
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-key-rail-target'));
     expect(hasClass(target, 'dragging')).toBe(true);
     expect(hasClass(target, 'busy')).toBe(false);
@@ -410,15 +410,16 @@ describe('PhysicsPaintKeyRail', () => {
     expect(onRailSetDragPointerDown).not.toHaveBeenCalled();
   });
 
-  // 43.6-03 UI-SPEC M3: batch Move ghosts carry exactly 55% opacity kind
-  // colors (Motion #8B5CF6 / Static #06B6D4 / Key Rail #8A939C) and the
-  // 2x12px #FF6B6B blocked-edge bar, on a layer between 7 and 8.
+  // 43.6-03 UI-SPEC M3 / v2.0.1 v7 palette: batch Move ghosts carry exactly
+  // 55% opacity dim kind colours (Motion #B27A1A / Static #66459E / Standard
+  // #6C8A35) and the 2x12px #FF6B6B blocked-edge bar, on a layer between 7
+  // and 8.
   it('paints batch Move ghosts at 55% kind colors and the 2x12px blocked-edge bar (UI-SPEC M3)', () => {
     expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('opacity: 0.55');
     expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('pointer-events: none');
-    expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('background: #8b5cf6');
-    expect(cssRule('.physics-paint-rail-set-ghost.mode-static {')).toContain('background: #06b6d4');
-    expect(cssRule('.physics-paint-rail-set-ghost.key-rail {')).toContain('background: #8a939c');
+    expect(cssRule('.physics-paint-rail-set-ghost {')).toContain('background: #B27A1A');
+    expect(cssRule('.physics-paint-rail-set-ghost.mode-static {')).toContain('background: #66459E');
+    expect(cssRule('.physics-paint-rail-set-ghost.key-rail {')).toContain('background: #6C8A35');
     expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('background: #ff6b6b');
     expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('width: 2px');
     expect(cssRule('.physics-paint-rail-set-blocked-edge {')).toContain('height: 8px');
@@ -431,14 +432,14 @@ describe('PhysicsPaintKeyRail', () => {
     expect(hasClass(target, 'busy')).toBe(true);
 
     expect(cssRule('.physics-paint-key-rail-segment {')).toContain('height: 4px');
-    expect(cssRule('.physics-paint-key-rail-segment {')).toContain('background: #8a939c');
-    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 8px');
-    expect(cssRule('.physics-paint-key-rail-target:hover:not(.selected) .physics-paint-key-rail-segment,')).toContain('background: #a7b0b9');
-    expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {')).toContain('background: #f59e0b');
+    expect(cssRule('.physics-paint-key-rail-segment {')).toContain('background: var(--rail-line, #6C8A35)');
+    expect(cssRule('.physics-paint-key-rail-target {')).toContain('height: 6px');
+    expect(cssRule('.physics-paint-key-rail-target:hover .physics-paint-key-rail-segment,')).toContain('filter: brightness(1.12)');
+    expect(css).not.toContain('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment');
     // 43.4 defect 6 + defect 8 / 47 close-out UAT round 10: the shared rail
     // focus class suppresses the UA outline for BOTH :focus and :focus-visible
-    // — and the selection box is GONE: a selected Key Rail shows the same
-    // orange segment as the Motion/Static Rails, no ring.
+    // — and the selection box is GONE: a selected Key Rail reads the same
+    // bright palette variable as the Motion/Static Rails, no ring.
     expect(hasClass(target, 'physics-paint-rail-target')).toBe(true);
     const focusRule = cssRule('.physics-paint-rail-target:focus,');
     expect(focusRule).toContain('.physics-paint-rail-target:focus,\n.physics-paint-rail-target:focus-visible {');

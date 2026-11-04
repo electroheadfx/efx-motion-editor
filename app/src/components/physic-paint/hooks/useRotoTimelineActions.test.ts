@@ -1615,9 +1615,11 @@ describe('useRotoTimelineActions rail-owned multi-capsule Force Spacing', () => 
     expect(dispatched.proposal.nextLoopClips?.find((clip) => clip.loopId === 'loop-b')?.placementStart).toBe(10);
   });
 
+  // v2.0.1 v7: an end-visible rail is `frames × 18 − 2` wide (the 2px rail-end
+  // inset), so the 21- and 27-frame spans project to 376 and 484.
   it.each([
-    { emptyFrames: 2, mappedFrames: { A: 10, B: 13, C: 16 }, cycleLength: 7, endExclusive: 31, width: 378 },
-    { emptyFrames: 3, mappedFrames: { A: 10, B: 14, C: 18 }, cycleLength: 9, endExclusive: 37, width: 486 },
+    { emptyFrames: 2, mappedFrames: { A: 10, B: 13, C: 16 }, cycleLength: 7, endExclusive: 31, width: 376 },
+    { emptyFrames: 3, mappedFrames: { A: 10, B: 14, C: 18 }, cycleLength: 9, endExclusive: 37, width: 484 },
   ])('rebuilds complete Repeat 3 lifecycle and rail geometry for Group spacing $emptyFrames', async ({
     emptyFrames,
     mappedFrames,

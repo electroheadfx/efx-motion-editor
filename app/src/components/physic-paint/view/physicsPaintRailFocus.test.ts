@@ -14,14 +14,14 @@ function cssRule(selector: string): string {
   return css.slice(start, end === -1 ? css.length : end + 1);
 }
 
-// Documented rail geometry (43.4-06 plan: zero geometry changes). 47 close-out
-// UAT round 10: the selection ring was REMOVED — every rail family selects
-// with the same orange segment, and frames/keys paint an orange background
-// fill; no box anywhere.
+// Documented rail geometry (v2.0.1 v7): a 30px row with a 6px rail band. The
+// 4px rail line sits at the row top; the cells start 6px down. The selection
+// ring was removed in 47 close-out and v7 keeps the no-ring contract: the
+// selected rail reads the bright data-attribute palette, never an orange fill.
 const LANE_HEIGHT_PX = 30;
-const TARGET_HEIGHT_PX = 8;
-const SEGMENT_TOP_PX = 4;
-const SEGMENT_HEIGHT_PX = 3;
+const TARGET_HEIGHT_PX = 6;
+const SEGMENT_TOP_PX = 0;
+const SEGMENT_HEIGHT_PX = 4;
 
 describe('shared rail focus treatment (43.4 defect 8 / 47 close-out UAT round 10)', () => {
   it('suppresses the UA outline identically for every rail family through the shared focus class', () => {
@@ -33,17 +33,19 @@ describe('shared rail focus treatment (43.4 defect 8 / 47 close-out UAT round 10
     );
     expect(focusRule).toContain('outline: none');
 
-    // UAT round 10: the selection box is GONE — the orange segment is the
-    // whole selected treatment for every rail family.
+    // The selection box is GONE — the bright palette segment is the whole
+    // selected treatment for every rail family.
     expect(css).not.toContain('.physics-paint-rail-target:focus::after');
     expect(css).not.toContain('.physics-paint-rail-target:focus-visible::after');
   });
 
-  it('selects every rail family with the same orange segment', () => {
-    expect(cssRule('.physics-paint-key-rail-target.selected .physics-paint-key-rail-segment {'))
-      .toContain('background: #f59e0b');
-    expect(cssRule('.physics-paint-loop-clip-rail-target.selected .physics-paint-loop-clip-rail-segment {'))
-      .toContain('background: #f59e0b');
+  it('paints every rail family from the shared palette variable', () => {
+    // v2.0.1 v7: the per-family selected rules collapsed into the palette
+    // variable on each family's base segment rule.
+    expect(cssRule('.physics-paint-key-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
+    expect(cssRule('.physics-paint-loop-clip-rail-segment {'))
+      .toContain('background: var(--rail-line, #6C8A35)');
   });
 
   it('removes the per-type focus forks that made Key Rail diverge', () => {
@@ -52,11 +54,15 @@ describe('shared rail focus treatment (43.4 defect 8 / 47 close-out UAT round 10
     expect(css).not.toContain('.physics-paint-loop-clip-rail-target:focus-visible {');
   });
 
-  it('keeps the documented 30px lane geometry (8px band, rail line at 4px)', () => {
+  it('keeps the documented 30px lane geometry (6px band, 4px rail line at the row top)', () => {
     expect(LANE_HEIGHT_PX).toBe(30);
-    expect(TARGET_HEIGHT_PX).toBe(8);
-    // The 3px segment sits at 4px into the band — 1px above the cells.
-    expect(SEGMENT_TOP_PX + SEGMENT_HEIGHT_PX).toBe(7);
-    expect(TARGET_HEIGHT_PX).toBe(SEGMENT_TOP_PX + SEGMENT_HEIGHT_PX + 1);
+    expect(TARGET_HEIGHT_PX).toBe(6);
+    // v2.0.1 v7: the 4px radius-2 line is flush at the row top and fits
+    // inside the 6px band; the cells start at the band height (6px), so the
+    // line never overlaps them.
+    expect(SEGMENT_TOP_PX).toBe(0);
+    expect(SEGMENT_TOP_PX + SEGMENT_HEIGHT_PX).toBe(4);
+    expect(SEGMENT_TOP_PX + SEGMENT_HEIGHT_PX).toBeLessThanOrEqual(TARGET_HEIGHT_PX);
+    expect(TARGET_HEIGHT_PX).toBe(6);
   });
 });

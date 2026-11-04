@@ -57,11 +57,12 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     expect(playheadRender).toBeGreaterThan(rowsRegionTail);
   });
 
-  it('positions the bar with the 4px scroll-padding-inclusive cell-center offset', () => {
+  it('positions the bar with the 6px scroll-padding-inclusive cell-center offset', () => {
     const block = getPlayheadComponentBlock(source());
-    // 4 = the timeline-scroll padding-left (ruler/cell origin); the pitch is
-    // ROTO_CELL_WIDTH_PX; +8 centers the 2px line on the 18px cell.
-    expect(block).toContain('4 +');
+    // 6 = the timeline-scroll padding-left (the v2.0.1 v7 content gutter and
+    // ruler/cell origin); the pitch is ROTO_CELL_WIDTH_PX; +8 centers the
+    // 2px line on the 18px cell.
+    expect(block).toContain('6 +');
     expect(block).toContain('ROTO_CELL_WIDTH_PX');
     expect(block).toContain('+ 8');
   });
@@ -88,7 +89,7 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     expect(block).toContain('top: 0');
     expect(block).toContain('bottom: 0');
     expect(block).toContain('pointer-events: none');
-    expect(block).toContain('#A6D334');
+    expect(block).toContain('#2868FC');
     expect(block).toContain('z-index: 30');
   });
 
@@ -97,7 +98,7 @@ describe('PhysicsPaintPlayheadBar contract', () => {
     const scrollStart = code.indexOf('.physics-paint-timeline-scroll {');
     const scrollBlock = code.slice(scrollStart, code.indexOf('}', scrollStart) + 1);
     expect(scrollBlock).toContain('position: relative');
-    expect(scrollBlock).toContain('padding-left: 4px');
+    expect(scrollBlock).toContain('padding-left: 6px');
     expect(scrollBlock).toContain('flex-direction: column');
     const rulerStart = code.indexOf('.physics-paint-ruler {');
     const rulerBlock = code.slice(rulerStart, code.indexOf('}', rulerStart) + 1);
