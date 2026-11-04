@@ -229,6 +229,8 @@ None - no external service configuration required.
 
 ## UAT rows handed to the user
 
+**UAT approved by the user on 2026-11-04 — all rows passed.**
+
 Live visible UAT; automated-green is not done:
 
 - Standard rail without a cycle (keys 1/3/5): + Key on an empty frame after F5 draws ONE rail line from F1 to the new key, with in-between dashes only when interpolation is on.
