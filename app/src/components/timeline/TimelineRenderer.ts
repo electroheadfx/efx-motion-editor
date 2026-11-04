@@ -118,8 +118,10 @@ export interface PhysicPaintRotoKeyMarkerGeometry {
 }
 
 /** Canvas x for one real-Roto-key diamond on a physic-paint FX row (C-04).
- *  rotoKeyFrames are layer-LOCAL physical appFrames, so the marker x mirrors the
- *  drawKeyframeDiamonds FX coordinate math: (inFrame + appFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH. */
+ *  rotoKeyFrames are layer-LOCAL physical appFrames. The Studio v7 centres its
+ *  keys on 16x22 frame cells; the Editor keeps the small diamond glyph but must
+ *  centre it on the same cell: (inFrame + appFrame) * frameWidth - scrollX +
+ *  TRACK_HEADER_WIDTH + frameWidth / 2. */
 export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
   appFrame: number;
   inFrame: number;
@@ -127,8 +129,15 @@ export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
   scrollX: number;
 }): PhysicPaintRotoKeyMarkerGeometry {
   return {
-    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
+    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX
+      + TRACK_HEADER_WIDTH + marker.frameWidth / 2,
   };
+}
+
+/** Half-extent of the Roto key diamond, zoom-clamped so dense low-zoom keys
+ *  stay separated (2px floor) and the glyph never exceeds the legacy 5px. */
+export function getPhysicPaintRotoKeyMarkerHalfSize(frameWidth: number): number {
+  return Math.max(2, Math.min(5, frameWidth * 0.3));
 }
 
 export interface PhysicPaintSoundStainGeometry {
@@ -812,8 +821,10 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
-  /** Draw always-visible orange diamonds for real Roto keys on a physic-paint FX row (C-04).
-   *  Pure canvas drawing: #F5A623 fill, no stroke, no shadow, no interaction surface (D-08/D-09). */
+  /** Draw the real-Roto-key diamonds on a physic-paint FX row (C-04), each
+   *  centred on its frame cell and painted with the standard rail palette
+   *  (v2.0.1 v7). Pure canvas drawing: no shadow, no hit surface, no
+   *  interaction state (D-08/D-09). */
   private drawRotoKeyMarkers(
     ctx: CanvasRenderingContext2D,
     rotoKeyFrames: number[],
@@ -825,6 +836,7 @@ export class TimelineRenderer {
     frameWidth: number,
     scrollX: number,
     canvasWidth: number,
+    palette: ReturnType<typeof resolveTimelineRailPalette>,
   ): void {
     if (rotoKeyFrames.length === 0 || barW <= 0) return;
 
@@ -834,13 +846,17 @@ export class TimelineRenderer {
 
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
+    // Clip to the ROW, not the rail bar: a key centred on the last frame must
+    // not be shaved by half a glyph.
+    ctx.rect(TRACK_HEADER_WIDTH, barY, canvasWidth - TRACK_HEADER_WIDTH, barH);
     ctx.clip();
 
-    const halfSize = 5; // half-extent kept visibly smaller than the 9px keyframe icon
+    const halfSize = getPhysicPaintRotoKeyMarkerHalfSize(frameWidth);
     const centerY = barY + barH / 2;
 
-    ctx.fillStyle = '#F5A623';
+    ctx.fillStyle = palette.keyFill;
+    ctx.strokeStyle = palette.keyRim;
+    ctx.lineWidth = 1;
     for (const appFrame of rotoKeyFrames) {
       const { x } = getPhysicPaintRotoKeyMarkerGeometry({ appFrame, inFrame, frameWidth, scrollX });
       if (x < TRACK_HEADER_WIDTH - halfSize || x > canvasWidth + halfSize) continue;
@@ -851,6 +867,7 @@ export class TimelineRenderer {
       ctx.lineTo(x - halfSize, centerY); // left
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -1062,7 +1079,7 @@ export class TimelineRenderer {
         );
       }
 
-      if (fxTrack.layerType === 'physic-paint' && fxTrack.rotoKeyFrames?.length) {
+      if (railPalette && fxTrack.rotoKeyFrames?.length) {
         this.drawRotoKeyMarkers(
           ctx,
           fxTrack.rotoKeyFrames,
@@ -1074,6 +1091,7 @@ export class TimelineRenderer {
           frameWidth,
           scrollX,
           canvasWidth,
+          railPalette,
         );
       }
 

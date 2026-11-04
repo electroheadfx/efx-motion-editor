@@ -97,21 +97,30 @@ describe('TimelineRenderer play script marker geometry', () => {
 });
 
 describe('physic-paint Roto key markers (C-04)', () => {
-  it('computes marker x from (inFrame + appFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH', async () => {
+  it('computes the frame-cell centre from (inFrame + appFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH + frameWidth / 2', async () => {
     const { getPhysicPaintRotoKeyMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
 
     const geometry = getPhysicPaintRotoKeyMarkerGeometry({ appFrame: 5, inFrame: 0, frameWidth: 4, scrollX: 12 });
-    expect(geometry.x).toBe((0 + 5) * 4 - 12 + TRACK_HEADER_WIDTH);
+    expect(geometry.x).toBe((0 + 5) * 4 - 12 + TRACK_HEADER_WIDTH + 4 / 2);
   });
 
   it('adds nonzero inFrame to the layer-local appFrame (layer-local vs timeline-global guard)', async () => {
     const { getPhysicPaintRotoKeyMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
 
     const geometry = getPhysicPaintRotoKeyMarkerGeometry({ appFrame: 5, inFrame: 10, frameWidth: 4, scrollX: 12 });
-    expect(geometry.x).toBe((10 + 5) * 4 - 12 + TRACK_HEADER_WIDTH);
+    expect(geometry.x).toBe((10 + 5) * 4 - 12 + TRACK_HEADER_WIDTH + 4 / 2);
   });
 
-  it('draws always-visible roto key diamonds in the physic-paint branch with the dedicated #F5A623 fill', () => {
+  it('clamps the key half-size between 2px and 5px as the zoom changes', async () => {
+    const { getPhysicPaintRotoKeyMarkerHalfSize } = await import('./TimelineRenderer');
+
+    expect(getPhysicPaintRotoKeyMarkerHalfSize(60)).toBe(5);
+    expect(getPhysicPaintRotoKeyMarkerHalfSize(20)).toBe(5);
+    expect(getPhysicPaintRotoKeyMarkerHalfSize(10)).toBe(3);
+    expect(getPhysicPaintRotoKeyMarkerHalfSize(4)).toBe(2);
+  });
+
+  it('draws always-visible roto key diamonds in the physic-paint branch from the rail palette', () => {
     const code = source();
     const fxTrackSource = code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
 
@@ -126,14 +135,21 @@ describe('physic-paint Roto key markers (C-04)', () => {
     const gateLine = fxTrackSource.slice(gateLineStart, gateLineEnd);
     expect(gateLine).not.toContain('playScriptMarkers');
 
-    // Marker path: literal #F5A623 fill, no stroke, no shadow, no playScriptMarkers coupling
+    // Marker path: palette key fill + explicit key-rim stroke, no legacy
+    // orange literal, no shadow, no playScriptMarkers coupling.
     const markerIndex = code.indexOf('private drawRotoKeyMarkers');
     expect(markerIndex).toBeGreaterThan(-1);
-    const markerSource = code.slice(markerIndex, code.indexOf('private drawFxTrack'));
-    expect(markerSource).toContain("'#F5A623'");
+    const markerSource = code.slice(markerIndex, code.indexOf('private drawPhysicPaintRailLine'));
+    expect(markerSource).toContain('palette.keyFill');
+    expect(markerSource).toContain('ctx.fillStyle = palette.keyFill');
+    expect(markerSource).toContain('palette.keyRim');
+    expect(markerSource).toContain('ctx.strokeStyle = palette.keyRim');
+    expect(markerSource).toContain('ctx.stroke()');
+    expect(markerSource).toContain('getPhysicPaintRotoKeyMarkerHalfSize(frameWidth)');
+    expect(markerSource).toContain('ctx.rect(TRACK_HEADER_WIDTH, barY, canvasWidth - TRACK_HEADER_WIDTH, barH)');
+    expect(markerSource).not.toContain("'#F5A623'");
     expect(markerSource).not.toContain('playScriptMarkers');
     expect(markerSource).not.toContain('shadowColor');
-    expect(markerSource).not.toContain('strokeStyle');
   });
 
   it('populates rotoKeyFrames from real Roto key records for physic-paint layers only', () => {
