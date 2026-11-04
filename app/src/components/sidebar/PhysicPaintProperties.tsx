@@ -6,10 +6,10 @@ import { layerStore } from '../../stores/layerStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { getDocument as getEfxPaintDocument } from '../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
-import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
 import { openPhysicPaintForLayer, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
+import { SliderStepper } from '../shared/SliderStepper';
 
 interface PhysicPaintPropertiesProps {
   layer: Layer;
@@ -22,7 +22,6 @@ function capitalize(value: string): string {
 }
 
 export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
 
@@ -53,13 +52,11 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       if (!result || result.layerId !== sourceLayerId) return;
 
       if (!result.ok) {
-        setStatusMessage(null);
         setErrorMessage(result.error || 'Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame.');
         return;
       }
 
       setErrorMessage(null);
-      setStatusMessage(`Applied to frame ${result.startFrame}`);
     };
 
     window.addEventListener(PHYSIC_PAINT_APPLY_RESULT_EVENT, handleApplyResult);
@@ -70,7 +67,6 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     if (!validContext || opening) return;
 
     setOpening(true);
-    setStatusMessage('Opening Roto paint...');
     setErrorMessage(null);
 
     console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id });
@@ -78,10 +74,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
     console.info('[PhysicPaintProperties] open canvas result', result);
     setOpening(false);
-    if (result.ok) {
-      setStatusMessage(`Opened Roto paint at frame ${result.data.startFrame}.`);
-    } else {
-      setStatusMessage(null);
+    if (!result.ok) {
       setErrorMessage(result.error || 'Physics paint is not ready. Check that the layer, frame, canvas, and app bridge are available, then try again.');
     }
   };
@@ -100,7 +93,6 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     if (!validContext || !hasCurrentRotoFrame) return;
     physicPaintStore.removeFrameRange(sourceLayerId, activeTrackId, currentFrame, 1);
     setErrorMessage(null);
-    setStatusMessage(`Deleted Roto paint frame ${currentFrame}.`);
   };
 
 
@@ -127,49 +119,37 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
 
       <div class="space-y-2">
         <SectionLabel text="Compositing" />
-        <div class="flex items-center gap-3">
-          <div class="relative shrink-0" style={{ width: '90px' }}>
-            <select
-              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
-              style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
-              value={layer.blendMode}
-              onChange={(event) => {
-                layerStore.updateLayerVisual(layer.id, {
-                  blendMode: (event.target as HTMLSelectElement).value as BlendMode,
-                });
-              }}
-            >
-              {BLEND_MODES.map((mode) => (
-                <option key={mode} value={mode}>{capitalize(mode)}</option>
-              ))}
-            </select>
-            <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
-          </div>
-          <div class="flex items-center gap-1.5 flex-1 min-w-0">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={1}
-              value={Math.round(layer.opacity * 100)}
-              class="flex-1 min-w-0 h-1 accent-(--color-accent) cursor-pointer"
-              onPointerDown={startCoalescing}
-              onPointerUp={stopCoalescing}
-              onInput={(event) => {
-                layerStore.updateLayerVisual(layer.id, {
-                  opacity: parseInt((event.target as HTMLInputElement).value, 10) / 100,
-                });
-              }}
-            />
-            <span class="text-[11px] w-8 text-right shrink-0" style={{ color: 'var(--sidebar-text-primary)' }}>
-              {Math.round(layer.opacity * 100)}%
-            </span>
-          </div>
+        <div class="relative" style={{ width: '90px' }}>
+          <select
+            class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+            style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
+            value={layer.blendMode}
+            onChange={(event) => {
+              layerStore.updateLayerVisual(layer.id, {
+                blendMode: (event.target as HTMLSelectElement).value as BlendMode,
+              });
+            }}
+          >
+            {BLEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>{capitalize(mode)}</option>
+            ))}
+          </select>
+          <ChevronDown size={10} class="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--sidebar-text-secondary)' }} />
         </div>
+        <SliderStepper
+          label="Opacity"
+          value={Math.round(layer.opacity * 100)}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Opacity"
+          onChange={(next) => {
+            layerStore.updateLayerVisual(layer.id, { opacity: next / 100 });
+          }}
+        />
       </div>
 
       <div class="space-y-2">
-        <SectionLabel text="Standalone Canvas" />
         <div class="space-y-2">
           <button
             type="button"
@@ -198,11 +178,6 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
         {!validContext && (
           <div class="text-[11px] leading-5" style={{ color: '#f59e0b' }}>
             Select a physics paint layer and frame first.
-          </div>
-        )}
-        {statusMessage && (
-          <div class="text-[11px] leading-5" style={{ color: 'var(--sidebar-dot-green)' }}>
-            {statusMessage}
           </div>
         )}
         {errorMessage && (

@@ -37,16 +37,23 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).not.toContain('openPhysicPaintCanvas(');
   });
 
-  it('uses Roto-only opening and success status copy', () => {
-    expect(source).toContain("setStatusMessage('Opening Roto paint...')");
-    expect(source).toContain('Opened Roto paint at frame ${result.data.startFrame}.');
+  it('keeps Roto-only button copy and no success status log', () => {
+    expect(source).toContain("{opening ? 'Opening Roto paint...' : 'Roto paint'}");
+    expect(source).not.toContain('Opened Roto paint');
+    expect(source).not.toContain('setStatusMessage');
     expect(source).not.toContain('Opening Play paint');
   });
 
-  it('clears a prior success status when an apply result fails', () => {
+  it('reports apply failures through the error line only', () => {
     const handler = source.slice(source.indexOf('const handleApplyResult'), source.indexOf('window.addEventListener'));
-    const failureBranch = handler.slice(handler.indexOf('if (!result.ok)'), handler.indexOf('setErrorMessage(null)'));
-    expect(failureBranch).toContain('setStatusMessage(null)');
+    expect(handler).toContain('setErrorMessage(result.error');
+  });
+
+  it('renders opacity with the shared SliderStepper and drops the standalone label', () => {
+    expect(source).toContain('<SliderStepper');
+    expect(source).toContain('ariaLabel="Opacity"');
+    expect(source).not.toContain('type="range"');
+    expect(source).not.toContain('Standalone Canvas');
   });
 
   it('keeps invalid context copy and readable button labels', () => {
