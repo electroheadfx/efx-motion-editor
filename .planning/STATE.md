@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T20:40:33.734Z"
+last_updated: "2026-11-04T20:53:49.716Z"
 last_activity: 2026-11-04
 last_activity_desc: "Sidebar tab cards: 1px #696d72 border with rounded bottom corners below every pane's tab header, edge-to-edge tabs. UAT approved 2026-11-04"
-state_head: 95bd305823ec3871c4402ffedf20060d48f196f8
+state_head: 7612aab793302f8c0ba7234c159aeafd1048d5aa
 progress:
   total_phases: 1
   completed_phases: 1
@@ -694,6 +694,7 @@ None yet.
 | 102 | Studio timeline: soft 1px translucent playhead trail continues below the 36px ruler band through keys and rails. UAT approved 2026-11-04 (alpha raised to 0.7 on the UAT pass) | 2026-11-04 | 492257255 | — |
 | 103 | Studio roto action row: 4px gap, 1px bottom + 3px side padding, #2b2c2d background; identity chip border/background removed; Push tool moved to the end of the bar, pinned right. UAT approved 2026-11-04 | 2026-11-04 | 8f6e42d1e | — |
 | 104 | Studio sidebar tab cards: 1px #696d72 border with rounded bottom corners starting below every pane's tab header (top/tool/nav + Scripts panel), tabs run edge to edge. UAT approved 2026-11-04 | 2026-11-04 | 95bd30582 | — |
+| 105 | Studio-wide SliderStepper palette: bar #444a4f, value input #54606a | 2026-11-04 | 7612aab79 | — |
 
 ### Roadmap Evolution
 
