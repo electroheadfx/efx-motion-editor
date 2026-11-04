@@ -6,8 +6,8 @@ status: completed
 stopped_at: Phase 58 complete — all phases complete
 last_updated: "2026-11-04T20:40:33.734Z"
 last_activity: 2026-11-04
-last_activity_desc: "Studio tools pane: 1px #222 card border with rounded bottom corners, starting below the Paint/Track/Audio tab header"
-state_head: 62c86b51951459a5c7e08c8a67b2dab5c0f1d4c4
+last_activity_desc: "Sidebar tab cards: 1px #696d72 border with rounded bottom corners below every pane's tab header, edge-to-edge tabs. UAT approved 2026-11-04"
+state_head: 95bd305829
 progress:
   total_phases: 1
   completed_phases: 1
@@ -693,7 +693,7 @@ None yet.
 | 261104-so5 | Studio non-active row loses one interpolated frame: a lifecycle Group frame override on a projection-generated in-between now classifies as interp (render source 'real' + no app-frame real-key record + own-track projection 'generated'), with the key/interp/cycle/empty matrix pinned plus group-gap and stale-cache guards. Gates green (typecheck, 7212 tests); UAT approved 2026-11-04 (4/4 rows). | 2026-11-04 | e30dc5967 | [261104-so5-studio-interpolated-preview-issue-when-p](./quick/261104-so5-studio-interpolated-preview-issue-when-p/) |
 | 102 | Studio timeline: soft 1px translucent playhead trail continues below the 36px ruler band through keys and rails. UAT approved 2026-11-04 (alpha raised to 0.7 on the UAT pass) | 2026-11-04 | 492257255 | — |
 | 103 | Studio roto action row: 4px gap, 1px bottom + 3px side padding, #2b2c2d background; identity chip border/background removed; Push tool moved to the end of the bar, pinned right. UAT approved 2026-11-04 | 2026-11-04 | 8f6e42d1e | — |
-| 104 | Studio tools pane: 1px #222 card border with rounded bottom corners, starting below the Paint/Track/Audio tab header | 2026-11-04 | 62c86b519 | — |
+| 104 | Studio sidebar tab cards: 1px #696d72 border with rounded bottom corners starting below every pane's tab header (top/tool/nav + Scripts panel), tabs run edge to edge. UAT approved 2026-11-04 | 2026-11-04 | 95bd30582 | — |
 
 ### Roadmap Evolution
 
