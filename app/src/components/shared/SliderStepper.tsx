@@ -192,6 +192,8 @@ const CELL_STYLE: CSSProperties = {
   cursor: 'pointer',
   userSelect: 'none',
   touchAction: 'none',
+  /* Optical centering: the −/+ glyphs sit ~1px low inside the font's line box. */
+  transform: 'translateY(-1px)',
 };
 
 const TRACK_STYLE: CSSProperties = {
