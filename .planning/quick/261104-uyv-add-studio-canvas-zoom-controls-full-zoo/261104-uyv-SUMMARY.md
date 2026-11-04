@@ -175,24 +175,24 @@ None. No TODO/FIXME/placeholder markers; the pill drives real store actions and 
 
 None beyond the plan's register. T-261104-UYV-01 (scale/pan clamping before every write), T-02 (16 MP backing budget, 1:1 always reachable, flat 400% refused on large sheets), T-03 (capture-phase button-1 consumption before the stack gates and the engine) and T-04 (local percent readout only) are implemented. No package installs, no manifest/lockfile change, no network/auth/file surface added.
 
-## Live UAT — PENDING (user-run; never record as passed here)
+## Live UAT — APPROVED (user-run, 2026-11-04)
 
 | # | Row | Status |
 |---|-----|--------|
-| 1 | The Studio opens fitted with the zoom pill showing the fit percent (~36% for a 1080x1920 sheet) | **PENDING** |
-| 2 | 1:1 reads 100% and one engine working pixel maps to one CSS pixel | **PENDING** |
-| 3 | Fit restores the fitted view and keeps tracking window and side-panel resizes while in fit mode | **PENDING** |
-| 4 | Pan by middle-drag and by plain wheel while zoomed; the sheet is clipped at the canvas viewport and no panel/dialog is overdrawn | **PENDING** |
-| 5 | Cmd/Ctrl+wheel and macOS trackpad pinch zoom about the cursor with the point under the cursor held fixed | **PENDING** |
-| 6 | Bounds-anchored overlays (fond, program monitor + above slice, onion, reference ghost and handles, background handles, brush ring, picker visor) stay glued to the sheet at every zoom and pan | **PENDING** |
-| 7 | Painting at 1:1 lands under the pen (pointer and color-pick mapping exact after the shell grows) | **PENDING** |
-| 8 | Space/F/C and the tool keys behave exactly as before; no new bare-key shortcut fires | **PENDING** |
-| 9 | Clicking the zoom pill (minus, plus, Fit, 1:1) keeps a Move/Select stroke selection | **PENDING** |
+| 1 | The Studio opens fitted with the zoom pill showing the fit percent (~36% for a 1080x1920 sheet) | **PASSED** |
+| 2 | 1:1 reads 100% and one engine working pixel maps to one CSS pixel | **PASSED** |
+| 3 | Fit restores the fitted view and keeps tracking window and side-panel resizes while in fit mode | **PASSED** |
+| 4 | Pan by middle-drag and by plain wheel while zoomed; the sheet is clipped at the canvas viewport and no panel/dialog is overdrawn | **PASSED** |
+| 5 | Cmd/Ctrl+wheel and macOS trackpad pinch zoom about the cursor with the point under the cursor held fixed | **PASSED** |
+| 6 | Bounds-anchored overlays (fond, program monitor + above slice, onion, reference ghost and handles, background handles, brush ring, picker visor) stay glued to the sheet at every zoom and pan | **PASSED** |
+| 7 | Painting at 1:1 lands under the pen (pointer and color-pick mapping exact after the shell grows) | **PASSED** |
+| 8 | Space/F/C and the tool keys behave exactly as before; no new bare-key shortcut fires | **PASSED** |
+| 9 | Clicking the zoom pill (minus, plus, Fit, 1:1) keeps a Move/Select stroke selection | **PASSED** |
 
 ## Next
 
 - The orchestrator owns the docs commit (this SUMMARY, STATE.md). Nothing was pushed; no dev server was started.
-- Live UAT rows 1-8 above are the gate before this quick can be marked approved.
+- Live UAT rows 1-9 above passed on 2026-11-04; this quick is approved and closed.
 
 ## Self-Check: PASSED
 
