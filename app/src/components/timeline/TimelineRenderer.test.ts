@@ -72,7 +72,10 @@ describe('TimelineRenderer play script marker geometry', () => {
     expect(markerDrawSource).toContain('ctx.roundRect');
     expect(markerDrawSource).toContain('ctx.arc');
     expect(markerDrawSource).toContain('marker.active');
-    expect(markerDrawSource).toContain('colors.accent');
+    expect(markerDrawSource).toContain('palette.line');
+    expect(markerDrawSource).toContain("withAlpha(palette.line, '66')");
+    expect(markerDrawSource).not.toContain('getThemeColors');
+    expect(markerDrawSource).not.toContain('colors.accent');
     expect(markerDrawSource).toContain('rgba(255, 255, 255, 0.38)');
     expect(markerDrawSource).toContain('Math.max(10, Math.min(14, Math.round(barH * 0.7)))');
     expect(markerDrawSource).toContain('const rangeY = barY + barH - rangeH - 2');
@@ -316,6 +319,20 @@ describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
     });
   });
 
+  it('resolves repeat spans to the Motion palette for progressive and the Static palette for static', async () => {
+    const { resolveTimelineRailPalette, resolveTimelineRailType } =
+      await import('../physic-paint/view/timelineRailDesign');
+
+    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'progressive'), 'selected').line)
+      .toBe('#F5A623');
+    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'static'), 'selected').line)
+      .toBe('#8B5CF6');
+    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'progressive'), 'unselected').line)
+      .toBe('#B27A1A');
+    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'static'), 'unselected').line)
+      .toBe('#66459E');
+  });
+
   it('draws exact passive strips without restoring the rich capsule path or interaction state', () => {
     const code = source();
     const markerIndex = code.indexOf('private drawPhysicPaintRepeatDurationMarkers');
@@ -326,7 +343,10 @@ describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
     );
 
     expect(markerIndex).toBeGreaterThan(-1);
-    expect(markerSource).toContain("marker.mode === 'static' ? '#06B6D4' : '#8B5CF6'");
+    expect(markerSource).toContain("resolveTimelineRailType('playscript', marker.mode)");
+    expect(markerSource).toContain('resolveTimelineRailPalette(');
+    expect(markerSource).not.toContain('#06B6D4');
+    expect(markerSource).not.toContain("'#8B5CF6'");
     expect(markerSource).toContain("ctx.fillStyle = '#F8FAFC'");
     expect(markerSource).toContain('markerX === clippedLeft');
     expect(markerSource).toContain('markerX + markerW === clippedRight');

@@ -21,7 +21,9 @@ import {
   TIMELINE_GEOMETRY,
   projectTimelineRailLineWidth,
   resolveTimelineRailPalette,
+  resolveTimelineRailType,
 } from '../physic-paint/view/timelineRailDesign';
+import type { TimelineRailTier } from '../physic-paint/view/timelineRailDesign';
 // --- Design constants (exported for TimelineInteraction) ---
 export const BASE_FRAME_WIDTH = 60;
 export const TRACK_HEIGHT = 52;
@@ -40,6 +42,11 @@ const FX_SELECTION_TRAIT = '#F5A623';
 export const FX_VISIBILITY_HIT_WIDTH = 24;
 const FX_VISIBILITY_ICON_LEFT = 4;
 const FX_VISIBILITY_ICON_SIZE = 16;
+
+/** Brightness tiers an Editor paint row can use. The Studio's `active` tier
+ *  keys off its selected track; the Editor timeline has no active-track
+ *  concept, so `active` never resolves here. */
+type EditorPaintRailTier = Exclude<TimelineRailTier, 'active'>;
 
 export type { TimelinePlayScriptMarker } from '../../types/timeline';
 
@@ -612,10 +619,10 @@ export class TimelineRenderer {
     frameWidth: number,
     scrollX: number,
     canvasWidth: number,
+    palette: ReturnType<typeof resolveTimelineRailPalette>,
   ): void {
     if (markers.length === 0 || barW <= 0) return;
 
-    const colors = getThemeColors();
     const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
     const trackRight = Math.min(barX + barW, canvasWidth);
     if (trackRight <= trackLeft) return;
@@ -638,9 +645,9 @@ export class TimelineRenderer {
       const clippedW = Math.max(0, clippedRight - clippedLeft);
       if (clippedW <= 0) continue;
 
-      const activeStroke = colors.accent;
-      const rangeFill = marker.active ? withAlpha(colors.accent, '66') : 'rgba(255, 255, 255, 0.16)';
-      const endpointFill = marker.active ? colors.accent : 'rgba(255, 255, 255, 0.38)';
+      const activeStroke = palette.line;
+      const rangeFill = marker.active ? withAlpha(palette.line, '66') : 'rgba(255, 255, 255, 0.16)';
+      const endpointFill = marker.active ? palette.line : 'rgba(255, 255, 255, 0.38)';
       const outline = marker.active ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.22)';
 
       ctx.fillStyle = rangeFill;
@@ -669,7 +676,7 @@ export class TimelineRenderer {
       if (labelMaxW >= 18) {
         ctx.font = '600 10px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = marker.active ? '#FFFFFF' : 'rgba(255, 255, 255, 0.72)';
+        ctx.fillStyle = marker.active ? palette.line : 'rgba(255, 255, 255, 0.72)';
         ctx.fillText(this.truncateText(ctx, label, labelMaxW), labelX, centerY);
       }
     }
@@ -677,6 +684,15 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
+  /** Passive repeat-duration strips on a physic-paint FX row, one per linked
+   *  repeat, in the v2.0.1 v7 palette line: a PlayScript clip resolves to
+   *  Motion (`progressive`) or Static (`static`) from its stored mode.
+   *
+   *  Known gap: reveal rail kinds are not representable here today —
+   *  `TimelineRepeatDurationMarker` carries only `mode`, so a reveal loop paints
+   *  the motion/static palette. The closing data path is the `railKind` already
+   *  read at the `physicPaintStore.getRotoPhysicalLoopClips(...)` call site in
+   *  frameMap; recorded here as an explicit gap rather than inventing data. */
   private drawPhysicPaintRepeatDurationMarkers(
     ctx: CanvasRenderingContext2D,
     markers: TimelineRepeatDurationMarker[],
@@ -688,6 +704,7 @@ export class TimelineRenderer {
     frameWidth: number,
     scrollX: number,
     canvasWidth: number,
+    tier: EditorPaintRailTier,
   ): void {
     if (markers.length === 0 || barW <= 0) return;
 
@@ -715,7 +732,10 @@ export class TimelineRenderer {
       const clippedRight = Math.min(markerX + markerW, barX + barW, canvasWidth);
       const clippedW = Math.max(0, clippedRight - clippedLeft);
       if (clippedW <= 0) continue;
-      ctx.fillStyle = marker.mode === 'static' ? '#06B6D4' : '#8B5CF6';
+      ctx.fillStyle = resolveTimelineRailPalette(
+        resolveTimelineRailType('playscript', marker.mode),
+        tier,
+      ).line;
       ctx.fillRect(clippedLeft, markerY, clippedW, markerH);
 
       const boundaryW = Math.min(2, clippedW / 2);
@@ -943,9 +963,8 @@ export class TimelineRenderer {
     // Studio's `active` tier is unused here: the selected FX sequence uses the
     // `selected` tier, every other paint row the `unselected` tier.
     const isPhysicPaint = fxTrack.layerType === 'physic-paint';
-    const railPalette = isPhysicPaint
-      ? resolveTimelineRailPalette('standard', isSelected ? 'selected' : 'unselected')
-      : null;
+    const railTier: EditorPaintRailTier = isSelected ? 'selected' : 'unselected';
+    const railPalette = isPhysicPaint ? resolveTimelineRailPalette('standard', railTier) : null;
     const barColor = railPalette ? railPalette.line : resolvedColor;
 
     // Track lane stays neutral: selection blue lives ONLY on the name cell.
@@ -1062,10 +1081,11 @@ export class TimelineRenderer {
           frameWidth,
           scrollX,
           canvasWidth,
+          railTier,
         );
       }
 
-      if (fxTrack.layerType === 'physic-paint' && fxTrack.playScriptMarkers && fxTrack.playScriptMarkers.length > 0) {
+      if (railPalette && fxTrack.playScriptMarkers && fxTrack.playScriptMarkers.length > 0) {
         this.drawPhysicPaintPlayScriptMarkers(
           ctx,
           fxTrack.playScriptMarkers,
@@ -1076,6 +1096,7 @@ export class TimelineRenderer {
           frameWidth,
           scrollX,
           canvasWidth,
+          railPalette,
         );
       }
 

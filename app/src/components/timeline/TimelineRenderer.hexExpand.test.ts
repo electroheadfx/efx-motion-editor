@@ -2,10 +2,14 @@
  * Theme-hex expansion regression (commit 6f60951f, ACC-03 / D-06 smoke).
  *
  * Prod CSS minify rewrites #3366EE → #36e. The renderer appends 2-digit alpha
- * suffixes to theme colors for canvas fillStyle ('40' on the physic-paint rail
- * bar, '4D' when hidden, '80' on the bar border). Appending an alpha byte to a
- * 3-digit hex yields an invalid fillStyle (e.g. "#36e40") and the rail falls
- * back to grey on the packaged build.
+ * suffixes to theme colors for canvas fillStyle ('40' on the FX rail bar, '4D'
+ * when hidden, '80' on the bar border). Appending an alpha byte to a 3-digit
+ * hex yields an invalid fillStyle (e.g. "#36e40") and the rail falls back to
+ * grey on the packaged build.
+ *
+ * 261104-q82: physic-paint rows now take their bar colour from the locked rail
+ * palette, so this fixture is a non-paint FX row — it is the surviving
+ * `resolvedColor -> withAlpha` path this regression pins.
  *
  * expandHex / withAlpha / readCssColor are module-private, so these tests drive
  * the public rendering surface: a recording 2D context + stubbed CSS-variable
@@ -118,18 +122,18 @@ function drawState(fxTracks: FxTrackLayout[]) {
   };
 }
 
-/** The D-06 rail: physic-paint FX row whose color resolves through --color-accent. */
-function physicPaintRail(visible: boolean): FxTrackLayout {
+/** The D-06 rail: non-paint FX row whose color resolves through --color-accent. */
+function accentFxRail(visible: boolean): FxTrackLayout {
   return {
-    sequenceId: 'fx-pp',
-    sequenceName: 'Physic Paint',
-    headerLabel: 'Physic Paint',
+    sequenceId: 'fx-accent',
+    sequenceName: 'Paint',
+    headerLabel: 'Paint',
     kind: 'fx',
     inFrame: 0,
     outFrame: 10,
     color: 'var(--color-accent)',
     visible,
-    layerType: 'physic-paint',
+    layerType: 'paint',
   };
 }
 
@@ -155,7 +159,7 @@ describe('theme hex expansion at the canvas color boundary (6f60951f, ACC-03 D-0
 
     const harness = makeHarness();
     const renderer = new TimelineRenderer(harness.canvas);
-    renderer.draw(drawState([physicPaintRail(true)]));
+    renderer.draw(drawState([accentFxRail(true)]));
 
     // Bar fill: expanded 6-digit + '40' — never "#36e40".
     expect(harness.fills).toContain('#3366ee40');
@@ -177,7 +181,7 @@ describe('theme hex expansion at the canvas color boundary (6f60951f, ACC-03 D-0
 
     const harness = makeHarness();
     const renderer = new TimelineRenderer(harness.canvas);
-    renderer.draw(drawState([physicPaintRail(false)]));
+    renderer.draw(drawState([accentFxRail(false)]));
 
     // Hidden rail: hidden eye stroke suffix '4D', bar fill '26', border '40'.
     expect(harness.strokes).toContain('#3366ee4D');
