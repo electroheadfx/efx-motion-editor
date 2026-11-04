@@ -177,13 +177,16 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('const isCycleX = (x: number): boolean =>');
     expect(markerSource).toContain('if (inCycle !== runIsCycle)');
     expect(markerSource).toContain('strokeRun(runStart, x, runIsCycle)');
+    expect(markerSource).toContain('strokeSplitSpan(fromX, toX)');
     expect(markerSource).toContain('Math.sin(');
     expect(markerSource).toContain('const amplitude = 2');
     expect(markerSource).toContain('const period = 10');
-    // A cycle run that outlives the last key still draws (the Studio dot tail:
-    // "nothing between 14 and 18" while the Studio shows a cycle).
+    // A cycle run that outlives the last key still draws, and the tail splits
+    // at the cycle boundary — no hole between the key and cycle 2.
     expect(markerSource).toContain('const firstKeyX = keyXs[0]');
-    expect(markerSource).toContain('Math.max(span.startX, lastKeyX)');
+    expect(markerSource).toContain('const cycleEndX = cycleSpans.reduce(');
+    expect(markerSource).toContain('strokeSplitSpan(lastKeyX, Math.min(cycleEndX, canvasWidth))');
+    expect(markerSource).toContain('strokeSplitSpan(Math.max(cycleStartX, TRACK_HEADER_WIDTH), firstKeyX)');
     // Connectors are drawn before the diamonds so the glyphs sit on top.
     expect(markerSource.indexOf('for (let index = 1; index < keyXs.length'))
       .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));

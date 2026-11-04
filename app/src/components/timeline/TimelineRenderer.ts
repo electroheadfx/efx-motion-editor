@@ -793,15 +793,10 @@ export class TimelineRenderer {
       ctx.stroke();
     };
 
-    ctx.strokeStyle = palette.line;
-    ctx.lineWidth = 1;
-    ctx.lineCap = 'round';
-    for (let index = 1; index < keyXs.length; index += 1) {
-      const fromX = keyXs[index - 1];
-      const toX = keyXs[index];
-      if (toX - fromX < 2) continue;
-      // Split the key-to-key span at every cycle boundary so a mixed span
-      // reads `-~--~--`: straight over interpolated frames, sine over cycles.
+    // Split any span at every cycle boundary so a mixed span reads `-~--~--`:
+    // straight over interpolated frames, sine over cycle frames.
+    const strokeSplitSpan = (fromX: number, toX: number): void => {
+      if (toX - fromX < 0.5) return;
       let runStart = fromX;
       let runIsCycle = isCycleX(fromX);
       for (let x = Math.floor(fromX) + 1; x <= toX; x += 1) {
@@ -813,21 +808,31 @@ export class TimelineRenderer {
         }
       }
       strokeRun(runStart, toX, runIsCycle);
+    };
+
+    ctx.strokeStyle = palette.line;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    for (let index = 1; index < keyXs.length; index += 1) {
+      const fromX = keyXs[index - 1];
+      const toX = keyXs[index];
+      if (toX - fromX < 2) continue;
+      strokeSplitSpan(fromX, toX);
     }
 
-    // Cycle tails: the Studio paints a dots run that can outlive the last key
-    // (and prefix the first one). Keys alone would end the line early — the
-    // user's "nothing between 14 and 18" while the Studio shows a cycle.
+    // Cycle tails: the Studio paints a dots run that outlives the last key (and
+    // can prefix the first one). The tail runs from the key through the cycle,
+    // splitting at the boundary — never a hole between the key and cycle 2.
     if (keyXs.length > 0) {
       const firstKeyX = keyXs[0];
       const lastKeyX = keyXs[keyXs.length - 1];
-      for (const span of cycleSpans) {
-        if (span.endX > lastKeyX) {
-          strokeRun(Math.max(span.startX, lastKeyX), Math.min(span.endX, canvasWidth), true);
-        }
-        if (span.startX < firstKeyX) {
-          strokeRun(Math.max(span.startX, TRACK_HEADER_WIDTH), Math.min(span.endX, firstKeyX), true);
-        }
+      const cycleEndX = cycleSpans.reduce((max, span) => Math.max(max, span.endX), lastKeyX);
+      if (cycleEndX > lastKeyX) {
+        strokeSplitSpan(lastKeyX, Math.min(cycleEndX, canvasWidth));
+      }
+      const cycleStartX = cycleSpans.reduce((min, span) => Math.min(min, span.startX), firstKeyX);
+      if (cycleStartX < firstKeyX) {
+        strokeSplitSpan(Math.max(cycleStartX, TRACK_HEADER_WIDTH), firstKeyX);
       }
     }
 
