@@ -18,8 +18,6 @@ import {dbToGain, linearToDb} from '../../lib/audioGain';
 import {audioSourceSpaceGeometry, selectAudioPeakTier} from '../../lib/audioClipGeometry';
 import {ThumbnailCache} from './ThumbnailCache';
 import {
-  TIMELINE_GEOMETRY,
-  projectTimelineRailLineWidth,
   resolveTimelineRailPalette,
   resolveTimelineRailType,
 } from '../physic-paint/view/timelineRailDesign';
@@ -85,50 +83,15 @@ export function getTimelineRepeatDurationMarkerGeometry(marker: {
   };
 }
 
-export interface PhysicPaintRailLineGeometry {
-  x: number;
-  width: number;
-  endVisible: boolean;
-}
-
-/**
- * Canvas geometry for a physic-paint row's 4px rail-line pill (v2.0.1 v7).
- *
- * The Editor timeline has NO inter-cell gap: the pitch IS the zoomable
- * `frameWidth`, so the last covered frame's cell right edge is the last
- * frame's right boundary. That is why the gap argument to
- * `projectTimelineRailLineWidth` is 0 — the Studio subtracts its 2px cell gap,
- * the Editor has none to subtract — and why the one-frame floor is exactly one
- * frame wide.
- */
-export function getPhysicPaintRailLineGeometry(rail: {
-  inFrame: number;
-  outFrame: number;
-  frameWidth: number;
-  scrollX: number;
-  canvasWidth: number;
-}): PhysicPaintRailLineGeometry {
-  const x = rail.inFrame * rail.frameWidth - rail.scrollX + TRACK_HEADER_WIDTH;
-  const frameCount = Math.max(0, rail.outFrame - rail.inFrame);
-  const endVisible = x + frameCount * rail.frameWidth <= rail.canvasWidth;
-  return {
-    x,
-    width: frameCount <= 0
-      ? 0
-      : projectTimelineRailLineWidth(frameCount, rail.frameWidth, endVisible, 0),
-    endVisible,
-  };
-}
-
 export interface PhysicPaintRotoKeyMarkerGeometry {
   x: number;
 }
 
 /** Canvas x for one real-Roto-key diamond on a physic-paint FX row (C-04).
- *  rotoKeyFrames are layer-LOCAL physical appFrames. The Studio v7 centres its
- *  keys on 16x22 frame cells; the Editor keeps the small diamond glyph but must
- *  centre it on the same cell: (inFrame + appFrame) * frameWidth - scrollX +
- *  TRACK_HEADER_WIDTH + frameWidth / 2. */
+ *  rotoKeyFrames are layer-LOCAL physical appFrames. The Editor ruler anchors
+ *  frame N on the cell's LEFT edge (tick and playhead use the same x), so the
+ *  key must sit there too — centring it on the Studio's 16x22 cell would put it
+ *  half a frame late against the Editor ruler. */
 export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
   appFrame: number;
   inFrame: number;
@@ -136,8 +99,7 @@ export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
   scrollX: number;
 }): PhysicPaintRotoKeyMarkerGeometry {
   return {
-    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX
-      + TRACK_HEADER_WIDTH + marker.frameWidth / 2,
+    x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
   };
 }
 
@@ -841,10 +803,11 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
-  /** Draw the real-Roto-key diamonds on a physic-paint FX row (C-04), each
-   *  centred on its frame cell and painted with the standard rail palette
-   *  (v2.0.1 v7). Pure canvas drawing: no shadow, no hit surface, no
-   *  interaction state (D-08/D-09). */
+  /** Draw the real-Roto-key diamonds on a physic-paint FX row (C-04) at their
+   *  frame position with the standard rail palette (v2.0.1 v7). Keys that land
+   *  on the same x (stacked across rails/tracks, or sub-pixel at low zoom) draw
+   *  once. Pure canvas drawing: no shadow, no hit surface, no interaction
+   *  state (D-08/D-09). */
   private drawRotoKeyMarkers(
     ctx: CanvasRenderingContext2D,
     rotoKeyFrames: number[],
@@ -866,13 +829,14 @@ export class TimelineRenderer {
 
     ctx.save();
     ctx.beginPath();
-    // Clip to the ROW, not the rail bar: a key centred on the last frame must
-    // not be shaved by half a glyph.
+    // Clip to the ROW, not the rail bar: a key on the last frame must not be
+    // shaved by half a glyph.
     ctx.rect(TRACK_HEADER_WIDTH, barY, canvasWidth - TRACK_HEADER_WIDTH, barH);
     ctx.clip();
 
     const halfSize = getPhysicPaintRotoKeyMarkerHalfSize(frameWidth);
     const centerY = barY + barH / 2;
+    const drawnX = new Set<number>();
 
     ctx.fillStyle = palette.keyFill;
     ctx.strokeStyle = palette.keyRim;
@@ -880,6 +844,11 @@ export class TimelineRenderer {
     for (const appFrame of rotoKeyFrames) {
       const { x } = getPhysicPaintRotoKeyMarkerGeometry({ appFrame, inFrame, frameWidth, scrollX });
       if (x < TRACK_HEADER_WIDTH - halfSize || x > canvasWidth + halfSize) continue;
+      // One glyph per x: stacked keys must not deepen the fill (and at low zoom
+      // neighbouring frames can collapse onto the same pixel column).
+      const stackedKey = Math.round(x);
+      if (drawnX.has(stackedKey)) continue;
+      drawnX.add(stackedKey);
       ctx.beginPath();
       ctx.moveTo(x, centerY - halfSize); // top
       ctx.lineTo(x + halfSize, centerY); // right
@@ -891,57 +860,6 @@ export class TimelineRenderer {
     }
 
     ctx.restore();
-  }
-
-  /** 4px rail-line pill at the very top of a physic-paint row (v2.0.1 v7).
-   *  Starts on the first frame's left edge and ends on the last covered
-   *  frame's right edge; a rail the viewport clips extends to the viewport
-   *  edge. No stroke, no shadow, no hit surface — the FX bar hit rect stays
-   *  exactly as TimelineInteraction defines it. */
-  private drawPhysicPaintRailLine(
-    ctx: CanvasRenderingContext2D,
-    railPalette: ReturnType<typeof resolveTimelineRailPalette>,
-    fxTrack: FxTrackLayout,
-    y: number,
-    frameWidth: number,
-    scrollX: number,
-    canvasWidth: number,
-  ): void {
-    const geom = getPhysicPaintRailLineGeometry({
-      inFrame: fxTrack.inFrame,
-      outFrame: fxTrack.outFrame,
-      frameWidth,
-      scrollX,
-      canvasWidth,
-    });
-    if (geom.width <= 0) return;
-
-    // Same viewport guards as the bar: never paint under the header column,
-    // never past the canvas edge.
-    const visibleLeft = Math.max(geom.x, TRACK_HEADER_WIDTH);
-    const visibleRight = Math.min(geom.x + geom.width, canvasWidth);
-    const visibleWidth = visibleRight - visibleLeft;
-    if (visibleWidth <= 0) return;
-
-    ctx.fillStyle = fxTrack.visible === false
-      ? withAlpha(railPalette.line, '80')
-      : railPalette.line;
-    ctx.beginPath();
-    // roundRect radii order is [topLeft, topRight, bottomRight, bottomLeft]:
-    // the 4x top / 1x bottom nose of the v7 cap (261104 UAT).
-    ctx.roundRect(
-      visibleLeft,
-      y,
-      visibleWidth,
-      TIMELINE_GEOMETRY.railLineHeight,
-      [
-        TIMELINE_GEOMETRY.railLineRadiusTop,
-        TIMELINE_GEOMETRY.railLineRadiusTop,
-        TIMELINE_GEOMETRY.railLineRadiusBottom,
-        TIMELINE_GEOMETRY.railLineRadiusBottom,
-      ],
-    );
-    ctx.fill();
   }
 
   private drawFxTrack(
@@ -1156,12 +1074,6 @@ export class TimelineRenderer {
         ctx.fillStyle = barColor;
         ctx.fillRect(rightEdge - 3, barY + 2, 3, barH - 4);
       }
-    }
-
-    // Rail line: a 4px pill flush at the row top. The bar starts at y + 4 and
-    // the two abut with no gap.
-    if (railPalette) {
-      this.drawPhysicPaintRailLine(ctx, railPalette, fxTrack, y, frameWidth, scrollX, canvasWidth);
     }
 
     // D-05 hatched gap tail — "clip ends, composition continues". Drawn AFTER
