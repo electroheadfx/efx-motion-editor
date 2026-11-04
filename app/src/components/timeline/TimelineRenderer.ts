@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker, TimelineRepeatDurationMarker} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
@@ -718,13 +718,16 @@ export class TimelineRenderer {
   }
 
   /** Draw the real-Roto-key diamonds on a physic-paint FX row (C-04) at their
-   *  frame position with the standard rail palette (v2.0.1 v7). Keys that land
+   *  frame position with the standard rail palette (v2.0.1 v7), joined by a
+   *  key-to-key connector: a straight line across interpolated frames and a
+   *  sinusoidal line across a repeat/cycle range (UAT 261104). Keys that land
    *  on the same x (stacked across rails/tracks, or sub-pixel at low zoom) draw
    *  once. Pure canvas drawing: no shadow, no hit surface, no interaction
    *  state (D-08/D-09). */
   private drawRotoKeyMarkers(
     ctx: CanvasRenderingContext2D,
     rotoKeyFrames: number[],
+    cycleRanges: readonly TimelineRepeatDurationMarker[],
     inFrame: number,
     barX: number,
     barW: number,
@@ -750,19 +753,57 @@ export class TimelineRenderer {
 
     const halfSize = getPhysicPaintRotoKeyMarkerHalfSize(frameWidth);
     const centerY = barY + barH / 2;
+
+    // One glyph per x: stacked keys must not deepen the fill (and at low zoom
+    // neighbouring frames can collapse onto the same pixel column).
     const drawnX = new Set<number>();
+    const keyXs: number[] = [];
+    for (const appFrame of rotoKeyFrames) {
+      const { x } = getPhysicPaintRotoKeyMarkerGeometry({ appFrame, inFrame, frameWidth, scrollX });
+      if (x < TRACK_HEADER_WIDTH - halfSize || x > canvasWidth + halfSize) continue;
+      const stackedKey = Math.round(x);
+      if (drawnX.has(stackedKey)) continue;
+      drawnX.add(stackedKey);
+      keyXs.push(x);
+    }
+    keyXs.sort((a, b) => a - b);
+
+    const cycleSpans = cycleRanges.map((range) => {
+      const startX = (inFrame + range.startFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      return { startX, endX: startX + range.frameCount * frameWidth };
+    });
+
+    ctx.strokeStyle = palette.line;
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    for (let index = 1; index < keyXs.length; index += 1) {
+      const fromX = keyXs[index - 1];
+      const toX = keyXs[index];
+      if (toX - fromX < 2) continue;
+      const isCycle = cycleSpans.some((span) => {
+        const midX = (fromX + toX) / 2;
+        return midX >= span.startX && midX < span.endX;
+      });
+      ctx.beginPath();
+      if (isCycle) {
+        const amplitude = 2;
+        const period = 10;
+        for (let x = fromX; x <= toX; x += 1) {
+          const y = centerY + Math.sin(((x - fromX) / period) * Math.PI * 2) * amplitude;
+          if (x === fromX) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+      } else {
+        ctx.moveTo(fromX, centerY);
+        ctx.lineTo(toX, centerY);
+      }
+      ctx.stroke();
+    }
 
     ctx.fillStyle = palette.keyFill;
     ctx.strokeStyle = palette.keyRim;
     ctx.lineWidth = 1;
-    for (const appFrame of rotoKeyFrames) {
-      const { x } = getPhysicPaintRotoKeyMarkerGeometry({ appFrame, inFrame, frameWidth, scrollX });
-      if (x < TRACK_HEADER_WIDTH - halfSize || x > canvasWidth + halfSize) continue;
-      // One glyph per x: stacked keys must not deepen the fill (and at low zoom
-      // neighbouring frames can collapse onto the same pixel column).
-      const stackedKey = Math.round(x);
-      if (drawnX.has(stackedKey)) continue;
-      drawnX.add(stackedKey);
+    for (const x of keyXs) {
       ctx.beginPath();
       ctx.moveTo(x, centerY - halfSize); // top
       ctx.lineTo(x + halfSize, centerY); // right
@@ -797,7 +838,9 @@ export class TimelineRenderer {
     const isPhysicPaint = fxTrack.layerType === 'physic-paint';
     const railTier: EditorPaintRailTier = isSelected ? 'selected' : 'unselected';
     const railPalette = isPhysicPaint ? resolveTimelineRailPalette('standard', railTier) : null;
-    const barColor = railPalette ? railPalette.line : resolvedColor;
+    // The layer bar keeps its own FX accent (UAT 261104: the v7 palette applies
+    // to the keys/connectors, not to the layer's identity colour).
+    const barColor = resolvedColor;
 
     // Track lane stays neutral: selection blue lives ONLY on the name cell.
     ctx.fillStyle = colors.fxTrackBg;
@@ -920,6 +963,7 @@ export class TimelineRenderer {
         this.drawRotoKeyMarkers(
           ctx,
           fxTrack.rotoKeyFrames,
+          fxTrack.repeatDurationMarkers ?? [],
           fxTrack.inFrame,
           barX,
           barW,

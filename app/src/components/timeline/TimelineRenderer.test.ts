@@ -164,6 +164,25 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('drawnX.add(stackedKey)');
   });
 
+  it('joins keys with a straight line, and a sine line across a cycle range', () => {
+    const code = source();
+    const markerSource = code.slice(code.indexOf('private drawRotoKeyMarkers'), code.indexOf('private drawFxTrack'));
+
+    // Key-to-key connector at the diamond centre line.
+    expect(markerSource).toContain('for (let index = 1; index < keyXs.length; index += 1)');
+    expect(markerSource).toContain('ctx.strokeStyle = palette.line');
+    expect(markerSource).toContain('ctx.moveTo(fromX, centerY)');
+    expect(markerSource).toContain('ctx.lineTo(toX, centerY)');
+    // Cycle ranges come from the repeat markers and paint a sinusoid instead.
+    expect(markerSource).toContain('cycleRanges.map(');
+    expect(markerSource).toContain('Math.sin(');
+    expect(markerSource).toContain('const amplitude = 2');
+    expect(markerSource).toContain('const period = 10');
+    // Connectors are drawn before the diamonds so the glyphs sit on top.
+    expect(markerSource.indexOf('for (let index = 1; index < keyXs.length'))
+      .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));
+  });
+
   it('populates rotoKeyFrames from real Roto key records for physic-paint layers only', () => {
     const code = frameMapSource();
     const fxLayoutsIndex = code.indexOf('export const fxTrackLayouts');
@@ -305,10 +324,12 @@ describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)
     );
 
     // UAT 261104: the repeat strip read as a rail line above the bar. The
-    // Editor row shows the bar + real-key diamonds, nothing else.
+    // Editor row shows the bar + labelled key connectors; the repeat ranges
+    // are consumed only to style the connector (sine vs straight), never as a
+    // bar above the row.
     expect(code).not.toContain('drawPhysicPaintRepeatDurationMarkers');
     expect(code).not.toContain('getTimelineRepeatDurationMarkerGeometry');
-    expect(fxTrackSource).not.toContain('fxTrack.repeatDurationMarkers');
+    expect(fxTrackSource).toContain('fxTrack.repeatDurationMarkers ?? []');
     for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip']) {
       expect(fxTrackSource).not.toContain(interactionSurface);
     }
@@ -571,7 +592,7 @@ describe('physic-paint row palette (v2.0.1 v7, 261104-q82)', () => {
     return code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
   };
 
-  it('paints the paint-row bar from the palette tier and never adds a rail-line pill', () => {
+  it('keeps the layer bar on its own accent and uses the palette only for keys', () => {
     const fx = fxTrackSource();
 
     expect(fx).toContain("const isPhysicPaint = fxTrack.layerType === 'physic-paint'");
@@ -579,7 +600,9 @@ describe('physic-paint row palette (v2.0.1 v7, 261104-q82)', () => {
     // UAT 261104: the Editor shows keys only — no rail line above the bar.
     expect(source()).not.toContain('drawPhysicPaintRailLine');
     expect(source()).not.toContain('getPhysicPaintRailLineGeometry');
-    // The bar fill, border, edge handles and gap tail read the palette line.
+    // The bar keeps the FX accent (reverted by UAT); the palette drives keys.
+    expect(fx).toContain('const barColor = resolvedColor');
+    expect(fx).not.toContain("railPalette ? railPalette.line : resolvedColor");
     expect(fx).toContain('withAlpha(barColor');
     expect(fx).toContain('ctx.fillStyle = barColor');
     expect(fx).toContain('drawCoverageGapTail(ctx, hatchLeft, barY, hatchW, barH, barColor)');
