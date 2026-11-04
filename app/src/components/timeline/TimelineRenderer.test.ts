@@ -489,6 +489,101 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     expect(code).toContain('getTimelineRepeatProjection');
     expect(code).toContain('Math.max(range.placementStart, range.phaseOrigin + range.cycleLength)');
     expect(code).toContain('rotoCycleRanges: repeatProjection.cycleRanges');
+    // Every track contributes: the row never follows the active Studio track.
+    expect(code).toContain('for (const source of getTrackPhysicalSources(layerId))');
+  });
+
+  it('shows keys from a document track this realm never mounted in its runtime', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { registerDocument, getDocument } = await import('../../stores/efxPaintStore');
+    const { buildPhysicPaintRotoPhysicalRevision } = await import(
+      '../../components/physic-paint/roto/physicsPaintRotoPhysicalModel'
+    );
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    const trackA = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', TEST_TRACK_ID,
+      [makeRotoRecord('a-1', 1), makeRotoRecord('a-3', 3)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!trackA.ok) throw new Error(trackA.error);
+
+    // A track carried by the document but never mounted in this realm's runtime
+    // (the sibling Studio realm's non-active tracks): its keys must still show.
+    const physical = physicPaintStore.getRotoPhysicalDocument('roto-layer', TEST_TRACK_ID);
+    const runtimeRecords = physicPaintStore.getRotoRealKeyRecords('roto-layer', TEST_TRACK_ID);
+    if (!physical || runtimeRecords.length === 0) throw new Error('missing physical state');
+    const unmountedRecords = runtimeRecords.map((record, index) => ({
+      ...record,
+      keyId: `unmounted-${index}`,
+      appFrame: record.appFrame + 10,
+      payload: { ...record.payload, appFrame: record.appFrame + 10 },
+    }));
+    const unmountedPhysical = {
+      ...physical,
+      realKeyRecords: unmountedRecords,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        unmountedRecords,
+        physical.interpolation,
+        physical.loopClips,
+        physical.incomingInterpolationBreakKeyIds,
+        physical.groupOverrideRecords ?? [],
+      ),
+    };
+    const seeded = getDocument('roto-layer');
+    if (!seeded) throw new Error('missing document');
+    registerDocument({
+      ...seeded,
+      tracks: [
+        seeded.tracks[0],
+        { ...seeded.tracks[0], id: 'track-unmounted', name: 'Paint 2', rotoPhysical: unmountedPhysical },
+      ],
+    });
+
+    expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames)
+      .toEqual([1, 3, 11, 13]);
+  });
+
+  it('keeps the Editor key list identical when the active Studio track changes', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { registerDocument, getDocument, setActiveTrackId } = await import('../../stores/efxPaintStore');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    const seeded = getDocument('roto-layer');
+    if (!seeded) throw new Error('missing document');
+    const baseTrack = seeded.tracks[0];
+    registerDocument({
+      ...seeded,
+      tracks: [
+        baseTrack,
+        { ...baseTrack, id: 'track-b', name: 'Paint 2', frames: {}, rotoPhysical: null, loopClips: [] },
+      ],
+    });
+
+    const trackA = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', TEST_TRACK_ID,
+      [makeRotoRecord('a-1', 1), makeRotoRecord('a-3', 3)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!trackA.ok) throw new Error(trackA.error);
+    const trackB = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', 'track-b',
+      [makeRotoRecord('b-5', 5), makeRotoRecord('b-8', 8)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!trackB.ok) throw new Error(trackB.error);
+
+    const frames = () => fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames;
+    expect(frames()).toEqual([1, 3, 5, 8]);
+
+    setActiveTrackId('roto-layer', 'track-b');
+    expect(getDocument('roto-layer')?.activeTrackId).toBe('track-b');
+    expect(frames()).toEqual([1, 3, 5, 8]);
   });
 
   it('leaves rotoKeyFrames undefined for non-physic-paint FX layers', async () => {

@@ -9,6 +9,7 @@ import type {GlTransition, Sequence} from '../types/sequence';
 import type {Layer, LayerType, EasingType} from '../types/layer';
 import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type {PhysicPaintRotoLoopResolutionContext} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
+import type {PhysicPaintRotoLoopClip} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
  *  Cross dissolve does NOT shorten the timeline — both sequences keep all their frames.
@@ -228,35 +229,98 @@ interface TimelineRepeatProjection {
   cycleRanges: TimelineCycleRange[] | undefined;
 }
 
+interface TrackPhysicalSource {
+  readonly records: readonly { keyId: string; appFrame: number }[];
+  readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  readonly capacity: number;
+  readonly interpolationEnabled: boolean;
+}
+
+/**
+ * Every document track's physical state: the runtime is the live authority,
+ * and the document carrier covers a track this realm never mounted (the
+ * sibling Studio realm's non-active tracks). Never falls back for a mounted
+ * track — its live (possibly emptied) records stay authoritative. Reads the
+ * cheap per-track slices, never a whole rebuilt physical document.
+ */
+function getTrackPhysicalSources(layerId: string): TrackPhysicalSource[] {
+  const document = getEfxPaintDocument(layerId);
+  if (!document) return [];
+  const sources: TrackPhysicalSource[] = [];
+  for (const track of document.tracks) {
+    if (physicPaintStore.hasRotoTrackRuntime(layerId, track.id)) {
+      sources.push({
+        records: physicPaintStore.getRotoRealKeyRecords(layerId, track.id),
+        loopClips: physicPaintStore.getRotoPhysicalLoopClips(layerId, track.id),
+        capacity: physicPaintStore.getRotoPhysicalCapacity(layerId, track.id),
+        interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id).enabled,
+      });
+      continue;
+    }
+    const physical = track.rotoPhysical;
+    if (!physical) continue;
+    sources.push({
+      records: physical.realKeyRecords,
+      loopClips: physical.loopClips,
+      capacity: physical.capacity,
+      interpolationEnabled: physical.interpolation.enabled,
+    });
+  }
+  return sources;
+}
+
 function getTimelineRepeatProjection(layer: Layer, seq: Sequence): TimelineRepeatProjection {
-  const context = deriveMainEditorLoopRanges(layer, seq);
-  if (!context) return { markers: undefined, cycleRanges: undefined };
-  const modeByLoopId = new Map(
-    physicPaintStore.getRotoPhysicalLoopClips(getLayerId(layer), getActiveTrackId(layer))
-      .map((clip) => [clip.loopId, clip.mode] as const),
-  );
+  const layerId = getLayerId(layer);
+  const document = getEfxPaintDocument(layerId);
+  if (!document || !resolveSequenceTimelineRange(seq, trackLayouts.value)) {
+    return { markers: undefined, cycleRanges: undefined };
+  }
 
   const markers: TimelineRepeatDurationMarker[] = [];
   const cycleRanges: TimelineCycleRange[] = [];
-  for (const range of context.ranges) {
-    const frameCount = range.effectiveEnd - range.placementStart;
-    if (frameCount > 0) {
-      markers.push({
-        startFrame: range.placementStart,
-        frameCount,
-        mode: modeByLoopId.get(range.loopId) ?? 'progressive',
-      });
+  // Union across every track: the Editor row is per LAYER, so its line style
+  // must not follow the active Studio track.
+  for (const source of getTrackPhysicalSources(layerId)) {
+    if (source.loopClips.length === 0) continue;
+    const context = derivePhysicPaintRotoLoopRanges({
+      identities: source.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+      loopClips: source.loopClips,
+      capacity: source.capacity,
+      interpolationEnabled: source.interpolationEnabled,
+    });
+    const modeByLoopId = new Map(source.loopClips.map((clip) => [clip.loopId, clip.mode] as const));
+    for (const range of context.ranges) {
+      const frameCount = range.effectiveEnd - range.placementStart;
+      if (frameCount > 0) {
+        markers.push({
+          startFrame: range.placementStart,
+          frameCount,
+          mode: modeByLoopId.get(range.loopId) ?? 'progressive',
+        });
+      }
+      // The Studio paints repeatInstance > 0 as cycle cells: from one source
+      // cycle after the phase origin (clamped to this visible fragment).
+      const cycleStart = Math.max(range.placementStart, range.phaseOrigin + range.cycleLength);
+      const cycleCount = range.effectiveEnd - cycleStart;
+      if (cycleCount > 0) cycleRanges.push({ startFrame: cycleStart, frameCount: cycleCount });
     }
-    // The Studio paints repeatInstance > 0 as cycle cells: from one source
-    // cycle after the phase origin (clamped to this visible fragment).
-    const cycleStart = Math.max(range.placementStart, range.phaseOrigin + range.cycleLength);
-    const cycleCount = range.effectiveEnd - cycleStart;
-    if (cycleCount > 0) cycleRanges.push({ startFrame: cycleStart, frameCount: cycleCount });
   }
 
+  const uniqueBySpan = <T extends { startFrame: number; frameCount: number }>(items: T[]): T[] => {
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const key = `${item.startFrame}:${item.frameCount}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+  const uniqueMarkers = uniqueBySpan(markers);
+  const uniqueCycles = uniqueBySpan(cycleRanges);
+
   return {
-    markers: markers.length > 0 ? markers : undefined,
-    cycleRanges: cycleRanges.length > 0 ? cycleRanges : undefined,
+    markers: uniqueMarkers.length > 0 ? uniqueMarkers : undefined,
+    cycleRanges: uniqueCycles.length > 0 ? uniqueCycles : undefined,
   };
 }
 
@@ -454,10 +518,12 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       rotoKeyFrames: physicPaintLayerId !== null
         // Every track's keys, deduped by frame: the Editor row is per LAYER and
         // must mirror the Studio's rails instead of hiding non-active tracks.
-        ? Array.from(new Set(
-            physicPaintStore.getRotoRealKeyRecordsAcrossTracks(physicPaintLayerId)
+        ? Array.from(new Set([
+            ...getTrackPhysicalSources(physicPaintLayerId)
+              .flatMap((source) => source.records.map((record) => record.appFrame)),
+            ...physicPaintStore.getRotoRealKeyRecordsAcrossTracks(physicPaintLayerId)
               .map((record) => record.appFrame),
-          ))
+          ]))
         : undefined,
       repeatDurationMarkers: repeatProjection.markers,
       rotoCycleRanges: repeatProjection.cycleRanges,

@@ -4589,6 +4589,11 @@ export const physicPaintStore = {
     return Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
   },
 
+  /** Cheap presence probe: true when THIS realm mounted the track's runtime. */
+  hasRotoTrackRuntime(layerId: string, trackId: string): boolean {
+    return _rotoRealKeyRecords.get(layerId)?.has(trackId) === true;
+  },
+
   /**
    * Union of real-key records across EVERY Roto track of a layer, ordered by
    * ascending physical `appFrame`. Display-only read for the main Editor row:
