@@ -686,7 +686,7 @@ None yet.
 | 261102-iv5 | Remove the editor module switcher; one Water color engine, Krita neither implemented nor planned | 2026-11-02 | f21dcd3f1 | [261102-iv5-remove-the-moduleswitcher-from-the-main-](./quick/261102-iv5-remove-the-moduleswitcher-from-the-main-/) |
 | 261104-bop | v2.0.1 v7 Studio timeline rails: one pure design module (palettes, rail types, cell cascade, ownership, accent, rail-width rule), data-attribute wiring across the five hosts, 2px rail end inset, header accent + inert motion slot, and a stylesheet replacement (dark surfaces, 6px band, 4px pill rails, 16x22 cells, blue playhead confined to the ruler, white current/selected marker, family drag pills); retired design pins re-valued, none deleted. UAT approved 2026-11-04 (11/11 rows) after the follow-up rounds (ghost keys, light selected-rail tint, 31px rows, generated-frame paint gate, compact Cycle modal, parent override-records fix). | 2026-11-04 | 1bfbf2672 | [261104-bop-v2-0-1-studio-timeline-rails-redesign-v7](./quick/261104-bop-v2-0-1-studio-timeline-rails-redesign-v7/) |
 | 261104-l0i | v2.0.1 rails: +Key/paint on an empty frame after a Standard rail now dissolves that rail's cycle and joins the new key contiguously (one atomic edit) | 2026-11-04 | bd2c9fdff | [261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke](./quick/261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke/) |
-| 99 | Rail line start/end caps are the train nose (top radius 3x the bottom radius; raised from 2x after the live look) in the Studio timeline | 2026-11-04 | 31130996f | — |
+| 99 | Rail line start/end caps are the train nose (top radius 4x the bottom radius; raised stepwise from 2x after live looks) in the Studio timeline | 2026-11-04 | 4df371d79 | — |
 
 ### Roadmap Evolution
 
