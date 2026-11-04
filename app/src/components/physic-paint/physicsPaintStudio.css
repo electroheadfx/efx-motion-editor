@@ -3222,6 +3222,17 @@ button.destructive {
   text-align: right;
 }
 
+/* Studio-wide SliderStepper palette. SliderStepper writes these properties
+   inline, so the override needs !important; the play-script dialog skins below
+   (3-class selectors) are more specific and keep their own colors. */
+.physics-paint-studio .slider-stepper-bar {
+  background: #444a4f !important;
+}
+
+.physics-paint-studio .slider-stepper-value {
+  background: #54606a !important;
+}
+
 /* 261101-cd5 SliderStepper skins. SliderStepper writes these properties inline,
    so every override needs !important; the shared component stays untouched. */
 .physics-paint-play-script-dialog .physics-paint-play-script-hero-stepper .slider-stepper-label-row {
