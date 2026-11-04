@@ -357,8 +357,8 @@ describe('TIMELINE_GEOMETRY pins', () => {
     expect(TIMELINE_GEOMETRY.rowHeight).toBe(30);
     expect(TIMELINE_GEOMETRY.railBand).toBe(6);
     expect(TIMELINE_GEOMETRY.railLineHeight).toBe(4);
-    // 261104 UAT: train-nose cap — the top radius is 3x the bottom radius.
-    expect(TIMELINE_GEOMETRY.railLineRadiusTop).toBe(3);
+    // 261104 UAT: train-nose cap — the top radius is 4x the bottom radius.
+    expect(TIMELINE_GEOMETRY.railLineRadiusTop).toBe(4);
     expect(TIMELINE_GEOMETRY.railLineRadiusBottom).toBe(1);
     expect(TIMELINE_GEOMETRY.cellWidth).toBe(16);
     expect(TIMELINE_GEOMETRY.cellHeight).toBe(22);
