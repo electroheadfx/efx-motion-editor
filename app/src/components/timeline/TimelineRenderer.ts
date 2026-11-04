@@ -817,13 +817,19 @@ export class TimelineRenderer {
       strokeRun(runStart, toX, runIsCycle);
     };
 
-    ctx.strokeStyle = palette.line;
+    // Connectors use the palette's highlight tint (keyRim) rather than the dark
+    // rail line so the green reads against the blue layer bar.
+    ctx.strokeStyle = palette.keyRim;
     ctx.lineWidth = 1;
     ctx.lineCap = 'round';
     for (let index = 1; index < keyXs.length; index += 1) {
       const fromX = keyXs[index - 1];
       const toX = keyXs[index];
       if (toX - fromX < 2) continue;
+      // Interpolation baseline first: when an interpolated track and a cycling
+      // track overlap, the flattened row must show BOTH rails — the straight
+      // interp line with the cycle wave riding on it.
+      strokeRun(fromX, toX, false);
       strokeSplitSpan(fromX, toX);
     }
 

@@ -168,10 +168,14 @@ describe('physic-paint Roto key markers (C-04)', () => {
     const code = source();
     const markerSource = code.slice(code.indexOf('private drawRotoKeyMarkers'), code.indexOf('private drawFxTrack'));
 
-    // Key-to-key connector at the diamond centre line.
+    // Key-to-key connector at the diamond centre line, drawn with the brighter
+    // key-rim tint so the green reads against the blue layer bar.
     expect(markerSource).toContain('for (let index = 1; index < keyXs.length; index += 1)');
-    expect(markerSource).toContain('ctx.strokeStyle = palette.line');
+    expect(markerSource).toContain('ctx.strokeStyle = palette.keyRim');
     expect(markerSource).toContain('ctx.lineTo(endX, centerY)');
+    // An interpolated track and a cycling track can overlap on the flattened
+    // row: the straight interp baseline stays under the cycle wave.
+    expect(markerSource).toContain('strokeRun(fromX, toX, false)');
     // Per-frame split: straight outside cycle frames, sine inside them. A mixed
     // span therefore renders `-~--~--` rather than one style for the whole gap.
     expect(markerSource).toContain('const isCycleX = (x: number): boolean =>');
