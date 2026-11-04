@@ -4891,7 +4891,7 @@ button.destructive {
   top: 36px;
   bottom: 0;
   width: 1px;
-  background: rgba(40, 104, 252, 0.35);
+  background: rgba(40, 104, 252, 0.7);
   pointer-events: none;
   z-index: 29;
 }
