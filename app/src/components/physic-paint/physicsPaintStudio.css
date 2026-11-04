@@ -995,6 +995,106 @@ button.destructive {
   background: #111315;
 }
 
+/* 261104-uyv: the canvas zoom viewport — the ONE clip in the canvas region.
+   The region itself stays unclipped: its floating dialogs and the apply pill
+   anchor past the region edges (the 52.1 lesson). The pan layer is a
+   translate-only ancestor of the whole stack — the sheet grows by real CSS
+   size above it, so every bounds-anchored overlay and every pointer mapping
+   stays exact. */
+.physics-paint-canvas-zoom-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.physics-paint-canvas-zoom-pan {
+  position: absolute;
+  inset: 0;
+}
+
+/* The zoomed sheet must OVERFLOW the tracks group. The shell carries
+   `overflow: hidden`, so as a flex item its automatic minimum size is 0 and
+   flex-shrink:1 would clamp a zoomed sheet back to the group's main size —
+   a distorted sheet instead of a viewport-clipped one. Display-only, scoped to
+   the zoom viewport, so the DOM outside it keeps today's flex behaviour. */
+.physics-paint-canvas-zoom-pan .physics-paint-tracks-group > .demo-canvas-shell {
+  flex: 0 0 auto;
+}
+
+/* The floating zoom pill — bottom-left of the canvas region, matching the
+   apply-pill glass family. Above the sheet (auto), below the gallery picker
+   (20) and the floating dialogs (70/72). */
+.physics-paint-canvas-zoom-bar {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(28, 30, 34, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.physics-paint-canvas-zoom-button,
+.physics-paint-canvas-zoom-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #b9c3ce;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.physics-paint-canvas-zoom-button {
+  width: 26px;
+  padding: 0;
+}
+
+.physics-paint-canvas-zoom-text-button {
+  padding: 0 8px;
+}
+
+.physics-paint-canvas-zoom-button:hover:not(:disabled),
+.physics-paint-canvas-zoom-text-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.physics-paint-canvas-zoom-button[aria-pressed="true"],
+.physics-paint-canvas-zoom-text-button[aria-pressed="true"] {
+  background: #f59e0b;
+  color: #241a05;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.6);
+}
+
+.physics-paint-canvas-zoom-button:disabled,
+.physics-paint-canvas-zoom-text-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.physics-paint-canvas-zoom-percent {
+  min-width: 38px;
+  padding: 0 2px;
+  color: #dfe5ec;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .physics-paint-canvas-toast {
   position: absolute;
   top: 18px;
