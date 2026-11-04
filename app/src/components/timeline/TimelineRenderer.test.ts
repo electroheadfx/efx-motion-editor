@@ -548,3 +548,108 @@ describe('FX track selection + visibility law (UAT 2026-10-19)', () => {
     expect(interaction).not.toContain('localX < 18');
   });
 });
+
+describe('physic-paint rail line (v2.0.1 v7, 261104-q82)', () => {
+  const railLineSource = () => {
+    const code = source();
+    const start = code.indexOf('private drawPhysicPaintRailLine');
+    return code.slice(start, code.indexOf('private drawFxTrack'));
+  };
+
+  const fxTrackSource = () => {
+    const code = source();
+    return code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
+  };
+
+  it('spans the first frame left edge to the last covered frame right edge', async () => {
+    const { getPhysicPaintRailLineGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    expect(getPhysicPaintRailLineGeometry({
+      inFrame: 10,
+      outFrame: 40,
+      frameWidth: 60,
+      scrollX: 0,
+      canvasWidth: 3000,
+    })).toEqual({
+      x: TRACK_HEADER_WIDTH + 600,
+      width: 30 * 60,
+      endVisible: true,
+    });
+  });
+
+  it('keeps the full extent when the viewport clips the rail end', async () => {
+    const { getPhysicPaintRailLineGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    expect(getPhysicPaintRailLineGeometry({
+      inFrame: 0,
+      outFrame: 100,
+      frameWidth: 60,
+      scrollX: 0,
+      canvasWidth: 1000,
+    })).toEqual({
+      x: TRACK_HEADER_WIDTH,
+      width: 6000,
+      endVisible: false,
+    });
+  });
+
+  it('makes a one-frame rail exactly one frame wide (the Editor has no cell gap)', async () => {
+    const { getPhysicPaintRailLineGeometry } = await import('./TimelineRenderer');
+
+    expect(getPhysicPaintRailLineGeometry({
+      inFrame: 0,
+      outFrame: 1,
+      frameWidth: 60,
+      scrollX: 0,
+      canvasWidth: 3000,
+    }).width).toBe(60);
+  });
+
+  it('shifts the rail line with scrollX', async () => {
+    const { getPhysicPaintRailLineGeometry } = await import('./TimelineRenderer');
+
+    const base = { inFrame: 4, outFrame: 24, frameWidth: 30, canvasWidth: 2000 };
+    const atZero = getPhysicPaintRailLineGeometry({ ...base, scrollX: 0 });
+    const scrolled = getPhysicPaintRailLineGeometry({ ...base, scrollX: 100 });
+    expect(scrolled.x).toBe(atZero.x - 100);
+    expect(scrolled.width).toBe(atZero.width);
+  });
+
+  it('returns zero width for an empty span', async () => {
+    const { getPhysicPaintRailLineGeometry } = await import('./TimelineRenderer');
+
+    expect(getPhysicPaintRailLineGeometry({
+      inFrame: 7,
+      outFrame: 7,
+      frameWidth: 60,
+      scrollX: 0,
+      canvasWidth: 2000,
+    }).width).toBe(0);
+  });
+
+  it('draws the pill with the locked 4px geometry and the 4x/1x nose radii', () => {
+    const rail = railLineSource();
+
+    expect(source()).toContain('private drawPhysicPaintRailLine');
+    expect(rail).toContain('TIMELINE_GEOMETRY.railLineHeight');
+    expect(rail).toContain('TIMELINE_GEOMETRY.railLineRadiusTop');
+    expect(rail).toContain('TIMELINE_GEOMETRY.railLineRadiusBottom');
+    expect(rail).toContain('ctx.roundRect(');
+    expect(rail).toContain('ctx.fill(');
+    // No stroke, no shadow: the pill is a flat fill.
+    expect(rail).not.toContain('ctx.stroke');
+    expect(rail).not.toContain('shadowColor');
+  });
+
+  it('gates the rail line and the bar recolour on the physic-paint row tier', () => {
+    const fx = fxTrackSource();
+
+    expect(fx).toContain("const isPhysicPaint = fxTrack.layerType === 'physic-paint'");
+    expect(fx).toContain("isSelected ? 'selected' : 'unselected'");
+    expect(fx).toContain('this.drawPhysicPaintRailLine(');
+    // The bar fill, border, edge handles and gap tail read the palette line.
+    expect(fx).toContain('withAlpha(barColor');
+    expect(fx).toContain('ctx.fillStyle = barColor');
+    expect(fx).toContain('drawCoverageGapTail(ctx, hatchLeft, barY, hatchW, barH, barColor)');
+  });
+});
