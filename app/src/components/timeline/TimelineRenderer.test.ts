@@ -201,6 +201,23 @@ describe('physic-paint Roto key markers (C-04)', () => {
       .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));
   });
 
+  it('flags rail starts and ends, blending a shared boundary into one sign', () => {
+    const code = source();
+    const markerSource = code.slice(code.indexOf('private drawRotoKeyMarkers'), code.indexOf('private drawFxTrack'));
+
+    // Each track's rail start/end frame becomes a flag at its frame x.
+    expect(markerSource).toContain('const startBoundaryXs = new Set<number>(railStarts.map(boundaryX))');
+    expect(markerSource).toContain('const endBoundaryXs = new Set<number>(railEnds.map(boundaryX))');
+    // Start hugs the diamond's left (`[`), end its right (`]`); a frame that
+    // does both draws the blended double sign (feet both ways) exactly once.
+    expect(markerSource).toContain('strokeFlag(x, [-1, 1])');
+    expect(markerSource).toContain('strokeFlag(x - halfSize - 3, [1])');
+    expect(markerSource).toContain('strokeFlag(x + halfSize + 3, [-1])');
+    // Flags draw before the diamonds so the glyphs sit on top.
+    expect(markerSource.indexOf('strokeFlag(x, [-1, 1])'))
+      .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));
+  });
+
   it('populates rotoKeyFrames from real Roto key records for physic-paint layers only', () => {
     const code = frameMapSource();
     const fxLayoutsIndex = code.indexOf('export const fxTrackLayouts');
@@ -347,6 +364,8 @@ describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)
     expect(code).not.toContain('drawPhysicPaintRepeatDurationMarkers');
     expect(code).not.toContain('getTimelineRepeatDurationMarkerGeometry');
     expect(fxTrackSource).toContain('fxTrack.rotoCycleRanges ?? []');
+    expect(fxTrackSource).toContain('fxTrack.rotoRailStarts ?? []');
+    expect(fxTrackSource).toContain('fxTrack.rotoRailEnds ?? []');
     expect(fxTrackSource).not.toContain('fxTrack.repeatDurationMarkers');
     for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip']) {
       expect(fxTrackSource).not.toContain(interactionSurface);
@@ -495,6 +514,57 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
     // The Editor row is per LAYER: keys from every rail/track, one per frame.
     expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames)
       .toEqual([1, 3, 5]);
+  });
+
+  it('exposes each rail start/end frame so the Editor can flag rail boundaries', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { registerDocument, getDocument } = await import('../../stores/efxPaintStore');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    const seeded = getDocument('roto-layer');
+    if (!seeded) throw new Error('missing document');
+    const baseTrack = seeded.tracks[0];
+    registerDocument({
+      ...seeded,
+      tracks: [
+        baseTrack,
+        { ...baseTrack, id: 'track-b', name: 'Paint 2', frames: {}, rotoPhysical: null, loopClips: [] },
+      ],
+    });
+
+    // Track 1: interpolated rail — keys 1, 3, 9 → one key rail 1..9.
+    const interp = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', TEST_TRACK_ID,
+      [makeRotoRecord('a-1', 1), makeRotoRecord('a-3', 3), makeRotoRecord('a-9', 9)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!interp.ok) throw new Error(interp.error);
+    // Track 2: cycle rail — one source cycle on keys 1, 3 (the store normalizes
+    // its placement end to 5), so the rail covers 1..5 and stops there.
+    const looped = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', 'track-b',
+      [makeRotoRecord('b-1', 1), makeRotoRecord('b-3', 3)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!looped.ok) throw new Error(looped.error);
+    const clips = physicPaintStore.replaceRotoPhysicalLoopClips('roto-layer', 'track-b', [{
+      loopId: 'loop-1',
+      placementStart: 1,
+      sourceKeyIds: ['b-1', 'b-3'],
+      repeat: 2,
+      mode: 'progressive',
+    }]);
+    if (!clips.ok) throw new Error(clips.error);
+
+    const layout = fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId);
+    expect(layout?.rotoKeyFrames).toEqual([1, 3, 9]);
+    // Both rails start on frame 1 (one flag); the cycle rail stops at its
+    // placement end (5) while the interp rail runs on to its last key (9).
+    expect(layout?.rotoRailStarts).toEqual([1]);
+    expect(layout?.rotoRailEnds).toEqual([5, 9]);
   });
 
   it('derives cycle ranges from one source cycle after the loop phase origin', () => {

@@ -10,6 +10,7 @@ import type {Layer, LayerType, EasingType} from '../types/layer';
 import {derivePhysicPaintRotoLoopRanges} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type {PhysicPaintRotoLoopResolutionContext} from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import type {PhysicPaintRotoLoopClip} from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import {deriveKeyRailSegments} from '../components/physic-paint/view/physicsPaintKeyRailPresentation';
 
 /** Flattened frame array: every frame maps to a sequence, key photo, and image (GLOBAL).
  *  Cross dissolve does NOT shorten the timeline — both sequences keep all their frames.
@@ -227,6 +228,11 @@ function deriveMainEditorLoopRanges(layer: Layer, seq: Sequence): PhysicPaintRot
 interface TimelineRepeatProjection {
   markers: TimelineRepeatDurationMarker[] | undefined;
   cycleRanges: TimelineCycleRange[] | undefined;
+  /** Rail start frames across every track: one per key-rail segment / loop rail. */
+  railStarts?: number[];
+  /** Rail end frames: the last key of a key rail, the exclusive placement end
+   *  of a loop rail (the rail line's right edge). */
+  railEnds?: number[];
 }
 
 interface TrackPhysicalSource {
@@ -234,6 +240,7 @@ interface TrackPhysicalSource {
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
   readonly capacity: number;
   readonly interpolationEnabled: boolean;
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
 }
 
 /**
@@ -254,6 +261,8 @@ function getTrackPhysicalSources(layerId: string): TrackPhysicalSource[] {
         loopClips: physicPaintStore.getRotoPhysicalLoopClips(layerId, track.id),
         capacity: physicPaintStore.getRotoPhysicalCapacity(layerId, track.id),
         interpolationEnabled: physicPaintStore.getRotoPhysicalInterpolationState(layerId, track.id).enabled,
+        incomingInterpolationBreakKeyIds:
+          physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, track.id),
       });
       continue;
     }
@@ -264,6 +273,7 @@ function getTrackPhysicalSources(layerId: string): TrackPhysicalSource[] {
       loopClips: physical.loopClips,
       capacity: physical.capacity,
       interpolationEnabled: physical.interpolation.enabled,
+      incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
     });
   }
   return sources;
@@ -278,9 +288,28 @@ function getTimelineRepeatProjection(layer: Layer, seq: Sequence): TimelineRepea
 
   const markers: TimelineRepeatDurationMarker[] = [];
   const cycleRanges: TimelineCycleRange[] = [];
+  // UAT 261104: the flattened row loses which track a line belongs to, so the
+  // renderer also gets each rail's start/end frames and draws boundary flags.
+  const railStarts: number[] = [];
+  const railEnds: number[] = [];
   // Union across every track: the Editor row is per LAYER, so its line style
   // must not follow the active Studio track.
   for (const source of getTrackPhysicalSources(layerId)) {
+    const groupOwnedKeyIds = new Set<string>();
+    for (const clip of source.loopClips) {
+      clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
+    }
+    const segments = deriveKeyRailSegments({
+      orderedRealKeys: [...source.records]
+        .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+      incomingInterpolationBreakKeyIds: new Set(source.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    });
+    for (const segment of segments) {
+      railStarts.push(segment.firstKeyFrame);
+      railEnds.push(segment.lastKeyFrame);
+    }
     if (source.loopClips.length === 0) continue;
     const context = derivePhysicPaintRotoLoopRanges({
       identities: source.records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
@@ -297,6 +326,8 @@ function getTimelineRepeatProjection(layer: Layer, seq: Sequence): TimelineRepea
           frameCount,
           mode: modeByLoopId.get(range.loopId) ?? 'progressive',
         });
+        railStarts.push(range.placementStart);
+        railEnds.push(range.effectiveEnd);
       }
       // The Studio paints repeatInstance > 0 as cycle cells: from one source
       // cycle after the phase origin (clamped to this visible fragment).
@@ -317,10 +348,14 @@ function getTimelineRepeatProjection(layer: Layer, seq: Sequence): TimelineRepea
   };
   const uniqueMarkers = uniqueBySpan(markers);
   const uniqueCycles = uniqueBySpan(cycleRanges);
+  const uniqueFrames = (frames: number[]): number[] =>
+    Array.from(new Set(frames)).sort((left, right) => left - right);
 
   return {
     markers: uniqueMarkers.length > 0 ? uniqueMarkers : undefined,
     cycleRanges: uniqueCycles.length > 0 ? uniqueCycles : undefined,
+    railStarts: railStarts.length > 0 ? uniqueFrames(railStarts) : undefined,
+    railEnds: railEnds.length > 0 ? uniqueFrames(railEnds) : undefined,
   };
 }
 
@@ -527,6 +562,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
         : undefined,
       repeatDurationMarkers: repeatProjection.markers,
       rotoCycleRanges: repeatProjection.cycleRanges,
+      rotoRailStarts: repeatProjection.railStarts,
+      rotoRailEnds: repeatProjection.railEnds,
       soundClips: documentAudios.map((documentSound) => ({
         id: documentSound.id,
         sourceId: documentSound.sourceId,

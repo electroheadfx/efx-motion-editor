@@ -720,14 +720,18 @@ export class TimelineRenderer {
   /** Draw the real-Roto-key diamonds on a physic-paint FX row (C-04) at their
    *  frame position with the standard rail palette (v2.0.1 v7), joined by a
    *  key-to-key connector: a straight line across interpolated frames and a
-   *  sinusoidal line across a repeat/cycle range (UAT 261104). Keys that land
-   *  on the same x (stacked across rails/tracks, or sub-pixel at low zoom) draw
-   *  once. Pure canvas drawing: no shadow, no hit surface, no interaction
-   *  state (D-08/D-09). */
+   *  sinusoidal line across a repeat/cycle range (UAT 261104). Each rail's
+   *  start/end frame carries a `[` / `]` flag so the flattened row still shows
+   *  where a track's rail begins and stops. Keys that land on the same x
+   *  (stacked across rails/tracks, or sub-pixel at low zoom) draw once. Pure
+   *  canvas drawing: no shadow, no hit surface, no interaction state
+   *  (D-08/D-09). */
   private drawRotoKeyMarkers(
     ctx: CanvasRenderingContext2D,
     rotoKeyFrames: number[],
     cycleRanges: readonly TimelineCycleRange[],
+    railStarts: readonly number[],
+    railEnds: readonly number[],
     inFrame: number,
     barX: number,
     barW: number,
@@ -849,6 +853,37 @@ export class TimelineRenderer {
       if (cycleStartX < firstKeyX) {
         strokeSplitSpan(Math.max(cycleStartX, TRACK_HEADER_WIDTH), firstKeyX);
       }
+    }
+
+    // Rail-boundary flags (UAT 261104): `[` marks where a rail starts, `]`
+    // where it ends. A frame that both ends one rail and starts another draws
+    // the blended double sign (feet both ways) at the key's position instead
+    // of a separate `][` pair.
+    const boundaryX = (frame: number): number =>
+      (inFrame + frame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+    const startBoundaryXs = new Set<number>(railStarts.map(boundaryX));
+    const endBoundaryXs = new Set<number>(railEnds.map(boundaryX));
+    const flagHalfHeight = 5;
+    const footLength = 3;
+    const strokeFlag = (x: number, dirs: readonly number[]): void => {
+      ctx.beginPath();
+      ctx.moveTo(x, centerY - flagHalfHeight);
+      ctx.lineTo(x, centerY + flagHalfHeight);
+      for (const dir of dirs) {
+        ctx.moveTo(x, centerY - flagHalfHeight);
+        ctx.lineTo(x + dir * footLength, centerY - flagHalfHeight);
+        ctx.moveTo(x, centerY + flagHalfHeight);
+        ctx.lineTo(x + dir * footLength, centerY + flagHalfHeight);
+      }
+      ctx.stroke();
+    };
+    ctx.lineWidth = 1;
+    for (const x of new Set<number>([...startBoundaryXs, ...endBoundaryXs])) {
+      const isStart = startBoundaryXs.has(x);
+      const isEnd = endBoundaryXs.has(x);
+      if (isStart && isEnd) strokeFlag(x, [-1, 1]);
+      else if (isStart) strokeFlag(x - halfSize - 3, [1]);
+      else strokeFlag(x + halfSize + 3, [-1]);
     }
 
     ctx.fillStyle = palette.keyFill;
@@ -1015,6 +1050,8 @@ export class TimelineRenderer {
           ctx,
           fxTrack.rotoKeyFrames,
           fxTrack.rotoCycleRanges ?? [],
+          fxTrack.rotoRailStarts ?? [],
+          fxTrack.rotoRailEnds ?? [],
           fxTrack.inFrame,
           barX,
           barW,

@@ -122,6 +122,12 @@ export interface FxTrackLayout {
   rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
   repeatDurationMarkers?: TimelineRepeatDurationMarker[];
   rotoCycleRanges?: TimelineCycleRange[];
+  /** Flattened rail start frames across every Roto track (key-rail segments and
+   *  loop rails) — the Editor draws a `[` flag at each (UAT 261104). */
+  rotoRailStarts?: number[];
+  /** Rail end frames: a key rail ends on its last key, a loop rail at the
+   *  exclusive placement end (its line's right edge). The Editor draws `]`. */
+  rotoRailEnds?: number[];
   /** One entry per placed document clip (261008-ig1 — was a singleton). */
   soundClips?: readonly TimelineSoundClip[];
   fadeIn?: { duration: number };
