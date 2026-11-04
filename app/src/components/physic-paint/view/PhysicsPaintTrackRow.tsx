@@ -24,8 +24,9 @@
  * grab, no rename, no duplicate, no delete (D-06).
  */
 
+import type { CSSProperties } from 'preact';
 import { useRef } from 'preact/hooks';
-import { AudioWaveform, Blend, Camera, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Plus, Trash2 } from 'lucide-preact';
+import { AudioWaveform, Blend, Camera, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Minus, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
@@ -40,6 +41,15 @@ import {
   type PhysicsPaintBackgroundClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import { classifyLoopClipRailKind, getRotoRailKindLabel, type RotoRailKind } from './physicsPaintWorkflowPresentation';
+import {
+  projectTimelineRailLineWidth,
+  resolveTimelineCellPresentation,
+  resolveTimelineRailPalette,
+  resolveTimelineRailType,
+  resolveTrackAccentColor,
+  timelineRailCellStyle,
+  type TimelineRailType,
+} from './timelineRailDesign';
 import type { BackgroundTrack, FrameLoopClip } from '../../../efx-paint/document/efxPaintDocument';
 import type {
   BackgroundClipDragApi,
@@ -213,6 +223,10 @@ interface TrackRowLoopLine {
   readonly left: number;
   readonly width: number;
   readonly placementFrame: number;
+  /** v2.0.1: the continuous range the line paints (phaseOrigin → resolved
+   *  end) — the cell rail-type map fills over `[startFrame, endFrameExclusive)`. */
+  readonly startFrame: number;
+  readonly endFrameExclusive: number;
   readonly mode: 'progressive' | 'static';
   /** 52-04 (D-03/D-19): the rail kind — the reveal rail is the 4th rail kind;
    *  the row classifies it so the reveal green line reads on every track. */
@@ -253,11 +267,19 @@ interface TrackRowLoopVisuals {
   /** Per-frame linked-loop classes identical to the active lane's cells
    *  (repeat gray + dot, source key/gap/generated) — UAT round 10 parity. */
   readonly linkedClassByFrame: ReadonlyMap<number, string>;
+  /** v2.0.1: repeat instance per frame (source cycle = 0) — feeds the cycle
+   *  parity of the cell matrix. */
+  readonly repeatByFrame: ReadonlyMap<number, number>;
+  /** v2.0.1: the owning loop rail's type per frame, filled over each line's
+   *  continuous range (first write wins). */
+  readonly railTypeByFrame: ReadonlyMap<number, TimelineRailType>;
 }
 
 const EMPTY_TRACK_ROW_LOOP_VISUALS: TrackRowLoopVisuals = Object.freeze({
   lines: EMPTY_TRACK_ROW_LOOP_LINES,
   linkedClassByFrame: new Map(),
+  repeatByFrame: new Map(),
+  railTypeByFrame: new Map(),
 });
 
 /**
@@ -331,6 +353,8 @@ function resolveTrackRowLoopVisuals(
       left: geometry.left,
       width: geometry.width,
       placementFrame: continuousRange.placementStart,
+      startFrame: continuousRange.placementStart,
+      endFrameExclusive: resolvedEnd,
       mode: clip?.mode ?? 'progressive',
       // 261031-vbo (Quick C1): one classifier for the active lane and the
       // non-active rows — a merged (provenance-free) clip is 'standard'.
@@ -345,13 +369,30 @@ function resolveTrackRowLoopVisuals(
   // when the track is selected or not.
   const resolutions = resolveRotoVisibleFrameResolutions(context, frameCells);
   const linkedClassByFrame = new Map<number, string>();
+  // v2.0.1 cell matrix inputs: repeat parity for every linked occurrence past
+  // the source cycle, and the loop rail type over the line's continuous range
+  // (clipped to the row capacity, first write wins — the same winning-first
+  // authority the drawn lines use).
+  const repeatByFrame = new Map<number, number>();
+  const railTypeByFrame = new Map<number, TimelineRailType>();
   for (const [frame, resolution] of resolutions) {
     if (resolution.kind === 'empty' || resolution.kind === 'real') continue;
+    if ('repeatInstance' in resolution && resolution.repeatInstance > 0) {
+      repeatByFrame.set(frame, resolution.repeatInstance);
+    }
     const state = resolveTrackRowCellState(layerId, trackId, frame);
     const linkedClass = mapTrackRowLinkedClass(resolution, state === 'generated');
     if (linkedClass !== '') linkedClassByFrame.set(frame, linkedClass);
   }
-  return { lines, linkedClassByFrame };
+  for (const line of lines) {
+    const railType = resolveTimelineRailType(line.railKind, line.mode);
+    const rangeStart = Math.max(0, line.startFrame);
+    const rangeEnd = Math.min(capacity, line.endFrameExclusive);
+    for (let frame = rangeStart; frame < rangeEnd; frame += 1) {
+      if (!railTypeByFrame.has(frame)) railTypeByFrame.set(frame, railType);
+    }
+  }
+  return { lines, linkedClassByFrame, repeatByFrame, railTypeByFrame };
 }
 
 /* ---- 49-05 (S4): one Background clip rail on the fixed Bg row ---- */
@@ -547,6 +588,15 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     ? resolveTrackRowLoopVisuals(layerId, trackId, frameCells)
     : EMPTY_TRACK_ROW_LOOP_VISUALS;
   const loopLines = loopVisuals.lines;
+  // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
+  // of the ownership inputs of the cell matrix. Loop coverage comes from the
+  // loop visuals' per-frame map, so no second range walk is needed.
+  const keyRailCoveredFrames = new Set<number>();
+  for (const segment of railSegments) {
+    for (let frame = segment.firstKeyFrame; frame <= segment.lastKeyFrame; frame += 1) {
+      keyRailCoveredFrames.add(frame);
+    }
+  }
   // 47-01 UAT round 7: a click on a non-active row's frame cell activates the
   // row's track and navigates to the clicked frame. 47 close-out UAT round 5:
   // with onSelectTrackFrame wired the SAME click also selects the frame/key —
@@ -611,12 +661,38 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
               ? ' physics-paint-bg-placement-target'
               : '';
             const cellClass = `physics-paint-roto-cell ${TRACK_ROW_CELL_FILL_CLASS[state]}${linkedClass ? ` ${linkedClass}` : ''}${placementClass}`;
+            // v2.0.1 (README §4) — Paint rows only: classify the cell into the
+            // key / interp / cycle / empty matrix. A non-active row never owns
+            // the selected rail, so its palette is always the dim variant.
+            let railCellPresentation = null as ReturnType<typeof resolveTimelineCellPresentation> | null;
+            let railCellType: TimelineRailType | null = null;
+            let cellStyle: CSSProperties | undefined;
+            if (kind === 'paint') {
+              const isLoopCovered = loopVisuals.railTypeByFrame.has(frame);
+              railCellType = loopVisuals.railTypeByFrame.get(frame) ?? 'standard';
+              railCellPresentation = resolveTimelineCellPresentation({
+                inRail: keyRecord !== null || isLoopCovered || keyRailCoveredFrames.has(frame) || state !== 'empty',
+                repeatInstance: loopVisuals.repeatByFrame.get(frame) ?? 0,
+                isRealKey: keyRecord !== null,
+                isGenerated: state === 'generated',
+                isCachedOnly: state === 'cached' && keyRecord === null,
+              });
+              cellStyle = timelineRailCellStyle(
+                railCellPresentation,
+                resolveTimelineRailPalette(railCellType, false),
+                false,
+              ) as unknown as CSSProperties;
+            }
             return (
               <span
                 key={frame}
                 className={cellClass}
                 data-roto-app-frame={frame}
                 data-roto-key-id={keyRecord?.keyId}
+                data-cell-kind={railCellPresentation?.kind}
+                data-cycle={railCellPresentation?.cycle}
+                data-rail-type={railCellType ?? undefined}
+                style={cellStyle}
                 aria-hidden="true"
               >
                 {frame}
@@ -636,10 +712,17 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             class="physics-paint-track-row-rail physics-paint-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end"
             data-rail-first-frame={segment.firstKeyFrame}
             data-rail-kind="key"
+            data-rail-type="standard"
             data-rail-key-ids={segment.keyIds.join(',')}
             style={{
               left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
-              width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
+              /* v2.0.1 (README §4): the shared rail-line width rule — the line
+                 ends on the last cell's right edge, so the 2px gap is inset. */
+              width: `${projectTimelineRailLineWidth(
+                segment.lastKeyFrame + 1 - segment.firstKeyFrame,
+                ROW_CELL_WIDTH_PX,
+                true,
+              )}px`,
             }}
             role="button"
             aria-label={`Key Rail frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}`}
@@ -673,6 +756,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.railKind === 'reveal' ? ' rail-kind-reveal' : ''}${line.railKind === 'standard' ? ' rail-kind-standard' : ''}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
             data-rail-first-frame={line.placementFrame}
             data-rail-kind="loop"
+            data-rail-type={resolveTimelineRailType(line.railKind, line.mode)}
             data-rail-key-ids={line.sourceKeyIds.join(',')}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
             role="button"
@@ -820,6 +904,10 @@ export interface PhysicsPaintTrackRowHeaderProps {
    *  The locked Background row carries no reorder grab, no duplicate/delete
    *  hover actions (47-CONTEXT D-06); Import is its single affordance. */
   readonly onImportBackground?: () => void;
+  /** v2.0.1 (README §2): the rail type currently selected (or rail-set) on the
+   *  active lane — drives the active header's 3px `--track-accent`. Null/absent
+   *  paints the neutral fallback; the Background header ignores it. */
+  readonly selectedRailType?: TimelineRailType | null;
 }
 
 /**
@@ -855,6 +943,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onDeleteTrack,
     onGripPointerDown,
     onImportBackground,
+    selectedRailType,
   } = props;
   const isActive = activeTrackId === trackId;
   const isBackground = kind === 'background';
@@ -868,6 +957,12 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     isBackground ? 'physics-paint-track-row-header-background' : '',
     isBackground && selected ? 'physics-paint-track-row-header-selected' : '',
   ].filter(Boolean).join(' ');
+  // v2.0.1 (README §2): the active header's 3px left accent is the selected
+  // rail's bright line, or the neutral fallback when no rail is selected. The
+  // Background header ignores the prop (its selected treatment is clip-driven).
+  const trackAccent = isActive && !isBackground
+    ? resolveTrackAccentColor(selectedRailType ?? null)
+    : null;
   if (isBackground) {
     // The Background row is not selectable and has no hover capability for now
     // (D-06 lock semantics): render a plain header cell — no role=button, no
@@ -910,6 +1005,7 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     <div
       class={headerClass}
       data-track-id={trackId}
+      style={trackAccent === null ? undefined : ({ '--track-accent': trackAccent } as unknown as CSSProperties)}
       role="button"
       tabIndex={0}
       aria-label={`Select track ${label}`}
@@ -1019,6 +1115,17 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               <Blend size={12} aria-hidden="true" />
             </button>
           ) : null}
+          {/* v2.0.1 (README §2): the row's motion slot — an inert placeholder
+              that keeps the header rhythm stable while motion channels are
+              v2.1.0 scope. Never interactive: no role, no tabIndex, no handler,
+              aria-hidden so assistive tech skips the empty slot. */}
+          <span
+            class="physics-paint-track-row-motion-toggle is-none"
+            title="No motion channels"
+            aria-hidden="true"
+          >
+            <Minus size={12} />
+          </span>
           {/* The name is pushed right by its auto margin (mockup layout),
               leaving the trash pinned at the far right. */}
           <span

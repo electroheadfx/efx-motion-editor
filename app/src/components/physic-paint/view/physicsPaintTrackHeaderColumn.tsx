@@ -28,6 +28,7 @@
 import type { Ref } from 'preact';
 import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import type { TimelineRailType } from './timelineRailDesign';
 
 /** Row pitch of the pinned header cells (mirrors the strip's
  *  `STRIP_ROW_HEIGHT_PX` — 47-01 UAT round 3 approved 30px rows). The insertion
@@ -118,6 +119,10 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly hasSound?: boolean;
   /** The strip launcher's open-Document-sound-modal intent. */
   readonly onOpenDocumentSound?: () => void;
+  /** v2.0.1 (README §2): the active rail's type — the active track header
+   *  paints its 3px left accent from this palette (neutral when null/absent).
+   *  The Background header ignores it. */
+  readonly selectedRailType?: TimelineRailType | null;
 }
 
 /**
@@ -158,6 +163,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onOpenReference,
     hasSound = false,
     onOpenDocumentSound,
+    selectedRailType,
   } = props;
   const deletable = tracks.length > 1;
   // 49-06 UAT: while a Bg clip is selected, NO normal track header paints the
@@ -198,6 +204,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               onToggleBlend={onToggleBlend}
               onDeleteTrack={onRequestDeleteTrack}
               onGripPointerDown={onGripPointerDown}
+              selectedRailType={selectedRailType}
             />
           ))}
           {/* 47-02 Task 2: the live reorder insertion indicator — a 2px line at
@@ -219,6 +226,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               kind="background"
               selected={backgroundSelected}
               onImportBackground={onImportBackground}
+              selectedRailType={selectedRailType}
             />
           ) : null}
         </div>

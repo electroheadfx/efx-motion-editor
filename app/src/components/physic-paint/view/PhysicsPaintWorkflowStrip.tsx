@@ -1,6 +1,6 @@
 import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Paintbrush, Play, Plus, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, Stamp, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
-import { Fragment, type ComponentChildren, type RefObject } from 'preact';
+import { Fragment, type ComponentChildren, type CSSProperties, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { signal, useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
@@ -96,6 +96,16 @@ import {
   projectPhysicsPaintGroupProductReason,
   type PhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
+import {
+  resolveFrameRail,
+  resolveTimelineCellPresentation,
+  resolveTimelineRailPalette,
+  resolveTimelineRailType,
+  timelineRailCellStyle,
+  type TimelineCellKind,
+  type TimelineCellPresentation,
+  type TimelineRailType,
+} from './timelineRailDesign';
 import type {
   RotoDragPublication,
   RotoDragPreparationResult,
@@ -888,9 +898,10 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
     ? (props.playbackTick?.value?.appFrame ?? props.currentFrame.value)
     : (props.scrubFrame?.value ?? props.currentFrame.value);
   const clampedFrame = Math.max(0, Math.min(frame, Math.max(0, props.frameCount - 1)));
-  // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
-  // cell (18/2 = 9) minus half the 2px line → the bar centers on the frame.
-  const left = 4 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
+  // 6 = the v2.0.1 timeline-scroll content gutter (README §3 — the ruler/cell
+  // origin sits 2px further in than the retired 4px padding); +8 = half a cell
+  // (18/2 = 9) minus half the 2px line → the bar centers on the frame.
+  const left = 6 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
   return (
     <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }}>
       {/* UAT round 3: the dedicated scrub handle — a small square on the
@@ -1888,6 +1899,13 @@ interface RotoTimelineCellButtonProps {
   tooltipCopy: string;
   onCellPointerDown: (event: PointerEvent, frame: number, keyId: string) => void;
   onCellClick: (frame: number, vm: RotoCellViewModel, event: MouseEvent) => void;
+  /** v2.0.1 (README §4): the cell matrix state and its owning rail type — the
+   *  four primitives below drive the data attributes and the palette custom
+   *  properties for this cell. */
+  railCellKind: TimelineCellKind;
+  railCellCycle?: 2 | 3;
+  railType: TimelineRailType;
+  railSelected: boolean;
 }
 
 /**
@@ -1922,6 +1940,17 @@ interface RotoCellDerivationCache {
 function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
   recordPhysicsPaintPerformanceCounter('render.rotoTimelineCellButton');
   const tooltip = useStyledTooltip();
+  // v2.0.1 (README §4): rebuild the presentation from the two primitives the
+  // memo compares (kind + cycle), then let the design module own the palette
+  // custom properties — the component never hardcodes a colour.
+  const railCellPresentation: TimelineCellPresentation = props.railCellCycle === undefined
+    ? { kind: props.railCellKind }
+    : { kind: props.railCellKind, cycle: props.railCellCycle };
+  const railCellStyle = timelineRailCellStyle(
+    railCellPresentation,
+    resolveTimelineRailPalette(props.railType, props.railSelected),
+    props.railSelected,
+  ) as unknown as CSSProperties;
   return (
     <span
       class="physics-paint-roto-cell-anchor"
@@ -1934,6 +1963,11 @@ function RotoTimelineCellButtonImpl(props: RotoTimelineCellButtonProps) {
         data-roto-app-frame={props.frame}
         data-roto-kind={props.semanticKind}
         data-roto-key-id={props.cellKeyId ?? undefined}
+        data-cell-kind={props.railCellKind}
+        data-cycle={props.railCellCycle}
+        data-rail-type={props.railType}
+        data-rail-selected={props.railSelected ? 'true' : undefined}
+        style={railCellStyle}
         aria-label={props.ariaLabel}
         aria-selected={props.ariaSelected === true ? 'true' : undefined}
         onPointerDown={props.dragEligible && props.cellKeyId !== null
@@ -1996,6 +2030,10 @@ const RotoTimelineCellButton = memo(
     && prev.ariaLabel === next.ariaLabel
     && prev.ariaSelected === next.ariaSelected
     && prev.tooltipCopy === next.tooltipCopy
+    && prev.railCellKind === next.railCellKind
+    && prev.railCellCycle === next.railCellCycle
+    && prev.railType === next.railType
+    && prev.railSelected === next.railSelected
     && prev.onCellPointerDown === next.onCellPointerDown
     && prev.onCellClick === next.onCellClick
     && rotoCellVmValuesEqual(prev.vm, next.vm),
@@ -4797,12 +4835,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pushHoverRailKindClass = (rail: PushPreviewRail): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
     const standard = classifyLoopClipRailKind(rail.clip) === 'standard' ? ' rail-kind-standard' : '';
-    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}`;
+    const reveal = classifyLoopClipRailKind(rail.clip) === 'reveal' ? ' rail-kind-reveal' : '';
+    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}${reveal}`;
   };
   const pushGhostRailKindClass = (rail: PushPreviewRail): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
     const standard = classifyLoopClipRailKind(rail.clip) === 'standard' ? ' rail-kind-standard' : '';
-    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}`;
+    const reveal = classifyLoopClipRailKind(rail.clip) === 'reveal' ? ' rail-kind-reveal' : '';
+    return `${rail.clip?.mode === 'static' ? ' mode-static' : ''}${standard}${reveal}`;
   };
   // 43.6-03: batch Move ghost kind class — Key Rail gray, Static cyan,
   // Motion purple (UI-SPEC M3 kind base colors at 55% opacity). A merged
@@ -4814,7 +4854,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }): string => {
     if (rail.kind === 'key-rail') return ' key-rail';
     const standard = rail.railKind === 'standard' ? ' rail-kind-standard' : '';
-    return `${rail.mode === 'static' ? ' mode-static' : ''}${standard}`;
+    const reveal = rail.railKind === 'reveal' ? ' rail-kind-reveal' : '';
+    return `${rail.mode === 'static' ? ' mode-static' : ''}${standard}${reveal}`;
   };
   // 43.6-03: the blocked-edge bar paints on the colliding member's ghost
   // blocked edge — left edge of the leftmost blocked ghost for leftward,
@@ -4839,6 +4880,70 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // 47-01 hide: the active lane dims as a whole when its track is hidden —
   // every cell stays rendered, only the fade changes (TML-04 presentation).
   const activeTrackHidden = props.tracks?.find((candidate) => candidate.id === props.activeTrackId)?.visible === false;
+  /* v2.0.1 (README §2/§4): the active lane's rail ownership maps, derived once
+     per render — the selected rail type (header accent + bright palette), the
+     union of frames owned by the selected / rail-set rails, the per-frame loop
+     rail type (the same continuous extents the Loop Clip rail paints:
+     phaseOrigin → resolvedEnd, clipped to the visible window, first write
+     wins), and the key-rail-covered frames. Rail-set membership is part of the
+     predicate on purpose: the bright rail paint already treats set members as
+     selected, so the header accent and the cell palettes stay in step. */
+  const railDesign = useMemo(() => {
+    const selectedKeyRailId = props.selectedRotoKeyRail?.firstKeyId ?? null;
+    const memberKeyRailIds = props.railSetMemberKeyRailIds ?? [];
+    const selectedLoopIds = props.selectedRotoLoopClipIds ?? [];
+    const memberLoopIds = props.railSetMemberLoopIds ?? [];
+    const presentations = props.rotoLoopPresentations ?? EMPTY_LOOP_PRESENTATIONS;
+    const keyRailCoveredFrames = new Set<number>();
+    const selectedRailFrames = new Set<number>();
+    let selectedRailType: TimelineRailType | null = null;
+    for (const segment of keyRailSegments) {
+      const isSelected = selectedKeyRailId !== null && segment.firstKeyId === selectedKeyRailId;
+      const isSetMember = memberKeyRailIds.includes(segment.firstKeyId);
+      for (let frame = segment.firstKeyFrame; frame <= segment.lastKeyFrame; frame += 1) {
+        keyRailCoveredFrames.add(frame);
+        if (isSelected || isSetMember) selectedRailFrames.add(frame);
+      }
+      if (selectedRailType === null && (isSelected || isSetMember)) selectedRailType = 'standard';
+    }
+    const loopExtents = new Map<string, { start: number; endExclusive: number }>();
+    for (const range of loopResolutionContext?.ranges ?? []) {
+      const current = loopExtents.get(range.loopId);
+      if (current === undefined) {
+        loopExtents.set(range.loopId, { start: range.phaseOrigin, endExclusive: range.effectiveEnd });
+      } else {
+        current.endExclusive = Math.max(current.endExclusive, range.effectiveEnd);
+      }
+    }
+    const visibleStart = frameCells.length > 0 ? frameCells[0]! : 0;
+    const visibleEndExclusive = frameCells.length > 0 ? frameCells[frameCells.length - 1]! + 1 : 0;
+    const loopRailTypeByFrame = new Map<number, TimelineRailType>();
+    for (const [loopId, extent] of loopExtents) {
+      const start = Math.max(extent.start, visibleStart);
+      const endExclusive = Math.min(extent.endExclusive, visibleEndExclusive);
+      const isSelected = selectedLoopIds.includes(loopId) || memberLoopIds.includes(loopId);
+      if (isSelected) {
+        for (let frame = start; frame < endExclusive; frame += 1) selectedRailFrames.add(frame);
+      }
+      const presentation = presentations.get(loopId);
+      if (presentation === undefined) continue;
+      const railType = resolveTimelineRailType(presentation.railKind, presentation.mode);
+      for (let frame = start; frame < endExclusive; frame += 1) {
+        if (!loopRailTypeByFrame.has(frame)) loopRailTypeByFrame.set(frame, railType);
+      }
+      if (isSelected && selectedRailType === null) selectedRailType = railType;
+    }
+    return { selectedRailType, selectedRailFrames, loopRailTypeByFrame, keyRailCoveredFrames };
+  }, [
+    keyRailSegments,
+    loopResolutionContext,
+    props.rotoLoopPresentations,
+    props.selectedRotoKeyRail,
+    props.railSetMemberKeyRailIds,
+    props.selectedRotoLoopClipIds,
+    props.railSetMemberLoopIds,
+    frameCells,
+  ]);
   const renderActiveLane = (): ComponentChildren => (
               <div
                 ref={timelineContentRef}
@@ -5052,6 +5157,32 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     });
                     const cellAriaLabel = cellPresentation.ariaLabel;
                     const cellTooltipCopy = cellPresentation.tooltipCopy;
+                    // v2.0.1 (README §4): the v7 cell matrix. The owning rail
+                    // comes from the shared cascade (selected > loop clip >
+                    // key-rail segment > none); the cell state then classifies
+                    // as key / interp / cycle / empty. Named railCellPresentation
+                    // because cellPresentation above is the copy view model.
+                    const railOwnership = resolveFrameRail({
+                      selectedRailType: railDesign.selectedRailType,
+                      selectedRailCoversFrame: railDesign.selectedRailFrames.has(frame),
+                      loopRailType: railDesign.loopRailTypeByFrame.get(frame) ?? null,
+                      loopRailCoversFrame: railDesign.loopRailTypeByFrame.has(frame),
+                      keyRailCoversFrame: railDesign.keyRailCoveredFrames.has(frame),
+                    });
+                    const railType: TimelineRailType = railOwnership?.railType ?? 'standard';
+                    const railSelected = railOwnership?.selected ?? false;
+                    const railCellPresentation = resolveTimelineCellPresentation({
+                      inRail: railOwnership !== null
+                        || isPhysicalRealKey
+                        || isGenerated
+                        || vm.baseMeaning === 'cached',
+                      repeatInstance: frameResolution !== null && 'repeatInstance' in frameResolution
+                        ? frameResolution.repeatInstance
+                        : 0,
+                      isRealKey: isPhysicalRealKey,
+                      isGenerated,
+                      isCachedOnly: vm.baseMeaning === 'cached',
+                    });
                     // UI-SPEC G3: Group-drag gap-preview frames paint as ordinary
                     // roto-fill-empty cells, byte-identical to the 43.2 deleted-Group
                     // gap treatment (D-02). Class application only — no new DOM nodes.
@@ -5081,6 +5212,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                         ariaLabel={cellAriaLabel}
                         ariaSelected={isSpacingProxySelected || isSecondarySelected}
                         tooltipCopy={cellTooltipCopy}
+                        railCellKind={railCellPresentation.kind}
+                        railCellCycle={railCellPresentation.cycle}
+                        railType={railType}
+                        railSelected={railSelected}
                         onCellPointerDown={handleRotoTimelineCellPointerDown}
                         onCellClick={handleRotoTimelineCellClick}
                       />
@@ -5324,6 +5459,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // ruler-spacer strip — tinted while ANY clip exists (D-01 list).
             hasSound: documentAudios.length > 0,
             onOpenDocumentSound: props.onOpenDocumentSound,
+            // v2.0.1 (README §2): the active header's 3px left accent follows
+            // the selected (or rail-set) rail's bright palette line.
+            selectedRailType: railDesign.selectedRailType,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks

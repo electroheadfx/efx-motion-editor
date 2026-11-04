@@ -624,7 +624,7 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(hasClass(headerCell(rootB, fixture.trackB.id), 'physics-paint-track-row-header-active')).toBe(true);
   });
 
-  it('renders the row controls inline in mockup order — grip, eye, blend, name, trash — with no per-track solo chip (TML-04 surface, 261022-iff)', () => {
+  it('renders the row controls inline in mockup order — grip, eye, blend, motion, name, trash — with no per-track solo chip (TML-04 surface, 261022-iff, 261104-bop)', () => {
     const fixture = makeTwoTrackFixture();
     const onToggleVisible = vi.fn();
     const onRequestDeleteTrack = vi.fn();
@@ -638,18 +638,31 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
     expect(findAll(headerA, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Solo'))).toHaveLength(0);
 
-    // The mockup order: grip < eye < blend < name < trash.
+    // The mockup order: grip < eye < blend < motion < name < trash.
     const sequence = [...walk(headerA)]
       .map((vnode): string | null => {
         if (hasClass(vnode, 'physics-paint-track-row-grip')) return 'grip';
         if (vnode.props['aria-label'] === 'Hide Track 1') return 'eye';
         if (vnode.props['aria-label'] === 'Blend Track 1') return 'blend';
+        if (hasClass(vnode, 'physics-paint-track-row-motion-toggle')) return 'motion';
         if (hasClass(vnode, 'physics-paint-track-row-label')) return 'name';
         if (vnode.props['aria-label'] === 'Delete Track 1') return 'trash';
         return null;
       })
       .filter((entry): entry is string => entry !== null);
-    expect(sequence).toEqual(['grip', 'eye', 'blend', 'name', 'trash']);
+    expect(sequence).toEqual(['grip', 'eye', 'blend', 'motion', 'name', 'trash']);
+
+    // v2.0.1 (README §2): the motion slot is an INERT placeholder — aria-hidden,
+    // no role, no tabIndex, no handler, and it never renders a button surface
+    // (motion channels are v2.1.0 scope).
+    const motionSlot = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-motion-toggle'));
+    expect(hasClass(motionSlot, 'is-none')).toBe(true);
+    expect(String(motionSlot.props['aria-hidden'])).toBe('true');
+    expect(String(motionSlot.props.title)).toBe('No motion channels');
+    expect(motionSlot.props.role).toBeUndefined();
+    expect(motionSlot.props.tabIndex).toBeUndefined();
+    expect(motionSlot.props.onClick).toBeUndefined();
+    expect(motionSlot.props.onKeyDown).toBeUndefined();
 
     // The eye toggle routes the hide intent.
     const eye = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Hide Track 1');
@@ -748,6 +761,9 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-grip'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Solo'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(0);
+    // v2.0.1 (README §2): the motion slot is a Paint-row header rhythm element —
+    // the Background header renders none.
+    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-motion-toggle'))).toHaveLength(0);
   });
 
   it('paints the Bg row header SELECTED when a Bg clip is selected and blanks every normal track\'s active highlight (49-06 UAT)', () => {

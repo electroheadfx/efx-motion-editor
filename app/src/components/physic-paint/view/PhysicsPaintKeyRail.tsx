@@ -26,6 +26,7 @@ import {
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
+import { projectTimelineRailLineWidth } from './timelineRailDesign';
 
 /** 58-03 D-02: the fast double-click window reused from the Loop Rail idiom. */
 export const ROTO_KEY_RAIL_FAST_DOUBLE_CLICK_MS = 220;
@@ -50,11 +51,14 @@ export function projectPhysicsPaintKeyRailGeometry(
 
   const clippedStart = Math.max(segment.firstKeyFrame, visibleFrameWindow.startFrame);
   const clippedEnd = Math.min(segmentEndExclusive, visibleFrameWindow.endFrameExclusive);
+  const showEndBoundary = segmentEndExclusive <= visibleFrameWindow.endFrameExclusive;
   return {
     left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
-    width: Math.max(framePitch, (clippedEnd - clippedStart) * framePitch),
+    // v2.0.1 (README §3): a visible rail end lands on the last cell's right
+    // edge (frames × pitch − 2px); a clipped rail keeps the full extent.
+    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, showEndBoundary),
     showStartBoundary: segment.firstKeyFrame >= visibleFrameWindow.startFrame,
-    showEndBoundary: segmentEndExclusive <= visibleFrameWindow.endFrameExclusive,
+    showEndBoundary,
   };
 }
 
@@ -209,7 +213,14 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
       return {
         destination,
         left: (destination - props.visibleFrameWindow.startFrame) * props.framePitch,
-        width: Math.max(props.framePitch, spanFrames * props.framePitch),
+        // v2.0.1: the drag preview follows the same end-inset rule as the
+        // accepted rail — the preview only clips when its own end leaves the
+        // visible window.
+        width: projectTimelineRailLineWidth(
+          spanFrames,
+          props.framePitch,
+          destination + spanFrames <= props.visibleFrameWindow.endFrameExclusive,
+        ),
         blockedEdge: destination === proposedDestination
           ? null
           : proposedDestination > destination ? 'right' : 'left',
@@ -330,6 +341,8 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
         aria-pressed={props.selected}
         aria-busy={props.busy ? 'true' : undefined}
         data-rail-first-frame={segment.firstKeyFrame}
+        data-rail-type="standard"
+        data-rail-selected={props.selected ? 'true' : undefined}
         onPointerDown={(event) => {
           // 43.6-03 D-08: a move member hands the pointer-down to the batch
           // session; a non-move-member runs its own 43.3/43.4 drag unchanged
@@ -361,6 +374,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
       {drag.ghost.active ? (
         <span
           class="physics-paint-key-rail-ghost"
+          data-rail-type="standard"
           style={{
             left: `${drag.ghost.left - geometry.left}px`,
             width: `${drag.ghost.width}px`,

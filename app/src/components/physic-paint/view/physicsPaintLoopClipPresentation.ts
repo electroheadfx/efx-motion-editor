@@ -6,6 +6,7 @@ import {
   STANDARD_RAIL_STATUS_COPY,
 } from '../roto/physicsPaintRotoRunScriptStacking';
 import { classifyLoopClipRailKind, type RotoRailKind } from './physicsPaintWorkflowPresentation';
+import { projectTimelineRailLineWidth } from './timelineRailDesign';
 
 export type PhysicsPaintGroupLifecycle =
   | 'synchronized'
@@ -394,9 +395,13 @@ export function projectPhysicsPaintLoopClipGeometry(
 
   const clippedStart = Math.max(loop.placementStart, visibleFrameWindow.startFrame);
   const clippedEnd = Math.min(loop.effectiveEnd, visibleFrameWindow.endFrameExclusive);
+  // v2.0.1 (README §3): a rail whose end is visible ends on the last cell's
+  // right edge (frames × pitch − 2px); a viewport-clipped rail keeps the full
+  // extent so it reads as continuing past the edge.
+  const endVisible = loop.effectiveEnd <= visibleFrameWindow.endFrameExclusive;
   return {
     left: (clippedStart - visibleFrameWindow.startFrame) * framePitch,
-    width: Math.max(framePitch, (clippedEnd - clippedStart) * framePitch),
+    width: projectTimelineRailLineWidth(clippedEnd - clippedStart, framePitch, endVisible),
   };
 }
 
