@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T12:50:00.000Z"
+last_updated: "2026-11-04T14:36:50.985Z"
 last_activity: 2026-11-04
 last_activity_desc: Quick 261104-bop (v7 Studio timeline rails) UAT approved — all 11 live rows passed after the follow-up rounds; gates green
-state_head: 1bfbf2672
+state_head: bd2c9fdff35d0c4db1b22c36105f66c7e8bc44c6
 progress:
   total_phases: 1
   completed_phases: 1
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 Phase: 58
 Plan: 10 of 10 complete
 Status: All phases complete — quick 261104-bop (v7 Studio timeline rails) UAT approved; milestone ready to close
-Last activity: 2026-11-04 — Completed quick task 261104-bop and closed its live UAT (all 11 rows passed): the Studio timeline paints the locked v2.0.1 v7 design. `timelineRailDesign.ts` is the single source for rail types, dim/bright palettes, cycle parity grays, the key/interp/cycle/empty cell cascade, frame ownership, the track accent and the `frames x 18 - 2` rail-width rule, covered by 30 unit tests. All five presentation hosts emit `data-rail-type` / `data-rail-selected` / `data-cell-kind` / `data-cycle`, every rail geometry projection shares the 2px end inset, the active header accent follows the same selected-or-rail-set predicate that paints rails bright (with the #8A939C fallback), and each Paint header carries the inert 14x14 motion-minus slot (none on Background). `physicsPaintStudio.css` is a replacement, not a layer: dark surfaces, a 6px band with 4px radius-2 rails, 16x22 radius-3 cells at an 18px pitch with 2px gaps and the 6px gutter, the blue #2868FC playhead confined to the ruler band, the white current/selected marker and the family drag-preview pills; the orange/purple/cyan families, white caps, white anchor tick, blue segment cut and per-family focus forks are gone. No gesture, store, drag hook, dependency, CSP or .mce schema change. Commits f924b46b2..ab0d1f9b2 plus the UAT follow-up round. Gates: typecheck clean, full suite 368 files / 7181 passed / 1 skipped / 96 todo. All 11 live UAT rows (surfaces, 31px rows, palettes, cell matrix, playhead, header accent/slot, Loop Clip families, gestures + save/load, generated-frame paint gate, Cycle modal, painted-rail inserts) are user-approved 2026-11-04.
+Last activity: 2026-11-04 — Completed quick task 261104-l0i: + Key / paint on an empty frame strictly after a complete Standard merged rail now dissolves that rail's cycle and joins the new key to its last source key in ONE atomic edit, so the derived Key Rail is one continuous segment from the first source key to the clicked frame (repeat cells disappear with the clip; the user re-adds a cycle afterwards). The dissolve is a fail-closed paste-key variant (`dissolveRailGroupId` on the transient intent; resolver re-validates ownership, canonical lifecycle, trailing gap and shared-cycle/override exclusions) and rides the existing `nextLoopClips` proposal field, so undo restores the clip in one step. In-rail 58 insert/repeat mapping, scripted/Reveal rails, the boundary law and ordinary Copy/Paste are unchanged. Commits de84de889..bd2c9fdff. Gates: targeted 794/794, full suite 7200 passed / 1 skipped / 96 todo / 0 failed, typecheck clean. Live UAT rows are handed to the user (contiguous line with and without a Cycle, one-undo restore, untouched laws).
 Previous: 2026-11-03 - Phase 58 complete
 
 
@@ -685,6 +685,7 @@ None yet.
 | 261101-o2m | Draft mode in the Move/Edit Stroke settings dialog | 2026-11-01 | 8fc6fcfcb | [261101-o2m-add-a-draft-mode-to-the-move-edit-stroke](./quick/261101-o2m-add-a-draft-mode-to-the-move-edit-stroke/) |
 | 261102-iv5 | Remove the editor module switcher; one Water color engine, Krita neither implemented nor planned | 2026-11-02 | f21dcd3f1 | [261102-iv5-remove-the-moduleswitcher-from-the-main-](./quick/261102-iv5-remove-the-moduleswitcher-from-the-main-/) |
 | 261104-bop | v2.0.1 v7 Studio timeline rails: one pure design module (palettes, rail types, cell cascade, ownership, accent, rail-width rule), data-attribute wiring across the five hosts, 2px rail end inset, header accent + inert motion slot, and a stylesheet replacement (dark surfaces, 6px band, 4px pill rails, 16x22 cells, blue playhead confined to the ruler, white current/selected marker, family drag pills); retired design pins re-valued, none deleted. UAT approved 2026-11-04 (11/11 rows) after the follow-up rounds (ghost keys, light selected-rail tint, 31px rows, generated-frame paint gate, compact Cycle modal, parent override-records fix). | 2026-11-04 | 1bfbf2672 | [261104-bop-v2-0-1-studio-timeline-rails-redesign-v7](./quick/261104-bop-v2-0-1-studio-timeline-rails-redesign-v7/) |
+| 261104-l0i | v2.0.1 rails: +Key/paint on an empty frame after a Standard rail now dissolves that rail's cycle and joins the new key contiguously (one atomic edit) | 2026-11-04 | bd2c9fdff | [261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke](./quick/261104-l0i-v2-0-1-version-issue-when-i-add-a-key-ke/) |
 
 ### Roadmap Evolution
 
