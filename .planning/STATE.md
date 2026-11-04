@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T21:02:57.900Z"
+last_updated: "2026-11-04T21:03:59.644Z"
 last_activity: 2026-11-04
 last_activity_desc: "Sidebar tab cards: 1px #696d72 border with rounded bottom corners below every pane's tab header, edge-to-edge tabs. UAT approved 2026-11-04"
-state_head: 22ce6be7fce3b5772b658d95a5638cd151b2a7c6
+state_head: 72edc695e163270b4382fc51a44b2d2e8ac8eb42
 progress:
   total_phases: 1
   completed_phases: 1
@@ -699,6 +699,7 @@ None yet.
 | 107 | SliderStepper: -/+ glyphs raised to 2px total; Studio label color #a8b1ba | 2026-11-04 | 5434e1044 | — |
 | 108 | Options tab panel gap 12px -> 15px | 2026-11-04 | b7d7ca212 | — |
 | 109 | Editor sidebar paint properties: opacity uses SliderStepper, Roto status log and Standalone Canvas label removed | 2026-11-04 | 22ce6be7f | — |
+| 110 | Sidebar compositing row: blend select and opacity stepper share the row 50/50 | 2026-11-04 | 72edc695e | — |
 
 ### Roadmap Evolution
 
