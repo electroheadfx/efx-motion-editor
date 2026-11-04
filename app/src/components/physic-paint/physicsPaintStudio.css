@@ -1392,6 +1392,12 @@ button.destructive {
   flex: 1 1 0;
 }
 
+/* 261104: the tool tabs run edge to edge so the first and last tabs line up
+   with the bordered card below them. */
+.physics-paint-options-tabs-tool {
+  padding: 0;
+}
+
 .physics-paint-options-tab:hover:not(.active) {
   border-color: transparent !important;
   background: transparent !important;
