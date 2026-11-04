@@ -26,6 +26,9 @@ describe('shouldClearSelectionOnCanvasRegionPointerDown', () => {
     expect(shouldClearSelectionOnCanvasRegionPointerDown(plainClick, targetMatching('.demo-canvas-shell'))).toBe(false);
     expect(shouldClearSelectionOnCanvasRegionPointerDown(plainClick, targetMatching('[role="dialog"]'))).toBe(false);
     expect(shouldClearSelectionOnCanvasRegionPointerDown(plainClick, targetMatching('.physics-paint-background-picker'))).toBe(false);
+    // 261104-uyv: the zoom pill is view chrome — a Fit/1:1 click must not drop
+    // the Move/Select stroke set.
+    expect(shouldClearSelectionOnCanvasRegionPointerDown(plainClick, targetMatching('.physics-paint-canvas-zoom-bar'))).toBe(false);
   });
 
   it('is inert without a real element target', () => {

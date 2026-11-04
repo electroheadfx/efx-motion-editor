@@ -12,7 +12,7 @@
  * additive-empty law. No DOM access beyond the target's closest().
  */
 
-const KEEP_SELECTION_WITHIN = '.demo-canvas-shell, [role="dialog"], .physics-paint-background-picker';
+const KEEP_SELECTION_WITHIN = '.demo-canvas-shell, .physics-paint-canvas-zoom-bar, [role="dialog"], .physics-paint-background-picker';
 
 type ClosestTarget = { closest?: (selector: string) => unknown };
 
