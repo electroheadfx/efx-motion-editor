@@ -815,6 +815,22 @@ export class TimelineRenderer {
       strokeRun(runStart, toX, runIsCycle);
     }
 
+    // Cycle tails: the Studio paints a dots run that can outlive the last key
+    // (and prefix the first one). Keys alone would end the line early — the
+    // user's "nothing between 14 and 18" while the Studio shows a cycle.
+    if (keyXs.length > 0) {
+      const firstKeyX = keyXs[0];
+      const lastKeyX = keyXs[keyXs.length - 1];
+      for (const span of cycleSpans) {
+        if (span.endX > lastKeyX) {
+          strokeRun(Math.max(span.startX, lastKeyX), Math.min(span.endX, canvasWidth), true);
+        }
+        if (span.startX < firstKeyX) {
+          strokeRun(Math.max(span.startX, TRACK_HEADER_WIDTH), Math.min(span.endX, firstKeyX), true);
+        }
+      }
+    }
+
     ctx.fillStyle = palette.keyFill;
     ctx.strokeStyle = palette.keyRim;
     ctx.lineWidth = 1;

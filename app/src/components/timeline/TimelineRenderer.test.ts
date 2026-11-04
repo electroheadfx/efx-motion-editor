@@ -180,6 +180,10 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('Math.sin(');
     expect(markerSource).toContain('const amplitude = 2');
     expect(markerSource).toContain('const period = 10');
+    // A cycle run that outlives the last key still draws (the Studio dot tail:
+    // "nothing between 14 and 18" while the Studio shows a cycle).
+    expect(markerSource).toContain('const firstKeyX = keyXs[0]');
+    expect(markerSource).toContain('Math.max(span.startX, lastKeyX)');
     // Connectors are drawn before the diamonds so the glyphs sit on top.
     expect(markerSource.indexOf('for (let index = 1; index < keyXs.length'))
       .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));
