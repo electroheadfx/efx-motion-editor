@@ -8,8 +8,14 @@ import { getDocument as getEfxPaintDocument } from '../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { timelineStore } from '../../stores/timelineStore';
 import { openPhysicPaintForLayer, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
-import { SectionLabel } from '../shared/SectionLabel';
 import { SliderStepper } from '../shared/SliderStepper';
+
+/** Section heading reads like a field label (no wide tracking). */
+function PaintSectionLabel({ text }: { text: string }) {
+  return (
+    <span class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>{text}</span>
+  );
+}
 
 interface PhysicPaintPropertiesProps {
   layer: Layer;
@@ -100,7 +106,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   return (
     <div class="px-3 py-2 space-y-3 text-[13px]" style={{ color: 'var(--sidebar-text-primary)' }}>
       <div class="space-y-1">
-        <SectionLabel text="Physics Paint" />
+        <PaintSectionLabel text="Physics Paint" />
         <div
           class="rounded px-2 py-2 space-y-1 cursor-pointer"
           style={{ backgroundColor: 'var(--sidebar-input-bg)', borderLeft: '2px solid var(--color-accent)' }}
@@ -118,11 +124,11 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       </div>
 
       <div class="space-y-2">
-        <SectionLabel text="Compositing" />
-        <div class="flex items-start gap-3">
+        <PaintSectionLabel text="Compositing" />
+        <div class="flex items-end gap-3">
           <div class="relative flex-1 min-w-0">
             <select
-              class="w-full text-[11px] rounded px-2 py-[3px] outline-none cursor-pointer appearance-none pr-5"
+              class="w-full h-[22px] leading-[22px] text-[11px] rounded px-2 py-0 outline-none cursor-pointer appearance-none pr-5"
               style={{ backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', borderRadius: '6px' }}
               value={layer.blendMode}
               onChange={(event) => {
