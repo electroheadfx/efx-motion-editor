@@ -437,7 +437,12 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
       rotoKeyFrames: physicPaintLayerId !== null
-        ? physicPaintStore.getRotoRealKeyRecords(physicPaintLayerId, getActiveTrackId(primaryLayer)).map((record) => record.appFrame)
+        // Every track's keys, deduped by frame: the Editor row is per LAYER and
+        // must mirror the Studio's rails instead of hiding non-active tracks.
+        ? Array.from(new Set(
+            physicPaintStore.getRotoRealKeyRecordsAcrossTracks(physicPaintLayerId)
+              .map((record) => record.appFrame),
+          ))
         : undefined,
       repeatDurationMarkers: primaryLayer?.type === 'physic-paint'
         ? getTimelineRepeatDurationMarkers(primaryLayer, seq)

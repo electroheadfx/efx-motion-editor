@@ -297,87 +297,31 @@ describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)
     for (const symbol of forbidden) expect(code).not.toContain(symbol);
   });
 
-  it('keeps the main-timeline projection limited to passive ranges and ordinary real-key diamonds', () => {
+  it('shows keys only: repeat/loop strips are not drawn on the main timeline', () => {
     const code = source();
-    const markerStart = code.indexOf('private drawPhysicPaintRepeatDurationMarkers');
-    const markerEnd = code.indexOf('private drawRotoKeyMarkers', markerStart);
-    const markerSource = code.slice(markerStart, markerEnd);
-
-    expect(markerStart).toBeGreaterThan(-1);
-    expect(markerSource).toContain('marker.mode');
-    expect(markerSource).toContain('ctx.fillRect(clippedLeft, markerY, clippedW, markerH)');
-    for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip', 'selected', 'hover', 'focus', 'onClick']) {
-      expect(markerSource).not.toContain(interactionSurface);
-    }
-  });
-});
-
-describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
-  it('projects layer-local passive marker geometry into main-timeline coordinates', async () => {
-    const { getTimelineRepeatDurationMarkerGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
-
-    expect(getTimelineRepeatDurationMarkerGeometry({
-      startFrame: 5,
-      frameCount: 12,
-      inFrame: 10,
-      frameWidth: 4,
-      scrollX: 12,
-    })).toEqual({
-      x: (10 + 5) * 4 - 12 + TRACK_HEADER_WIDTH,
-      width: 12 * 4,
-    });
-  });
-
-  it('resolves repeat spans to the Motion palette for progressive and the Static palette for static', async () => {
-    const { resolveTimelineRailPalette, resolveTimelineRailType } =
-      await import('../physic-paint/view/timelineRailDesign');
-
-    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'progressive'), 'selected').line)
-      .toBe('#F5A623');
-    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'static'), 'selected').line)
-      .toBe('#8B5CF6');
-    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'progressive'), 'unselected').line)
-      .toBe('#B27A1A');
-    expect(resolveTimelineRailPalette(resolveTimelineRailType('playscript', 'static'), 'unselected').line)
-      .toBe('#66459E');
-  });
-
-  it('draws exact passive strips without restoring the rich capsule path or interaction state', () => {
-    const code = source();
-    const markerIndex = code.indexOf('private drawPhysicPaintRepeatDurationMarkers');
-    const markerSource = code.slice(markerIndex, code.indexOf('private drawRotoKeyMarkers'));
     const fxTrackSource = code.slice(
       code.indexOf('private drawFxTrack'),
       code.indexOf('/** Draw a Photoshop-style checkerboard'),
     );
 
-    expect(markerIndex).toBeGreaterThan(-1);
-    expect(markerSource).toContain("resolveTimelineRailType('playscript', marker.mode)");
-    expect(markerSource).toContain('resolveTimelineRailPalette(');
-    expect(markerSource).not.toContain('#06B6D4');
-    expect(markerSource).not.toContain("'#8B5CF6'");
-    expect(markerSource).toContain("ctx.fillStyle = '#F8FAFC'");
-    expect(markerSource).toContain('markerX === clippedLeft');
-    expect(markerSource).toContain('markerX + markerW === clippedRight');
-    expect(markerSource).toContain('const markerY = barY + 1');
-    expect(markerSource).toContain('const markerH = 3');
-    expect(markerSource).toContain('Math.max(markerX, barX, TRACK_HEADER_WIDTH)');
-    expect(markerSource).toContain('Math.min(markerX + markerW, barX + barW, canvasWidth)');
-    expect(markerSource).toContain('ctx.fillRect(clippedLeft, markerY, clippedW, markerH)');
-    expect(markerSource).not.toContain('fillText');
-    expect(markerSource).not.toContain('selected');
-    expect(markerSource).not.toContain('hover');
-    expect(markerSource).not.toContain('focus');
-    expect(markerSource).not.toContain('tooltip');
+    // UAT 261104: the repeat strip read as a rail line above the bar. The
+    // Editor row shows the bar + real-key diamonds, nothing else.
+    expect(code).not.toContain('drawPhysicPaintRepeatDurationMarkers');
+    expect(code).not.toContain('getTimelineRepeatDurationMarkerGeometry');
+    expect(fxTrackSource).not.toContain('fxTrack.repeatDurationMarkers');
+    for (const interactionSurface of ['addEventListener', 'hitTest', 'tooltip']) {
+      expect(fxTrackSource).not.toContain(interactionSurface);
+    }
+  });
+});
 
-    expect(fxTrackSource).toContain('fxTrack.repeatDurationMarkers');
-    expect(fxTrackSource).toContain('this.drawPhysicPaintRepeatDurationMarkers');
-    expect(fxTrackSource.indexOf('this.drawPhysicPaintRepeatDurationMarkers')).toBeLessThan(
-      fxTrackSource.indexOf('this.drawPhysicPaintPlayScriptMarkers'),
+describe('Loop Clip rendering ownership (43-11, D-33R)', () => {
+  it('keeps the rich capsule path and interaction state out of the renderer', () => {
+    const fxTrackSource = source().slice(
+      source().indexOf('private drawFxTrack'),
+      source().indexOf('/** Draw a Photoshop-style checkerboard'),
     );
-    expect(fxTrackSource.indexOf('this.drawPhysicPaintRepeatDurationMarkers')).toBeLessThan(
-      fxTrackSource.indexOf('this.drawRotoKeyMarkers'),
-    );
+
     expect(fxTrackSource).not.toContain('this.drawLoopCapsules(');
     expect(fxTrackSource).not.toContain('fxTrack.loopCapsules');
   });
@@ -485,6 +429,33 @@ describe('rotoKeyFrames reactivity through fxTrackLayouts', () => {
 
     // No manual invalidation: the existing physicPaintVersion subscription drives the recompute.
     expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames).toEqual([2, 7]);
+  });
+
+  it('unions real keys across every Roto track and dedupes shared frames', async () => {
+    const { physicPaintStore } = await import('../../stores/physicPaintStore');
+    const { fxTrackLayouts } = await import('../../lib/frameMap');
+    const sequenceId = await seedPhysicPaintFxSequence('roto-layer');
+
+    const trackA = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', TEST_TRACK_ID,
+      [makeRotoRecord('a-1', 1), makeRotoRecord('a-3', 3)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!trackA.ok) throw new Error(trackA.error);
+    const trackB = physicPaintStore.replaceRotoPhysicalRecords(
+      'roto-layer', 'track-b',
+      [makeRotoRecord('b-3', 3), makeRotoRecord('b-5', 5)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!trackB.ok) throw new Error(trackB.error);
+
+    expect(physicPaintStore.getRotoRealKeyRecordsAcrossTracks('roto-layer').map((record) => record.appFrame))
+      .toEqual([1, 3, 3, 5]);
+    // The Editor row is per LAYER: keys from every rail/track, one per frame.
+    expect(fxTrackLayouts.value.find((track) => track.sequenceId === sequenceId)?.rotoKeyFrames)
+      .toEqual([1, 3, 5]);
   });
 
   it('leaves rotoKeyFrames undefined for non-physic-paint FX layers', async () => {

@@ -4589,6 +4589,20 @@ export const physicPaintStore = {
     return Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
   },
 
+  /**
+   * Union of real-key records across EVERY Roto track of a layer, ordered by
+   * ascending physical `appFrame`. Display-only read for the main Editor row:
+   * that row is per LAYER, so it shows the keys of every rail/track — not only
+   * the active track's, which hid keys added on another track.
+   */
+  getRotoRealKeyRecordsAcrossTracks(layerId: string): PhysicPaintRotoRealKeyRecord[] {
+    const byTrack = _rotoRealKeyRecords.get(layerId);
+    if (!byTrack) return [];
+    const records: PhysicPaintRotoRealKeyRecord[] = [];
+    for (const recordMap of byTrack.values()) records.push(...recordMap.values());
+    return records.sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));
+  },
+
   getRotoGroupOverrideRecords(layerId: string, trackId: string): PhysicPaintRotoRealKeyRecord[] {
     return Array.from(_rotoGroupOverrideRecords.get(layerId)?.get(trackId)?.values() ?? [])
       .sort((a, b) => a.appFrame - b.appFrame || a.keyId.localeCompare(b.keyId));

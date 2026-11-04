@@ -1,4 +1,4 @@
-import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker, TimelineRepeatDurationMarker} from '../../types/timeline';
+import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMarker} from '../../types/timeline';
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
@@ -19,7 +19,6 @@ import {audioSourceSpaceGeometry, selectAudioPeakTier} from '../../lib/audioClip
 import {ThumbnailCache} from './ThumbnailCache';
 import {
   resolveTimelineRailPalette,
-  resolveTimelineRailType,
 } from '../physic-paint/view/timelineRailDesign';
 import type { TimelineRailTier } from '../physic-paint/view/timelineRailDesign';
 // --- Design constants (exported for TimelineInteraction) ---
@@ -62,24 +61,6 @@ export function getTimelinePlayScriptMarkerGeometry(
   return {
     x: marker.startFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH,
     width: marker.frameCount * frameWidth,
-  };
-}
-
-export interface TimelineRepeatDurationMarkerGeometry {
-  x: number;
-  width: number;
-}
-
-export function getTimelineRepeatDurationMarkerGeometry(marker: {
-  startFrame: number;
-  frameCount: number;
-  inFrame: number;
-  frameWidth: number;
-  scrollX: number;
-}): TimelineRepeatDurationMarkerGeometry {
-  return {
-    x: (marker.inFrame + marker.startFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
-    width: marker.frameCount * marker.frameWidth,
   };
 }
 
@@ -646,73 +627,6 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
-  /** Passive repeat-duration strips on a physic-paint FX row, one per linked
-   *  repeat, in the v2.0.1 v7 palette line: a PlayScript clip resolves to
-   *  Motion (`progressive`) or Static (`static`) from its stored mode.
-   *
-   *  Known gap: reveal rail kinds are not representable here today —
-   *  `TimelineRepeatDurationMarker` carries only `mode`, so a reveal loop paints
-   *  the motion/static palette. The closing data path is the `railKind` already
-   *  read at the `physicPaintStore.getRotoPhysicalLoopClips(...)` call site in
-   *  frameMap; recorded here as an explicit gap rather than inventing data. */
-  private drawPhysicPaintRepeatDurationMarkers(
-    ctx: CanvasRenderingContext2D,
-    markers: TimelineRepeatDurationMarker[],
-    inFrame: number,
-    barX: number,
-    barW: number,
-    barY: number,
-    barH: number,
-    frameWidth: number,
-    scrollX: number,
-    canvasWidth: number,
-    tier: EditorPaintRailTier,
-  ): void {
-    if (markers.length === 0 || barW <= 0) return;
-
-    const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
-    const trackRight = Math.min(barX + barW, canvasWidth);
-    if (trackRight <= trackLeft) return;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
-    ctx.clip();
-
-    const markerY = barY + 1;
-    const markerH = 3;
-
-    for (const marker of markers) {
-      if (marker.frameCount <= 0) continue;
-      const { x: markerX, width: markerW } = getTimelineRepeatDurationMarkerGeometry({
-        ...marker,
-        inFrame,
-        frameWidth,
-        scrollX,
-      });
-      const clippedLeft = Math.max(markerX, barX, TRACK_HEADER_WIDTH);
-      const clippedRight = Math.min(markerX + markerW, barX + barW, canvasWidth);
-      const clippedW = Math.max(0, clippedRight - clippedLeft);
-      if (clippedW <= 0) continue;
-      ctx.fillStyle = resolveTimelineRailPalette(
-        resolveTimelineRailType('playscript', marker.mode),
-        tier,
-      ).line;
-      ctx.fillRect(clippedLeft, markerY, clippedW, markerH);
-
-      const boundaryW = Math.min(2, clippedW / 2);
-      ctx.fillStyle = '#F8FAFC';
-      if (markerX === clippedLeft) {
-        ctx.fillRect(clippedLeft, markerY, boundaryW, markerH);
-      }
-      if (markerX + markerW === clippedRight) {
-        ctx.fillRect(clippedRight - boundaryW, markerY, boundaryW, markerH);
-      }
-    }
-
-    ctx.restore();
-  }
-
   /** Draw ONE document sound clip's waveform stain on a physic-paint FX row —
    *  the same preview as the Studio sound band (blue #166ECB stain + 1px
    *  #7DD3F5 gain/fade overlays), read-only and fitted to the bar height.
@@ -985,22 +899,6 @@ export class TimelineRenderer {
             state?.waveformGain ?? 1,
           );
         }
-      }
-
-      if (fxTrack.layerType === 'physic-paint' && fxTrack.repeatDurationMarkers?.length) {
-        this.drawPhysicPaintRepeatDurationMarkers(
-          ctx,
-          fxTrack.repeatDurationMarkers,
-          fxTrack.inFrame,
-          barX,
-          barW,
-          barY,
-          barH,
-          frameWidth,
-          scrollX,
-          canvasWidth,
-          railTier,
-        );
       }
 
       if (railPalette && fxTrack.playScriptMarkers && fxTrack.playScriptMarkers.length > 0) {
