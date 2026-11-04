@@ -769,8 +769,15 @@ export class TimelineRenderer {
     keyXs.sort((a, b) => a - b);
 
     const cycleSpans = cycleRanges.map((range) => {
-      const startX = (inFrame + range.startFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
-      return { startX, endX: startX + range.frameCount * frameWidth };
+      const frameStartX = (inFrame + range.startFrame) * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      // The segment leading INTO the first cycle frame is already part of the
+      // repeat run (the cell starts at its left edge), so extend the span one
+      // frame left: a key on the source frame before a repeat joins the wave
+      // (`•~~~~~`), never a straight 13→14 sliver.
+      return {
+        startX: frameStartX - frameWidth,
+        endX: frameStartX + range.frameCount * frameWidth,
+      };
     });
     const isCycleX = (x: number): boolean =>
       cycleSpans.some((span) => x >= span.startX && x < span.endX);

@@ -187,6 +187,10 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('const cycleEndX = cycleSpans.reduce(');
     expect(markerSource).toContain('strokeSplitSpan(lastKeyX, Math.min(cycleEndX, canvasWidth))');
     expect(markerSource).toContain('strokeSplitSpan(Math.max(cycleStartX, TRACK_HEADER_WIDTH), firstKeyX)');
+    // The segment leading into the first cycle frame is a wave: the span is
+    // extended one frame left, so a key on the frame before a repeat (13 onto
+    // a cycle starting at 14) joins the sine run with no straight sliver.
+    expect(markerSource).toContain('startX: frameStartX - frameWidth');
     // Connectors are drawn before the diamonds so the glyphs sit on top.
     expect(markerSource.indexOf('for (let index = 1; index < keyXs.length'))
       .toBeLessThan(markerSource.lastIndexOf('ctx.moveTo(x, centerY - halfSize)'));
