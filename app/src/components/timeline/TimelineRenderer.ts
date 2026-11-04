@@ -786,8 +786,10 @@ export class TimelineRenderer {
       if (endX - startX < 0.5) return;
       ctx.beginPath();
       if (cycle) {
-        const amplitude = 2;
-        const period = 10;
+        // Tall and long enough to read next to the straight interp baseline
+        // (amplitude stays inside the 20px bar; half the diamond height).
+        const amplitude = 5;
+        const period = 30;
         for (let x = startX; x <= endX; x += 1) {
           const y = centerY + Math.sin(((x - startX) / period) * Math.PI * 2) * amplitude;
           if (x === startX) ctx.moveTo(x, y);

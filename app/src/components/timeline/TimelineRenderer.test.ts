@@ -182,9 +182,10 @@ describe('physic-paint Roto key markers (C-04)', () => {
     expect(markerSource).toContain('if (inCycle !== runIsCycle)');
     expect(markerSource).toContain('strokeRun(runStart, x, runIsCycle)');
     expect(markerSource).toContain('strokeSplitSpan(fromX, toX)');
+    // A tall, long sinusoid so the wave reads beside the interp baseline.
     expect(markerSource).toContain('Math.sin(');
-    expect(markerSource).toContain('const amplitude = 2');
-    expect(markerSource).toContain('const period = 10');
+    expect(markerSource).toContain('const amplitude = 5');
+    expect(markerSource).toContain('const period = 30');
     // A cycle run that outlives the last key still draws, and the tail splits
     // at the cycle boundary — no hole between the key and cycle 2.
     expect(markerSource).toContain('const firstKeyX = keyXs[0]');
