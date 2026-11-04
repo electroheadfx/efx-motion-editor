@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T20:05:00.000Z"
+last_updated: "2026-11-04T20:30:30.758Z"
 last_activity: 2026-11-04
 last_activity_desc: Studio timeline playhead trail UAT approved — solid 2px accent stays in the 36px ruler band; a 1px rgba(40,104,252,0.7) trail continues through keys and rails
-state_head: ac7d7c9a4c83a853a5edf75dd77b3d5a65448d67
+state_head: 6de678f2772e6565219ffec150f3fc719254f3c2
 progress:
   total_phases: 1
   completed_phases: 1
@@ -692,6 +692,7 @@ None yet.
 | 261104-q82 | Align the Editor paint rail line, keys and colours with the Studio v7 rails: every Roto track flattened onto one row — keys unioned on the frame's left edge, cycle ranges unioned — a straight interp baseline under the cycle sine (amp 5, period 30; wave starts on the key before the repeat), brighter key-rim connectors, and `[` / `]` rail start/end flags with a blended double sign at shared boundaries; no rail pill/strip above the row, layer bar keeps its own accent. UAT approved 2026-11-04 (all rounds) | 2026-11-04 | 0ad0da982 | [261104-q82-verify-editor-paint-layer-line-position-](./quick/261104-q82-verify-editor-paint-layer-line-position-/) |
 | 261104-so5 | Studio non-active row loses one interpolated frame: a lifecycle Group frame override on a projection-generated in-between now classifies as interp (render source 'real' + no app-frame real-key record + own-track projection 'generated'), with the key/interp/cycle/empty matrix pinned plus group-gap and stale-cache guards. Gates green (typecheck, 7212 tests); UAT approved 2026-11-04 (4/4 rows). | 2026-11-04 | e30dc5967 | [261104-so5-studio-interpolated-preview-issue-when-p](./quick/261104-so5-studio-interpolated-preview-issue-when-p/) |
 | 102 | Studio timeline: soft 1px translucent playhead trail continues below the 36px ruler band through keys and rails. UAT approved 2026-11-04 (alpha raised to 0.7 on the UAT pass) | 2026-11-04 | 492257255 | — |
+| 103 | Studio roto action row: 4px gap, 1px bottom padding, 3px left padding, #2b2c2d background; identity chip border/background removed; Push tool moved to the end of the bar | 2026-11-04 | 6de678f27 | — |
 
 ### Roadmap Evolution
 
