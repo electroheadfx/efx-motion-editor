@@ -3124,7 +3124,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value;');
     // Select/Move owns the active state: the paint tool is deselected. The
     // 261030-cnq picker joins it — an armed picker deselects the paint tool too.
-    expect(watercolorRail).toContain('const isActive = !selectActive && !pickerActive && active === id;');
+    // 261105-cgl: the armed Hand host tool joins them.
+    expect(watercolorRail).toContain('const isActive = !selectActive && !pickerActive && !handArmed && active === id;');
     expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the A shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
