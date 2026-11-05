@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-04T21:37:05.809Z"
-last_activity: 2026-11-04
-last_activity_desc: Studio slider palette, glyph centering, options gap; paint-properties sidebar (SliderStepper opacity, Blend mode row, label tracking, section gaps). UAT approved 2026-11-04
-state_head: 43cd118dab9ae56dda6a23f8c810b688af6e4697
+last_updated: "2026-11-05T08:16:00.037Z"
+last_activity: 2026-11-05
+last_activity_desc: Quick 261105-cgl — Push mode into the Tools popover, Frame/Seconds go-to popup, Hand host tool for primary-drag panning. Automated gates green; live UAT pending
+state_head: 7d4beafac356869b7478f46481680d841d55c50c
 progress:
   total_phases: 1
   completed_phases: 1
@@ -31,9 +31,10 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 Phase: 58
 Plan: 10 of 10 complete
 Status: All phases complete — quick 261104-bop (v7 Studio timeline rails) UAT approved; milestone ready to close
-Last activity: 2026-11-04 — Quick task 261104-uyv UAT approved (all 9 rows): Studio canvas zoom — floating minus/percent/plus/Fit/1:1 pill, Fit default and resize-tracking, 1:1 = actual working pixels with pan, cursor-anchored Cmd/Ctrl+wheel and trackpad pinch, middle-drag and plain-wheel pan while zoomed, viewport clipping, overlays glued at every zoom, painting exact at 1:1, and the pill keeps the Move/Select stroke set. Commits e09a0b682..43cd118da. Gates: typecheck clean, full vitest run 7239 passed / 0 failed.
-Current quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
-Previous quick: 2026-11-04 — Studio timeline playhead trail — UAT approved. The solid 2px blue accent stays confined to the 36px ruler band; a separate 1px `rgba(40,104,252,0.7)` trail continues the line through the key cells and rails (alpha raised from 0.35 on the UAT pass). Commits 492257255, ac7d7c9a4.
+Last activity: 2026-11-05 — Quick task 261105-cgl automated-ready (live UAT pending): Push mode moved into the Tools popover, the frame readout opens a Frame/Seconds go-to popup, and a Hand host tool pans with a primary drag and disarms on release. Commits 587b0f683..7d4beafac. Gates: typecheck clean, full vitest run 7267 passed / 0 failed.
+Current quick: 2026-11-05 — Small Studio add-ons — status: UAT pending (6 live rows: Push placement, Frame go-to, Seconds go-to, Hand availability, Hand drag + release, existing gesture regression). Commits 587b0f683, e53e01e9f, 045170fec, 7d4beafac.
+Previous quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
+Earlier quick: 2026-11-04 — Studio timeline playhead trail — UAT approved. The solid 2px blue accent stays confined to the 36px ruler band; a separate 1px `rgba(40,104,252,0.7)` trail continues the line through the key cells and rails (alpha raised from 0.35 on the UAT pass). Commits 492257255, ac7d7c9a4.
 Previous: 2026-11-03 - Phase 58 complete
 
 
@@ -705,6 +706,7 @@ None yet.
 | 113 | Paint sidebar: uniform 32px gap between Physics Paint, blend+opacity, and Roto paint sections UAT approved 2026-11-04 | 2026-11-04 | 5ec6658d6 | — |
 | 114 | Paint sidebar section gap 32px -> 24px UAT approved 2026-11-04 | 2026-11-04 | 3dd02239f | — |
 | 261104-uyv | Studio canvas zoom: floating minus/percent/plus/Fit/1:1 pill, Fit default, 1:1 = actual working pixels, cursor-anchored wheel/pinch zoom, middle-drag and wheel pan when zoomed | 2026-11-04 | 43cd118da | [261104-uyv-add-studio-canvas-zoom-controls-full-zoo](./quick/261104-uyv-add-studio-canvas-zoom-controls-full-zoo/) |
+| 261105-cgl | Small Studio add-ons: Push mode moved into the Tools popover, Frame/Seconds go-to popup on the frame readout, Hand host tool for primary-drag canvas panning | 2026-11-05 | 7d4beafac | [261105-cgl-small-addons-remove-button-push-mode-in-](./quick/261105-cgl-small-addons-remove-button-push-mode-in-/) |
 
 ### Roadmap Evolution
 
@@ -761,8 +763,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-03T16:27:43.319Z
-Stopped at: Phase 58 complete — all phases complete
+Last session: 2026-11-05T08:14:08Z
+Stopped at: Quick 261105-cgl automated-ready — awaiting live UAT (typecheck clean, full vitest 7267 passed / 0 failed)
 Resume file: None
 
 ## Operator Next Steps
