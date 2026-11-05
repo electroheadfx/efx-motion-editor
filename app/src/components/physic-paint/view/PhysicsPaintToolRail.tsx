@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -16,6 +16,8 @@ import {
   toggleAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
 import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
+import { isHandToolArmed, toggleHandTool } from './physicsPaintHandTool';
+import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
@@ -95,6 +97,11 @@ function WatercolorRail({
   // renders deselected while it is on, and comes back on release (the picker
   // never changes the paint tool itself).
   const pickerActive = aquarellePickerActive.value;
+  // 261105-cgl: the Hand is a HOST tool like the picker — while armed, the
+  // paint-tool row renders deselected and the hand button is the active
+  // surface. It is greyed while the fitted sheet cannot pan (no overflow).
+  const handArmed = isHandToolArmed();
+  const handAvailable = physicsPaintCanvasZoom.hasOverflow.value;
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
@@ -102,7 +109,7 @@ function WatercolorRail({
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
-        const isActive = !selectActive && !pickerActive && active === id;
+        const isActive = !selectActive && !pickerActive && !handArmed && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
@@ -157,6 +164,29 @@ function WatercolorRail({
         onClick={() => toggleAquarelleSelectMode()}
       >
         <img src={moveToolIcon} alt="" aria-hidden="true" />
+      </button>
+      {/* 261105-cgl: the Hand host tool. A primary-button drag pans the canvas
+          through the same zoom-store pan path as middle-drag; releasing arms
+          nothing — the previous paint tool was never touched. Disabled while
+          the fitted sheet has no overflow, so there is nothing to pan. */}
+      <button
+        type="button"
+        class={`physics-paint-icon-button${handArmed ? ' active' : ''}`}
+        data-testid="aquarelle-hand-toggle"
+        disabled={disabled || !physicsPaintCanvasZoom.hasOverflow.value}
+        title={handAvailable
+          ? 'Hand — drag the canvas to pan; releasing returns to the previous tool'
+          : 'Hand — panning needs the canvas zoomed past Fit'}
+        aria-label="Hand"
+        aria-pressed={handArmed}
+        onClick={() => {
+          // Defense in depth: a programmatic click must not arm a pan tool on
+          // a fitted sheet.
+          if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;
+          toggleHandTool();
+        }}
+      >
+        <Hand size={18} />
       </button>
       <button
         type="button"
