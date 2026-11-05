@@ -67,7 +67,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 58. Rail editing regressions | 10/10 | Complete    | 2026-11-03 |
+| 58. Rail editing regressions | 10/10 | Complete    | 2026-11-05 |
 | v7 timeline rails (in-milestone quick) | quick 261104-bop | Complete | 2026-11-04 |
 
 <details>

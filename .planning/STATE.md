@@ -3,11 +3,11 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 status: completed
-stopped_at: v2.0.1 audit complete (tech_debt) — release prep next
-last_updated: "2026-11-05T10:23:29Z"
+stopped_at: Phase 58 complete — all phases complete
+last_updated: "2026-11-05T12:15:21.947Z"
 last_activity: 2026-11-05
-last_activity_desc: UAT approved — ghost-source move guard and rail extension after +Key/paint (one-key cycle dissolve, overridden repeat-1 append)
-state_head: b06734336b5aeb582097997045732ed47d14d8f4
+last_activity_desc: Phase 58 complete
+state_head: 63889e16769f923a60dfcf3ee209d57fbbd2a299
 progress:
   total_phases: 1
   completed_phases: 1
@@ -29,9 +29,9 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 ## Current Position
 
 Phase: 58
-Plan: 10 of 10 complete
-Status: All phases complete — v2.0.1 milestone audit = tech_debt (15/15 requirements, no blockers); release prep next
-Last activity: 2026-11-05 — UAT approved for two rail regressions. Ghost-source move guard: a single-key move can no longer push a source key outside every visible fragment when the rail cannot retime. Rail extension: +Key/paint after a one-key cycle dissolves it and extends the rail; after an overridden repeat-1 rail it appends the destination as the last source key and keeps the painted frames. Full vitest run 7280 passed / 0 failed; typecheck clean.
+Plan: Not started
+Status: All phases complete
+Last activity: 2026-11-05 — Phase 58 complete
 Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The two fixes above are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
@@ -765,7 +765,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-05T09:03:39Z
-Stopped at: Quick 261105-cgl UAT approved and closed (typecheck clean, full vitest 7273 passed / 0 failed)
+Stopped at: Phase 58 complete — all phases complete
 Resume file: None
 
 ## Operator Next Steps
