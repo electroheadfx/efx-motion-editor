@@ -20,14 +20,14 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 
 ### v7 Timeline Rails (VIS)
 
-- [ ] **VIS-01**: The timeline shows four rail types with the locked v7 palettes — Standard green, Motion orange, Static violet, Reveal azure — where the selected rail uses the bright palette and every other rail (including other rails of the active track) uses the dim palette; no orange appears on any rail, track accent, or rail line.
-- [ ] **VIS-02**: Paint rows are 30px; frame cells are 16×22 with radius 3 and a 2px gap on the 18px pitch, starting 6px below the row top; the rail line is a 4px radius-2 pill at the very top of the row, spanning `frames × 18 − 2` and extending to the viewport edge when clipped.
-- [ ] **VIS-03**: Only four cell states render — `key` (rail key fill + lighter rim), `interp` (dark cell + rail-line contour + centred 12×2 dash, between keys only), `cycle` (gray fill/border by cycle-2/cycle-3 parity + a 4px rail-colour dot, never a dash), and `empty` (`#252A30` / `#3A4047`).
-- [ ] **VIS-04**: Timeline surfaces match the locked darks (card `#171A1E`, header column `#1E2226`, ruler `#24282E`, rows `#1E2125`, Tracks strip `#2B2F34`, Bg lane `#1B1F24`); ruler ticks are centred on the cells with 10px normal labels; the playhead is blue `#2868FC` with a 12×10 radius-2 handle; the content gutter is 6px.
-- [ ] **VIS-05**: The selected track header stays `#2B4BB5` and carries a 3px accent in the selected rail's bright colour (fallback `#8A939C`); unselected headers are `#333536`; the Bg header is `#3C3E40` with a 9px `#6F7883` label; tool chips are 16×16; every header shows an inert 14×14 grey `minus` motion slot with `aria-disabled`.
-- [ ] **VIS-06**: Two juxtaposed rails keep their own palettes and selection — selecting one never recolours the other.
-- [ ] **VIS-07**: Every existing gesture still works: cell select/navigate, key-rail select/drag, loop-clip select/drag, rail-set move, cross-track drag, Bg clip move/resize, scrub, and playback. No store, document, `.mce`, or persistence change.
-- [ ] **VIS-08**: Resolver unit tests (`.test.ts` only) cover rail-type mapping, palette selection, cycle parity, the cell-state matrix, owning-rail precedence, and the `frames × 18 − 2` geometry; `vitest run` is green and no dependency is added.
+- [x] **VIS-01**: The timeline shows four rail types with the locked v7 palettes — Standard green, Motion orange, Static violet, Reveal azure — where the selected rail uses the bright palette and every other rail (including other rails of the active track) uses the dim palette; no orange appears on any rail, track accent, or rail line.
+- [x] **VIS-02**: Paint rows are 30px; frame cells are 16×22 with radius 3 and a 2px gap on the 18px pitch, starting 6px below the row top; the rail line is a 4px radius-2 pill at the very top of the row, spanning `frames × 18 − 2` and extending to the viewport edge when clipped. — **superseded 2026-11-04 (261104-bop): rows ship at 31px after the UAT +1px spacing round**
+- [x] **VIS-03**: Only four cell states render — `key` (rail key fill + lighter rim), `interp` (dark cell + rail-line contour + centred 12×2 dash, between keys only), `cycle` (gray fill/border by cycle-2/cycle-3 parity + a 4px rail-colour dot, never a dash), and `empty` (`#252A30` / `#3A4047`).
+- [x] **VIS-04**: Timeline surfaces match the locked darks (card `#171A1E`, header column `#1E2226`, ruler `#24282E`, rows `#1E2125`, Tracks strip `#2B2F34`, Bg lane `#1B1F24`); ruler ticks are centred on the cells with 10px normal labels; the playhead is blue `#2868FC` with a 12×10 radius-2 handle; the content gutter is 6px.
+- [x] **VIS-05**: The selected track header stays `#2B4BB5` and carries a 3px accent in the selected rail's bright colour (fallback `#8A939C`); unselected headers are `#333536`; the Bg header is `#3C3E40` with a 9px `#6F7883` label; tool chips are 16×16; every header shows an inert 14×14 grey `minus` motion slot with `aria-disabled`.
+- [x] **VIS-06**: Two juxtaposed rails keep their own palettes and selection — selecting one never recolours the other.
+- [x] **VIS-07**: Every existing gesture still works: cell select/navigate, key-rail select/drag, loop-clip select/drag, rail-set move, cross-track drag, Bg clip move/resize, scrub, and playback. No store, document, `.mce`, or persistence change.
+- [x] **VIS-08**: Resolver unit tests (`.test.ts` only) cover rail-type mapping, palette selection, cycle parity, the cell-state matrix, owning-rail precedence, and the `frames × 18 − 2` geometry; `vitest run` is green and no dependency is added.
 
 ## Out of Scope
 
@@ -52,14 +52,16 @@ PATCH scope: two rail-editing regressions plus the approved v7 timeline-rail int
 | RAIL-05 | Phase 58 | Complete |
 | RAIL-06 | Phase 58 | Complete |
 | RAIL-07 | Phase 58 | Complete |
-| VIS-01 | v7 quick (in-milestone) | Pending |
-| VIS-02 | v7 quick (in-milestone) | Pending |
-| VIS-03 | v7 quick (in-milestone) | Pending |
-| VIS-04 | v7 quick (in-milestone) | Pending |
-| VIS-05 | v7 quick (in-milestone) | Pending |
-| VIS-06 | v7 quick (in-milestone) | Pending |
-| VIS-07 | v7 quick (in-milestone) | Pending |
-| VIS-08 | v7 quick (in-milestone) | Pending |
+| VIS-01 | v7 quick 261104-bop | Complete |
+| VIS-02 | v7 quick 261104-bop | Complete |
+| VIS-03 | v7 quick 261104-bop | Complete |
+| VIS-04 | v7 quick 261104-bop | Complete |
+| VIS-05 | v7 quick 261104-bop | Complete |
+| VIS-06 | v7 quick 261104-bop | Complete |
+| VIS-07 | v7 quick 261104-bop | Complete |
+| VIS-08 | v7 quick 261104-bop | Complete |
+
+VIS-01..08 were delivered by quick 261104-bop (UAT approved 2026-11-04). The quick's plan declared `requirements: []`, so the mapping is recorded only here.
 
 **Coverage:**
 - v2.0.1 requirements: 15 total (RAIL 7 + VIS 8)

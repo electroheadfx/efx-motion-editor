@@ -14,7 +14,7 @@
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
-- ◆ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (in progress)
+- ◆ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (release pending)
 
 ## Phases
 
@@ -61,14 +61,14 @@
 **Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, VIS-08
 **Build prompt**: `SPECS/v2.0.1-timeline-rails/GSD-QUICK-PROMPT.md` (locked README + `TIMELINE-RAILS.tsx` + `timeline-rails.css`; all 8 README §7 defaults).
 **Delivery**: `/gsd-quick` inside v2.0.1 — never a standalone quick. Motion channels stay in v2.1.0.
-**Plans**: quick (pending)
+**Plans**: complete — quick 261104-bop (UAT approved 2026-11-04)
 
 ### Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 58. Rail editing regressions | 10/10 | Complete    | 2026-11-03 |
-| v7 timeline rails (in-milestone quick) | — | Pending | — |
+| v7 timeline rails (in-milestone quick) | quick 261104-bop | Complete | 2026-11-04 |
 
 <details>
 <summary>✅ v2.0.0 Multi-Module Paint Workstation (MAJOR) — SHIPPED 2026-11-02</summary>
