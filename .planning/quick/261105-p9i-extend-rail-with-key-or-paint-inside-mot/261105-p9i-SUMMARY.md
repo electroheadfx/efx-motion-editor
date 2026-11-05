@@ -105,6 +105,10 @@ coverage:
     verification: []
     human_judgment: true
     rationale: "Visible rail geometry and the single-undo feel are native UAT judgments on the running Studio window; vitest cannot observe the rendered timeline."
+audit_acknowledged:
+  milestone: v2.0.1
+  at: 2026-11-05
+  status: unknown
 ---
 
 # Quick 261105-p9i: Extend Rail With Key/Paint Inside Motion Summary

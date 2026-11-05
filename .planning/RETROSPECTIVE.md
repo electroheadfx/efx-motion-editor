@@ -2,6 +2,59 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH)
+
+**Shipped:** 2026-11-05
+**Phases:** 1 (Phase 58) + 5 in-milestone quicks (l0i, bop, p9i, raf, sk3) | **Plans:** 10 | **Commits:** 248 over 3 days
+
+### What Was Built
+
+- Key Rail → Standard cycle through the existing Edit Rail flow: reduced dialog (Cycle stepper + Infinity only), provenance-free clip, one undo, cancel is a byte-for-byte no-op
+- Law A single-key drag on Motion/Static/Reveal rails, with source-order guards on both the resolver and the UI preparation path and the locked D-16 copy on refusal
+- Rail extent ownership: a finite lifecycle rail renders, classifies and deletes only inside its surviving source cycle; canonical extent persisted once, orphaned paint sheets pruned
+- + Key/paint dissolve after any complete canonical rail — Standard directly, scripted Motion/Static/Reveal behind the one-shot "Edit this rail?" surface (Convert to Standard / New rail)
+- v7 rail interface on the real Studio timeline: four rail types, dim/bright palettes, four-state cell matrix, `frames × 18 − 2` geometry, dark surfaces, blue playhead, header accent + inert motion slot
+- Signed/notarized 2.0.1 published as GitHub Latest with zero `.mce` schema, document or store change
+
+### What Worked
+
+- **The PATCH scope law was written at milestone definition and held.** "No `.mce`/document/store/schema change, no new module, no unrelated v2.0.0 debt" survived 10 plans and 5 quicks without one exception — the audit confirmed it mechanically.
+- **Gap closure as planned phases.** CR-01/CR-02/CR-03/WR-01/WR-02 each got a numbered plan (58-06..58-10) with a pin and an UAT row, instead of an ad-hoc fix commit.
+- **Audit-before-publish held.** The 12:00Z audit was superseded by the 20:03Z refresh that folded in nine post-audit fix commits, and publication came after — hard rules 10–11 did their job for the second milestone running.
+- **Quicks as the vehicle for live-found UX problems.** The user's feedback during the release window (the rail prompt, the live stepper commit) landed as atomic quicks with their own pins rather than reopening the phase.
+- **Judgment split held.** Resolver behaviour and the conversion law were pinned in vitest; rail geometry and the single-undo feel stayed native UAT — neither tried to prove the other's claim.
+
+### What Was Inefficient
+
+- **The phase verifier was stale before the milestone closed.** Phase 58 reported `passed` 57/57 at 12:14Z, then four quicks changed covered source. `covered_files` includes source paths, so any later fix invalidates the digest — the close gate could never pass on its own and the milestone audit had to carry the assurance role.
+- **One subsystem's UX round became four separate quicks.** l0i, p9i, raf and sk3 all touch the same rail-dissolve/prompt/stepper surface within three days, which meant four artifact sets and four audit passes.
+- **p9i's SUMMARY had no `status:` field**, so the audit reported the quick as `unknown` and the close needed a manual acknowledge. Its live native UAT rows were never formally run before publication.
+- **The spec/UAT divergence landed as debt.** VIS-02 specifies 30px rows; the UAT round shipped 31px and the `rowHeight` token still says 30.
+
+### Patterns Established
+
+- Rail dissolve qualification is kind-agnostic at the helper layer; kind-specific edit laws (Standard append, script rebuild) stay in their own paths.
+- An edit that discards a script or Reveal effect is gated behind an explicit one-shot user choice — never a silent consequence of adding a key.
+- Prefer the existing record shape over a new schema field: the Key Rail conversion reuses the provenance-free Standard clip rather than adding a persisted field.
+- "Exactly one referencing loop" is the independent-cycle test for Law A; two or more keep D-11 verbatim.
+- Design tokens with no production consumer drift silently — either wire them or treat them as documentation.
+
+### Key Lessons
+
+1. `covered_files` includes source paths: landing quicks after the phase verifier runs guarantees a stale report. Either verify after the last quick, or plan for the milestone audit to be the assurance of record.
+2. Quick SUMMARY frontmatter must carry `status:`; its absence degrades the artifact to `unknown` and adds a manual close step.
+3. A PATCH scope law written at milestone definition is enforceable; v2.0.1 touched zero schema, document or store surface across 10 plans and 5 quicks.
+4. When the UAT-approved render disagrees with the spec token, the render wins — but the token must move in the same change or it becomes recorded debt.
+5. Grouping one surface's feedback round into one quick is cheaper than four: each extra quick costs its own plan, summary, pins and audit acknowledgement.
+
+### Cost Observations
+
+- Model mix: project profile `adaptive` (opus for plan/audit/release, sonnet for execution waves)
+- Sessions: 3 days (2026-11-03 → 2026-11-05), 248 commits (36 feat) for 10 plans + 5 quicks
+- Notable: the single phase carried the milestone; the quicks were roughly half the delivered surface and all of the churn
+
+---
+
 ## Milestone: v2.0.0 — Multi-Module Paint Workstation (MAJOR)
 
 **Shipped:** 2026-11-02
@@ -640,6 +693,7 @@
 | v1.0.0 | ~15+ | 14 | 80 | Clean-break package format (no migration); 5 mid-milestone inserts (52.1-52.5); bounded async pilot (XState/Effect); override closeout with CLI acknowledgement |
 | v1.0.1 | ~3 days | 1 (+7 quicks) | 6 | Quicks-first PATCH; release as a first-class phase; override closeout (4 quick-frontmatter YAML repairs + 1 UAT row) |
 | v2.0.0 | ~20 days | 3 | 26 | Probe-first runtime bump; engine-agnostic host split with a pre-move golden; clean-room engine; late single-engine pivot; audit supersession accounting |
+| v2.0.1 | 3 days | 1 (+5 quicks) | 10 | PATCH scope law held end-to-end; live-found UX landed as post-publish quicks; the milestone audit superseded a stale phase verifier |
 
 ### Cumulative Quality
 
@@ -657,6 +711,7 @@
 | v1.0.0 | ~137,784 | 1,740 changed this milestone | 12 (9 new incl. 3 Known Gaps + carried) | 1 blocker + 3 warnings (display setters vs change token; export decode, hide/solo duplication, silent play no-op) |
 | v1.0.1 | ~139,400 | 112 changed | 6 (5 acknowledged at close) | 0 new (7 quicks, every one with a round-trip pin) |
 | v2.0.0 | ~175,000 source (+ ~180k test) | 1,220 changed | 14 (6 new + carried) | 0 blockers; 7 requirements superseded by approved pivots, 1 partial (paper-id undo) |
+| v2.0.1 | ~180,600 source | 276 changed | 19 (5 new + carried) | 0 new (audit: 14/14 links, 7/7 flows, 15/15 requirements) |
 
 ### Top Lessons (Verified Across Milestones)
 

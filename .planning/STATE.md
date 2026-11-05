@@ -20,10 +20,10 @@ current_phase: 58
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
+See: .planning/PROJECT.md (updated 2026-11-05 after the v2.0.1 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.0.1 shipped as GitHub Latest (tag `v2.0.1` → `49b5f7e57`); milestone completion pending
+**Current focus:** Planning the next milestone — v2.1.0 motion channels per `SPECS/v2.1.0-motion-channels/` is the planned shape (Phase 59 candidate, not yet inserted)
 
 ## Current Position
 
@@ -193,6 +193,8 @@ Last activity: 2026-11-05 — Milestone v2.0.1 completed and archived
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
+- v2.0.1 shipped as a PATCH with zero `.mce`/document/store change: Key Rail → Standard cycle through Edit Rail, Law A single-key drag, + Key/paint dissolve behind a one-shot Convert/New-rail prompt, and the v7 rail interface on the real Studio timeline. Motion channels (lanes, curves, nav cluster, selected-rail outline) remain v2.1.0 scope.
+- Rail edits that discard a script or Reveal effect sit behind an explicit one-shot user choice — never a silent consequence of adding a key.
 - v2.0.0 ships ONE Water color engine and ONE module: the module switcher and the Krita placeholder were removed pre-publish (261102-iv5); Krita is neither implemented nor planned.
 - Brushes are preset-only (custom PNG/JPG tip import retired with the Brush tab); `brushPack.entries` is empty by design.
 - Watercolor paper is baked into the sheet — a paper change is a cache miss, not a `paperPass` composite; `paperPass` is skipped for transmittance sheets.
@@ -764,11 +766,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-05T21:22:17Z
-Stopped at: v2.0.1 published as GitHub Latest (tag `v2.0.1` → `49b5f7e57`); milestone completion pending
+Last session: 2026-11-05T21:30:00Z
+Stopped at: v2.0.1 milestone complete and archived; REQUIREMENTS.md removed for a fresh set
 Resume file: .planning/reports/MILESTONE_SUMMARY-v2.0.1.md
 
 ## Operator Next Steps
 
-
-- Start the next milestone with /gsd-new-milestone
+- Start the next milestone with /gsd-new-milestone — v2.1.0 motion channels per `SPECS/v2.1.0-motion-channels/` is the planned shape; global phase numbering continues at 59
+- Deferred debt from v2.0.1 is recorded in PROJECT.md Context and MILESTONES.md: VIS-02/04 token drift, mixed rail-set accent, the prompt's pending window, and the unconfirmed 261105-p9i live UAT rows
