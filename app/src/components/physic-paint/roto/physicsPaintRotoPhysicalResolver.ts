@@ -1010,6 +1010,29 @@ function isCanonicalLifecycleRailClip(clip: PhysicPaintRotoLoopClip): boolean {
 }
 
 /**
+ * Ghost-source law (v2.0.1): a clip source key only paints as a timeline key
+ * while its physical frame sits inside a visible fragment of a clip that
+ * references it. The ghost hide is presentation-only, so a move that takes a
+ * key out of every fragment would silently erase a real key. Non-canonical
+ * rails do not retime (G-04 scope), so the resolver refuses that move instead.
+ */
+function sourceKeyFrameIsCovered(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  keyId: string,
+  appFrame: number,
+): boolean {
+  let measured = false;
+  for (const clip of loopClips) {
+    if (!clip.sourceKeyIds.includes(keyId)) continue;
+    const ranges = clip.visibleRanges;
+    if (!ranges || ranges.length === 0) continue;
+    measured = true;
+    if (ranges.some((range) => appFrame >= range.start && appFrame < range.endExclusive)) return true;
+  }
+  return !measured;
+}
+
+/**
  * D-04 rigid whole-cycle drag placement follow (placement/source correction):
  * a loop's placementStart tracks the drag ONLY when the moved set contains the
  * cycle's ENTIRE source key list AND the loop's placementStart coincided with
@@ -5550,6 +5573,25 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       if (retimed !== null
         && retimed.every((clip) => clip.originalEndExclusive === undefined || clip.originalEndExclusive <= input.capacity)) {
         moveCandidate = { ...moveCandidate, nextLoopClips: retimed };
+      }
+    }
+    // v2.0.1 ghost-source guard: a rail that did not retime keeps its stored
+    // visible fragments. A move that pushes any of its source keys outside
+    // every fragment would paint that real key as an empty cell on non-active
+    // rows. Refuse instead of silently erasing it; the whole-cycle group drag
+    // retimes every lifecycle rail.
+    if (moveCandidate.changed && referencingClips.length === 1) {
+      const finalLoopClips = moveCandidate.nextLoopClips ?? loopClips;
+      const wouldEraseSourceKey = referencingClips[0]!.sourceKeyIds.some((keyId) => {
+        const previousFrame = identities.framesByKeyId.get(keyId);
+        const movedFrame = moveCandidate.mapping.get(keyId);
+        return previousFrame !== undefined
+          && movedFrame !== undefined
+          && sourceKeyFrameIsCovered(loopClips, keyId, previousFrame)
+          && !sourceKeyFrameIsCovered(finalLoopClips, keyId, movedFrame);
+      });
+      if (wouldEraseSourceKey) {
+        return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
       }
     }
     const finalized = finalizeProposal(moveCandidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);

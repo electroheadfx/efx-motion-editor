@@ -309,6 +309,51 @@ describe('D-11 rigid linked-key guard', () => {
     expect(loopClips).toEqual(loopClipsBefore);
   });
 
+  it('rejects a single-key move that would leave a non-canonical lifecycle band — ghost-source guard', () => {
+    // A painted override makes the rail non-canonical, so G-04 does not retime
+    // its band. Moving the last source key past the stored end would leave it
+    // outside every visible fragment and the row would paint the real key as
+    // an empty cell (the v7 ghost-key fix). Refuse instead of erasing it.
+    const overriddenRail: PhysicPaintRotoLoopClip = {
+      ...loop(10, 1, 'L-over'),
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 15,
+      visibleRanges: [{ start: 10, endExclusive: 15 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 12 }],
+    };
+    const resolution = resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'E', target: { kind: 'physical-cell', appFrame: 20 } },
+      loopClips: [overriddenRail],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
+  it('accepts the same outward move on a canonical lifecycle rail and retimes the band', () => {
+    const canonicalRail: PhysicPaintRotoLoopClip = {
+      ...loop(10, 1, 'L-canon'),
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 15,
+      visibleRanges: [{ start: 10, endExclusive: 15 }],
+      frameOverrides: [],
+    };
+    const proposal = expectOk(resolveEdit({
+      records: SOURCE_RECORDS(),
+      intent: { kind: 'move-key', movedKeyId: 'E', target: { kind: 'physical-cell', appFrame: 20 } },
+      loopClips: [canonicalRail],
+    }));
+    const retimed = proposal.nextLoopClips?.find((clip) => clip.loopId === 'L-canon');
+    // Placement 10, cycle length 11 (E moved 14 -> 20), repeat 1.
+    expect(retimed?.originalEndExclusive).toBe(21);
+    expect(retimed?.visibleRanges).toEqual([{ start: 10, endExclusive: 21 }]);
+  });
+
   it('rejects a single-key move that breaks the referencing cycle order — CR-02', () => {
     const resolution = resolveEdit({
       records: SOURCE_RECORDS(),
