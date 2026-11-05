@@ -192,19 +192,27 @@ _Note: docs artifacts (SUMMARY.md, STATE.md, PLAN.md) are intentionally left unc
 
 No stubs introduced. The Hand signal is session-only by design and is never persisted.
 
-## UAT Rows (PENDING — live verification required)
+## UAT Rows — APPROVED (user-run, 2026-11-05)
 
-- [ ] **UAT 1 — Push in Tools:** Push mode is gone from the bottom action row and present in the Tools popover with its icon and label.
-- [ ] **UAT 2 — Frame go-to:** Clicking the frame readout opens the popup, defaults to Frame, and seeks to the entered frame.
-- [ ] **UAT 3 — Seconds go-to:** Seconds mode shows the same position in seconds and seeks on a seconds entry.
-- [ ] **UAT 4 — Hand availability:** The Hand button is greyed at Fit and enabled when zoomed past Fit.
-- [ ] **UAT 5 — Hand drag:** Hand drag pans in all directions; release returns to the previous paint tool and the next stroke paints normally.
-- [ ] **UAT 6 — Existing gestures:** Middle-drag, wheel/pinch zoom, and painting at 1:1 are unchanged after a hand pan.
+- [x] **UAT 1 — Push in Tools:** Push mode is gone from the bottom action row and present in the Tools popover with its icon and label.
+- [x] **UAT 2 — Frame go-to:** Clicking the frame readout opens the popup, defaults to Frame, and seeks to the entered frame.
+- [x] **UAT 3 — Seconds go-to:** Seconds mode shows the same position in seconds and seeks on a seconds entry; the ruler tick labels follow the Frame/Seconds switch.
+- [x] **UAT 4 — Hand availability:** The Hand button is greyed at Fit and enabled when zoomed past Fit.
+- [x] **UAT 5 — Hand drag:** Holding the Hand and moving pans in all directions; release returns to the previous paint tool and the next stroke paints normally.
+- [x] **UAT 6 — Existing gestures:** Middle-drag, wheel/pinch zoom, and painting at 1:1 are unchanged after a hand pan.
+
+### UAT-driven fixes (approved in the follow-up commits)
+
+- `6512cd2cc` — Push / Group translations shift the backing Group override records in lockstep with the clip's painted phases; fail-closed when the authority is missing or a fixed Group shares the record.
+- `879fa2ba8` — the frame popover trigger now carries its anchor ref.
+- `31ecc33ba` — the Hand is a momentary hold-to-pan tool (press, move, release), not click-to-arm.
+- `2997e64a1` — centered popup layout, signal-backed unit switch, dismissal-exempt panel, commit-before-close.
+- `2f4d8dd56` — shared timeline unit retimes the ruler labels; title-case switch labels.
 
 ## Next Phase Readiness
 
-- All automated gates pass: typecheck clean, full suite 373 files / 7267 tests passed (2 skipped files, 1 skipped test, 96 todo).
-- The quick remains open until the six live UAT rows are approved.
+- All automated gates pass: typecheck clean, full suite 374 files / 7273 tests passed (2 skipped files, 1 skipped test, 96 todo).
+- UAT rows 1-6 passed on 2026-11-05; this quick is approved and closed.
 
 ---
 *Quick: 261105-cgl*

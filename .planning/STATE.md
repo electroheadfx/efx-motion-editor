@@ -4,9 +4,9 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-05T08:16:00.037Z"
+last_updated: "2026-11-05T09:03:39Z"
 last_activity: 2026-11-05
-last_activity_desc: Quick 261105-cgl — Push mode into the Tools popover, Frame/Seconds go-to popup, Hand host tool for primary-drag panning. Automated gates green; live UAT pending
+last_activity_desc: Quick 261105-cgl UAT approved — Push mode in the Tools popover, Frame/Seconds go-to popup with ruler unit switch, momentary hold-to-pan Hand tool, Group override-record retiming fix
 state_head: 7d4beafac356869b7478f46481680d841d55c50c
 progress:
   total_phases: 1
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 Phase: 58
 Plan: 10 of 10 complete
 Status: All phases complete — quick 261104-bop (v7 Studio timeline rails) UAT approved; milestone ready to close
-Last activity: 2026-11-05 — Quick task 261105-cgl automated-ready (live UAT pending): Push mode moved into the Tools popover, the frame readout opens a Frame/Seconds go-to popup, and a Hand host tool pans with a primary drag and disarms on release. Commits 587b0f683..7d4beafac. Gates: typecheck clean, full vitest run 7267 passed / 0 failed.
-Current quick: 2026-11-05 — Small Studio add-ons — status: UAT pending (6 live rows: Push placement, Frame go-to, Seconds go-to, Hand availability, Hand drag + release, existing gesture regression). Commits 587b0f683, e53e01e9f, 045170fec, 7d4beafac.
+Last activity: 2026-11-05 — Quick task 261105-cgl UAT approved (all 6 rows): Push mode in the Tools popover, Frame/Seconds go-to popup whose switch also retimes the ruler labels, momentary hold-to-pan Hand tool, and the Group override-record retiming fix for Push/Group moves. Commits 587b0f683..2f4d8dd56. Gates: typecheck clean, full vitest run 7273 passed / 0 failed.
+Current quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Previous quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
 Earlier quick: 2026-11-04 — Studio timeline playhead trail — UAT approved. The solid 2px blue accent stays confined to the 36px ruler band; a separate 1px `rgba(40,104,252,0.7)` trail continues the line through the key cells and rails (alpha raised from 0.35 on the UAT pass). Commits 492257255, ac7d7c9a4.
 Previous: 2026-11-03 - Phase 58 complete
@@ -763,8 +763,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-05T08:14:08Z
-Stopped at: Quick 261105-cgl automated-ready — awaiting live UAT (typecheck clean, full vitest 7267 passed / 0 failed)
+Last session: 2026-11-05T09:03:39Z
+Stopped at: Quick 261105-cgl UAT approved and closed (typecheck clean, full vitest 7273 passed / 0 failed)
 Resume file: None
 
 ## Operator Next Steps
