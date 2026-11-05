@@ -87,9 +87,9 @@ Load all context in one call:
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/gsd-run-resolver.md
 
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
 $ARGUMENTS
-GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1
+GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
 GSD_ARGS=${GSD_ARGS%$'\n'}
 WAVE_PARAM=""; if [[ "$GSD_ARGS" =~ (^|[[:space:]])--wave[[:space:]]+([^[:space:]-][^[:space:]]*) ]]; then WAVE_PARAM="--wave ${BASH_REMATCH[2]}"; fi
 GSD_WS=$(echo " $GSD_ARGS" | sed -nE 's/.* --ws +([A-Za-z0-9][A-Za-z0-9._-]*).*/--ws \1/p' | head -n 1)
@@ -185,9 +185,9 @@ inline path for each plan.
 
 **REQUIRED — Sync chain flag with intent.** If user invoked manually (no `--auto`), clear the ephemeral chain flag from any previous interrupted `--auto` chain. This prevents stale `_auto_chain_active: true` from causing unwanted auto-advance. This does NOT touch `workflow.auto_advance` (the user's persistent settings preference). You MUST execute this bash block before any config reads:
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
 $ARGUMENTS
-GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1
+GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
 GSD_ARGS=${GSD_ARGS%$'\n'}
 # REQUIRED: prevents stale auto-chain from previous --auto runs
 if [[ ! "$GSD_ARGS" =~ --auto ]]; then
@@ -197,9 +197,9 @@ fi
 
 Resolve `MVP_MODE` once via the centralized `phase.mvp-mode` query verb (precedence chain: CLI flag → ROADMAP `**Mode:** mvp` → `workflow.mvp_mode` config → false):
 ```bash
-IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1' || true
+IFS= read -rd '' GSD_ARGS <<'GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a' || true
 $ARGUMENTS
-GSD_ARGS_END_92aa5cf6145df679cfa278ffd9dc9ba1
+GSD_ARGS_END_fd008e55b6f91fcffe0816d45204b52a
 GSD_ARGS=${GSD_ARGS%$'\n'}
 MVP_FLAG_ARG=""
 if [[ "$GSD_ARGS" =~ (^|[[:space:]])--mvp([[:space:]]|$) ]]; then MVP_FLAG_ARG="--cli-flag"; fi
