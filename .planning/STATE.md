@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v2.0.1
 current_phase: 58
 status: completed
-stopped_at: Milestone v2.0.1 summary generated
-last_updated: "2026-11-05T21:15:22.229Z"
+stopped_at: v2.0.1 published as GitHub Latest; ready for milestone completion
+last_updated: "2026-11-05T21:22:17Z"
 last_activity: 2026-11-05
-last_activity_desc: Phase 58 complete
+last_activity_desc: v2.0.1 published as GitHub Latest
 state_head: 5a63f5b3e8ba876cc629859118c052f4742bcc43
 progress:
   total_phases: 1
@@ -23,14 +23,14 @@ milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
 See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.0.1 release finalization — refreshed audit and six gates green; next is the user-run credentialed build, signed UAT, and publish
+**Current focus:** v2.0.1 shipped as GitHub Latest (tag `v2.0.1` → `49b5f7e57`); milestone completion pending
 
 ## Current Position
 
 Phase: 58
 Plan: All 10 plans complete
 Status: All phases complete
-Last activity: 2026-11-05 — v2.0.1 audit refreshed at HEAD 7dddc1389 after the post-audit rail fixes (Run Script merge, rail-kind dissolve, one-shot conversion prompt, live commitOnInput). Status tech_debt, 15/15 requirements, integration 14/14 links, flows 7/7, no blockers. Six agent gates green: vitest 7347 passed / 0 failed, typecheck clean, production build (largest chunk 1,620.87 kB), cargo test 21/21, release-script syntax, PREFLIGHT PASS. Awaiting the user-run credentialed build, signed UAT, then the GitHub publish.
+Last activity: 2026-11-05 — v2.0.1 PUBLISHED as GitHub Latest. Audit tech_debt, 15/15 requirements, 14/14 integration links, 7/7 flows, no blockers; six agent gates green (vitest 7347 passed / 0 failed, typecheck clean, build largest chunk 1,620.87 kB, cargo 21/21, release-script syntax, PREFLIGHT PASS). Release PASS (signature, Developer ID, Hardened Runtime, Gatekeeper, notarization, stapler); signed-app UAT passed; downloaded-artifact verification PASS on the browser download; 17/17 stop conditions NOT ACTIVE. Tag `v2.0.1` → `49b5f7e57` on remote main; DMG 15,982,906 bytes, SHA-256 `3413b70104e8c4afee91fa20ea1bbd08ebfbddbacae6c5d19b30844225fffbad`; package.json at the tag reads 2.0.1. Remaining: `/gsd-complete-milestone`.
 Audit: 2026-11-05T20:03:44Z — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. Supersedes the 12:00Z report; it folds in f7a80d791, 8bf0ab4ed/715c9c155, d22d70809/67a6f31f7/e0ca486e4/842112538, and 32694c461/811be7aa3/069c93fc0. Remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, prompt pending window, .test.tsx launcher collection, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
@@ -769,10 +769,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-05T21:15:21.757Z
-Stopped at: Milestone v2.0.1 summary generated
+Last session: 2026-11-05T21:22:17Z
+Stopped at: v2.0.1 published as GitHub Latest (tag `v2.0.1` → `49b5f7e57`); milestone completion pending
 Resume file: .planning/reports/MILESTONE_SUMMARY-v2.0.1.md
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Run /gsd-complete-milestone v2.0.1, then /gsd-new-milestone
+- Deferred debt fixes (Force Spacing shrink override, prompt pending window) are not scheduled; fix only if reproduced

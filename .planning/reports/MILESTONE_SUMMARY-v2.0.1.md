@@ -3,7 +3,7 @@
 **Generated:** 2026-11-05
 **Purpose:** Team onboarding and project review
 **Milestone:** v2.0.1 — Rail Editing & v7 Timeline Rails (PATCH)
-**Status:** All phases complete — release pending (credentialed build, signed UAT, GitHub publish)
+**Status:** Shipped — published as GitHub Latest on 2026-11-05 (tag `v2.0.1` → `49b5f7e57`)
 
 ---
 
@@ -17,7 +17,7 @@
 
 **Where v2.0.1 sits:** v2.0.0 rebuilt the paint side as a single Water color workstation (shipped 2026-11-02). v2.0.1 is a **PATCH**: two Studio timeline rail-editing regressions plus the approved v7 timeline-rail visual interface. No new module, no `.mce` schema change, no unrelated debt.
 
-**Release state at generation time:** Phase 58 and the v7 quick are complete and UAT-approved. The refreshed milestone audit (2026-11-05T20:03Z at HEAD `7dddc1389`) reports `tech_debt` with 15/15 requirements and no blockers. Six agent gates are green (vitest 7,347 passed / 0 failed, typecheck clean, production build largest chunk 1,620.87 kB, cargo test 21/21, release-script syntax, PREFLIGHT PASS). Remaining work is the user-run credentialed build, signed-app UAT, and the GitHub publish.
+**Release outcome (updated after publish):** Phase 58 and the v7 quick are complete and UAT-approved. The refreshed milestone audit (2026-11-05T20:03Z at HEAD `7dddc1389`) reports `tech_debt` with 15/15 requirements and no blockers. Six agent gates are green (vitest 7,347 passed / 0 failed, typecheck clean, production build largest chunk 1,620.87 kB, cargo test 21/21, release-script syntax, PREFLIGHT PASS). **Published as signed/notarized GitHub Latest on 2026-11-05:** tag `v2.0.1` → `49b5f7e57`, DMG 15,982,906 bytes (SHA-256 `3413b701…fffbad`), Release PASS, signed-app UAT passed, downloaded-artifact verification PASS, and all 17 stop conditions NOT ACTIVE.
 
 ---
 
@@ -215,12 +215,12 @@
 | Test collection | New `.test.tsx` suites are collected only through `.test.tsx.test.ts` launchers. Running the `.tsx` path directly silently executes nothing under the project vitest config. |
 | Phase 58 advisories | Reduced Cycle dialog leaves ~376px vertical / ~478px horizontal dead space · refusal reasons are returned but never rendered (`rejectLoopOp` sets `error: null`) · during `committing` Cancel and primary look enabled while both no-op · pasting a rail-set copy from an already-stale finite lifecycle rail can be rejected fail-closed (retryable, writes nothing) · a Force Spacing that SHRINKS an overridden lifecycle rail can strand a tail `frameOverride` and fail the loop-clip parser at commit (pre-existing at `bdc5928ac^`, outside Phase 58 scope — product decision needed). |
 | Code review | 15 findings remain open in `58-REVIEW-DISPOSITION.md` (WR-01..WR-05, IN-01..IN-10). CR-01/CR-02/CR-03/CR-04/CR-05 are fixed and scored. |
-| UI review | 17/24 across the six pillars. The one BLOCKER (reduced dialog's root key handler hijacking Enter/Escape from its own controls) is recorded in `58-UI-REVIEW.md`; the review was code/CSS-only (no dev server was started, per project instruction). |
+| UI review | 17/24 across the six pillars in `58-UI-REVIEW.md` (code/CSS-only, no dev server, per project instruction). The one BLOCKER it recorded — the reduced dialog's root key handler hijacking Enter/Escape from its own controls — was **fixed during gap closure**: `PhysicsPaintPlayScriptDialog.tsx:308,318` now returns early for Enter on controls and Escape in text fields, pinned by tests. The review document is historical; the shipped code is clean on this point. |
 
 ### Process debt and risks for the release window
 
-- The existing v2.0.1 GitHub **draft carries a DMG built before the post-audit fixes** — it must be replaced after the rebuild, never patched forward.
-- Per the release runbook, **no functional code changes land in the release window**. Fixes to the items above should be scheduled as follow-up quicks after publish.
+- The pre-fix v2.0.1 draft was **deleted and replaced with the post-fix DMG before publish**; the shipped asset matches the built DMG (SHA-256 `3413b701…fffbad`).
+- Per the release runbook, **no functional code changes land in the release window**. The debt items above remain deferred: fix only the specific case if it reproduces in real use — no debt sweep.
 - `.claude/gsd-core` was bumped to `@opengsd/gsd-core@1.20.0` inside the milestone window; the large tooling diff (+3,120/−658 in `phase.cjs` alone) is not product code and should be read as such in any diff review.
 
 ### Deferred by design
@@ -305,6 +305,7 @@ bash scripts/macos-release.sh verify-downloaded /path/to/file.dmg    # downloade
 - **Test suite at audit:** 7,347 passed / 0 failed; typecheck clean; cargo 21/21; production build largest chunk 1,620.87 kB
 - **Contributors:** Laurent Marques
 - **Audit verdict:** `tech_debt` — no blockers, deferred items listed above
+- **Release:** GitHub Latest 2026-11-05, tag `v2.0.1` → `49b5f7e57`; DMG 15,982,906 bytes, SHA-256 `3413b70104e8c4afee91fa20ea1bbd08ebfbddbacae6c5d19b30844225fffbad`; Release PASS; signed-app UAT passed; downloaded-artifact verification PASS; 17/17 stop conditions NOT ACTIVE
 
 ---
 

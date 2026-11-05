@@ -14,7 +14,7 @@
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
-- ◆ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (release pending)
+- ✅ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (shipped 2026-11-05; tag `v2.0.1` → `49b5f7e57`)
 
 ## Phases
 
@@ -69,6 +69,7 @@
 |-------|----------------|--------|-----------|
 | 58. Rail editing regressions | 10/10 | Complete    | 2026-11-05 |
 | v7 timeline rails (in-milestone quick) | quick 261104-bop | Complete | 2026-11-04 |
+| Release v2.0.1 | — | Published Latest | 2026-11-05 |
 
 <details>
 <summary>✅ v2.0.0 Multi-Module Paint Workstation (MAJOR) — SHIPPED 2026-11-02</summary>
@@ -123,4 +124,4 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 ## Next Milestone
 
-**v2.0.1 is active.** Execution order: Phase 58 (rail-editing regressions) → the in-milestone v7 timeline-rails quick → release through `efx-motion-release` (audit BEFORE tag/publish). Global phase numbering continues at Phase 58; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.
+**v2.0.1 is shipped** — GitHub Latest on 2026-11-05, tag `v2.0.1` → `49b5f7e57`, signed/notarized DMG with downloaded-artifact verification PASS. The next milestone is not yet opened; the deferred Studio timeline zoom work is planned for v2.1.0 (Phase 59 candidate, not yet inserted). Global phase numbering continues at Phase 59; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.
