@@ -904,23 +904,30 @@ function RotoPlaybackCurrentFrameOutput(props: {
   const frame = playbackAppFrame ?? props.currentFrame.value;
   const lastFrame = Math.max(0, props.lastFrame ?? 0);
   const fps = props.fps ?? 1;
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<FrameGotoMode>('frame');
+  // 261105-cgl UAT: local popup state is signal-backed (the project's
+  // reactivity law) so the unit switch re-renders deterministically.
+  const open = useSignal(false);
+  const mode = useSignal<FrameGotoMode>('frame');
   // The canonical position, kept in FRAMES. Both units display the same
   // position, so switching Frame<->Seconds never re-derives or drifts.
-  const [draftFrame, setDraftFrame] = useState(0);
+  const draftFrame = useSignal(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  const closeFrameGoto = useCallback(() => setOpen(false), []);
+  const closeFrameGoto = useCallback(() => { open.value = false; }, []);
 
   // Dismissal mirrors the Tools popover's one-layer rule: listeners exist only
   // while open, and Escape consumes the key before the Studio dispatcher (one
   // Escape handles at most one layer). No backdrop, no focus trap.
   useEffect(() => {
-    if (!open) return;
+    if (!open.value) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (shouldDismissToolboxPopover(event.target, [triggerRef.current, panelRef.current])) closeFrameGoto();
+      if (!shouldDismissToolboxPopover(event.target, [triggerRef.current, panelRef.current])) return;
+      // Commit a typed value before the panel unmounts: the stepper commits on
+      // blur, and closing first would drop the entry (UAT "no work").
+      const active = typeof document !== 'undefined' ? document.activeElement : null;
+      if (active instanceof HTMLElement && panelRef.current?.contains(active)) active.blur();
+      closeFrameGoto();
     };
     const onEscapeKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -933,27 +940,27 @@ function RotoPlaybackCurrentFrameOutput(props: {
       window.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
-  }, [open, closeFrameGoto]);
+  }, [open.value, closeFrameGoto]);
 
   const openFrameGoto = () => {
-    setMode('frame');
+    mode.value = 'frame';
     // Seed ONCE from the live read — the popover never follows playback ticks.
     const live = props.playbackActive
       ? props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()
       : props.currentFrame.peek();
-    setDraftFrame(normalizeFrameGotoFrame(live, lastFrame) ?? 0);
-    setOpen(true);
+    draftFrame.value = normalizeFrameGotoFrame(live, lastFrame) ?? 0;
+    open.value = true;
   };
 
   const commitFrameGoto = (value: number) => {
-    const target = resolveFrameGotoTarget(mode, value, fps, lastFrame);
+    const target = resolveFrameGotoTarget(mode.value, value, fps, lastFrame);
     if (target === null) return;
-    setDraftFrame(target);
+    draftFrame.value = target;
     props.onGoToFrame?.(target);
   };
 
-  const displayValue = resolveFrameGotoValue(mode, draftFrame, fps);
-  const frameMode = mode === 'frame';
+  const displayValue = resolveFrameGotoValue(mode.value, draftFrame.value, fps);
+  const frameMode = mode.value === 'frame';
 
   return (
     <Fragment>
@@ -962,32 +969,37 @@ function RotoPlaybackCurrentFrameOutput(props: {
         type="button"
         class="physics-paint-current-frame-trigger"
         aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? 'physics-paint-frame-goto-popover' : undefined}
+        aria-expanded={open.value}
+        aria-controls={open.value ? 'physics-paint-frame-goto-popover' : undefined}
         aria-label={`Frame ${frame} — open the go-to-frame popup`}
         title="Frame — click to go to a frame"
-        onClick={() => { if (open) closeFrameGoto(); else openFrameGoto(); }}
+        onClick={() => { if (open.value) closeFrameGoto(); else openFrameGoto(); }}
       >
         <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>
       </button>
       <PhysicsPaintToolboxPopover
         anchorRef={triggerRef}
         panelRef={panelRef}
-        open={open}
+        open={open.value}
         panelId="physics-paint-frame-goto-popover"
         className="physics-paint-frame-goto-popover"
         ariaLabel="Go to frame"
+        dismissExempt
       >
         <div class="physics-paint-frame-goto-mode" role="group" aria-label="Go-to unit">
           <button
             type="button"
             aria-pressed={frameMode}
-            onClick={() => setMode('frame')}
+            // UAT: switch on pointerdown as well as click — the unit must
+            // change the instant the press lands, before any dismissal path.
+            onPointerDown={(event) => { event.preventDefault(); mode.value = 'frame'; }}
+            onClick={() => { mode.value = 'frame'; }}
           >Frame</button>
           <button
             type="button"
             aria-pressed={!frameMode}
-            onClick={() => setMode('seconds')}
+            onPointerDown={(event) => { event.preventDefault(); mode.value = 'seconds'; }}
+            onClick={() => { mode.value = 'seconds'; }}
           >Seconds</button>
         </div>
         <label class="physics-paint-frame-goto-field">
@@ -1001,7 +1013,6 @@ function RotoPlaybackCurrentFrameOutput(props: {
             precision={frameMode ? undefined : 2}
             ariaLabel={frameMode ? 'Frame number' : 'Time in seconds'}
             class="physics-paint-frame-goto-stepper"
-            inputStyle={frameMode ? { width: '40px' } : { width: '48px' }}
           />
         </label>
       </PhysicsPaintToolboxPopover>
@@ -1521,6 +1532,12 @@ function PhysicsPaintToolboxPopover(props: {
   panelId?: string;
   /** Appended to the panel class (surface-specific width/padding overrides). */
   className?: string;
+  /**
+   * 261105-cgl UAT: mark the panel as a dismissal-exempt surface. Interior
+   * pointerdowns can never close it, even if the panel ref containment probe
+   * cannot prove the hit — the unit switch must always land.
+   */
+  dismissExempt?: boolean;
   children: ComponentChildren;
 }) {
   useLayoutEffect(() => {
@@ -1546,6 +1563,7 @@ function PhysicsPaintToolboxPopover(props: {
       role="dialog"
       aria-modal="false"
       aria-label={props.ariaLabel}
+      data-toolbox-dismiss-exempt={props.dismissExempt ? '' : undefined}
       style={{ visibility: 'hidden' }}
     >
       {props.children}

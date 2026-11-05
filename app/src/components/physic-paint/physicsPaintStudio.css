@@ -4074,30 +4074,48 @@ button.destructive {
 /* The frame go-to popup reuses the toolbox panel shell (placement, portaling,
    dismissal) with a compact width and padding. */
 .physics-paint-frame-goto-popover {
-  width: 228px;
-  min-width: 228px;
-  max-width: 228px;
-  padding: 12px;
-  gap: 10px;
+  width: 248px;
+  min-width: 248px;
+  max-width: 248px;
+  padding: 14px;
+  gap: 12px;
   align-items: stretch;
 }
 
 .physics-paint-frame-goto-mode {
-  display: flex;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   width: 100%;
 }
 
 .physics-paint-frame-goto-mode button {
-  flex: 1 1 0;
-  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  margin: 0;
+  padding: 0 10px;
   border: 1px solid #4a525b;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #2a3036;
   color: #d8dde3;
+  font: inherit;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
   cursor: pointer;
+}
+
+.physics-paint-frame-goto-mode button:hover {
+  border-color: #6a7480;
+  background: #333a42;
+}
+
+.physics-paint-frame-goto-mode button:focus-visible {
+  outline: 1px solid #6f90ff;
+  outline-offset: 1px;
 }
 
 /* The Studio selected language — the same accent family as the popover
@@ -4110,9 +4128,9 @@ button.destructive {
 
 .physics-paint-frame-goto-field {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   width: 100%;
   color: #e3e6ea;
   font-size: 11px;
@@ -4121,7 +4139,16 @@ button.destructive {
 }
 
 .physics-paint-frame-goto-field > span {
-  flex: 0 0 auto;
+  text-align: center;
+}
+
+.physics-paint-frame-goto-stepper {
+  width: 100%;
+}
+
+.physics-paint-frame-goto-stepper .numeric-stepper-input {
+  min-width: 0;
+  font-size: 12px;
 }
 
 .physics-paint-play-wiggle-slider {

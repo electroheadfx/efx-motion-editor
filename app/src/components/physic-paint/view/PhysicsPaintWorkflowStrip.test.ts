@@ -2823,8 +2823,8 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     // stays mounted with visibility:hidden (the 261105-cgl UAT "no work" bug).
     expect(trigger).toContain('ref={triggerRef}');
     expect(trigger).toContain('aria-haspopup="dialog"');
-    expect(trigger).toContain('aria-expanded={open}');
-    expect(trigger).toContain('aria-controls={open ? \'physics-paint-frame-goto-popover\' : undefined}');
+    expect(trigger).toContain('aria-expanded={open.value}');
+    expect(trigger).toContain('aria-controls={open.value ? \'physics-paint-frame-goto-popover\' : undefined}');
   });
 
   it('opens in Frame mode, seeds from the live read, and never follows playback ticks while open', () => {
@@ -2832,12 +2832,12 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     const openStart = code.indexOf('const openFrameGoto = () => {');
     const openBlock = code.slice(openStart, code.indexOf('};', openStart) + 2);
     expect(openStart).toBeGreaterThanOrEqual(0);
-    expect(openBlock).toContain("setMode('frame')");
+    expect(openBlock).toContain("mode.value = 'frame'");
     expect(openBlock).toContain('props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()');
     expect(openBlock).toContain('normalizeFrameGotoFrame(live, lastFrame)');
-    expect(openBlock).toContain('setOpen(true)');
+    expect(openBlock).toContain('open.value = true');
     // The draft is a state seed, not a derived read of the playback tick.
-    expect(code).toContain('const [draftFrame, setDraftFrame] = useState(0);');
+    expect(code).toContain('const draftFrame = useSignal(0);');
   });
 
   it('resolves every entry through the shared helper and forwards to the Studio navigation path', () => {
@@ -2845,12 +2845,12 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     const commitStart = code.indexOf('const commitFrameGoto = (value: number) => {');
     const commitBlock = code.slice(commitStart, code.indexOf('};', commitStart) + 2);
     expect(commitStart).toBeGreaterThanOrEqual(0);
-    expect(commitBlock).toContain('resolveFrameGotoTarget(mode, value, fps, lastFrame)');
+    expect(commitBlock).toContain('resolveFrameGotoTarget(mode.value, value, fps, lastFrame)');
     expect(commitBlock).toContain('if (target === null) return;');
     expect(commitBlock).toContain('props.onGoToFrame?.(target)');
     // The stepper value is the display projection, never the raw frame in
     // seconds mode.
-    expect(code).toContain('resolveFrameGotoValue(mode, draftFrame, fps)');
+    expect(code).toContain('resolveFrameGotoValue(mode.value, draftFrame.value, fps)');
     // The static-chrome call wires the existing synced-frame path.
     expect(code).toContain('onGoToFrame={props.onNavigateToSyncedFrame}');
     expect(code).toContain('lastFrame={Math.max(0, frameCells.length - 1)}');
@@ -2867,5 +2867,17 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     // classifier so interior/portaled hits never dismiss.
     expect(code).toContain('shouldDismissToolboxPopover(event.target, [triggerRef.current, panelRef.current])');
     expect(code).toContain('event.stopImmediatePropagation();');
+  });
+
+  it('switches the unit on pointerdown and commits a typed value before dismissal', () => {
+    const code = source();
+    // Interior presses can never close the panel, even if the containment
+    // probe is inconclusive (UAT: the Seconds switch appeared dead).
+    expect(code).toContain('dismissExempt');
+    expect(code).toContain("data-toolbox-dismiss-exempt={props.dismissExempt ? '' : undefined}");
+    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); mode.value = 'frame'; }}");
+    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); mode.value = 'seconds'; }}");
+    // A typed value must commit before the outside click unmounts the panel.
+    expect(code).toContain('if (active instanceof HTMLElement && panelRef.current?.contains(active)) active.blur();');
   });
 });
