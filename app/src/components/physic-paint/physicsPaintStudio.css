@@ -1015,17 +1015,6 @@ button.destructive {
   inset: 0;
 }
 
-/* 261105-cgl: the armed Hand paints a grab cursor over the whole sheet. The
-   dragging state keeps the existing imperative inline `grabbing` cursor, which
-   wins over this class. */
-.physics-paint-canvas-zoom-viewport.physics-paint-canvas-hand-armed {
-  cursor: grab;
-}
-
-.physics-paint-canvas-zoom-viewport.physics-paint-canvas-hand-armed * {
-  cursor: grab;
-}
-
 /* The zoomed sheet must OVERFLOW the tracks group. The shell carries
    `overflow: hidden`, so as a flex item its automatic minimum size is 0 and
    flex-shrink:1 would clamp a zoomed sheet back to the group's main size —

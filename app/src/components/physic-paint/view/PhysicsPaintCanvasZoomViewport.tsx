@@ -1,8 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { effect } from '@preact/signals';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
-import { disarmHandTool, isHandToolArmed, isHandToolArmedPeek } from './physicsPaintHandTool';
+import { disarmHandTool } from './physicsPaintHandTool';
 
 /**
  * 261104-uyv: the Studio canvas zoom viewport.
@@ -123,51 +122,12 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       startY: number;
       startPanX: number;
       startPanY: number;
-      /** 261105-cgl: the Hand release disarms; middle-drag never does. */
-      source: 'middle' | 'hand';
     } | null = null;
-
-    // 261105-cgl: the armed Hand paints the grab cursor through ONE class and
-    // self-heals: when the sheet stops overflowing (Fit, resize) an armed hand
-    // is disarmed, so a canvas click can never stay swallowed. Termination:
-    // the disarm is a compare-then-write false, so the extra run it schedules
-    // observes `armed === false` and writes nothing more.
-    const disposeHandArmed = effect(() => {
-      const armed = isHandToolArmed();
-      viewport.classList.toggle('physics-paint-canvas-hand-armed', armed);
-      if (armed && !physicsPaintCanvasZoom.hasOverflow.value) disarmHandTool();
-    });
 
     // CAPTURE phase: the middle-button press is consumed before the stack's
     // picker/block gates and the engine's own listeners. Button 1 already
     // cannot start a stroke or a pick — this keeps it out of every gate too.
     const onPointerDown = (event: PointerEvent) => {
-      // 261105-cgl: the armed Hand consumes the PRIMARY button through the
-      // same capture phase. With no overflow it stands down (disarm, no
-      // preventDefault/stopPropagation) so painting is never blocked.
-      if (event.button === 0 && isHandToolArmedPeek()) {
-        if (!physicsPaintCanvasZoom.hasOverflow.peek()) {
-          disarmHandTool();
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        drag = {
-          pointerId: event.pointerId,
-          startX: event.clientX,
-          startY: event.clientY,
-          startPanX: physicsPaintCanvasZoom.panX.peek(),
-          startPanY: physicsPaintCanvasZoom.panY.peek(),
-          source: 'hand',
-        };
-        try {
-          viewport.setPointerCapture(event.pointerId);
-        } catch {
-          // Pointer capture is best-effort (the pointer may already be gone).
-        }
-        viewport.style.cursor = 'grabbing';
-        return;
-      }
       if (event.button !== 1) return;
       event.preventDefault();
       event.stopPropagation();
@@ -178,7 +138,6 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
         startY: event.clientY,
         startPanX: physicsPaintCanvasZoom.panX.peek(),
         startPanY: physicsPaintCanvasZoom.panY.peek(),
-        source: 'middle',
       };
       try {
         viewport.setPointerCapture(event.pointerId);
@@ -201,9 +160,6 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
     const endDrag = (event: PointerEvent) => {
       if (!drag || event.pointerId !== drag.pointerId) return;
       const pointerId = drag.pointerId;
-      // 261105-cgl: a hand release disarms back to the untouched previous tool.
-      // The release must not reach the engine/picker gates as a stroke end.
-      const wasHand = drag.source === 'hand';
       drag = null;
       try {
         viewport.releasePointerCapture(pointerId);
@@ -211,11 +167,6 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
         // Already released by the platform.
       }
       viewport.style.cursor = '';
-      if (wasHand) {
-        event.preventDefault();
-        event.stopPropagation();
-        disarmHandTool();
-      }
     };
 
     const onAuxClick = (event: MouseEvent) => {
@@ -235,8 +186,6 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       rafId = 0;
       pending = null;
-      disposeHandArmed();
-      viewport.classList.remove('physics-paint-canvas-hand-armed');
       viewport.style.cursor = '';
       // Options matter only for `capture` on removal; passive defaults alike.
       viewport.removeEventListener('wheel', onWheel);
