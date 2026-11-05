@@ -88,6 +88,37 @@ import {
  */
 export type RotoDragTarget = PhysicPaintRotoPhysicalEditTarget;
 
+/**
+ * Quick 261105-raf: the answer to the one-shot `Edit this rail?` prompt.
+ *
+ * `convert` reproduces the shipped 261105-p9i dissolve (the rail's Loop Clip
+ * is removed and every source key joins the new key). `new-rail` is the
+ * non-destructive choice (Escape / header close): the scripted rail and its
+ * Loop Clip stay untouched and the edit lands as a detached key — exactly the
+ * `dissolveTarget = null` path.
+ */
+export type RotoRailConversionChoice = 'convert' | 'new-rail';
+
+/** Quick 261105-raf: the script-generated rail kinds the prompt can name. */
+export type RotoRailConversionRailKind = 'motion' | 'static' | 'reveal';
+
+/** Quick 261105-raf: transient in-memory prompt request — never persisted. */
+export interface RotoRailConversionRequest {
+  readonly railKind: RotoRailConversionRailKind;
+}
+
+/**
+ * Quick 261105-raf: the hook-owned one-shot prompt bundle.
+ *
+ * `request` is non-null only while a conversion is pending; `answer` resolves
+ * the deferred promise and clears the signal in the same synchronous step, so
+ * at most one conversion can ever be pending.
+ */
+export interface RotoRailConversionDialogBundle {
+  readonly request: ReadonlySignal<RotoRailConversionRequest | null>;
+  readonly answer: (choice: RotoRailConversionChoice) => void;
+}
+
 export type RotoInsertTarget =
   | { readonly kind: 'occupied-real'; readonly keyId: string }
   | { readonly kind: 'genuinely-empty'; readonly appFrame: number }
@@ -1919,8 +1950,62 @@ function deriveForceSpacingScope(input: {
   };
 }
 
+/**
+ * Quick 261105-raf: the prompt rail kind for a dissolve candidate.
+ *
+ * `standard` (a merged rail without single-script provenance) and a missing
+ * clip return null — those destinations keep today's silent dissolve / plain
+ * detached key. A scripted Motion rail and a scripted Static rail both classify
+ * as `playscript`; the stored `mode` alone separates them. A Reveal rail keeps
+ * its own identity.
+ */
+function resolveRotoRailConversionKind(
+  clip: PhysicPaintRotoLoopClip | undefined,
+): RotoRailConversionRailKind | null {
+  if (clip === undefined) return null;
+  const railKind = classifyLoopClipRailKind(clip);
+  if (railKind === 'standard') return null;
+  if (railKind === 'reveal') return 'reveal';
+  return clip.mode === 'static' ? 'static' : 'motion';
+}
+
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const forceSpacingInput = useMemo(() => signal('1'), []);
+  // Quick 261105-raf: ONE in-memory holder owns the pending rail-conversion
+  // prompt (signal + deferred resolver). A useMemo holder (never useRef) keeps
+  // the hook table stable through this project's preact/hooks test mocks, and
+  // no timer, polling or persisted field is involved: the promise resolves
+  // exclusively from the dialog's answer.
+  const railConversionHolder = useMemo(() => ({
+    request: signal<RotoRailConversionRequest | null>(null),
+    resolve: null as ((choice: RotoRailConversionChoice) => void) | null,
+  }), []);
+
+  /** Open the one-shot prompt; `null` means one conversion is already pending. */
+  const requestRailConversion = useCallback((railKind: RotoRailConversionRailKind): Promise<RotoRailConversionChoice> | null => {
+    if (railConversionHolder.resolve !== null) return null;
+    const pending = new Promise<RotoRailConversionChoice>((resolve) => {
+      railConversionHolder.resolve = resolve;
+    });
+    railConversionHolder.request.value = Object.freeze({ railKind });
+    return pending;
+  }, [railConversionHolder]);
+
+  /** Resolve the pending prompt. With no request pending this is a no-op. */
+  const answerRailConversion = useCallback((choice: RotoRailConversionChoice) => {
+    const resolve = railConversionHolder.resolve;
+    if (resolve === null) return;
+    // Clear the resolver AND the request signal BEFORE resolving so any
+    // re-entrant caller observes no pending prompt (T-261105-RAF-02).
+    railConversionHolder.resolve = null;
+    railConversionHolder.request.value = null;
+    resolve(choice);
+  }, [railConversionHolder]);
+
+  const railConversionDialog = useMemo(() => ({
+    request: railConversionHolder.request as ReadonlySignal<RotoRailConversionRequest | null>,
+    answer: answerRailConversion,
+  }), [railConversionHolder, answerRailConversion]);
 
   const updateInterpolationSettings = useCallback((currentFrame: number, patch: Partial<PhysicPaintRotoInterpolationSettings>) => {
     const currentSettings = input.getCurrentSettings?.() ?? toPhysicPaintRotoInterpolationSettings(input.getModel().settings);
@@ -2540,8 +2625,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           appFrame: destinationAppFrame,
         })
         : null;
-      const joinedByDissolve = dissolveTarget !== null;
-      return runPhysicalAction({
+      // Quick 261105-raf: the dissolve fields derive ONLY from the chosen
+      // answer, so `new-rail` reproduces the null-dissolve detached-key path
+      // byte-for-byte and `convert` reproduces the unchanged p9i dissolve.
+      const dispatchAddEmptyKey = (joinedByDissolve: boolean) => runPhysicalAction({
         intent: createPhysicPaintRotoPasteKeyIntent(
           railInsertFrame ?? destinationAppFrame,
           emptyPayload,
@@ -2549,17 +2636,45 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           joinedByDissolve ? false : startsNewSegment,
           joinsPreviousRail || joinedByDissolve,
           railInsertFrame === null ? null : railInsert!.loopId,
-          dissolveTarget?.loopId ?? null,
+          joinedByDissolve && dissolveTarget !== null ? dissolveTarget.loopId : null,
         ),
         operationKind: 'paste-key',
         requiredKeyId: null,
         successMessage: ADD_KEY_SUCCESS_MESSAGE,
       });
+      // Quick 261105-raf: a destination strictly AFTER a SCRIPT-GENERATED rail
+      // (scripted Motion, scripted Static or Reveal) asks exactly once before
+      // anything is committed. `Convert to Standard` keeps the shipped
+      // 261105-p9i dissolve; `New rail` (also the Escape / header-close default)
+      // leaves the rail and its Loop Clip untouched and lands the edit as a
+      // detached key. Locked gate: the prompt trigger is the existing dissolve
+      // target AND a non-Standard rail kind, so Standard merged rails keep the
+      // silent dissolve and every 58 in-rail insert / forceNewSegment
+      // destination never prompts. At most one prompt is pending.
+      const dissolvedClip = dissolveTarget === null
+        ? undefined
+        : loopClips.find((clip) => clip.loopId === dissolveTarget.loopId);
+      const conversionKind = resolveRotoRailConversionKind(dissolvedClip);
+      if (conversionKind !== null) {
+        // Mirror runPhysicalAction's busy guard: never ask a user whose answer
+        // an in-flight coordinator edit would then reject.
+        if (input.pendingOperationId && input.pendingOperationId.value !== null) {
+          input.publishStatus?.('A Roto physical edit is already in flight.');
+          return Promise.resolve(false);
+        }
+        const pendingChoice = requestRailConversion(conversionKind);
+        if (pendingChoice === null) {
+          input.publishStatus?.('Resolve the Rail edit prompt first.');
+          return Promise.resolve(false);
+        }
+        return pendingChoice.then((choice) => dispatchAddEmptyKey(choice === 'convert'));
+      }
+      return dispatchAddEmptyKey(dissolveTarget !== null);
     } catch {
       input.publishStatus?.('The empty Roto key payload is unavailable.');
       return Promise.resolve(false);
     }
-  }, [input, runPhysicalAction]);
+  }, [input, runPhysicalAction, requestRailConversion]);
 
   const prepareRotoKeyDrag = useCallback((movedKeyId: string, target: RotoDragTarget): RotoDragPreparationResult => {    const launch = input.getLaunchContext?.() ?? null;
     if (!launch) {
@@ -3618,6 +3733,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     updateInterpolationSettings,
     physicalActions,
     physicalKeyUtilities,
+    // Quick 261105-raf: the one-shot `Edit this rail?` prompt bundle.
+    railConversionDialog,
   };
 }
 

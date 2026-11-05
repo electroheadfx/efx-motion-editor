@@ -1636,6 +1636,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         capacity: 20,
       });
       await actions.physicalKeyUtilities.addEmptyKey(2, blankPayload(2), { joinPreviousRail: true });
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
@@ -1648,6 +1649,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         capacity: 20,
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { forceNewSegment: true });
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
@@ -1655,7 +1657,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
     });
 
-    it('a scripted Motion rail beyond its end dissolves into one joined rail', async () => {
+    it('a scripted Motion rail beyond its end asks once and converts into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
         loopClips: [{
@@ -1666,7 +1668,14 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         }],
         capacity: 20,
       });
-      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      // Quick 261105-raf: the prompt is exposed synchronously and nothing is
+      // dispatched until the answer arrives.
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'motion' });
+      expect(executePhysicalEdit).not.toHaveBeenCalled();
+      actions.railConversionDialog.answer('convert');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.intent.destinationAppFrame).toBe(8);
@@ -1680,7 +1689,75 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
-    it('a scripted Static rail beyond its end dissolves into one joined rail', async () => {
+    it('a scripted Motion rail beyond its end keeps the rail and lands a detached key when New rail is chosen', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+        }],
+        capacity: 20,
+      });
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'motion' });
+      actions.railConversionDialog.answer('new-rail');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      // Exactly the `dissolveTarget = null` path: no dissolve id, no rail
+      // insert id, and the clip collection is left untouched.
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.intent.joinsPreviousRail).toBeUndefined();
+      expect(dispatched.intent.startsNewSegment).toBe(true);
+      expect(dispatched.proposal.nextLoopClips).toBeNull();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
+    it('refuses a second dissolve-triggering edit while the prompt is pending and dispatches once', async () => {
+      const { actions, executePhysicalEdit, publishStatus } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+        }],
+        capacity: 20,
+      });
+      const first = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'motion' });
+      const second = await actions.physicalKeyUtilities.addEmptyKey(9, blankPayload(9));
+      expect(second).toBe(false);
+      expect(publishStatus).toHaveBeenCalledWith('Resolve the Rail edit prompt first.');
+      // The first request survives the refusal and is the only one.
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'motion' });
+      expect(executePhysicalEdit).not.toHaveBeenCalled();
+      actions.railConversionDialog.answer('convert');
+      expect(await first).toBe(true);
+      expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.destinationAppFrame).toBe(8);
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(actions.railConversionDialog.request.value).toBeNull();
+    });
+
+    it('answers with no pending request as a no-op', () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [standardRail(1)],
+        capacity: 20,
+      });
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      expect(() => actions.railConversionDialog.answer('convert')).not.toThrow();
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      expect(executePhysicalEdit).not.toHaveBeenCalled();
+    });
+
+    it('a scripted Static rail beyond its end asks once and converts into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
         loopClips: [{
@@ -1692,7 +1769,11 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         }],
         capacity: 20,
       });
-      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'static' });
+      actions.railConversionDialog.answer('convert');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.intent.destinationAppFrame).toBe(8);
@@ -1706,13 +1787,17 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
-    it('a Reveal rail beyond its end dissolves into one joined rail', async () => {
+    it('a Reveal rail beyond its end asks once and converts into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
         loopClips: [{ ...standardRail(1), railKind: 'reveal' }],
         capacity: 20,
       });
-      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'reveal' });
+      actions.railConversionDialog.answer('convert');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.intent.destinationAppFrame).toBe(8);
