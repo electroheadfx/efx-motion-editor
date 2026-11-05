@@ -2819,6 +2819,9 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     expect(triggerEnd).toBeGreaterThan(outputIndex);
     const trigger = code.slice(triggerStart, triggerEnd);
     expect(trigger).toContain('physics-paint-current-frame-trigger');
+    // The popover shell positions itself from this anchor; without the ref it
+    // stays mounted with visibility:hidden (the 261105-cgl UAT "no work" bug).
+    expect(trigger).toContain('ref={triggerRef}');
     expect(trigger).toContain('aria-haspopup="dialog"');
     expect(trigger).toContain('aria-expanded={open}');
     expect(trigger).toContain('aria-controls={open ? \'physics-paint-frame-goto-popover\' : undefined}');

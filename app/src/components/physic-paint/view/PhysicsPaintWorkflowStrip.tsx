@@ -958,6 +958,7 @@ function RotoPlaybackCurrentFrameOutput(props: {
   return (
     <Fragment>
       <button
+        ref={triggerRef}
         type="button"
         class="physics-paint-current-frame-trigger"
         aria-haspopup="dialog"
