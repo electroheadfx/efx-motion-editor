@@ -1515,6 +1515,8 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       const accepted = await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { joinPreviousRail: true });
       expect(accepted).toBe(true);
+      // Standard merged rails keep the silent dissolve: never a prompt.
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.intent.destinationAppFrame).toBe(8);
@@ -1550,6 +1552,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         allowRepeatRailInsert: true,
       });
       expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
@@ -1571,6 +1574,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       const accepted = await actions.physicalKeyUtilities.addEmptyKey(6, blankPayload(6), { joinPreviousRail: true });
       expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
@@ -1590,6 +1594,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       const accepted = await actions.physicalKeyUtilities.addEmptyKey(14, blankPayload(14), { joinPreviousRail: true });
       expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.proposal.nextLoopClips).toEqual([]);
@@ -1612,6 +1617,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       // insert, no forceNewSegment) — the paint path needs no Studio change.
       const accepted = await actions.physicalKeyUtilities.addEmptyKey(11, blankPayload(11), { joinPreviousRail: true });
       expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
       expect(dispatched.proposal.nextLoopClips).toEqual([]);
@@ -1787,6 +1793,31 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
+    it('a scripted Static rail beyond its end keeps the rail when New rail is chosen', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          mode: 'static',
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+        }],
+        capacity: 20,
+      });
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'static' });
+      actions.railConversionDialog.answer('new-rail');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toBeNull();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
     it('a Reveal rail beyond its end asks once and converts into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
@@ -1811,6 +1842,25 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
+    it('a Reveal rail beyond its end keeps the rail when New rail is chosen', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{ ...standardRail(1), railKind: 'reveal' }],
+        capacity: 20,
+      });
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'reveal' });
+      actions.railConversionDialog.answer('new-rail');
+      expect(await pending).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toBeNull();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
     it('an overridden scripted rail keeps the detached key — CR-05', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
@@ -1824,6 +1874,8 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         capacity: 20,
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      // Fail-closed overridden scripted rail: no prompt, detached key.
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
@@ -1842,6 +1894,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         capacity: 20,
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
@@ -1856,6 +1909,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         capacity: 20,
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
     });
@@ -1868,6 +1922,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       const accepted = await actions.physicalKeyUtilities.pasteKey(8, blankPayload(8), null);
       expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.kind).toBe('paste-key');
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();

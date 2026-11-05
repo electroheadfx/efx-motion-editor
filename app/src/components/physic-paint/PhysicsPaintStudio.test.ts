@@ -1040,6 +1040,25 @@ describe('Physics Paint navigation render localization', () => {
     expect(studioView).not.toContain('<PhysicsPaintPlayScriptDialog {...playScriptDialog} />');
   });
 
+  it('quick 261105-raf: wires the one-shot rail-conversion prompt beside the Play Script dialog', () => {
+    // The hook owns the pending request; the Studio forwards its bundle.
+    expect(studio).toContain('const railConversionDialog = rotoTimelineActions.railConversionDialog;');
+    const viewModelStart = studio.indexOf('const viewModel = usePhysicsPaintStudioViewModel({');
+    expect(viewModelStart).toBeGreaterThanOrEqual(0);
+    expect(studio.slice(viewModelStart, viewModelStart + 400)).toContain('railConversionDialog,');
+    // The view renders it after the Play Script dialog, behind the same picker step-aside.
+    expect(studioView).toContain("import { PhysicsPaintRailConversionDialog } from './PhysicsPaintRailConversionDialog';");
+    expect(studioView).toContain("import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';");
+    expect(studioView).toContain('railConversionDialog?: RotoRailConversionDialogBundle | null;');
+    expect(studioView).toContain('{railConversionDialog && !pickerOpen ? <PhysicsPaintRailConversionDialog {...railConversionDialog} /> : null}');
+    const playScriptRender = studioView.indexOf('<MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />');
+    const railRender = studioView.indexOf('<PhysicsPaintRailConversionDialog {...railConversionDialog} />');
+    expect(playScriptRender).toBeGreaterThanOrEqual(0);
+    expect(railRender).toBeGreaterThan(playScriptRender);
+    // The two addEmptyKey call sites are unchanged.
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(2);
+  });
+
   it('keeps TopBar and dialog props identity-stable on frame-only Studio renders', () => {
     expect(studio).toContain('const topBarPropsMemo = useRef(createIdentityMemo()).current;');
     expect(studio).toContain('const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;');
