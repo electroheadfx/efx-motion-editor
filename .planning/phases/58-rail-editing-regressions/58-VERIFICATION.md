@@ -1,8 +1,8 @@
 ---
 phase: 58-rail-editing-regressions
-verified: 2026-11-03T20:20:01Z
-status: passed
-score: 52/52 must-haves verified
+verified: 2026-11-05T11:31:32Z
+status: gaps_found
+score: 52/56 must-haves verified
 covered_files:
   - .planning/phases/58-rail-editing-regressions/58-01-PLAN.md
   - .planning/phases/58-rail-editing-regressions/58-01-SUMMARY.md
@@ -56,6 +56,9 @@ covered_files:
   - app/src/components/physic-paint/view/PhysicsPaintPlayScriptDialog.tsx
   - app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx
+  - app/src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx
+  - app/src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts
+  - app/src/components/physic-paint/view/PhysicsPaintTrackRow.tsx
   - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts
   - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx
   - app/src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts
@@ -64,7 +67,7 @@ covered_files:
   - app/src/lib/physicPaintBridge.test.ts
   - app/src/types/physicPaint.test.ts
   - app/src/types/physicPaint.ts
-covered_digest: "v4:sha256:0bd66e4f95538755271706d166522e941682e77f61fe85c4886ec66bb11e5d14"
+covered_digest: "v4:sha256:82e7db3d7e1052c59ce40a6ca18a90c523725ddfceac92527f5964f1af59e9f5"
 behavior_unverified: 0
 overrides_applied: 3
 overrides:
@@ -81,231 +84,240 @@ overrides:
     accepted_by: "Laurent Marques"
     accepted_at: "2026-11-03"
 re_verification:
-  previous_status: human_needed
+  previous_status: passed
   previous_score: 52/52
-  gaps_closed:
-    - "All 10 human-verification items in the 2026-11-03T16:59:06Z report were exercised live and passed (58-UAT.md: 10 passed, 0 issues; commit 02e6556f9)"
-    - "G-01 re-tested after the G-02 contraction fix: the rail stops at the surviving source extent and the repair survives reopen"
-    - "G-02: generate-mode rail delete contracts the source cycle (ripple left, overrides shift, extent follows) — eb576f1cf, 2d2105897"
-    - "G-03: insert extends a canonical rail (static and spaced source cycles) instead of failing — 2d2105897, b9691ea03"
-    - "G-04: rail source keys arm a drag; the band retimes at both ends — bdc5928ac"
-    - "G-05/G-06: + Key/paint inserts a source phase inside the rail; Insert accepts Reveal and overridden rails — e41c2f6a4, 9507de221"
-  gaps_remaining: []
-  regressions: []
+  gaps_closed: []
+  gaps_remaining:
+    - "RAIL-06: a single-key move that ripples another clip's referenced source keys can push them outside every visible range; the guard only scans the moved key's own referencing clip (CR-04a/b)"
+    - "RAIL-06: a whole-cycle group drag updates placementStart but leaves phaseOrigin/originalEndExclusive/visibleRanges stale, hiding a moved source key (CR-04c)"
+    - "UAT-approved G-03 insert rejects every insert at or left of a spaced source cycle because the plan compares a key count with a cycle span (CR-01)"
+    - "Post-phase v2.0.1 append accepts scripted and Reveal rails, mutating their sourceKeyIds and lifecycle (CR-05)"
+  regressions:
+    - "CR-05 introduced by post-phase quick bcbdecb71 (v2.0.1) in the covered resolver surface"
+gaps:
+  - truth: "The UAT-approved Insert extension (G-03) accepts a canonical spaced source cycle at any destination, including at or left of its phase origin"
+    status: failed
+    reason: "resolvePhysicPaintRotoRailInsertPlan counts source keys whose frame is >= the destination (`moved`) but compares that count with the cycle SPAN (`cycleLength = lastSourceFrame - phaseOrigin + 1`). The whole-shift branch therefore only runs for a contiguous cycle; a spaced cycle falls through to `insertOffset <= 0` and rejects. The plan is all-or-nothing across every clip, so one spaced rail to the right makes a global Insert at frame 0 fail."
+    artifacts:
+      - path: "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts"
+        issue: "`moved === cycleLength` at :4944 compares like units; spaced source keys (offsets 0/2/4: count 3, span 5) never match, and :4957-4958 rejects a destination at the phase origin."
+    missing:
+      - "Compare `moved` with `typed.sourceKeyIds.length` at :4944; keep `cycleLength` for `insertOffset` and `extendLoopClipCycle`"
+      - "Regression tests: insert-slot at frame 0 with a spaced rail to the right, and at the spaced rail's phase origin"
+  - truth: "A single-key move that ripples another clip's referenced source keys keeps them inside that clip's visible ranges; the guard checks every referencing clip, not only the moved key's clip"
+    status: failed
+    reason: "The v2.0.1 ghost-source guard runs only when the moved key itself is referenced by exactly one clip and scans only that clip's sourceKeyIds. A move of an unowned key still ripples survivors through cutSource/openAndInsert; a rippled survivor owned by another clip is never checked, `nextLoopClips` stays null, and the source key lands outside every visible fragment. Presentation then paints it as an empty ghost cell and removes it from ordinary key rails, so the real key becomes invisible and unselectable while the edit reports success."
+    artifacts:
+      - path: "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts"
+        issue: "Guard at :5630-5648 is scoped to `referencingClips.length === 1` and `referencingClips[0].sourceKeyIds`; move-key-group has no equivalent coverage."
+      - path: "app/src/components/physic-paint/view/PhysicsPaintTrackRow.tsx"
+        issue: "`resolveGhostSourceKeyIds` (:240-263) hides out-of-range sources as empty cells (:716-720); Studio excludes group-owned source keys from ordinary key rails."
+    missing:
+      - "After the final mapping, iterate every clip in `moveCandidate.nextLoopClips ?? loopClips` and every source key; reject when a key covered before the move is not covered after it"
+      - "Apply the same check after the move-key-group guard (:6153-6161)"
+      - "Regression tests for the two probe scenarios (unowned-key move into a gapped rail; unowned-key cut that shifts a canonical cycle)"
+  - truth: "A whole-cycle group drag retimes every following lifecycle band so no moved source key lands outside its visible ranges (or refuses)"
+    status: failed
+    reason: "buildMoveGroupCandidate calls `computeSourceAttachedLoopPlacementFollow` without `retimeFiniteLifecycle`, so a canonical lifecycle rail follows the new placementStart while phaseOrigin, originalEndExclusive, and visibleRanges stay at the old band. Every moved source key beyond the stale end is hidden as a ghost, and no guard exists on the group branch."
+    artifacts:
+      - path: "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts"
+        issue: "Group branch :2363-2368 omits the single-key branch's `true` retime argument (:5617-5628); move-key-group :6153-6161 only proves source order."
+    missing:
+      - "Retime every lifecycle clip that follows the whole-cycle group drag (`retimeFiniteLifecycle = true`), or reject when a moved source key would leave its visible ranges"
+      - "Regression test: whole-cycle group drag +2 on a canonical spaced rail leaves every source key covered"
+  - truth: "The v2.0.1 post-end +Key/paint append is restricted to the Standard merged rail (no scriptId, not Reveal); Playscript and Reveal rails keep the detached-key behavior"
+    status: failed
+    reason: "The append branch qualifies any single-range repeat-1 rail with painted overrides. It never applies `isStandardMergedLoopClip`, while the dissolve authority it preempts requires a complete Standard rail and rejects scripted/Reveal clips. An overridden Playscript or Reveal rail therefore takes the append: originalEndExclusive/visibleRanges are rewritten and the new key is spliced into sourceKeyIds with scriptId/railKind intact."
+    artifacts:
+      - path: "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts"
+        issue: "Append qualification :4678-4692 lacks `isStandardMergedLoopClip`; buildAppendedRailClip :4536-4548 rewrites the lifecycle; the sourceKeyIds splice runs in the paste path."
+      - path: "app/src/components/physic-paint/roto/physicsPaintRotoRunScriptStacking.ts"
+        issue: "`isStandardMergedLoopClip` (:536-540) is the discriminator the append should use, as the dissolve authority does at resolver :4838-4847."
+    missing:
+      - "Gate the append with `isStandardMergedLoopClip(clip)` (rejects scriptId and railKind 'reveal')"
+      - "Regression tests: overridden scripted rail and overridden Reveal rail keep the detached-key behavior"
 deferred:
-  - truth: "Per-frame cells, cycle grays, and the rail colour dot on Standard rails"
-    addressed_in: "v7 timeline rails (in-milestone quick)"
-    evidence: "ROADMAP Phase 58 SC2: 'Per D-10, per-frame cells, cycle grays, and the rail colour dot belong to the v7 quick, not Phase 58.'"
   - truth: "Motion channels"
     addressed_in: "v2.1.0"
     evidence: "ROADMAP v7 timeline rails: 'Motion channels stay in v2.1.0.'"
 advisory:
-  - finding: "The reduced Cycle dialog keeps the fixed 700x660 shell around one ~150px card, leaving roughly 376px of dead vertical space and 478px of dead horizontal space"
+  - finding: "Reduced Cycle dialog keeps the fixed 700x660 shell around one ~150px card, leaving roughly 376px vertical / 478px horizontal dead space"
     category: other
-    reason: "58-UI-REVIEW.md priority fix 1. Visual composition only; the D-05 reduced form is contract-correct. Would be resolved by a reduced surface height or a centered compact column."
-    evidence_status: "none provided — no screenshots (no dev server started); geometry derived from CSS"
-  - finding: "Edit Rail / Create Cycle refusal reasons are returned or logged but never rendered, and rejectLoopOp sets error to null, so a refused action leaves the footer on 'Ready'"
+    reason: "58-UI-REVIEW.md priority fix 1. Visual composition only; the D-05 reduced form is contract-correct."
+    evidence_status: "none provided — source/CSS-derived, no live capture"
+  - finding: "Edit Rail / Create Cycle refusal reasons are returned or logged but never rendered; rejectLoopOp sets error to null, so a refused action leaves the footer on 'Ready'"
     category: other
-    reason: "58-UI-REVIEW.md priority fix 2. UX feedback polish outside the RAIL acceptance; the refusal paths themselves correctly write nothing."
+    reason: "58-UI-REVIEW.md priority fix 2. UX feedback polish outside the RAIL behavior; refusal paths write nothing."
     evidence_status: "none provided — source-derived, no live capture"
   - finding: "During the 'committing' phase the footer Cancel and primary remain enabled-looking while cancel() no-ops and the primary silently refuses"
     category: other
-    reason: "58-UI-REVIEW.md priority fix 3. UX polish; the WR-01 fix deliberately makes this window a true no-op so no state is stranded."
+    reason: "58-UI-REVIEW.md priority fix 3. UX polish; the WR-01 fix deliberately makes this window a no-op so no state is stranded."
     evidence_status: "none provided — source-derived, no live capture"
-  - finding: "Pasting a rail-set copy taken from an already-stale finite lifecycle rail can be rejected fail-closed: the child coordinator's G-01 reconcile trims the pasted clip while the paste semantic delta was built from the untrimmed proposal, so the bridge's canonical recomputation (sameCanonicalLoopClips / revision) mismatches"
+  - finding: "Pasting a rail-set copy taken from an already-stale finite lifecycle rail can be rejected fail-closed: the child coordinator's G-01 reconcile trims the pasted clip while the paste semantic delta was built from the untrimmed proposal"
     category: other
-    reason: "Narrow residual of combining G-01's lazy repair with the paste semantic-delta recompute; source-derived, no failing test run. The rejection writes nothing and the paste can be retried after the source rail is repaired. Would be resolved by building the paste impact from the post-reconcile document."
+    reason: "Narrow residual of combining lazy repair with the paste semantic-delta recompute; rejection writes nothing and is retryable after the source rail is repaired."
     evidence_status: "none provided — source-derived, no failing test run"
+  - finding: "17 further review findings remain open in 58-REVIEW-DISPOSITION.md (WR-01, WR-02, WR-03, WR-05, IN-01..IN-10)"
+    category: other
+    reason: "New-scope source analysis from 58-REVIEW.md; not independently reproduced with a deterministic failing test in this verification. The four critical findings are reproduced and scored above."
+    evidence_status: "source analysis only — no named failing test"
 ---
 
 # Phase 58: Rail editing regressions Verification Report
 
 **Phase Goal:** A normal Key Rail becomes a Standard cycle through the existing Edit Rail flow, and a single key on a Motion/Static/Reveal rail can be dragged to choose its spacing — without silently relaxing linked-cycle ownership.
-**Verified:** 2026-11-03T20:20:01Z (re-verified against the live tree at `39dc6e418`, working tree clean)
-**Status:** passed
-**Re-verification:** Yes — after UAT completion and the six post-report fix commits
+**Verified:** 2026-11-05T11:31:32Z (current tree `51e6db05a`, working tree clean)
+**Status:** gaps_found
+**Re-verification:** Yes — after post-verification commits `02de1ecc5` and `bcbdecb71`
 
 ## Goal Achievement
 
-The phase goal is achieved in the current codebase. The 2026-11-03T16:59:06Z report was correct about the ten planned changes but predated six UAT-driven fix commits and the completed UAT. This re-verification checked the live tree, not the summaries:
+The first clause of the goal is achieved. The Key Rail → Standard conversion path (RAIL-01..RAIL-05) is intact and verifiable end to end: inspector takeover, reduced Cycle/Infinity modal, provenance-free Standard record, one loop-only commit, one-command undo/redo, and a generation-fenced cancel path. The 14 targeted suites are green (1513 tests) and typecheck is clean.
 
-- The Key Rail -> Standard conversion path (RAIL-01..RAIL-05) is unchanged and still verified end to end: inspector takeover, reduced Cycle/Infinity modal, provenance-free Standard record, one loop-only commit, one-command undo/redo, and a generation-fenced cancel path.
-- The single-key drag law (RAIL-06) is verified on the live path. The previous blocker for the goal's second clause was that rail source keys could not arm a drag at all: the cell drag gate excluded Key Spacing proxies. Commit `bdc5928ac` removed that exclusion, and a canonical lifecycle rail now repositions the moved phase and retimes the band at either end. A cell key referenced by two or more loops still rejects with the locked rigid-group copy.
-- The post-report UAT fixes (G-02..G-06) are regression-pinned and green. They extend Delete/Insert on canonical rails and +Key/paint inside a rail; these are user-approved behavior additions, not silent ownership relaxations.
-- Native UAT is complete: `58-UAT.md` records 10 passed, 0 issues (commit `02e6556f9`). Every previous `human_needed` item has live evidence, so no human re-verification item remains.
+The second clause is not achieved. The qualifier "without silently relaxing linked-cycle ownership" is falsified on the current tree. The v2.0.1 ghost-source guard added by `02de1ecc5` only inspects the moved key's own referencing clip. A single-key drag of an **unowned** key still ripples other clips' source keys; when a rippled source key leaves every visible fragment, no clip follows the change (`nextLoopClips` stays null) and the presentation hides the real key as an empty ghost cell while the resolver reports success. The same defect appears in the group branch: a whole-cycle group drag updates `placementStart` but leaves `phaseOrigin`/`originalEndExclusive`/`visibleRanges` at the old band, hiding a moved source key. Both are reproduced through the real resolver with temporary probes (see Behavioral Spot-Checks).
+
+Two further failures were verified on the current tree: the UAT-approved G-03 spaced-rail insert (CR-01) rejects every insert at or left of a spaced source cycle, and the post-phase v2.0.1 append (CR-05, `bcbdecb71`) accepts scripted and Reveal rails, mutating their `sourceKeyIds` and lifecycle. CR-01 and CR-04 predate the two post-verification commits but were not exercised by the previous verification; CR-05 is a regression introduced after the phase by a v2.0.1 quick in the covered resolver surface.
 
 ### Observable Truths
 
-Status vocabulary: VERIFIED = code + tests support it; PASSED (override) = the planned assertion is superseded by explicitly user-approved UAT behavior (see Overrides).
+Status vocabulary: VERIFIED = code + tests support it; PASSED (override) = the planned assertion is superseded by explicitly user-approved UAT behavior; FAILED = falsified on the current tree.
 
 | #   | Truth | Status | Evidence |
 | --- | ----- | ------ | -------- |
-| 1 | Selecting a normal Key Rail exposes the sidebar Edit Rail action: the Scripts panel is replaced by an inspector with Edit Rail and Close | VERIFIED | `PhysicsPaintScriptsPanel.tsx:147-160` takeover branch precedes the loop branch, Edit Rail/Close at `:153-154`; `PhysicsPaintStudio.tsx:7202`; ScriptsPanel spec 61/61 |
-| 2 | Double-clicking a Key Rail invokes the open intent: plain second click within 220 ms, never a move member, never while busy | VERIFIED | `PhysicsPaintKeyRail.tsx:31`, `:277-283`, `:305`; `PhysicsPaintWorkflowStrip.tsx:447`, `:4868`; KeyRail launcher 17/17 |
-| 3 | Enter on a focused Key Rail selects it then invokes the same open intent; Space still plain-selects; Escape still hides the tooltip | VERIFIED | `PhysicsPaintKeyRail.tsx:300-307`; KeyRail launcher 17/17 |
-| 4 | The conversion modal shows only the Cycle stepper and Infinity switch, prefilled at 1 and unchecked, with no tabs, rail type, frames-per-cycle, Motion, source cycle, seed, or Regenerate | VERIFIED | `ReducedCycleCard` `PhysicsPaintPlayScriptCards.tsx:561`; `PhysicsPaintPlayScriptDialog.tsx:72`, `:377-380`; dialog spec 108/108 |
-| 5 | Cancel performs zero writes: no store mutation, no revision bump, no undo entry | VERIFIED | `acceptedGeneration = ++generation` before `'preparing'` (`controller:1835`), `assertCurrent` after authority (`:1842`) and after commit (`:1874`), AbortError -> `'cancelled'` without `fail()` (`:1878-1893`); test `controller.test.ts:4066-4115` |
-| 6 | The primary action labels Create Cycle for a first conversion and Update Rail for an existing Standard clip, and both route through `playScript.confirm()` | VERIFIED | `PhysicsPaintPlayScriptDialog.tsx:579-586`; dialog spec 108/108 |
-| 7 | Confirming creates one provenance-free Standard clip: `sourceKeyIds` in segment order, `placementStart` = first key frame, repeat from the reduced form, no `scriptId` / `railKind` / `motion` | VERIFIED | `buildKeyRailStandardLoopClip` `physicsPaintRotoRunScriptStacking.ts:597-613`; `controller.test.ts:3980-4025` |
-| 8 | Goal qualifier: an accepted single-key move under Law A leaves the single referencing cycle resolvable — no silent "Source missing" clip with no in-UI repair | VERIFIED | `resolver:5232-5264`; `loopGuards.test.ts:283-309` moves A 10 -> 9 and asserts the derived L1 range `unresolved` is null; G-04 retime pins `:4460`, `:4532` |
-| 9 | The clip classifies as Standard and presents via the existing `.rail-kind-standard` pill; the existing Edit Rail dialog owns Repeat/Infinity afterwards | VERIFIED | `classifyLoopClipRailKind(clip) === 'standard'` pinned `KeyRailCycle.test.ts:104`; CSS `physicsPaintStudio.css:4935-4936` |
-| 10 | A gapped segment keeps its span: cycle length = last - first + 1, extent clamped to capacity, infinity lifecycle-less | VERIFIED | `controller:1850` passes `cycleFrameCount`; `KeyRailCycle.test.ts` (8 tests) covers 6-frame cycle, repeat-2 extent 22, repeat-1 extent 16, infinity |
-| 11 | A single-key segment converts to a 1-frame cycle | VERIFIED | `KeyRailCycle.test.ts` single-key case |
-| 12 | A second conversion over already loop-owned keys is refused before any commit | VERIFIED | open-time `controller:1781`, confirm-time `:1846`; tests `controller.test.ts` owned via `sourceKeyIds` and via `frameOverrides` |
-| 13 | Undo restores the pre-conversion Key Rail and Redo re-applies the conversion as one command | VERIFIED | `controller.test.ts:4026-4046` drives the real history hook: availability 1/0, redo restores `originalEndExclusive` 16 |
-| 14 | The conversion is exactly one `ports.commit` with `semanticDelta.kind 'play-script'`, `loopOnly: true`, `affectedEndAppFrame = anchor - 1`, `freshKeyIds: []` | VERIFIED | `buildLoopOnlyPublication` `controller:2140-2177`; `confirmKeyRailCycle:1861-1870`; test `controller.test.ts:3980-4025` |
-| 15 | Cancel and every refusal perform zero commits and zero history entries | VERIFIED | Generation fence (truth 5); cancel-after-open pinned `controller.test.ts:4049`; refusals return before commit (`controller:1843-1846`); in-flight cancel asserts zero history |
-| 16 | A single-key drag on a key referenced by exactly one loop is accepted and lands on the requested frame (Law A) | VERIFIED | `resolver:5232` comparator `> 1`; `loopGuards.test.ts:283-309`; G-04 rail-drag pins `:4460-4644` |
-| 17 | A key referenced by two or more loops is rejected, never moves silently, with `loop-source-key-move-rejected`, `move-key`, and the verbatim D-16 copy | VERIFIED | `resolver:5232`; locked copy `:925`; `loopGuards.test.ts:366` |
-| 18 | An accepted single-key move never emits `nextLoopClips`, so `placementStart` stays put | PASSED (override) | Superseded by UAT G-04: `resolver:5214-5288` now builds a canonical-rail reposition candidate (`buildRailSourceRepositionCandidate:2155`) and may emit `nextLoopClips` via `computeSourceAttachedLoopPlacementFollow:1010`; band retime pins `:4460`, `:4496`, `:4532-4644`. The two-or-more guard is untouched (truth 17) |
-| 19 | Force Spacing and the Delete / Insert / Duplicate / move-key-rail guards keep their current guards and copy | PASSED (override) | Force Spacing guard remains `resolver:5290-5328`, and the D-11/D-16 guards/copy remain; UAT G-02/G-03/G-05/G-06 approved rail-local Delete contraction and Insert acceptance (static/reveal/overridden rails), pinned `resolver.test.ts:4116-4819`, `5511-5596`. No-leak pins `loopGuards.test.ts:684-707` unchanged |
-| 20 | The acceptance is entirely inside the resolver: `prepareRotoKeyDrag` / `commitRotoKeyDrag` and the WorkflowStrip drag dispatch are untouched | PASSED (override) | UAT G-04 required arming rail keys: `PhysicsPaintWorkflowStrip.tsx:4982` drops `spacingProxy === null` from the cell gate. `prepareRotoKeyDrag`/`commitRotoKeyDrag` remain untouched, and the resolver still owns acceptance |
-| 21 | Edit Rail and double-click/Enter reach one Studio handler that selects the rail first, then delegates to `openKeyRailCycleEdit`, returning a Promise on every path | VERIFIED | `PhysicsPaintStudio.tsx:4816-4824`; Studio spec `selects before opening and returns a Promise on the missing-segment refusal` |
-| 22 | A 2+ rail set whose anchor is a Key Rail projects with setSize >= 2, Edit Rail visible and disabled with "Select a single rail to edit it.", and no bulk conversion | VERIFIED | `Studio` rail-set anchor projection; `physicsPaintKeyRailPresentation.ts:111`, `:129-143`; Studio spec |
-| 23 | Close clears both `selectedRotoKeyRail` and `railSetSelection`, so the takeover dismisses in the plain and rail-set states | VERIFIED | `Studio:4829-4833`; Studio spec `clears BOTH selection layers on Close` |
-| 24 | The inspector shows exactly Frames F{first}-F{last}, Keys n, Type Standard, and keeps one object identity across unrelated renders | VERIFIED | `physicsPaintKeyRailPresentation.ts:129-143`; memo deps; `reconcileRotoKeyRailSelection:453-463` |
-| 25 | No `.mce` schema field is added or changed; resolver, undo, and existing D-11 guard tests are green or deliberately updated | VERIFIED | Phase diff contains no `.mce`, schema, parser, or `src-tauri` path; the only `app/src/types` change is transient intent/semantic-delta typing (documented deviation); full suite 7143 passed; `tsc --noEmit` exit 0 |
-| 26 | Cancelling while the conversion is still awaiting authority never calls `ports.commit`, lands in `'cancelled'`, leaves error null, and produces no accepted output | VERIFIED | `controller:1842` assertCurrent before ack; test `controller.test.ts:4066-4115` |
-| 27 | A cancelled conversion keeps `keyRailCycleEditTarget` and the open dialog, so a later confirm retries and commits exactly once | VERIFIED | `controller:1878-1893`; test asserts target non-null, `confirmationOpen` true, retry returns true and commit called once |
-| 28 | Cancelling while the phase is `'committing'` neither clears the target nor closes the dialog; after that commit fails, Create Cycle retries and commits | VERIFIED | `cancel()` busy early return `controller:3659-3660`; test `controller.test.ts:4117-4164` |
-| 29 | A cancel before confirm still closes the dialog with zero writes | VERIFIED | Existing test `controller.test.ts:4049` unchanged and passing |
-| 30 | An AbortError is never routed through `fail()`: no `'Play Script failed'` phase, no error text, no error-level log | VERIFIED | `controller:1878-1893`; test asserts status `'Key Rail cycle cancelled'`, error null, no error-level log |
-| 31 | The successful conversion path still commits exactly once, clears the target, and closes the dialog | VERIFIED | `controller.test.ts:3980-4025`: one commit, phase `'complete'`, target null, `confirmationOpen` false |
-| 32 | With exactly one referencing loop, a move-key whose final mapping breaks strict increase is rejected with `loop-source-key-move-rejected`, `operationKind move-key`, and the verbatim D-16 copy | VERIFIED | `resolver:5264`; `loopGuards.test.ts:311-317` pins C 12 -> 22 |
-| 33 | The order check reads the FINAL candidate mapping (ripple-proof) and fails closed when a referenced source key is absent from the mapping | VERIFIED | `resolver:5264` reads `moveResult.candidate.mapping`; `loopGuards.test.ts:337-344` dangling-source rejection |
-| 34 | A one-element source cycle is always order-preserving and its only key can move | VERIFIED | `loopGuards.test.ts:319` one-element acceptance with a resolved derivation |
-| 35 | A key referenced by no loop, and a no-change drag back to its own cell, are accepted | VERIFIED | `loopGuards.test.ts:346` (unreferenced) and `:356` (no-change dangling exemption) |
-| 36 | `sourceKeyIds` is never re-sorted or mutated; an order-breaking destination is rejected rather than re-sequenced | VERIFIED | Resolver guard only reads; `loopGuards.test.ts:305-308` asserts the input loop collection is unchanged |
-| 37 | In key-rail-create, Enter calls `confirm()` exactly once despite the stale `'Maximum available count is 0.'` frames error, and the primary button is enabled | VERIFIED | `PhysicsPaintPlayScriptDialog.tsx:150-157`, `:302`, `:579`; test `PhysicsPaintPlayScriptDialog.test.ts:984-995` |
-| 38 | The Enter guard and primary disabled share one `confirmBlocked`; repeatError blocks both; the merged Standard reduced form also confirms; full apply, Reveal, and stack-collision surfaces keep their prior gating; Escape/canCancel precedence unchanged | VERIFIED | Dialog tests `:997-1007` (repeatError), `:1009` (merged Standard), `:1032` (Escape/canCancel) |
-| 39 | Group override records never survive outside every referencing clip's surviving extent; the empty-trim fail-safe leaves the clip byte-identical | VERIFIED | `reconcilePhysicPaintRotoGroupFrames` `model:1062`; coordinator `:2349`; `groupParity.test.ts` rows `:548`, `:586`, `:624`; `loopGuards.test.ts` G-01 pins |
-| 40 | A finite lifecycle clip's derived range never ends past `phaseOrigin + cycleLength * repeat` from current source-key positions (capacity-clamped); frames beyond resolve empty | VERIFIED | `resolvePhysicPaintRotoLoopSourceExtent` `model:1003-1031`; `boundedNaturalEnd` `resolver:6396`; reveal exemption `model:1009`; `groupParity.test.ts` |
-| 41 | Deleting a real key inside a lifecycle clip's surviving extent is refused with the locked copy, and a key past that bound deletes normally while its stale paint sheet is pruned whenever trimmed ranges stay non-empty | VERIFIED | `isGroupOwnedKeyFrame` `resolver:1135`; fail calls `:4893`, `:4942`, `:5032` with `GROUP_OWNED_KEY_DELETE_REJECTED_TEXT:934` |
-| 42 | Repeat contraction filters the rebuilt clip's `frameOverrides` to frames strictly before the source-derived surviving end; an override inside the surviving end but past the new end still raises the unchanged copy | VERIFIED | `updateLoop` `controller:2269-2309`; bridge staged-document parse; controller tests `:2522`, `:2537` |
-| 43 | After the first accepted write on an already-stale document, the persisted clip extent and override collection are canonical in one undo step that also restores the deleted key | VERIFIED | Named tests `useRotoPhysicalEditCoordinator.test.ts:4541`, `:4576`, `:4603`, `:4626`, `:4640` |
-| 44 | A stale document whose `sourceKeyIds` all still exist loads and resolves without "Source missing"; a genuinely dangling source id keeps today's result; no load-time migration and no revision churn | VERIFIED | `loopGuards.test.ts` G-01 rows `:1218-1440`; `resolvePhysicPaintRotoLoopSourceExtent` non-mutating with input-ref return when unchanged |
-| 45 | No `.mce` field, parser shape, storage mode, or persisted schema changes; D-08..D-11 conversion semantics, D-15 guard surfaces, D-16 copy, and D-17 locking are preserved, with the one added G-01 ownership-parity refusal | VERIFIED | No `.mce`/parser/Rust/storage change in the phase diff; the G-01 refusal and UAT-approved rail-local delete/insert extensions are additive and regression-pinned |
-| 46 | An order-preserving partial-cycle group move stays accepted: A,B 10-11 -> 8-9 under loop(10,5) yields A:8, B:9, C:12, D:13, E:14, `nextLoopClips` null, `placementStart` 10, unresolved null | VERIFIED | `loopGuards.test.ts:765-781`; named test passes |
-| 47 | An order-breaking partial-cycle group move is rejected: A,B -> cell 20 projects A:20, B:21, C:12 and fails with `loop-source-key-move-rejected`, `operationKind move-key-group`, verbatim D-16 copy | VERIFIED | `resolver:5782`; `loopGuards.test.ts:782-793`; named test passes |
-| 48 | The order proof reads the final candidate mapping, so a moved key landing past a non-moved source key is caught, and a clip source key absent from the mapping fails closed | VERIFIED | `loopSourceOrderIsProvable` `resolver:2198`; guard `:5782`; `loopGuards.test.ts:831-838` |
-| 49 | Every clip whose `sourceKeyIds` intersect the moved key set is projected; a clip the move does not touch keeps today's behavior even when already unresolved | VERIFIED | `loopGuards.test.ts:820-829`, `:851-858` |
-| 50 | `move-key` and `move-key-group` share one order helper and one failure call, so CR-02's behavior is byte-identical and its existing tests stay unedited and green | VERIFIED | `resolver:2198`, `:5264`, `:5782`; CR-02 pins `loopGuards.test.ts:311-356` unchanged and green |
-| 51 | On the UI path an order-breaking partial-cycle group drag prepares as `ok:false` carrying the locked copy and never calls `executePhysicalEdit`, while the order-preserving drag commits exactly once | VERIFIED | `useRotoTimelineActions.test.ts:1810-1838`; both named tests pass |
-| 52 | Whole-cycle rigid group moves and the two-loop D-04 `placementStart` follow, no-change drags, one-element cycles, and ordinary moves behave as before; no `.mce`, parser, failure-union, or copy changes | VERIFIED | `loopGuards.test.ts:721-760`, `:802-849`; no `.mce`/parser change; the only failure union reuse is `loop-source-key-move-rejected` |
+| 1 | Selecting a normal Key Rail exposes the sidebar Edit Rail action: the Scripts panel is replaced by an inspector with Edit Rail and Close | VERIFIED | `PhysicsPaintScriptsPanel.tsx:147-160` takeover branch; Edit Rail `:153`, Close `:154`, Frames/Keys/Type `:157-159`; `PhysicsPaintStudio.tsx:7247`; ScriptsPanel spec green |
+| 2 | Double-clicking a Key Rail invokes the open intent: plain second click within 220 ms, never a move member, never while busy | VERIFIED | `PhysicsPaintKeyRail.tsx:32` constant, `:272-294` gesture/elapsed/plain gate; `PhysicsPaintWorkflowStrip.tsx:5235`; `PhysicsPaintStudio.tsx:11075`; KeyRail launcher green |
+| 3 | Enter on a focused Key Rail selects it then invokes the same open intent; Space still plain-selects; Escape still hides the tooltip | VERIFIED | `PhysicsPaintKeyRail.tsx:315-316`; same wiring path as truth 2; KeyRail launcher green |
+| 4 | The conversion modal shows only the Cycle stepper and Infinity switch, prefilled at 1 and unchecked, with no tabs, rail type, frames-per-cycle, Motion, source cycle, seed, or Regenerate | VERIFIED | `reducedForm` `PhysicsPaintPlayScriptDialog.tsx:72`, `surfaceCompact :149`, reduced card `:384`; dialog spec (108 tests) green |
+| 5 | Cancel performs zero writes: no store mutation, no revision bump, no undo entry | VERIFIED | `acceptedGeneration = ++generation` :1835, `assertCurrent` :1842/:1874, AbortError → `'cancelled'` without `fail()` :1882-1893; controller spec green |
+| 6 | The primary action labels Create Cycle for a first conversion and Update Rail for an existing Standard clip, and both route through `playScript.confirm()` | VERIFIED | Dialog labels near `:574-598`; controller routing `:2390`; dialog/controller specs green |
+| 7 | Confirming creates one provenance-free Standard clip: `sourceKeyIds` in segment order, `placementStart` = first key frame, repeat from the reduced form, no `scriptId` / `railKind` / `motion` | VERIFIED | `buildKeyRailStandardLoopClip` `physicsPaintRotoRunScriptStacking.ts:597-611`; `confirmKeyRailCycle` `controller:1849-1861`; KeyRailCycle/controller specs green |
+| 8 | Goal qualifier: an accepted single-key move under Law A leaves the single referencing cycle resolvable — no silent "Source missing" clip with no in-UI repair | VERIFIED | Law A comparator `resolver:5575-5577`; order guard `:5607-5611`; G-04 retime `:5617-5628`; ghost guard `:5630-5648`; loopGuards spec green (scope: the moved key's own clip; cross-clip is truth 54) |
+| 9 | The clip classifies as Standard and presents via the existing `.rail-kind-standard` pill; the existing Edit Rail dialog owns Repeat/Infinity afterwards | VERIFIED | `isStandardMergedLoopClip` `stacking:536-540`; `KeyRailCycle` spec green; CSS `.rail-kind-standard` |
+| 10 | A gapped segment keeps its span: cycle length = last - first + 1, extent clamped to capacity, infinity lifecycle-less | VERIFIED | `cycleFrameCount` `controller:1850-1853`; KeyRailCycle spec green |
+| 11 | A single-key segment converts to a 1-frame cycle | VERIFIED | KeyRailCycle spec single-key case green |
+| 12 | A second conversion over already loop-owned keys is refused before any commit | VERIFIED | Open-time target build `controller:1781-1793`; confirm-time `loopClipsOwnAnyKey` `:1846`; controller spec green |
+| 13 | Undo restores the pre-conversion Key Rail and Redo re-applies the conversion as one command | VERIFIED | Controller history spec green; one-command publication `:2140-2177` |
+| 14 | The conversion is exactly one `ports.commit` with `semanticDelta.kind 'play-script'`, `loopOnly: true`, `affectedEndAppFrame = anchor - 1`, `freshKeyIds: []` | VERIFIED | `buildLoopOnlyPublication` `controller:2140-2177`; confirm `:1861-1870`; controller spec green |
+| 15 | Cancel and every refusal perform zero commits and zero history entries | VERIFIED | Generation fence truth 5; refusals return before commit `:1843-1846`; controller spec green |
+| 16 | A single-key drag on a key referenced by exactly one loop is accepted and lands on the requested frame (Law A) | VERIFIED | `resolver:5575-5577` comparator; loopGuards Law A tests green |
+| 17 | A key referenced by two or more loops is rejected, never moves silently, with `loop-source-key-move-rejected`, `move-key`, and the verbatim D-16 copy | VERIFIED | `resolver:5575-5577`; locked copy `:937`; loopGuards spec green |
+| 18 | An accepted single-key move never emits `nextLoopClips`, so `placementStart` stays put | PASSED (override) | Superseded by UAT G-04: single-key branch retimes the band `resolver:5617-5628` via `computeSourceAttachedLoopPlacementFollow` (`:1045`); two-or-more guard untouched (truth 17) |
+| 19 | Force Spacing and the Delete / Insert / Duplicate / move-key-rail guards keep their current guards and copy | PASSED (override) | Force Spacing guard `resolver:5654-5680`; D-11/D-16 copy `:937`; guard paths intact. Note: G-02 delete contraction was later retired (hole semantics, truth 41 unchanged); the spaced-rail insert gap is scored as truth 53 |
+| 20 | The acceptance is entirely inside the resolver: `prepareRotoKeyDrag` / `commitRotoKeyDrag` and the WorkflowStrip drag dispatch are untouched | PASSED (override) | UAT G-04 required arming rail keys: `PhysicsPaintWorkflowStrip.tsx:5355` drag gate; prepare/commit untouched; resolver remains the acceptance authority |
+| 21 | Edit Rail and double-click/Enter reach one Studio handler that selects the rail first, then delegates to `openKeyRailCycleEdit`, returning a Promise on every path | VERIFIED | `PhysicsPaintStudio.tsx:4831-4841` select-then-open, Promise on every branch |
+| 22 | A 2+ rail set whose anchor is a Key Rail projects with setSize >= 2, Edit Rail visible and disabled with "Select a single rail to edit it.", and no bulk conversion | VERIFIED | `physicsPaintKeyRailPresentation.ts:111`, `:127-143`; Studio memo `:4900-4907`; Studio spec green |
+| 23 | Close clears both `selectedRotoKeyRail` and `railSetSelection`, so the takeover dismisses in the plain and rail-set states | VERIFIED | `PhysicsPaintStudio.tsx:4846-4849`; Studio spec green |
+| 24 | The inspector shows exactly Frames F{first}-F{last}, Keys n, Type Standard, and keeps one object identity across unrelated renders | VERIFIED | `physicsPaintKeyRailPresentation.ts:127-143`; stable memo deps `Studio:4900-4907` |
+| 25 | No `.mce` schema field is added or changed; resolver, undo, and existing D-11 guard tests are green or deliberately updated | VERIFIED | Phase diff contains no `.mce`, schema, parser, or `src-tauri` path; the only `app/src/types` change is transient intent/semantic-delta typing; 14 targeted suites green; `tsc --noEmit` exit 0 |
+| 26 | Cancelling while the conversion is still awaiting authority never calls `ports.commit`, lands in `'cancelled'`, leaves error null, and produces no accepted output | VERIFIED | `controller:1842` assertCurrent before ack; controller spec green |
+| 27 | A cancelled conversion keeps `keyRailCycleEditTarget` and the open dialog, so a later confirm retries and commits exactly once | VERIFIED | `controller:1882-1893`; controller spec green |
+| 28 | Cancelling while the phase is `'committing'` neither clears the target nor closes the dialog; after that commit fails, Create Cycle retries and commits | VERIFIED | `cancel()` busy early return `controller:3659-3660`; controller spec green |
+| 29 | A cancel before confirm still closes the dialog with zero writes | VERIFIED | Controller spec green |
+| 30 | An AbortError is never routed through `fail()`: no `'Play Script failed'` phase, no error text, no error-level log | VERIFIED | `controller:1882-1893`; controller spec green |
+| 31 | The successful conversion path still commits exactly once, clears the target, and closes the dialog | VERIFIED | `controller:1861-1893`; controller spec green |
+| 32 | With exactly one referencing loop, a move-key whose final mapping breaks strict increase is rejected with `loop-source-key-move-rejected`, `operationKind move-key`, and the verbatim D-16 copy | VERIFIED | `resolver:5607-5611`; loopGuards spec green |
+| 33 | The order check reads the FINAL candidate mapping (ripple-proof) and fails closed when a referenced source key is absent from the mapping | VERIFIED | `loopSourceOrderIsProvable` `resolver:2235-2247`; move branch reads `moveCandidate.mapping`; loopGuards spec green |
+| 34 | A one-element source cycle is always order-preserving and its only key can move | VERIFIED | LoopGuards spec green |
+| 35 | A key referenced by no loop, and a no-change drag back to its own cell, are accepted | VERIFIED | LoopGuards spec green |
+| 36 | `sourceKeyIds` is never re-sorted or mutated; an order-breaking destination is rejected rather than re-sequenced | VERIFIED | Guard only reads `sourceKeyIds`; loopGuards preservation pin green. The v2.0.1 append splices a NEW key by design (not a re-sort); see truth 56 |
+| 37 | In key-rail-create, Enter calls `confirm()` exactly once despite the stale frames error, and the primary button is enabled | VERIFIED | Dialog `confirmBlocked` `:159`, Enter guard `:306`; dialog spec green |
+| 38 | The Enter guard and primary disabled share one `confirmBlocked`; repeatError blocks both; the merged Standard reduced form also confirms; full apply, Reveal, and stack-collision surfaces keep their prior gating; Escape/canCancel precedence unchanged | VERIFIED | Dialog `:159`, `:306`, primary near `:574`; dialog spec green |
+| 39 | Group override records never survive outside every referencing clip's surviving extent; the empty-trim fail-safe leaves the clip byte-identical | VERIFIED | `reconcilePhysicPaintRotoGroupFrames` `model:1062`; coordinator spec green |
+| 40 | A finite lifecycle clip's derived range never ends past `phaseOrigin + cycleLength * repeat` from current source-key positions (capacity-clamped); frames beyond resolve empty | VERIFIED | `resolvePhysicPaintRotoLoopSourceExtent` `model:1003-1031`; `resolveGroupBoundedEnd` `GroupLifecycle:320-337`; groupParity spec green |
+| 41 | Deleting a real key inside a lifecycle clip's surviving extent is refused with the locked copy, and a key past that bound deletes normally while its stale paint sheet is pruned whenever trimmed ranges stay non-empty | VERIFIED | `isGroupOwnedKeyFrame` `resolver:1170`; copy `:946`; fail calls `:5205`, `:5254`, `:5344`; specs green |
+| 42 | Repeat contraction filters the rebuilt clip's `frameOverrides` to frames strictly before the source-derived surviving end; an override inside the surviving end but past the new end still raises the unchanged copy | VERIFIED | `updateLoop` `controller:2269-2309`; controller spec green |
+| 43 | After the first accepted write on an already-stale document, the persisted clip extent and override collection are canonical in one undo step that also restores the deleted key | VERIFIED | Coordinator spec green (`useRotoPhysicalEditCoordinator.test.ts`) |
+| 44 | A stale document whose `sourceKeyIds` all still exist loads and resolves without "Source missing"; a genuinely dangling source id keeps today's result; no load-time migration and no revision churn | VERIFIED | `loopGuards` G-01 rows green; extent helper non-mutating |
+| 45 | No `.mce` field, parser shape, storage mode, or persisted schema changes; D-08..D-11 conversion semantics, D-15 guard surfaces, D-16 copy, and D-17 locking are preserved, with the one added G-01 ownership-parity refusal | VERIFIED | Phase diff has no `.mce`/parser/Rust/storage change; G-01 refusal additive; specs green |
+| 46 | An order-preserving partial-cycle group move stays accepted: A,B 10-11 → 8-9 under loop(10,5) yields A:8, B:9, C:12, D:13, E:14, `nextLoopClips` null, `placementStart` 10, unresolved null | VERIFIED | `loopGuards` CR-03 rows green |
+| 47 | An order-breaking partial-cycle group move is rejected: A,B → cell 20 projects A:20, B:21, C:12 and fails with `loop-source-key-move-rejected`, `operationKind move-key-group`, verbatim D-16 copy | VERIFIED | `resolver:6153-6161`; `loopGuards` CR-03 rows green |
+| 48 | The order proof reads the final candidate mapping, so a moved key landing past a non-moved source key is caught, and a clip source key absent from the mapping fails closed | VERIFIED | `loopSourceOrderIsProvable` `resolver:2235-2247`; group guard `:6156`; specs green |
+| 49 | Every clip whose `sourceKeyIds` intersect the moved key set is projected; a clip the move does not touch keeps today's behavior even when already unresolved | VERIFIED | Intersection-scoped loop `resolver:6154-6157`; specs green |
+| 50 | `move-key` and `move-key-group` share one order helper and one failure call, so CR-02's behavior is byte-identical and its existing tests stay unedited and green | VERIFIED | Shared helper `resolver:2235`; calls `:5607`, `:6156`; specs green |
+| 51 | On the UI path an order-breaking partial-cycle group drag prepares as `ok:false` carrying the locked copy and never calls `executePhysicalEdit`, while the order-preserving drag commits exactly once | VERIFIED | `useRotoTimelineActions` spec green; drag dispatch `WorkflowStrip:4675-4676` |
+| 52 | Whole-cycle rigid group moves and the two-loop D-04 `placementStart` follow, no-change drags, one-element cycles, and ordinary moves behave as before; no `.mce`, parser, failure-union, or copy changes | VERIFIED | `loopGuards` D-04 rows green; no schema/failure-union change. The canonical-band retime gap is scored separately as truth 55 |
+| 53 | The UAT-approved Insert extension (G-03) accepts a canonical spaced source cycle at any destination, including at or left of its phase origin | FAILED | Probe: spaced rail 10/12/14, `insert-slot @ 0` → `loop-source-key-insert-rejected`; `@ 11` ok; contiguous rail `@ 0` ok. Cause: `moved === cycleLength` `resolver:4944`, reject `:4957-4958` |
+| 54 | A single-key move that ripples another clip's referenced source keys keeps them inside that clip's visible ranges; the guard checks every referencing clip, not only the moved key's clip | FAILED | Probe CR-04a: move X 16→13 with gapped rail → `ok:true`, mapping `{S1:10,S2:15,X:13}`, `nextLoopClips:null`; S2@15 outside `[13,15)`. Probe CR-04b: move X 8→20 with canonical rail → `ok:true`, mapping `{X:20,S1:9,S2:13}`, sources outside `[10,15)`. Guard scope `resolver:5630-5648` |
+| 55 | A whole-cycle group drag retimes every following lifecycle band so no moved source key lands outside its visible ranges (or refuses) | FAILED | Probe CR-04c: move K1/K3/K5 +2 → `ok:true`, mapping `{K1:3,K3:5,K5:7}`; clip `placementStart:3, phaseOrigin:1, originalEndExclusive:6, visibleRanges:[{1,6}]`; K5@7 outside. Group branch `resolver:2363-2368` omits `retimeFiniteLifecycle` |
+| 56 | The v2.0.1 post-end +Key/paint append is restricted to the Standard merged rail (no scriptId, not Reveal); Playscript and Reveal rails keep the detached-key behavior | FAILED | Probe CR-05: both scripted and Reveal overridden rails return a target `{loopId:'rail-1',cycleOffset:5,insertionAppFrame:6}`; the edit returns `ok:true` with `sourceKeyIds:['K1','K3','K5','NEW']`, `originalEndExclusive:7`, `scriptId:'action-1'` intact. Append `resolver:4678-4692`; discriminant authority `stacking:536-540`, dissolve `resolver:4838-4847` |
 
-**Score:** 52/52 truths verified (49 VERIFIED + 3 PASSED (override); 0 behavior-unverified).
+**Score:** 52/56 truths verified (49 VERIFIED + 3 PASSED (override); 4 FAILED; 0 behavior-unverified).
 
-### Post-Report UAT-Driven Changes (factored into this verdict)
+### Later User-Approved Supersessions (not phase failures)
 
-These commits landed after the stale report and were verified in the live tree. They extend behavior beyond the ten original plans; the user approved each in live UAT on 2026-11-03, and `58-UAT.md` records 10/10 rows passing.
-
-| Commit | Change | Pins |
-| ------ | ------ | ---- |
-| `eb576f1cf` | Generate-mode rail delete contracts the source cycle: deleted phase leaves `sourceKeyIds`, later source keys ripple left, overrides shift, extent follows; static/hold and reveal keep gap semantics; shared/collision cases fail closed | `resolveGenerateModeContraction` `physicsPaintRotoGroupLifecycle.ts:634`; `resolveGenerateModeContraction:642` excludes static/reveal; pins `resolver.test.ts:5511-5596` |
-| `2d2105897` | Spaced source cycles (generated in-betweens) supported by delete contraction and insert extension | `resolver.test.ts:5565`, `:4387`; bridge spec updated |
-| `b9691ea03` | Static rails accept insert with held frames; rail band retimes on key drag | `resolver.test.ts:4430`, `:4460-4496` |
-| `bdc5928ac` | Cell drag gate admits rail source keys; canonical rail drag free-repositions and retimes the band at both ends | `PhysicsPaintWorkflowStrip.tsx:4982`; pins `resolver.test.ts:4460-4644` |
-| `e41c2f6a4` | +Key/paint inside a rail inserts a source phase instead of splitting the rail; every repeat grows; overrides move; paint promotion accepts an in-between | `resolvePhysicPaintRotoRailKeyInsertTarget:4482`, `resolvePhysicPaintRotoRailInsertPlan:4596`; paste-key `railInsertGroupId` (`types/physicPaint.ts:476`, validator `:644-652`, serializer `:935`); pins `resolver.test.ts:4819-5038`, `useRotoTimelineActions.test.ts:1388-1431` |
-| `9507de221` | Insert accepts Reveal rails and rails with painted overrides; overridden rail without override authority still fails closed | `resolver.test.ts:4676`, `:4705-4749`; `useRotoTimelineActions.test.ts:1062-1112` |
-| `02e6556f9` | UAT completion: 10 passed, 0 issues; G-01 retested after the G-02 contraction fix | `58-UAT.md` |
-
-The goal's second clause is now observable in the live path: before `bdc5928ac` the drag gate excluded spacing proxies, so the goal could not be exercised. That is fixed and pinned.
-
-### Overrides / Accepted Deviations
-
-Three planned truth statements are marked PASSED (override) because the user approved a superseding behavior during UAT on 2026-11-03:
-
-1. **Truth 18 (D-13 no-emit).** G-04 approved retiming the rail band on a single-key drag. An accepted rail move may now emit `nextLoopClips` and move `placementStart` for the first source key. The resolver still rejects when two or more loops reference the key, so linked-cycle ownership is not silently relaxed.
-2. **Truth 19 (Delete/Insert guards unchanged).** G-02/G-03/G-05/G-06 approved rail-local Delete contraction, Insert extension, and +Key/paint source-phase insertion. All guarded refusals and the locked copy remain for non-canonical, shared-source, overlapping, and collision cases.
-3. **Truth 20 (WorkflowStrip untouched).** The drag gate changed to admit rail source keys, which is the mechanism the goal requires. `prepareRotoKeyDrag` / `commitRotoKeyDrag` remain unchanged and the resolver remains the acceptance authority.
-
-### Prohibitions
-
-| Plan Prohibition | Status | Evidence |
-| ---------------- | ------ | -------- |
-| No `.mce`, parser-shape, Rust, storage-device, or persisted-schema change; no load-time migration; no revision bump on an unchanged canonical document (58-09) | VERIFIED | Phase diff has no `.mce`, parser, or `src-tauri` path; reconcile is applied at the write choke point, not load; canonical pass-through pinned `useRotoPhysicalEditCoordinator.test.ts:4603` |
-| No re-sort, rewrite, or mutation of `sourceKeyIds`; no change to `countLoopsReferencingSourceKey`, D-07, D-11, or D-13/D-16 copy (58-09) | VERIFIED | `loopSourceOrderIsProvable` only reads; `loopGuards.test.ts:305-308` asserts input unchanged; copy `resolver:925` verbatim |
-| No change to `buildDeleteCandidate` ripple suppression or keyless-gap behavior (58-09) | VERIFIED | Existing pins green; G-02 contraction is scoped to generate-mode canonical rails |
-| No change to 58-06/58-07/58-08 behavior; no change to `unlinkLoop`, `linkLoop`, `repairLoop`, relink semantics (58-09) | VERIFIED | Controller and loop-guard suites green; no link/unlink code touched |
-| No new module for the shared helper; no auto-grow of `originalEndExclusive`; no synthetic source keys (58-09) | VERIFIED | Helper lives in `physicsPaintRotoPhysicalModel.ts:1003`; G-01 clamp only shrinks; no synthetic identities |
-| No re-sort/rewrite/clone of `sourceKeyIds`; no mutation of input `loopClips`; no new failure code/copy (58-10) | VERIFIED | Shared helper `:2198`; reuses `loop-source-key-move-rejected` and `LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT`; CR-02 pins unchanged |
-| No change to `buildMoveGroupCandidate`, `countLoopsReferencingSourceKey`, the >= 2 guard, Force Spacing, or D-07/D-11/D-13/D-16 behaviors (58-10) | VERIFIED | Guard/copy untouched; D-13 single-key no-emit is superseded by UAT G-04 (override 1), while the >= 2 guard remains |
-| No change to 58-06/58-07/58-08/58-09 reconcile work (58-10) | VERIFIED | The UAT fixes are additive rail-local behavior; all prior pins remain green |
-| No `.mce`, schema, parser, Rust, storage, **or app/src/types change** (58-10) | DEVIATED — user-approved | `app/src/types/physicPaint.ts` gained transient intent field `railInsertGroupId` (`:476`, validator `:644-652`, serializer `:935`) and semantic-delta fields `railInsert` / `trailingShift` (`:1076-1082`, `:1572-1582`). These are in-memory edit-contract types, not persisted `.mce` schema. Required by the UAT-approved G-05/G-06 rail insert behavior; accepted by Laurent Marques on 2026-11-03 |
-| No auto-unlink, auto-repair, or loop removal on rejection (58-10) | VERIFIED | All rejection paths `return fail(...)` before any proposal; no loop-clip mutation |
+| Change | Date / Commit | Effect on this report |
+| ------ | ------------- | --------------------- |
+| G-02 delete contraction retired in favor of hole semantics | 2026-11-04, `1bfbf2672` (quick 261104-bop) | `physicsPaintRotoGroupLifecycle.ts:560-563`, `:663-680`: a deleted Rail phase leaves the visible ranges EMPTY; later source keys never ripple. This supersedes the 2026-11-03 UAT-approved contraction. It is a later user-approved law, not a Phase 58 regression; truth 41 (group-owned delete refusal) and truth 19's override are unaffected |
+| v7 timeline rails quick delivered | v2.0.1, VIS-01..VIS-08 all `[x]` | The previously deferred per-frame cells, cycle grays, and rail colour dot are shipped; the item is no longer deferred |
 
 ### Deferred Items
 
 | # | Item | Addressed In | Evidence |
 |---|------|--------------|----------|
-| 1 | Per-frame cells, cycle grays, and the rail colour dot on Standard rails | Phase 58 v7 timeline-rails quick | ROADMAP SC2: these belong to the v7 quick, not Phase 58 |
-| 2 | Motion channels | v2.1.0 | ROADMAP v7 timeline rails: Motion channels stay in v2.1.0 |
+| 1 | Motion channels | v2.1.0 | ROADMAP v7 timeline rails: "Motion channels stay in v2.1.0." |
 
 ### Advisory (New Scope, Unevidenced)
 
 | # | Finding | Category | Why Advisory |
 |---|---------|----------|--------------|
-| 1 | Reduced Cycle dialog leaves ~376px vertical / ~478px horizontal dead space | other | Visual composition only; D-05 reduced form is contract-correct; no screenshots/evidence provided |
-| 2 | Edit Rail / Create Cycle refusal reasons are not rendered; `rejectLoopOp` sets error null | other | UX feedback polish outside the RAIL acceptance; refusal paths write nothing |
-| 3 | During `'committing'`, Cancel and primary look enabled while both no-op | other | UX polish; WR-01 deliberately makes the window a no-op |
-| 4 | Pasting a rail-set copy from an already-stale finite lifecycle rail can be rejected fail-closed (reconcile vs paste semantic-delta recompute) | other | Source-derived, no failing test run; rejection writes nothing and is retryable after source repair |
+| 1 | Reduced Cycle dialog dead space (~376px vertical / ~478px horizontal) | other | 58-UI-REVIEW.md priority fix 1; visual composition only; no live capture |
+| 2 | Refusal reasons not rendered; `rejectLoopOp` sets error null | other | 58-UI-REVIEW.md priority fix 2; refusal paths write nothing |
+| 3 | During `'committing'`, Cancel and primary look enabled while both no-op | other | 58-UI-REVIEW.md priority fix 3; deliberate no-op window |
+| 4 | Pasting a rail-set copy from an already-stale finite lifecycle rail can be rejected fail-closed (reconcile vs paste semantic-delta recompute) | other | Source-derived, no failing test run; rejection writes nothing and is retryable |
+| 5 | 17 open review findings in 58-REVIEW-DISPOSITION.md (WR-01/02/03/05, IN-01..IN-10) | other | New-scope source analysis, not independently reproduced; the four critical findings are scored above |
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `physicsPaintRotoPhysicalResolver.ts` | Law A guard, CR-02 final-mapping order guard, move-key-group order guard, rail reposition/retime, rail insert plan, Group ownership, G-01 bounded derivation | VERIFIED | `loopSourceOrderIsProvable:2198`; move-key `:5232-5288`; force-spacing `:5290-5328`; move-key-group `:5782`; `isGroupOwnedKeyFrame:1135`; `boundedNaturalEnd:6396`; rail helpers `:2155`, `:4482`, `:4596` |
-| `physicsPaintRotoPhysicalModel.ts` | Shared source-extent helper, reconcile, override pruning | VERIFIED | `resolvePhysicPaintRotoLoopSourceExtent:1003` (reveal null `:1009`); `reconcilePhysicPaintRotoGroupFrames:1062`; non-mutating, returns input refs when unchanged |
-| `useRotoPhysicalEditCoordinator.ts` | Reconcile at the write choke point before revision/payload | VERIFIED | `:2349` feeds the staged revision, staged parse, and payload `loopClips` / `groupOverrideRecords` |
-| `physicsPaintRotoGroupLifecycle.ts` | Source-extent bound; G-02 generate-mode contraction | VERIFIED | `resolveGroupBoundedEnd:321`; `resolveGenerateModeContraction:634`; `proposePhysicPaintRotoDeleteGroupFrame:815` |
+| `physicsPaintRotoPhysicalResolver.ts` | Law A guard, final-mapping order guards, rail reposition/retime, rail insert plan, Group ownership, G-01 bounded derivation | VERIFIED (behavior gaps) | Exists, substantive, wired. `loopSourceOrderIsProvable:2235`; move-key `:5575-5648`; force-spacing `:5654-5680`; move-key-group `:6153-6161`; `isGroupOwnedKeyFrame:1170`; rail helpers `:2192`, `:4536`, `:4616`, `:4891`; extent derivation `:6396+`. Gaps: truths 53-56 |
+| `physicsPaintRotoPhysicalModel.ts` | Shared source-extent helper, reconcile, override pruning | VERIFIED | `resolvePhysicPaintRotoLoopSourceExtent:1003-1031` (reveal null `:1009`); `reconcilePhysicPaintRotoGroupFrames:1062+`; non-mutating |
+| `useRotoPhysicalEditCoordinator.ts` | Reconcile at the write choke point before revision/payload | VERIFIED | Reconcile feeds staged revision, staged parse, and payload clips/records; coordinator spec green |
+| `physicsPaintRotoGroupLifecycle.ts` | Source-extent bound; delete hole law | VERIFIED | `resolveGroupBoundedEnd:320`; `proposePhysicPaintRotoDeleteGroupFrame:626`; hole semantics `:663-680` (later user-approved law) |
 | `physicsPaintRotoPlayScriptController.ts` | Update Rail surviving end, override pruning, generation-fenced conversion, busy-phase cancel | VERIFIED | `confirmKeyRailCycle:1823-1897`; `buildLoopOnlyPublication:2140`; `updateLoop:2269-2309`; `cancel()` busy early return `:3659-3660` |
-| `physicsPaintRotoRailSetCopy.ts` | Ceil cycle count for a frozen Infinity span | VERIFIED | `Math.max(1, Math.ceil(...))`; both pinned whole-multiple expectations unchanged |
-| `useRotoTimelineActions.ts` | Group-owned delete routing, rail key insert target, +Key/paint rail insert | VERIFIED | `addEmptyKey` rail insert path `:2461-2542`; rail target `:2513`; repeat rail option `:2470`; `prepareRotoKeyDrag` unchanged |
-| `physicsPaintRotoLoopGuards.test.ts` | Law A boundary pair, CR-02 rejection, G-01 extent/ownership, CR-03 edge pins | VERIFIED | 63 tests green; G-01 `:1218-1440`; CR-03 `:762-869`; WR-01 gap pin `:1374-1410` |
-| `physicsPaintRotoGroupParity.test.ts` | Extent agreement across derivation/proposers/regenerate | VERIFIED | 50 tests green; surviving-extent rows `:548`, `:586`, `:624` |
-| `physicsPaintRotoPlayScriptController.test.ts` | In-flight cancel, retry, busy cancel, override contraction | VERIFIED | 275 tests green; `:2522` refusal preserved; `:2537` stale-override pruning |
-| `useRotoPhysicalEditCoordinator.test.ts` | Stale-cycle repair, one undo step, canonical pass-through, infinity untouched | VERIFIED | 96 tests green; `:4541`, `:4576`, `:4603`, `:4626`, `:4640` |
-| `useRotoTimelineActions.test.ts` | Delete classifier parity, CR-03 UI dispatch pins, G-06 rail insert/Insert rows | VERIFIED | 147 tests green; CR-03 `:1810-1838`; G-06 `:1062`, `:1112`, `:1388`, `:1431` |
-| `physicsPaintRotoRailSetCopy.test.ts` | CR-01 non-whole-cycle paste regression | VERIFIED | 26 tests green; pin `:710-745` |
-| `buildKeyRailStandardLoopClip` (`physicsPaintRotoRunScriptStacking.ts`) | Strict whitelist, provenance-free | VERIFIED | `:597-613` |
-| `KeyRailCycleEditTarget`, `openKeyRailCycleEdit`, `confirmKeyRailCycle` | Frozen target, zero writes on open, generation-fenced confirm | VERIFIED | `controller:1764-1897` |
-| `SelectedKeyRailInspectorPresentation`, `projectSelectedKeyRailInspector` | Frames/Keys/Type, disabled reason | VERIFIED | `physicsPaintKeyRailPresentation.ts:111`, `:129-143` |
-| `PhysicsPaintScriptsPanel` takeover props | Edit Rail and Close | VERIFIED | `:147-160`; 61 tests green |
-| `PhysicsPaintKeyRail` open-intent prop | Double-click + Enter | VERIFIED | `:277-307`, `:417`; 17 tests green |
-| `PhysicsPaintWorkflowStrip` open-intent prop and drag gate | Forwarding; rail keys arm a drag | VERIFIED | `:447`, `:4868`, `:4982`; 151 tests green |
-| `ReducedCycleCard` | Cycle stepper + Infinity switch only | VERIFIED | `PhysicsPaintPlayScriptCards.tsx:561` |
-| `reducedForm`, `confirmBlocked`, reduced branch | Reduced surface + shared confirm gate | VERIFIED | `PhysicsPaintPlayScriptDialog.tsx:72`, `:150-157`, `:302`, `:377-380`, `:579` |
-| `PhysicsPaintStudio.tsx` inspector memo, anchor, handlers, paint promotion | D-01/D-03 + G-05 wiring | VERIFIED | `:1781`, `:4816-4833`, `:4882-4888`, `:7202`; paint promotion `:4987`; 336 tests green |
-| `app/src/types/physicPaint.ts` | Rail insert intent/semantic-delta contract | VERIFIED (documented deviation) | `railInsertGroupId:476`; `railInsert`/`trailingShift` `:1076-1082`; validators/serializer `:644-652`, `:935`, `:1572-1582`; transient only |
+| `physicsPaintRotoRailSetCopy.ts` | Ceil cycle count for a frozen Infinity span | VERIFIED | RailSetCopy spec green |
+| `useRotoTimelineActions.ts` | Group-owned delete routing, rail key insert target, +Key/paint rail insert, drag dispatch | VERIFIED (downstream gaps) | Rail insert target `:2513`; `addEmptyKey` rail path `:2461-2542`; drag intent `:2563`, `:2638`; passes `loopClips` straight to the resolver, so truths 54/55 are reachable |
+| `physicsPaintRotoLoopGuards.test.ts` | Law A boundary pair, CR-02 rejection, G-01 extent/ownership, CR-03 edge pins | VERIFIED | Green; does not cover the CR-04 cross-clip scenarios (IN-10) |
+| `physicsPaintRotoGroupParity.test.ts` | Extent agreement across derivation/proposers/regenerate | VERIFIED | Green |
+| `physicsPaintRotoPlayScriptController.test.ts` | In-flight cancel, retry, busy cancel, override contraction | VERIFIED | Green |
+| `useRotoPhysicalEditCoordinator.test.ts` | Stale-cycle repair, one undo step, canonical pass-through, infinity untouched | VERIFIED | Green |
+| `useRotoTimelineActions.test.ts` | Delete classifier parity, CR-03 UI dispatch pins, rail insert rows | VERIFIED | Green; append scripted/Reveal fixtures absent (truth 56) |
+| `physicsPaintRotoRailSetCopy.test.ts` | Non-whole-cycle paste regression | VERIFIED | Green |
+| `buildKeyRailStandardLoopClip` (`physicsPaintRotoRunScriptStacking.ts`) | Strict whitelist, provenance-free | VERIFIED | `:597-611`; discriminator `:536-540` |
+| `KeyRailCycleEditTarget`, `openKeyRailCycleEdit`, `confirmKeyRailCycle` | Frozen target, zero writes on open, generation-fenced confirm | VERIFIED | `controller:1781-1897` |
+| `SelectedKeyRailInspectorPresentation`, `projectSelectedKeyRailInspector` | Frames/Keys/Type, disabled reason | VERIFIED | `physicsPaintKeyRailPresentation.ts:111`, `:127-143` |
+| `PhysicsPaintScriptsPanel` takeover props | Edit Rail and Close | VERIFIED | `:147-160`; spec green |
+| `PhysicsPaintKeyRail` open-intent prop | Double-click + Enter | VERIFIED | `:272-316`; launcher green |
+| `PhysicsPaintWorkflowStrip` open-intent prop and drag gate | Forwarding; rail keys arm a drag | VERIFIED | `:468`, `:5235`, `:5355`, `:4675-4676`; spec green |
+| `ReducedCycleCard` | Cycle stepper + Infinity switch only | VERIFIED | `PhysicsPaintPlayScriptCards.tsx`; dialog spec green |
+| `reducedForm`, `confirmBlocked`, reduced branch | Reduced surface + shared confirm gate | VERIFIED | `PhysicsPaintPlayScriptDialog.tsx:72`, `:159`, `:306`, `:384` |
+| `PhysicsPaintStudio.tsx` inspector memo, anchor, handlers | D-01/D-03 wiring | VERIFIED | `:4831-4849`, `:4900-4907`, `:7247`, `:11075`; Studio spec green |
+| `PhysicsPaintTrackRow.tsx` ghost presentation | Source keys outside every visible range render as empty | VERIFIED (mechanism) | `resolveGhostSourceKeyIds:240-263`; empty-cell render `:716-720`; this is why truth 54 is user-visible |
+| `app/src/types/physicPaint.ts` | Rail insert intent/semantic-delta contract | VERIFIED (documented deviation) | Transient edit-contract only; no persisted `.mce` schema change |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 |------|----|-----|--------|---------|
-| Key Rails segment derivation | `projectSelectedKeyRailInspector` | `keyRailSegmentByFirstKeyId` -> inspector memo | WIRED | `Studio:1152`, `:4882-4888` |
-| `railSetAnchorKeyRailId` | inspector memo and WorkflowStrip bundle | one shared const | WIRED | `Studio:1781`, `:4888` |
-| Scripts panel Edit Rail onClick | `handleOpenRotoKeyRailCycleEdit` | `onOpenKeyRailEdit` prop | WIRED | `ScriptsPanel:153`; `Studio:7202`, `:4816-4824` |
-| `handleOpenRotoKeyRailCycleEdit` | `rotoPlayScript.openKeyRailCycleEdit` | select-then-open, Promise on every path | WIRED | `Studio:4816-4824`; `controller:1764` |
-| `PhysicsPaintKeyRail` double-click / Enter | Studio handler | `onOpenKeyRailCycleEdit` -> WorkflowStrip -> Studio | WIRED | `KeyRail:277-307`; strip `:447`, `:4868` |
+| Scripts panel Edit Rail onClick | `handleOpenRotoKeyRailCycleEdit` | `onOpenKeyRailEdit` prop | WIRED | `ScriptsPanel:153`; `Studio:7247`, `:4831-4841` |
+| `handleOpenRotoKeyRailCycleEdit` | `rotoPlayScript.openKeyRailCycleEdit` | select-then-open, Promise on every path | WIRED | `Studio:4831-4841` |
+| `PhysicsPaintKeyRail` double-click / Enter | Studio handler | `onOpenKeyRailCycleEdit` → WorkflowStrip → Studio | WIRED | `KeyRail:294`, `:316`; `WorkflowStrip:5235`; `Studio:11075` |
 | `dialogMode === 'key-rail-create'` | `confirmKeyRailCycle` | `confirm()` routing | WIRED | `controller:2390`, `:1823` |
-| `confirmKeyRailCycle` | `buildKeyRailStandardLoopClip` -> `buildLoopOnlyPublication` -> `ports.commit` | one loop-only transaction | WIRED | `controller:1861-1870`, `:2140-2177` |
-| `cancel()` / Escape during `'preparing'` | `confirmKeyRailCycle` generation guard | `acceptedGeneration` + `assertCurrent` | WIRED | `controller:1835`, `:1842`, `:1874`, `:3659-3660`; test `:4066` |
-| `prepareRotoKeyDrag` | move-key single-reference order guard | resolver intent path | WIRED | `useRotoTimelineActions.ts` drag dispatch; `resolver:5232-5288` |
-| Cell drag gate | rail source-key drag | `dragEligible` in WorkflowStrip | WIRED | `PhysicsPaintWorkflowStrip.tsx:4982`; G-04 pins `resolver.test.ts:4460-4644` |
-| `prepareRotoKeyGroupDrag` | move-key-group final-mapping order guard | resolver intent path | WIRED | `resolver:5782`; UI pins `useRotoTimelineActions.test.ts:1810-1838` |
-| `buildMoveCandidate` / `buildMoveGroupCandidate` final mapping | `loopSourceOrderIsProvable` | shared helper | WIRED | `resolver:2198`, `:5264`, `:5782` |
-| `resolvePhysicPaintRotoLoopSourceExtent` | derivation clamp | `boundedNaturalEnd` | WIRED | `resolver:6396`; effective-end truncation `:6451`, `:6469` |
-| `resolvePhysicPaintRotoLoopSourceExtent` | Group classifier and proposers | `resolveGroupBoundedEnd` | WIRED | `GroupLifecycle:321`, used at `:367`, `:396`, `:822`, `:983` |
-| Reconcile | staged revision, staged parse, payload clips/records | coordinator choke point | WIRED | `useRotoPhysicalEditCoordinator.ts:2349` |
-| `updateLoop` surviving end | rebuilt `frameOverrides` | filter before staging | WIRED | `controller:2269-2309` |
-| `isGroupOwnedKeyFrame` | delete-key / delete-key-group / delete-key-rail refusals | `GROUP_OWNED_KEY_DELETE_REJECTED_TEXT` | WIRED | `resolver:4893`, `:4942`, `:5032` |
-| `classifyRotoDeleteTarget` | group-frame delete proposer | `resolveGroupOwnedDeleteFrame` | WIRED | `useRotoTimelineActions.ts`; G-02 pins `resolver.test.ts:5511-5596` |
-| `classifyRotoInsertTarget` / `readRotoInsertTargetInput` | rail insert plan | `resolvePhysicPaintRotoRailInsertPlan` | WIRED | `useRotoTimelineActions.ts`; pins `resolver.test.ts:4116-4430`, `:4705-4749` |
-| `resolvePhysicPaintRotoRailKeyInsertTarget` | +Key/paint rail insertion | `addEmptyKey` + paste-key intent | WIRED | `Studio:4987`; `useRotoTimelineActions.ts:2513`; `resolver:4482`, `:5123-5148`; pins `resolver.test.ts:4819-5038` |
-| `resolvePhysicPaintRotoRailInsertPlan` rejection | `loop-source-key-insert-rejected` | resolver fail-closed | WIRED | `resolver:4788`, `:5134`; overridden rail without authority `resolver.test.ts:4749` |
-| Reconcile | G-02 contraction / extent follow | `resolveGenerateModeContraction` -> lifecycle proposal | WIRED | `GroupLifecycle:855`; pins `resolver.test.ts:5511-5596` |
-| `resolveLoopCopyExtent` ceil repeat | `buildDuplicatedLoopClip` stored end | `originalEndExclusive` = preserved duration | WIRED | `RailSetCopy.ts`; pin `RailSetCopy.test.ts:710-745` |
-| `reducedForm` -> `framesValidationError` -> `confirmBlocked` | Enter guard and primary disabled | one render-local value | WIRED | `dialog:150-157`, `:302`, `:579` |
+| `confirmKeyRailCycle` | `buildKeyRailStandardLoopClip` → `buildLoopOnlyPublication` → `ports.commit` | one loop-only transaction | WIRED | `controller:1849-1870`, `:2140-2177` |
+| `cancel()` / Escape during `'preparing'` | `confirmKeyRailCycle` generation guard | `acceptedGeneration` + `assertCurrent` | WIRED | `controller:1835`, `:1842`, `:1874`, `:3659-3660` |
+| Cell drag gate | rail source-key drag | `dragEligible` in WorkflowStrip | WIRED | `PhysicsPaintWorkflowStrip.tsx:5355`; `prepareRotoKeyDrag:2563` |
+| `prepareRotoKeyDrag` | move-key guard + retime + ghost guard | resolver intent path | WIRED (gap) | `useRotoTimelineActions.ts:2588-2596`; `resolver:5575-5648`; cross-clip scope gap = truth 54 |
+| `prepareRotoKeyGroupDrag` | move-key-group order guard + placement follow | resolver intent path | WIRED (gap) | `useRotoTimelineActions.ts:2683-2698`; `resolver:6153-6161`, `:2363-2368`; no band retime = truth 55 |
+| `resolvePhysicPaintRotoRailInsertPlan` | insert-slot rail extension | resolver `insert-slot` branch | WIRED (gap) | `resolver:5092-5101`; count-vs-span comparison `:4944`, `:4957-4958` = truth 53 |
+| `resolvePhysicPaintRotoRailKeyInsertTarget` append | `buildAppendedRailClip` → paste rail splice | +Key/paint rail insert | WIRED (gap) | `resolver:4678-4692`, `:4536-4548`; `useRotoTimelineActions.ts:2513-2541`; missing Standard gate = truth 56 |
+| `resolvePhysicPaintRotoRailDissolveTarget` | Standard-only dissolve | `isCompleteStandardRailClip` | WIRED | `resolver:4838-4847`; `isStandardMergedLoopClip` `stacking:536-540` |
+| `resolvePhysicPaintRotoLoopSourceExtent` | derivation clamp and Group proposers | `boundedNaturalEnd` / `resolveGroupBoundedEnd` | WIRED | `resolver:6396+`; `GroupLifecycle:320-337` |
+| Reconcile | staged revision, staged parse, payload clips/records | coordinator choke point | WIRED | `useRotoPhysicalEditCoordinator.ts`; spec green |
+| `isGroupOwnedKeyFrame` | delete-key / delete-key-group / delete-key-rail refusals | `GROUP_OWNED_KEY_DELETE_REJECTED_TEXT` | WIRED | `resolver:5205`, `:5254`, `:5344` |
+| `classifyRotoInsertTarget` / `readRotoInsertTargetInput` | rail insert plan | `resolvePhysicPaintRotoRailInsertPlan` | WIRED | `useRotoTimelineActions.ts`; resolver spec green |
+| `resolvePhysicPaintRotoRailKeyInsertTarget` | +Key/paint rail insertion | `addEmptyKey` + paste-key intent | WIRED | `Studio:4987`; `useRotoTimelineActions.ts:2513`; resolver spec green |
+| `resolveGhostSourceKeyIds` | empty-cell render and key-rail exclusion | TrackRow props / Studio group-owned ids | WIRED | `PhysicsPaintTrackRow.tsx:240-263`, `:716-720`; `Studio:1134-1148` |
+| `reducedForm` → `framesValidationError` → `confirmBlocked` | Enter guard and primary disabled | one render-local value | WIRED | `dialog:159`, `:306`, `:574+` |
 
 ### Data-Flow Trace (Level 4)
 
@@ -316,104 +328,101 @@ These are interaction and derivation surfaces, not data-fetching surfaces; no DB
 | Scripts panel inspector | `selectedKeyRailInspector` | `deriveKeyRailSegments` over `orderedRealKeys` | Yes | FLOWING |
 | Key Rail strip | segment `keyIds` / frames | same derivation, loop-owned keys excluded | Yes | FLOWING |
 | Cycle dialog repeat | `repeatText` -> `parsedRepeat` | `keyRailCycleEditTarget.cycleFrameCount` | Yes | FLOWING |
-| Reduced dialog readout | `loopReadout` | creation-branch signals not primed for key-rail-create | Stale for this mode (cosmetic; previously recorded info) | STALE |
 | Loop clip presentation | lifecycle label | `derivePhysicPaintRotoLoopRanges` over live records | Yes | FLOWING |
 | Finite lifecycle extent | `boundedNaturalEnd` | `resolvePhysicPaintRotoLoopSourceExtent` over live source-key frames | Yes | FLOWING |
 | Group frame content | classifier bound | same source extent via `resolveGroupBoundedEnd` | Yes | FLOWING |
 | Persisted lifecycle extent | reconciled clip + override records | `reconcilePhysicPaintRotoGroupFrames` at the staged write | Yes | FLOWING |
-| Pasted Infinity span | `effectiveEndExclusive` -> `repeat` -> stored end | copy payload from the live rail set | Yes | FLOWING |
-| Rail drag destination | `moveResult.candidate.mapping` -> reposition/retime | resolver over live real-key identities | Yes | FLOWING |
-| Rail insert plan | `loopClips` / override records / trailing shift | `resolvePhysicPaintRotoRailInsertPlan` over live records | Yes | FLOWING |
+| Rail drag destination | `moveResult.candidate.mapping` -> reposition/retime | resolver over live real-key identities | Yes | FLOWING (band follow incomplete for group drag — truth 55) |
+| Ghost source keys | `resolveGhostSourceKeyIds` over store clips | store `getRotoPhysicalLoopClips` + real key records | Yes | FLOWING — this is why cross-clip source keys disappear from the UI |
+| Rail insert plan | `loopClips` / override records / trailing shift | `resolvePhysicPaintRotoRailInsertPlan` over live records | Yes | FLOWING (spaced-cycle branch fails — truth 53) |
+| Append target | `insertionAppFrame` / `cycleOffset` | `resolvePhysicPaintRotoRailKeyInsertTarget` over live records | Yes | FLOWING (no Standard discriminator — truth 56) |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Targeted phase 58 specs (fresh run on the verified tree) | `pnpm exec vitest run` on resolver, timeline actions, controller, loop guards, key-rail cycle | 5 files passed; 722 passed | PASS |
-| Full workspace suite | `pnpm --filter efx-motion-editor exec vitest run` | 7143 passed, 1 skipped, 96 todo | PASS |
+| Targeted phase 58 suites (current tree) | `pnpm --filter efx-motion-editor exec vitest run` on 14 phase specs | 14 files passed, 1513 tests passed | PASS |
 | Typecheck | `pnpm --filter efx-motion-editor run typecheck` | `tsc --noEmit`, exit 0 | PASS |
-| G-01 coordinator repair | named coordinator tests `:4541`, `:4576` | passed | PASS |
-| G-01 extent parity | `physicsPaintRotoGroupParity.test.ts` surviving rows | passed | PASS |
-| G-02 contraction | `resolver.test.ts` G-02 rows `:5511-5596` | passed | PASS |
-| G-03/G-05/G-06 insert and drag | `resolver.test.ts` G-03/G-05/G-06 rows `:4116-5038` | passed | PASS |
-| G-06 UI dispatch | `useRotoTimelineActions.test.ts` rows `:1062`, `:1112`, `:1388`, `:1431` | passed | PASS |
-| CR-03 order-preserving + order-breaking group move | `loopGuards.test.ts` rows `:765-793` | passed | PASS |
-| Fingerprint regeneration | `gsd-tools verification fingerprint ...` | exit 0; digest recorded in frontmatter | PASS |
+| CR-01 spaced-rail insert | temporary resolver probe (removed after run) | `insert-slot @0` fails `loop-source-key-insert-rejected`; `@11` ok; contiguous `@0` ok | REPRODUCED |
+| CR-04a unowned-key move into gapped rail | temporary resolver probe | `ok:true`, mapping `{S1:10,S2:15,X:13}`, `nextLoopClips:null`; S2 outside `[13,15)` | REPRODUCED |
+| CR-04b unowned-key cut across canonical rail | temporary resolver probe | `ok:true`, mapping `{X:20,S1:9,S2:13}`, `nextLoopClips:null`; both sources outside `[10,15)` | REPRODUCED |
+| CR-04c whole-cycle group drag band | temporary resolver probe | `ok:true`, mapping `{K1:3,K3:5,K5:7}`; clip `phaseOrigin:1`, `originalEndExclusive:6`, ranges `[1,6)`; K5 outside | REPRODUCED |
+| CR-05 append on scripted/Reveal rails | temporary resolver probe | both targets return append; edit `ok:true` with `NEW` in `sourceKeyIds`, `originalEndExclusive:7`, `scriptId` intact | REPRODUCED |
+| Probe cleanup | `git status --short` | clean after removing the temporary spec | PASS |
+
+The temporary probe spec imported the real `resolvePhysicPaintRotoPhysicalEdit`, `resolvePhysicPaintRotoRailKeyInsertTarget`, `testWebpBytes`, and `PHYSIC_PAINT_MAX_APPLY_FRAMES`; it was deleted after the run and is not part of the phase artifacts.
 
 ### Probe Execution
 
-None. No `scripts/*/tests/probe-*.sh` files exist and the phase declares no executable probes; its verification is spec-bound. Not applicable.
-
-### Test Quality Audit
-
-| Test File | Linked Req | Active | Skipped | Circular | Assertion Level | Verdict |
-|-----------|-----------|--------|---------|----------|-----------------|---------|
-| `physicsPaintRotoLoopGuards.test.ts` | RAIL-03, RAIL-06, RAIL-07 | 63 | 0 | No | Value + behavioral (mapping, failure code/copy, derived `unresolved`, effectiveEnd) | PASS |
-| `physicsPaintRotoGroupParity.test.ts` | RAIL-03, RAIL-07 | 50 | 0 | No | Value (extent agreement across derivation/proposers/regenerate) | PASS |
-| `physicsPaintRotoPlayScriptController.test.ts` | RAIL-03, RAIL-04, RAIL-05 | 275 | 0 | No | Behavioral (real history, deferred authority/commit interleavings, commit counts) | PASS |
-| `useRotoPhysicalEditCoordinator.test.ts` | RAIL-03, RAIL-05, RAIL-07 | 96 | 0 | No | Behavioral (real coordinator -> history, byte-identical canonical pass-through) | PASS |
-| `useRotoTimelineActions.test.ts` | RAIL-01, RAIL-06 | 147 | 0 | No | Behavioral (prepare/commit dispatch counts, classifier routing, rail insert) | PASS |
-| `physicsPaintRotoRailSetCopy.test.ts` | RAIL-06, RAIL-07 | 26 | 0 | No | Value (copy payload, paste extent, stored end) | PASS |
-| `physicsPaintRotoKeyRailCycle.test.ts` | RAIL-03, RAIL-07 | 8 | 0 | No | Value (record shape, extents, classification) | PASS |
-| `PhysicsPaintPlayScriptDialog.test.ts` | RAIL-02, RAIL-04 | 108 | 0 | No | Behavioral (rendered vnode gates + handler dispatch) | PASS |
-| `PhysicsPaintScriptsPanel.test.ts` | RAIL-01 | 61 | 0 | No | Behavioral + source anchors | PASS |
-| `PhysicsPaintKeyRail.test.tsx` (via launcher) | RAIL-01 | 17 | 0 | No | Behavioral (click timing, keyboard) | PASS |
-| `PhysicsPaintStudio.test.ts` | RAIL-01 | 336 | 0 | No | Behavioral + source anchors (memo/anchor/handlers/paint promotion) | PASS |
-
-**Disabled tests on requirements:** 0 -> no blocker.
-**Circular patterns detected:** 0 -> no blocker.
-**Insufficient assertions:** 0 -> no warning.
-**Debt markers:** 0 `TBD`/`FIXME`/`XXX`/`TODO`/`HACK`/PLACEHOLDER in the changed implementation and test files.
-**Skipped/only markers in phase files:** 0.
+None. `find scripts -path '*/tests/probe-*.sh'` returned no files, and the phase declares no executable probes. Its verification is spec- and probe-bound through vitest.
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|-------------|-------------|--------|----------|
-| RAIL-01 | 58-03, 58-04, 58-05 | Open Edit Rail for a normal Key Rail from the sidebar using the same entry point loop clips use | SATISFIED | Truths 1-4, 21-24; all wiring verified; UAT rows 1, 3 pass |
-| RAIL-02 | 58-04, 58-08 | Modal shows only cycle count and Infinity, prefilled at 1, no script/motion/reveal controls | SATISFIED | Truths 4, 6, 37, 38; UAT rows 2, 6 pass |
-| RAIL-03 | 58-02, 58-03, 58-09 | Confirm converts the segment into a provenance-free Standard clip and the rail presents as Standard; the converted cycle follows the surviving source extent | SATISFIED | Truths 7, 9-12, 39-45; UAT rows 2, 7 pass |
-| RAIL-04 | 58-02, 58-06, 58-08 | Cancelling performs zero writes (no store mutation, revision bump, or undo entry) | SATISFIED | Truths 5, 15, 26-30, 38; UAT row 4 pass |
-| RAIL-05 | 58-02, 58-06 | Conversion is exactly one undo step; cancel and refusal leave the ledger untouched | SATISFIED | Truths 13, 14, 27-31, 43 |
-| RAIL-06 | 58-01, 58-07, 58-10 | Single-key drag under Law A; keys referenced by more than one loop keep D-11; shared linked-cycle behavior never silently relaxed, including the group move | SATISFIED | Truths 8, 16-20, 32-36, 46-52; truth 18/19/20 are user-approved overrides; UAT rows 5, 10 pass |
-| RAIL-07 | 58-01, 58-02, 58-07, 58-09, 58-10 | Regression-locked behavior, existing D-11 tests green, no `.mce` schema change | SATISFIED | Truths 25, 32-52; no `.mce`/parser/Rust change; full suite green; UAT rows 7-10 pass |
+| RAIL-01 | 58-03, 58-04, 58-05 | Open Edit Rail for a normal Key Rail from the sidebar using the same entry point loop clips use | SATISFIED | Truths 1-3, 21-24; wiring `ScriptsPanel:153` → `Studio:7247` → `:4831`; KeyRail `:294`/`:316` → `WorkflowStrip:5235` → `Studio:11075`; UAT rows 1, 3 pass |
+| RAIL-02 | 58-04, 58-08 | Modal shows only cycle count and Infinity, prefilled at 1, no script/motion/reveal controls | SATISFIED | Truths 4, 6, 37, 38; dialog spec green; UAT rows 2, 6 pass |
+| RAIL-03 | 58-02, 58-03, 58-09 | Confirm converts the segment into a provenance-free Standard clip and the rail presents as Standard; the converted cycle follows the surviving source extent | SATISFIED | Truths 7, 9-12, 39-45; stacking `:597-611`; controller `:1849-1870`; specs green; UAT rows 2, 7 pass |
+| RAIL-04 | 58-02, 58-06, 58-08 | Cancelling performs zero writes (no store mutation, revision bump, or undo entry) | SATISFIED | Truths 5, 15, 26-30, 38; controller `:1835-1893`; specs green; UAT row 4 pass |
+| RAIL-05 | 58-02, 58-06 | Conversion is exactly one undo step; cancel and refusal leave the ledger untouched | SATISFIED | Truths 13, 14, 27-31, 43; controller `:1861-1870`, `:2140-2177`; specs green |
+| RAIL-06 | 58-01, 58-07, 58-10 | Single-key drag under Law A; keys referenced by more than one loop keep D-11; shared linked-cycle behavior never silently relaxed, including the group move | FAILED | Law A accept/reject and order guards hold (truths 8, 16-20, 32-36, 46-52). The qualifier fails: cross-clip ripples hide referenced source keys (truth 54) and a whole-cycle group drag leaves a source key outside its band (truth 55). UAT rows 5 and 10 exercised only the moved key's own cycle |
+| RAIL-07 | 58-01, 58-02, 58-07, 58-09, 58-10 | Regression-locked behavior, existing D-11 tests green, no `.mce` schema change | SATISFIED | Truths 25, 32-52; 14 suites / 1513 tests green; `tsc --noEmit` exit 0; no `.mce`/parser/Rust change. Coverage gaps for the defective branches are IN-09/IN-10 |
 
-No orphaned requirements: all seven IDs appear in plan frontmatter, and `.planning/REQUIREMENTS.md` maps exactly these seven to Phase 58 (all `[x]`, Phase 58 Complete).
+No orphaned requirements: all seven IDs appear in the ten plan frontmatter blocks, and `.planning/REQUIREMENTS.md` maps exactly these seven to Phase 58.
 
-### Decision Coverage
+### Test Quality Audit
 
-All trackable CONTEXT.md decisions are honored by shipped artifacts (17/17 honored; gate returned `{skipped: false, blocking: false, total: 17, honored: 17, not_honored: []}`). The UAT-approved G-02..G-06 behaviors are additional user decisions recorded in `58-UAT.md`; they supersede three plan-level assertions (truths 18-20) but do not weaken the D-11/D-16 ownership law or any RAIL acceptance criterion.
+| Test File | Linked Req | Assertion Level | Verdict |
+|-----------|-----------|-----------------|---------|
+| `physicsPaintRotoLoopGuards.test.ts` | RAIL-03, RAIL-06, RAIL-07 | Value + behavioral (mapping, failure code/copy, derived `unresolved`, effectiveEnd) | PASS — but no cross-clip ghost scenario (IN-10) |
+| `physicsPaintRotoGroupParity.test.ts` | RAIL-03, RAIL-07 | Value (extent agreement) | PASS |
+| `physicsPaintRotoPlayScriptController.test.ts` | RAIL-03, RAIL-04, RAIL-05 | Behavioral (real history, interleavings, commit counts) | PASS |
+| `useRotoPhysicalEditCoordinator.test.ts` | RAIL-03, RAIL-05, RAIL-07 | Behavioral (coordinator -> history, byte-identical pass-through) | PASS |
+| `useRotoTimelineActions.test.ts` | RAIL-01, RAIL-06 | Behavioral (dispatch counts, classifier routing, rail insert) | PASS — append fixtures use `frameOverrides: []`, so scripted/Reveal append is untested (truth 56) |
+| `physicsPaintRotoRailSetCopy.test.ts` | RAIL-06, RAIL-07 | Value (copy payload, extent) | PASS |
+| `physicsPaintRotoKeyRailCycle.test.ts` | RAIL-03, RAIL-07 | Value (record shape, extents, classification) | PASS |
+| `PhysicsPaintPlayScriptDialog.test.ts` | RAIL-02, RAIL-04 | Behavioral (rendered vnode gates + handler dispatch) | PASS |
+| `PhysicsPaintScriptsPanel.test.ts` | RAIL-01 | Behavioral + source anchors | PASS |
+| `PhysicsPaintKeyRail.test.tsx` (via launcher) | RAIL-01 | Behavioral (click timing, keyboard) | PASS |
+| `PhysicsPaintStudio.test.ts` | RAIL-01 | Behavioral + source anchors | PASS |
+| `physicsPaintRotoPhysicalResolver.test.ts` | RAIL-03, RAIL-06, RAIL-07 | Value/behavioral (resolver proposals) | PASS — no spaced insert-at-zero case (IN-09) |
+| `physicsPaintRotoRunScriptStacking.test.ts` | RAIL-03 | Value | PASS |
+| `physicsPaintRotoPhysicalModel.test.ts` | RAIL-03 | Value | PASS |
+
+**Disabled tests on requirements:** 0. **Circular patterns:** 0. **Debt markers:** 0 `TBD`/`FIXME`/`XXX` in the phase-modified implementation and test files.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
-|------|------|---------|----------|--------|
-| `physicsPaintRotoGroupLifecycle.ts` | 321-337 | `capacity === undefined` fallback unreachable from typed callers — IN-01 | Info | Dead defensive branch; every caller holds a required `number` capacity |
-| `physicsPaintStudio.css` | 2840 | Dead `.physics-paint-play-script-standard-rail-value` rule — IN-02 | Info | Dead CSS only |
-| `physicsPaintRotoPlayScriptController.ts` | 1781-1783 | Open-time `loopClipsOwnAnyKey` unreachable from production — IN-03 | Info | Redundant guard; the confirm-time check at `:1846` remains reachable |
-| `physicsPaintRotoPlayScriptController.ts` | 1870-1872 | Post-commit comment still implies a cancel can land during `'committing'` — IN-04 | Info | Comment-only; `cancel()` no-ops while busy (`:3659-3660`) |
+| ---- | ---- | ------- | -------- | ------ |
+| `physicsPaintRotoPhysicalResolver.ts` | 4944, 4957-4958 | Count (`moved`) compared with span (`cycleLength`) | Blocker | CR-01 / truth 53: spaced-rail insert at/left rejected |
+| `physicsPaintRotoPhysicalResolver.ts` | 5630-5648 | Ghost guard scoped to the moved key's single referencing clip | Blocker | CR-04a/b / truth 54: cross-clip source keys silently ghosted |
+| `physicsPaintRotoPhysicalResolver.ts` | 2363-2368 | Group branch omits `retimeFiniteLifecycle`; no group ghost guard | Blocker | CR-04c / truth 55: whole-cycle drag hides a source key |
+| `physicsPaintRotoPhysicalResolver.ts` | 4678-4692 | Append lacks `isStandardMergedLoopClip` | Blocker | CR-05 / truth 56: scripted and Reveal rails mutated |
+| `physicsPaintRotoPhysicalResolver.ts` | 5499, 1671-1672, 1754-1771 | Rail insert never grows capacity (WR-01, review) | Warning | Tail insert can fail `over-capacity` while insert-slot grows |
+| `physicsPaintRotoPhysicalResolver.ts` | 5617-5628 | Retime dropped silently when the band exceeds capacity (WR-02, review) | Warning | Half-applied move possible on the capacity boundary |
+| `physicsPaintRotoPhysicalResolver.ts` | 5091-5140 | Insert growth swallows trailing content for repeat > 1 (WR-03, review) | Warning | Trailing content inside the grown band |
+| `physicsPaintRotoPhysicalResolver.ts` | 2363 | Append ripples every trailing key/clip by the full growth (WR-05, review) | Warning | Content beyond the destination shifts |
+| `physicsPaintRotoPhysicalResolver.ts` | 4628-4632 | Dead `frameOwners` map; unused exports (IN-01/IN-02, review) | Info | Dead code only |
 
-No blocking anti-patterns. CR-01 and WR-01 were fixed in `e50af31c0`; CR-02, CR-03, and WR-02 were closed by 58-07, 58-10, and 58-08. The four info findings are `open` in `58-REVIEW-DISPOSITION.md` and do not affect a must-have truth.
-
-### Documented Deviations
-
-1. **Reveal rails are exempt from the G-01 source-extent clamp (58-09 deviation 4, `b25482a9c`).** `resolvePhysicPaintRotoLoopSourceExtent` returns null when `clip.railKind === 'reveal'` (`model:1009`), and `loopGuards.test.ts:1293-1305` pins the reveal stretch. Deliberate: the reveal stretch law owns the reveal extent, and clamping would break WR-01 reveal behavior.
-2. **Transient `app/src/types/physicPaint.ts` fields (`e41c2f6a4`).** `railInsertGroupId` on the paste-key intent and `railInsert`/`trailingShift` on the semantic delta were added for the UAT-approved G-05/G-06 rail insert. These are in-memory edit-contract types; no `.mce` field, parser shape, Rust, storage, or persisted schema changed. This is the only plan-prohibition deviation and is user-approved (2026-11-03).
-3. **Plan truths 18-20 are superseded by UAT G-02..G-06** (see Overrides). The goal-level laws they protect remain enforced: exactly-one-loop acceptance, two-or-more-loop rejection, verbatim D-16 copy, and no silent source-key rewrites.
+No `TBD`/`FIXME`/`XXX` debt markers were found. The warnings and info rows above are tracked in `58-REVIEW-DISPOSITION.md`; they are not independently reproduced by a failing test in this verification and do not by themselves drive the verdict.
 
 ### Human Verification Required
 
-None. All ten `human_needed` items from the previous report were exercised live in the packaged app and passed (`58-UAT.md`: 10 passed, 0 issues, updated 2026-11-03T19:14:48Z). The UAT also directly exercised the new rail Delete/Insert/drag behavior (G-02..G-05) and re-tested G-01 after the contraction fix.
+None required for this round's verdict: the four failures are deterministic resolver probes that reproduce without a running app. After gap closure, live UAT is required for the user-visible rows — spaced-rail Insert, a cross-clip source-key ghost after an unowned-key drag, a whole-cycle group drag on a canonical rail, and +Key/paint on an overridden Playscript/Reveal rail — because those surfaces are presentation-dependent.
 
 ### Gaps Summary
 
-No must-have gaps. The phase goal is achieved in the current codebase:
+Four must-have failures block phase completion, all on the current tree:
 
-- A normal Key Rail exposes the Edit Rail action and converts to a provenance-free Standard cycle with a reduced Cycle/Infinity modal, zero-write cancel, and one-command undo/redo.
-- A single key on a Motion/Static/Reveal rail can be dragged to choose its spacing, including band retiming at both ends; two-or-more-loop ownership still rejects with the locked rigid-group copy and never silently moves.
-- The six post-report UAT fixes are additive, regression-pinned, and user-approved. The only deviations are the three user-approved truth supersessions and the transient types addition, none of which relaxes linked-cycle ownership or changes `.mce` persisted schema.
+1. **RAIL-06 / truth 54 — cross-clip ghost erasure.** An accepted `move-key` of an unowned key can ripple another clip's source keys outside every visible range. `nextLoopClips` stays null, and `resolveGhostSourceKeyIds` paints the real key as an empty cell, removing it from ordinary key rails. The guard added by `02de1ecc5` checks only the moved key's own referencing clip and only when there is exactly one.
+2. **RAIL-06 / truth 55 — whole-cycle group drag band staleness.** `buildMoveGroupCandidate` follows the new placement without retiming the lifecycle band (`phaseOrigin`/`originalEndExclusive`/`visibleRanges` stay), so a moved source key beyond the old end is hidden. The group branch has no ghost guard.
+3. **Truth 53 — spaced-rail Insert (UAT G-03).** The rail insert plan compares a source-key count with a cycle span; a spaced rail at frames 10/12/14 rejects `insert-slot @ 0` with `loop-source-key-insert-rejected` while an interior insert and a contiguous rail succeed. One spaced rail to the right makes a global Insert at frame 0 fail.
+4. **Truth 56 — post-phase append (CR-05, `bcbdecb71`).** The new post-end +Key/paint append accepts overridden Playscript (`scriptId`) and Reveal (`railKind: 'reveal'`) rails, rewriting `originalEndExclusive`/`visibleRanges` and splicing the new key into `sourceKeyIds`, while the dissolve law it preempts correctly rejects those rail kinds.
+
+The conversion path (RAIL-01..RAIL-05), undo/redo, cancel fencing, inspector surfaces, and the existing order guards remain verified. The G-02 delete-contraction retirement is a later user-approved law change (`1bfbf2672`, 2026-11-04), not a phase failure.
 
 ---
 
-_Verified: 2026-11-03T20:20:01Z_
+_Verified: 2026-11-05T11:31:32Z_
 _Verifier: Claude (gsd-verifier)_
