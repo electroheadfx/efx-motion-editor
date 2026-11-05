@@ -5,15 +5,15 @@ titles: json
 findings:
   - id: CR-01
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Rail insert plan compares a source-key COUNT with a cycle SPAN, rejecting every insert at or left of a spaced rail"
   - id: CR-04
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Ghost-source guard only inspects the moved key's referencing clip; cross-clip ripples still erase source keys"
   - id: CR-05
     severity: critical
-    disposition: open
+    disposition: fixed
     title: "Append bypasses the Standard/reveal/script discriminator and mutates Playscript and Reveal rails"
   - id: WR-01
     severity: warning
@@ -83,7 +83,7 @@ findings:
     severity: critical
     disposition: fixed
     title: "Law A single-loop move can invalidate the loop's source order"
-open: 18
+open: 15
 total: 20
 recorded: 2026-11-05T11:19:33.206Z
 ---
@@ -92,9 +92,9 @@ recorded: 2026-11-05T11:19:33.206Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
-| CR-04 | critical | open | - |
-| CR-05 | critical | open | - |
+| CR-01 | critical | fixed | 98f0b14dc |
+| CR-04 | critical | fixed | 98f0b14dc |
+| CR-05 | critical | fixed | 98f0b14dc |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | WR-03 | warning | open | - |
