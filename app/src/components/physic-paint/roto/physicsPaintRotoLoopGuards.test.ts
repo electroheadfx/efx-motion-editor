@@ -618,6 +618,42 @@ describe('D-11 rigid linked-key guard', () => {
     ]);
   });
 
+  it('retimes an overridden non-canonical rail during authorized Force Spacing — D-14', () => {
+    const overriddenRail: PhysicPaintRotoLoopClip = {
+      loopId: 'L-over',
+      placementStart: 1,
+      sourceKeyIds: ['K1', 'K3', 'K5'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 4 }],
+    };
+    const proposal = expectOk(resolveEdit({
+      records: [record('K1', 1, 'K1'), record('K3', 3, 'K3'), record('K5', 5, 'K5')],
+      intent: {
+        kind: 'force-spacing',
+        emptyFrames: 2,
+        selectedKeyId: null,
+        scopeKeyIds: ['K1', 'K3', 'K5'],
+        linkedSourceSpacingScopes: [linkedSpacingScope(['K1', 'K3', 'K5'], ['K1', 'K3', 'K5'])],
+      },
+      loopClips: [overriddenRail],
+    }));
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ K1: 1, K3: 4, K5: 7 });
+    const retimed = proposal.nextLoopClips?.find((clip) => clip.loopId === 'L-over');
+    expect(retimed).toMatchObject({
+      placementStart: 1,
+      phaseOrigin: 1,
+      originalEndExclusive: 8,
+      visibleRanges: [{ start: 1, endExclusive: 8 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 4 }],
+    });
+  });
+
   it('expands an earlier Progressive capsule and ripples a downstream Static/Hold capsule with its placement', () => {
     const records = [
       record('A', 0, 'A'),

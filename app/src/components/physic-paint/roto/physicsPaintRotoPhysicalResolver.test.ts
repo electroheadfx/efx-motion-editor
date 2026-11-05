@@ -7655,6 +7655,45 @@ describe('resolvePhysicPaintRotoPhysicalEdit — spacing-on-set (per-rail anchor
     expect(retimed!.visibleRanges).toEqual([{ start: 20, endExclusive: 60 }]);
   });
 
+  it('retimes an overridden non-canonical rail during set spacing (D-24)', () => {
+    const overriddenRail: PhysicPaintRotoLoopClip = {
+      loopId: 'loop-over',
+      placementStart: 1,
+      sourceKeyIds: ['K1', 'K3', 'K5'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 4 }],
+    };
+    const resolution = resolveSpacingOnSet({
+      identities: [
+        { keyId: 'K1', appFrame: 1 },
+        { keyId: 'K3', appFrame: 3 },
+        { keyId: 'K5', appFrame: 5 },
+      ],
+      members: [{ kind: 'loop', loopId: 'loop-over' }],
+      emptyFrames: 2,
+      loopClips: [overriddenRail],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Overridden-rail spacing must resolve');
+    const { proposal } = resolution;
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ K1: 1, K3: 4, K5: 7 });
+    const retimed = proposal.nextLoopClips!.find((clip) => clip.loopId === 'loop-over');
+    expect(retimed).toMatchObject({
+      placementStart: 1,
+      phaseOrigin: 1,
+      originalEndExclusive: 8,
+      visibleRanges: [{ start: 1, endExclusive: 8 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 4 }],
+    });
+  });
+
   it('rejects atomically when a computed destination collides with an unselected key frame', () => {
     // c0@4 is unselected; A's a2 lands at 4. The break on c0 (c0 starts a new
     // segment) keeps c0 out of Rail A's derived segment.

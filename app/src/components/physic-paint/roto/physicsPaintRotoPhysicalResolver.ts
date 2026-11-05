@@ -1072,6 +1072,7 @@ function computeSourceAttachedLoopPlacementFollow(
   mapping: ReadonlyMap<string, number>,
   eligible: (clip: PhysicPaintRotoLoopClip) => boolean,
   retimeFiniteLifecycle = false,
+  retimeNonCanonical = false,
 ): readonly PhysicPaintRotoLoopClip[] | null {
   if (loopClips.length === 0) return null;
   let changed = false;
@@ -1090,10 +1091,11 @@ function computeSourceAttachedLoopPlacementFollow(
 
     // Only a canonical lifecycle rail owns a rebuildable single fragment; a
     // non-canonical rail keeps its stored band and is protected by the ghost
-    // guard instead of having its fragments collapsed. The inline field checks
-    // keep the narrowing the arithmetic below needs.
+    // guard instead of having its fragments collapsed. Authorized spacing
+    // (D-14 / D-24) retimes every finite rail, as it did before phase 58. The
+    // inline field checks keep the narrowing the arithmetic below needs.
     const hasFiniteLifecycle = retimeFiniteLifecycle
-      && isCanonicalLifecycleRailClip(clip)
+      && (retimeNonCanonical || isCanonicalLifecycleRailClip(clip))
       && typeof clip.repeat === 'number'
       && clip.phaseOrigin !== undefined
       && clip.originalEndExclusive !== undefined
@@ -3792,6 +3794,7 @@ function buildLinkedForceSpacingCandidate(
         mapping,
         () => true,
         true,
+        true,
       ),
     },
   };
@@ -6127,6 +6130,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         loopClips,
         mapping,
         () => true,
+        true,
         true,
       ),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
