@@ -2796,6 +2796,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
+      // 261105-cgl: a Group drag translates its painted phase overrides, so the
+      // backing override records must translate with them.
+      ...(input.getRotoGroupOverrideRecords
+        ? { groupOverrideRecords: input.getRotoGroupOverrideRecords() }
+        : {}),
       // GDRAG-07 / Pitfall 1: the incoming break collection reaches BOTH the
       // resolver input and the break-aware revision fingerprint below.
       incomingInterpolationBreakKeyIds,
@@ -3111,6 +3116,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
+      // 261105-cgl: pushing or moving a Group translates its painted phase
+      // overrides, so the backing override records must translate with them.
+      ...(input.getRotoGroupOverrideRecords
+        ? { groupOverrideRecords: input.getRotoGroupOverrideRecords() }
+        : {}),
       // Pitfall 3: the incoming break collection reaches BOTH the resolver input
       // and the break-aware proposal fingerprint below.
       incomingInterpolationBreakKeyIds,
@@ -3270,6 +3280,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       capacity,
       interpolationEnabled: interpolation.enabled,
       loopClips,
+      // 261105-cgl: pushing or moving a Group translates its painted phase
+      // overrides, so the backing override records must translate with them.
+      ...(input.getRotoGroupOverrideRecords
+        ? { groupOverrideRecords: input.getRotoGroupOverrideRecords() }
+        : {}),
       // Pitfall 3: the incoming break collection reaches BOTH the resolver input
       // and the break-aware proposal fingerprint below.
       incomingInterpolationBreakKeyIds,

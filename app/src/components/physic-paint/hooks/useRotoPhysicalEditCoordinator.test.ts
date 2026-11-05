@@ -729,6 +729,7 @@ function harness(options: {
       capacity: 30,
       interpolationEnabled: interpolation.enabled,
       loopClips,
+      groupOverrideRecords,
       incomingInterpolationBreakKeyIds,
     });
     if (!resolution.ok) throw new Error(resolution.failure.text);
@@ -3185,6 +3186,7 @@ describe('Phase 43.3 move-group override publication', () => {
       capacity: before.capacity,
       interpolationEnabled: before.interpolation.enabled,
       loopClips: [before.loopClips[0]],
+      groupOverrideRecords: before.groupOverrideRecords,
       incomingInterpolationBreakKeyIds: before.incomingInterpolationBreakKeyIds,
     });
     if (!isolatedResolution.ok) throw new Error(isolatedResolution.failure.text);

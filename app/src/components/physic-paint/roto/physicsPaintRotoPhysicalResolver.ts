@@ -2419,6 +2419,60 @@ function buildMoveGroupNextLoopClips(
   return changed ? (Object.freeze(next) as readonly PhysicPaintRotoLoopClip[]) : null;
 }
 
+/**
+ * 261105-cgl UAT fix: translating a Group placement shifts its painted phase
+ * overrides (`clip.frameOverrides`) by the same delta, so the real-key records
+ * that BACK those overrides must shift in lockstep. Without this the target
+ * document fails validation with "Group ... override reference mismatch" after
+ * every push / Group drag of a Group that carries painted phases.
+ *
+ * `translatedClips` are the PRE-translation clips that actually moved (callers
+ * collect them from the `buildMoveGroupNextLoopClips` result). Returns null
+ * when there is nothing to shift; fails closed when an override's backing
+ * record is missing or already out of sync, before validation would throw.
+ */
+function buildShiftedGroupOverrideRecords(
+  allLoopClips: readonly PhysicPaintRotoLoopClip[],
+  translatedClips: readonly PhysicPaintRotoLoopClip[],
+  delta: number,
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | undefined,
+): { readonly ok: true; readonly records: readonly PhysicPaintRotoRealKeyRecord[] | null } | { readonly ok: false } {
+  if (delta === 0) return { ok: true, records: null };
+  const shifts: { readonly keyId: string; readonly fromAppFrame: number; readonly toAppFrame: number }[] = [];
+  for (const clip of translatedClips) {
+    for (const override of clip.frameOverrides ?? []) {
+      shifts.push({
+        keyId: override.keyId,
+        fromAppFrame: override.appFrame,
+        toAppFrame: override.appFrame + delta,
+      });
+    }
+  }
+  if (shifts.length === 0) return { ok: true, records: null };
+  if (groupOverrideRecords === undefined) return { ok: false };
+  // A record referenced by a clip that is NOT translating cannot move: the
+  // fixed clip's reference would keep pointing at its old frame.
+  const translatedLoopIds = new Set(translatedClips.map((clip) => clip.loopId));
+  const referencedOutside = new Set<string>();
+  for (const clip of allLoopClips) {
+    if (translatedLoopIds.has(clip.loopId)) continue;
+    for (const override of clip.frameOverrides ?? []) referencedOutside.add(override.keyId);
+  }
+  const recordByKeyId = new Map(groupOverrideRecords.map((record) => [record.keyId, record] as const));
+  const nextById = new Map(groupOverrideRecords.map((record) => [record.keyId, record] as const));
+  for (const shift of shifts) {
+    if (referencedOutside.has(shift.keyId)) return { ok: false };
+    const record = recordByKeyId.get(shift.keyId);
+    if (!record || record.appFrame !== shift.fromAppFrame) return { ok: false };
+    nextById.set(shift.keyId, Object.freeze({
+      ...record,
+      appFrame: shift.toAppFrame,
+      payload: clonePayloadAtFrame(record.payload, shift.toAppFrame),
+    }) as PhysicPaintRotoRealKeyRecord);
+  }
+  return { ok: true, records: Object.freeze([...nextById.values()]) };
+}
+
 function buildMoveGroupClipCandidate(
   identities: ValidatedIdentities,
   clip: PhysicPaintRotoLoopClip,
@@ -2426,6 +2480,7 @@ function buildMoveGroupClipCandidate(
   capacity: number,
   loopClips: readonly PhysicPaintRotoLoopClip[],
   acceptedEffectiveEnd: number,
+  groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] | undefined,
 ): MoveBuilderResult {
   const movedKeyIds = clip.sourceKeyIds;
   const movedSet = new Set(movedKeyIds);
@@ -2471,6 +2526,20 @@ function buildMoveGroupClipCandidate(
     if (destination !== identities.framesByKeyId.get(keyId)) roleByKeyId.set(keyId, 'moved');
   }
 
+  const nextLoopClips = buildMoveGroupNextLoopClips(loopClips, clip, delta, acceptedEffectiveEnd);
+  const shiftedOverrideRecords = buildShiftedGroupOverrideRecords(
+    loopClips,
+    nextLoopClips === null ? [] : [clip],
+    delta,
+    groupOverrideRecords,
+  );
+  if (!shiftedOverrideRecords.ok) {
+    return {
+      ok: false,
+      resolution: fail('malformed-loop-clips', 'move-group', 'The Group phase overrides cannot be retimed safely.'),
+    };
+  }
+
   return {
     ok: true,
     candidate: {
@@ -2483,7 +2552,8 @@ function buildMoveGroupClipCandidate(
       changed: computeChanged(identities, mapping),
       roleByKeyId,
       drag: null,
-      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta, acceptedEffectiveEnd),
+      nextLoopClips,
+      ...(shiftedOverrideRecords.records === null ? {} : { nextGroupOverrideRecords: shiftedOverrideRecords.records }),
     },
   };
 }
@@ -5698,6 +5768,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // once.
     let nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
     let clipPlacementChanged = false;
+    const translatedClips: PhysicPaintRotoLoopClip[] = [];
     const movedClips = loopClips.filter((clip) => (
       setResult.members.some((member) => member.kind === 'loop' && member.loopId === clip.loopId)
     ));
@@ -5708,12 +5779,22 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         if (next !== null) {
           current = next;
           clipPlacementChanged = true;
+          translatedClips.push(clip);
         }
       }
       // A zero-delta (no-change) move publishes NO clip translation: keep the
       // collection null so the prepare layer's changed === false maps to the
       // no-publish result. Only a real placement delta commits one.
       if (clipPlacementChanged) nextLoopClips = current;
+    }
+    const shiftedOverrideRecords = buildShiftedGroupOverrideRecords(
+      loopClips,
+      translatedClips,
+      signedDelta,
+      input.groupOverrideRecords,
+    );
+    if (!shiftedOverrideRecords.ok) {
+      return fail('malformed-loop-clips', operationKind, 'The Group phase overrides cannot be retimed safely.');
     }
 
     // Pitfall 5: changed must account for clip placement deltas, not only the
@@ -5745,6 +5826,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       roleByKeyId,
       drag: null,
       ...(nextLoopClips !== null ? { nextLoopClips } : {}),
+      ...(shiftedOverrideRecords.records === null ? {} : { nextGroupOverrideRecords: shiftedOverrideRecords.records }),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
@@ -6051,6 +6133,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         input.capacity,
         loopClips,
         resolvedEffectiveEnd,
+        input.groupOverrideRecords,
       );
       if (!moveResult.ok) return moveResult.resolution;
       // Task 3: emit the complete next incoming-break collection through the
@@ -6083,6 +6166,16 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // D-13). No materialization, no source duplication, repeat/mode unchanged.
     const delta = destination - clip.placementStart;
     const mapping = new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame] as const));
+    const nextLoopClips = buildMoveGroupNextLoopClips(loopClips, clip, delta, resolvedEffectiveEnd);
+    const shiftedOverrideRecords = buildShiftedGroupOverrideRecords(
+      loopClips,
+      nextLoopClips === null ? [] : [clip],
+      delta,
+      input.groupOverrideRecords,
+    );
+    if (!shiftedOverrideRecords.ok) {
+      return fail('malformed-loop-clips', operationKind, 'The Group phase overrides cannot be retimed safely.');
+    }
     const candidate = {
       mapping,
       expectedKeyIds: identities.keyIds,
@@ -6098,7 +6191,8 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       changed: destination !== clip.placementStart,
       roleByKeyId: new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>(),
       drag: null,
-      nextLoopClips: buildMoveGroupNextLoopClips(loopClips, clip, delta, resolvedEffectiveEnd),
+      nextLoopClips,
+      ...(shiftedOverrideRecords.records === null ? {} : { nextGroupOverrideRecords: shiftedOverrideRecords.records }),
       // Task 3: a placement-only move vacates no interval and moves no keys, so
       // the incoming breaks echo byte-identical (D-11); the helper still runs
       // with attached:false so the vacated-successor rule stays inert and the
@@ -6255,6 +6349,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     // once.
     let nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null = null;
     let clipPlacementChanged = false;
+    const translatedClips: PhysicPaintRotoLoopClip[] = [];
     const movedClips = movedRails
       .filter((rail): rail is PushRail & { kind: 'group'; clip: PhysicPaintRotoLoopClip } => (
         rail.kind === 'group' && rail.clip !== undefined
@@ -6267,12 +6362,22 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         if (next !== null) {
           current = next;
           clipPlacementChanged = true;
+          translatedClips.push(clip);
         }
       }
       // A zero-delta (no-change) push publishes NO clip translation: keep the
       // collection null so the prepare layer's changed === false maps to the
       // no-publish result (Task 3). Only a real placement delta commits one.
       if (clipPlacementChanged) nextLoopClips = current;
+    }
+    const shiftedOverrideRecords = buildShiftedGroupOverrideRecords(
+      loopClips,
+      translatedClips,
+      signedDelta,
+      input.groupOverrideRecords,
+    );
+    if (!shiftedOverrideRecords.ok) {
+      return fail('malformed-loop-clips', operationKind, 'The Group phase overrides cannot be retimed safely.');
     }
 
     // Pitfall 5: changed must account for clip placement deltas, not only the
@@ -6299,6 +6404,7 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       roleByKeyId,
       drag: null,
       ...(nextLoopClips !== null ? { nextLoopClips } : {}),
+      ...(shiftedOverrideRecords.records === null ? {} : { nextGroupOverrideRecords: shiftedOverrideRecords.records }),
       nextIncomingInterpolationBreakKeyIds: Object.freeze(nextBreaks),
     };
     const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);

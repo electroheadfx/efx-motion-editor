@@ -55,6 +55,27 @@ import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 const TEST_TRACK_ID = 'track-1';
 
 /**
+ * 261105-cgl: the real-key records that BACK a Group's painted phase
+ * overrides. Group translations must carry them in lockstep with the clip.
+ */
+function groupOverrideRecordsFromClips(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): PhysicPaintRotoRealKeyRecord[] {
+  return loopClips.flatMap((clip) => (clip.frameOverrides ?? []).map((override) => ({
+    kind: 'real-key' as const,
+    keyId: override.keyId,
+    appFrame: override.appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame: override.appFrame,
+      bytes: testWebpBytes('AAAA'),
+      width: 2,
+      height: 2,
+    },
+  }) as PhysicPaintRotoRealKeyRecord));
+}
+
+/**
  * Group-operation regression anchors. Group Drag uses the current rigid
  * physical-translation contract; group Delete and Force Spacing retain their
  * approved Phase 37 mappings over the shared A@1, B@3, C@5, D@10 baseline.
@@ -1256,6 +1277,7 @@ describe('incoming interpolation break lifecycle', () => {
     capacity: 16,
     interpolationEnabled: true,
     loopClips,
+    groupOverrideRecords: groupOverrideRecordsFromClips(loopClips),
     ...extra,
   });
 
@@ -1713,6 +1735,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       capacity: 16,
       interpolationEnabled: false,
       loopClips,
+      groupOverrideRecords: groupOverrideRecordsFromClips(loopClips),
     });
 
     expect(resolution.ok).toBe(true);
@@ -1822,6 +1845,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group (source-attached fre
       capacity: 16,
       interpolationEnabled: false,
       loopClips,
+      groupOverrideRecords: groupOverrideRecordsFromClips(loopClips),
     });
 
     expect(resolution.ok).toBe(true);
@@ -2388,6 +2412,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — move-group clamp matrix (D-05, 
       capacity: 50,
       interpolationEnabled: false,
       loopClips,
+      groupOverrideRecords: groupOverrideRecordsFromClips(loopClips),
     });
     expect(resolution.ok).toBe(true);
     if (!resolution.ok || !preview.ok) throw new Error('Infinity next-Group move must resolve');
@@ -6008,6 +6033,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     extra: {
       readonly incomingInterpolationBreakKeyIds?: readonly string[];
       readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+      readonly groupOverrideRecords?: readonly PhysicPaintRotoRealKeyRecord[];
       readonly capacity?: number;
     } = {},
   ): PhysicPaintRotoPhysicalEditResolution => resolvePhysicPaintRotoPhysicalEdit({
@@ -6020,6 +6046,7 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
       ? { incomingInterpolationBreakKeyIds: extra.incomingInterpolationBreakKeyIds }
       : {}),
     ...(extra.loopClips !== undefined ? { loopClips: extra.loopClips } : {}),
+    ...(extra.groupOverrideRecords !== undefined ? { groupOverrideRecords: extra.groupOverrideRecords } : {}),
   });
 
   it('Push Right from the first key of Key Rail B translates B to 25-34 and keeps Key Rail A byte-position fixed', () => {
@@ -6487,6 +6514,65 @@ describe('resolvePhysicPaintRotoPhysicalEdit — push-rails (directional suffix 
     expect(proposal.status.code).toBe('ok-no-change');
     expect(proposal.nextLoopClips).toBeNull();
     expect(proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
+  });
+
+  it('261105-cgl: pushing a Group with painted phases shifts its override records with the clip', () => {
+    // UAT regression: the clip's frameOverrides translated but the real-key
+    // records backing them did not, so the physical target document failed
+    // validation with "Group ... override reference mismatch" after every push.
+    const loopClips = [{
+      loopId: 'loop-G', placementStart: 20, sourceKeyIds: ['g0', 'g1'], repeat: 4,
+      mode: 'static', syncState: 'synchronized', provenanceState: 'attached',
+      phaseOrigin: 20, originalEndExclusive: 28,
+      visibleRanges: [{ start: 20, endExclusive: 28 }],
+      frameOverrides: [{ appFrame: 22, keyId: 'OV1' }],
+    }] as const;
+    const overrideRecord = {
+      kind: 'real-key' as const,
+      keyId: 'OV1',
+      appFrame: 22,
+      payload: { frameIndex: 0, appFrame: 22, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
+    };
+    const resolution = resolvePush(
+      [{ keyId: 'g0', appFrame: 20 }, { keyId: 'g1', appFrame: 21 }],
+      'right',
+      { anchorLoopId: 'loop-G' },
+      2,
+      { loopClips, groupOverrideRecords: [overrideRecord], capacity: 40 },
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Overridden Group push must resolve ok');
+    expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+      frameOverrides: [{ appFrame: 24, keyId: 'OV1' }],
+      phaseOrigin: 22,
+      placementStart: 22,
+    });
+    expect(resolution.proposal.nextGroupOverrideRecords).toEqual([
+      expect.objectContaining({ keyId: 'OV1', appFrame: 24 }),
+    ]);
+    expect(resolution.proposal.nextGroupOverrideRecords?.[0]?.payload.appFrame).toBe(24);
+  });
+
+  it('261105-cgl: an overridden Group push without override authority fails closed before validation', () => {
+    const loopClips = [{
+      loopId: 'loop-G', placementStart: 20, sourceKeyIds: ['g0', 'g1'], repeat: 4,
+      mode: 'static', syncState: 'synchronized', provenanceState: 'attached',
+      phaseOrigin: 20, originalEndExclusive: 28,
+      visibleRanges: [{ start: 20, endExclusive: 28 }],
+      frameOverrides: [{ appFrame: 22, keyId: 'OV1' }],
+    }] as const;
+    const resolution = resolvePush(
+      [{ keyId: 'g0', appFrame: 20 }, { keyId: 'g1', appFrame: 21 }],
+      'right',
+      { anchorLoopId: 'loop-G' },
+      2,
+      { loopClips, capacity: 40 },
+    );
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Override push without authority must reject');
+    expect(resolution.failure.code).toBe('malformed-loop-clips');
   });
 });
 

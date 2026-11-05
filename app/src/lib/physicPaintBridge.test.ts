@@ -2090,6 +2090,7 @@ describe('physicPaintBridge', async () => {
       capacity: 50,
       interpolationEnabled: false,
       loopClips,
+      groupOverrideRecords,
       incomingInterpolationBreakKeyIds: [],
     });
     if (!resolution.ok) {
