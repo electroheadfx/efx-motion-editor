@@ -14,62 +14,21 @@
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
-- ✅ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (shipped 2026-11-05; tag `v2.0.1` → `49b5f7e57`)
+- ✅ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (shipped 2026-11-05)
 
 ## Phases
 
-### Phase 58: Rail editing regressions
+<details>
+<summary>✅ v2.0.1 Rail Editing & v7 Timeline Rails (PATCH) — SHIPPED 2026-11-05</summary>
 
-**Goal**: A normal Key Rail becomes a Standard cycle through the existing Edit Rail flow, and a single key on a Motion/Static/Reveal rail can be dragged to choose its spacing — without silently relaxing linked-cycle ownership.
-**Depends on**: Nothing (first phase of v2.0.1)
-**Requirements**: RAIL-01, RAIL-02, RAIL-03, RAIL-04, RAIL-05, RAIL-06, RAIL-07
-**Success Criteria** (what must be TRUE):
-  1. Selecting (or double-clicking) a normal Key Rail exposes the sidebar's Edit Rail action; the modal shows only the cycle count and the Infinity checkbox, prefilled at 1.
-  2. Confirming converts the Key Rail segment into a provenance-free Standard loop clip (`sourceKeyIds` = the segment's keys in frame order, `placementStart` = the first key, no `scriptId`/`railKind`/`motion`); the rail presents as a Standard cycle via the existing `.rail-kind-standard` gray pill, and the existing Edit Rail dialog owns Repeat/Infinity afterwards. (Per D-10, per-frame cells, cycle grays, and the rail colour dot belong to the v7 quick, not Phase 58.)
-  3. Cancel performs zero writes; the conversion is exactly one undo step (Undo restores the Key Rail, Redo re-applies it).
-  4. A single-key drag moves the key on Motion/Static/Reveal rails under Law A (chosen at discuss-phase, D-12: exactly one referencing loop = independent cycle; shared linked cycles keep D-11 and the locked rigid-group copy). A key referenced by more than one loop never moves silently.
-  5. No `.mce` schema field is added or changed; resolver, undo and existing D-11 guard tests are green (or deliberately updated to the chosen law).
+One phase (58, 10/10 plans) plus the in-milestone v7 timeline-rails quick. 15/15 requirements (RAIL-01..07, VIS-01..08), audit verdict `tech_debt` with 0 gaps, integration 14/14 and flows 7/7. No `.mce` schema, document, store, or persistence change. Tag `v2.0.1` → `49b5f7e57`, signed/notarized GitHub Latest.
 
-**Discuss-phase gate**: choose the drag law A / B / C before planning — A preferred (independent single-reference cycle); B = unlink + whole-cycle Force Spacing; C = propagate the retime to every linked loop.
+- [x] Phase 58: Rail editing regressions (10/10 plans) — completed 2026-11-05
+- [x] v7 timeline rails (in-milestone quick 261104-bop) — completed 2026-11-04
 
-**Code anchors**: `roto/physicsPaintRotoPhysicalResolver.ts` (~4463-4467, the D-11 `countLoopsReferencingSourceKey` guard and `buildMoveCandidate`); `view/PhysicsPaintScriptsPanel.tsx` + `PhysicsPaintStudio.tsx` `handleOpenRotoLoopEdit` + `physicsPaintRotoPlayScriptController.ts` `openLoopEdit` (today loop-clip only); `roto/physicsPaintRotoRunScriptStacking.ts` `isStandardMergedLoopClip` / `buildStandardStackedLoopClip` (provenance-free Standard shape); `view/PhysicsPaintWorkflowStrip.tsx` (Create rail / key-rail segment).
+See `milestones/v2.0.1-ROADMAP.md` for full phase details.
 
-**Plans:** 10/10 plans complete (8 executed, 2 planned gap closure)
-**Wave 1**
-- [x] 58-01-PLAN.md — Law A: relax the single-key move guard to exactly one referencing loop
-- [x] 58-02-PLAN.md — Key Rail segment to Standard cycle conversion (record shape, gaps, publication, undo)
-- [x] 58-03-PLAN.md — Selected Key Rail inspector, Edit Rail action, double-click/Enter entry surfaces
-
-**Wave 2** *(blocked on Wave 1 completion)*
-- [x] 58-04-PLAN.md — Reduced conversion dialog (Cycle + Infinity only, Create Cycle / Update Rail)
-- [x] 58-05-PLAN.md — Studio wiring: stable inspector projection, Edit Rail/double-click handlers, right-panel memo
-
-**Gap closure** *(CR-01, CR-02, WR-01, WR-02 executed; G-01 live UAT + CR-03 review planned)*
-- [x] 58-06-PLAN.md — In-flight cancel generation contract + busy-phase cancel preserves the target (CR-01, WR-01)
-- [x] 58-07-PLAN.md — Single-reference source-order guard for Law A moves (CR-02)
-- [x] 58-08-PLAN.md — Shared Enter/primary confirm gate for the reduced form (WR-02)
-
-**Gap closure wave 1**
-- [x] 58-09-PLAN.md — Source-extent reconcile and override ownership across delete, derivation, repeat, and routing (G-01)
-
-**Gap closure wave 2** *(blocked on 58-09; same resolver and specs)*
-- [x] 58-10-PLAN.md — Final-mapping source-order guard for partial-cycle group moves (CR-03)
-
-### v7 timeline rails (in-milestone quick)
-
-**Goal**: Apply the approved v7 rail interface to the real Studio timeline without motion channels.
-**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, VIS-08
-**Build prompt**: `SPECS/v2.0.1-timeline-rails/GSD-QUICK-PROMPT.md` (locked README + `TIMELINE-RAILS.tsx` + `timeline-rails.css`; all 8 README §7 defaults).
-**Delivery**: `/gsd-quick` inside v2.0.1 — never a standalone quick. Motion channels stay in v2.1.0.
-**Plans**: complete — quick 261104-bop (UAT approved 2026-11-04)
-
-### Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 58. Rail editing regressions | 10/10 | Complete    | 2026-11-05 |
-| v7 timeline rails (in-milestone quick) | quick 261104-bop | Complete | 2026-11-04 |
-| Release v2.0.1 | — | Published Latest | 2026-11-05 |
+</details>
 
 <details>
 <summary>✅ v2.0.0 Multi-Module Paint Workstation (MAJOR) — SHIPPED 2026-11-02</summary>
@@ -124,4 +83,4 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 ## Next Milestone
 
-**v2.0.1 is shipped** — GitHub Latest on 2026-11-05, tag `v2.0.1` → `49b5f7e57`, signed/notarized DMG with downloaded-artifact verification PASS. The next milestone is not yet opened; the deferred Studio timeline zoom work is planned for v2.1.0 (Phase 59 candidate, not yet inserted). Global phase numbering continues at Phase 59; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.
+**v2.0.1 is shipped** — GitHub Latest on 2026-11-05, tag `v2.0.1` → `49b5f7e57`, signed/notarized DMG with downloaded-artifact verification PASS. The next milestone is not yet opened. **v2.1.0 (Motion channels)** is the planned shape per `SPECS/v2.1.0-motion-channels/` — Position/Rotation/Opacity lanes, curves, nav cluster, and the selected-rail rounded outline on top of the v7 rail surface shipped here; it is a Phase 59 candidate, not yet inserted. Global phase numbering continues at Phase 59; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.

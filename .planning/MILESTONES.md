@@ -1,5 +1,32 @@
 # Milestones
 
+## v2.0.1 Rail Editing & v7 Timeline Rails (Shipped: 2026-11-05)
+
+**Phases completed:** 1 phase (58), 10 plans, 21 tasks — plus 5 in-milestone quicks (261104-l0i, 261104-bop, 261105-p9i, 261105-raf, 261105-sk3)
+
+**Closeout type:** override_closeout
+**Known verification overrides:** 1 newly acknowledged (quick 261105-p9i — code landed in `8bf0ab4ed`/`715c9c155` and audit-verified; its live native UAT rows are unconfirmed); 129 carried forward from prior closes (see STATE.md Deferred Items). Phase 58's `VERIFICATION.md` reported `passed` 57/57 at 2026-11-05T12:14:30Z; the projection marks it stale only because the post-verification quicks changed covered source afterwards, and the 20:03Z milestone audit re-verified each of them with targeted suites plus UAT.
+**Git range:** `v2.0.0` → `49b5f7e57` (248 commits, 36 feat), 2026-11-03 → 2026-11-05 (3 days)
+**Requirements:** 15/15 checked (RAIL-01..07, VIS-01..08) — 14 satisfied as written, 1 accepted supersession (VIS-02 rows ship at 31px after the UAT spacing round, not the spec's 30px)
+**Diff:** 276 files, +28,147 / −2,112
+**Archives:** `milestones/v2.0.1-ROADMAP.md`, `milestones/v2.0.1-REQUIREMENTS.md`, `milestones/v2.0.1-MILESTONE-AUDIT.md`
+**Phases:** `milestones/v2.0.1-phases/` (Phase 58)
+
+**Delivered:** A rail-editing patch on the shipped 2.0.0 watercolor workstation, with no `.mce` schema, document, store, or persistence change. A normal Key Rail now converts into a Standard cycle through the existing Edit Rail flow; a single key on a Motion/Static/Reveal rail drags alone under Law A when exactly one loop references it; + Key or paint on an empty frame after any rail dissolves that rail into one contiguous segment, gated behind a one-shot Convert/New-rail prompt for scripted rails. The real Studio timeline adopted the approved v7 rail interface — four rail types with dim/bright palettes, 16×22 cells on the 18px pitch, rounded rail pill, cycle-parity grays with a rail-colour dot, dark surfaces, blue playhead, header accent and an inert motion slot, and no orange anywhere. Published as a signed/notarized GitHub **Latest** release on 2026-11-05.
+
+**Key accomplishments:**
+
+1. Key Rail → Standard cycle through Edit Rail: selection, double-click within 220 ms, or Enter opens a reduced dialog (Cycle stepper + Infinity only) that converts the segment into one provenance-free Standard loop clip in exactly one undo step; cancel performs zero writes and a busy-phase cancel preserves the frozen target so Create Cycle retries
+2. Law A single-key drag: a key owned by exactly one loop clip drags alone, while two or more keep the verbatim rigid-group rejection; every touched clip's final source frames must stay strictly increasing, so destructive order-breaking moves are rejected with the locked D-16 copy
+3. Rail extent ownership: a finite lifecycle rail renders, classifies and deletes only inside its surviving source cycle — one accepted write persists the canonical extent, orphaned paint sheets are pruned, and no delete path can remove a key backing a Group frame
+4. + Key/paint dissolve: a key or paint landing on an empty frame after a rail joins the rail's last source key instead of detaching — Standard immediately, scripted Motion/Static/Reveal behind the one-shot "Edit this rail?" surface (Convert to Standard / New rail), one undo restores the rail with its script intact
+5. v7 timeline rails shipped on the real Studio timeline: four rail types (Standard green, Motion orange, Static violet, Reveal azure; selected bright, all others dim), the four-state cell matrix, `frames × 18 − 2` rail geometry, dark surfaces, blue `#2868FC` playhead, header accent plus an inert motion slot — with every existing gesture unchanged
+6. Release and audit: signed/notarized GitHub Latest, 15/15 requirements, 14/14 integration links, 7/7 E2E flows, six agent gates green (vitest 7347 passed / 0 failed, typecheck clean, largest chunk 1,620.87 kB, cargo 21/21), 17/17 stop conditions not active, downloaded-artifact verification PASS
+
+**Technical debt carried forward:** VIS-02 geometry token drift (`rowHeight` 30 vs the shipped 31px) · VIS-04 dead `--cycle-border` token and duplicated cycle-parity grays · mixed rail-set header accent plus `handleOpenRotoKeyRailCycleEdit` not clearing `railSetSelection` · the one-shot prompt's pending window while a picker is open · quick 261105-p9i live native UAT unconfirmed · Phase 58 review advisories.
+
+---
+
 ## v2.0.0 Multi-Module Paint Workstation (MAJOR) (Shipped: 2026-11-02)
 
 **Phases completed:** 3 phases, 26 plans, 50 tasks
