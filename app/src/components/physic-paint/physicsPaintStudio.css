@@ -9268,3 +9268,60 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   line-height: 14px;
 }
 
+/* ================= Quick 261105-raf: Edit this rail? prompt =================
+   One-shot floating confirmation for a + Key / paint promotion strictly after a
+   script-generated rail. It reuses the Play Script dialog shell: the root
+   inherits --ps-* tokens, fixed centering, pointer-events:none and no dimming
+   backdrop; only the surface accepts pointer input, so the Studio stays
+   interactive (no focus trap). Compact single-card surface, no scrolling. */
+.physics-paint-rail-conversion-surface {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 420px;
+  max-width: 94%;
+  height: auto;
+  border: 1px solid var(--ps-divider);
+  border-radius: 14px;
+  background: var(--ps-shell);
+  box-shadow: 0 24px 64px oklch(0 0 0 / 0.6), 0 2px 8px oklch(0 0 0 / 0.4);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.physics-paint-rail-conversion-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--ps-divider);
+}
+
+.physics-paint-rail-conversion-header strong {
+  overflow: hidden;
+  color: var(--ps-fg);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.physics-paint-rail-conversion-body {
+  margin: 0;
+  padding: 16px 18px 4px;
+  color: var(--ps-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.physics-paint-rail-conversion-actions {
+  padding: 14px 18px 16px;
+  border-top: 1px solid var(--ps-divider);
+}
+

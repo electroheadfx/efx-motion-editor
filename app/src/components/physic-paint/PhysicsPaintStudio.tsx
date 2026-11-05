@@ -7265,6 +7265,9 @@ export function PhysicsPaintStudio() {
     brushColor: settings.color,
     returnFocusRef: playButtonRef,
   }));
+  // Quick 261105-raf: the hook owns the pending post-rail conversion request and
+  // its deferred answer; the floating dialog only reads/answers that bundle.
+  const railConversionDialog = rotoTimelineActions.railConversionDialog;
   // 261027-klx: the engine-1 canvas-ready seam (history listener, preview-base
   // settle bump, mutation reservation, DEV probes, Brush Move re-entry) left
   // with engine-1. `AquarelleCanvasLayer` publishes the ONE `AquarelleEnginePort`
@@ -10976,6 +10979,7 @@ export function PhysicsPaintStudio() {
     canvas: canvasStack,
     rightPanel,
     playScriptDialog,
+    railConversionDialog,
     referenceDialog,
     scriptPickerDialog,
     strokeSettingsDialog,

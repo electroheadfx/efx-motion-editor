@@ -13,6 +13,7 @@ import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
+import { PhysicsPaintRailConversionDialog } from './PhysicsPaintRailConversionDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
@@ -34,6 +35,7 @@ import { AquarelleBrushCursor } from '../engine/AquarelleCanvasLayer';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
+import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';
 import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
 import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
 
@@ -375,6 +377,9 @@ export interface PhysicsPaintStudioViewProps {
   canvas: PhysicsPaintCanvasStackViewProps;
   rightPanel: ComponentProps<typeof MemoizedPhysicsPaintRightPanel>;
   playScriptDialog: ComponentProps<typeof MemoizedPhysicsPaintPlayScriptDialog>;
+  /** Quick 261105-raf: the one-shot `Edit this rail?` prompt bundle — renders
+   *  only while the hook has a pending post-rail conversion request. */
+  railConversionDialog?: RotoRailConversionDialogBundle | null;
   /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
    *  dialog opened from the strip camera icon (Play Script dialog pattern). */
   referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
@@ -404,7 +409,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, railConversionDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -492,6 +497,12 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         />
 
         {!pickerOpen ? <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} /> : null}
+
+        {/* Quick 261105-raf: the one-shot rail prompt sits beside the Play Script
+            dialog and rides the same gallery-picker step-aside, so a picker
+            never fights it for space; its pending request returns intact when
+            the picker closes. */}
+        {railConversionDialog && !pickerOpen ? <PhysicsPaintRailConversionDialog {...railConversionDialog} /> : null}
 
         {referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
 
