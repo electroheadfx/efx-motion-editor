@@ -136,7 +136,7 @@ interface FakeControllerSeed {
   // 261030-v1t: per-frame paint-seed variation
   paintSeedVariation?: boolean;
   // 261031-i54: Run Script stacking onto an existing Paint rail
-  runDestination?: { kind: 'stack'; clipId: string } | { kind: 'create' } | { kind: 'refuse'; reason: 'ambiguous-rail' };
+  runDestination?: { kind: 'stack'; clipId: string } | { kind: 'standard'; firstKeyId: string; appFrame: number } | { kind: 'create' } | { kind: 'refuse'; reason: 'ambiguous-rail' };
   // 261031-qps (Quick B): the stacked rail's kind — a reveal destination swaps the cards
   stackRailKind?: 'playscript' | 'reveal' | null;
   // 261101-1pc (Quick C2): the stack's four-kind Rail Type (dialog state only)
@@ -2415,6 +2415,54 @@ describe('PhysicsPaintPlayScriptDialog run-script stacking (261031-i54)', () => 
     })).controller);
     expect(findOne(idle, byId('physics-play-script-collision-cancel')).props.disabled).toBe(false);
     expect(findOne(idle, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Run Script').props.disabled).toBe(true);
+  });
+});
+
+describe('PhysicsPaintPlayScriptDialog rail-on-rail Standard merge (2026-11-05)', () => {
+  const mergeSeed = (overrides: Partial<FakeControllerSeed> = {}): FakeControllerSeed => ({
+    runDestination: { kind: 'standard', firstKeyId: 'S1', appFrame: 12 },
+    repeatLocked: true,
+    framesMax: 48,
+    destinationRange: 'F12–F15',
+    ...overrides,
+  });
+
+  it('renders the merge composition: no Rail tabs, Rail Type + Keep script, Cycle fixed at 1', () => {
+    const { controller } = createFakeController(mergeSeed({
+      keepScript: true,
+      keepScriptVisible: true,
+      keepScriptEffective: true,
+      keepScriptDisabledReason: null,
+    }));
+    const tree = renderDialog(controller);
+    // A merge never creates a Photo rail: the tab strip is gone.
+    expect(findAll(tree, byClass('physics-paint-play-script-tabs'))).toHaveLength(0);
+    // Rail Type and the compact Keep script toggle stay.
+    expect(findAll(tree, byClass('physics-paint-play-script-rail-row'))).toHaveLength(1);
+    const toggle = findOne(tree, byId('physics-play-script-keep-script'));
+    expect(toggle.props['aria-checked']).toBe('true');
+    handler(toggle, 'onClick')();
+    expect(controller.setKeepScript).toHaveBeenCalledWith(false);
+    // The Frames field is a run span, not a cycle; Cycle is a fixed 1 and
+    // Infinity is inert on a Standard merge.
+    expect(findOne(tree, byId('physics-play-script-count')).props.label).toBe('Frames');
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.value).toBe(1);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.disabled).toBe(true);
+    expect(findOne(tree, byId('physics-play-script-infinity')).props.disabled).toBe(true);
+    // No source-cycle card: the merge reuses no creation cycle.
+    expect(findAll(tree, byClass('physics-paint-play-script-card-source-choice'))).toHaveLength(0);
+  });
+
+  it('shows the collision card with Cancel/Truncate only', () => {
+    const { controller } = createFakeController(mergeSeed({
+      stackCollision: { boundaryExclusive: 20, blocker: 'parent-end', victimClipId: null },
+      collisionOffers: ['cancel', 'truncate'],
+    }));
+    const tree = renderDialog(controller);
+    expect(findAll(tree, byId('physics-play-script-collision'))).toHaveLength(1);
+    expect(findAll(tree, byId('physics-play-script-collision-overwrite'))).toHaveLength(0);
+    handler(findOne(tree, byId('physics-play-script-collision-truncate')), 'onClick')();
+    expect(controller.confirmStackCollision).toHaveBeenCalledWith('truncate');
   });
 });
 

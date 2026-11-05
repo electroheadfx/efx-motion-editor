@@ -475,17 +475,22 @@ export function PaintTimingCard(props: {
   busy: boolean;
   locked: boolean;
   stacking: boolean;
+  /** 2026-11-05: an in-hand Standard merge — a run span, never a cycle. */
+  standardMerge?: boolean;
   inputRef: Ref<HTMLInputElement>;
   repeatInputRef: Ref<HTMLInputElement>;
 }) {
-  const perCycle = props.playScript.mode.value === 'static' || props.locked;
+  // A merge run writes real keys, so its Frames field is a span, not a cycle.
+  const mergeRun = props.stacking || props.standardMerge === true;
+  const perCycle = !mergeRun && (props.playScript.mode.value === 'static' || props.locked);
   // 261101-cd5 UAT: a stack keeps the full Timing hero; the Cycle column shows
   // the destination rail's stored repeat read-only.
   const stackCycle = props.stacking ? props.playScript.stackRepeat.value : null;
   const cycleValue = props.stacking
     ? (typeof stackCycle === 'number' ? stackCycle : 1)
     : dialogIntegerValue(props.playScript.repeatText.value, 1);
-  const cycleInfinity = props.stacking ? stackCycle === 'infinity' : props.playScript.infinity.value;
+  // A Standard merge has no source cycle: Cycle stays a fixed 1, Infinity off.
+  const cycleInfinity = props.stacking ? stackCycle === 'infinity' : (props.standardMerge === true ? false : props.playScript.infinity.value);
   return (
     <div class="physics-paint-play-script-card physics-paint-play-script-card-timing">
       <div class="physics-paint-play-script-timing-header">
@@ -506,7 +511,7 @@ export function PaintTimingCard(props: {
             max={Math.max(1, props.playScript.framesMax.value)}
             sliderMax={Math.max(1, props.playScript.framesMax.value)}
             step={1}
-            {...(props.stacking ? { allowOutOfRangeEntry: true } : {})}
+            {...(mergeRun ? { allowOutOfRangeEntry: true } : {})}
             disabled={props.busy || props.locked || props.playScript.max.value}
             ariaInvalid={Boolean(props.playScript.validationError.value)}
             ariaDescribedBy={props.playScript.validationError.value ? 'physics-play-script-error' : undefined}
@@ -530,12 +535,12 @@ export function PaintTimingCard(props: {
             inputRef={props.repeatInputRef}
             ariaLabel="Cycle"
             value={cycleValue}
-            onChange={(value) => { if (!props.stacking) props.playScript.repeatText.value = String(value); }}
+            onChange={(value) => { if (!mergeRun) props.playScript.repeatText.value = String(value); }}
             min={1}
             step={1}
-            disabled={props.busy || props.stacking || props.playScript.infinity.value}
-            ariaInvalid={!props.stacking && Boolean(props.playScript.repeatError.value)}
-            ariaDescribedBy={!props.stacking && props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
+            disabled={props.busy || mergeRun || props.playScript.infinity.value}
+            ariaInvalid={!mergeRun && Boolean(props.playScript.repeatError.value)}
+            ariaDescribedBy={!mergeRun && props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
           >
             <span class="physics-paint-play-script-cycle-label">Cycle</span>
           </NumericStepper>
@@ -544,11 +549,11 @@ export function PaintTimingCard(props: {
               id: 'physics-play-script-infinity',
               label: 'Infinity',
               checked: cycleInfinity,
-              disabled: props.busy || props.stacking,
-              onClick: () => { if (!props.stacking) props.playScript.setInfinity(!props.playScript.infinity.value); },
+              disabled: props.busy || mergeRun,
+              onClick: () => { if (!mergeRun) props.playScript.setInfinity(!props.playScript.infinity.value); },
             })}
           </div>
-          {!props.stacking && props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
+          {!mergeRun && props.playScript.repeatError.value ? <span id="physics-play-script-repeat-error" class="physics-paint-script-inline-error">{props.playScript.repeatError.value}</span> : null}
         </div>
       </div>
     </div>

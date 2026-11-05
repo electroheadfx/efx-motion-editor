@@ -14,6 +14,7 @@ import {
   planRunScriptStackExtension,
   planRunScriptStackLifecycle,
   resolveRunScriptDestination,
+  resolveRunScriptStandardRailMerge,
   resolveRunScriptStackBoundary,
   toRunScriptRailViews,
   type RunScriptRailView,
@@ -277,6 +278,104 @@ describe('resolveRunScriptDestination', () => {
       kind: 'refuse',
       reason: 'ambiguous-rail',
     });
+  });
+});
+
+/**
+ * 2026-11-05 rail-on-rail rewrite law: a Run Script over an in-hand Standard
+ * rail merges into that rail. The resolver is the pure authority for "which
+ * hand rail does the playhead belong to"; it must mirror the timeline's anchor
+ * law exactly and never capture a clip/override frame.
+ */
+describe('resolveRunScriptStandardRailMerge', () => {
+  const keys = (...frames: number[]) => frames.map((appFrame) => ({ keyId: `k${appFrame}`, appFrame }));
+  const none: readonly string[] = [];
+
+  it('resolves the segment containing a real key', () => {
+    const merge = resolveRunScriptStandardRailMerge({
+      appFrame: 12,
+      orderedRealKeys: keys(10, 11, 12, 13),
+      incomingInterpolationBreakKeyIds: none,
+      groupOwnedKeyIds: none,
+    });
+    expect(merge).not.toBeNull();
+    expect(merge!.rail).toEqual({ firstKeyId: 'k10', keyIds: ['k10', 'k11', 'k12', 'k13'], firstKeyFrame: 10, lastKeyFrame: 13 });
+    expect(merge!.appFrame).toBe(12);
+  });
+
+  it('treats an empty/gap frame inside the segment span as the same rail', () => {
+    // Keys at 10 and 13 with nothing at 11–12: the span is the rail.
+    const merge = resolveRunScriptStandardRailMerge({
+      appFrame: 11,
+      orderedRealKeys: keys(10, 13),
+      incomingInterpolationBreakKeyIds: none,
+      groupOwnedKeyIds: none,
+    });
+    expect(merge?.rail.firstKeyId).toBe('k10');
+    expect(merge?.rail.lastKeyFrame).toBe(13);
+  });
+
+  it('is inclusive on both ends of the segment span', () => {
+    for (const appFrame of [10, 13]) {
+      expect(resolveRunScriptStandardRailMerge({
+        appFrame,
+        orderedRealKeys: keys(10, 11, 12, 13),
+        incomingInterpolationBreakKeyIds: none,
+        groupOwnedKeyIds: none,
+      })?.appFrame).toBe(appFrame);
+    }
+  });
+
+  it('returns null outside every segment span', () => {
+    for (const appFrame of [9, 14, 40]) {
+      expect(resolveRunScriptStandardRailMerge({
+        appFrame,
+        orderedRealKeys: keys(10, 11, 12, 13),
+        incomingInterpolationBreakKeyIds: none,
+        groupOwnedKeyIds: none,
+      })).toBeNull();
+    }
+    expect(resolveRunScriptStandardRailMerge({
+      appFrame: 10,
+      orderedRealKeys: [],
+      incomingInterpolationBreakKeyIds: none,
+      groupOwnedKeyIds: none,
+    })).toBeNull();
+  });
+
+  it('never claims a group-owned (clip source / override) key frame', () => {
+    // A clip owns k11; the playhead on it must resolve the CLIP destination in
+    // the caller, never the in-hand segment that spans it.
+    expect(resolveRunScriptStandardRailMerge({
+      appFrame: 11,
+      orderedRealKeys: keys(10, 11, 12, 13),
+      incomingInterpolationBreakKeyIds: none,
+      groupOwnedKeyIds: ['k11'],
+    })).toBeNull();
+  });
+
+  it('starts a new segment at an incoming interpolation break', () => {
+    const input = {
+      orderedRealKeys: keys(10, 11, 12, 13),
+      incomingInterpolationBreakKeyIds: ['k12'],
+      groupOwnedKeyIds: none,
+    } as const;
+    expect(resolveRunScriptStandardRailMerge({ ...input, appFrame: 11 })?.rail).toEqual({
+      firstKeyId: 'k10', keyIds: ['k10', 'k11'], firstKeyFrame: 10, lastKeyFrame: 11,
+    });
+    expect(resolveRunScriptStandardRailMerge({ ...input, appFrame: 12 })?.rail).toEqual({
+      firstKeyId: 'k12', keyIds: ['k12', 'k13'], firstKeyFrame: 12, lastKeyFrame: 13,
+    });
+  });
+
+  it('derives segments from unsorted real keys', () => {
+    const merge = resolveRunScriptStandardRailMerge({
+      appFrame: 12,
+      orderedRealKeys: [...keys(13, 10, 12, 11)],
+      incomingInterpolationBreakKeyIds: none,
+      groupOwnedKeyIds: none,
+    });
+    expect(merge?.rail.keyIds).toEqual(['k10', 'k11', 'k12', 'k13']);
   });
 });
 

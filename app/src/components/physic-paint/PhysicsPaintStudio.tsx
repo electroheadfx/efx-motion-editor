@@ -4525,6 +4525,9 @@ export function PhysicsPaintStudio() {
         layerEndExclusive,
         remainingCapacity: Math.max(0, layerEndExclusive - placementStart),
         interpolationEnabled: document.interpolation.enabled,
+        // 2026-11-05 rail-on-rail law: the in-hand Standard merge derives its
+        // Key Rail segments from the accepted document's interpolation breaks.
+        incomingInterpolationBreakKeyIds: document.incomingInterpolationBreakKeyIds ?? [],
       };
     },
     getPhysicalDocument: () => (

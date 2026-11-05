@@ -58,6 +58,7 @@ import {
   planRunScriptStackExtension,
   planRunScriptStackLifecycle,
   resolveRunScriptDestination,
+  resolveRunScriptStandardRailMerge,
   resolveRunScriptStackBoundary,
   toRunScriptRailViews,
   RUN_SCRIPT_KEEP_SCRIPT_DEFAULT,
@@ -187,6 +188,13 @@ export interface RotoPlayScriptLoopEditSnapshot {
   readonly layerEndExclusive: number;
   readonly remainingCapacity: number;
   readonly interpolationEnabled: boolean;
+  /**
+   * 2026-11-05 rail-on-rail law: the incoming interpolation break owners. They
+   * split the in-hand Key Rail segments, so a Run Script merging into a
+   * Standard rail must see the same boundaries the timeline shows. Optional so
+   * every existing caller/harness without the fact derives unbroken segments.
+   */
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
 
 /** S4 match result (D-05, Q2): the existing identical source cycle. */
@@ -786,7 +794,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const selection = ports.getSelection();
     // 261031-i54: a generated frame INSIDE a rail is a valid stack start; outside
     // every rail the render-only refusal stands (destination 'create' or 'refuse').
-    if (selection.kind === 'generated-interpolation' && runDestination.peek().kind !== 'stack') {
+    // 2026-11-05 rail-on-rail law: an in-hand Standard rail accepts a merge run
+    // from an interpolated frame too — the run writes real keys into that rail.
+    if (selection.kind === 'generated-interpolation' && !isMergeDestination(runDestination.peek())) {
       return `Generated frame ${selection.appFrame} is render-only. Select an empty frame or a real Roto key to generate a Play Script.`;
     }
     return null;
@@ -796,13 +806,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
      confirmStack raises the collision prompt instead of silently clamping. */
   const parsedCount = computed(() => {
     const destination = runDestination.value;
-    if (destination.kind === 'stack') {
+    if (destination.kind === 'stack' || destination.kind === 'standard') {
+      const maxCount = destination.kind === 'stack' ? stackMaxCount.value : standardMaxCount.value;
       if (max.value) {
-        return stackMaxCount.value > 0
-          ? { count: stackMaxCount.value, error: null }
+        return maxCount > 0
+          ? { count: maxCount, error: null }
           : { count: null, error: 'No free span remains before the next boundary.' };
       }
-      return parseCount(countText.value, Math.max(stackMaxCount.value, capacity.value, 1));
+      return parseCount(countText.value, Math.max(maxCount, capacity.value, 1));
     }
     return max.value
       ? capacity.value > 0
@@ -839,6 +850,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     readonly interpolationEnabled: boolean;
   } | null>(null);
   const parsedRepeat = computed(() => {
+    // 2026-11-05 rail-on-rail law: a Standard merge writes real keys into the
+    // in-hand rail — there is no source cycle, so repeat is fixed at 1.
+    if (runDestination.value.kind === 'standard') return { count: 1, error: null };
     let cycleDuration = activeParsedCount.value.count;
     if (dialogMode.value === 'key-rail-create') {
       // 58-02 (D-09): the segment SPAN is the cycle length — a gapped Key Rail
@@ -863,7 +877,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const loopShortenPreflight = computed(() => {
     // 261031-i54: a stack run has its own explicit collision surface — the
     // creation-time shorten advisory would describe a rail it never creates.
-    if (runDestination.value.kind === 'stack') return null;
+    // 2026-11-05: a Standard merge never creates or reshapes a loop either.
+    if (isMergeDestination(runDestination.value)) return null;
     const snapshot = loopPreflightSnapshot.value;
     const start = canonicalStart.value;
     const count = parsedCount.value.count;
@@ -889,6 +904,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (runDestination.value.kind === 'stack') {
       const stack = stackReadout.value;
       return stack === null ? null : `${stack.spanLabel} · ${stack.offsetLabel} · ${stack.outcomeLabel}`;
+    }
+    // 2026-11-05 rail-on-rail law: an in-hand Standard merge reports the span
+    // it merges into the rail — there is no source cycle or repeat.
+    if (runDestination.value.kind === 'standard') {
+      const surface = standardSurface.value;
+      if (surface === null) return null;
+      const count = parsedCount.value.count;
+      const start = surface.destination.appFrame;
+      if (count === null) return null;
+      return `F${start}–F${start + count - 1} · Merges into the Standard rail.`;
     }
     // 43-06 (Pitfall 4): loop-edit mode derives Requested/Effective from the
     // shared 43-02 interval derivation with the DRAFT repeat substituted —
@@ -949,7 +974,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (!target) return 0;
     return currentLoopClips().filter((clip) => sameOrderedIds(clip.sourceKeyIds, target.sourceKeyIds)).length;
   });
-  const loopIntentActive = computed(() => dialogMode.value === 'apply');
+  /**
+   * Apply mode WITHOUT a Standard-rail merge. A creation Apply publishes a new
+   * scripted Loop Clip (and the leading interpolation break) through the
+   * `loopIntentActive` branches in `confirmGeneration`; a Standard merge must
+   * publish keys only, so every one of those branches stays skipped and the
+   * run blends into the SAME in-hand rail (2026-11-05 rail-on-rail law).
+   */
+  const loopIntentActive = computed(() => (
+    dialogMode.value === 'apply' && runDestination.value.kind !== 'standard'
+  ));
   const identicalSourceCycle = computed<RotoPlayScriptIdenticalSourceCycle | null>(() => {
     if (dialogMode.value !== 'apply' || !loopIntentActive.value) return null;
     // 261031-i54: linking is a CREATION choice — a stack destination never
@@ -980,6 +1014,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
      malformed derivation degrades to the create path — today's behaviour. */
   const CREATE_DESTINATION: RunScriptDestination = Object.freeze({ kind: 'create' }) as RunScriptDestination;
 
+  /** Both existing-rail destinations MERGE into the rail under the playhead. */
+  function isMergeDestination(destination: RunScriptDestination): boolean {
+    return destination.kind === 'stack' || destination.kind === 'standard';
+  }
+
   interface RunScriptStackLiveContext {
     readonly destination: RunScriptDestination;
     readonly rails: readonly RunScriptRailView[];
@@ -995,6 +1034,37 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     readonly realKeyAppFrames: readonly { readonly keyId: string; readonly appFrame: number }[];
   }
 
+  /**
+   * 2026-11-05 rail-on-rail law: the live facts for an in-hand Standard-rail
+   * merge. There is no clip, no source cycle and no repeat — only the Key Rail
+   * segment under the playhead and the rails/keys that bound the run.
+   */
+  interface RunScriptStandardSurface {
+    readonly destination: Extract<RunScriptDestination, { kind: 'standard' }>;
+    readonly rails: readonly RunScriptRailView[];
+    readonly parentEndExclusive: number;
+    readonly realKeyAppFrames: readonly { readonly keyId: string; readonly appFrame: number }[];
+  }
+
+  /** Every key a Loop Clip owns: its source cycle and its local override keys. */
+  function groupOwnedKeyIdsFromClips(clips: readonly PhysicPaintRotoLoopClip[]): readonly string[] {
+    const owned: string[] = [];
+    for (const clip of clips) {
+      owned.push(...clip.sourceKeyIds);
+      for (const override of clip.frameOverrides ?? []) owned.push(override.keyId);
+    }
+    return owned;
+  }
+
+  /**
+   * The live destination for the current playhead. A Loop Clip rail (scripted
+   * Motion / Static / Reveal, or an already-merged Standard clip) resolves
+   * first; when no clip contains the playhead, an in-hand Standard rail (Key
+   * Rail segment) resolves instead — a Run Script over it must MERGE into that
+   * same rail, never create a second one. Only a frame outside every rail is
+   * 'create'. (Before this, an in-hand rail fell through to the create path and
+   * the run published a scripted clip beside it — the reported two-rail split.)
+   */
   const stackContext = computed<RunScriptStackLiveContext | null>(() => {
     // The availability revision is the only change signal for the playhead: the
     // selection and the loop collection are plain port reads, so without a
@@ -1003,7 +1073,6 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     if (dialogMode.value !== 'apply') return null;
     try {
       const loopClips = currentLoopClips();
-      if (loopClips.length === 0) return null;
       const appFrame = ports.getSelection().appFrame;
       const snapshot = ports.getLoopEditSnapshot?.(appFrame) ?? null;
       const document = snapshot === null ? (ports.getPhysicalDocument?.() ?? null) : null;
@@ -1014,16 +1083,32 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       const interpolationEnabled = snapshot !== null ? snapshot.interpolationEnabled : document?.interpolation.enabled ?? false;
       if (identities.length === 0 || !Number.isInteger(derivationCapacity) || derivationCapacity <= 0) return null;
       const parentEndExclusive = snapshot !== null ? snapshot.layerEndExclusive : derivationCapacity;
-      const derivation = derivePhysicPaintRotoLoopRanges({
-        identities,
-        loopClips,
-        capacity: derivationCapacity,
-        interpolationEnabled,
-      });
-      const rails = toRunScriptRailViews({ clips: loopClips, context: derivation });
-      if (rails.length === 0) return null;
+      const rails = loopClips.length === 0
+        ? []
+        : toRunScriptRailViews({
+            clips: loopClips,
+            context: derivePhysicPaintRotoLoopRanges({
+              identities,
+              loopClips,
+              capacity: derivationCapacity,
+              interpolationEnabled,
+            }),
+          });
+      const clipDestination = rails.length === 0
+        ? CREATE_DESTINATION
+        : resolveRunScriptDestination({ appFrame, rails });
+      const destination = clipDestination.kind === 'create'
+        ? resolveRunScriptStandardRailMerge({
+            appFrame,
+            orderedRealKeys: identities,
+            incomingInterpolationBreakKeyIds: snapshot?.incomingInterpolationBreakKeyIds
+              ?? document?.incomingInterpolationBreakKeyIds
+              ?? [],
+            groupOwnedKeyIds: groupOwnedKeyIdsFromClips(loopClips),
+          }) ?? CREATE_DESTINATION
+        : clipDestination;
       return Object.freeze({
-        destination: resolveRunScriptDestination({ appFrame, rails }),
+        destination,
         rails,
         parentEndExclusive,
         realKeyAppFrames: identities,
@@ -1043,6 +1128,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }) as RunScriptStackSurface;
   }
 
+  function standardSurfaceFrom(context: RunScriptStackLiveContext | null): RunScriptStandardSurface | null {
+    if (context === null || context.destination.kind !== 'standard') return null;
+    return Object.freeze({
+      destination: context.destination,
+      rails: context.rails,
+      parentEndExclusive: context.parentEndExclusive,
+      realKeyAppFrames: context.realKeyAppFrames,
+    }) as RunScriptStandardSurface;
+  }
+
   /**
    * Visible rail material left from the playhead to the end of the fragment it
    * sits in — the "rail length minus position on the rail" the dialog opens
@@ -1060,11 +1155,28 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return Math.max(0, Math.min(fragment.endExclusive - appFrame, rail.cycleLength - cycleOffset));
   }
 
+  /**
+   * 2026-11-05: the in-hand rail's material from the playhead to its LAST key,
+   * inclusive — the Standard merge's default Frames. Unlike a clip rail there
+   * is no cycle to bound it: the run may extend past the last key, and the
+   * boundary helpers cap it at the next rail/key with the explicit offers.
+   */
+  function remainingStandardFramesAt(surface: RunScriptStandardSurface | null): number | null {
+    if (surface === null) return null;
+    const { appFrame, rail } = surface.destination;
+    if (appFrame > rail.lastKeyFrame) return null;
+    return Math.max(1, rail.lastKeyFrame - appFrame + 1);
+  }
+
   /* WR-01/WR-02/IN-03: the stack session is PINNED at open. Scrubbing out of the
      rail while the dialog is up must not flip the surface back to creation; the
      target rail and the run start stay the pinned ones. The live context still
      supplies the rails table and the parent end, so a concurrent edit is seen. */
   const pinnedStackDestination = signal<RunScriptStackSurface | null>(null);
+  /* 2026-11-05 rail-on-rail law: an in-hand Standard merge is pinned exactly
+     like a stack — the target segment and the run start never re-resolve from
+     the scrub of the moment. */
+  const pinnedStandardDestination = signal<RunScriptStandardSurface | null>(null);
 
   const stackSurface = computed<RunScriptStackSurface | null>(() => {
     const pinned = confirmationOpen.value && dialogMode.value === 'apply' ? pinnedStackDestination.value : null;
@@ -1078,9 +1190,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     }) as RunScriptStackSurface;
   });
 
+  const standardSurface = computed<RunScriptStandardSurface | null>(() => {
+    const pinned = confirmationOpen.value && dialogMode.value === 'apply' ? pinnedStandardDestination.value : null;
+    const live = standardSurfaceFrom(stackContext.value);
+    if (pinned === null) return live;
+    return Object.freeze({
+      destination: pinned.destination,
+      rails: live?.rails ?? pinned.rails,
+      parentEndExclusive: live?.parentEndExclusive ?? pinned.parentEndExclusive,
+      realKeyAppFrames: live?.realKeyAppFrames ?? pinned.realKeyAppFrames,
+    }) as RunScriptStandardSurface;
+  });
+
   const runDestination = computed<RunScriptDestination>(() => {
-    const pinned = confirmationOpen.value && dialogMode.value === 'apply' ? pinnedStackDestination.value : null;
-    if (pinned !== null) return pinned.destination;
+    if (confirmationOpen.value && dialogMode.value === 'apply') {
+      if (pinnedStackDestination.value !== null) return pinnedStackDestination.value.destination;
+      if (pinnedStandardDestination.value !== null) return pinnedStandardDestination.value.destination;
+    }
     // Live destination INCLUDING the refuse states — only the stack helpers use
     // the narrowed surface.
     return stackContext.value?.destination ?? CREATE_DESTINATION;
@@ -1143,6 +1269,60 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return resolveStackBoundaryFor(surface, start, parsedCount.value.count ?? 0);
   });
 
+  /**
+   * The same canonical boundary authority the stack path uses, with the hand
+   * segment's own keys owned and no clip target: every OTHER clip fragment, any
+   * foreign real key and the parent end bound the run, and the run never
+   * silently overwrites them. `targetClipId` is the segment's first key id — no
+   * Loop Clip can share it, so the target-end candidate never fires.
+   */
+  function resolveStandardBoundaryFor(
+    surface: RunScriptStandardSurface,
+    requestedCount: number,
+  ): RunScriptStackBoundary {
+    return resolveRunScriptStackBoundary({
+      runStartAppFrame: surface.destination.appFrame,
+      requestedCount: Math.max(0, requestedCount),
+      targetClipId: surface.destination.rail.firstKeyId,
+      rails: surface.rails,
+      parentEndExclusive: surface.parentEndExclusive,
+      ownedKeyIds: surface.destination.rail.keyIds,
+      frameOverrideAppFrames: [],
+      realKeyAppFrames: surface.realKeyAppFrames,
+    });
+  }
+
+  const standardMaxCount = computed(() => {
+    const surface = standardSurface.value;
+    if (surface === null) return 0;
+    return Math.max(0, resolveStandardBoundaryFor(surface, 0).freeCount);
+  });
+
+  const standardBoundary = computed<RunScriptStackBoundary | null>(() => {
+    const surface = standardSurface.value;
+    if (surface === null) return null;
+    return resolveStandardBoundaryFor(surface, parsedCount.value.count ?? 0);
+  });
+
+  /**
+   * 2026-11-05: a Standard merge's only collision axis is the RUN crossing the
+   * next boundary — a hand rail has no repeat-extended lifecycle to overflow.
+   * The dialog reuses the stack collision card; Overwrite is never offered
+   * (a Standard merge must not delete another rail).
+   */
+  const standardCollision = computed<RotoPlayScriptStackCollision | null>(() => {
+    const boundary = standardBoundary.value;
+    if (boundary === null || !boundary.collision) return null;
+    return Object.freeze({
+      boundaryExclusive: boundary.boundaryExclusive,
+      blocker: boundary.blocker,
+      victimClipId: boundary.victimClipId,
+      runCollision: true,
+      lifecycleOverflow: false,
+      parentEndExclusive: null,
+    }) as RotoPlayScriptStackCollision;
+  });
+
   function stackTargetClip(surface: RunScriptStackSurface): PhysicPaintRotoLoopClip | null {
     const clipId = surface.destination.rail.clipId;
     return currentLoopClips().find((clip) => clip.loopId === clipId) ?? null;
@@ -1172,6 +1352,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   const stackCollision = computed<RotoPlayScriptStackCollision | null>(() => {
+    // 2026-11-05 rail-on-rail law: the dialog's ONE collision card serves both
+    // merge surfaces; an in-hand Standard merge only has the run-boundary axis.
+    if (runDestination.value.kind === 'standard') return standardCollision.value;
     const surface = stackSurface.value;
     const start = stackRailStart.value;
     const boundary = stackBoundary.value;
@@ -1212,6 +1395,13 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   }
 
   const collisionOffers = computed<readonly RunScriptCollisionOffer[]>(() => {
+    // 2026-11-05 rail-on-rail law: a Standard merge never offers Overwrite — it
+    // must not delete another rail; Cancel and Truncate are the only answers.
+    if (runDestination.value.kind === 'standard') {
+      const boundary = standardBoundary.value;
+      if (boundary === null || standardCollision.value === null) return NO_COLLISION_OFFERS;
+      return Object.freeze(boundary.offers.filter((offer) => offer !== 'overwrite'));
+    }
     const surface = stackSurface.value;
     const boundary = stackBoundary.value;
     if (boundary === null) return NO_COLLISION_OFFERS;
@@ -1244,9 +1434,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     });
   });
 
-  const framesMax = computed(() => Math.max(1, runDestination.value.kind === 'stack' ? stackMaxCount.value : capacity.value));
+  const framesMax = computed(() => {
+    const destination = runDestination.value;
+    if (destination.kind === 'stack') return Math.max(1, stackMaxCount.value);
+    if (destination.kind === 'standard') return Math.max(1, standardMaxCount.value);
+    return Math.max(1, capacity.value);
+  });
 
-  const repeatLocked = computed(() => runDestination.value.kind === 'stack');
+  // 2026-11-05: an in-hand Standard merge has no repeat/cycle to edit either.
+  const repeatLocked = computed(() => isMergeDestination(runDestination.value));
 
   /** 261101-cd5 UAT: the stack Timing hero shows the rail's own Cycle read-only. */
   const stackRepeat = computed<number | 'infinity' | null>(() => {
@@ -1275,22 +1471,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   const revealRunPortPresent = (): boolean => typeof ports.bakeRevealStackRun === 'function';
   /** The port the CURRENT destination's Keep ON bake runs through. */
   const stackPortPresent = computed(() => (stackRailKind.value === 'reveal' ? revealTailPortPresent() : unionPortPresent()));
-  const keepScriptVisible = computed(() => runDestination.value.kind === 'stack' && stackPortPresent.value);
+  const keepScriptVisible = computed(() => isMergeDestination(runDestination.value) && stackPortPresent.value);
   // 261031-qps (Quick B): Keep script applies to EVERY existing-rail destination.
   // The persisted keyScriptEdits flag no longer gates it — a pixel-only rail is
   // seeded ON and its pre-run picture is pinned as the authority's durable base,
   // so ON appends scripts and OFF flattens, both without flipping the flag. A
   // Reveal rail needs its render-only tail port instead of the union bake.
+  // 2026-11-05 rail-on-rail law: an in-hand Standard merge keeps the same law.
   const keepScriptEffective = computed(() => {
     const destination = runDestination.value;
-    return destination.kind === 'stack' && stackPortPresent.value && keepScript.value;
+    return isMergeDestination(destination) && stackPortPresent.value && keepScript.value;
   });
   const keepScriptDisabledReason = computed(() => {
     const destination = runDestination.value;
-    // Only the never-a-stack case (no bake port in this build) disables the
-    // switch; every stack destination with its port can keep its scripts.
-    if (destination.kind !== 'stack' || stackPortPresent.value) return null;
-    return destination.rail.railKind === 'reveal'
+    // Only the never-a-merge case (no bake port in this build) disables the
+    // switch; every merge destination with its port can keep its scripts.
+    if (!isMergeDestination(destination) || stackPortPresent.value) return null;
+    return destination.kind === 'stack' && destination.rail.railKind === 'reveal'
       ? 'This build cannot re-render a Reveal rail. Nothing can be stacked onto it.'
       : 'This build cannot re-bake per-key scripts on an existing rail. The run is composited over its existing pixels.';
   });
@@ -1303,14 +1500,20 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     const destination = confirmationOpen.value && dialogMode.value === 'apply'
       ? runDestination.value
       : null;
-    const key = destination?.kind === 'stack'
-      ? `${destination.rail.clipId}:${destination.rail.keyScriptEdits === true ? 1 : 0}`
-      : null;
+    const key = destination === null
+      ? null
+      : destination.kind === 'stack'
+        ? `${destination.rail.clipId}:${destination.rail.keyScriptEdits === true ? 1 : 0}`
+        // 2026-11-05: an in-hand Standard rail has no clip; its identity is the
+        // segment's first key, which is stable across scrubs inside the rail.
+        : destination.kind === 'standard'
+          ? `standard:${destination.rail.firstKeyId}`
+          : null;
     if (key === keepScriptSeedKey) return;
     keepScriptSeedKey = key;
     // Quick B: pixel-only rails seed ON exactly like flag-on rails — the
     // authority pins their pre-run picture, so ON is non-destructive.
-    const next = destination?.kind === 'stack' ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT : false;
+    const next = destination !== null && isMergeDestination(destination) ? RUN_SCRIPT_KEEP_SCRIPT_DEFAULT : false;
     if (keepScript.peek() !== next) keepScript.value = next;
   });
 
@@ -1344,6 +1547,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       && context.destination.kind === 'stack'
       && context.destination.rail.clipId === clipId
       && context.destination.runStartAppFrame === start;
+  }
+
+  /** 2026-11-05: the live playhead must still resolve to the SAME in-hand segment at the SAME frame. */
+  function standardDestinationStillCurrent(firstKeyId: string, start: number): boolean {
+    const context = stackContext.peek();
+    return context !== null
+      && context.destination.kind === 'standard'
+      && context.destination.rail.firstKeyId === firstKeyId
+      && context.destination.appFrame === start;
   }
 
   /**
@@ -1495,9 +1707,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return normalizeBrushColor(ports.getBrushColor());
   }
 
-  /** UAT 261031-i54: adopt the live brush color as the stack's Custom color. */
+  /** UAT 261031-i54: adopt the live brush color as an existing-rail run's Custom color. */
   function useBrushColor(): void {
-    if (runDestination.peek().kind !== 'stack') return;
+    if (!isMergeDestination(runDestination.peek())) return;
     const next = normalizeBrushColor(ports.getBrushColor());
     if (stackOverrideColor.peek() !== next) stackOverrideColor.value = next;
     if (!overrideEnabled.peek()) overrideEnabled.value = true;
@@ -1523,6 +1735,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // moves while the authority round-trip is in flight.
     const stackSurfaceAtOpen = destination.kind === 'stack' ? stackSurfaceFrom(stackContext.peek()) : null;
     const stackStart = destination.kind === 'stack' ? destination.runStartAppFrame : null;
+    // 2026-11-05 rail-on-rail law: an in-hand Standard merge is pinned the same
+    // way — the target segment and run start must survive the authority round-trip.
+    const standardSurfaceAtOpen = destination.kind === 'standard' ? standardSurfaceFrom(stackContext.peek()) : null;
     const operationId = nextOperationId('authority');
     phase.value = 'preparing'; progress.value = null; status.value = 'Preparing Play Script…'; error.value = null;
     try {
@@ -1663,7 +1878,41 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         status.value = `Max ${Math.max(1, stackMaxCount.peek())} · F${runStart}–F${runStart + seededCount - 1}`;
         return;
       }
+      if (destination.kind === 'standard') {
+        // 2026-11-05 rail-on-rail law: a Run Script over an IN-HAND Standard
+        // rail merges into that same Key Rail — it never publishes a clip or a
+        // second rail. The session is pinned exactly like a clip stack; the run
+        // start is the playhead frame and the default span is the rest of the
+        // segment, never the selected script's natural duration.
+        collisionChoice.value = null;
+        pinnedStackDestination.value = null;
+        pinnedStandardDestination.value = standardSurfaceAtOpen;
+        // The Rail Type card is hidden for a merge run; keep the derived mode's
+        // visible kind in sync for the footer/paint path.
+        const seededRunKind: RotoPlayScriptStackRunKind = mode.peek() === 'static' ? 'static' : 'motion';
+        if (stackRunKind.peek() !== seededRunKind) stackRunKind.value = seededRunKind;
+        if (railTab.peek() !== 'paint') railTab.value = 'paint';
+        // Default Frames: the rest of the segment INCLUDING its last key, bounded
+        // by the free span and the timeline. Never a silent clamp — a typed count
+        // above the boundary still parses and confirm raises the collision card.
+        const availableCount = Math.max(1, Math.min(
+          remainingStandardFramesAt(standardSurfaceAtOpen) ?? 1,
+          Math.max(1, standardMaxCount.peek()),
+          authority.capacity,
+        ));
+        const seeded = String(availableCount);
+        if (countText.peek() !== seeded) countText.value = seeded;
+        lastFiniteCount.value = seeded;
+        if (max.peek()) max.value = false;
+        confirmationOpen.value = true;
+        const runStart = destination.appFrame;
+        const seededCount = parsedCount.peek().count ?? availableCount;
+        phase.value = 'idle';
+        status.value = `Max ${Math.max(1, standardMaxCount.peek())} · F${runStart}–F${runStart + seededCount - 1}`;
+        return;
+      }
       pinnedStackDestination.value = null;
+      pinnedStandardDestination.value = null;
       confirmationOpen.value = true;
       phase.value = 'idle'; status.value = `Max ${authority.capacity} · F${authority.canonicalStart}–F${authority.layerEndExclusive - 1}`;
     } catch (cause) { fail(cause); }
@@ -2391,6 +2640,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // WR-06: a stack destination outranks the tab — the Reveal branch must never
     // consume a stack confirm (the dialog hides Reveal on a stack anyway).
     if (runDestination.peek().kind === 'stack') return confirmStack();
+    // 2026-11-05 rail-on-rail law: an in-hand Standard merge has its own confirm
+    // and must never fall through to the creation branches.
+    if (runDestination.peek().kind === 'standard') return confirmStandardMerge();
     if (dialogMode.peek() === 'loop-edit') return updateLoop();
     if (railTab.peek() === 'reveal') return confirmReveal();
     return confirmGeneration();
@@ -3169,13 +3421,222 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     // WR-10: a second click while a bake/commit is in flight is a no-op.
     if (isBusyPhase(phase.peek())) return false;
     if (collisionChoice.peek() !== choice) collisionChoice.value = choice;
-    return confirmStack();
+    return runDestination.peek().kind === 'standard' ? confirmStandardMerge() : confirmStack();
+  }
+
+  /**
+   * 2026-11-05 rail-on-rail law: merge a Run Script into the IN-HAND Standard
+   * rail under the playhead. Mirrors confirmStack's bake/commit machinery, but
+   * publishes KEYS ONLY: no Loop Clip and no incoming interpolation break — the
+   * rail must stay exactly one Standard rail carrying every modification.
+   * A collision can only be Cancel or Truncate; Overwrite is never offered, so
+   * a Standard merge can never delete another rail.
+   */
+  async function confirmStandardMerge(): Promise<boolean> {
+    if (isBusyPhase(phase.peek())) return false;
+    const surface = standardSurface.peek();
+    if (surface === null) return false;
+    const destination = surface.destination;
+    const target = destination.rail;
+    const selectedId = ports.library.selectedId.peek();
+    const launch = ports.getLaunchContext();
+    const requested = parsedCount.peek().count;
+    const start = destination.appFrame;
+    if (disposed || !selectedId || !launch?.project || requested === null) return false;
+    if (disabledReason.peek()) return false;
+    // An open session is pinned; if the playhead no longer resolves to the same
+    // segment at the same frame, refuse with zero writes.
+    if (confirmationOpen.peek() && !standardDestinationStillCurrent(target.firstKeyId, start)) {
+      collisionChoice.value = null;
+      phase.value = 'idle'; status.value = null;
+      error.value = 'Play Script destination changed before commit. Nothing changed.';
+      return false;
+    }
+    const boundary = resolveStandardBoundaryFor(surface, requested);
+    let effectiveCount = requested;
+    if (boundary.collision) {
+      const choice = collisionChoice.peek();
+      if (choice === 'overwrite') {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = 'Overwrite is not available for a Standard merge. Choose Truncate or Cancel.';
+        return false;
+      }
+      if (choice === null) {
+        phase.value = 'idle';
+        status.value = 'Choose Cancel or Truncate to continue.';
+        error.value = null;
+        return false;
+      }
+      if (choice === 'cancel') {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = 'Run Script cancelled.'; error.value = null;
+        return false;
+      }
+      // Truncate: clip the run at the boundary, never a silent capacity cap.
+      effectiveCount = Math.min(requested, boundary.freeCount);
+      if (effectiveCount <= 0) {
+        collisionChoice.value = null;
+        phase.value = 'idle'; status.value = null;
+        error.value = 'No free span remains before the next boundary. Nothing changed.';
+        return false;
+      }
+    }
+    const writeCount = effectiveCount;
+    // Keep-script law, identical to the clip stack: each touched key's CURRENT
+    // payload is the base and this run's baked sheet composites over it. ON
+    // appends the run's slices and stages the base pins; OFF records nothing.
+    const unionBake = ports.bakeStackedRailKey;
+    const keepOn = keepScriptEffective.peek();
+    const canRecordKeepOn = unionBake !== undefined && keepOn;
+    const recordMode: 'append' | 'none' = canRecordKeepOn ? 'append' : 'none';
+    const acceptedGeneration = ++generation;
+    abortController = new AbortController();
+    ports.stopPlayback();
+    phase.value = 'preparing'; progress.value = null; status.value = 'Preparing Run Script…'; error.value = null;
+    try {
+      const authority = await ports.requestAuthority(nextOperationId('confirm'), start);
+      assertCurrent(acceptedGeneration);
+      if (!authority.ok || writeCount > authority.capacity) throw new Error(authority.error ?? 'Requested frame count exceeds current capacity.');
+      const motion: { deformation: number; position: number; rotation?: number; scale?: number } = { ...dialogMotion.peek() };
+      const renderMode = mode.peek();
+      const renderOverrideColor = resolveOverrideColor();
+      const renderPaintSeedVariation = paintSeedVariation.peek();
+      const rotoBackground = { ...ports.getBackgroundMetadata() };
+      const snapshot = await ports.library.loadSnapshot(selectedId);
+      assertCurrent(acceptedGeneration);
+      if (!snapshot || ports.library.selectedId.peek() !== selectedId) throw new Error('Selected script changed or could not be reloaded.');
+      phase.value = 'rendering'; progress.value = { completed: 0, total: writeCount }; status.value = `Rendering 0 / ${writeCount}`;
+      const baked = await bakeAquarelleScript({
+        snapshot, count: writeCount, start, size: ports.getSize(),
+        acceptedGeneration, motion, mode: renderMode, paintSeedVariation: renderPaintSeedVariation,
+      });
+      const staged = baked.staged;
+      const anchors = baked.anchors;
+      assertCurrent(acceptedGeneration);
+      const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
+      assertCurrent(acceptedGeneration);
+      if (!commitAuthority.ok
+        || commitAuthority.capacity < writeCount
+        || commitAuthority.physicalRevision !== authority.physicalRevision
+        || commitAuthority.physicalCapacity !== authority.physicalCapacity
+        || commitAuthority.layerEndExclusive !== authority.layerEndExclusive) throw new Error('Roto authority changed before commit.');
+      loopPreflightSnapshot.value = {
+        identities: commitAuthority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+        parentEndExclusive: commitAuthority.layerEndExclusive,
+        capacity: commitAuthority.physicalCapacity,
+        interpolationEnabled: commitAuthority.interpolationEnabled,
+      };
+      if (!standardDestinationStillCurrent(target.firstKeyId, start)) {
+        throw new Error('Play Script destination changed before commit.');
+      }
+      const destinationAppFrames = Array.from({ length: writeCount }, (_, index) => start + index);
+      const basePublication = buildPhysicalPublication({
+        authority: commitAuthority,
+        staged,
+        start,
+        count: writeCount,
+        destinationAppFrames,
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        rotoBackground,
+      });
+      const recordByAppFrame = new Map(basePublication.records.map((record) => [record.appFrame, record]));
+      const touchedKeyIds = destinationAppFrames.map((appFrame) => {
+        const record = recordByAppFrame.get(appFrame);
+        if (!record) throw new Error(`Committed run is missing frame ${appFrame}.`);
+        return record.keyId;
+      });
+      let publication: RotoPlayScriptPhysicalPublication = {
+        ...basePublication,
+        semanticDelta: { ...basePublication.semanticDelta, preserveSelection: true },
+        ...resolvePublicationSelection(commitAuthority),
+        // NO loopClips and NO incomingInterpolationBreakKeyIds: the run merges
+        // into the existing rail instead of creating a second one.
+      };
+      const slices = sliceRailKeyScripts({ anchors, frames: destinationAppFrames, mode: renderMode });
+      // A run with no per-key strokes has no authority-backed picture to
+      // publish — fail closed before the single commit.
+      if (slices.length === 0) {
+        throw new Error('This run produced no per-key strokes, so the rail was not changed. Nothing changed.');
+      }
+      const sheets: readonly PhysicPaintRotoStackSheet[] = destinationAppFrames.map((appFrame, index) => {
+        const frame = staged[index];
+        if (!frame) throw new Error(`Committed run is missing frame ${appFrame}.`);
+        return { appFrame, bytes: frame.bytes };
+      });
+      if (canRecordKeepOn && unionBake !== undefined) {
+        status.value = 'Merging the run over the rail picture…';
+        const union = await unionBake({ keyIds: touchedKeyIds, sheets });
+        assertCurrent(acceptedGeneration);
+        if (union.kind !== 'baked') throw new Error(`Keep script merge refused: ${union.reason}`);
+        if (union.frames.length > 0) {
+          publication = withRecordBytes(publication, new Map(union.frames.map((entry) => [entry.appFrame, entry.bytes])));
+        }
+      } else {
+        // Keep OFF: flatten the run over each key's CURRENT payload. Nothing is
+        // recorded, pinned or purged — the rail's paint and scripts survive.
+        status.value = 'Compositing the run…';
+        const compose = ports.composeStackedRailKey;
+        if (!compose) throw new Error('This build cannot composite the run over the rail picture. Nothing changed.');
+        const compositeBytesByFrame = new Map<number, Uint8Array>();
+        for (const sheet of sheets) {
+          const slot = sheet.appFrame - start;
+          const keyId = touchedKeyIds[slot];
+          if (keyId === undefined) continue;
+          const composed = await compose({ keyId, appFrame: sheet.appFrame, sheetBytes: sheet.bytes });
+          assertCurrent(acceptedGeneration);
+          if (composed.kind !== 'baked') throw new Error(`Picture composite refused: ${composed.reason}`);
+          compositeBytesByFrame.set(sheet.appFrame, composed.bytes);
+        }
+        if (compositeBytesByFrame.size > 0) publication = withRecordBytes(publication, compositeBytesByFrame);
+      }
+      const recordRailKeyScripts = ports.recordRailKeyScripts;
+      if (recordMode !== 'none' && recordRailKeyScripts === undefined) {
+        throw new Error('This build cannot record key scripts. Nothing changed.');
+      }
+      phase.value = 'committing'; status.value = 'Committing Run Script…'; abortController = null;
+      const result = await ports.commit(publication);
+      assertCurrent(acceptedGeneration);
+      if (!result.ok) throw new Error(result.error || 'Parent rejected the Run Script batch.');
+      assertPublicationAck(publication, result);
+      if (recordMode !== 'none') {
+        if (slices.length > 0) {
+          status.value = 'Recording key scripts…';
+          await yieldToPaint();
+        }
+        recordRailKeyScripts!({ keyIds: touchedKeyIds, slices, recordMode });
+      }
+      collisionChoice.value = null;
+      hasSuccessfulGeneration = true;
+      const appliedSummary = composeAppliedSummary({
+        mode: renderMode,
+        overrideColor: renderOverrideColor,
+        motion,
+        start,
+        count: writeCount,
+      });
+      appliedSummaryLine1.value = appliedSummary.line1;
+      appliedSummaryLine2.value = `F${start}–F${start + writeCount - 1} · Merged into the Standard Rail`;
+      phase.value = 'complete'; progress.value = { completed: writeCount, total: writeCount };
+      status.value = `Run Script complete · ${writeCount} frames`;
+      persistDialogDefaults();
+      confirmationOpen.value = false;
+      pinnedStandardDestination.value = null;
+      ports.log(status.value);
+      return true;
+    } catch (cause) {
+      collisionChoice.value = null;
+      if (isAbort(cause)) { phase.value = 'cancelled'; status.value = 'Run Script cancelled'; error.value = null; ports.log(status.value); }
+      else fail(cause);
+      return false;
+    } finally { if (generation === acceptedGeneration) abortController = null; }
   }
 
   async function confirmGeneration(): Promise<boolean> {
     // 261031-i54: the playhead sits in an existing Paint rail — stack onto it.
     // Every creation branch below stays gated on the 'create' destination.
     if (runDestination.peek().kind === 'stack') return confirmStack();
+    if (runDestination.peek().kind === 'standard') return confirmStandardMerge();
     const isSourceEdit = dialogMode.peek() === 'source-edit';
     const editTarget = isSourceEdit ? loopEditTarget.peek() : null;
     const repairId = isSourceEdit ? sourceEditRepairId.peek() : null;
@@ -3626,7 +4087,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function persistDialogDefaults(): void {
     if (!ports.savePlayScriptDefaults) return;
     if (dialogMode.peek() !== 'apply') return;
-    if (runDestination.peek().kind === 'stack') return;
+    if (isMergeDestination(runDestination.peek())) return;
     ports.savePlayScriptDefaults({
       mode: mode.peek(),
       max: max.peek(),
@@ -3646,6 +4107,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function closeConfirmation(): void {
     if (isBusyPhase(phase.peek())) return;
     pinnedStackDestination.value = null;
+    pinnedStandardDestination.value = null;
     persistDialogDefaults();
     confirmationOpen.value = false;
   }

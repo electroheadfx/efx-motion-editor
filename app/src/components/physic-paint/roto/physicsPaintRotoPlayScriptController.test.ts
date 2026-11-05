@@ -7209,4 +7209,202 @@ describe('createRotoPlayScriptController run-script stacking (261031-i54)', () =
     expect(recorder).toHaveBeenCalledTimes(1);
     expect([target]).toEqual(preRunClips);
   });
+
+  /* 2026-11-05 rail-on-rail rewrite law. The four rail types are standard (in
+     hand), motion, static and reveal. A Run Script on a motion/static/reveal
+     rail MERGES into it and the rail becomes ONE Standard rail; a Run Script on
+     an already in-hand Standard rail merges into it too. Only a frame outside
+     every rail creates a new rail. The regression this pins: after quick
+     261105-p9i a run over an in-hand rail fell through to CREATE and published
+     a second, scripted rail beside it. */
+  describe('rail-on-rail rewrite law (2026-11-05)', () => {
+    const motionScriptClip = (): PhysicPaintRotoLoopClip => ({
+      loopId: 'L1',
+      placementStart: 10,
+      sourceKeyIds: [...CYCLE_IDS],
+      repeat: 1,
+      mode: 'progressive',
+      scriptId: 'script-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 14,
+      visibleRanges: [{ start: 10, endExclusive: 14 }],
+      frameOverrides: [],
+    });
+
+    it('a run over a scripted Motion rail publishes ONE Standard clip', async () => {
+      const test = stackHarness(
+        [motionScriptClip()],
+        { canonicalStart: 12 },
+        {},
+        { kind: 'real-key', keyId: 'S3', appFrame: 12 },
+      );
+      expect(test.controller.runDestination.value.kind).toBe('stack');
+      await test.controller.openConfirmation();
+      test.controller.countText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+      const loops = test.commit.mock.calls[0]![0].loopClips ?? [];
+      expect(loops).toHaveLength(1);
+      expect(loops[0]!.loopId).toBe('L1');
+      expect(loops[0]!.scriptId).toBeUndefined();
+    });
+
+    it('a run over a scripted Static rail publishes ONE Standard clip', async () => {
+      const test = stackHarness(
+        [stackClip(1, { mode: 'static' })],
+        { canonicalStart: 12 },
+        {},
+        { kind: 'real-key', keyId: 'S3', appFrame: 12 },
+      );
+      expect(test.controller.runDestination.value.kind).toBe('stack');
+      await test.controller.openConfirmation();
+      test.controller.countText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+      const loops = test.commit.mock.calls[0]![0].loopClips ?? [];
+      expect(loops).toHaveLength(1);
+      expect(loops[0]!.scriptId).toBeUndefined();
+      expect(loops[0]!.railKind).toBeUndefined();
+    });
+
+    it('a run over an in-hand Standard rail merges keys only — never a second rail', async () => {
+      const test = stackHarness(
+        [],
+        { canonicalStart: 12 },
+        {},
+        { kind: 'real-key', keyId: 'S3', appFrame: 12 },
+      );
+      // No clip resolves, so the playhead's own Key Rail must become the
+      // destination instead of the silent create fallback.
+      expect(test.controller.runDestination.value.kind).toBe('standard');
+      await test.controller.openConfirmation();
+      expect(test.controller.runDestination.value.kind).toBe('standard');
+      // Default span: the rest of the segment INCLUDING its last key.
+      expect(test.controller.countText.value).toBe('2');
+      expect(test.controller.destinationRange.value).toBe('F12–F13');
+      expect(test.controller.loopReadout.value).toBe('F12–F13 · Merges into the Standard rail.');
+      expect(test.controller.repeatLocked.value).toBe(true);
+      // FramesMax is the free span to the next boundary (the parent end), not
+      // the segment's own length — the run may extend the rail past its last key.
+      expect(test.controller.framesMax.value).toBe(48);
+      test.controller.countText.value = '2';
+      expect(await test.controller.confirm()).toBe(true);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+      // The rail collection and the interpolation topology are untouched: the
+      // run merged real keys into the rail instead of publishing a clip.
+      expect(publication.loopClips).toBeUndefined();
+      expect(publication.incomingInterpolationBreakKeyIds).toBeUndefined();
+      // Keep script seeds ON for an in-hand rail too: the touched keys' own
+      // pictures are pinned and the run's slices APPEND.
+      expect(test.bakeStackedRailKey).toHaveBeenCalledTimes(1);
+      const union = test.bakeStackedRailKey.mock.calls[0]![0] as unknown as { keyIds: readonly string[] };
+      expect(union.keyIds).toEqual(['S3', 'S4']);
+      expect(test.recordRailKeyScripts).toHaveBeenCalledTimes(1);
+      const recorded = test.recordRailKeyScripts.mock.calls[0]![0] as unknown as {
+        keyIds: readonly string[];
+        recordMode: string;
+      };
+      expect(recorded.keyIds).toEqual(['S3', 'S4']);
+      expect(recorded.recordMode).toBe('append');
+    });
+
+    it('opens the default span at the whole segment when the playhead is its first key', async () => {
+      const test = stackHarness([], { canonicalStart: 10 }, {}, { kind: 'real-key', keyId: 'S1', appFrame: 10 });
+      await test.controller.openConfirmation();
+      expect(test.controller.runDestination.value.kind).toBe('standard');
+      expect(test.controller.countText.value).toBe('4');
+      expect(test.controller.destinationRange.value).toBe('F10–F13');
+    });
+
+    it('treats an empty frame inside the segment span as the same in-hand rail', async () => {
+      const sparse = [
+        physicalRecord('A', 10, 'a'),
+        physicalRecord('D', 13, 'd'),
+      ];
+      const test = stackHarness(
+        [],
+        { canonicalStart: 11, physicalRecords: sparse },
+        {},
+        { kind: 'empty', keyId: null, appFrame: 11 },
+      );
+      expect(test.controller.runDestination.value.kind).toBe('standard');
+      await test.controller.openConfirmation();
+      expect(test.controller.countText.value).toBe('3');
+      expect(test.controller.destinationRange.value).toBe('F11–F13');
+    });
+
+    it('splits at an incoming interpolation break like the timeline does', async () => {
+      const brokenSnapshot = (localAuthority: PhysicPaintRotoAuthorityResult) => () => ({
+        identities: localAuthority.physicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+        physicalCapacity: localAuthority.layerEndExclusive,
+        layerEndExclusive: localAuthority.layerEndExclusive,
+        remainingCapacity: localAuthority.layerEndExclusive,
+        interpolationEnabled: localAuthority.interpolationEnabled,
+        incomingInterpolationBreakKeyIds: ['S3'],
+      });
+      const before = stackHarness(
+        [],
+        { canonicalStart: 11 },
+        { getLoopEditSnapshot: brokenSnapshot(stackAuthority({ canonicalStart: 11 })) },
+        { kind: 'real-key', keyId: 'S2', appFrame: 11 },
+      );
+      expect(before.controller.runDestination.value.kind).toBe('standard');
+      await before.controller.openConfirmation();
+      // The break at S3 closes the previous segment at frame 11.
+      expect(before.controller.countText.value).toBe('1');
+
+      const atBreak = stackHarness(
+        [],
+        { canonicalStart: 12 },
+        { getLoopEditSnapshot: brokenSnapshot(stackAuthority({ canonicalStart: 12 })) },
+        { kind: 'real-key', keyId: 'S3', appFrame: 12 },
+      );
+      await atBreak.controller.openConfirmation();
+      expect(atBreak.controller.runDestination.value.kind).toBe('standard');
+      expect(atBreak.controller.countText.value).toBe('2');
+    });
+
+    it('keeps the create path for a frame outside every rail', async () => {
+      const test = stackHarness([], {}, {}, { kind: 'empty', keyId: null, appFrame: 20 });
+      expect(test.controller.runDestination.value.kind).toBe('create');
+    });
+
+    it('never lets a clip destination fall through to the hand-rail merge', async () => {
+      const test = stackHarness(
+        [stackClip(1)],
+        { canonicalStart: 12 },
+        {},
+        { kind: 'real-key', keyId: 'S3', appFrame: 12 },
+      );
+      expect(test.controller.runDestination.value.kind).toBe('stack');
+    });
+
+    it('bounds an over-long Standard merge with Cancel/Truncate only — Overwrite is never offered', async () => {
+      // Parent end at 12: the default span clamps to 2, a typed 4 collides.
+      const test = stackHarness(
+        [],
+        { canonicalStart: 10, layerEndExclusive: 12 },
+        {},
+        { kind: 'real-key', keyId: 'S1', appFrame: 10 },
+      );
+      await test.controller.openConfirmation();
+      expect(test.controller.runDestination.value.kind).toBe('standard');
+      expect(test.controller.countText.value).toBe('2');
+      test.controller.countText.value = '4';
+      expect(test.controller.stackCollision.value).not.toBeNull();
+      expect(test.controller.collisionOffers.value).toEqual(['cancel', 'truncate']);
+      // No silent write while the explicit choice is pending.
+      expect(await test.controller.confirm()).toBe(false);
+      expect(test.commit).not.toHaveBeenCalled();
+      expect(await test.controller.confirmStackCollision('truncate')).toBe(true);
+      expect(test.commit).toHaveBeenCalledTimes(1);
+      const publication = expectPlayScriptPublication(test.commit.mock.calls[0]![0]);
+      expect(publication.loopClips).toBeUndefined();
+      expect(publication.incomingInterpolationBreakKeyIds).toBeUndefined();
+      expect(publication.records.map((record) => record.appFrame)).toEqual([10, 11, 12, 13]);
+    });
+  });
 });

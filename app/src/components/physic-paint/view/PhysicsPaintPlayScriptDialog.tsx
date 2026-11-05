@@ -87,6 +87,12 @@ export function PhysicsPaintPlayScriptDialog({
      its two Rail axes (Paint/Photo × Motion/Static) map 1:1 onto the four
      stack run kinds, so the same tab strip + Rail Type subheader drive both. */
   const stacking = !loopEdit && !sourceEdit && !keyRailCreate && playScript.runDestination.value.kind === 'stack';
+  /* 2026-11-05 rail-on-rail law: a Run Script over an IN-HAND Standard rail
+     merges into it too. It reuses the stack composition minus the source-cycle
+     machinery: no tabs (a merge never creates a Photo rail), no Repeat, and the
+     Cycle column is fixed at 1. */
+  const standardMerge = !loopEdit && !sourceEdit && !keyRailCreate && playScript.runDestination.value.kind === 'standard';
+  const mergeSurface = stacking || standardMerge;
   // 261031-qps (Quick B): a Reveal rail is a legal stack destination. Its render
   // uses the rail's own stored type, motion and color, so those controls are
   // visible but read-only. The reference guard stays a compact chip.
@@ -95,7 +101,7 @@ export function PhysicsPaintPlayScriptDialog({
   const stackRevealRun = stacking && !stackReveal && isRevealRunKind(playScript.stackRunKind.value);
   // Apply surface = creation + every stack; edit modes keep their own layout.
   const applySurface = !loopEdit && !sourceEdit && !keyRailCreate && !regenerateImpact;
-  const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !keyRailCreate && !stacking;
+  const revealTab = playScript.railTab.value === 'reveal' && !loopEdit && !sourceEdit && !keyRailCreate && !mergeSurface;
   // The visual axis (which card set / timing / theme) for the current surface.
   const activeReveal = stacking ? (stackReveal || stackRevealRun) : revealTab;
   const activeTab: RotoPlayScriptRailTab = stacking
@@ -121,7 +127,7 @@ export function PhysicsPaintPlayScriptDialog({
       ? (mode === 'static' ? 'reveal-static' : 'reveal-motion')
       : (mode === 'static' ? 'static' : 'motion'));
   };
-  const railHelper = stacking
+  const railHelper = mergeSurface
     ? (stackReveal
       ? 'This destination is a Photo rail — it keeps its stored type.'
       : 'This run merges into the rail — the result is one Standard Rail.')
@@ -133,7 +139,7 @@ export function PhysicsPaintPlayScriptDialog({
         ? { label: 'No photo reference', actionLabel: 'Place', onAction: () => playScript.requestPhotoReference() }
         : null
     : null;
-  const keepScriptSwitch = stacking && playScript.keepScriptVisible.value
+  const keepScriptSwitch = mergeSurface && playScript.keepScriptVisible.value
     ? {
       checked: playScript.keepScriptEffective.value,
       disabled: playScript.canCancel.value || playScript.keepScriptDisabledReason.value !== null,
@@ -142,8 +148,8 @@ export function PhysicsPaintPlayScriptDialog({
     }
     : null;
   const stackReadout = stacking ? playScript.stackReadout.value : null;
-  const stackCollision = stacking ? playScript.stackCollision.value : null;
-  const collisionOffers = stacking ? playScript.collisionOffers.value : [];
+  const stackCollision = mergeSurface ? playScript.stackCollision.value : null;
+  const collisionOffers = mergeSurface ? playScript.collisionOffers.value : [];
   // 261101-cd5 UAT: the fixed 660 shell now carries every stack too. Only edit
   // modes and an open collision prompt (a one-shot user-triggered state, never
   // a toggle) need the content-height surface.
@@ -280,7 +286,7 @@ export function PhysicsPaintPlayScriptDialog({
   // sourceKeyIds, so no Source cycle card renders in source-edit.
   // 261031-i54: a stack destination reuses the rail's own cycle — linking is a
   // creation choice, so the Source cycle card never renders for a stack.
-  const identicalCycle = !loopEdit && !sourceEdit && !keyRailCreate && !revealTab && !stacking ? playScript.identicalSourceCycle.value : null;
+  const identicalCycle = !loopEdit && !sourceEdit && !keyRailCreate && !revealTab && !mergeSurface ? playScript.identicalSourceCycle.value : null;
 
   const keepLocalChanges = () => {
     const targetId = playScript.loopEditTargetId.value;
@@ -372,7 +378,7 @@ export function PhysicsPaintPlayScriptDialog({
           </div>
         </div>
         <div class="physics-paint-play-script-workspace">
-          {applySurface ? (
+          {applySurface && !standardMerge ? (
             <div class="physics-paint-play-script-tabs" role="tablist" aria-label="Rail kind">
               {RAIL_TABS.map((tab) => {
                 const selected = activeTab === tab.value;
@@ -458,6 +464,7 @@ export function PhysicsPaintPlayScriptDialog({
               busy={busy}
               locked={loopEdit}
               stacking={stacking}
+              standardMerge={standardMerge}
               inputRef={inputRef}
               repeatInputRef={repeatInputRef}
             />
@@ -477,8 +484,8 @@ export function PhysicsPaintPlayScriptDialog({
               <KeyScriptCard
                 playScript={playScript}
                 busy={busy}
-                disabled={stacking}
-                disabledReason="Stacked runs record per-key scripts through Keep script."
+                disabled={mergeSurface}
+                disabledReason="Merged runs record per-key scripts through Keep script."
               />
             ) : null}
             {applySurface ? <PaintSeedCard playScript={playScript} busy={busy} /> : null}
@@ -495,7 +502,7 @@ export function PhysicsPaintPlayScriptDialog({
             {applySurface && activeReveal ? <ColorizeCard playScript={playScript} busy={busy} /> : null}
             {identicalCycle ? <SourceCycleCard playScript={playScript} identicalCycle={identicalCycle} busy={busy} /> : null}
           </div>
-          {stacking && stackCollision !== null ? (
+          {mergeSurface && stackCollision !== null ? (
             <CollisionCard
               playScript={playScript}
               collision={stackCollision}

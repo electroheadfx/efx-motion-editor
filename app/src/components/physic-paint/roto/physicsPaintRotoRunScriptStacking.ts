@@ -5,6 +5,7 @@ import type {
   PhysicPaintRotoScriptMotionSettings,
 } from './physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoLoopRange } from './physicsPaintRotoPhysicalResolver';
+import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 
 /**
  * Quick 261031-i54 (Quick A): Run Script stacking onto an EXISTING Paint rail.
@@ -77,6 +78,19 @@ export interface RunScriptRailContext {
   readonly ranges: readonly PhysicPaintRotoLoopRange[];
 }
 
+/**
+ * 2026-11-05 rail-on-rail rewrite law: an in-hand Standard (Key Rail) rail has
+ * no Loop Clip. A Run Script over it is a MERGE into that same rail — never a
+ * new rail — so the destination names the Key Rail segment instead of a clip.
+ */
+export interface RunScriptStandardRailView {
+  /** Stable identity of the segment (its first key id). */
+  readonly firstKeyId: string;
+  readonly keyIds: readonly string[];
+  readonly firstKeyFrame: number;
+  readonly lastKeyFrame: number;
+}
+
 export type RunScriptDestination =
   | { readonly kind: 'create' }
   | {
@@ -89,6 +103,12 @@ export type RunScriptDestination =
       /** First written frame: a SOURCE-cycle physical frame, never the occurrence frame. */
       readonly runStartAppFrame: number;
       readonly repeatInstance: number;
+    }
+  | {
+      readonly kind: 'standard';
+      readonly rail: RunScriptStandardRailView;
+      /** The playhead frame that selected the in-hand rail (the run's first written frame). */
+      readonly appFrame: number;
     }
   | { readonly kind: 'refuse'; readonly reason: 'ambiguous-rail' };
 
@@ -278,6 +298,61 @@ export function resolveRunScriptDestination(input: {
     runStartAppFrame: rail.phaseOrigin + cycleOffset,
     repeatInstance: Math.floor(offset / rail.cycleLength),
   }) as RunScriptDestination;
+}
+
+/**
+ * 2026-11-05 rail-on-rail rewrite law: resolve an in-hand Standard rail under
+ * the playhead.
+ *
+ * The four rail types are standard (in hand), motion, static and reveal. Only
+ * the three scripted kinds carry a Loop Clip; a Standard rail is a Key Rail —
+ * ordinary real keys with no clip. A Run Script over it must MERGE the run into
+ * that same rail (the rail stays one Standard rail carrying every
+ * modification), so the destination can never fall through to the create path
+ * (which would publish a second, scripted rail beside it).
+ *
+ * Membership is the Key Rail segment's INCLUSIVE span `[first, last]` — the
+ * same anchor law the timeline uses (`resolvePhysicPaintPushAnchor`). An empty
+ * or generated frame between two keys of one segment is still that rail; the
+ * gap between two segments is not. Clip source keys and frame-override keys are
+ * group-owned and never start or join a hand segment, so a playhead on a clip
+ * frame can never resolve here (the clip destination is resolved first).
+ *
+ * Returns null when the playhead belongs to no in-hand segment.
+ */
+export function resolveRunScriptStandardRailMerge(input: {
+  readonly appFrame: number;
+  readonly orderedRealKeys: readonly RunScriptRealKeyFrame[];
+  readonly incomingInterpolationBreakKeyIds: readonly string[];
+  readonly groupOwnedKeyIds: readonly string[];
+}): Extract<RunScriptDestination, { kind: 'standard' }> | null {
+  if (input.orderedRealKeys.length === 0) return null;
+  const owned = new Set(input.groupOwnedKeyIds);
+  // A frame that IS an owned key belongs to its clip/group, never to a hand rail.
+  if (input.orderedRealKeys.some((key) => key.appFrame === input.appFrame && owned.has(key.keyId))) {
+    return null;
+  }
+  const segments = deriveKeyRailSegments({
+    orderedRealKeys: [...input.orderedRealKeys].sort(
+      (left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId),
+    ),
+    incomingInterpolationBreakKeyIds: new Set(input.incomingInterpolationBreakKeyIds),
+    groupOwnedKeyIds: owned,
+  });
+  const segment = segments.find(
+    (candidate) => candidate.firstKeyFrame <= input.appFrame && input.appFrame <= candidate.lastKeyFrame,
+  );
+  if (segment === undefined) return null;
+  return Object.freeze({
+    kind: 'standard',
+    rail: Object.freeze({
+      firstKeyId: segment.firstKeyId,
+      keyIds: Object.freeze([...segment.keyIds]),
+      firstKeyFrame: segment.firstKeyFrame,
+      lastKeyFrame: segment.lastKeyFrame,
+    }) as RunScriptStandardRailView,
+    appFrame: input.appFrame,
+  }) as Extract<RunScriptDestination, { kind: 'standard' }>;
 }
 
 /**
