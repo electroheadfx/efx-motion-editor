@@ -532,6 +532,8 @@ export function PaintTimingCard(props: {
         </div>
         <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
         <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
+          {/* quick 261105-sk3: typing applies live here — only the Frames and
+              Cycle fields of this card and RevealTimingCard opt in. */}
           <NumericStepper
             id="physics-play-script-repeat"
             class="physics-paint-play-script-cycle-stepper"
@@ -541,6 +543,7 @@ export function PaintTimingCard(props: {
             onChange={(value) => { if (!mergeRun) props.playScript.repeatText.value = String(value); }}
             min={1}
             step={1}
+            commitOnInput={true}
             disabled={props.busy || mergeRun || props.playScript.infinity.value}
             ariaInvalid={!mergeRun && Boolean(props.playScript.repeatError.value)}
             ariaDescribedBy={!mergeRun && props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}
@@ -640,6 +643,8 @@ export function RevealTimingCard(props: {
         </div>
         <span class="physics-paint-play-script-timing-divider" aria-hidden="true" />
         <div class="physics-paint-play-script-field physics-paint-play-script-cycle-field">
+          {/* quick 261105-sk3: typing applies live here — only the Frames and
+              Cycle fields of this card and RevealTimingCard opt in. */}
           <NumericStepper
             id="physics-play-script-repeat"
             class="physics-paint-play-script-cycle-stepper"
@@ -648,6 +653,7 @@ export function RevealTimingCard(props: {
             onChange={(value) => { props.playScript.repeatText.value = String(value); }}
             min={1}
             step={1}
+            commitOnInput={true}
             disabled={props.busy || props.playScript.infinity.value}
             ariaInvalid={Boolean(props.playScript.repeatError.value)}
             ariaDescribedBy={props.playScript.repeatError.value ? 'physics-play-script-repeat-error' : undefined}

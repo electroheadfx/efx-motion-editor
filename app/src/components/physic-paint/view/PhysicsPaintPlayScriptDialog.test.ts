@@ -738,6 +738,32 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
       expect(findOne(tree, byId(id)).props.commitOnInput, id).toBeUndefined();
     }
   });
+
+  it('261105-sk3: typing in Cycle writes repeatText live in both Rail Types — no blur', () => {
+    const { controller, signals } = createFakeController();
+    for (const mode of ['progressive', 'static'] as const) {
+      signals.mode.value = mode;
+      signals.repeatText.value = '1';
+      const tree = renderDialog(controller);
+      const repeat = findOne(tree, byId('physics-play-script-repeat'));
+      expect(repeat.props.commitOnInput, mode).toBe(true);
+
+      const input = stepperInput(repeat);
+      handler(input, 'onInput')({ currentTarget: { value: '2' } });
+      expect(signals.repeatText.value, mode).toBe('2');
+    }
+  });
+
+  it('261105-sk3: the Reveal tab Cycle field also writes repeatText live', () => {
+    const { controller, signals } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    const repeat = findOne(tree, byId('physics-play-script-repeat'));
+    expect(repeat.props.commitOnInput).toBe(true);
+
+    const input = stepperInput(repeat);
+    handler(input, 'onInput')({ currentTarget: { value: '2' } });
+    expect(signals.repeatText.value).toBe('2');
+  });
 });
 
 describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Minus, Plus } from 'lucide-preact';
-import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedInputEvent, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 
 /**
@@ -86,6 +86,14 @@ export interface NumericStepperProps {
   max?: number;
   /** Display decimals for the default formatter (step >= 1 → integer, else up to 3). */
   precision?: number;
+  /**
+   * quick 261105-sk3: emit through the shared commit law on every `input`
+   * event instead of only on blur/Enter. Default OFF — every other consumer
+   * keeps today's commit-on-blur contract. While typing, the raw text owns
+   * the value box so a clamp or formatted rewrite never lands mid-word;
+   * blur/Enter still run the authoritative parse + clamp + rewrite.
+   */
+  commitOnInput?: boolean;
   ariaLabel: string;
   disabled?: boolean;
   /** Renders `aria-disabled` on the field (the Studio guarded-pattern contract). */
@@ -283,6 +291,7 @@ export function NumericStepper({
   min,
   max,
   precision,
+  commitOnInput = false,
   ariaLabel,
   disabled = false,
   ariaDisabled,
@@ -300,6 +309,12 @@ export function NumericStepper({
   children,
 }: NumericStepperProps): JSX.Element {
   const inputRefInternal = useRef<HTMLInputElement | null>(null);
+  /** quick 261105-sk3: the raw text while typing (null = not typing). The
+   *  controlled `value` prop must never clamp or reformat a half-typed number,
+   *  so the draft owns the box until blur/Enter/Escape clears it. Preact 11
+   *  patches `dom.value` only when the vnode value differs from the live DOM
+   *  value (diff/index.js), so returning the draft keeps the box untouched. */
+  const liveDraft = useRef<string | null>(null);
   const assignValueInput = (element: HTMLInputElement | null) => {
     inputRefInternal.current = element;
     if (typeof inputRef === 'function') inputRef(element);
@@ -310,6 +325,9 @@ export function NumericStepper({
   const pressing = useRef(false);
 
   const display = formatStepperValue(value, step, precision, presets);
+  /** quick 261105-sk3: the draft wins while typing so the clamp/formatted
+   *  display can never rewrite the box mid-word. */
+  const inputValue = commitOnInput && liveDraft.current !== null ? liveDraft.current : display;
 
   // Preset end state, computed per render from the LIVE value: the button at
   // a list end is visibly disabled (260924-ffd — locked decision: disabled,
@@ -403,14 +421,31 @@ export function NumericStepper({
     stepBy(direction);
   };
 
+  /** The one commit-option object — blur/Enter and the live input path must
+   *  share it so a typed emit can never diverge from the authoritative parse
+   *  (quick 261105-sk3, T-261105-SK3-01). */
+  const commitOptions = () => ({ step, presets, resolveStep, freeEntry, min, max });
+
   const commitInput = (element: HTMLInputElement) => {
-    const next = commitStepperInput(element.value, { step, presets, resolveStep, freeEntry, min, max });
+    const next = commitStepperInput(element.value, commitOptions());
     if (next !== null) {
       if (next !== value) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
     } else {
       element.value = display;
     }
+    liveDraft.current = null;
+  };
+
+  /** quick 261105-sk3: the live commit. The raw text is stored FIRST so empty
+   *  and unparseable input also stays in the box; the emit then runs through
+   *  the same commit law as blur. Never assigns `element.value`. */
+  const handleLiveInput = (event: TargetedInputEvent<HTMLInputElement>) => {
+    const element = event.currentTarget;
+    liveDraft.current = element.value;
+    const next = commitStepperInput(element.value, commitOptions());
+    if (next === null) return;
+    if (next !== value) onChange(next);
   };
 
   const resolvedButtonStyle = buttonStyle ? { ...BASE_BUTTON_STYLE, ...buttonStyle } : BASE_BUTTON_STYLE;
@@ -444,7 +479,7 @@ export function NumericStepper({
           inputMode="decimal"
           class={inputClass ? `numeric-stepper-input ${inputClass}` : 'numeric-stepper-input'}
           style={inputStyle ? { ...BASE_INPUT_STYLE, ...inputStyle } : BASE_INPUT_STYLE}
-          value={display}
+          value={inputValue}
           disabled={disabled}
           aria-label={ariaLabel}
           aria-disabled={ariaDisabled ? 'true' : undefined}
@@ -465,9 +500,11 @@ export function NumericStepper({
               event.currentTarget.blur();
             } else if (event.key === 'Escape') {
               event.currentTarget.value = display;
+              liveDraft.current = null;
               event.currentTarget.blur();
             }
           }}
+          {...(commitOnInput ? { onInput: handleLiveInput } : {})}
         />
         <button
           type="button"

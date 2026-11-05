@@ -22,13 +22,28 @@ import {
 } from './NumericStepper';
 
 // The harness calls component functions outside a render context: useRef and
-// useEffect have no Preact component to attach to, so they are stubbed to
-// inert equivalents (the same stubbing PhysicsPaintTrackRow.test.tsx uses).
+// useEffect have no Preact component to attach to, so they are stubbed. useRef
+// is a cursor-based persistent slot runtime (quick 261105-sk3) so a ref — the
+// live input draft — survives a deliberate second render; the cursor and the
+// slots are cleared before every test so no draft crosses a test boundary.
+const hookRuntime = vi.hoisted(() => ({
+  refs: [] as Array<{ current: unknown }>,
+  cursor: 0,
+  reset() {
+    this.refs = [];
+    this.cursor = 0;
+  },
+}));
+
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
   return {
     ...actual,
-    useRef: (initial: unknown) => ({ current: initial }),
+    useRef: <T,>(initial: T) => {
+      const index = hookRuntime.cursor++;
+      hookRuntime.refs[index] ??= { current: initial };
+      return hookRuntime.refs[index] as { current: T };
+    },
     useEffect: () => {},
   };
 });
@@ -86,6 +101,8 @@ function findAll(root: unknown, predicate: (vnode: TestVNode) => boolean): TestV
 type StepperProps = Parameters<typeof NumericStepper>[0];
 
 function renderStepper(overrides: Partial<StepperProps> = {}): unknown {
+  // A deliberate re-render must see the same ref slots (the live draft).
+  hookRuntime.cursor = 0;
   return materialize(NumericStepper({
     value: 12,
     onChange: () => {},
@@ -119,6 +136,7 @@ function pointerUp(target: TestVNode): void {
 }
 
 beforeEach(() => {
+  hookRuntime.reset();
   vi.useFakeTimers();
 });
 
@@ -949,5 +967,113 @@ describe('261009-6ee — unified single-pill chrome pins', () => {
     expect(wrapperKids[0].type).toBe('span');
     expect(String(wrapperKids[0].props.class)).toContain('stepper-scrub-label');
     expect(wrapperKids[1]).toBe(pill);
+  });
+});
+
+/**
+ * quick 261105-sk3 — the live `commitOnInput` opt-in.
+ *
+ * Default OFF keeps today's blur/Enter-only contract (no `onInput` prop at
+ * all). Opted in, every keystroke emits through the same `commitStepperInput`
+ * law as blur, while the raw text keeps ownership of the box until
+ * blur/Enter/Escape runs the authoritative rewrite.
+ */
+describe('NumericStepper — commitOnInput live commit (261105-sk3)', () => {
+  it('defaults off — no onInput handler and value is exactly the display', () => {
+    const tree = renderStepper({ value: 12 });
+    const field = input(tree);
+    expect(field).toBeDefined();
+    expect(field!.props.onInput).toBeUndefined();
+    expect(field!.props.value).toBe('12');
+  });
+
+  it('emits on every keystroke through the shared commit law and never rewrites the element text', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({ value: 12, min: 0, max: 20, step: 1, commitOnInput: true, onChange });
+    const field = input(tree);
+    expect(typeof field!.props.onInput).toBe('function');
+
+    const first = { value: '1' };
+    (field!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: first });
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    expect(first.value).toBe('1');
+
+    const second = { value: '18' };
+    (field!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: second });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(18);
+    expect(second.value).toBe('18');
+  });
+
+  it('keeps the raw draft across a clamp re-render, then blur rewrites the formatted value and clears it', () => {
+    const onChange = vi.fn();
+    const first = renderStepper({ value: 12, min: 1, max: 20, step: 1, commitOnInput: true, onChange });
+    (input(first)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '0' } });
+    expect(onChange).toHaveBeenCalledWith(1);
+
+    // The parent applied 1; the controlled display would say "1", but the
+    // draft owns the box while typing.
+    const second = renderStepper({ value: 1, min: 1, max: 20, step: 1, commitOnInput: true, onChange });
+    const reRendered = input(second)!;
+    expect(reRendered.props.value).toBe('0');
+
+    const element = { value: '0' };
+    (reRendered.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: element });
+    expect(element.value).toBe('1');
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    const third = renderStepper({ value: 1, min: 1, max: 20, step: 1, commitOnInput: true, onChange });
+    expect(input(third)!.props.value).toBe('1');
+
+    // An upper clamp behaves the same: emit 20, keep "99" in the box.
+    const upper = renderStepper({ value: 12, min: 1, max: 20, step: 1, commitOnInput: true, onChange });
+    (input(upper)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '99' } });
+    expect(onChange).toHaveBeenLastCalledWith(20);
+
+    const upperRendered = renderStepper({ value: 20, min: 1, max: 20, step: 1, commitOnInput: true, onChange });
+    expect(input(upperRendered)!.props.value).toBe('99');
+  });
+
+  it('emits nothing for empty or unparseable text and keeps the raw text', () => {
+    const onChange = vi.fn();
+    const first = renderStepper({ value: 12, min: 0, max: 20, commitOnInput: true, onChange });
+    (input(first)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '' } });
+    expect(onChange).not.toHaveBeenCalled();
+
+    const second = renderStepper({ value: 12, min: 0, max: 20, commitOnInput: true, onChange });
+    const reRendered = input(second)!;
+    expect(reRendered.props.value).toBe('');
+
+    (reRendered.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: 'abc' } });
+    expect(onChange).not.toHaveBeenCalled();
+
+    const third = renderStepper({ value: 12, min: 0, max: 20, commitOnInput: true, onChange });
+    expect(input(third)!.props.value).toBe('abc');
+  });
+
+  it('keeps the step grid and the EU decimal comma on the live path', () => {
+    const decimal = vi.fn();
+    const decimalTree = renderStepper({ value: 12, min: 0, max: 20, step: 1, commitOnInput: true, onChange: decimal });
+    (input(decimalTree)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '45.5' } });
+    expect(decimal).toHaveBeenCalledWith(20); // grid snap 46, then clamp to max 20
+
+    const comma = vi.fn();
+    const commaTree = renderStepper({ value: 12, min: 0, max: 20, step: 1, commitOnInput: true, onChange: comma });
+    (input(commaTree)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '2,2' } });
+    expect(comma).toHaveBeenCalledWith(2);
+
+    // 2,7 would truncate to 2 under a naive parseFloat; the shared parser
+    // normalizes the comma first, so the grid snap lands on 3.
+    const commaSnap = vi.fn();
+    const commaSnapTree = renderStepper({ value: 12, min: 0, max: 20, step: 1, commitOnInput: true, onChange: commaSnap });
+    (input(commaSnapTree)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '2,7' } });
+    expect(commaSnap).toHaveBeenCalledWith(3);
+  });
+
+  it('never emits when the parsed value equals the current value', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({ value: 12, min: 0, max: 20, step: 1, commitOnInput: true, onChange });
+    (input(tree)!.props as { onInput: (event: unknown) => void }).onInput({ currentTarget: { value: '12' } });
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
