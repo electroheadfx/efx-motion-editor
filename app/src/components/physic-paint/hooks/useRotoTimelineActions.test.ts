@@ -1473,7 +1473,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     });
   });
 
-  describe('v2.0.1 Rail dissolve (destination strictly AFTER a Standard rail)', () => {
+  describe('v2.0.1 Rail dissolve (destination strictly AFTER a complete canonical rail)', () => {
     const standardRail = (repeat: number): PhysicPaintRotoLoopClip => ({
       loopId: 'rail-1',
       placementStart: 1,
@@ -1655,7 +1655,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
     });
 
-    it('a scripted rail beyond its end keeps the detached key and its own break', async () => {
+    it('a scripted Motion rail beyond its end dissolves into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
         loopClips: [{
@@ -1668,13 +1668,19 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
-      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.destinationAppFrame).toBe(8);
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
-      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
-      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping.k3).toBe(3);
+      expect(mapping.k5).toBe(5);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(8);
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
-    it('a Reveal rail beyond its end keeps the detached key and its own break', async () => {
+    it('a Reveal rail beyond its end dissolves into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
         loopClips: [{ ...standardRail(1), railKind: 'reveal' }],
@@ -1682,9 +1688,16 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       });
       await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
-      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
-      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
-      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.destinationAppFrame).toBe(8);
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping.k3).toBe(3);
+      expect(mapping.k5).toBe(5);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(8);
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
     it('an overridden scripted rail keeps the detached key — CR-05', async () => {

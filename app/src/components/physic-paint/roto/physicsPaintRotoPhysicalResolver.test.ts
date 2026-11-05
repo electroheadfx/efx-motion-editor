@@ -5136,7 +5136,7 @@ describe('58 G-06 Rail key insert (+ Key / paint on an in-between)', () => {
   });
 });
 
-describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', () => {
+describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a complete canonical rail)', () => {
   const payloadAt = (appFrame: number): PhysicPaintRotoRealKeyPayload => ({
     frameIndex: 0,
     appFrame,
@@ -5151,8 +5151,8 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       appFrame,
       payload: payloadAt(appFrame),
     }));
-  // The user-approved law (2026-11-04) only applies to a merged Standard rail:
-  // no script provenance, not a Reveal rail.
+  // The user-approved law (2026-11-04) applies to every complete canonical
+  // lifecycle rail: Standard, scripted Motion/Static and Reveal alike.
   const standardRail: PhysicPaintRotoLoopClip = {
     loopId: 'rail-1',
     placementStart: 1,
@@ -5272,9 +5272,15 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       { keyId: 'K1', appFrame: 3 },
       { keyId: 'K5', appFrame: 5 },
     ])).toBeNull();
-    // A scripted and a Reveal rail keep today's detached-key behaviour.
-    expect(target([{ ...standardRail, scriptId: 'action-1' }])).toBeNull();
-    expect(target([{ ...standardRail, railKind: 'reveal' }])).toBeNull();
+    // Quick 261105-p9i: every complete canonical lifecycle rail kind dissolves
+    // at a post-end destination — scripted Motion and Reveal included.
+    expect(target([{
+      ...standardRail,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    }])).toEqual({ loopId: 'rail-1' });
+    expect(target([{ ...standardRail, railKind: 'reveal' }])).toEqual({ loopId: 'rail-1' });
     // Incomplete lifecycle members, split ranges, painted overrides.
     expect(target([{ ...standardRail, phaseOrigin: undefined }])).toBeNull();
     expect(target([{
@@ -5364,6 +5370,24 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       firstKeyFrame: 1,
       lastKeyFrame: 8,
     });
+  });
+
+  it('v2.0.1: scripted Motion and Reveal rails dissolve into one joined Key Rail', () => {
+    const scriptedMotionRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const revealRail: PhysicPaintRotoLoopClip = { ...standardRail, railKind: 'reveal' };
+    for (const clip of [scriptedMotionRail, revealRail]) {
+      const resolution = resolveDissolve(dissolveIntent(8), { loopClips: [clip] });
+      expect(resolution.ok).toBe(true);
+      if (!resolution.ok) throw new Error('A scripted or Reveal rail dissolve must resolve');
+      expect(resolution.proposal.nextLoopClips).toEqual([]);
+      expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, K3: 3, K5: 5, NEW: 8 });
+      expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    }
   });
 
   it('v2.0.1: a one-key cycle dissolves even when a following rail owns later keys', () => {

@@ -105,8 +105,10 @@ import {
 } from './physicsPaintRotoSpacingSelection';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 // v2.0.1: the Standard-rail discriminator is the stacking authority's pure
-// decision predicate, imported instead of re-derived here. The stacking module
-// imports only a TYPE from this resolver, so this value edge stays acyclic.
+// decision predicate, imported instead of re-derived here. It now serves the
+// CR-05 append path ONLY: the dissolve law is rail-kind agnostic. The stacking
+// module imports only a TYPE from this resolver, so this value edge stays
+// acyclic.
 import { isStandardMergedLoopClip } from './physicsPaintRotoRunScriptStacking';
 
 export function buildCanonicalMoveGroupOverrideRecords(input: {
@@ -4774,7 +4776,8 @@ interface PhysicPaintRotoRailDissolveTargetInternal {
 
 /**
  * v2.0.1 (user-approved 2026-11-04): the destination of a key created on an
- * EMPTY frame strictly AFTER one complete Standard merged rail.
+ * EMPTY frame strictly AFTER one complete canonical lifecycle rail (Motion,
+ * Static or Reveal).
  *
  * The law: such a destination dissolves that rail's Loop Clip instead of
  * opening a detached one-key rail behind a rail line that stops at its old
@@ -4792,9 +4795,9 @@ interface PhysicPaintRotoRailDissolveTargetInternal {
  *   `provenanceState`, one full-span visible range, no painted phase override,
  *   a finite positive repeat, at least two ascending source keys anchored at
  *   `phaseOrigin`, and a stored end that is exactly `repeat` cycles long;
- * - it is a STANDARD merged rail (`isStandardMergedLoopClip`: no single-script
- *   provenance, not a Reveal rail) — scripted and Reveal rails keep their own
- *   edit law;
+ * - every rail kind qualifies — Motion, Static and Reveal alike — because the
+ *   user-approved law accepts discarding the rail's script/reveal effect with
+ *   the clip (the user re-runs the script or re-adds a cycle afterwards);
  * - the destination is at/after the rail's stored end (inside the footprint
  *   the 58 in-rail insert keeps precedence);
  * - no other clip references a target source key, no other clip's derived
@@ -4838,7 +4841,7 @@ function resolveRailDissolveTargetInternal(
     && clip.sourceKeyIds[clip.sourceKeyIds.length - 1] === leftBelowKeyId);
   if (endingClips.length !== 1) return null;
   const candidate = endingClips[0]!;
-  if (!isCompleteStandardRailClip(candidate)) return null;
+  if (!isCompleteCanonicalLifecycleRailClip(candidate)) return null;
   const clip = candidate;
   const repeat = clip.repeat;
   if (typeof repeat !== 'number' || !Number.isSafeInteger(repeat) || repeat <= 0) return null;
@@ -4870,16 +4873,19 @@ function resolveRailDissolveTargetInternal(
   return { clip };
 }
 
-/** v2.0.1: a complete Standard merged lifecycle rail (see the dissolve law). */
-function isCompleteStandardRailClip(clip: PhysicPaintRotoLoopClip): clip is PhysicPaintRotoLifecycleLoopClip {
+/**
+ * v2.0.1: a complete canonical lifecycle rail, whatever its kind — Motion,
+ * Static or Reveal (see the dissolve law).
+ */
+function isCompleteCanonicalLifecycleRailClip(clip: PhysicPaintRotoLoopClip): clip is PhysicPaintRotoLifecycleLoopClip {
   if (clip.syncState === undefined || clip.provenanceState === undefined) return false;
   if (!isCanonicalLifecycleRailClip(clip)) return false;
   if (typeof clip.repeat !== 'number' || !Number.isSafeInteger(clip.repeat) || clip.repeat <= 0) return false;
-  // A one-key cycle is still a complete Standard rail: dissolving it is the
-  // only way to extend it, because its single phase is the cycle itself.
+  // A one-key cycle is still a complete canonical lifecycle rail of any kind:
+  // dissolving it is the only way to extend it, because its single phase is
+  // the cycle itself.
   if (clip.sourceKeyIds.length < 1) return false;
-  // The Standard discriminator comes from the stacking authority.
-  return isStandardMergedLoopClip(clip);
+  return true;
 }
 
 /**
