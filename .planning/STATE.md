@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 Phase: 58
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-05 — Completed quick task 261105-sk3 (automated green, live UAT pending): typing in the Motion/Static/Reveal rail-creation Frames and Cycle fields now commits live — the slider moves on each keystroke and Create uses the typed value with no TAB/blur. A default-off `commitOnInput` opt-in on the shared SliderStepper/NumericStepper is enabled on exactly the four rail-creation fields; every other stepper keeps commit-on-blur. Full suite 7347 passed / 0 failed; typecheck clean. The v2.0.1 release remains deferred to another session.
+Last activity: 2026-11-05 — Quick task 261105-sk3 UAT APPROVED: typing in the Motion/Static/Reveal rail-creation Frames and Cycle fields now commits live — the slider moves on each keystroke and Create uses the typed value with no TAB/blur. A default-off `commitOnInput` opt-in on the shared SliderStepper/NumericStepper is enabled on exactly the four rail-creation fields; every other stepper keeps commit-on-blur. Full suite 7347 passed / 0 failed; typecheck clean. The v2.0.1 release remains deferred to another session.
 Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The ghost-source and rail-extension fixes are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
@@ -771,7 +771,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-05T12:16:50Z
-Stopped at: Quick 261105-sk3 complete (automated green) — live UAT pending; v2.0.1 release deferred to another session
+Stopped at: Quick 261105-sk3 UAT approved; v2.0.1 release deferred to another session
 Resume file: None
 
 ## Operator Next Steps

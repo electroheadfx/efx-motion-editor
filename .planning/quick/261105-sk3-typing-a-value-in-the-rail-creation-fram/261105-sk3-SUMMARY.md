@@ -210,7 +210,10 @@ None — no new endpoints, auth paths, file access, or schema surface.
 
 None.
 
-## UAT Rows Handed to the User (live visible UAT; automated green is not done)
+## UAT Rows Handed to the User (live visible UAT)
+
+**Result: UAT APPROVED 2026-11-05.**
+
 
 - Create a Motion rail: type a frame count in Frames without pressing TAB — the knob moves on each keystroke and Create builds that exact count.
 - Same for Static and Reveal; the Cycle field behaves the same and the created rail shows the typed cycle.
