@@ -235,6 +235,16 @@ None — no new network, auth, file-access, schema or persisted surface; the pro
 - While the prompt is open, a second + Key on another post-rail frame shows the refusal status and no second prompt.
 - The rest of the Studio (palette, panels, playhead) stays interactive while the prompt floats.
 
+## UAT Remediation (2026-11-05)
+
+First live pass found three issues, fixed in `842112538`:
+
+- The prompt opened over the canvas; it now anchors over the `.physics-paint-timeline` bounding box on open (the surface stays transparent until the anchor is measured, so the centered frame never flashes over the canvas) and falls back to centered when the timeline is absent.
+- The prompt is now draggable by its header: an imperative `translate()` on the grid-centered surface, clamped to keep 80px visible; no layout reflow and no React state.
+- `New rail` previously landed a key joined to the previous rail because the real +Key/paint callers pass `joinPreviousRail: true`, so no new rail band appeared. It now forces a fresh isolated segment exactly like Create rail → Key (`startsNewSegment: true`, no `joinsPreviousRail`, no dissolve id). `Convert to Standard` is unchanged. The three New rail pins now call with `joinPreviousRail: true`.
+
+Gates after the fix: targeted 174 passed; full suite 7328 passed / 0 failed; typecheck clean.
+
 ## Next Phase Readiness
 
 - Automated side is ready; live visible UAT (native Studio window) is the remaining gate.
