@@ -5281,6 +5281,14 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a complete canonica
       overrideColor: null,
     }])).toEqual({ loopId: 'rail-1' });
     expect(target([{ ...standardRail, railKind: 'reveal' }])).toEqual({ loopId: 'rail-1' });
+    // Quick 261105-p9i: a scripted Static rail qualifies the same way.
+    expect(target([{
+      ...standardRail,
+      mode: 'static',
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    }])).toEqual({ loopId: 'rail-1' });
     // Incomplete lifecycle members, split ranges, painted overrides.
     expect(target([{ ...standardRail, phaseOrigin: undefined }])).toBeNull();
     expect(target([{
@@ -5288,6 +5296,19 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a complete canonica
       visibleRanges: [{ start: 1, endExclusive: 4 }, { start: 4, endExclusive: 6 }],
     }])).toBeNull();
     expect(target([{ ...standardRail, frameOverrides: [{ appFrame: 2, keyId: 'OV1' }] }])).toBeNull();
+    // Painted overrides keep scripted and Reveal rails on the detached-key path.
+    expect(target([{
+      ...standardRail,
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      frameOverrides: [{ appFrame: 2, keyId: 'OV1' }],
+    }])).toBeNull();
+    expect(target([{
+      ...standardRail,
+      railKind: 'reveal',
+      frameOverrides: [{ appFrame: 2, keyId: 'OV1' }],
+    }])).toBeNull();
     // Unresolvable and descending sources. A one-key cycle is a proven
     // qualification (v2.0.1): its single phase is the cycle itself, so only a
     // dissolve can extend it — see the dedicated one-key dissolve test.
@@ -5388,6 +5409,22 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a complete canonica
       expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, K3: 3, K5: 5, NEW: 8 });
       expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     }
+  });
+
+  it('v2.0.1: a scripted Static rail dissolves into one joined Key Rail', () => {
+    const scriptedStaticRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      mode: 'static',
+      scriptId: 'action-1',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    };
+    const resolution = resolveDissolve(dissolveIntent(8), { loopClips: [scriptedStaticRail] });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A scripted Static rail dissolve must resolve');
+    expect(resolution.proposal.nextLoopClips).toEqual([]);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, K3: 3, K5: 5, NEW: 8 });
   });
 
   it('v2.0.1: a one-key cycle dissolves even when a following rail owns later keys', () => {

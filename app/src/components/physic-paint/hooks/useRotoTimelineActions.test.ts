@@ -1680,6 +1680,32 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
     });
 
+    it('a scripted Static rail beyond its end dissolves into one joined rail', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          mode: 'static',
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+        }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.destinationAppFrame).toBe(8);
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping.k3).toBe(3);
+      expect(mapping.k5).toBe(5);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(8);
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    });
+
     it('a Reveal rail beyond its end dissolves into one joined rail', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,
