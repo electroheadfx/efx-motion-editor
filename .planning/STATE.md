@@ -21,7 +21,7 @@ milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
+See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
 **Current focus:** v2.0.1 release prep — version bump, README, gates, then publish
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-11-03 after milestone v2.0.1 started)
 Phase: 58
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-05 — Phase 58 complete
-Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The two fixes above are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
+Last activity: 2026-11-05 — Phase 58 gap closure verified 57/57 on 2c0f22ce0. CR-01 (spaced-rail insert), CR-04 (cross-clip ghost guard + group band retime), and CR-05 (Standard-only append) fixed in 98f0b14dc; the authorized Force Spacing / spacing-on-set retime regression found by re-verification fixed in 2c0f22ce0. Full suite 7293 passed / 0 failed; typecheck clean.
+Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The ghost-source and rail-extension fixes are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
 Earlier: 2026-11-04 — Studio timeline playhead trail — UAT approved. The solid 2px blue accent stays confined to the 36px ruler band; a separate 1px `rgba(40,104,252,0.7)` trail continues the line through the key cells and rails (alpha raised from 0.35 on the UAT pass). Commits 492257255, ac7d7c9a4.
@@ -573,6 +573,9 @@ Recent decisions affecting current work:
 - [Phase 58]: Delete ownership is frame-based: delete-key, delete-key-group, and delete-key-rail return group-owned-key-delete-rejected after D-07, and the classifier routes selected Group-frame keys to group-frame while Group-containing multi/rail selections fail closed to no-target
 - [Phase 58]: CR-03 uses one shared loopSourceOrderIsProvable helper for move-key and move-key-group, reading the FINAL candidate mapping; the move-key-group guard is intersection-scoped and gated on candidate.changed
 - [Phase 58]: Order-breaking partial-cycle group drags reject with the unchanged loop-source-key-move-rejected code and D-16 copy; no new failure code, no copy drift, no schema/parser change
+- [Phase 58 gap closure]: Ghost-source coverage is proven over every final clip and every referenced source key after the final mapping, on both move-key and move-key-group; a ripple that would uncover any source key rejects with the unchanged loop-source-key-move-rejected code and locked copy
+- [Phase 58 gap closure]: Canonical lifecycle bands retime on whole-cycle group drags; non-canonical rails keep their stored band and are protected by the coverage guard — the canonical narrowing is scoped to the move branches
+- [Phase 58 gap closure]: Authorized Force Spacing / spacing-on-set keep retiming every finite lifecycle rail (D-14/D-24), including overridden rails; the post-end append is Standard-only, so scripted and Reveal rails keep the detached key
 
 ### Pending Todos
 
@@ -764,8 +767,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-05T09:03:39Z
-Stopped at: Phase 58 complete — all phases complete
+Last session: 2026-11-05T12:16:50Z
+Stopped at: Phase 58 complete and verified (57/57) — v2.0.1 release prep next
 Resume file: None
 
 ## Operator Next Steps

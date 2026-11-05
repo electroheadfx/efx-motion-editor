@@ -166,13 +166,11 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Every new `.mce` field declared in BOTH TS and Rust under the field-diff pin — v2.0.0 (DATA-04)
 - ✓ Clean break with no migration code or compatibility shims; unreadable scripts refuse, never drop data — v2.0.0 (DATA-01, DATA-02)
 - ✓ Studio sound import auto-crops to the visible timeline window — v2.0.0 QUICK-01 (UAT 2026-11-02)
+- ✓ Edit Rail is reachable for a selected/double-clicked Key Rail and converts it to a provenance-free Standard cycle (cycle count + Infinity, prefill 1, cancel is a no-op, one undo restores the Key Rail) — v2.0.1 Phase 58 (RAIL-01..05)
+- ✓ Single-key drag works on Motion/Static/Reveal loop clips under Law A (exactly one independent cycle); shared linked cycles keep D-11 and never move silently — v2.0.1 Phase 58 (RAIL-06/07)
+- ✓ Studio timeline ships the approved v7 rail interface (types, cells, geometry, header accent, blue playhead); no motion channels — v2.0.1 quick 261104-bop (VIS-01..08)
 
 ### Active
-
-**v2.0.1 (PATCH) — Rail editing + v7 timeline rails:**
-- [ ] Edit Rail is reachable for a selected/double-clicked Key Rail and converts it to a provenance-free Standard cycle (cycle count + Infinity, prefill 1, cancel is a no-op, one undo restores the Key Rail)
-- [ ] Single-key drag works on Motion/Static/Reveal loop clips under the discuss-phase law (preferred A: independent cycle only; shared linked cycles keep D-11); linked behavior is never silently relaxed
-- [ ] Studio timeline ships the approved v7 rail interface (types, cells, geometry, header accent, blue playhead); no motion channels
 
 **Carried beyond v2.0.1 (not this milestone):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
@@ -397,6 +395,7 @@ Known technical debt:
 | v2.0.0 watercolor paper is baked into the sheet, not composited through `paperPass` | Double modulation through `paperPass` produced visible speckle; one engine-owned paper term keeps display/bake parity | ✓ Good — paper changes are a cache miss; CR-01 partial-alpha wash waived |
 | PAPER-03 paper-id changes are display-only, not an undo step; the grain pair (strength/scale) stays undoable | A paper id is a display choice; undo entries for it would be noise in the ledger | ✓ Good — one merged ledger entry per grain edit; user decision 2026-11-02 |
 | Module switcher + Krita placeholder removed pre-publish (261102-iv5) | The switcher belonged to the Studio, never the editor; one module means no switching surface | ✓ Good — shipped editor top bar has no switcher |
+| v2.0.1 rail gap closure proves ghost-source coverage over every final clip, and scopes the canonical retime narrowing to the move branches | CR-04 cross-clip ripples could erase another clip's sources; the canonical narrowing also reached authorized Force Spacing, whose D-14/D-24 path must keep retiming | ✓ Good — verification 57/57 on 2c0f22ce0, full suite 7293 green; CR-01/CR-04/CR-05 fixed (98f0b14dc), spacing retime restored (2c0f22ce0) |
 
 ## Evolution
 
@@ -416,4 +415,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-03 after Phase 58 completed — all v2.0.1 phases done. RAIL-01..07 validated: Key Rail Edit Rail conversion, reduced Cycle dialog, single-key drag on Motion/Static/Reveal rails under Law A, plus rail insert/delete/retime semantics from UAT; no `.mce` change. Code review carries one open Critical (CR-01, spaced-rail insert rejection) recorded in 58-REVIEW-DISPOSITION.md. Previous: v2.0.0 shipped 2026-11-02.*
+*Last updated: 2026-11-05 after Phase 58 gap closure — verification passed 57/57 on 2c0f22ce0. RAIL-01..07 complete: Key Rail Edit Rail conversion, reduced Cycle dialog, Law A single-key drag, plus the rail insert/append/ghost-source laws; the v7 timeline-rails quick is complete. Code-review criticals CR-01/CR-04/CR-05 fixed in 98f0b14dc; remaining findings are advisory. Release prep next. Previous: v2.0.0 shipped 2026-11-02.*
