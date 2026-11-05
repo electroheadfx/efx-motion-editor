@@ -954,6 +954,56 @@ describe('PhysicsPaintPlayScriptDialog keyboard containment (CR-01) + Generate g
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
+  it('does not confirm on Enter from a control that owns Enter (Infinity switch, Cancel, Close)', () => {
+    const { controller } = createFakeController({ dialogMode: 'key-rail-create' });
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    const event = {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      currentTarget: null,
+      target: { closest: (selector: string) => (selector.includes('button') ? {} : null) },
+    };
+    handler(root, 'onKeyDown')(event);
+    expect(controller.confirm).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
+  });
+
+  it('keeps Escape inside a text-entry control instead of cancelling the dialog', () => {
+    const { controller } = createFakeController({ dialogMode: 'key-rail-create' });
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    const event = {
+      key: 'Escape',
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      currentTarget: null,
+      target: { closest: (selector: string) => (selector.includes('input') ? {} : null) },
+    };
+    handler(root, 'onKeyDown')(event);
+    expect(controller.cancel).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
+  });
+
+  it('still cancels on Escape from a button target', () => {
+    const { controller } = createFakeController({ dialogMode: 'key-rail-create' });
+    const tree = renderDialog(controller);
+    const root = findOne(tree, (vnode) => vnode.props?.role === 'dialog');
+    const event = {
+      key: 'Escape',
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      currentTarget: null,
+      target: { closest: (selector: string) => (selector.includes('input') ? null : {}) },
+    };
+    handler(root, 'onKeyDown')(event);
+    expect(controller.cancel).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+  });
+
   it('disables Generate while the repeat field is invalid (repeatError channel), not only validationError', () => {
     const { controller } = createFakeController({ repeatError: 'Enter a positive integer.' });
     const tree = renderDialog(controller);

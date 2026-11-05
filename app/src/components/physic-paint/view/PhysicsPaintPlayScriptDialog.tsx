@@ -43,6 +43,13 @@ const RAIL_TABS = [
   { value: 'reveal' as const, label: 'Photo', icon: Image },
 ];
 
+const TEXT_ENTRY_SELECTOR = 'input, textarea, select, [contenteditable="true"]';
+const KEY_ACTIVATABLE_SELECTOR = 'button, input, textarea, select, a[href], [role="switch"], [role="radio"], [contenteditable="true"]';
+
+function keyTargetMatches(target: EventTarget | null, selector: string): boolean {
+  return (target as { closest?: (selector: string) => Element | null } | null)?.closest?.(selector) != null;
+}
+
 export function PhysicsPaintPlayScriptDialog({
   playScript,
   confirmationOpen,
@@ -290,12 +297,19 @@ export function PhysicsPaintPlayScriptDialog({
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === 'Escape') {
+          // A text-entry control owns Escape: the Cycle field reverts itself
+          // instead of closing the dialog.
+          if (keyTargetMatches(event.target, TEXT_ENTRY_SELECTOR)) return;
           event.preventDefault();
           if (regenerateImpact) keepLocalChanges();
           else playScript.cancel();
           return;
         }
         if (!regenerateImpact && event.key === 'Enter' && !playScript.canCancel.value) {
+          // Buttons and switches own Enter: their native activation must run
+          // (Infinity toggle, Cancel, Close, stack-collision actions) instead
+          // of the dialog's primary confirm.
+          if (keyTargetMatches(event.target, KEY_ACTIVATABLE_SELECTOR)) return;
           // 261031-i54: an open collision owns Enter — Truncate is its default.
           if (stackCollision !== null) {
             if (!collisionOffers.includes('truncate')) return;
