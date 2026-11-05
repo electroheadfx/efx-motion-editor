@@ -9300,6 +9300,9 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   height: 44px;
   padding: 0 14px 0 18px;
   border-bottom: 1px solid var(--ps-divider);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
 
 .physics-paint-rail-conversion-header strong {

@@ -1706,7 +1706,9 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         }],
         capacity: 20,
       });
-      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      // Real +Key / paint callers pass joinPreviousRail: New rail must still
+      // start a fresh segment (the + Rail button law), not join the old rail.
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { joinPreviousRail: true });
       expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'motion' });
       actions.railConversionDialog.answer('new-rail');
       expect(await pending).toBe(true);
@@ -1805,7 +1807,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         }],
         capacity: 20,
       });
-      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { joinPreviousRail: true });
       expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'static' });
       actions.railConversionDialog.answer('new-rail');
       expect(await pending).toBe(true);
@@ -1813,6 +1815,9 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      // New rail = Create rail → Key: fresh segment, never a previous-rail join.
+      expect(dispatched.intent.joinsPreviousRail).toBeUndefined();
+      expect(dispatched.intent.startsNewSegment).toBe(true);
       expect(dispatched.proposal.nextLoopClips).toBeNull();
       const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
@@ -1848,7 +1853,7 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         loopClips: [{ ...standardRail(1), railKind: 'reveal' }],
         capacity: 20,
       });
-      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const pending = actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8), { joinPreviousRail: true });
       expect(actions.railConversionDialog.request.value).toEqual({ railKind: 'reveal' });
       actions.railConversionDialog.answer('new-rail');
       expect(await pending).toBe(true);
@@ -1856,6 +1861,9 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
       expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
       expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      // New rail = Create rail → Key: fresh segment, never a previous-rail join.
+      expect(dispatched.intent.joinsPreviousRail).toBeUndefined();
+      expect(dispatched.intent.startsNewSegment).toBe(true);
       expect(dispatched.proposal.nextLoopClips).toBeNull();
       const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);

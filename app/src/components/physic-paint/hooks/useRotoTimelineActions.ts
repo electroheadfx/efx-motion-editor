@@ -2626,22 +2626,30 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         })
         : null;
       // Quick 261105-raf: the dissolve fields derive ONLY from the chosen
-      // answer, so `new-rail` reproduces the null-dissolve detached-key path
-      // byte-for-byte and `convert` reproduces the unchanged p9i dissolve.
-      const dispatchAddEmptyKey = (joinedByDissolve: boolean) => runPhysicalAction({
-        intent: createPhysicPaintRotoPasteKeyIntent(
-          railInsertFrame ?? destinationAppFrame,
-          emptyPayload,
-          null,
-          joinedByDissolve ? false : startsNewSegment,
-          joinsPreviousRail || joinedByDissolve,
-          railInsertFrame === null ? null : railInsert!.loopId,
-          joinedByDissolve && dissolveTarget !== null ? dissolveTarget.loopId : null,
-        ),
-        operationKind: 'paste-key',
-        requiredKeyId: null,
-        successMessage: ADD_KEY_SUCCESS_MESSAGE,
-      });
+      // answer, so `convert` reproduces the unchanged p9i dissolve and
+      // `new-rail` leaves the rail and its Loop Clip untouched.
+      // UAT fix: `new-rail` must be a REAL new rail — exactly Create rail → Key
+      // (forceNewSegment): a fresh isolated segment that owns its incoming
+      // break. The natural +Key/paint `joinsPreviousRail` must NOT win here, or
+      // the key joins the previous rail and no new rail band appears.
+      const dispatchAddEmptyKey = (choice: RotoRailConversionChoice | null) => {
+        const joinedByDissolve = choice === 'convert';
+        const startsFreshRail = choice === 'new-rail';
+        return runPhysicalAction({
+          intent: createPhysicPaintRotoPasteKeyIntent(
+            railInsertFrame ?? destinationAppFrame,
+            emptyPayload,
+            null,
+            startsFreshRail ? true : (joinedByDissolve ? false : startsNewSegment),
+            startsFreshRail ? false : (joinsPreviousRail || joinedByDissolve),
+            railInsertFrame === null ? null : railInsert!.loopId,
+            joinedByDissolve && dissolveTarget !== null ? dissolveTarget.loopId : null,
+          ),
+          operationKind: 'paste-key',
+          requiredKeyId: null,
+          successMessage: ADD_KEY_SUCCESS_MESSAGE,
+        });
+      };
       // Quick 261105-raf: a destination strictly AFTER a SCRIPT-GENERATED rail
       // (scripted Motion, scripted Static or Reveal) asks exactly once before
       // anything is committed. `Convert to Standard` keeps the shipped
@@ -2667,9 +2675,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           input.publishStatus?.('Resolve the Rail edit prompt first.');
           return Promise.resolve(false);
         }
-        return pendingChoice.then((choice) => dispatchAddEmptyKey(choice === 'convert'));
+        return pendingChoice.then((choice) => dispatchAddEmptyKey(choice));
       }
-      return dispatchAddEmptyKey(dissolveTarget !== null);
+      return dispatchAddEmptyKey(dissolveTarget !== null ? 'convert' : null);
     } catch {
       input.publishStatus?.('The empty Roto key payload is unavailable.');
       return Promise.resolve(false);

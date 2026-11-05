@@ -140,6 +140,17 @@ describe('PhysicsPaintRailConversionDialog (quick 261105-raf)', () => {
     expect(childrenOf(root)[0]).toBe(surface);
   });
 
+  it('wires the movable surface and its header drag handlers', () => {
+    const { tree } = renderDialog({ railKind: 'motion' });
+    const surface = findOne(tree, byClass('physics-paint-rail-conversion-surface'));
+    expect(surface.ref ?? surface.props.ref).toBeTruthy();
+    const header = findOne(surface, byClass('physics-paint-rail-conversion-header'));
+    expect(typeof header.props.onPointerDown).toBe('function');
+    expect(typeof header.props.onPointerMove).toBe('function');
+    expect(typeof header.props.onPointerUp).toBe('function');
+    expect(typeof header.props.onPointerCancel).toBe('function');
+  });
+
   it('names the Static and Reveal rail kinds', () => {
     const statik = renderDialog({ railKind: 'static' }).tree as TestVNode;
     expect(textOf(findOne(statik, byClass('physics-paint-rail-conversion-body'))))
