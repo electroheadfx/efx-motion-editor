@@ -24,15 +24,15 @@ milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
 See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v2.0.1 release prep — version bump, README, gates, then publish
+**Current focus:** v2.0.1 release finalization — refreshed audit and six gates green; next is the user-run credentialed build, signed UAT, and publish
 
 ## Current Position
 
 Phase: 58
-Plan: Not started
+Plan: All 10 plans complete
 Status: All phases complete
-Last activity: 2026-11-05 — Quick task 261105-sk3 UAT APPROVED: typing in the Motion/Static/Reveal rail-creation Frames and Cycle fields now commits live — the slider moves on each keystroke and Create uses the typed value with no TAB/blur. A default-off `commitOnInput` opt-in on the shared SliderStepper/NumericStepper is enabled on exactly the four rail-creation fields; every other stepper keeps commit-on-blur. Full suite 7347 passed / 0 failed; typecheck clean. The v2.0.1 release remains deferred to another session.
-Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The ghost-source and rail-extension fixes are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
+Last activity: 2026-11-05 — v2.0.1 audit refreshed at HEAD 7dddc1389 after the post-audit rail fixes (Run Script merge, rail-kind dissolve, one-shot conversion prompt, live commitOnInput). Status tech_debt, 15/15 requirements, integration 14/14 links, flows 7/7, no blockers. Six agent gates green: vitest 7347 passed / 0 failed, typecheck clean, production build (largest chunk 1,620.87 kB), cargo test 21/21, release-script syntax, PREFLIGHT PASS. Awaiting the user-run credentialed build, signed UAT, then the GitHub publish.
+Audit: 2026-11-05T20:03:44Z — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. Supersedes the 12:00Z report; it folds in f7a80d791, 8bf0ab4ed/715c9c155, d22d70809/67a6f31f7/e0ca486e4/842112538, and 32694c461/811be7aa3/069c93fc0. Remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, prompt pending window, .test.tsx launcher collection, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
 Earlier: 2026-11-04 — Studio timeline playhead trail — UAT approved. The solid 2px blue accent stays confined to the 36px ruler band; a separate 1px `rgba(40,104,252,0.7)` trail continues the line through the key cells and rails (alpha raised from 0.35 on the UAT pass). Commits 492257255, ac7d7c9a4.
@@ -770,8 +770,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-05T12:16:50Z
-Stopped at: Quick 261105-sk3 UAT approved; v2.0.1 release deferred to another session
+Last session: 2026-11-05T20:03:44Z
+Stopped at: v2.0.1 audit refreshed and six agent gates green; waiting on the user-run credentialed build and signed UAT before the draft replacement and publish
 Resume file: None
 
 ## Operator Next Steps
