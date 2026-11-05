@@ -764,6 +764,23 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     handler(input, 'onInput')({ currentTarget: { value: '2' } });
     expect(signals.repeatText.value).toBe('2');
   });
+
+  it('261105-sk3: typing in the Reveal Frames field writes revealCountText live', () => {
+    const { controller, signals } = createFakeController({ railTab: 'reveal' });
+    const tree = renderDialog(controller);
+    const revealCount = findOne(tree, byId('physics-play-script-reveal-count'));
+    expect(revealCount.props.commitOnInput).toBe(true);
+
+    const input = stepperInput(revealCount);
+    handler(input, 'onInput')({ currentTarget: { value: '2' } });
+    expect(signals.revealCountText.value).toBe('2');
+  });
+
+  it('261105-sk3: the Standard / Key Rail reduced form stays blur-only', () => {
+    const { controller } = createFakeController({ dialogMode: 'key-rail-create' });
+    const tree = renderDialog(controller);
+    expect(findOne(tree, byId('physics-play-script-repeat')).props.commitOnInput).toBeUndefined();
+  });
 });
 
 describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', () => {

@@ -623,6 +623,8 @@ export function RevealTimingCard(props: {
       </div>
       <div class="physics-paint-play-script-timing-body">
         <div class="physics-paint-play-script-field">
+          {/* quick 261105-sk3: typing applies live here — only the Frames and
+              Cycle fields of this card and RevealTimingCard opt in. */}
           <SliderStepper
             id="physics-play-script-reveal-count"
             class="physics-paint-play-script-hero-stepper"
@@ -635,6 +637,7 @@ export function RevealTimingCard(props: {
             max={Math.max(1, props.playScript.capacity.value)}
             sliderMax={Math.max(1, props.playScript.capacity.value)}
             step={1}
+            commitOnInput={true}
             disabled={props.busy}
             ariaInvalid={Boolean(props.playScript.revealValidationError.value)}
             ariaDescribedBy={props.playScript.revealValidationError.value ? 'physics-play-script-reveal-error' : undefined}
