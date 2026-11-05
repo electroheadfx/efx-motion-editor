@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-05T18:51:01.279Z"
+last_updated: "2026-11-05T19:46:30.312Z"
 last_activity: 2026-11-05
 last_activity_desc: Phase 58 complete
-state_head: e0ca486e4ba9d5574f6b9b3329841c2bb2d33125
+state_head: 069c93fc026913f5777367fa3df48a8b75924334
 progress:
   total_phases: 1
   completed_phases: 1
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 Phase: 58
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-05 — Quick task 261105-raf UAT APPROVED (release green-lit): +Key/paint after a scripted Motion/Static/Reveal rail opens a one-shot floating `Edit this rail?` prompt. Convert to Standard keeps the 261105-p9i dissolve; New rail keeps the scripted rail and its Loop Clip. UAT fixes 842112538: the prompt anchors over the timeline and is draggable by its header; New rail now forces a real fresh rail (startsNewSegment, no joinsPreviousRail) like the + Rail button, instead of joining the previous rail. Standard merged rails keep the silent dissolve; in-rail 58 inserts, overrides and forceNewSegment never prompt. Full suite 7328 passed / 0 failed; typecheck clean.
+Last activity: 2026-11-05 — Completed quick task 261105-sk3 (automated green, live UAT pending): typing in the Motion/Static/Reveal rail-creation Frames and Cycle fields now commits live — the slider moves on each keystroke and Create uses the typed value with no TAB/blur. A default-off `commitOnInput` opt-in on the shared SliderStepper/NumericStepper is enabled on exactly the four rail-creation fields; every other stepper keeps commit-on-blur. Full suite 7347 passed / 0 failed; typecheck clean. The v2.0.1 release remains deferred to another session.
 Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The ghost-source and rail-extension fixes are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
@@ -713,6 +713,7 @@ None yet.
 | 261105-cgl | Small Studio add-ons: Push mode moved into the Tools popover, Frame/Seconds go-to popup on the frame readout, Hand host tool for primary-drag canvas panning | 2026-11-05 | 7d4beafac | [261105-cgl-small-addons-remove-button-push-mode-in-](./quick/261105-cgl-small-addons-remove-button-push-mode-in-/) |
 | 261105-p9i | v2.0.1 rails: +Key/paint on an empty frame after a Motion/Static/Reveal rail now dissolves that rail's clip and joins the new key contiguously (one atomic edit), not just Standard | 2026-11-05 | 715c9c155 | [261105-p9i-extend-rail-with-key-or-paint-inside-mot](./quick/261105-p9i-extend-rail-with-key-or-paint-inside-mot/) |
 | 261105-raf | v2.0.1 rails: one-shot Edit this rail? prompt when +Key/paint lands after a scripted Motion/Static/Reveal rail — Convert to Standard keeps the p9i dissolve, New rail keeps the scripted rail and lands a detached key | 2026-11-05 | e0ca486e4 | [261105-raf-one-shot-edit-this-rail-dialog-when-key-](./quick/261105-raf-one-shot-edit-this-rail-dialog-when-key-/) |
+| 261105-sk3 | Rail creation UX: typing in the Motion/Static/Reveal Frames and Cycle fields now commits live (slider moves, Create uses the typed value) without TAB/blur; opt-in commitOnInput on SliderStepper/NumericStepper, four rail-creation call sites only | 2026-11-05 | 069c93fc0 | [261105-sk3-typing-a-value-in-the-rail-creation-fram](./quick/261105-sk3-typing-a-value-in-the-rail-creation-fram/) |
 
 ### Roadmap Evolution
 
@@ -770,7 +771,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-05T12:16:50Z
-Stopped at: v2.0.1 release deferred to another session — quick 261105-raf UAT approved; milestone finalization paused before the audit/tag/publish gates
+Stopped at: Quick 261105-sk3 complete (automated green) — live UAT pending; v2.0.1 release deferred to another session
 Resume file: None
 
 ## Operator Next Steps
