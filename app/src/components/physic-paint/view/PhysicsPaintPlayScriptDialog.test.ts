@@ -700,6 +700,44 @@ describe('PhysicsPaintPlayScriptDialog Timing card (D-12/D-13 loop intent, both 
     expect(repeat.props.disabled).toBe(true);
     expect(repeat.props.value).toBe(7);
   });
+
+  // quick 261105-sk3: this harness keeps SliderStepper/NumericStepper opaque.
+  // Rendering a card's stepper vnode here drives the REAL input handlers with
+  // the REAL call-site props, so the live-write pin is end-to-end.
+  function stepperInput(vnode: TestVNode): TestVNode {
+    hooks.cursor = 0;
+    hooks.refs = new Map();
+    const rendered = (vnode.type as (props: Record<string, unknown>) => unknown)(vnode.props);
+    return findOne(rendered, (child) => child.type === 'input');
+  }
+
+  it('261105-sk3: typing in Frames writes countText live in both Rail Types — no blur, Enter or TAB', () => {
+    const { controller, signals } = createFakeController({ framesMax: 24 });
+    for (const mode of ['progressive', 'static'] as const) {
+      signals.mode.value = mode;
+      signals.countText.value = '3';
+      const tree = renderDialog(controller);
+      const count = findOne(tree, byId('physics-play-script-count'));
+      expect(count.props.commitOnInput, mode).toBe(true);
+
+      const input = stepperInput(count);
+      handler(input, 'onInput')({ currentTarget: { value: '12' } });
+      expect(signals.countText.value, mode).toBe('12');
+    }
+  });
+
+  it('261105-sk3: the four Motion wiggle sliders stay blur-only — no commitOnInput opt-in', () => {
+    const { controller } = createFakeController();
+    const tree = renderDialog(controller);
+    for (const id of [
+      'physics-play-script-motion-deformation',
+      'physics-play-script-motion-position',
+      'physics-play-script-motion-rotation',
+      'physics-play-script-motion-scale',
+    ]) {
+      expect(findOne(tree, byId(id)).props.commitOnInput, id).toBeUndefined();
+    }
+  });
 });
 
 describe('PhysicsPaintPlayScriptDialog color segmented control (D-08R/D-18)', () => {

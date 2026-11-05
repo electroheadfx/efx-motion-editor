@@ -499,6 +499,8 @@ export function PaintTimingCard(props: {
       </div>
       <div class="physics-paint-play-script-timing-body">
         <div class={`physics-paint-play-script-field${props.locked ? ' physics-paint-play-script-locked' : ''}`}>
+          {/* quick 261105-sk3: typing applies live here — only the Frames and
+              Cycle fields of this card and RevealTimingCard opt in. */}
           <SliderStepper
             id="physics-play-script-count"
             class="physics-paint-play-script-hero-stepper physics-paint-play-script-count"
@@ -511,6 +513,7 @@ export function PaintTimingCard(props: {
             max={Math.max(1, props.playScript.framesMax.value)}
             sliderMax={Math.max(1, props.playScript.framesMax.value)}
             step={1}
+            commitOnInput={true}
             {...(mergeRun ? { allowOutOfRangeEntry: true } : {})}
             disabled={props.busy || props.locked || props.playScript.max.value}
             ariaInvalid={Boolean(props.playScript.validationError.value)}

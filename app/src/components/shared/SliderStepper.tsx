@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, Ref, TargetedInputEvent, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import {
   commitStepperInput,
@@ -59,6 +59,14 @@ export interface SliderStepperProps {
    * surface). The knob still follows the pointer through a local draft.
    */
   commitOnRelease?: boolean;
+  /**
+   * quick 261105-sk3: emit through the shared commit law on every `input`
+   * event instead of only on blur/Enter. Default OFF — every other consumer
+   * keeps today's commit-on-blur contract. While typing, the raw text owns
+   * the value box so a clamp or formatted rewrite never lands mid-word;
+   * blur/Enter still run the authoritative parse + clamp + rewrite.
+   */
+  commitOnInput?: boolean;
   /**
    * quick 261024-p5q: the selected strokes disagree. The readout shows
    * "Mixed", the track neutralizes, and the equality guard is bypassed in
@@ -275,6 +283,7 @@ export function SliderStepper({
   onFocus,
   onBlur,
   commitOnRelease,
+  commitOnInput = false,
   mixed = false,
   allowOutOfRangeEntry = false,
   below,
@@ -286,12 +295,21 @@ export function SliderStepper({
   const repeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pressing = useRef(false);
   const dragging = useRef(false);
+  /** quick 261105-sk3: the raw text while typing (null = not typing). The
+   *  controlled `value` prop must never clamp or reformat a half-typed number,
+   *  so the draft owns the box until blur/Enter/Escape clears it. Preact 11
+   *  patches `dom.value` only when the vnode value differs from the live DOM
+   *  value (diff/index.js), so returning the draft keeps the box untouched. */
+  const liveDraft = useRef<string | null>(null);
   /** commitOnRelease: the knob's draft while dragging (null = not dragging).
    *  Held in a ref-wrapped signal so it survives re-renders (48-06). */
   const draftRef = useRef(signal<number | null>(null));
   const draft = draftRef.current;
 
   const display = mixed ? MIXED_DISPLAY : formatStepperValue(value, step, precision, presets);
+  /** quick 261105-sk3: the draft wins while typing so the clamp/formatted
+   *  display can never rewrite the box mid-word. */
+  const inputValue = commitOnInput && liveDraft.current !== null ? liveDraft.current : display;
 
   const trackFloor = sliderMin ?? min ?? 0;
   const trackCeiling = sliderMax ?? max ?? Math.max(value, trackFloor + 1);
@@ -419,21 +437,38 @@ export function SliderStepper({
     stopCoalescing();
   };
 
+  /** The one commit-option object — blur/Enter and the live input path must
+   *  share it so a typed emit can never diverge from the authoritative parse
+   *  (quick 261105-sk3, T-261105-SK3-01). */
+  const commitOptions = () => ({
+    step,
+    presets,
+    resolveStep,
+    freeEntry,
+    min: allowOutOfRangeEntry ? undefined : min,
+    max: allowOutOfRangeEntry ? undefined : max,
+  });
+
   const commitInput = (element: HTMLInputElement) => {
-    const next = commitStepperInput(element.value, {
-      step,
-      presets,
-      resolveStep,
-      freeEntry,
-      min: allowOutOfRangeEntry ? undefined : min,
-      max: allowOutOfRangeEntry ? undefined : max,
-    });
+    const next = commitStepperInput(element.value, commitOptions());
     if (next !== null) {
       if (next !== value || mixed) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
     } else {
       element.value = display;
     }
+    liveDraft.current = null;
+  };
+
+  /** quick 261105-sk3: the live commit. The raw text is stored FIRST so empty
+   *  and unparseable input also stays in the box; the emit then runs through
+   *  the same commit law as blur. Never assigns `element.value`. */
+  const handleLiveInput = (event: TargetedInputEvent<HTMLInputElement>) => {
+    const element = event.currentTarget;
+    liveDraft.current = element.value;
+    const next = commitStepperInput(element.value, commitOptions());
+    if (next === null) return;
+    if (next !== value || mixed) onChange(next);
   };
 
   // 48-06: while a release-commit drag is live the knob follows `draft.value`
@@ -472,7 +507,7 @@ export function SliderStepper({
           inputMode="decimal"
           class="slider-stepper-value"
           style={mixed ? { ...VALUE_STYLE, ...MIXED_VALUE_STYLE } : VALUE_STYLE}
-          value={display}
+          value={inputValue}
           disabled={disabled}
           aria-label={ariaLabel}
           aria-disabled={ariaDisabled ? 'true' : undefined}
@@ -494,9 +529,11 @@ export function SliderStepper({
               event.currentTarget.blur();
             } else if (event.key === 'Escape') {
               event.currentTarget.value = display;
+              liveDraft.current = null;
               event.currentTarget.blur();
             }
           }}
+          {...(commitOnInput ? { onInput: handleLiveInput } : {})}
         />
       </div>
       <div class="slider-stepper-bar-row" style={BAR_ROW_STYLE}>

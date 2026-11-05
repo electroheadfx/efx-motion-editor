@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { SliderStepper } from './SliderStepper';
 
@@ -16,6 +16,13 @@ class HookRuntime {
 
   finishRender() {
     for (const effect of this.pendingEffects) effect();
+  }
+
+  /** Quick 261105-sk3: no ref state (a live draft) may leak across tests. */
+  reset() {
+    this.cursor = 0;
+    this.slots = [];
+    this.pendingEffects = [];
   }
 
   useRef<T>(initial: T) {
@@ -79,6 +86,8 @@ function byClass(tree: AnyVNode, className: string): AnyVNode | undefined {
     typeof vnode.type !== 'function' && String(vnode.props?.class ?? '').split(/\s+/).includes(className),
   )[0];
 }
+
+beforeEach(() => runtime.reset());
 
 /**
  * SPECS/slider-stepper — the blended chrome pins ("BLENDED — VALUE ON TOP").
@@ -505,5 +514,131 @@ describe('slider-stepper — commitOnRelease (48-06)', () => {
     expect(onChange).toHaveBeenCalled();
     expect(onChange.mock.calls[0][0]).toBe(40);
     track.props.onPointerUp();
+  });
+});
+
+/**
+ * quick 261105-sk3 — the live `commitOnInput` opt-in.
+ *
+ * Default OFF keeps today's blur/Enter-only contract (no `onInput` prop at
+ * all). Opted in, every keystroke emits through the same `commitStepperInput`
+ * law as blur, while the raw text keeps ownership of the box until
+ * blur/Enter/Escape runs the authoritative rewrite.
+ */
+describe('slider-stepper — commitOnInput live commit (261105-sk3)', () => {
+  function valueOf(tree: AnyVNode): AnyVNode {
+    const value = byClass(tree, 'slider-stepper-value');
+    expect(value, 'value readout').toBeDefined();
+    return value!;
+  }
+
+  it('defaults off — no onInput handler and value is exactly the display', () => {
+    const tree = renderStepper({ value: 13 });
+    const value = valueOf(tree);
+    expect(value.props.onInput).toBeUndefined();
+    expect(value.props.value).toBe('13');
+  });
+
+  it('emits on every keystroke through the shared commit law and never rewrites the element text', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({ value: 3, min: 1, max: 24, step: 1, commitOnInput: true, onChange, ariaLabel: 'Frames' });
+    const value = valueOf(tree);
+    expect(typeof value.props.onInput).toBe('function');
+
+    const first = { value: '1' };
+    value.props.onInput({ currentTarget: first });
+    expect(onChange).toHaveBeenLastCalledWith(1);
+    expect(first.value).toBe('1');
+
+    const second = { value: '12' };
+    value.props.onInput({ currentTarget: second });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(12);
+    expect(second.value).toBe('12');
+  });
+
+  it('keeps the raw draft across a clamp re-render, then blur rewrites the formatted value and clears it', () => {
+    const onChange = vi.fn();
+    const first = renderStepper({ value: 5, min: 1, max: 10, step: 1, commitOnInput: true, onChange, ariaLabel: 'Frames' });
+    valueOf(first).props.onInput({ currentTarget: { value: '99' } });
+    expect(onChange).toHaveBeenCalledWith(10);
+
+    // The parent applied 10; the controlled display would say "10", but the
+    // draft owns the box while typing.
+    const second = renderStepper({ value: 10, min: 1, max: 10, step: 1, commitOnInput: true, onChange, ariaLabel: 'Frames' });
+    const reRendered = valueOf(second);
+    expect(reRendered.props.value).toBe('99');
+
+    const element = { value: '99' };
+    reRendered.props.onBlur({ currentTarget: element });
+    expect(element.value).toBe('10');
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    const third = renderStepper({ value: 10, min: 1, max: 10, step: 1, commitOnInput: true, onChange, ariaLabel: 'Frames' });
+    expect(valueOf(third).props.value).toBe('10');
+  });
+
+  it('emits nothing for empty or unparseable text and keeps the raw text across a re-render', () => {
+    const onChange = vi.fn();
+    const first = renderStepper({ value: 7, min: 1, max: 24, commitOnInput: true, onChange });
+    valueOf(first).props.onInput({ currentTarget: { value: '' } });
+    expect(onChange).not.toHaveBeenCalled();
+
+    const second = renderStepper({ value: 7, min: 1, max: 24, commitOnInput: true, onChange });
+    const reRendered = valueOf(second);
+    expect(reRendered.props.value).toBe('');
+
+    reRendered.props.onInput({ currentTarget: { value: 'abc' } });
+    expect(onChange).not.toHaveBeenCalled();
+
+    const third = renderStepper({ value: 7, min: 1, max: 24, commitOnInput: true, onChange });
+    expect(valueOf(third).props.value).toBe('abc');
+  });
+
+  it('keeps the clamp, step-grid and EU-comma law on the live path', () => {
+    const clampedMin = vi.fn();
+    const minTree = renderStepper({ value: 5, min: 1, max: 24, step: 1, commitOnInput: true, onChange: clampedMin });
+    valueOf(minTree).props.onInput({ currentTarget: { value: '0' } });
+    expect(clampedMin).toHaveBeenCalledWith(1);
+
+    const comma = vi.fn();
+    const commaTree = renderStepper({ value: 1, min: 0, max: 24, step: 1, commitOnInput: true, onChange: comma });
+    valueOf(commaTree).props.onInput({ currentTarget: { value: '2,5' } });
+    expect(comma).toHaveBeenCalledWith(3);
+
+    const clampedMax = vi.fn();
+    const maxTree = renderStepper({ value: 1, min: 1, max: 24, step: 1, commitOnInput: true, onChange: clampedMax });
+    valueOf(maxTree).props.onInput({ currentTarget: { value: '999' } });
+    expect(clampedMax).toHaveBeenCalledWith(24);
+  });
+
+  it('never emits when the parsed value equals the current value; mixed still bypasses the guard', () => {
+    const same = vi.fn();
+    const sameTree = renderStepper({ value: 12, min: 1, max: 24, step: 1, commitOnInput: true, onChange: same });
+    valueOf(sameTree).props.onInput({ currentTarget: { value: '12' } });
+    expect(same).not.toHaveBeenCalled();
+
+    const mixedChange = vi.fn();
+    const mixedTree = renderStepper({ value: 12, min: 1, max: 24, step: 1, commitOnInput: true, mixed: true, onChange: mixedChange });
+    valueOf(mixedTree).props.onInput({ currentTarget: { value: '12' } });
+    expect(mixedChange).toHaveBeenCalledWith(12);
+  });
+
+  it('Escape restores the display text and clears the draft', () => {
+    const onChange = vi.fn();
+    const first = renderStepper({ value: 6, min: 1, max: 24, commitOnInput: true, onChange });
+    valueOf(first).props.onInput({ currentTarget: { value: '99' } });
+
+    const second = renderStepper({ value: 24, min: 1, max: 24, commitOnInput: true, onChange });
+    const input = valueOf(second);
+    expect(input.props.value).toBe('99');
+
+    const target = { value: '99', blur: vi.fn() };
+    input.props.onKeyDown({ key: 'Escape', currentTarget: target });
+    expect(target.value).toBe('24');
+    expect(target.blur).toHaveBeenCalled();
+
+    const third = renderStepper({ value: 24, min: 1, max: 24, commitOnInput: true, onChange });
+    expect(valueOf(third).props.value).toBe('24');
   });
 });
