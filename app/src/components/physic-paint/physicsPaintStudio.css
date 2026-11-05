@@ -4103,7 +4103,10 @@ button.destructive {
   font: inherit;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  /* The global button rule uppercases every label; this switch reads as
+     ordinary title case (UAT). */
+  text-transform: none;
+  letter-spacing: normal;
   line-height: 1;
   cursor: pointer;
 }

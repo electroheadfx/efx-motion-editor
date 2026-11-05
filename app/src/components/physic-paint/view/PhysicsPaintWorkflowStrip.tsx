@@ -85,8 +85,12 @@ import {
   normalizeFrameGotoFrame,
   resolveFrameGotoTarget,
   resolveFrameGotoValue,
-  type FrameGotoMode,
 } from './physicsPaintFrameGoto';
+import {
+  formatRulerSecondsLabel,
+  getTimelineUnitMode,
+  setTimelineUnitMode,
+} from './physicsPaintTimelineUnit';
 import { FPS_PRESETS } from '../../../lib/fpsPresets';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
@@ -907,7 +911,8 @@ function RotoPlaybackCurrentFrameOutput(props: {
   // 261105-cgl UAT: local popup state is signal-backed (the project's
   // reactivity law) so the unit switch re-renders deterministically.
   const open = useSignal(false);
-  const mode = useSignal<FrameGotoMode>('frame');
+  // Shared timeline unit — the switch also retimes the ruler tick labels.
+  const unitMode = getTimelineUnitMode();
   // The canonical position, kept in FRAMES. Both units display the same
   // position, so switching Frame<->Seconds never re-derives or drifts.
   const draftFrame = useSignal(0);
@@ -943,7 +948,7 @@ function RotoPlaybackCurrentFrameOutput(props: {
   }, [open.value, closeFrameGoto]);
 
   const openFrameGoto = () => {
-    mode.value = 'frame';
+    // The unit is a timeline display choice — it survives close/reopen.
     // Seed ONCE from the live read — the popover never follows playback ticks.
     const live = props.playbackActive
       ? props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()
@@ -953,14 +958,14 @@ function RotoPlaybackCurrentFrameOutput(props: {
   };
 
   const commitFrameGoto = (value: number) => {
-    const target = resolveFrameGotoTarget(mode.value, value, fps, lastFrame);
+    const target = resolveFrameGotoTarget(unitMode, value, fps, lastFrame);
     if (target === null) return;
     draftFrame.value = target;
     props.onGoToFrame?.(target);
   };
 
-  const displayValue = resolveFrameGotoValue(mode.value, draftFrame.value, fps);
-  const frameMode = mode.value === 'frame';
+  const displayValue = resolveFrameGotoValue(unitMode, draftFrame.value, fps);
+  const frameMode = unitMode === 'frame';
 
   return (
     <Fragment>
@@ -992,14 +997,14 @@ function RotoPlaybackCurrentFrameOutput(props: {
             aria-pressed={frameMode}
             // UAT: switch on pointerdown as well as click — the unit must
             // change the instant the press lands, before any dismissal path.
-            onPointerDown={(event) => { event.preventDefault(); mode.value = 'frame'; }}
-            onClick={() => { mode.value = 'frame'; }}
+            onPointerDown={(event) => { event.preventDefault(); setTimelineUnitMode('frame'); }}
+            onClick={() => { setTimelineUnitMode('frame'); }}
           >Frame</button>
           <button
             type="button"
             aria-pressed={!frameMode}
-            onPointerDown={(event) => { event.preventDefault(); mode.value = 'seconds'; }}
-            onClick={() => { mode.value = 'seconds'; }}
+            onPointerDown={(event) => { event.preventDefault(); setTimelineUnitMode('seconds'); }}
+            onClick={() => { setTimelineUnitMode('seconds'); }}
           >Seconds</button>
         </div>
         <label class="physics-paint-frame-goto-field">
@@ -2737,6 +2742,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // One body read per render (narrow-read): the ghost mounts on gesture start
   // and unmounts on release — handlers never read `.value`, they only write.
   const soundDuplicateClip = soundDuplicatePreview.value;
+  // 261105-cgl UAT: the ruler tick labels follow the Frame/Seconds switch.
+  const timelineUnitMode = getTimelineUnitMode();
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
@@ -5809,7 +5816,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               ) : null}
               {rotoRulerTicks.map(frame => (
                 <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>
-                  <span class="physics-paint-ruler-label">{frame}</span>
+                  <span class="physics-paint-ruler-label">
+                    {timelineUnitMode === 'seconds'
+                      ? formatRulerSecondsLabel(framesToSeconds(frame, props.projectFps ?? 1))
+                      : frame}
+                  </span>
                 </span>
               ))}
               {/* 52.5 UAT round 3 + 261008-ig1 Task 2: the vertical end bars

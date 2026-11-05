@@ -2832,7 +2832,8 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     const openStart = code.indexOf('const openFrameGoto = () => {');
     const openBlock = code.slice(openStart, code.indexOf('};', openStart) + 2);
     expect(openStart).toBeGreaterThanOrEqual(0);
-    expect(openBlock).toContain("mode.value = 'frame'");
+    // The unit is a timeline display choice — opening never resets it.
+    expect(openBlock).not.toContain('setTimelineUnitMode');
     expect(openBlock).toContain('props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()');
     expect(openBlock).toContain('normalizeFrameGotoFrame(live, lastFrame)');
     expect(openBlock).toContain('open.value = true');
@@ -2845,12 +2846,12 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     const commitStart = code.indexOf('const commitFrameGoto = (value: number) => {');
     const commitBlock = code.slice(commitStart, code.indexOf('};', commitStart) + 2);
     expect(commitStart).toBeGreaterThanOrEqual(0);
-    expect(commitBlock).toContain('resolveFrameGotoTarget(mode.value, value, fps, lastFrame)');
+    expect(commitBlock).toContain('resolveFrameGotoTarget(unitMode, value, fps, lastFrame)');
     expect(commitBlock).toContain('if (target === null) return;');
     expect(commitBlock).toContain('props.onGoToFrame?.(target)');
     // The stepper value is the display projection, never the raw frame in
     // seconds mode.
-    expect(code).toContain('resolveFrameGotoValue(mode.value, draftFrame.value, fps)');
+    expect(code).toContain('resolveFrameGotoValue(unitMode, draftFrame.value, fps)');
     // The static-chrome call wires the existing synced-frame path.
     expect(code).toContain('onGoToFrame={props.onNavigateToSyncedFrame}');
     expect(code).toContain('lastFrame={Math.max(0, frameCells.length - 1)}');
@@ -2875,8 +2876,12 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     // probe is inconclusive (UAT: the Seconds switch appeared dead).
     expect(code).toContain('dismissExempt');
     expect(code).toContain("data-toolbox-dismiss-exempt={props.dismissExempt ? '' : undefined}");
-    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); mode.value = 'frame'; }}");
-    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); mode.value = 'seconds'; }}");
+    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); setTimelineUnitMode('frame'); }}");
+    expect(code).toContain("onPointerDown={(event) => { event.preventDefault(); setTimelineUnitMode('seconds'); }}");
+    // The ruler labels follow the same shared unit signal.
+    expect(code).toContain('const timelineUnitMode = getTimelineUnitMode();');
+    expect(code).toContain("timelineUnitMode === 'seconds'");
+    expect(code).toContain('formatRulerSecondsLabel(framesToSeconds(frame, props.projectFps ?? 1))');
     // A typed value must commit before the outside click unmounts the panel.
     expect(code).toContain('if (active instanceof HTMLElement && panelRef.current?.contains(active)) active.blur();');
   });
