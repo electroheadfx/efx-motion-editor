@@ -354,6 +354,50 @@ describe('D-11 rigid linked-key guard', () => {
     expect(retimed?.visibleRanges).toEqual([{ start: 10, endExclusive: 21 }]);
   });
 
+  it('rejects an unowned-key move whose ripple pushes another clip source out of a gapped band — CR-04', () => {
+    const gappedRail: PhysicPaintRotoLoopClip = {
+      loopId: 'L-gap',
+      placementStart: 10,
+      sourceKeyIds: ['S1', 'S2'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 15,
+      visibleRanges: [{ start: 10, endExclusive: 12 }, { start: 13, endExclusive: 15 }],
+      frameOverrides: [],
+    };
+    const resolution = resolveEdit({
+      records: [record('S1', 10, 'S1'), record('S2', 14, 'S2'), record('X', 16, 'X')],
+      intent: { kind: 'move-key', movedKeyId: 'X', target: { kind: 'physical-cell', appFrame: 13 } },
+      loopClips: [gappedRail],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
+  it('rejects an unowned-key cut that shifts a canonical cycle out of its band — CR-04', () => {
+    const canonicalRail: PhysicPaintRotoLoopClip = {
+      loopId: 'L-canon',
+      placementStart: 10,
+      sourceKeyIds: ['S1', 'S2'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 15,
+      visibleRanges: [{ start: 10, endExclusive: 15 }],
+      frameOverrides: [],
+    };
+    const resolution = resolveEdit({
+      records: [record('X', 8, 'X'), record('S1', 10, 'S1'), record('S2', 14, 'S2')],
+      intent: { kind: 'move-key', movedKeyId: 'X', target: { kind: 'physical-cell', appFrame: 20 } },
+      loopClips: [canonicalRail],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key', D11_TEXT);
+  });
+
   it('rejects a single-key move that breaks the referencing cycle order — CR-02', () => {
     const resolution = resolveEdit({
       records: SOURCE_RECORDS(),
@@ -898,6 +942,67 @@ describe('D-04 rigid group drag of the whole source cycle', () => {
       records: SOURCE_RECORDS(),
       intent: { kind: 'move-key-group', movedKeyIds: ['A', 'B'], grabbedKeyId: 'A', target: GROUP_TARGET },
       loopClips: [loop(10, 5, 'L1', ['A', 'B']), loop(100, 2, 'L2', ['A', 'C', 'D'])],
+    });
+    expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
+  });
+
+  it('a whole-cycle group drag retimes a canonical lifecycle band with its sources — CR-04', () => {
+    const canonicalRail: PhysicPaintRotoLoopClip = {
+      loopId: 'L-canon',
+      placementStart: 1,
+      sourceKeyIds: ['K1', 'K3', 'K5'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+      frameOverrides: [],
+    };
+    const proposal = expectOk(resolveEdit({
+      records: [record('K1', 1, 'K1'), record('K3', 3, 'K3'), record('K5', 5, 'K5')],
+      intent: {
+        kind: 'move-key-group',
+        movedKeyIds: ['K1', 'K3', 'K5'],
+        grabbedKeyId: 'K1',
+        target: { kind: 'physical-cell', appFrame: 3 },
+      },
+      loopClips: [canonicalRail],
+    }));
+    expect(Object.fromEntries(proposal.mapping)).toEqual({ K1: 3, K3: 5, K5: 7 });
+    const retimed = proposal.nextLoopClips?.find((clip) => clip.loopId === 'L-canon');
+    expect(retimed).toMatchObject({
+      placementStart: 3,
+      phaseOrigin: 3,
+      originalEndExclusive: 8,
+      visibleRanges: [{ start: 3, endExclusive: 8 }],
+    });
+  });
+
+  it('rejects a whole-cycle group drag that would leave a non-canonical band — CR-04', () => {
+    const overriddenRail: PhysicPaintRotoLoopClip = {
+      loopId: 'L-over',
+      placementStart: 1,
+      sourceKeyIds: ['K1', 'K3', 'K5'],
+      repeat: 1,
+      mode: 'static',
+      syncState: 'modified',
+      provenanceState: 'attached',
+      phaseOrigin: 1,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+      frameOverrides: [{ keyId: 'O1', appFrame: 4 }],
+    };
+    const resolution = resolveEdit({
+      records: [record('K1', 1, 'K1'), record('K3', 3, 'K3'), record('K5', 5, 'K5')],
+      intent: {
+        kind: 'move-key-group',
+        movedKeyIds: ['K1', 'K3', 'K5'],
+        grabbedKeyId: 'K1',
+        target: { kind: 'physical-cell', appFrame: 3 },
+      },
+      loopClips: [overriddenRail],
     });
     expectFailure(resolution, 'loop-source-key-move-rejected', 'move-key-group', D11_TEXT);
   });

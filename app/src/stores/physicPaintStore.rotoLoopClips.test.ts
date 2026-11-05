@@ -732,7 +732,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', async () 
     // source-attached Loop Clip placement or vice versa.
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionBefore + 1);
     expect(physicPaintVersion.value).toBe(visualVersionBefore + 1);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
     expect(physicPaintStore.getRotoPhysicalLoopClips(BRIDGE_LAYER, TEST_TRACK_ID)).toEqual([loopAfter]);
     const recordsAfter = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
     expect(recordsAfter.map((entry) => [entry.keyId, entry.appFrame])).toEqual([
@@ -797,7 +797,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', async () 
     const accepted = await applyBridgePayload(command);
     expect(accepted.ok).toBe(true);
     const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
     const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(BRIDGE_LAYER, TEST_TRACK_ID)!;
     expect(afterRevision).not.toBe(beforeRevision);
@@ -944,7 +944,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', async () 
     });
     expect((await applyBridgePayload(command)).ok).toBe(true);
     const afterRecords = physicPaintStore.getRotoRealKeyRecords(BRIDGE_LAYER, TEST_TRACK_ID);
-    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3, 0);
+    const loopAfter = loopClip('loop-1', 1, ['A', 'B', 'C', 'D', 'E'], 3);
     const afterRevision = physicPaintStore.getRotoPhysicalContentRevision(BRIDGE_LAYER, TEST_TRACK_ID)!;
 
     // The staged undo state carries a Loop Clip the target revision does not

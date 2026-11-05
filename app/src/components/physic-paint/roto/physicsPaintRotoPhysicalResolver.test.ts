@@ -4453,6 +4453,47 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     });
   });
 
+  it('CR-01: a global insert at or left of a spaced rail shifts it instead of rejecting', () => {
+    const spacedRail: PhysicPaintRotoLoopClip = {
+      loopId: 'rail-spaced',
+      placementStart: 10,
+      sourceKeyIds: ['S1', 'S2', 'S3'],
+      repeat: 1,
+      mode: 'progressive',
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 10,
+      originalEndExclusive: 15,
+      visibleRanges: [{ start: 10, endExclusive: 15 }],
+      frameOverrides: [],
+    };
+    const identities: readonly PhysicPaintRotoKeyIdentity[] = [
+      { keyId: 'S1', appFrame: 10 },
+      { keyId: 'S2', appFrame: 12 },
+      { keyId: 'S3', appFrame: 14 },
+    ];
+    for (const destinationAppFrame of [0, 10]) {
+      const resolution = resolvePhysicPaintRotoPhysicalEdit({
+        identities,
+        records: recordsFrom(identities),
+        intent: { kind: 'insert-slot', destinationAppFrame },
+        parentEndExclusive: 32,
+        capacity: 32,
+        interpolationEnabled: true,
+        loopClips: [spacedRail],
+      });
+      expect(resolution.ok, `insert-slot @${destinationAppFrame} must not be rejected`).toBe(true);
+      if (!resolution.ok) throw new Error('A global insert before a spaced rail must resolve');
+      expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ S1: 11, S2: 13, S3: 15 });
+      expect(resolution.proposal.nextLoopClips?.[0]).toMatchObject({
+        placementStart: 11,
+        phaseOrigin: 11,
+        originalEndExclusive: 16,
+        visibleRanges: [{ start: 11, endExclusive: 16 }],
+      });
+    }
+  });
+
   it('58 G-03: static rails accept the insert with held frames', () => {
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: [
@@ -5425,6 +5466,20 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
     expect(clip?.originalEndExclusive).toBe(7);
     expect(clip?.visibleRanges).toEqual([{ start: 1, endExclusive: 7 }]);
     expect(clip?.frameOverrides).toEqual([{ appFrame: 4, keyId: 'O1' }]);
+  });
+
+  it('v2.0.1 CR-05: overridden scripted and Reveal rails keep the detached key', () => {
+    const overrides = [{ appFrame: 4, keyId: 'O1' }];
+    for (const clip of [
+      { ...standardRail, scriptId: 'action-1', frameOverrides: overrides },
+      { ...standardRail, railKind: 'reveal' as const, frameOverrides: overrides },
+    ]) {
+      expect(resolvePhysicPaintRotoRailKeyInsertTarget({
+        identities: sourceIdentities,
+        loopClips: [clip],
+        appFrame: 6,
+      })).toBeNull();
+    }
   });
 
   it('v2.0.1: stale non-leading source breaks are dropped in the same proposal', () => {

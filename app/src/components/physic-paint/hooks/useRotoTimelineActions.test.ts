@@ -1687,6 +1687,44 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
     });
 
+    it('an overridden scripted rail keeps the detached key — CR-05', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          scriptId: 'action-1',
+          motion: { deformation: 0, position: 0 },
+          overrideColor: null,
+          frameOverrides: [{ appFrame: 4, keyId: 'O1' }],
+        }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
+    it('an overridden Reveal rail keeps the detached key — CR-05', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [{
+          ...standardRail(1),
+          railKind: 'reveal',
+          frameOverrides: [{ appFrame: 4, keyId: 'O1' }],
+        }],
+        capacity: 20,
+      });
+      await actions.physicalKeyUtilities.addEmptyKey(8, blankPayload(8));
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 8)?.[0];
+      expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+    });
+
     it('a destination with no previous real key never dissolves', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: [],

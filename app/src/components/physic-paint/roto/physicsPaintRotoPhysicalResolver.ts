@@ -1033,6 +1033,30 @@ function sourceKeyFrameIsCovered(
 }
 
 /**
+ * CR-04: a physical-cell move ripples keys beyond the moved one, so coverage
+ * must be proven for EVERY source key of EVERY final clip — an unowned moved
+ * key can otherwise push another clip's sources outside its visible fragments.
+ */
+function moveErasesReferencedSourceKey(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  identities: ValidatedIdentities,
+  mapping: ReadonlyMap<string, number>,
+  nextLoopClips: readonly PhysicPaintRotoLoopClip[] | null | undefined,
+): boolean {
+  const finalLoopClips = nextLoopClips ?? loopClips;
+  for (const clip of finalLoopClips) {
+    for (const keyId of clip.sourceKeyIds) {
+      const previousFrame = identities.framesByKeyId.get(keyId);
+      const movedFrame = mapping.get(keyId);
+      if (previousFrame === undefined || movedFrame === undefined) continue;
+      if (sourceKeyFrameIsCovered(loopClips, keyId, previousFrame)
+        && !sourceKeyFrameIsCovered(finalLoopClips, keyId, movedFrame)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * D-04 rigid whole-cycle drag placement follow (placement/source correction):
  * a loop's placementStart tracks the drag ONLY when the moved set contains the
  * cycle's ENTIRE source key list AND the loop's placementStart coincided with
@@ -1064,7 +1088,12 @@ function computeSourceAttachedLoopPlacementFollow(
       && postMoveFrame !== preMoveFrame;
     const placementStart = placementFollowsSource ? postMoveFrame : clip.placementStart;
 
+    // Only a canonical lifecycle rail owns a rebuildable single fragment; a
+    // non-canonical rail keeps its stored band and is protected by the ghost
+    // guard instead of having its fragments collapsed. The inline field checks
+    // keep the narrowing the arithmetic below needs.
     const hasFiniteLifecycle = retimeFiniteLifecycle
+      && isCanonicalLifecycleRailClip(clip)
       && typeof clip.repeat === 'number'
       && clip.phaseOrigin !== undefined
       && clip.originalEndExclusive !== undefined
@@ -2359,12 +2388,15 @@ function buildMoveGroupCandidate(
         grabbedKeyId,
       }) as PhysicPaintRotoPhysicalDragPresentation,
       // D-04: original loops follow a rigid whole-cycle drag; duplicated loops
-      // keep their own placementStart (placement/source correction).
+      // keep their own placementStart (placement/source correction). CR-04:
+      // canonical lifecycle bands translate with their source cycle; anything
+      // non-canonical keeps its band and is covered by the ghost guard.
       nextLoopClips: computeSourceAttachedLoopPlacementFollow(
         identities,
         loopClips,
         mapping,
         (clip) => clip.sourceKeyIds.every((keyId) => movedSet.has(keyId)),
+        true,
       ),
     },
   };
@@ -4678,7 +4710,8 @@ function resolveRailKeyInsertTargetInternal(
     const append = input.appFrame >= clip.originalEndExclusive
       && clip.repeat === 1
       && clip.frameOverrides !== undefined
-      && clip.frameOverrides.length > 0;
+      && clip.frameOverrides.length > 0
+      && isStandardMergedLoopClip(clip);
     if (input.appFrame >= clip.originalEndExclusive && !append) continue;
     if (append) {
       // A trailing clip straddling the old end would desync under the shift.
@@ -4939,9 +4972,11 @@ export function resolvePhysicPaintRotoRailInsertPlan(
     const sourceFrames = typed.sourceKeyIds.map((keyId) => frameByKeyId.get(keyId)!);
     if (sourceFrames.length < 2 || sourceFrames[0] !== typed.phaseOrigin) return null;
     // Spaced source keys (generated in-betweens) are canonical — the cycle
-    // span is the last source offset plus one, never the key count.
+    // span is the last source offset plus one, never the key count. The
+    // whole-shift test is a COUNT comparison: every source key at or right of
+    // the destination. Comparing against the span rejects spaced cycles (CR-01).
     const cycleLength = sourceFrames[sourceFrames.length - 1]! - typed.phaseOrigin + 1;
-    if (moved === cycleLength) {
+    if (moved === typed.sourceKeyIds.length) {
       const shifted = shiftLoopClipFrames(typed, 1);
       for (const override of typed.frameOverrides) {
         overrideShifts.push({
@@ -5628,23 +5663,13 @@ export function resolvePhysicPaintRotoPhysicalEdit(
       }
     }
     // v2.0.1 ghost-source guard: a rail that did not retime keeps its stored
-    // visible fragments. A move that pushes any of its source keys outside
+    // visible fragments. A move that pushes any referenced source key outside
     // every fragment would paint that real key as an empty cell on non-active
-    // rows. Refuse instead of silently erasing it; the whole-cycle group drag
-    // retimes every lifecycle rail.
-    if (moveCandidate.changed && referencingClips.length === 1) {
-      const finalLoopClips = moveCandidate.nextLoopClips ?? loopClips;
-      const wouldEraseSourceKey = referencingClips[0]!.sourceKeyIds.some((keyId) => {
-        const previousFrame = identities.framesByKeyId.get(keyId);
-        const movedFrame = moveCandidate.mapping.get(keyId);
-        return previousFrame !== undefined
-          && movedFrame !== undefined
-          && sourceKeyFrameIsCovered(loopClips, keyId, previousFrame)
-          && !sourceKeyFrameIsCovered(finalLoopClips, keyId, movedFrame);
-      });
-      if (wouldEraseSourceKey) {
-        return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
-      }
+    // rows. The ripple can reach keys of clips other than the moved key's own,
+    // so the final mapping is checked against every final clip (CR-04).
+    if (moveCandidate.changed
+      && moveErasesReferencedSourceKey(loopClips, identities, moveCandidate.mapping, moveCandidate.nextLoopClips)) {
+      return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
     }
     const finalized = finalizeProposal(moveCandidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
     if (!finalized.ok) return finalized.resolution;
@@ -6157,6 +6182,11 @@ export function resolvePhysicPaintRotoPhysicalEdit(
         if (!loopSourceOrderIsProvable(clip, moveResult.candidate.mapping)) {
           return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
         }
+      }
+      // CR-04: the same ghost-source proof as move-key, over every final clip —
+      // a rigid translation can still land a source key outside its band.
+      if (moveErasesReferencedSourceKey(loopClips, identities, moveResult.candidate.mapping, moveResult.candidate.nextLoopClips)) {
+        return fail('loop-source-key-move-rejected', operationKind, LOOP_SOURCE_KEY_MOVE_REJECTED_TEXT);
       }
     }
     const finalized = finalizeProposal(moveResult.candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
