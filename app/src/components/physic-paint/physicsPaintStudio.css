@@ -7595,14 +7595,6 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   border-radius: 8px;
 }
 
-/* 261104: Push sits at the far end of the action row, pinned right. */
-.physics-paint-push-tool-group {
-  display: inline-flex;
-  align-items: center;
-  margin-left: auto;
-}
-
-
 .physics-paint-lane-label {
   padding-left: 8px;
   color: #d8dde3;

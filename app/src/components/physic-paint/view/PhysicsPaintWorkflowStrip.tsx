@@ -1205,6 +1205,14 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   soloArmedClass: string;
   soloToolDisabled: boolean;
   soloToolDisabledReason: string | null;
+  /** 261105-cgl: the Push mode toggle relocated into the Tools popover (the
+   *  action row no longer carries it). Armed state and guarded availability
+   *  arrive as plain values — the same convention as the relocated Solo props —
+   *  so the memoized chrome stays cacheable. */
+  pushArmed: boolean;
+  pushArmedClass: string;
+  pushToolDisabled: boolean;
+  pushToolDisabledReason: string | null;
   onInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   onGoToFirstFrame: () => void;
   onGoToPreviousFrame: () => void;
@@ -1416,6 +1424,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // 260905-d1w: the relocated Solo nav-button owns its tooltip here, beside
   // the other playback-pill tooltips.
   const soloTooltip = useStyledTooltip();
+  // 261105-cgl: the relocated Push mode toggle owns its tooltip here, beside
+  // the other popover-internal tooltips.
+  const pushTooltip = useStyledTooltip();
   const toolboxTooltip = useStyledTooltip();
   // 43.5-02 Task 2: the relocated Key Spacing form owns its tooltip here,
   // beside the other popover-internal tooltips.
@@ -1625,6 +1636,45 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
               (the store coerces every blend state to duplicate). The retained
               interpolation props/handler stay wired on the static chrome for
               the re-introduction. */}
+          {/* 261105-cgl: the Push mode toggle relocated here from the bottom
+              action row — the popover owns timeline controls, and the row is
+              compact. Icon, armed tint, guarded tooltip and the toggle path
+              are unchanged; only the surface moved. */}
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Push</div>
+            <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
+              <button
+                type="button"
+                class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${props.pushArmedClass}`}
+                aria-label="Push"
+                aria-pressed={props.pushArmed ? 'true' : 'false'}
+                aria-disabled={props.pushToolDisabled ? 'true' : undefined}
+                aria-describedby={props.pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
+                onFocus={pushTooltip.onFocus}
+                onBlur={pushTooltip.onBlur}
+                onClick={() => {
+                  pushTooltip.hide();
+                  if (props.pushToolDisabled) return;
+                  // Mode toggle: the anchor is resolved from the rail under
+                  // the pointer on drag — no selection is required to arm.
+                  togglePushTool();
+                }}
+                onKeyDown={(event) => {
+                  if ((event.key === 'Enter' || event.key === ' ') && props.pushToolDisabled) event.preventDefault();
+                }}
+              >
+                <MoveHorizontal size={18} aria-hidden="true" />
+                <span class="physics-paint-roto-key-icon-label">Push mode</span>
+              </button>
+              {props.pushToolDisabled ? (
+                <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{props.pushToolDisabledReason}</span>
+              ) : null}
+              <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
+                {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', props.pushToolDisabledReason)}
+              </PhysicsPaintStyledTooltip>
+            </span>
+          </div>
+          <div class="physics-paint-toolbox-divider" />
           {/* 260924-ffd UAT follow-up: playback fps relocated here from the
               strip's playback pill — preset stepper over FPS_PRESETS, STUDIO
               preview tier only (the PROJECT fps store is never touched). */}
@@ -2899,7 +2949,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const pasteKeyTooltip = useStyledTooltip();
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
-  const pushTooltip = useStyledTooltip();
   // 261022-iff IFF-01: the global Solo is a SESSION track focus, not a rail
   // playback filter — a mode toggle enabled whenever the document HAS an
   // active track (and editing isn't mutation-locked). The target is followed
@@ -5447,6 +5496,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         soloArmedClass={soloArmedClass}
         soloToolDisabled={soloToolDisabled}
         soloToolDisabledReason={soloToolDisabledReason}
+        pushArmed={pushArmed}
+        pushArmedClass={pushArmedClass}
+        pushToolDisabled={pushToolDisabled}
+        pushToolDisabledReason={pushToolDisabledReason}
         onInterpolationModeChange={props.onRotoInterpolationModeChange}
         onGoToFirstFrame={props.onGoToFirstFrame}
         onGoToPreviousFrame={props.onGoToPreviousFrame}
@@ -5700,14 +5753,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         </div>
         <div
           class="physics-paint-roto-action-row"
-          onClickCapture={(event) => {
-            // D-06/D-20: ANY other toolbar action disarms an armed Push tool —
-            // except the Push buttons themselves, which own the arm/disarm
-            // toggle. The Push pill lives in this row, so the guard is scoped
-            // to the push-button class only.
-            if (event.target instanceof Element && !event.target.closest('.physics-paint-push-tool-button')) {
-              disarmPushTool();
-            }
+          onClickCapture={() => {
+            // D-06/D-20: ANY toolbar action disarms an armed Push tool. The
+            // Push toggle moved to the Tools popover (261105-cgl), so no row
+            // action owns the arm/disarm toggle any more.
+            disarmPushTool();
           }}
         >
               <div class="physics-paint-roto-key-identity" role="group" aria-label={`Roto layer ${props.workflowLabel ?? 'PPaint'} key ${props.currentFrame}`}>
@@ -5996,38 +6046,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-              </div>
-              <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
-                    aria-label="Push"
-                    aria-pressed={pushArmed ? 'true' : 'false'}
-                    aria-disabled={pushToolDisabled ? 'true' : undefined}
-                    aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
-                    onFocus={pushTooltip.onFocus}
-                    onBlur={pushTooltip.onBlur}
-                    onClick={() => {
-                      pushTooltip.hide();
-                      if (pushToolDisabled) return;
-                      // Mode toggle: the anchor is resolved from the rail under
-                      // the pointer on drag — no selection is required to arm.
-                      togglePushTool();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
-                    }}
-                  >
-                    <MoveHorizontal size={18} aria-hidden="true" />
-                  </button>
-                  {pushToolDisabled ? (
-                    <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>

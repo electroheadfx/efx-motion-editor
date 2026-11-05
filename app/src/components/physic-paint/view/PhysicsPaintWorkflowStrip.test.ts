@@ -2050,7 +2050,7 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(code).toContain('selectedRotoKeyRail');
   });
 
-  it('A7: the single Push button and Delete are icon-only (no visible text label)', () => {
+  it('A7: one Push button only (now labeled in the Tools popover), and the action-row Delete stays icon-only', () => {
     const code = source();
     expect(code).not.toContain('>Push Left</span>');
     expect(code).not.toContain('>Push Right</span>');
@@ -2238,7 +2238,7 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Rail, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor, All, Push (261104 push move to row end)', () => {
+  it('orders the action row as Key, Rail, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor, All — Push moved to the Tools popover (261105-cgl)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
@@ -2251,22 +2251,38 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
       'aria-label="Cut key"',
       getActionAriaLabelToken('Split Key Rail'),
       'aria-label="Select all keys"',
-      'aria-label="Push"',
     ];
     const indices = tokens.map((token) => row.indexOf(token));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
     }
-    // 261104: the whole Push group is the row's last child, after Select all.
-    const pushGroupIndex = row.indexOf('physics-paint-push-tool-group');
-    expect(pushGroupIndex).toBeGreaterThan(row.indexOf('aria-label="Select all keys"'));
-    expect(pushGroupIndex).toBeLessThan(row.indexOf('aria-label="Push"'));
-    const pushButton = getButtonBlock(row, 'Push');
-    expect(pushButton).toContain('togglePushTool()');
-    expect(pushButton).toContain('aria-pressed');
+    // 261105-cgl: the row renders no Push button and no Push group — the
+    // single mode toggle moved into the Tools popover.
+    expect(row).not.toContain('aria-label="Push"');
+    expect(row).not.toContain('physics-paint-push-tool-group');
     // The Solo group is gone from the action row (relocated to the pill).
     expect(row).not.toContain('physics-paint-solo-tool-group');
+  });
+
+  it('renders the relocated Push mode toggle in the Tools popover with its icon, label, tint, toggle and guarded tooltip (261105-cgl)', () => {
+    const header = getHeaderBlock(source());
+    expect(header).toContain('physics-paint-toolbox-section-heading">Push');
+    expect(header).toContain('>Push mode</span>');
+    expect(header).toContain('<MoveHorizontal size={18} aria-hidden="true" />');
+    expect(header).toContain('togglePushTool()');
+    expect(header).toContain('aria-pressed={props.pushArmed');
+    expect(header).toContain('${props.pushArmedClass}');
+    expect(header).toContain('physics-paint-roto-key-icon-button physics-paint-push-tool-button');
+    expect(header).toContain('Push mode: drag any Rail to select it and move it (and everything after it) right or left.');
+    // The toggle flow stays prop-driven so the memoized chrome stays cacheable.
+    const code = source();
+    expect(code).toContain('pushArmed={pushArmed}');
+    expect(code).toContain('pushArmedClass={pushArmedClass}');
+    expect(code).toContain('pushToolDisabled={pushToolDisabled}');
+    expect(code).toContain('pushToolDisabledReason={pushToolDisabledReason}');
+    // The retired row group CSS is gone.
+    expect(css()).not.toContain('.physics-paint-push-tool-group');
   });
 
   it('restores the single-purpose + Rail button without the rail-kind menu (261022-cfn follow-up)', () => {
