@@ -1532,6 +1532,55 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
         .map((cell) => cell.appFrame)).toEqual([6, 7]);
     });
 
+    it('dissolves a one-key cycle at its end instead of opening a detached rail', async () => {
+      const oneKeyRail: PhysicPaintRotoLoopClip = {
+        ...standardRail(5),
+        sourceKeyIds: ['k1'],
+        originalEndExclusive: 6,
+        visibleRanges: [{ start: 1, endExclusive: 6 }],
+      };
+      const { actions, executePhysicalEdit } = createHarness({
+        records: [realKeyRecord('k1', 1)],
+        loopClips: [oneKeyRail],
+        capacity: 20,
+        getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(6, blankPayload(6), {
+        joinPreviousRail: true,
+        allowRepeatRailInsert: true,
+      });
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(6);
+    });
+
+    it('appends a post-end key to an overridden repeat-1 rail and keeps its paint', async () => {
+      const overriddenRail: PhysicPaintRotoLoopClip = {
+        ...standardRail(1),
+        frameOverrides: [{ appFrame: 4, keyId: 'ov1' }],
+      };
+      const { actions, executePhysicalEdit } = createHarness({
+        records: sourceRecords,
+        loopClips: [overriddenRail],
+        capacity: 20,
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(6, blankPayload(6), { joinPreviousRail: true });
+      expect(accepted).toBe(true);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.railInsertGroupId).toBe('rail-1');
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      const clip = dispatched.proposal.nextLoopClips?.[0];
+      expect(clip?.sourceKeyIds.slice(0, 3)).toEqual(['k1', 'k3', 'k5']);
+      expect(clip?.sourceKeyIds).toHaveLength(4);
+      expect(clip?.originalEndExclusive).toBe(7);
+      expect(clip?.frameOverrides).toEqual([{ appFrame: 4, keyId: 'ov1' }]);
+    });
+
     it('dissolves a repeat-2 rail: the repeats vanish with the clip', async () => {
       const { actions, executePhysicalEdit } = createHarness({
         records: sourceRecords,

@@ -5241,15 +5241,9 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       visibleRanges: [{ start: 1, endExclusive: 4 }, { start: 4, endExclusive: 6 }],
     }])).toBeNull();
     expect(target([{ ...standardRail, frameOverrides: [{ appFrame: 2, keyId: 'OV1' }] }])).toBeNull();
-    // Fewer than two source keys, unresolvable sources, descending sources.
-    expect(target([{
-      ...standardRail,
-      placementStart: 5,
-      sourceKeyIds: ['K5'],
-      phaseOrigin: 5,
-      originalEndExclusive: 6,
-      visibleRanges: [{ start: 5, endExclusive: 6 }],
-    }])).toBeNull();
+    // Unresolvable and descending sources. A one-key cycle is a proven
+    // qualification (v2.0.1): its single phase is the cycle itself, so only a
+    // dissolve can extend it — see the dedicated one-key dissolve test.
     expect(target([{ ...standardRail, sourceKeyIds: ['K1', 'K9', 'K5'] }])).toBeNull();
     expect(target([{ ...standardRail, sourceKeyIds: ['K1', 'K5', 'K3'] }])).toBeNull();
     // A source cycle shared with another clip, or two clips ending on the key.
@@ -5274,7 +5268,9 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
         repeat: 9,
       },
     ], 8, [{ keyId: 'K0', appFrame: 0 }, ...sourceIdentities])).toBeNull();
-    // Another clip owning a source key at/after the destination.
+    // v2.0.1 precision: a following rail that starts AFTER the destination no
+    // longer blocks the dissolve — the extended rail ends at the destination
+    // and the following rail keeps its own ownership.
     expect(target([
       standardRail,
       {
@@ -5285,7 +5281,7 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
         originalEndExclusive: 10,
         visibleRanges: [{ start: 9, endExclusive: 10 }],
       },
-    ], 8, [...sourceIdentities, { keyId: 'K9', appFrame: 9 }])).toBeNull();
+    ], 8, [...sourceIdentities, { keyId: 'K9', appFrame: 9 }])).toEqual({ loopId: 'rail-1' });
   });
 
   it('v2.0.1: the dissolve proposal removes the clip and lands the key joined at the destination', () => {
@@ -5327,6 +5323,108 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a Standard rail)', 
       firstKeyFrame: 1,
       lastKeyFrame: 8,
     });
+  });
+
+  it('v2.0.1: a one-key cycle dissolves even when a following rail owns later keys', () => {
+    const identities = [
+      { keyId: 'K0', appFrame: 0 },
+      { keyId: 'K1', appFrame: 1 },
+      { keyId: 'K8', appFrame: 8 },
+      { keyId: 'K10', appFrame: 10 },
+      { keyId: 'K13', appFrame: 13 },
+    ];
+    const oneKeyRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      sourceKeyIds: ['K1'],
+      repeat: 5,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+    };
+    const followingRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      loopId: 'rail-2',
+      placementStart: 8,
+      sourceKeyIds: ['K8', 'K10', 'K13'],
+      phaseOrigin: 8,
+      originalEndExclusive: 14,
+      visibleRanges: [{ start: 8, endExclusive: 14 }],
+    };
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities,
+      loopClips: [oneKeyRail, followingRail],
+      appFrame: 6,
+    })).toEqual({ loopId: 'rail-1' });
+    // A destination inside the following rail's extent stays fail-closed.
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities,
+      loopClips: [oneKeyRail, followingRail],
+      appFrame: 9,
+    })).toBeNull();
+  });
+
+  it('v2.0.1: a one-key cycle dissolves at its end and extends the rail', () => {
+    const oneKeyRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      sourceKeyIds: ['K1'],
+      repeat: 5,
+      originalEndExclusive: 6,
+      visibleRanges: [{ start: 1, endExclusive: 6 }],
+    };
+    const identities = [{ keyId: 'K1', appFrame: 1 }];
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities,
+      loopClips: [oneKeyRail],
+      appFrame: 6,
+    })).toEqual({ loopId: 'rail-1' });
+
+    const resolution = resolveDissolve(dissolveIntent(6), {
+      identities,
+      loopClips: [oneKeyRail],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('A one-key cycle must dissolve');
+    expect(resolution.proposal.nextLoopClips).toEqual([]);
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, NEW: 6 });
+  });
+
+  it('v2.0.1: a post-end key appends to an overridden single-repeat rail and keeps the paint', () => {
+    const overriddenRail: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      frameOverrides: [{ appFrame: 4, keyId: 'O1' }],
+    };
+    const target = resolvePhysicPaintRotoRailKeyInsertTarget({
+      identities: sourceIdentities,
+      loopClips: [overriddenRail],
+      appFrame: 6,
+    });
+    expect(target).toEqual({ loopId: 'rail-1', cycleOffset: 5, insertionAppFrame: 6 });
+
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: sourceIdentities,
+      records: recordsFrom(sourceIdentities),
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 6,
+        destinationKeyId: null,
+        newKeyId: 'NEW',
+        clipboardPayload: payloadAt(6),
+        joinsPreviousRail: true,
+        railInsertGroupId: 'rail-1',
+      },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: true,
+      loopClips: [overriddenRail],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('An overridden rail must accept the appending key');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, K3: 3, K5: 5, NEW: 6 });
+    const clip = resolution.proposal.nextLoopClips?.[0];
+    expect(clip?.sourceKeyIds).toEqual(['K1', 'K3', 'K5', 'NEW']);
+    expect(clip?.originalEndExclusive).toBe(7);
+    expect(clip?.visibleRanges).toEqual([{ start: 1, endExclusive: 7 }]);
+    expect(clip?.frameOverrides).toEqual([{ appFrame: 4, keyId: 'O1' }]);
   });
 
   it('v2.0.1: stale non-leading source breaks are dropped in the same proposal', () => {

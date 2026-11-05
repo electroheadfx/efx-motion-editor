@@ -1654,7 +1654,7 @@ function buildRailKeyInsertPasteCandidate(
     if (frame >= destination) shiftedSourceKeyIds.add(keyId);
   }
   const railOldEnd = targetClip.originalEndExclusive;
-  const trailingDelta = target.repeat;
+  const trailingDelta = target.trailingDelta;
   for (const clip of loopClips) {
     if (clip.loopId === targetClip.loopId) continue;
     if (clip.sourceKeyIds.some((keyId) => shiftedSourceKeyIds.has(keyId))) {
@@ -1695,7 +1695,9 @@ function buildRailKeyInsertPasteCandidate(
 
   const overrideShifts: { readonly keyId: string; readonly fromAppFrame: number; readonly toAppFrame: number }[] = [];
   const removedOverrideKeyIds = new Set<string>();
-  let nextClip: PhysicPaintRotoLoopClip = extendLoopClipCycle(targetClip, target.cycleLength, target.cycleOffset);
+  let nextClip: PhysicPaintRotoLoopClip = target.append
+    ? buildAppendedRailClip(targetClip, destination)
+    : extendLoopClipCycle(targetClip, target.cycleLength, target.cycleOffset);
   if (targetClip.frameOverrides.length > 0) {
     const keptOverrides: { readonly appFrame: number; readonly keyId: string }[] = [];
     for (const override of targetClip.frameOverrides) {
@@ -4525,6 +4527,26 @@ function shiftLoopClipFrames(clip: PhysicPaintRotoLifecycleLoopClip, delta: numb
   }) as PhysicPaintRotoLoopClip;
 }
 
+/**
+ * v2.0.1: append a post-end destination as the LAST source key of a
+ * single-repeat rail carrying painted overrides. The cycle length grows to
+ * reach the destination and the lifecycle range follows; no phase moves, so
+ * every painted override keeps its frame.
+ */
+function buildAppendedRailClip(
+  clip: PhysicPaintRotoLifecycleLoopClip,
+  destinationAppFrame: number,
+): PhysicPaintRotoLoopClip {
+  const nextCycleLength = destinationAppFrame - clip.phaseOrigin + 1;
+  const nextEnd = clip.phaseOrigin + nextCycleLength * (typeof clip.repeat === 'number' ? clip.repeat : 1);
+  return Object.freeze({
+    ...clip,
+    syncState: 'modified' as const,
+    originalEndExclusive: nextEnd,
+    visibleRanges: Object.freeze([Object.freeze({ start: clip.phaseOrigin, endExclusive: nextEnd })]),
+  }) as PhysicPaintRotoLoopClip;
+}
+
 function extendLoopClipCycle(
   clip: PhysicPaintRotoLifecycleLoopClip,
   cycleLength: number,
@@ -4568,7 +4590,14 @@ export interface PhysicPaintRotoRailKeyInsertTarget {
 interface PhysicPaintRotoRailKeyInsertTargetInternal extends PhysicPaintRotoRailKeyInsertTarget {
   readonly clip: PhysicPaintRotoLifecycleLoopClip;
   readonly cycleLength: number;
-  readonly repeat: number;
+  /**
+   * v2.0.1: true when the destination sits at/after the rail's footprint on a
+   * single-repeat rail with painted overrides. The new key becomes the LAST
+   * source key at the destination; no repeat exists to remap it to.
+   */
+  readonly append: boolean;
+  /** How far every non-source key at/after the old rail end shifts right. */
+  readonly trailingDelta: number;
 }
 
 /**
@@ -4640,18 +4669,38 @@ function resolveRailKeyInsertTargetInternal(
     // The stored end must describe exactly this many full repeats; otherwise
     // the footprint growth (one frame per repeat) is not provable.
     if (clip.originalEndExclusive !== clip.phaseOrigin + cycleLength * clip.repeat) continue;
-    if (input.appFrame < clip.phaseOrigin || input.appFrame >= clip.originalEndExclusive) continue;
+    if (input.appFrame < clip.phaseOrigin) continue;
     if (sourceFrames.includes(input.appFrame)) continue;
+    // v2.0.1: a rail with painted overrides and repeat 1 has no free phase to
+    // remap a post-end destination to, and dissolving it would orphan the
+    // paint. Append the destination as the rail's LAST source key instead: the
+    // cycle length grows to reach it and every override keeps its frame.
+    const append = input.appFrame >= clip.originalEndExclusive
+      && clip.repeat === 1
+      && clip.frameOverrides !== undefined
+      && clip.frameOverrides.length > 0;
+    if (input.appFrame >= clip.originalEndExclusive && !append) continue;
+    if (append) {
+      // A trailing clip straddling the old end would desync under the shift.
+      for (const other of input.loopClips) {
+        if (other.loopId === clip.loopId) continue;
+        for (const keyId of other.sourceKeyIds) {
+          const frame = frameByKeyId.get(keyId);
+          if (frame !== undefined && frame >= clip.originalEndExclusive && frame < input.appFrame) return null;
+        }
+      }
+    }
     if (target !== null) return null;
     const local = input.appFrame - clip.phaseOrigin;
-    const cycleOffset = local - Math.floor(local / cycleLength) * cycleLength;
+    const cycleOffset = append ? local : local - Math.floor(local / cycleLength) * cycleLength;
     target = {
       loopId: clip.loopId,
       cycleOffset,
-      insertionAppFrame: clip.phaseOrigin + cycleOffset,
+      insertionAppFrame: append ? input.appFrame : clip.phaseOrigin + cycleOffset,
       clip: clip as PhysicPaintRotoLifecycleLoopClip,
       cycleLength,
-      repeat: clip.repeat,
+      append,
+      trailingDelta: append ? input.appFrame - clip.phaseOrigin + 1 - cycleLength : clip.repeat,
     };
   }
   if (target === null) return null;
@@ -4661,7 +4710,7 @@ function resolveRailKeyInsertTargetInternal(
     if (sourceKeyIds.has(keyId)) {
       mappedFrames.add(frame >= target.insertionAppFrame ? frame + 1 : frame);
     } else if (frame >= target.clip.originalEndExclusive) {
-      mappedFrames.add(frame + target.repeat);
+      mappedFrames.add(frame + target.trailingDelta);
     } else {
       mappedFrames.add(frame);
     }
@@ -4774,12 +4823,13 @@ function resolveRailDissolveTargetInternal(
   for (const other of loopClips) {
     if (other.loopId === clip.loopId) continue;
     if (other.sourceKeyIds.some((keyId) => sourceKeyIds.has(keyId))) return null;
-    for (const keyId of other.sourceKeyIds) {
-      const frame = frameByKeyId.get(keyId);
-      if (frame !== undefined && frame >= input.appFrame) return null;
-    }
+    // Only a destination INSIDE another clip's derived extent is ambiguous; a
+    // following rail that starts after the destination is untouched. The
+    // nearest-key rule above already proves no other source key sits between
+    // the dissolving rail's last source key and the destination.
+    const otherStart = other.phaseOrigin ?? other.placementStart;
     const extent = resolvePhysicPaintRotoLoopSourceExtent(other, identities, PHYSIC_PAINT_MAX_APPLY_FRAMES);
-    if (extent !== null && input.appFrame < extent.endExclusive) return null;
+    if (extent !== null && input.appFrame >= otherStart && input.appFrame < extent.endExclusive) return null;
   }
   return { clip };
 }
@@ -4789,7 +4839,9 @@ function isCompleteStandardRailClip(clip: PhysicPaintRotoLoopClip): clip is Phys
   if (clip.syncState === undefined || clip.provenanceState === undefined) return false;
   if (!isCanonicalLifecycleRailClip(clip)) return false;
   if (typeof clip.repeat !== 'number' || !Number.isSafeInteger(clip.repeat) || clip.repeat <= 0) return false;
-  if (clip.sourceKeyIds.length < 2) return false;
+  // A one-key cycle is still a complete Standard rail: dissolving it is the
+  // only way to extend it, because its single phase is the cycle itself.
+  if (clip.sourceKeyIds.length < 1) return false;
   // The Standard discriminator comes from the stacking authority.
   return isStandardMergedLoopClip(clip);
 }
