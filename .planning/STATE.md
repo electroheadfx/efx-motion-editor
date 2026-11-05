@@ -4,10 +4,10 @@ milestone: v2.0.1
 current_phase: 58
 status: completed
 stopped_at: Phase 58 complete — all phases complete
-last_updated: "2026-11-05T12:15:21.947Z"
+last_updated: "2026-11-05T17:20:37.998Z"
 last_activity: 2026-11-05
 last_activity_desc: Phase 58 complete
-state_head: 63889e16769f923a60dfcf3ee209d57fbbd2a299
+state_head: 715c9c155fe641330a7f27ecac1d473945436765
 progress:
   total_phases: 1
   completed_phases: 1
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-05 after Phase 58 gap closure)
 Phase: 58
 Plan: Not started
 Status: All phases complete
-Last activity: 2026-11-05 — Phase 58 gap closure verified 57/57 on 2c0f22ce0. CR-01 (spaced-rail insert), CR-04 (cross-clip ghost guard + group band retime), and CR-05 (Standard-only append) fixed in 98f0b14dc; the authorized Force Spacing / spacing-on-set retime regression found by re-verification fixed in 2c0f22ce0. Full suite 7293 passed / 0 failed; typecheck clean.
+Last activity: 2026-11-05 — Completed quick task 261105-p9i (automated green, live UAT pending): +Key/paint on an empty frame after a Motion/Static/Reveal rail now dissolves that rail's clip and joins the new key contiguously, matching the Standard-rail law. Root cause: the dissolve qualification was gated by isStandardMergedLoopClip; that rail-kind gate is removed for every complete canonical lifecycle rail. Targeted 408 tests passed; full suite 7296 passed / 0 failed; typecheck clean.
 Audit: 2026-11-05 — .planning/milestones/v2.0.1-MILESTONE-AUDIT.md, status tech_debt, 15/15 requirements. The ghost-source and rail-extension fixes are recorded under resolved_during_audit; remaining items are accepted debt (VIS-02 token drift, VIS-04 dead token, mixed rail-set accent, Phase 58 advisories).
 Previous quick: 2026-11-05 — Small Studio add-ons — status: UAT approved. Push mode in the Tools popover; frame readout opens a Frame/Seconds popup (Frame default, seconds entry seeks, ruler ticks switch to seconds); Hand press-and-hold pans and releases back to the previous tool, greyed at Fit. UAT fixes: Group override records retimed with their clips (6512cd2cc), frame popup anchor ref (879fa2ba8), hold-to-pan Hand (31ecc33ba), centered popup + signal unit switch (2997e64a1), ruler seconds (2f4d8dd56).
 Earlier quick: 2026-11-04 — Studio roto action-row restyle — status: UAT approved. Gap 8px → 4px, band #37393a → #2b2c2d, padding 1px bottom + 3px left/right, the Layer/Key identity chip loses its border and background, and the single Push mode toggle moves out of the tools group to the row's end, pinned right. Commits 6de678f27, 8f6e42d1e. Gates: typecheck clean, affected strip/keyboard/loop-rail contracts green (686 tests).
@@ -711,6 +711,7 @@ None yet.
 | 114 | Paint sidebar section gap 32px -> 24px UAT approved 2026-11-04 | 2026-11-04 | 3dd02239f | — |
 | 261104-uyv | Studio canvas zoom: floating minus/percent/plus/Fit/1:1 pill, Fit default, 1:1 = actual working pixels, cursor-anchored wheel/pinch zoom, middle-drag and wheel pan when zoomed | 2026-11-04 | 43cd118da | [261104-uyv-add-studio-canvas-zoom-controls-full-zoo](./quick/261104-uyv-add-studio-canvas-zoom-controls-full-zoo/) |
 | 261105-cgl | Small Studio add-ons: Push mode moved into the Tools popover, Frame/Seconds go-to popup on the frame readout, Hand host tool for primary-drag canvas panning | 2026-11-05 | 7d4beafac | [261105-cgl-small-addons-remove-button-push-mode-in-](./quick/261105-cgl-small-addons-remove-button-push-mode-in-/) |
+| 261105-p9i | v2.0.1 rails: +Key/paint on an empty frame after a Motion/Static/Reveal rail now dissolves that rail's clip and joins the new key contiguously (one atomic edit), not just Standard | 2026-11-05 | 715c9c155 | [261105-p9i-extend-rail-with-key-or-paint-inside-mot](./quick/261105-p9i-extend-rail-with-key-or-paint-inside-mot/) |
 
 ### Roadmap Evolution
 
@@ -768,7 +769,7 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-11-05T12:16:50Z
-Stopped at: Phase 58 complete and verified (57/57) — v2.0.1 release prep next
+Stopped at: Quick 261105-p9i complete (automated green) — live UAT of the Motion/Static/Reveal rail extension pending
 Resume file: None
 
 ## Operator Next Steps
