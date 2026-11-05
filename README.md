@@ -175,6 +175,21 @@ The library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib
 
 A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-file per changed paint layer, and `frames/<layerId>/<keyId>.webp` frame media — references only, never inline payloads or machine-local paths. Saves are digest-verified, changed-files-only, and published atomically; audio stays a disk reference, never copied into the package. v1.0.0 is a clean break: pre-v1.0 Physics Paint data is refused with an explicit rejection dialog.
 
+## What's New in v2.0.1
+
+Phase 58 plus the in-milestone Studio timeline quicks:
+
+| Area | Shipped |
+|------|---------|
+| Edit Rail | A selected (or double-clicked) Key Rail opens the reduced Edit Rail dialog — Cycle + Infinity only; Confirm converts the segment into a provenance-free Standard loop clip, Cancel writes nothing, and the conversion is one undo step |
+| Single-key moves | A key owned by exactly one rail can be dragged on its own; keys shared by several rails keep the locked rigid-group rule; canonical rails retime their band, non-canonical rails fail closed instead of hiding a source key as an empty cell |
+| Rail extension | +Key / paint after a rail extends it instead of creating a detached one-key rail: a one-key cycle dissolves at its end and an overridden repeat-1 Standard rail appends the new key while keeping its painted frames |
+| v7 timeline rails | 31px paint rows on an 18px cell pitch: Standard green, Motion orange, Static violet and Reveal azure palettes; parity cycle grays, 4px row-top rail lines, grouped palette selection, selected-track header accent |
+| Studio canvas zoom | Cursor-anchored zoom, Fit and 1:1 from a floating pill, wheel/pinch zoom and middle-drag pan; display-only scaling keeps the engine's client-rect mapping exact |
+| Small addons | Frame/Seconds go-to popup, session-only Hand hold-to-pan tool, Push mode moved into the Tools popover, seconds-labelled ruler, and Editor paint-row alignment with the Studio v7 rails |
+
+v2.0.1 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. It is a patch release focused on rail editing and the v7 Studio timeline presentation; no `.mce` schema field was added or changed.
+
 ## What's New in v2.0.0
 
 Phases 54 → 56 of the v2.0.0 milestone:
