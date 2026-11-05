@@ -4045,6 +4045,85 @@ button.destructive {
   font-variant-numeric: tabular-nums;
 }
 
+/* 261105-cgl Task 2: the current-frame readout is the go-to trigger. The
+   button carries ZERO chrome so the pinned 48x26 output box is visually
+   unchanged; only the inner box washes on hover/focus. */
+.physics-paint-current-frame-trigger {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.physics-paint-current-frame-trigger:hover .physics-paint-current-frame,
+.physics-paint-current-frame-trigger:focus-visible .physics-paint-current-frame {
+  border-color: #a3a8ae;
+  background: #66696d;
+}
+
+.physics-paint-current-frame-trigger:focus-visible {
+  outline: 1px solid #6f90ff;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* The frame go-to popup reuses the toolbox panel shell (placement, portaling,
+   dismissal) with a compact width and padding. */
+.physics-paint-frame-goto-popover {
+  width: 228px;
+  min-width: 228px;
+  max-width: 228px;
+  padding: 12px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.physics-paint-frame-goto-mode {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.physics-paint-frame-goto-mode button {
+  flex: 1 1 0;
+  height: 24px;
+  border: 1px solid #4a525b;
+  border-radius: 6px;
+  background: #2a3036;
+  color: #d8dde3;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The Studio selected language — the same accent family as the popover
+   toggles (loop/Solo .active). */
+.physics-paint-frame-goto-mode button[aria-pressed="true"] {
+  border-color: var(--color-accent, #2d5be3);
+  background: color-mix(in srgb, var(--color-accent, #2d5be3) 44%, transparent);
+  color: #ffffff;
+}
+
+.physics-paint-frame-goto-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  color: #e3e6ea;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.physics-paint-frame-goto-field > span {
+  flex: 0 0 auto;
+}
+
 .physics-paint-play-wiggle-slider {
   display: inline-grid;
   grid-template-columns: auto 54px 24px;

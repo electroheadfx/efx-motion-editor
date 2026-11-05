@@ -80,6 +80,13 @@ import {
   togglePushTool,
 } from './physicsPaintPushArmedTool';
 import { NumericStepper } from '../../shared/NumericStepper';
+import { framesToSeconds } from '../../../lib/audioGain';
+import {
+  normalizeFrameGotoFrame,
+  resolveFrameGotoTarget,
+  resolveFrameGotoValue,
+  type FrameGotoMode,
+} from './physicsPaintFrameGoto';
 import { FPS_PRESETS } from '../../../lib/fpsPresets';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
@@ -874,10 +881,131 @@ function getRotoDragFeedback(preview: RotoDragPreviewState | null): string | nul
  * (only this child re-renders per tick); otherwise it shows props.currentFrame
  * exactly as before. The signal is never read when playback is inactive, so an
  * idle strip holds zero per-tick subscriptions.
+ *
+ * 261105-cgl Task 2: the readout is now the go-to-frame trigger. The output
+ * element/class/content/placement are untouched; the popover is anchored to a
+ * zero-chrome button wrapping it. The mode/draft state is local session UI —
+ * nothing is persisted, and the popover never follows playback ticks while
+ * open (the draft seeds once on open from the live read). Every commit resolves
+ * through the pure `resolveFrameGotoTarget` (finite-checked, rounded, clamped)
+ * before it reaches the Studio's existing synced-frame navigation path.
  */
-function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined }) {
+function RotoPlaybackCurrentFrameOutput(props: {
+  currentFrame: Signal<number>;
+  playbackActive: boolean;
+  playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined;
+  /** Project fps — the Frame<->Seconds unit law (playback fps never applies). */
+  fps?: number;
+  /** Last reachable frame index; every entry clamps into [0, lastFrame]. */
+  lastFrame?: number;
+  onGoToFrame?: (frame: number) => void;
+}) {
   const playbackAppFrame = props.playbackActive ? props.playbackTick?.value?.appFrame ?? null : null;
-  return <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>;
+  const frame = playbackAppFrame ?? props.currentFrame.value;
+  const lastFrame = Math.max(0, props.lastFrame ?? 0);
+  const fps = props.fps ?? 1;
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<FrameGotoMode>('frame');
+  // The canonical position, kept in FRAMES. Both units display the same
+  // position, so switching Frame<->Seconds never re-derives or drifts.
+  const [draftFrame, setDraftFrame] = useState(0);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  const closeFrameGoto = useCallback(() => setOpen(false), []);
+
+  // Dismissal mirrors the Tools popover's one-layer rule: listeners exist only
+  // while open, and Escape consumes the key before the Studio dispatcher (one
+  // Escape handles at most one layer). No backdrop, no focus trap.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (shouldDismissToolboxPopover(event.target, [triggerRef.current, panelRef.current])) closeFrameGoto();
+    };
+    const onEscapeKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopImmediatePropagation();
+      closeFrameGoto();
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onEscapeKeyDown, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onEscapeKeyDown, true);
+    };
+  }, [open, closeFrameGoto]);
+
+  const openFrameGoto = () => {
+    setMode('frame');
+    // Seed ONCE from the live read — the popover never follows playback ticks.
+    const live = props.playbackActive
+      ? props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()
+      : props.currentFrame.peek();
+    setDraftFrame(normalizeFrameGotoFrame(live, lastFrame) ?? 0);
+    setOpen(true);
+  };
+
+  const commitFrameGoto = (value: number) => {
+    const target = resolveFrameGotoTarget(mode, value, fps, lastFrame);
+    if (target === null) return;
+    setDraftFrame(target);
+    props.onGoToFrame?.(target);
+  };
+
+  const displayValue = resolveFrameGotoValue(mode, draftFrame, fps);
+  const frameMode = mode === 'frame';
+
+  return (
+    <Fragment>
+      <button
+        type="button"
+        class="physics-paint-current-frame-trigger"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? 'physics-paint-frame-goto-popover' : undefined}
+        aria-label={`Frame ${frame} — open the go-to-frame popup`}
+        title="Frame — click to go to a frame"
+        onClick={() => { if (open) closeFrameGoto(); else openFrameGoto(); }}
+      >
+        <output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>
+      </button>
+      <PhysicsPaintToolboxPopover
+        anchorRef={triggerRef}
+        panelRef={panelRef}
+        open={open}
+        panelId="physics-paint-frame-goto-popover"
+        className="physics-paint-frame-goto-popover"
+        ariaLabel="Go to frame"
+      >
+        <div class="physics-paint-frame-goto-mode" role="group" aria-label="Go-to unit">
+          <button
+            type="button"
+            aria-pressed={frameMode}
+            onClick={() => setMode('frame')}
+          >Frame</button>
+          <button
+            type="button"
+            aria-pressed={!frameMode}
+            onClick={() => setMode('seconds')}
+          >Seconds</button>
+        </div>
+        <label class="physics-paint-frame-goto-field">
+          <span>{frameMode ? 'Frame number' : 'Time in seconds'}</span>
+          <NumericStepper
+            value={displayValue}
+            onChange={commitFrameGoto}
+            min={0}
+            max={frameMode ? lastFrame : framesToSeconds(lastFrame, fps)}
+            step={frameMode ? undefined : 0.1}
+            precision={frameMode ? undefined : 2}
+            ariaLabel={frameMode ? 'Frame number' : 'Time in seconds'}
+            class="physics-paint-frame-goto-stepper"
+            inputStyle={frameMode ? { width: '40px' } : { width: '48px' }}
+          />
+        </label>
+      </PhysicsPaintToolboxPopover>
+    </Fragment>
+  );
 }
 
 /**
@@ -1187,6 +1315,11 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   playbackLoop: boolean;
   playbackFps: number;
   projectFps: number;
+  /** 261105-cgl: the current-frame readout is the go-to trigger. `lastFrame`
+   *  is the last reachable frame index; `onGoToFrame` forwards to the Studio's
+   *  existing synced-frame navigation path. */
+  lastFrame: number;
+  onGoToFrame?: (frame: number) => void;
   interpolationEnabled: boolean;
   interpolationMode: PhysicPaintRotoInterpolationState['mode'];
   interpolationPending: boolean;
@@ -1378,10 +1511,15 @@ export function computeToolboxPopoverPlacement(options: {
  * position:fixed and must keep the viewport as its containing block.
  */
 function PhysicsPaintToolboxPopover(props: {
-  anchorRef: RefObject<HTMLSpanElement | null>;
+  anchorRef: RefObject<HTMLElement | null>;
   panelRef: RefObject<HTMLDivElement | null>;
   open: boolean;
   ariaLabel: string;
+  /** 261105-cgl: the frame go-to popup reuses this placement/dismissal shell;
+   *  the Tools instance keeps its own id so aria-controls stays exact. */
+  panelId?: string;
+  /** Appended to the panel class (surface-specific width/padding overrides). */
+  className?: string;
   children: ComponentChildren;
 }) {
   useLayoutEffect(() => {
@@ -1402,8 +1540,8 @@ function PhysicsPaintToolboxPopover(props: {
   const panel = (
     <div
       ref={props.panelRef}
-      id="physics-paint-toolbox-popover"
-      class="physics-paint-toolbox-popover"
+      id={props.panelId ?? 'physics-paint-toolbox-popover'}
+      class={`physics-paint-toolbox-popover${props.className ? ` ${props.className}` : ''}`}
       role="dialog"
       aria-modal="false"
       aria-label={props.ariaLabel}
@@ -1507,7 +1645,14 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <button type="button" class="physics-paint-nav-button" aria-label="Go to first frame" onClick={props.onGoToFirstFrame}><ChevronFirst size={15} /></button>
         <button type="button" class="physics-paint-nav-button" aria-label="Go to previous frame" onClick={props.onGoToPreviousFrame}><ChevronsLeft size={15} /></button>
         <button type="button" class={`physics-paint-nav-button physics-paint-roto-transport ${props.playbackActive ? 'active' : ''}`} aria-label={props.playbackActive ? 'Stop cached Roto playback' : 'Play cached Roto frames'} disabled={!props.ready || !props.playbackAvailable || !props.onTogglePlayback} onClick={props.onTogglePlayback}>{props.playbackActive ? <Square size={15} /> : <Play size={15} />}</button>
-        <RotoPlaybackCurrentFrameOutput currentFrame={props.currentFrame} playbackActive={props.playbackActive} playbackTick={props.playbackTick} />
+        <RotoPlaybackCurrentFrameOutput
+          currentFrame={props.currentFrame}
+          playbackActive={props.playbackActive}
+          playbackTick={props.playbackTick}
+          fps={props.projectFps}
+          lastFrame={props.lastFrame}
+          onGoToFrame={props.onGoToFrame}
+        />
         <button type="button" class="physics-paint-nav-button" aria-label="Go to next frame" onClick={props.onGoToNextFrame}><ChevronsRight size={15} /></button>
         <button type="button" class="physics-paint-nav-button" aria-label="Go to last frame" onClick={props.onGoToLastFrame}><ChevronLast size={15} /></button>
       </div>
@@ -5482,6 +5627,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         playbackLoop={Boolean(props.rotoCachedPlaybackLoop)}
         playbackFps={props.rotoCachedPlaybackFps ?? 0}
         projectFps={props.projectFps ?? 1}
+        lastFrame={Math.max(0, frameCells.length - 1)}
+        onGoToFrame={props.onNavigateToSyncedFrame}
         interpolationEnabled={interpolationEnabled}
         interpolationMode={interpolationMode}
         interpolationPending={Boolean(props.rotoInterpolationPending)}

@@ -2805,3 +2805,64 @@ describe('PhysicsPaintWorkflowStrip scrub playhead feed contract (G-52-9 drag-ga
     expect(call).toContain('scrubFrame={props.rotoScrubFrame}');
   });
 });
+
+describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
+  const outputLiteral = '<output class="physics-paint-current-frame">{playbackAppFrame ?? props.currentFrame.value}</output>';
+
+  it('keeps the pinned output literal exactly once, inside the trigger button', () => {
+    const code = source();
+    expect(countOccurrences(code, outputLiteral)).toBe(1);
+    const outputIndex = code.indexOf(outputLiteral);
+    const triggerStart = code.lastIndexOf('<button', outputIndex);
+    const triggerEnd = code.indexOf('</button>', outputIndex);
+    expect(triggerStart).toBeGreaterThanOrEqual(0);
+    expect(triggerEnd).toBeGreaterThan(outputIndex);
+    const trigger = code.slice(triggerStart, triggerEnd);
+    expect(trigger).toContain('physics-paint-current-frame-trigger');
+    expect(trigger).toContain('aria-haspopup="dialog"');
+    expect(trigger).toContain('aria-expanded={open}');
+    expect(trigger).toContain('aria-controls={open ? \'physics-paint-frame-goto-popover\' : undefined}');
+  });
+
+  it('opens in Frame mode, seeds from the live read, and never follows playback ticks while open', () => {
+    const code = source();
+    const openStart = code.indexOf('const openFrameGoto = () => {');
+    const openBlock = code.slice(openStart, code.indexOf('};', openStart) + 2);
+    expect(openStart).toBeGreaterThanOrEqual(0);
+    expect(openBlock).toContain("setMode('frame')");
+    expect(openBlock).toContain('props.playbackTick?.peek()?.appFrame ?? props.currentFrame.peek()');
+    expect(openBlock).toContain('normalizeFrameGotoFrame(live, lastFrame)');
+    expect(openBlock).toContain('setOpen(true)');
+    // The draft is a state seed, not a derived read of the playback tick.
+    expect(code).toContain('const [draftFrame, setDraftFrame] = useState(0);');
+  });
+
+  it('resolves every entry through the shared helper and forwards to the Studio navigation path', () => {
+    const code = source();
+    const commitStart = code.indexOf('const commitFrameGoto = (value: number) => {');
+    const commitBlock = code.slice(commitStart, code.indexOf('};', commitStart) + 2);
+    expect(commitStart).toBeGreaterThanOrEqual(0);
+    expect(commitBlock).toContain('resolveFrameGotoTarget(mode, value, fps, lastFrame)');
+    expect(commitBlock).toContain('if (target === null) return;');
+    expect(commitBlock).toContain('props.onGoToFrame?.(target)');
+    // The stepper value is the display projection, never the raw frame in
+    // seconds mode.
+    expect(code).toContain('resolveFrameGotoValue(mode, draftFrame, fps)');
+    // The static-chrome call wires the existing synced-frame path.
+    expect(code).toContain('onGoToFrame={props.onNavigateToSyncedFrame}');
+    expect(code).toContain('lastFrame={Math.max(0, frameCells.length - 1)}');
+  });
+
+  it('reuses the toolbox popover shell with its own id/class and a one-layer dismissal', () => {
+    const code = source();
+    expect(code).toContain('panelId="physics-paint-frame-goto-popover"');
+    expect(code).toContain('className="physics-paint-frame-goto-popover"');
+    expect(code).toContain("panelId?: string;");
+    expect(code).toContain("className?: string;");
+    expect(code).toContain("id={props.panelId ?? 'physics-paint-toolbox-popover'}");
+    // Escape consumes only its own layer; outside pointerdown uses the shared
+    // classifier so interior/portaled hits never dismiss.
+    expect(code).toContain('shouldDismissToolboxPopover(event.target, [triggerRef.current, panelRef.current])');
+    expect(code).toContain('event.stopImmediatePropagation();');
+  });
+});
