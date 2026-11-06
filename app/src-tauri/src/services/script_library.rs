@@ -3056,6 +3056,217 @@ mod tests {
         }
     }
 
+    // ---- 59-04 (MOTN-12 / REL-02): Rust mirror of the rail-motion term ----
+
+    fn rail_motion_document(rail_motions: Value) -> Value {
+        let mut document = physical_document(json!("dGVzdA=="));
+        document["railMotions"] = rail_motions;
+        document
+    }
+
+    fn rail_motion_record(rail_id: &str, channels: Value) -> Value {
+        json!({ "railId": rail_id, "anchorKeyId": "k1", "channels": channels })
+    }
+
+    fn scale_rotation_record(rail_id: &str, scale_first: bool) -> Value {
+        let scale = json!({
+            "id": "scale",
+            "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }]
+        });
+        let rotation = json!({
+            "id": "rotation",
+            "keys": [{ "frame": 4, "value": 30, "easing": "hold", "wiggle": 0 }]
+        });
+        let channels = if scale_first {
+            json!([scale, rotation])
+        } else {
+            json!([rotation, scale])
+        };
+        rail_motion_record(rail_id, channels)
+    }
+
+    #[test]
+    fn canonical_rail_motions_absent_or_empty_adds_no_term() {
+        // D-29 idiom: an absent or empty collection is semantically identical to
+        // a pre-Phase-59 document and must contribute no bytes, so every
+        // existing project value keeps its exact revision.
+        let absent = physical_document(json!("dGVzdA=="));
+        let empty = rail_motion_document(json!([]));
+        let absent_source = canonical_physical_source(&absent).expect("absent collection");
+        let empty_source = canonical_physical_source(&empty).expect("empty collection");
+        assert!(
+            !absent_source.contains("rail-motions:"),
+            "an absent collection must add no term: {absent_source}"
+        );
+        assert_eq!(
+            empty_source, absent_source,
+            "an empty collection must encode byte-identically to absence"
+        );
+    }
+
+    #[test]
+    fn canonical_rail_motions_emits_the_typescript_byte_format() {
+        let document = rail_motion_document(json!([scale_rotation_record("rail", true)]));
+        let source = canonical_physical_source(&document).expect("valid rail motion document");
+        let expected = "rail-motions:1:s4:rail;s2:k1;2:s5:scale;1:n0;n1;s4:ease;n0;s8:rotation;1:n4;n30;s4:hold;n0;";
+        assert!(
+            source.contains(expected),
+            "rail-motions term diverged from the TypeScript byte format: {source}"
+        );
+    }
+
+    #[test]
+    fn canonical_rail_motions_canonicalizes_channel_order() {
+        // The TypeScript writer canonicalizes channel order, so the Rust mirror
+        // must sort channels into the fixed order instead of trusting input.
+        let canonical = rail_motion_document(json!([scale_rotation_record("rail", true)]));
+        let reversed = rail_motion_document(json!([scale_rotation_record("rail", false)]));
+        let canonical_source =
+            canonical_physical_source(&canonical).expect("canonical channel order");
+        let reversed_source =
+            canonical_physical_source(&reversed).expect("reversed channel order");
+        assert_eq!(
+            reversed_source, canonical_source,
+            "channel input order must not change the canonical bytes"
+        );
+        let scale_at = canonical_source.find("s5:scale;").expect("scale term");
+        let rotation_at = canonical_source.find("s8:rotation;").expect("rotation term");
+        assert!(
+            scale_at < rotation_at,
+            "channels must emit in the fixed position-x, position-y, scale, rotation, opacity order"
+        );
+    }
+
+    #[test]
+    fn canonical_rail_motions_sorts_records_by_rail_id() {
+        let forward = rail_motion_document(json!([
+            scale_rotation_record("rail-a", true),
+            scale_rotation_record("rail-b", true)
+        ]));
+        let backward = rail_motion_document(json!([
+            scale_rotation_record("rail-b", true),
+            scale_rotation_record("rail-a", true)
+        ]));
+        let forward_source = canonical_physical_source(&forward).expect("forward order");
+        let backward_source = canonical_physical_source(&backward).expect("backward order");
+        assert_eq!(
+            backward_source, forward_source,
+            "record input order must not change the canonical bytes"
+        );
+        let first_at = forward_source.find("s6:rail-a;").expect("rail-a term");
+        let second_at = forward_source.find("s6:rail-b;").expect("rail-b term");
+        assert!(first_at < second_at, "records must emit in ascending railId order");
+    }
+
+    #[test]
+    fn canonical_rail_motions_rejects_each_malformed_case() {
+        let duplicate_rail_id = json!([
+            scale_rotation_record("rail", true),
+            scale_rotation_record("rail", true)
+        ]);
+        let unknown_channel = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "bogus", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+        )]);
+        let empty_channel = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [] }])
+        )]);
+        let non_ascending_frame = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [
+                { "frame": 4, "value": 1, "easing": "ease", "wiggle": 0 },
+                { "frame": 2, "value": 1, "easing": "ease", "wiggle": 0 }
+            ] }])
+        )]);
+        let invalid_easing = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "linear", "wiggle": 0 }] }])
+        )]);
+        let non_numeric_value = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": "one", "easing": "ease", "wiggle": 0 }] }])
+        )]);
+        let invalid_wiggle = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": -1 }] }])
+        )]);
+        let ungrouped_position = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "position-x", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+        )]);
+        let mismatched_position_frames = json!([rail_motion_record(
+            "rail",
+            json!([
+                { "id": "position-x", "keys": [
+                    { "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 },
+                    { "frame": 4, "value": 2, "easing": "ease", "wiggle": 0 }
+                ] },
+                { "id": "position-y", "keys": [
+                    { "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }
+                ] }
+            ])
+        )]);
+        let too_many_records: Vec<Value> = (0..513)
+            .map(|index| {
+                json!({
+                    "railId": format!("rail-{index}"),
+                    "anchorKeyId": "k1",
+                    "channels": []
+                })
+            })
+            .collect();
+        let too_many_channels = json!([rail_motion_record(
+            "rail",
+            json!([
+                { "id": "scale", "keys": [] },
+                { "id": "scale", "keys": [] },
+                { "id": "rotation", "keys": [] },
+                { "id": "opacity", "keys": [] },
+                { "id": "position-x", "keys": [] },
+                { "id": "position-y", "keys": [] }
+            ])
+        )]);
+        let too_many_keys: Vec<Value> = (0..4097)
+            .map(|frame| json!({ "frame": frame, "value": 1, "easing": "ease", "wiggle": 0 }))
+            .collect();
+        let too_many_keys = json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": too_many_keys }])
+        )]);
+        let unbounded_rail_id = json!([rail_motion_record(
+            &"a".repeat(129),
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }] }])
+        )]);
+
+        let cases: Vec<(&str, Value, &str)> = vec![
+            ("non-array collection", json!({ "railId": "rail" }), "railMotions"),
+            ("duplicate railId", duplicate_rail_id, "duplicate railId"),
+            ("unknown channel id", unknown_channel, "channel"),
+            ("empty channel", empty_channel, "channel"),
+            ("non-ascending frame", non_ascending_frame, "frame"),
+            ("invalid easing", invalid_easing, "easing"),
+            ("non-numeric value", non_numeric_value, "value"),
+            ("negative wiggle", invalid_wiggle, "wiggle"),
+            ("ungrouped Position", ungrouped_position, "position"),
+            ("mismatched Position frames", mismatched_position_frames, "position"),
+            ("too many records", json!(too_many_records), "railMotions"),
+            ("too many channels", too_many_channels, "channels"),
+            ("too many keys", too_many_keys, "keys"),
+            ("unbounded railId", unbounded_rail_id, "railId"),
+        ];
+
+        for (label, rail_motions, fragment) in cases {
+            let document = rail_motion_document(rail_motions);
+            let error = canonical_physical_source(&document)
+                .expect_err(&format!("{label} must fail closed"));
+            assert!(
+                error.contains(fragment),
+                "{label}: error must name the field ({fragment}): {error}"
+            );
+        }
+    }
+
     #[test]
     fn validate_source_accepts_paper_background_and_grain_scale() {
         // 261018-lqv: the TS schema accepted paper/* + grainScale but the Rust

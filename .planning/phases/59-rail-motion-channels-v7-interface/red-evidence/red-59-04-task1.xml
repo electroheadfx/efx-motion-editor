@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites name="cargo test" tests="5" failures="4" errors="0" time="0.02">
+  <testsuite name="app/src-tauri/target/debug/deps/efx_motion_editor_lib-fc9976927d9811bf" tests="5" failures="4" errors="0" skipped="0" time="0.02">
+    <testcase classname="services::script_library::tests" name="canonical_rail_motions_absent_or_empty_adds_no_term" time="0.000" />
+    <testcase classname="services::script_library::tests" name="canonical_rail_motions_emits_the_typescript_byte_format" time="0.000">
+      <failure message="libtest failure">panicked at src/services/script_library.rs:3112:9:
+rail-motions term diverged from the TypeScript byte format: records:1:s2:k1;n0;n0;n0;d4:74657374:74657374;n2;n2;interpolation:0;mode:s4:none;capacity:n1;motion:n0;n0;background:null;selection:null;cursor:n0;</failure>
+    </testcase>
+    <testcase classname="services::script_library::tests" name="canonical_rail_motions_canonicalizes_channel_order" time="0.000">
+      <failure message="libtest failure">panicked at src/services/script_library.rs:3132:59:
+scale term</failure>
+    </testcase>
+    <testcase classname="services::script_library::tests" name="canonical_rail_motions_sorts_records_by_rail_id" time="0.000">
+      <failure message="libtest failure">panicked at src/services/script_library.rs:3156:58:
+rail-a term</failure>
+    </testcase>
+    <testcase classname="services::script_library::tests" name="canonical_rail_motions_rejects_each_malformed_case" time="0.000">
+      <failure message="libtest failure">panicked at src/services/script_library.rs:3262:18:
+non-array collection must fail closed: "records:1:s2:k1;n0;n0;n0;d4:74657374:74657374;n2;n2;interpolation:0;mode:s4:none;capacity:n1;motion:n0;n0;background:null;selection:null;cursor:n0;"</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
