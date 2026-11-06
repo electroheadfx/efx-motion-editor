@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Diamond,
   Move,
+  Plus,
   RotateCw,
   Scaling,
 } from 'lucide-preact';
@@ -452,6 +453,8 @@ export interface TimelineMotionBlockOutlineProps {
   readonly selected: boolean;
   /** The rail's bright line; the host resolves it from the rail type. */
   readonly lineColor?: string;
+  /** 59-17: the block renders one extra add-channel row after the gap. */
+  readonly addChannelRow?: boolean;
 }
 
 export interface TimelineMotionChannelMenuProps {
@@ -479,8 +482,9 @@ export function TimelineMotionBlockOutline({
   laneCount,
   selected,
   lineColor,
+  addChannelRow = false,
 }: TimelineMotionBlockOutlineProps) {
-  const rect = resolveMotionBlockOutlineRect({ rowTop, rowHeight, laneCount });
+  const rect = resolveMotionBlockOutlineRect({ rowTop, rowHeight, laneCount, addChannelRow });
   if (rect === null) return null;
   return (
     <div
@@ -499,6 +503,50 @@ export function TimelineMotionBlockOutline({
         boxSizing: 'border-box',
       }}
     />
+  );
+}
+
+export interface TimelineMotionAddChannelRowProps {
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}
+
+/**
+ * 59-17: the 18px `+` row under the expanded block. Props only — the host
+ * owns the open/closed session state and the channel inventory, so this row
+ * neither reads a signal nor derives which channels are missing. It is the
+ * only way Scale, Rotation and Opacity become reachable (G1/CR-03).
+ */
+export function TimelineMotionAddChannelRow({ open, onToggle }: TimelineMotionAddChannelRowProps) {
+  return (
+    <button
+      type="button"
+      class="physics-paint-motion-add-channel-row"
+      data-motion-add-channel-row
+      aria-label="Add Motion channel"
+      aria-expanded={open}
+      aria-haspopup="menu"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: TIMELINE_MOTION.laneLabelGap,
+        width: '100%',
+        height: TIMELINE_MOTION.laneHeight,
+        padding: 0,
+        border: 'none',
+        background: 'transparent',
+        color: TIMELINE_SURFACE.motionToggleInactive,
+        fontSize: 9,
+        fontWeight: 600,
+        cursor: 'pointer',
+      }}
+      onClick={onToggle}
+    >
+      <span aria-hidden="true" style={{ display: 'inline-flex' }}>
+        <Plus size={8} />
+      </span>
+      <span>Add channel</span>
+    </button>
   );
 }
 

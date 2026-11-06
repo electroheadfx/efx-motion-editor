@@ -17,9 +17,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  dismissRailMotionChannelMenu,
   PhysicsPaintTrackColumnStrip,
   PhysicsPaintTrackRow,
   PhysicsPaintTrackRowHeader,
+  railMotionChannelMenuRailId,
   railMotionExpandedSelection,
   resolveMotionBlockExpanded,
   resolveMotionChevronKind,
@@ -27,8 +29,10 @@ import {
   resolveRailMotionHasKeys,
   resolveSelectedRailMotionId,
   resolveTrackMotionLaneCount,
+  toggleRailMotionChannelMenu,
   toggleRailMotionExpansion,
 } from './PhysicsPaintTrackRow';
+import { TIMELINE_MOTION } from './timelineRailDesign';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
@@ -1119,5 +1123,213 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     railMotionExpandedSelection.value = OTHER_LOOP_IDENTITY;
     const stale = render(base);
     expect(findAll(stale, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(0);
+  });
+});
+
+describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
+  const LOOP_RAIL_ID = 'loop-motion-59-17';
+  const LOOP_IDENTITY: RailSetIdentity = { kind: 'loop', loopId: LOOP_RAIL_ID };
+  const POSITION_ONLY_IDS: readonly PhysicPaintRotoRailMotionChannelId[] = ['position-x', 'position-y'];
+  const ALL_CHANNEL_IDS: readonly PhysicPaintRotoRailMotionChannelId[] = [
+    'position-x', 'position-y', 'scale', 'rotation', 'opacity',
+  ];
+
+  function motionRecord(
+    channelIds: readonly PhysicPaintRotoRailMotionChannelId[],
+  ): PhysicPaintRotoRailMotionRecord {
+    return {
+      railId: LOOP_RAIL_ID,
+      anchorKeyId: 'k0',
+      channels: channelIds.map((id) => ({
+        id,
+        keys: [
+          { frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 },
+          { frame: 4, value: 1, easing: 'ease' as const, wiggle: 0 },
+        ],
+      })),
+    };
+  }
+
+  function renderExpanded(channelIds: readonly PhysicPaintRotoRailMotionChannelId[], overrides: Record<string, unknown> = {}) {
+    const record = motionRecord(channelIds);
+    const views: RailMotionRailView[] = [{
+      railId: LOOP_RAIL_ID,
+      anchorKeyId: 'k0',
+      loopId: LOOP_RAIL_ID,
+      startFrame: 0,
+      endFrameExclusive: 10,
+      keyIds: ['k0', 'k1'],
+      railType: 'motion',
+    }];
+    railMotionExpandedSelection.value = LOOP_IDENTITY;
+    return render({
+      rotoSelectedRail: LOOP_IDENTITY,
+      rotoRailMotions: [record],
+      rotoRailViews: views,
+      ...overrides,
+    });
+  }
+
+  function addChannelRows(tree: unknown): TestVNode[] {
+    return findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined);
+  }
+
+  function menuOverlays(tree: unknown): TestVNode[] {
+    return findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-channel-menu-overlay'));
+  }
+
+  function menuRows(tree: unknown): TestVNode[] {
+    return findAll(tree, (vnode) => vnode.props['data-motion-channel-menu-row'] !== undefined);
+  }
+
+  function styleOf(vnode: TestVNode): Record<string, unknown> {
+    return (vnode.props.style ?? {}) as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    railMotionExpandedSelection.value = null;
+    railMotionChannelMenuRailId.value = null;
+  });
+
+  afterEach(() => {
+    railMotionExpandedSelection.value = null;
+    railMotionChannelMenuRailId.value = null;
+  });
+
+  it('renders NO add row and NO menu when every display lane carries keys', () => {
+    const tree = renderExpanded(ALL_CHANNEL_IDS);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(4);
+    expect(addChannelRows(tree)).toHaveLength(0);
+    expect(menuOverlays(tree)).toHaveLength(0);
+    expect(menuRows(tree)).toHaveLength(0);
+  });
+
+  it('renders the add row once a display lane is keyless — Position-only is the CR-03 case', () => {
+    const tree = renderExpanded(POSITION_ONLY_IDS);
+
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(1);
+    const rows = addChannelRows(tree);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe('button');
+    expect(styleOf(rows[0]).height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(rows[0].props['aria-expanded']).toBe(false);
+    // Closed by default: the menu is the portalled overlay, not a flow row.
+    expect(menuOverlays(tree)).toHaveLength(0);
+    expect(menuRows(tree)).toHaveLength(0);
+  });
+
+  it('renders the menu as an ABSOLUTE overlay under the add row, above the rail chrome', () => {
+    railMotionChannelMenuRailId.value = LOOP_RAIL_ID;
+    const tree = renderExpanded(POSITION_ONLY_IDS);
+
+    const overlays = menuOverlays(tree);
+    expect(overlays).toHaveLength(1);
+    const style = styleOf(overlays[0]);
+    expect(style.position).toBe('absolute');
+    expect(style.left).toBe(0);
+    expect(style.right).toBe(0);
+    // One visible lane (Position) + the 2px gap + the 18px add row.
+    expect(style.top).toBe(
+      1 * TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap + TIMELINE_MOTION.laneHeight,
+    );
+    expect(style.top).toBe(38);
+    expect(style.zIndex).toBe(TIMELINE_MOTION.channelMenuZIndex);
+    expect(style.zIndex).toBeGreaterThan(9);
+    expect(style.zIndex).toBeLessThan(30);
+    // The overlay is INSIDE the block's position:relative lane container.
+    const container = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-lanes'));
+    expect(container).toHaveLength(1);
+    expect(styleOf(container[0]).position).toBe('relative');
+
+    // The open menu lists exactly the keyless display lanes, in fixed order.
+    expect(menuRows(tree).map((row) => row.props['data-motion-channel-menu-row'])).toEqual([
+      'scale',
+      'rotation',
+      'opacity',
+    ]);
+    expect(addChannelRows(tree)[0]!.props['aria-expanded']).toBe(true);
+  });
+
+  it('opens on the add row click and dismisses on a menu pick, routing the channel intent', () => {
+    const onAddMotionChannel = vi.fn();
+    const tree = renderExpanded(POSITION_ONLY_IDS, { onAddMotionChannel });
+
+    (addChannelRows(tree)[0]!.props.onClick as () => void)();
+    expect(railMotionChannelMenuRailId.value).toBe(LOOP_RAIL_ID);
+
+    const opened = renderExpanded(POSITION_ONLY_IDS, { onAddMotionChannel });
+    const scaleRow = menuRows(opened).find(
+      (row) => row.props['data-motion-channel-menu-row'] === 'scale',
+    )!;
+    (scaleRow.props.onClick as () => void)();
+    expect(onAddMotionChannel).toHaveBeenCalledTimes(1);
+    expect(onAddMotionChannel).toHaveBeenCalledWith('scale');
+    // onClose is wired to dismissRailMotionChannelMenu — never an inline no-op.
+    expect(railMotionChannelMenuRailId.value).toBeNull();
+  });
+
+  it('collapse and rail-switch close the open menu (expansion toggle calls the dismiss writer)', () => {
+    toggleRailMotionChannelMenu(LOOP_RAIL_ID);
+    expect(railMotionChannelMenuRailId.value).toBe(LOOP_RAIL_ID);
+
+    // Expanding another rail (the switch path) retires the menu.
+    toggleRailMotionExpansion({ kind: 'key-rail', firstKeyId: 'k9' }, 'rail-other');
+    expect(railMotionChannelMenuRailId.value).toBeNull();
+
+    toggleRailMotionChannelMenu(LOOP_RAIL_ID);
+    // Collapsing retires it too.
+    toggleRailMotionExpansion(null, null);
+    expect(railMotionChannelMenuRailId.value).toBeNull();
+
+    // The dismiss writer is idempotent.
+    dismissRailMotionChannelMenu();
+    expect(railMotionChannelMenuRailId.value).toBeNull();
+  });
+
+  it('writes the menu identity in exactly TWO named writers — the strip only reads it', () => {
+    const body = rowSource();
+    const writeLines = body
+      .split('\n')
+      .filter((line) => /railMotionChannelMenuRailId\.value\s*=(?!=)/.test(line));
+    expect(writeLines).toHaveLength(2);
+    expect(writeLines[0]).toContain('railMotionChannelMenuRailId.value === railId ? null : railId');
+    expect(writeLines[1]).toContain('railMotionChannelMenuRailId.value = null;');
+
+    // Each writer owns exactly one site, inside its own named function.
+    function functionBody(marker: string): string {
+      const start = body.indexOf(marker);
+      expect(start, marker).toBeGreaterThanOrEqual(0);
+      const end = body.indexOf('\n}\n', start);
+      return body.slice(start, end === -1 ? body.length : end + 3);
+    }
+    const toggleBody = functionBody('export function toggleRailMotionChannelMenu');
+    const dismissBody = functionBody('export function dismissRailMotionChannelMenu');
+    expect(toggleBody.match(/railMotionChannelMenuRailId\.value\s*=(?!=)/g) ?? []).toHaveLength(1);
+    expect(dismissBody.match(/railMotionChannelMenuRailId\.value\s*=(?!=)/g) ?? []).toHaveLength(1);
+    // The expansion toggle never assigns the signal — it CALLS the writer.
+    const expansionBody = functionBody('export function toggleRailMotionExpansion');
+    expect(expansionBody).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
+    expect(expansionBody).toContain('dismissRailMotionChannelMenu();');
+
+    const strip = readFileSync(
+      fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(strip).toContain('railMotionChannelMenuRailId.value ===');
+    expect(strip).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
+    // The strip never renders the overlay nor declares a third writer.
+    expect(strip).not.toContain('physics-paint-motion-channel-menu-overlay');
+    expect(strip).not.toMatch(/function\s+(toggle|dismiss)RailMotionChannelMenu/);
+  });
+
+  it('keeps the menu identity session-local — never persisted', () => {
+    const persistSources = [
+      fileURLToPath(new URL('../../../stores/physicPaintStore.ts', import.meta.url)),
+      fileURLToPath(new URL('../../../stores/efxPaintStore.ts', import.meta.url)),
+    ].map((path) => readFileSync(path, 'utf8'));
+    for (const persistSource of persistSources) {
+      expect(persistSource).not.toContain('railMotionChannelMenuRailId');
+      expect(persistSource).not.toContain('channelMenuOpen');
+    }
   });
 });

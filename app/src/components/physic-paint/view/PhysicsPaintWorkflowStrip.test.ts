@@ -18,6 +18,7 @@ import {
   resolveReorderInsertionIndex,
   resolveTrackRowLayout,
 } from './PhysicsPaintWorkflowStrip';
+import { TIMELINE_MOTION } from './timelineRailDesign';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -2955,6 +2956,87 @@ describe('59-11 Task 2: resolveTrackRowLayout — one measured layout for body, 
     // The header column consumes the SAME array instance the body uses.
     expect(code).toContain('rowLayout: rowLayout.rows,');
     expect(code).toContain('rowLayout.rows');
+  });
+});
+
+describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the one measured layout', () => {
+  function heightOf(laneCount: number, addChannelRow: boolean): number {
+    return resolveTrackRowLayout([{ trackId: 'a', laneCount, addChannelRow }]).rows[0]!.height;
+  }
+
+  it('keeps every pre-59-17 height byte-identical when addChannelRow is absent', () => {
+    expect(heightOf(0, false)).toBe(31);
+    expect(heightOf(1, false)).toBe(51);
+    expect(heightOf(2, false)).toBe(69);
+    expect(heightOf(3, false)).toBe(87);
+    expect(heightOf(4, false)).toBe(105);
+    // The optional input is genuinely optional.
+    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: 3 }]).rows[0]!.height).toBe(87);
+    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: 3 }]).rows[0]!.addChannelRow).toBe(false);
+  });
+
+  it('adds exactly ONE 18px row on top of the post-block gap', () => {
+    expect(heightOf(0, true)).toBe(31);
+    expect(heightOf(1, true)).toBe(69);
+    expect(heightOf(2, true)).toBe(87);
+    expect(heightOf(3, true)).toBe(105);
+    // Every additive case is the matching absent case + one lane height.
+    for (const laneCount of [1, 2, 3]) {
+      expect(heightOf(laneCount, true) - heightOf(laneCount, false)).toBe(
+        TIMELINE_MOTION.laneHeight,
+      );
+    }
+  });
+
+  it('spends the add row on the last missing lane — the fourth add is net 0', () => {
+    // 3 lanes + the add row (105) becomes 4 lanes without it (105): the block
+    // never claims a fifth lane and the row height never jumps. The strip can
+    // never request both — four lanes leave no keyless display lane.
+    expect(heightOf(3, true)).toBe(105);
+    expect(heightOf(4, false)).toBe(105);
+  });
+
+  it('swallows the flag on a collapsed block and carries it on the entry', () => {
+    const collapsed = resolveTrackRowLayout([{ trackId: 'a', laneCount: 0, addChannelRow: true }]);
+    expect(collapsed.rows[0]!.addChannelRow).toBe(false);
+    expect(collapsed.rows[0]!.height).toBe(31);
+    // A non-finite lane count fails closed to a collapsed row, add row included.
+    const nan = resolveTrackRowLayout([{ trackId: 'a', laneCount: Number.NaN, addChannelRow: true }]);
+    expect(nan.rows[0]!.height).toBe(31);
+
+    const open = resolveTrackRowLayout([{ trackId: 'a', laneCount: 2, addChannelRow: true }]);
+    expect(open.rows[0]!.addChannelRow).toBe(true);
+    expect(open.rows[0]!.railHeight).toBe(31);
+    expect(open.totalHeight).toBe(open.rows[0]!.height);
+  });
+
+  it('keeps the following row offsets measured from the taller block', () => {
+    const layout = resolveTrackRowLayout([
+      { trackId: 'a', laneCount: 2, addChannelRow: true },
+      { trackId: 'b', laneCount: 0 },
+    ]);
+    expect(layout.rows.map((row) => row.height)).toEqual([87, 31]);
+    expect(layout.rows.map((row) => row.offset)).toEqual([0, 87]);
+    expect(layout.totalHeight).toBe(118);
+    expect(resolveReorderInsertionIndex(86, { top: 0, scrollTop: 0 }, layout.rows)).toBe(0);
+    expect(resolveReorderInsertionIndex(87, { top: 0, scrollTop: 0 }, layout.rows)).toBe(1);
+  });
+
+  it('feeds the add row from the keyless projection and keeps the menu overlay out of the layout', () => {
+    const code = source();
+    // The flag is derived from the SAME keyless projection the block renders.
+    expect(code).toContain('resolveKeylessMotionDisplayLanes');
+    expect(code).toContain('const activeMotionAddChannelRow =');
+    expect(code).toContain('addChannelRow: isActive && activeMotionAddChannelRow,');
+    // The open menu is an absolute overlay inside the row: the strip never
+    // renders it, so its open height can never reach this layout.
+    expect(code).not.toContain('physics-paint-motion-channel-menu-overlay');
+    expect(code).toContain('railMotionChannelMenuRailId.value === activeMotionRecord.railId');
+    // The strip only READS the menu identity — the row owns its two writers.
+    // (Not an equality: `.value === x` is a read, `.value = x` is a write.)
+    expect(code).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
+    expect(code).toContain('toggleRailMotionChannelMenu(activeMotionRecord.railId)');
+    expect(code).toContain('dismissRailMotionChannelMenu()');
   });
 });
 

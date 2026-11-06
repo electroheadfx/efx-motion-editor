@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   RAIL_MOTION_DISPLAY_LANE_ORDER,
+  TimelineMotionAddChannelRow,
   TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
   TimelineMotionChannelMenu,
@@ -478,6 +479,44 @@ describe('TimelineMotionBlockOutline', () => {
     expect(String(style.border)).toContain(`${TIMELINE_GEOMETRY.outlineWidth}px`);
     expect(style.pointerEvents).toBe('none');
   });
+
+  it('wraps the extra 18px add-channel row when the block renders one (59-17)', () => {
+    const without = resolveMotionBlockOutlineRect({ rowTop: 0, rowHeight: 30, laneCount: 2 });
+    const withRow = resolveMotionBlockOutlineRect({
+      rowTop: 0,
+      rowHeight: 30,
+      laneCount: 2,
+      addChannelRow: true,
+    });
+
+    expect(without).not.toBeNull();
+    expect(withRow).not.toBeNull();
+    expect(withRow!.height - without!.height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(without!.height).toBe(
+      30 + 2 * TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap,
+    );
+
+    const tree = materialize(
+      TimelineMotionBlockOutline({
+        rowTop: 0,
+        rowHeight: 30,
+        laneCount: 2,
+        addChannelRow: true,
+        selected: true,
+      }),
+    );
+    const node = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'))[0]!;
+    expect(styleOf(node).height).toBe(withRow!.height);
+  });
+
+  it('adds no add-channel term to a collapsed block (laneCount 0 stays null)', () => {
+    expect(resolveMotionBlockOutlineRect({
+      rowTop: 0,
+      rowHeight: 30,
+      laneCount: 0,
+      addChannelRow: true,
+    })).toBeNull();
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -547,6 +586,65 @@ describe('TimelineMotionChannelMenu', () => {
     });
 
     expect(tree).toBeNull();
+  });
+
+  it('calls onAddChannel BEFORE onClose so the seed lands before the menu retires', () => {
+    const order: string[] = [];
+    const tree = materialize(
+      TimelineMotionChannelMenu({
+        channels: POSITION_CHANNELS,
+        onAddChannel: () => order.push('add'),
+        onClose: () => order.push('close'),
+      }),
+    );
+
+    clickOf(menuRows(tree)[0]!)();
+    expect(order).toEqual(['add', 'close']);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* add-channel row (59-17, G1/CR-03)                                   */
+/* ------------------------------------------------------------------ */
+
+describe('TimelineMotionAddChannelRow', () => {
+  it('renders the 18px add-channel row with the lane rhythm', () => {
+    const tree = materialize(TimelineMotionAddChannelRow({ open: false, onToggle: () => {} }));
+    const rows = findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined);
+
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.type).toBe('button');
+    expect(row.props.type).toBe('button');
+    expect(row.props['aria-label']).toBe('Add Motion channel');
+    expect(row.props['aria-haspopup']).toBe('menu');
+    const style = styleOf(row);
+    expect(style.height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(style.height).toBe(18);
+    expect(style.width).toBe('100%');
+    expect(style.gap).toBe(TIMELINE_MOTION.laneLabelGap);
+    expect(style.color).toBe(TIMELINE_SURFACE.motionToggleInactive);
+    expect(style.cursor).toBe('pointer');
+  });
+
+  it('mirrors the open state on aria-expanded', () => {
+    const closed = materialize(TimelineMotionAddChannelRow({ open: false, onToggle: () => {} }));
+    const open = materialize(TimelineMotionAddChannelRow({ open: true, onToggle: () => {} }));
+
+    expect(
+      findAll(closed, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!.props['aria-expanded'],
+    ).toBe(false);
+    expect(
+      findAll(open, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!.props['aria-expanded'],
+    ).toBe(true);
+  });
+
+  it('routes the click to onToggle (the host owns the session state)', () => {
+    const onToggle = vi.fn();
+    const tree = materialize(TimelineMotionAddChannelRow({ open: false, onToggle }));
+
+    clickOf(findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!)();
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -196,14 +196,17 @@ import {
 } from '../../../stores/efxPaintStore';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import {
+  dismissRailMotionChannelMenu,
   EMPTY_RAIL_MOTION_HOST_FACTS,
   PhysicsPaintTrackRow,
   TimelineMotionBlock,
+  railMotionChannelMenuRailId,
   railMotionExpandedSelection,
   readTrackRailMotionFacts,
   resolveMotionRecordForRail,
   resolveSelectedRailMotionId,
   resolveTrackMotionLaneCount,
+  toggleRailMotionChannelMenu,
   type RailMotionHostFacts,
   type TrackRowRailSelection,
 } from './PhysicsPaintTrackRow';
@@ -221,7 +224,10 @@ import {
   dismissRailMotionMergeNotice,
   railMotionMergeNotice,
 } from '../roto/railMotionMergeNotice';
-import type { TimelineMotionLaneControl } from './TimelineMotionChannels';
+import {
+  resolveKeylessMotionDisplayLanes,
+  type TimelineMotionLaneControl,
+} from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -659,6 +665,9 @@ export interface TrackRowLayoutInput {
   /** Visible DISPLAY-lane count for this row (0 for every row whose block is
    *  closed, which is every row except the expanded one). */
   readonly laneCount: number;
+  /** 59-17: the expanded block renders the 18px `+` add-channel row while a
+   *  display lane is still keyless. It is part of the measured height. */
+  readonly addChannelRow?: boolean;
 }
 
 export interface TrackRowLayoutEntry {
@@ -669,7 +678,10 @@ export interface TrackRowLayoutEntry {
   readonly railHeight: number;
   /** Clamped visible display-lane count. */
   readonly laneCount: number;
-  /** railHeight + lanes × laneHeight + (lanes > 0 ? postBlockGap : 0). */
+  /** Whether the measured height includes the 59-17 add-channel row. */
+  readonly addChannelRow: boolean;
+  /** railHeight + lanes × laneHeight + (lanes > 0 ? postBlockGap : 0)
+   *  + (addChannelRow ? laneHeight : 0). */
   readonly height: number;
 }
 
@@ -725,10 +737,14 @@ export function resolveTrackRowLayout(
     const laneCount = Number.isFinite(row.laneCount)
       ? Math.max(0, Math.min(MAX_MOTION_DISPLAY_LANES, Math.floor(row.laneCount)))
       : 0;
+    // 59-17: the add-channel row only exists inside an OPEN block, so a zero
+    // lane count swallows the flag instead of reserving dead height.
+    const addChannelRow = row.addChannelRow === true && laneCount > 0;
     const height = railHeight
       + laneCount * TIMELINE_MOTION.laneHeight
-      + (laneCount > 0 ? TIMELINE_MOTION.postBlockGap : 0);
-    entries.push({ trackId: row.trackId, offset, railHeight, laneCount, height });
+      + (laneCount > 0 ? TIMELINE_MOTION.postBlockGap : 0)
+      + (addChannelRow ? TIMELINE_MOTION.laneHeight : 0);
+    entries.push({ trackId: row.trackId, offset, railHeight, laneCount, addChannelRow, height });
     offset += height;
   }
   return { rows: entries, totalHeight: offset };
@@ -2823,6 +2839,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionView = activeMotionRecord === null
     ? null
     : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
+  // 59-17: the expanded block's `+` row/overlay. The strip only READS the
+  // session menu identity (the row owns its two writers); it adds the 18px row
+  // to the measured layout because that height lives in this one array.
+  const activeMotionHasKeylessChannel = activeMotionRecord !== null
+    && resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0;
+  const activeMotionAddChannelRow = activeMotionLaneCount > 0 && activeMotionHasKeylessChannel;
+  const activeMotionChannelMenuOpen = activeMotionRecord !== null
+    && railMotionChannelMenuRailId.value === activeMotionRecord.railId;
   // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
   // the hosting boundary keeps the lane's adjacency/span checks honest.
   const activeMotionLocalCursorFrame = activeMotionView === null
@@ -2838,15 +2862,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       inputs.push({ trackId: '', laneCount: 0 });
     } else {
       for (const track of props.tracks ?? []) {
+        const isActive = track.id === props.activeTrackId;
         inputs.push({
           trackId: track.id,
-          laneCount: track.id === props.activeTrackId ? activeMotionLaneCount : 0,
+          laneCount: isActive ? activeMotionLaneCount : 0,
+          addChannelRow: isActive && activeMotionAddChannelRow,
         });
       }
       if (props.background) inputs.push({ trackId: props.background.id, laneCount: 0 });
     }
     return resolveTrackRowLayout(inputs);
-  }, [props.tracks, props.background, props.activeTrackId, activeMotionLaneCount, trackCount]);
+  }, [
+    props.tracks,
+    props.background,
+    props.activeTrackId,
+    activeMotionLaneCount,
+    activeMotionAddChannelRow,
+    trackCount,
+  ]);
   const rowLayoutById = useMemo(() => {
     const map = new Map<string, TrackRowLayoutEntry>();
     for (const entry of rowLayout.rows) map.set(entry.trackId, entry);
@@ -6243,6 +6276,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 view={activeMotionView}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
+                                channelMenuOpen={activeMotionChannelMenuOpen}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
                                 onSelectMotionKey={(frame, channelId) => {
@@ -6272,6 +6306,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                     ? physicalActions?.setMotionKeyAtCursor?.(channelId)
                                     : physicalActions?.removeMotionKeyAtCursor?.(channelId));
                                 }}
+                                onAddMotionChannel={(channelId) => {
+                                  void physicalActions?.addMotionChannel?.(channelId);
+                                }}
+                                onToggleChannelMenu={() => {
+                                  if (activeMotionRecord !== null) {
+                                    toggleRailMotionChannelMenu(activeMotionRecord.railId);
+                                  }
+                                }}
+                                onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
                               />
                             ) : null}
                           </div>
@@ -6306,6 +6349,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           onSelectTrackFrame={props.onSelectTrackFrame}
                           onSelectTrackRail={props.onSelectTrackRail}
                           consumeCrossTrackClickSuppression={crossTrackDrag.consumeClickSuppression}
+                          // 59-17: the row path stays honest — the same action
+                          // the active host uses, so a rail selected on any row
+                          // reaches the one commit door.
+                          onAddMotionChannel={(channelId) => {
+                            void physicalActions?.addMotionChannel?.(channelId);
+                          }}
                         />
                       ),
                   )}

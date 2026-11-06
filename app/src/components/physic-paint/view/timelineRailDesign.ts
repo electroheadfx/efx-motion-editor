@@ -134,6 +134,13 @@ export const TIMELINE_MOTION = {
   laneLabelGap: 6,
   /** Empty row after the expanded block, matching v7's rail-to-rail gap. */
   postBlockGap: 2,
+  /**
+   * 59-17: the add-channel menu paints as an ABSOLUTE overlay inside the
+   * block's lane container. It must sit above the rail chrome (7-9) so every
+   * row is visible over the following rows, and below the playhead and
+   * ruler-seek layers (30) so the timeline's own affordances stay on top.
+   */
+  channelMenuZIndex: 20,
   /** The type's lighter key rim (SPECS §2) — the selected palette tier. */
   keyRim: {
     standard: TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
@@ -155,13 +162,20 @@ export interface TimelineMotionBlockOutlineInput {
   readonly rowTop: number;
   readonly rowHeight: number;
   readonly laneCount: number;
+  /**
+   * 59-17: the block renders ONE extra 18px add-channel row after the gap
+   * while a keyless display lane remains. The outline wraps it like any lane —
+   * the outline and the measured row height must agree.
+   */
+  readonly addChannelRow?: boolean;
 }
 
 /**
  * The expanded block's outline: it starts at the rail row top and wraps the
- * row plus every DISPLAY lane plus the post-block gap (MUI-03). A collapsed
- * block has no lanes, hence no outline. `laneCount` is always a display-lane
- * count, never a model-channel count, so grouped Position adds one lane.
+ * row plus every DISPLAY lane plus the post-block gap (MUI-03), plus the
+ * 18px add-channel row when the block renders one (59-17). A collapsed block
+ * has no lanes, hence no outline. `laneCount` is always a display-lane count,
+ * never a model-channel count, so grouped Position adds one lane.
  */
 export function resolveMotionBlockOutlineRect(
   input: TimelineMotionBlockOutlineInput,
@@ -175,7 +189,8 @@ export function resolveMotionBlockOutlineRect(
     height:
       input.rowHeight +
       laneCount * TIMELINE_MOTION.laneHeight +
-      TIMELINE_MOTION.postBlockGap,
+      TIMELINE_MOTION.postBlockGap +
+      (input.addChannelRow === true ? TIMELINE_MOTION.laneHeight : 0),
     radius: TIMELINE_GEOMETRY.outlineRadius,
     strokeWidth: TIMELINE_GEOMETRY.outlineWidth,
     width: '100%',

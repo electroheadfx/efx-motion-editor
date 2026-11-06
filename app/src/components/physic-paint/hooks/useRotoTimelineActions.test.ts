@@ -1,5 +1,5 @@
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
 vi.mock('preact/hooks', () => ({
@@ -24,6 +24,7 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { projectPhysicsPaintLoopClipGeometry } from '../view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments, resolvePhysicPaintPushAnchor } from '../view/physicsPaintKeyRailPresentation';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
 import {
   getPhysicsPaintRotoSourceCycleId,
   togglePhysicsPaintRotoSpacingProxy,
@@ -4769,5 +4770,159 @@ describe('Phase 58 G-01 frame-aware Group delete routing', () => {
       ...base,
       railSetMembers: [{ kind: 'key-rail', firstKeyId: 'ordinary' }] as readonly RailSetIdentity[],
     }).kind).toBe('rail-set');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 59-17 (G1/CR-03) — the production add-channel command path          */
+/* ------------------------------------------------------------------ */
+
+describe('59-17 addMotionChannel — the host action behind the keyless menu', () => {
+  const LAYER = 'layer-1';
+  const TRACK = 'track-1';
+  const RAIL_ID = 'rail-59-17';
+
+  function launchContext(): PhysicPaintLaunchContext {
+    return {
+      operationId: 'op-1',
+      layerId: LAYER,
+      document: { activeTrackId: TRACK },
+    } as unknown as PhysicPaintLaunchContext;
+  }
+
+  /**
+   * The plan's seeding contract: `replaceRotoPhysicalRailMotions` requires the
+   * `_rotoRealKeyRecords` track to exist, so a real key lands first. A single
+   * real key yields one Key Rail segment whose firstKeyId is the record anchor.
+   */
+  function seedRealKeyTrack(): string {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [realKeyRecord('key-59-17', 0)],
+      { enabled: false, mode: 'duplicate' },
+      10,
+    );
+    if (!seeded.ok) throw new Error(`real key seed failed: ${seeded.error}`);
+    // The runtime frame beside the record, exactly like the live paint path.
+    physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK, 0, {
+      frameIndex: 0,
+      appFrame: 0,
+      bytes: testWebpBytes(btoa('59-17')),
+      width: 4,
+      height: 4,
+    });
+    return physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK)[0]!.keyId;
+  }
+
+  function seedMotionRail(): string {
+    const anchorKeyId = seedRealKeyTrack();
+    const seeded = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId,
+      channels: [
+        { id: 'position-x', keys: [{ frame: 0, value: 0, easing: 'hold', wiggle: 0 }] },
+        { id: 'position-y', keys: [{ frame: 0, value: 0, easing: 'hold', wiggle: 0 }] },
+      ],
+    }]);
+    if (!seeded.ok) throw new Error(`motion record seed failed: ${seeded.error}`);
+    return anchorKeyId;
+  }
+
+  function actionsHarness(anchorKeyId: string) {
+    return createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK),
+      launch: launchContext(),
+      selectedKeyRail: { firstKeyId: anchorKeyId, keyIds: [anchorKeyId] },
+    });
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+  });
+
+  it('seeds Scale through the ONE motion setter, once, and publishes the success copy', async () => {
+    const anchorKeyId = seedMotionRail();
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    const harness = actionsHarness(anchorKeyId);
+
+    const pending = harness.actions.physicalActions.addMotionChannel('scale');
+    // The bundle must declare the action async, never a sync body.
+    expect(pending).toBeInstanceOf(Promise);
+    expect(await pending).toBe(true);
+
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Motion channel added.');
+    const records = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK);
+    expect(records).toHaveLength(1);
+    expect(records[0]!.channels.map((channel) => channel.id)).toEqual([
+      'position-x', 'position-y', 'scale',
+    ]);
+    // Model units: scale is a FACTOR (1 = 100%), seeded at frame 0 as a hold.
+    expect(records[0]!.channels.find((channel) => channel.id === 'scale')!.keys).toEqual([
+      { frame: 0, value: 1, easing: 'hold', wiggle: 0 },
+    ]);
+  });
+
+  it('refuses a channel the rail already carries with zero writes (MUI-06 visible reason)', async () => {
+    const anchorKeyId = seedMotionRail();
+    const harness = actionsHarness(anchorKeyId);
+
+    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(true);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    harness.publishStatus.mockClear();
+
+    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(false);
+    expect(harness.publishStatus).toHaveBeenCalledWith('This Motion channel is already present.');
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)[0]!.channels).toHaveLength(3);
+  });
+
+  it('adds the grouped Position pair in ONE edit through the same door', async () => {
+    const anchorKeyId = seedRealKeyTrack();
+    const scaleOnly = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId,
+      channels: [{ id: 'scale', keys: [{ frame: 0, value: 1, easing: 'hold', wiggle: 0 }] }],
+    }]);
+    if (!scaleOnly.ok) throw new Error(`scale seed failed: ${scaleOnly.error}`);
+    const harness = actionsHarness(anchorKeyId);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    expect(await harness.actions.physicalActions.addMotionChannel('position-x')).toBe(true);
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    const channels = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)[0]!.channels;
+    expect(channels.map((channel) => channel.id)).toEqual([
+      'position-x', 'position-y', 'scale',
+    ]);
+    for (const id of ['position-x', 'position-y'] as const) {
+      expect(channels.find((channel) => channel.id === id)!.keys).toEqual([
+        { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
+      ]);
+    }
+  });
+
+  it('refuses a rail with no motion record — Animate first, never a silent seed', async () => {
+    const anchorKeyId = seedRealKeyTrack();
+    const harness = actionsHarness(anchorKeyId);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(false);
+    expect(harness.publishStatus).toHaveBeenCalledWith(
+      'Animate this rail before adding a Motion channel.',
+    );
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses with no selected rail at all — Select a rail first.', async () => {
+    const harness = createHarness({ launch: launchContext(), selectedKeyRail: null });
+
+    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(false);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Select a rail first.');
   });
 });

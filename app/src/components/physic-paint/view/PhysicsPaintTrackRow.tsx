@@ -33,7 +33,9 @@ import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/rail
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
+  resolveKeylessMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
+  TimelineMotionAddChannelRow,
   TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
   TimelineMotionChannelMenu,
@@ -213,8 +215,6 @@ export interface PhysicsPaintTrackRowProps {
   readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** The expanded block's add-channel menu intent. */
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** Host-owned menu visibility for the keyless add-channel row (59-12 wires it). */
-  readonly motionChannelMenuOpen?: boolean;
   /** The measured row height from the strip's one layout (rail row + lanes + gap). */
   readonly motionRowHeightPx?: number | null;
   /** The playhead in the selected rail's local frame space (59-12 wires it). */
@@ -381,6 +381,24 @@ const EMPTY_MOTION_DISPLAY_LANES: readonly RailMotionDisplayLaneView[] = Object.
  */
 export const railMotionExpandedSelection = signal<RailSetIdentity | null>(null);
 
+/**
+ * 59-17: the session-only identity of the rail whose add-channel menu is open.
+ * ONE open menu at a time, exactly two named writers below — the row, the
+ * block, the strip and the channel module only READ it. Never persisted, never
+ * part of the document allowlist or the revision fingerprint.
+ */
+export const railMotionChannelMenuRailId = signal<string | null>(null);
+
+/** Opens a rail's menu, or closes it when that rail's menu is already open. */
+export function toggleRailMotionChannelMenu(railId: string): void {
+  railMotionChannelMenuRailId.value = railMotionChannelMenuRailId.value === railId ? null : railId;
+}
+
+/** Closes the open menu (collapse, rail switch, or a picked menu row). */
+export function dismissRailMotionChannelMenu(): void {
+  railMotionChannelMenuRailId.value = null;
+}
+
 function sameRailSetIdentity(left: RailSetIdentity, right: RailSetIdentity): boolean {
   return left.kind === right.kind
     && (left.kind === 'loop'
@@ -469,6 +487,10 @@ export function toggleRailMotionExpansion(
     ? null
     : (current !== null && sameRailSetIdentity(current, selectedRail) ? null : selectedRail);
   railMotionExpandedSelection.value = next;
+  // 59-17: collapse and rail-switch both retire the add-channel menu. This
+  // CALLS the named writer instead of assigning the signal — a third write
+  // site would break the "exactly two writers" session contract.
+  dismissRailMotionChannelMenu();
 }
 
 export function resolveMotionRecordForRail(
@@ -514,6 +536,10 @@ export interface TimelineMotionBlockProps {
   readonly onMotionCursorStep?: (direction: -1 | 1, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  /** 59-17: the `+` row asks the host to toggle this rail's session menu. */
+  readonly onToggleChannelMenu?: () => void;
+  /** 59-17: a picked menu row (or an outside close) dismisses the menu. */
+  readonly onCloseChannelMenu?: () => void;
   /** 59-12: host-owned availability reasons, rendered by the lane verbatim. */
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
   /** 59-12 Task 3: the session Motion-key selection, highlighted in its lane. */
@@ -540,11 +566,16 @@ export function TimelineMotionBlock({
   onMotionCursorStep,
   onToggleMotionKeyAtCursor,
   onAddMotionChannel,
+  onToggleChannelMenu,
+  onCloseChannelMenu,
   disabledReasons,
   selectedMotionKey = null,
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
+  // 59-17: the `+` row exists while the rail still misses a display lane. The
+  // outline and the measured row height BOTH include it, so they never drift.
+  const hasKeylessChannel = resolveKeylessMotionDisplayLanes(record.channels).length > 0;
   const railType: TimelineRailType = view?.railType ?? 'standard';
   const railFrameCount = view === null
     ? 0
@@ -594,18 +625,41 @@ export function TimelineMotionBlock({
           style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
           aria-hidden="true"
         />
-        {channelMenuOpen ? (
-          <TimelineMotionChannelMenu
-            channels={record.channels}
-            onAddChannel={(channelId) => onAddMotionChannel?.(channelId)}
-            onClose={() => {}}
+        {hasKeylessChannel ? (
+          <TimelineMotionAddChannelRow
+            open={channelMenuOpen}
+            onToggle={() => onToggleChannelMenu?.()}
           />
+        ) : null}
+        {hasKeylessChannel && channelMenuOpen ? (
+          // 59-17: an absolute overlay, not a flow row — opening the menu must
+          // not push the rows below it down. It sits above rail chrome (7-9)
+          // and below the playhead (30); see TIMELINE_MOTION.channelMenuZIndex.
+          <div
+            class="physics-paint-motion-channel-menu-overlay"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: laneCount * TIMELINE_MOTION.laneHeight
+                + TIMELINE_MOTION.postBlockGap
+                + TIMELINE_MOTION.laneHeight,
+              zIndex: TIMELINE_MOTION.channelMenuZIndex,
+            }}
+          >
+            <TimelineMotionChannelMenu
+              channels={record.channels}
+              onAddChannel={(channelId) => onAddMotionChannel?.(channelId)}
+              onClose={() => onCloseChannelMenu?.()}
+            />
+          </div>
         ) : null}
       </div>
       <TimelineMotionBlockOutline
         rowTop={0}
         rowHeight={TRACK_ROW_RAIL_HEIGHT_PX}
         laneCount={laneCount}
+        addChannelRow={hasKeylessChannel}
         selected
         lineColor={resolveTimelineRailPalette(railType, 'selected').line}
       />
@@ -925,7 +979,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onMotionCursorStep,
     onToggleMotionKeyAtCursor,
     onAddMotionChannel,
-    motionChannelMenuOpen = false,
     motionRowHeightPx = null,
     motionCursorFrame = 0,
   } = props;
@@ -984,6 +1037,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     ? null
     : (motionFacts.views.find((view) => view.railId === motionRecord.railId) ?? null);
   const motionExpanded = motionRecord !== null && motionLanes.length > 0;
+  // 59-17: the add-channel menu is ONE session identity keyed by railId — the
+  // row only READS it; the toggle/dismiss helpers are its sole writers.
+  const motionChannelMenuOpen = motionRecord !== null
+    && railMotionChannelMenuRailId.value === motionRecord.railId;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
   // of the ownership inputs of the cell matrix. Loop coverage comes from the
@@ -1284,6 +1341,10 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           onMotionCursorStep={onMotionCursorStep}
           onToggleMotionKeyAtCursor={onToggleMotionKeyAtCursor}
           onAddMotionChannel={onAddMotionChannel}
+          onToggleChannelMenu={motionRecord === null
+            ? undefined
+            : () => toggleRailMotionChannelMenu(motionRecord.railId)}
+          onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
         />
       ) : null}
     </div>
