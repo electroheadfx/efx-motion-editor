@@ -2968,6 +2968,44 @@ mod tests {
         assert_ne!(canonical_physical_hash(&rotated).expect("rotated"), plain_hash);
     }
 
+    // ---- 59-01 (REL-02): cross-language canonical parity, Rust half ----
+
+    /// The fixture is the shared cross-language authority: its `expectedProject`
+    /// values are frozen literals produced ONCE from the TypeScript encoder.
+    /// This is the guard's decisive recompute-and-compare step — a caller hash
+    /// derived from the same document must equal the recomputed canonical hash.
+    const RAIL_MOTION_CANONICAL_FIXTURE: &str =
+        include_str!("../../../src/lib/__fixtures__/railMotionCanonical.golden.json");
+
+    #[test]
+    fn rail_motion_canonical_parity() {
+        let fixture: Value =
+            serde_json::from_str(RAIL_MOTION_CANONICAL_FIXTURE).expect("golden fixture must parse");
+        let documents = fixture["documents"]
+            .as_array()
+            .expect("golden fixture must carry a documents array");
+        assert!(
+            documents.len() >= 3,
+            "golden fixture must carry at least three documents"
+        );
+        for entry in documents {
+            let name = entry["name"].as_str().expect("golden fixture name");
+            let document = &entry["document"];
+            let expected_project = entry["expectedProject"]
+                .as_str()
+                .expect("golden fixture expectedProject");
+            // The guard compares the caller-supplied hash against the recomputed
+            // canonical project equality; the fixture's frozen literal IS the
+            // caller-supplied hash the TypeScript side would send.
+            let recomputed = canonical_physical_hash(document)
+                .unwrap_or_else(|error| panic!("{name}: canonical hash failed: {error}"));
+            assert_eq!(
+                recomputed, expected_project,
+                "{name}: recomputed project equality diverged from the TS authority"
+            );
+        }
+    }
+
     #[test]
     fn validate_source_accepts_paper_background_and_grain_scale() {
         // 261018-lqv: the TS schema accepted paper/* + grainScale but the Rust

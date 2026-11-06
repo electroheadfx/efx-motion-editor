@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "provenance": "Generated ONCE from the TypeScript buildPhysicPaintRotoProjectEqualitySource at 2026-11-06 (Phase 59-01). Frozen literals: any change must name which language moved and why. Never regenerate to make a failing parity test pass.",
+  "documents": [
+    {
+      "name": "rail-kind",
+      "document": {
+        "capacity": 24,
+        "realKeyRecords": [
+          {
+            "kind": "real-key",
+            "keyId": "k1",
+            "appFrame": 0,
+            "payload": {
+              "frameIndex": 0,
+              "appFrame": 0,
+              "bytes": "UklGRhgAAABXRUJQVlA4TC8AAAAAAAAA",
+              "width": 2,
+              "height": 2
+            }
+          },
+          {
+            "kind": "real-key",
+            "keyId": "k2",
+            "appFrame": 1,
+            "payload": {
+              "frameIndex": 1,
+              "appFrame": 1,
+              "bytes": "UklGRhwAAABXRUJQVlA4TC8BAAAAAAAAAKo=",
+              "width": 2,
+              "height": 2
+            }
+          }
+        ],
+        "interpolation": {
+          "enabled": false,
+          "mode": "duplicate"
+        },
+        "scriptMotion": {
+          "deformation": 0,
+          "position": 0
+        },
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 0,
+        "revision": "physical-428-56d14f46",
+        "loopClips": [
+          {
+            "loopId": "loop-a",
+            "placementStart": 0,
+            "sourceKeyIds": [
+              "k1",
+              "k2"
+            ],
+            "repeat": 1,
+            "mode": "progressive",
+            "railKind": "reveal",
+            "syncState": "synchronized",
+            "provenanceState": "attached",
+            "phaseOrigin": 0,
+            "originalEndExclusive": 2,
+            "visibleRanges": [
+              {
+                "start": 0,
+                "endExclusive": 2
+              }
+            ],
+            "frameOverrides": []
+          }
+        ]
+      },
+      "expectedSource": "records:2:s2:k1;n0;n0;n0;d24:5249464618000000574542505650384c2f00000000000000:5249464618000000574542505650384c2f00000000000000;n2;n2;s2:k2;n1;n1;n1;d26:524946461c000000574542505650384c2f0100000000000000aa:524946461c000000574542505650384c2f0100000000000000aa;n2;n2;interpolation:0;mode:s9:duplicate;loops:1:s6:loop-a;n0;ids:2:s2:k1;s2:k2;n1;s11:progressive;s6:reveal;s12:synchronized;s8:attached;n0;n2;ranges:1:n0;n2;overrides:0:capacity:n24;motion:n0;n0;background:null;selection:null;cursor:n0;",
+      "expectedProject": "project-495-7dde2bca"
+    },
+    {
+      "name": "untouched",
+      "document": {
+        "capacity": 24,
+        "realKeyRecords": [
+          {
+            "kind": "real-key",
+            "keyId": "k1",
+            "appFrame": 0,
+            "payload": {
+              "frameIndex": 0,
+              "appFrame": 0,
+              "bytes": "UklGRhgAAABXRUJQVlA4TC8AAAAAAAAA",
+              "width": 2,
+              "height": 2
+            }
+          },
+          {
+            "kind": "real-key",
+            "keyId": "k2",
+            "appFrame": 1,
+            "payload": {
+              "frameIndex": 1,
+              "appFrame": 1,
+              "bytes": "UklGRhwAAABXRUJQVlA4TC8BAAAAAAAAAKo=",
+              "width": 2,
+              "height": 2
+            }
+          }
+        ],
+        "interpolation": {
+          "enabled": false,
+          "mode": "duplicate"
+        },
+        "scriptMotion": {
+          "deformation": 0,
+          "position": 0
+        },
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 0,
+        "revision": "physical-298-91cccaed"
+      },
+      "expectedSource": "records:2:s2:k1;n0;n0;n0;d24:5249464618000000574542505650384c2f00000000000000:5249464618000000574542505650384c2f00000000000000;n2;n2;s2:k2;n1;n1;n1;d26:524946461c000000574542505650384c2f0100000000000000aa:524946461c000000574542505650384c2f0100000000000000aa;n2;n2;interpolation:0;mode:s9:duplicate;capacity:n24;motion:n0;n0;background:null;selection:null;cursor:n0;",
+      "expectedProject": "project-365-dc29ff63"
+    },
+    {
+      "name": "rail-kind-script",
+      "document": {
+        "capacity": 24,
+        "realKeyRecords": [
+          {
+            "kind": "real-key",
+            "keyId": "k1",
+            "appFrame": 0,
+            "payload": {
+              "frameIndex": 0,
+              "appFrame": 0,
+              "bytes": "UklGRhgAAABXRUJQVlA4TC8AAAAAAAAA",
+              "width": 2,
+              "height": 2
+            }
+          },
+          {
+            "kind": "real-key",
+            "keyId": "k2",
+            "appFrame": 1,
+            "payload": {
+              "frameIndex": 1,
+              "appFrame": 1,
+              "bytes": "UklGRhwAAABXRUJQVlA4TC8BAAAAAAAAAKo=",
+              "width": 2,
+              "height": 2
+            }
+          }
+        ],
+        "interpolation": {
+          "enabled": false,
+          "mode": "duplicate"
+        },
+        "scriptMotion": {
+          "deformation": 0,
+          "position": 0
+        },
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 0,
+        "revision": "physical-461-8531126f",
+        "loopClips": [
+          {
+            "loopId": "loop-b",
+            "placementStart": 4,
+            "sourceKeyIds": [
+              "k1",
+              "k2"
+            ],
+            "repeat": 2,
+            "mode": "static",
+            "railKind": "playscript",
+            "scriptId": "script-a",
+            "motion": {
+              "deformation": 5,
+              "position": 10,
+              "rotation": 30,
+              "scale": 0
+            },
+            "overrideColor": "#ff8800",
+            "syncState": "synchronized",
+            "provenanceState": "attached",
+            "phaseOrigin": 4,
+            "originalEndExclusive": 8,
+            "visibleRanges": [
+              {
+                "start": 4,
+                "endExclusive": 8
+              }
+            ],
+            "frameOverrides": []
+          }
+        ]
+      },
+      "expectedSource": "records:2:s2:k1;n0;n0;n0;d24:5249464618000000574542505650384c2f00000000000000:5249464618000000574542505650384c2f00000000000000;n2;n2;s2:k2;n1;n1;n1;d26:524946461c000000574542505650384c2f0100000000000000aa:524946461c000000574542505650384c2f0100000000000000aa;n2;n2;interpolation:0;mode:s9:duplicate;loops:1:s6:loop-b;n4;ids:2:s2:k1;s2:k2;n2;s6:static;s10:playscript;s8:script-a;n5;n10;n30;s7:#ff8800;s12:synchronized;s8:attached;n4;n8;ranges:1:n4;n8;overrides:0:capacity:n24;motion:n0;n0;background:null;selection:null;cursor:n0;",
+      "expectedProject": "project-528-e828f775"
+    }
+  ]
+}
