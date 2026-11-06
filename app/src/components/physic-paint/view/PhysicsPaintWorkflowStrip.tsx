@@ -210,6 +210,7 @@ import {
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
+  resolveContextualMotionCommands,
   resolveMotionKeyAtFrame,
   resolveSelectionScope,
   type RailMotionSelectionScope,
@@ -3213,6 +3214,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     hasDrawingKey: (props.rotoSelectedKeyIds?.length ?? 0) > 0,
     hasMotionKey: selectedMotionKeyData !== null,
   });
+  // 59-12 Task 3: the ONE per-scope command table drives the action bar — the
+  // strip never re-derives which commands belong to which scope.
+  const contextualRotoCommands = resolveContextualMotionCommands(motionSelectionScope);
+  const motionKeyScopeActive = contextualRotoCommands.includes('set-motion-key-easing');
   const canSetMotionKeyAtCursor = physicalActions?.canSetMotionKeyAtCursor.value ?? false;
   const setMotionKeyAtCursorDisabledReason = physicalActions?.setMotionKeyAtCursorDisabledReason.value ?? null;
   const canRemoveMotionKeyAtCursor = physicalActions?.canRemoveMotionKeyAtCursor.value ?? false;
@@ -4662,6 +4667,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
+    selectMotionKey: physicalActions?.selectMotionKey,
   });
   rotoCellClickStateRef.current = {
     keyIdByAppFrame,
@@ -4675,6 +4681,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onToggleRotoKeySelection: props.onToggleRotoKeySelection,
     onExtendRotoKeySelection: props.onExtendRotoKeySelection,
     onCollapseRotoSelectionToKey: props.onCollapseRotoSelectionToKey,
+    selectMotionKey: physicalActions?.selectMotionKey,
   };
   const handleRotoTimelineCellClick = useCallback((frame: number, vm: RotoCellViewModel, event: MouseEvent) => {
     if (suppressNextRotoClickRef.current) {
@@ -4683,6 +4690,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
     const current = rotoCellClickStateRef.current;
     current.onSelectRotoLoopClip?.(null);
+    // MOTN-11: selecting/navigating a drawing-key cell ends the motion-key
+    // scope. The rail set is untouched (this handler never clears it).
+    current.selectMotionKey?.(null);
     const spacingProxy = current.spacingProxyByAppFrame.get(frame) ?? null;
     if (spacingProxy !== null) {
       if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
@@ -6186,7 +6196,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
                                 disabledReasons={motionLaneDisabledReasons}
+                                selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
                                 onSelectMotionKey={(frame, channelId) => {
+                                  // MOTN-11: the two key scopes never coexist —
+                                  // selecting a Motion key clears the drawing-key
+                                  // selection, while the rail set stays (block open).
+                                  props.onClearRotoKeySelection?.();
+                                  props.onClearRotoSpacingSelection?.();
                                   physicalActions?.selectMotionKey?.({
                                     railId: activeMotionRecord.railId,
                                     channelId,
@@ -6329,23 +6345,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </span>
                 ) : null}
                 {/* 59-12 (MOTN-05/MOTN-11): Hold/Ease and Wiggle exist ONLY in
-                    the motion-key scope. The component itself gates on the one
-                    resolved scope, so no inline disjunction lives here. */}
-                <PhysicsPaintRotoMotionKeyControls
-                  scope={motionSelectionScope}
-                  easing={selectedMotionKeyData?.easing ?? null}
-                  wiggle={selectedMotionKeyData?.wiggle ?? null}
-                  canSetEasing={canSetSelectedMotionKeyEasing}
-                  canSetWiggle={canSetSelectedMotionKeyWiggle}
-                  easingDisabledReason={setSelectedMotionKeyEasingDisabledReason}
-                  wiggleDisabledReason={setSelectedMotionKeyWiggleDisabledReason}
-                  onSetEasing={(easing) => {
-                    void physicalActions?.setSelectedMotionKeyEasing?.(easing);
-                  }}
-                  onSetWiggle={(wiggle) => {
-                    void physicalActions?.setSelectedMotionKeyWiggle?.(wiggle);
-                  }}
-                />
+                    the motion-key scope, as reported by the ONE command table.
+                    The component gates again on the resolved scope, so no
+                    inline disjunction lives in this file. */}
+                {motionKeyScopeActive ? (
+                  <PhysicsPaintRotoMotionKeyControls
+                    scope={motionSelectionScope}
+                    easing={selectedMotionKeyData?.easing ?? null}
+                    wiggle={selectedMotionKeyData?.wiggle ?? null}
+                    canSetEasing={canSetSelectedMotionKeyEasing}
+                    canSetWiggle={canSetSelectedMotionKeyWiggle}
+                    easingDisabledReason={setSelectedMotionKeyEasingDisabledReason}
+                    wiggleDisabledReason={setSelectedMotionKeyWiggleDisabledReason}
+                    onSetEasing={(easing) => {
+                      void physicalActions?.setSelectedMotionKeyEasing?.(easing);
+                    }}
+                    onSetWiggle={(wiggle) => {
+                      void physicalActions?.setSelectedMotionKeyWiggle?.(wiggle);
+                    }}
+                  />
+                ) : null}
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -6613,6 +6632,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     onClick={() => {
                       selectAllTooltip.hide();
                       if (!canSelectAllRotoKeys) return;
+                      // MOTN-11: a drawing-key selection ends the motion-key scope.
+                      physicalActions?.selectMotionKey?.(null);
                       props.onSelectAllRotoKeys?.();
                     }}
                     onKeyDown={(event) => {

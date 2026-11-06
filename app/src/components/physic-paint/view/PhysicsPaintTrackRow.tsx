@@ -516,6 +516,11 @@ export interface TimelineMotionBlockProps {
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** 59-12: host-owned availability reasons, rendered by the lane verbatim. */
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+  /** 59-12 Task 3: the session Motion-key selection, highlighted in its lane. */
+  readonly selectedMotionKey?: {
+    readonly channelId: PhysicPaintRotoRailMotionChannelId;
+    readonly frame: number;
+  } | null;
 }
 
 /**
@@ -536,6 +541,7 @@ export function TimelineMotionBlock({
   onToggleMotionKeyAtCursor,
   onAddMotionChannel,
   disabledReasons,
+  selectedMotionKey = null,
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
@@ -554,6 +560,12 @@ export function TimelineMotionBlock({
           // 59-12: the lane identity rides along with every intent, so the
           // host never guesses which model channel a click addressed.
           const laneChannelId = lane.channels[0]?.id ?? 'position-x';
+          // 59-12 Task 3: a selected Motion key highlights in the lane that owns
+          // its model channel (a grouped Position lane owns both axis channels).
+          const laneSelectedKeyFrames = selectedMotionKey !== null
+            && lane.channels.some((channel) => channel.id === selectedMotionKey.channelId)
+            ? [selectedMotionKey.frame]
+            : undefined;
           return (
             <TimelineMotionChannelLane
               key={lane.id}
@@ -563,6 +575,7 @@ export function TimelineMotionBlock({
               selected
               railFrameCount={railFrameCount}
               cursorFrame={cursorFrame}
+              selectedKeyFrames={laneSelectedKeyFrames}
               disabledReasons={disabledReasons}
               onSelectKey={onSelectMotionKey === undefined
                 ? undefined

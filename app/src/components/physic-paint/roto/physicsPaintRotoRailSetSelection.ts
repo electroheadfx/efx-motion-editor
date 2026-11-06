@@ -16,6 +16,8 @@
  * reducers stay pure and trivially auditable.
  */
 
+import type { PhysicPaintRotoRailMotionChannelId } from './railMotionModel';
+
 /** Cross-type rail identity: a Loop Rail (Group) or a Key Rail segment. */
 export type RailSetIdentity =
   | { readonly kind: 'loop'; readonly loopId: string }
@@ -364,4 +366,103 @@ export function resolveRailSetPostAcceptance(
     }
   }
   return input.current;
+}
+
+// ---------------------------------------------------------------------------
+// 59-12 Task 3 (MOTN-11): the three independent selection scopes.
+// ---------------------------------------------------------------------------
+
+/**
+ * The three selection scopes. A rail scope may coexist with a key scope (the
+ * key scopes are overlays on the rail); the two key scopes never coexist.
+ */
+export type RailMotionSelectionScope = 'rail' | 'drawing-key' | 'motion-key';
+
+export const RAIL_MOTION_SELECTION_SCOPES: readonly RailMotionSelectionScope[] = Object.freeze([
+  'rail',
+  'drawing-key',
+  'motion-key',
+] as const);
+
+/** Session-only identity of the selected Motion key (rail-LOCAL frame). */
+export interface RailMotionKeySelection {
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly frame: number;
+}
+
+export interface ResolveSelectionScopeInput {
+  readonly hasRail: boolean;
+  readonly hasDrawingKey: boolean;
+  readonly hasMotionKey: boolean;
+}
+
+/**
+ * The ONE scope authority. A key scope outranks the rail it rides on, and the
+ * motion key outranks the drawing key because the two never coexist: the
+ * clearing rules below guarantee at most one key scope survives.
+ */
+export function resolveSelectionScope(
+  input: ResolveSelectionScopeInput,
+): RailMotionSelectionScope | null {
+  if (input.hasMotionKey) return 'motion-key';
+  if (input.hasDrawingKey) return 'drawing-key';
+  if (input.hasRail) return 'rail';
+  return null;
+}
+
+/** The combined session selection the clearing rules operate on. */
+export interface RailSelectionScopesState {
+  readonly railSet: RailSetSelectionState;
+  readonly drawingKeyIds: readonly string[];
+  readonly motionKey: RailMotionKeySelection | null;
+}
+
+const EMPTY_RAIL_SET_SELECTION: RailSetSelectionState = Object.freeze({
+  members: Object.freeze([]),
+  anchor: null,
+});
+
+function freezeSelectionScopes(
+  railSet: RailSetSelectionState,
+  drawingKeyIds: readonly string[],
+  motionKey: RailMotionKeySelection | null,
+): RailSelectionScopesState {
+  return Object.freeze({
+    railSet,
+    drawingKeyIds: Object.freeze([...drawingKeyIds]),
+    motionKey,
+  });
+}
+
+/**
+ * The clearing rules (MOTN-11). Callers use this when a scope's selection ends;
+ * selecting a rail does NOT call it, which is why a rail re-selection never
+ * disturbs a key scope.
+ *
+ * - 'motion-key': both key slots clear (the key scopes are exclusive), the
+ *   rail set is untouched, so the expanded rail block stays open.
+ * - 'drawing-key': both key slots clear; the rail set is untouched.
+ * - 'rail': clearing/deleting the rail clears every scope — keys ride the rail.
+ * - null: clears both key selections only; the rail set stays.
+ *
+ * Returns the input reference unchanged when there is nothing to clear, so
+ * subscribers never see a spurious identity change.
+ */
+export function clearSelectionForScope(
+  selection: RailSelectionScopesState,
+  scope: RailMotionSelectionScope | null,
+): RailSelectionScopesState {
+  if (scope === 'rail') {
+    const alreadyEmpty = selection.railSet.members.length === 0
+      && selection.railSet.anchor === null
+      && selection.drawingKeyIds.length === 0
+      && selection.motionKey === null;
+    return alreadyEmpty
+      ? selection
+      : freezeSelectionScopes(EMPTY_RAIL_SET_SELECTION, [], null);
+  }
+  const keysAlreadyEmpty = selection.drawingKeyIds.length === 0 && selection.motionKey === null;
+  if (keysAlreadyEmpty) return selection;
+  return freezeSelectionScopes(selection.railSet, [], null);
 }

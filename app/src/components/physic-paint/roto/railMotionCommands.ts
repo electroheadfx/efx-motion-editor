@@ -209,34 +209,22 @@ export interface SetMotionKeyWiggleInput {
 }
 
 /**
- * The three independent selection scopes (MOTN-11). A rail scope may coexist
- * with a key scope; the two key scopes never coexist. The strip renders one
- * contextual command list per active scope and never decides the scope itself.
+ * The three independent selection scopes (MOTN-11) live with the rail-set
+ * selection authority; re-exported here so the command layer stays the one
+ * import site for the strip. A rail scope may coexist with a key scope; the
+ * two key scopes never coexist. The strip renders one contextual command list
+ * per active scope and never decides the scope itself.
  */
-export type RailMotionSelectionScope = 'rail' | 'drawing-key' | 'motion-key';
-
-/** Session-only identity of the selected Motion key (rail-local frame). */
-export interface RailMotionKeySelection {
-  readonly railId: string;
-  readonly channelId: PhysicPaintRotoRailMotionChannelId;
-  readonly frame: number;
-}
-
-export interface ResolveSelectionScopeInput {
-  readonly hasRail: boolean;
-  readonly hasDrawingKey: boolean;
-  readonly hasMotionKey: boolean;
-}
-
-/** One scope authority: a key scope wins over the rail scope it rides on. */
-export function resolveSelectionScope(
-  input: ResolveSelectionScopeInput,
-): RailMotionSelectionScope | null {
-  if (input.hasMotionKey) return 'motion-key';
-  if (input.hasDrawingKey) return 'drawing-key';
-  if (input.hasRail) return 'rail';
-  return null;
-}
+export {
+  RAIL_MOTION_SELECTION_SCOPES,
+  clearSelectionForScope,
+  resolveSelectionScope,
+  type RailMotionKeySelection,
+  type RailMotionSelectionScope,
+  type RailSelectionScopesState,
+  type ResolveSelectionScopeInput,
+} from './physicsPaintRotoRailSetSelection';
+import type { RailMotionSelectionScope } from './physicsPaintRotoRailSetSelection';
 
 /** The addressed Motion key on a record, or null when the frame carries none. */
 export function resolveMotionKeyAtFrame(
@@ -508,6 +496,48 @@ export function resolveMotionCommandAvailability(
       : unavailable('There is no Motion key at this frame.');
   }
   return unavailable('This Motion command is not available.');
+}
+
+/**
+ * 59-12 Task 3 (MOTN-11): the contextual command vocabulary. Each command
+ * belongs to exactly ONE scope list — a command that does not apply is absent,
+ * not disabled. Motion commands reuse `RailMotionCommandId`; the other scopes
+ * name their own commands so the three lists can never overlap by accident.
+ */
+export type RotoContextualCommandId =
+  | RailMotionCommandId
+  | 'scissor-key-rail'
+  | 'delete-rails'
+  | 'insert-key'
+  | 'delete-key'
+  | 'move-keys';
+
+/**
+ * The ONE per-scope command table. The strip renders its action bar from this
+ * table instead of an inline condition list.
+ */
+export const CONTEXTUAL_COMMANDS_BY_SCOPE: Readonly<
+  Record<RailMotionSelectionScope, readonly RotoContextualCommandId[]>
+> = Object.freeze({
+  rail: Object.freeze(['animate', 'scissor-key-rail', 'delete-rails'] as const),
+  'drawing-key': Object.freeze(['insert-key', 'delete-key', 'move-keys'] as const),
+  'motion-key': Object.freeze([
+    'set-motion-key',
+    'remove-motion-key',
+    'set-motion-key-easing',
+    'set-motion-key-wiggle',
+    'previous-motion-key',
+    'next-motion-key',
+  ] as const),
+});
+
+const NO_CONTEXTUAL_COMMANDS: readonly RotoContextualCommandId[] = Object.freeze([] as const);
+
+/** The ordered command ids for the active scope; empty when no scope is active. */
+export function resolveContextualMotionCommands(
+  scope: RailMotionSelectionScope | null,
+): readonly RotoContextualCommandId[] {
+  return scope === null ? NO_CONTEXTUAL_COMMANDS : CONTEXTUAL_COMMANDS_BY_SCOPE[scope];
 }
 
 /**
