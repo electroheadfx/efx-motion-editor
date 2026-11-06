@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-08-PLAN.md
-last_updated: "2026-11-06T15:46:46.540Z"
+stopped_at: Completed 59-11-PLAN.md
+last_updated: "2026-11-06T16:09:08.906Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: b3ef91e2dbe372847e277654d2c76b1cfcce304e
+state_head: 15e17b4356a91a62eedf779a3b24ab0fefea9023
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 10 of 16
+Plan: 11 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P07 | 21m | 3 tasks | 15 files |
 | Phase 59 P10 | 7min | 2 tasks | 8 files |
 | Phase 59 P08 | 3h 50m | 3 tasks | 10 files |
+| Phase 59 P11 | 28min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Pivot memo keys on the raster (pixel-identity) revision, so a motion-only edit never re-measures key ink bounds.
 - [Phase 59]: The flattened key motion: term carries the collection revision only, emitted when non-empty, so motion-free keys stay byte-identical.
 - [Phase 59]: Pixel-array canvas APIs stay out of the store (P4(c)); the bounded alpha scan lives in railMotionInkScan.ts and the store resolves and delegates.
+- [Phase 59]: Chevron lives in the header cell; only the ACTIVE track's rail is selectable, so only its header receives the selected rail identity
+- [Phase 59]: One measured layout (31px rail row + 18px per display lane + 2px gap) is consumed by content height, header spacers and the reorder index; the active lane hosts the extracted TimelineMotionBlock
 
 ### Pending Todos
 
@@ -175,8 +178,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T15:46:46.516Z
-Stopped at: Completed 59-08-PLAN.md
+Last session: 2026-11-06T16:09:08.882Z
+Stopped at: Completed 59-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
