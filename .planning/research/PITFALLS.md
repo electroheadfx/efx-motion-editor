@@ -1,487 +1,544 @@
 # Pitfalls Research
 
-**Domain:** Adding to a mature signals-heavy Tauri/Preact paint workstation — (a) Preact 10→11 major bump, (b) format-identical engine-host split, (c) clean-room WebGL2 watercolor engine behind a module switcher, (d) shared spectral-mixing package
-**Researched:** 2026-10-14
-**Confidence:** HIGH (upgrade-guide and codebase findings verified against sources on disk / official docs; GPU-replay determinism generalized from the oracle's own code)
+**Domain:** Adding four features to a shipped, signals-heavy Tauri 2 + Preact 11 paint workstation — (Phase 59) per-rail Motion channels on a raster-flattening compositor, (Phase 60) Studio timeline horizontal zoom over a hard-coded 18px frame pitch, (Phase 61) a vector painting tool in a deterministic raster engine, (Phase 62) curve editing of already-baked painted strokes
+**Researched:** 2026-11-06
+**Confidence:** HIGH — every pitfall below is grounded in code on disk (`app/src`, `packages/`) and the milestone contracts (`CONTEXT.md` §3/§3.5/§5.6, `README.md` §4, `PROJECT.md` v2.1.0 section); no pitfall is generic advice carried in from outside.
 
-Scope: common mistakes when ADDING these features to THIS system (v1.0.1 codebase, `.planning/PROJECT.md` Key Decisions as incident oracle). Generic advice is deliberately excluded. Every pitfall names its owning phase (54 / 55 / 56 / 57, plus the switcher slice of 56). This replaces the v1.0.0-milestone pitfalls research (2026-08-23), which is archived in milestone artifacts.
+Scope: mistakes likely when **adding** these four features to **this** system. It supersedes the v2.0.1-milestone pitfalls research (2026-10-14), recoverable from git history. Each pitfall names its owning phase; cross-phase seams are called out explicitly because Phase 59 lands the row/height math Phase 60 depends on, and Phase 61's stroke payload feeds Phase 62's editor.
+
+Ground truths used throughout:
+
+- The compositor already produces **one flattened raster per track per frame** — `compositeFrame` walks tracks bottom-to-top and `drawImage`s each track raster with opacity/blend only. There is **no transform stage** today (`app/src/efx-paint/compositor/efxPaintCompositor.ts`).
+- `getFlattenedFrame` is documented as the **sole content path** for preview and export (`PROJECT.md` architecture paragraph), and `_resolveFlattenedFrame` **rejects non-integer frames** (`app/src/stores/physicPaintStore.ts:2986`).
+- The flattened cache key (`deriveEfxPaintFlattenedCacheKey`) is composed of `config: / tracks: (content revision + frame) / bg: / fallback: / bgtransform: / clips: / excl: / fond:0 / bg:0 / bgsrc: / solo: / frame:` — **there is no motion term**, and `_flattenedMemo` is an unbounded `Map` of full flattened records.
+- Rail identity today is **derived from drawing keys**: key rails use `firstKeyId` + `keyIds`; loop rails use `loopId` with occurrence math (`placementStart`, `cycleOffset`, `visibleRanges`).
+- `ROTO_CELL_WIDTH_PX = 18` is a module literal referenced **56 times** in `PhysicsPaintWorkflowStrip.tsx` alone — 66 times across 5 files (including the hook, the audio controller and two test files).
+- The paint engine is deterministic **by sequential seeded consumption**: `seededRng(stroke.traceSeed, 'deposit')` draws in point order, so changing the point set or order re-rolls the whole wash texture.
+- Paint internals are **not** covered by the `.mce` field-diff contract test: `mceFieldContract.test.ts` parses only `Mce*` interfaces in `types/project.ts` / `types/audio.ts` against `src-tauri/src/models/project.rs`, while the paint document rides as `HashMap<String, Value>` on the Rust side.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Trusting the @preact/signals peer range instead of running the probe
+### Pitfall 1: Motion is invisible to the flattened cache key (or it explodes the memo)
 
 **What goes wrong:**
-The bump lands on the belief that signals "supports Preact 11", and reactivity dies silently: `paintVersion.value++` happens, no canvas re-render follows, Studio shows stale pixels, and the failure looks like a paint bug rather than a framework one.
+Motion keys are added and the channels render, but the composited canvas does not move — or moves once and freezes after the first edit. The flattened cache key has no term for a rail's transform, so a Motion-key edit produces the same key and `_resolveFlattenedFrame` returns the previous record. The obvious fix — mixing the sampled transform into the key — is worse: `_flattenedMemo` is a plain unbounded `Map` holding full flattened records, so every drag step of a Motion key mints a new entry. A 30-frame HD rail dragged across 100 steps allocates ~100 full composites in the WKWebView that has previously been OOM-killed by exactly this class of accumulation.
 
 **Why it happens:**
-`@preact/signals` 2.11.x declares `peerDependencies: "preact": ">= 10.25.0 || >=11.0.0-0"`, which reads as green. But the official Preact 11 upgrade guide is **silent** on signals (verified 2026-10-14 — no compatibility statement in the guide). Signals integrates through Preact's options-hook layer (`options.vnode` / `diffed` / `unmount`), which is not covered by semver surface guarantees across majors. A peer range is necessary but not sufficient.
+The key was designed for "document content changed" (per-track `contentRevision` + frame), not "the transform of unchanged content changed". Motion breaks the assumption that content revision + frame fully determines the output. And the memo has no LRU/cap because at one entry per (config, tracks, frame) the working set was bounded by playback range.
 
 **How to avoid:**
-R1.1's throwaway probe BEFORE any bump: mount a component that reads a signal, bump it, assert re-render, unmount, assert teardown. If red → STOP and escalate (R1.2). Do not shim, do not pin an unofficial combo, do not "fix" signals internals. Also resolve Q1 (exact signals version pairing) and Q2 (lucide-preact peer range) at the same probe, and bump `packages/efx-physic-paint`'s `peerDependencies: preact >=10.0.0` floor to `>=11` (Q3) in the same change — a stale peer range invites a second preact copy (see Pitfall 4).
+Split the pipeline into two tiers inside Phase 59:
+1. **Content tier** (existing key): per-track source rasters, invalidated by content revision. Motion must not touch this tier — the milestone's own render law says motion never re-bakes.
+2. **Composite tier**: look up the per-track rasters, then apply each rail's evaluated transform during `compositeFrame`. Key this tier by a *motion revision* (a monotonically bumped counter per rail / per document), never by sampled values.
+
+If a transform term must enter any key, include the motion **revision string**, and bound the memo (LRU) in the same change. Add a pin test: mutate a Motion key → the composite changes, and `_flattenedMemo.size` does **not** grow per drag step.
 
 **Warning signs:**
-- Probe component renders once and never again on signal write
-- `paintVersion` bumps in the store with zero subscriber re-runs
-- Two `preact` entries in `pnpm why preact`
-- The urge to "just pin signals to a git sha" — that is the STOP condition, not the fix
+- Channels show curves and "N keys", canvas is static until you switch tracks or reopen
+- `_flattenedMemo.size` climbs monotonically while dragging a key
+- Memory climbs across a scrub of one animated rail; the Studio gets slower the longer it stays open
+- "It works after I delete the cache" (i.e. after a document write clears the memo)
 
-**Phase to address:** Phase 54 (hard gate R1; nothing else in the milestone starts until it is green)
+**Phase to address:** Phase 59 (compositor + memo seam). Phase 60 must not assume memo semantics changed.
 
 ---
 
-### Pitfall 2: "Fixing" paintVersion subscriptions into React-style effect cleanups
+### Pitfall 2: Fractional sub-frames silently drop the paint raster in motion-blur export
 
 **What goes wrong:**
-A migration pass rewrites the paintVersion discipline (bump on mutation + subscribe in render effects: `void paintStore.paintVersion.value;`) into `useEffect(() => { const u = subscribe(); return () => u() })`. Preact 11 defers effect cleanups until after paint. Teardown timing moves, subscriptions outlive their components, and the Studio open/close round trip grows zombie effects and orphaned subscriptions — the exact class UAT row A4 exists to catch.
+`renderFrameWithMotionBlur` accumulates sub-frames at `globalFrame + i/subFrames` and passes that fractional `physicPaintFrame` down. `_resolveFlattenedFrame` rejects `!Number.isInteger(frame)` and returns `null`, so **paint disappears from every motion-blurred export sub-frame** while the timeline preview and the non-blurred export look correct. The user sees a paint layer that "flickers out" only in the final video.
 
 **Why it happens:**
-The upgrade guide's deferred-cleanup item invites "audit all effects" reflexes, and React-trained hands reach for cleanup-on-unmount. This project's contract is the opposite: `feedback_paintversion` (always bump AND subscribe), `efx-preact-reactivity` (idempotent setters, identity-stable deps, narrow signal reads), and the phase 54 spec R2.4 explicitly says do not "fix" these into React-style cleanups.
+The paint compositor was built frame-integral by contract ("one raster per track per frame"), and its guard is honest about that. Export's sub-frame accumulation predates paint tracks being rail-animated; until now fractional paint lookups were simply never useful.
 
 **How to avoid:**
-Re-verify existing subscriptions still tear down under Preact 11; change nothing about their shape. If (and only if) a future case needs synchronous teardown before DOM mutation, `useLayoutEffect` is the documented escape — the paintVersion pattern needs neither. Keep R3.1/R3.3 in force for the whole milestone. There are 13+ `paintVersion` consumer files (`paintStore.ts`, `Preview.tsx`, `StrokeList.tsx`, `PaintProperties.tsx`, `shortcuts.ts`, `autoSave.ts`, …) — treat them as a freeze-list for the bump.
+Phase 59 must define the sub-frame law explicitly and implement it in the paint path, not by loosening the integer guard:
+- **Content** is sampled at the nearest integer frame (content cycles on frame boundaries — `CONTEXT.md` §3.5).
+- **Motion** is evaluated at fractional time and the resulting transform is applied to the integer content raster.
+
+This means either a paint-specific sub-frame compose API (integer content + fractional transform) or teaching the exporter to request sub-frames through the compositor with a transform argument. Never call `getFlattenedFrame` with a fractional frame. Add an export-parity UAT: the same rail with motion exported with motion blur on vs off must contain paint on every frame, and the frame count must match.
 
 **Warning signs:**
-- A diff that touches `paintVersion` and `useEffect` in the same PR
-- `return () =>` added around signal reads
-- UAT A4 (Studio open/close) flakes or memory grows across open/close cycles
-- Someone proposes React `useSyncExternalStore` patterns — out of scope, signals-only law (`feedback_no_usestate_only_signals`)
+- Paint present in PNG sequence export, absent in ProRes/H.264 export with motion blur enabled
+- `collectExportPhysicPaintFrameSources` never sees the frames that are missing
+- The bug disappears when shutter angle / sub-frame count is 1
+- Only layers with rail motion are affected
 
-**Phase to address:** Phase 54 (R2.4 + R3.3; UAT row A4 is the closure test)
+**Phase to address:** Phase 59 (compositor seam + export parity UAT). It is a Phase 59 blocker because the milestone's render law is defined there.
 
 ---
 
-### Pitfall 3: Auto-px and type-namespace removal breaks UI silently while typecheck passes
+### Pitfall 3: Motion blur never sees rail motion (and can mis-measure it as stationary)
 
 **What goes wrong:**
-Preact 11 removes automatic `px` suffixing from core (moved to `preact/compat`). Bare numeric styles like `style={{ width: 20, height: 20, borderRadius: 4 }}` (real site: `app/src/components/sidebar/PaintProperties.tsx` swatch) render as unitless `width:20` — invalid CSS — and swatches/icons collapse to zero size. The reverse mistake is just as bad: slapping `px` onto `fontWeight: 500`, `zIndex: 999`, or `opacity: 0.5` produces invalid styles the other way. Meanwhile 29 `JSX.*` type references (`JSX.CSSProperties`, `JSX.TargetedPointerEvent`, … in `NumericStepper.tsx`, `SliderStepper.tsx`, …) stop resolving because the namespace shrank to TS-required members only.
+`VelocityCache.computeForLayer` derives `dx/dy/dRotation/dScale` from `layer.keyframes`, and the motion-blur block only runs for content layers with `layer.keyframes` and does not treat `physic-paint` as a blurred layer. A rail animated purely by Motion keys gets **zero motion blur**; worse, if the layer also has stationary keyframes, `isStationary` (threshold 0.5) reports "not moving" while the rail is visibly sweeping across the canvas.
 
 **Why it happens:**
-These work today *because of* a Preact-core convenience that the major deletes. Typecheck stays green for the px problem (numbers are valid TS for CSSProperties), so only eyes-on UAT catches it. Blind React codemods (prohibited in this phase anyway) would paper over both issues incorrectly.
+Velocity has been a property of keyframe interpolation since before paint tracks existed. Paint layers were spatially invariant — the transform was never applied — so there was nothing to measure.
 
 **How to avoid:**
-- Property-aware style migration: add units only to length-like properties (width/height/borderRadius/fontSize/inset/…); leave unitless (fontWeight/zIndex/opacity/lineHeight/flex/…).
-- Import types from the `preact` namespace (`import type { CSSProperties } from 'preact'`) — fix all 29 sites; `pnpm typecheck` green is a gate, not the proof.
-- `useRef`: the sweep is smaller than R2.2 suggests — 0 bare `useRef()` call sites exist — but the **type meaning** change (`RefObject<T>.current` is now `T`, not `T | null`) hits the ~171 `useRef`/`forwardRef`-adjacent sites at type level. Fix the annotations; do not sprinkle `!`.
-- Refs are forwarded by default and `ref.current` is the DOM node — audit any ref-on-component assumption (no `forwardRef` usage found, but ref props on wrappers deserve one look).
-- Also from the guide and worth one checklist pass: `render()` third parameter removed, `Component.base` removed, `SuspenseList` gone, hook arg equality is `Object.is` (NaN now compares unequal in deps), TypeScript ≥ 5.1 required.
-- Live visual UAT of Studio chrome (A1–A5), not a screenshot-free typecheck sign-off (`feedback_live_evidence_over_unit_probes` — vitest is blind to the real windows).
+Phase 59 must make an explicit decision and write it down, rather than inherit it by omission:
+- **Option A (recommended):** extend velocity sampling to the combined layer transform (layer keyframes × rail motion), key the `VelocityCache` by the motion revision, and make `isStationary` evaluate the combined transform.
+- **Option B:** lock "no motion blur on rail motion" as a documented v2.1.0 limitation and surface it in the UI copy. Locking is legitimate; silence is not.
+
+Either way, add a test that a rail with only Motion keys produces non-zero velocity when Option A is chosen, and that a stationary rail produces zero.
 
 **Warning signs:**
-- Zero-size swatches, toolbars, steppers after the bump
-- `JSX.CSSProperties` type errors clustered in shared widgets
-- A codemod commit titled "React 19 style migration" — reject it, this is Preact
+- Blur ghosting on content overlays but a crisp moving rail
+- Shutter-angle changes have no visible effect on an animated rail
+- `velocityCache` has no entry for the paint layer id during a rail move
 
-**Phase to address:** Phase 54 (R2.2/R2.3/R2.5 + live UAT rows)
+**Phase to address:** Phase 59 (decision + seam). Verification rides the existing motion-blur export path.
 
 ---
 
-### Pitfall 4: ESM-only fallout and two Preact instances across the monorepo
+### Pitfall 4: Active-track preview/export drift because the live overlay bypasses the compositor transform
 
 **What goes wrong:**
-Preact 11 ships ESM-only (`.mjs`; CJS/UMD dist removed). The standalone engine entry `packages/efx-physic-paint` → `./preact` (UAT A5) or the Vite build breaks on resolution, or — worse — app and package each resolve their own `preact`, signals hooks register on the wrong instance, and everything "mounts" while reactivity is dead. This is the monorepo twin of Pitfall 1.
+While editing, the Studio shows the active track as live engine/DOM layers stacked **above** a composite built with `getFlattenedFrameExcluding(activeTrack)`, because the live canvas supplies in-progress pixels. Playback switches to `getFlattenedFrame` including the track. If the rail transform is applied at the compositor but not to the live overlay (or applied with a different resample), the active rail **jumps when Play is pressed**, and the PNG export matches neither. This is invisible on every non-active track, which makes it easy to miss in review.
 
 **Why it happens:**
-`app/package.json` pins `preact: 10.29.8` while `packages/efx-physic-paint` has `peerDependencies: preact >=10.0.0` + dev `10.29.0`. Peer ranges that allow both majors (or a workspace that doesn't dedupe) produce duplicate runtimes. Deep imports like `preact/dist/preact.js` (removed in 11) are another trap.
+The live overlay is a passive raster stack; transforms were never applied to paint at all, so the two paths were trivially identical. The exclusion path exists for performance/latency and is correct only while the transform is identity.
 
 **How to avoid:**
-Bump both packages to 11 in one change; set the package peer floor to `>=11`; verify `pnpm why preact` shows one copy; verify `@preact/preset-vite` + `exports` maps resolve with no CJS-only paths (R2.1); run the standalone `./preact` entry as A5, not just the app build. Keep `lucide-preact` green (Q2 — check its peer range at plan time). Full gate: `vitest run` (never watch) + `pnpm typecheck` + build + cargo.
+Define one transform application point and route all three paths through it: edit base, live overlay, export. Concretely, the live overlay wrapper must receive the same evaluated transform (or the overlay raster must be composed offscreen and transformed identically). Add a UAT row: put motion on the **active** track, scrub in edit mode, press Play; frame 0 must match the painted/edited frame and the exported frame byte-for-byte.
 
 **Warning signs:**
-- `require(preact)` / "does not provide an export named" build errors
-- Standalone demo shows a canvas that never reacts
-- pnpm installs a second preact under `packages/efx-physic-paint/node_modules`
+- The active track looks right until Play; other tracks are fine
+- Preview vs PNG export differ only for the selected/animated track
+- Switching the active track "fixes" the frame
+- The discrepancy scales with the transform magnitude (rotation/scale is worse than translation)
 
-**Phase to address:** Phase 54 (R2.1 + A5)
+**Phase to address:** Phase 59 (render-law integration across `PhysicsPaintProgramMonitor` and the Studio view). It is the highest-value UAT row in the phase.
+
+### Pitfall 5: Two-stage resampling softens scale/rotation (Gate D is a memory decision, not a polish decision)
+
+**What goes wrong:**
+Content rasters are already produced at a working resolution (decoded/WebP frames, HD-capped, LRU-backed). Applying scale/rotation at composite time resamples an **already resampled** raster. At 2×–4× the rail looks soft compared with the drawing-key preview; at rotation, edges shimmer, and the result changes with the playback path (sub-frame vs whole-frame). The reflex fix — "bake motion into drawing keys" — violates the milestone's render law and re-bakes on every motion edit. The opposite reflex — "bake everything at 2×" — multiplies the 512 MB LRU pressure and can OOM on a multi-track document.
+
+**Why it happens:**
+Gate D explicitly asks "bake 2× or vector?" and the phase has not answered it yet. Raster resampling quality and cache memory are coupled: higher-resolution source rasters are the only way to keep scale-up sharp, but they cost 4× memory per 2× dimension, and the document already keeps multiple frame representations (bytes, ImageBitmap, flattened records).
+
+**How to avoid:**
+Answer Gate D in the Phase 59 plan with measured numbers, not a preference:
+- Render one 30-frame rail at 4× scale and rotate it through 360°, on the largest realistic document, and record frame time + peak memory.
+- Choose exactly one: **2× bake** (sharpness, 4× memory, bounded cache) or **vector re-render** (sharp at any scale, but the engine must re-render per frame and the determinism rules apply — see Pitfall 11).
+- Pin the choice with a cropped UAT comparison at 1×, 2× and 4× and with a memory ceiling in the test.
+
+Do not let "scale is just a transform" ship without a measured answer.
+
+**Warning signs:**
+- "It looks soft when scaled" reported only after the zoom milestone lands (4× makes it obvious)
+- Memory spikes the first time a scaled rail plays, then stays high
+- Rotation shows stair-stepping/aliasing at some angles only
+- The plan describes Gate D as "bake 2×" with no measurement
+
+**Phase to address:** Phase 59 (Gate D in the phase plan; the answer constrains the cache).
 
 ---
 
-### Pitfall 5: Opening Phase 55 before Phase 54's live reactivity UAT closes
+### Pitfall 6: Motion persists in the session but not to disk / not across realms (the PKG-06 / BKG-09 defect class)
 
 **What goes wrong:**
-The host split starts on a green suite while paintVersion/store-setter behavior is only typecheck-proven. Cross-webview and Tauri behavior is invisible to vitest in this codebase (known: DOM-fallback branch masks real failures — `feedback_live_evidence_over_unit_probes`), so a subtly broken subscription gets *moved* in 55 and blamed on the split, or worse, baked into the host contract.
+Motion keys work in the Studio, survive undo, and look done. Then: reopen the project and the keys are gone; or edit in the Studio and the main window still shows the old state; or the parent never receives the change at all. This is not hypothetical — this codebase has already lost exactly this class of data twice (display prefs needed the sync fingerprint; docSync replaced the parent's byte records with media refs).
 
 **Why it happens:**
-Phases look parallelizable; the suite is fast; the UAT rows feel like ceremony. But this project has a history of exactly this failure shape (Studio origin persist loss, layer-2 dead gestures — both live-only defects), and the milestone law is explicit: the phase-step gate replaces the old isolated-tag gate.
+The paint document is a **hand-maintained projection** across four carriers, and motion must be added to each:
+1. `serializeRuntimeIntoDocument` maps `frames` / `rotoPhysical` per track — a new field can be dropped here.
+2. `encodeValidatedEfxPaintTrackContent` enumerates the track content revision (id/name/order/visible/solo/opacity/blend/revision + frames + loops + roto). If motion is not in it, the revision does not rotate and the dirty token never fires.
+3. `buildEfxPaintDocumentSyncFingerprint` (= revision + `|photoDisplay:` + `|bgDisplay:` + `|audios:`) carries fields deliberately excluded from the revision. A view-only motion part must ride here or the child realm never syncs.
+4. The layer change token gates cross-realm updates.
+
+Separately, `PROJECT.md` states the milestone constraint "`.mce` gains motion persistence, so every new field is declared in BOTH TS and Rust under the field-diff pin" — but `mceFieldContract.test.ts` **does not parse the paint document**: Rust carries it as `pub efx_paint_documents: HashMap<String, Value>` / `efx_paint: HashMap<String, Value>`, so serde preserves whatever TS writes without a typed struct to diff against. The "both languages" rule is therefore currently **unenforced** for paint fields.
 
 **How to avoid:**
-Hard gate: 55 must not open until R4.2 rows A1 (paint reflects without refresh)–A5 (standalone entry mounts) are **user-asserted live**, not "automated-ready" (`feedback_no_done_before_uat`). The gate owner is 54's exit, and 55's plan should list it as a precondition.
+Treat motion as content and wire all carriers in one change, with pin tests:
+- Mutate a Motion key → assert document revision, sync fingerprint, and layer change token all change.
+- Reopen → keys at identical frames, identical curve paths.
+- Studio edit → main window reflects it without a manual refresh.
+- Compute the dirty/save path from the same revision (do not hand-roll a second "motion dirty" flag).
+
+For the `.mce` pin: either add the motion fields to a typed Rust struct and extend the field-diff test, or document explicitly in the phase plan that the paint document is opaque and add a dedicated TS↔JSON round-trip pin (load → save → byte-identical motion block). The current test passing is **not** evidence that motion persists.
 
 **Warning signs:**
-- A 55 plan whose first task is "move animation/" while A4 is still pending
-- "We'll UAT both phases together at the end" — never acceptable here
+- Motion keys present in-session, absent after reopen
+- Studio shows the change; the main-window monitor does not until a reload
+- The saved `.mce` JSON has no motion block (or has a stale one)
+- `mceFieldContract.test.ts` green while motion fields changed — expected, and therefore not proof
 
-**Phase to address:** Phase 54 (exit gate) — consumed by Phase 55's entry
+**Phase to address:** Phase 59 (document projection + carriers + pins). The milestone explicitly changes `.mce`, so this phase owns the schema decision.
 
 ---
 
-### Pitfall 6: Engine-specific parameters leaking into the host API
+### Pitfall 7: Rail identity is drawing-key-derived — motion keys break it (Gate B)
 
 **What goes wrong:**
-`efx-paint-host` grows `physicsMode`, `waterAmount`, krita preset names, or typed `PaintStroke['params']` on its surface. Engines 2 and 3 then must speak engine-1 vocabulary through the "generic" host — the same adapter mistake that killed phases 27–32. The split pays for itself only if the seam is genuinely payload-generic.
+Motion is supposed to be independent of drawing keys (CONTEXT §3.2; UAT row 8: a Motion key must animate a rail span with no drawing key). But the rail identity today is `{kind:'key-rail', firstKeyId, keyIds}` — it *is* the drawing-key set. Then:
+- deleting the **first** drawing key re-points `firstKeyId` → motion attaches to another rail or vanishes;
+- a split / +Key dissolve changes `keyIds` → motion is orphaned or duplicated;
+- copying/pasting a rail duplicates drawings but drops motion (or worse, shares it);
+- undo of a split restores a different key set than the motion was written against;
+- a loop rail's motion must resolve per **occurrence** (`placementStart` + `cycleOffset`), not per document frame, and "repeat = hold" vs "fit-to-span" must be defined on the occurrence.
 
 **Why it happens:**
-It is the path of least resistance: `PersistedRotoScriptStrokeV1` today carries `tool: PaintStroke['tool']`, `params: PaintStroke['params']`, `physicsMode?: PaintStroke['physicsMode']` (see `physicsPaintRotoScriptSchema.ts`). Moving "the script types" verbatim into the host moves engine-1 types with them. Format-identical (R5.2) is a *replay guard*, not a license to entangle the API.
+Motion is the first data that must outlive drawing keys. Every identity rule in the system was written when a rail without drawing keys could not exist. `README.md` §6.7 calls this out as Gate B with a default (loop clips only) that has not been decided.
 
 **How to avoid:**
-Host owns a payload interface parameterised over the per-engine stroke payload — shared shape only: `pts`, `ticks`, `cuisson`, `motion`, brush id + `toolOverrides` (R2.1/R2.2). Envelope = one shared shape + opaque per-engine payload slot (Q2: host-owned interface, engine re-exports). Acceptance row A5 is the detector: a **fake engine-2 payload** must compile and round-trip record → play → bake with **zero** engine-1 types in scope. Unknown engine id or malformed payload refuses fail-closed, never half-applies (R2.3).
+Decide Gate B in the Phase 59 plan before coding:
+- **Option A (recommended long-term):** introduce a durable `railId` for every motion-bearing rail, including bare key rails, and define split / merge / delete-first-key / copy-paste / undo semantics in a table (who keeps the motion, who inherits it, when it is dropped).
+- **Option B (README default, acceptable for v1):** restrict motion to loop clips with a stable `loopId`; bare key rails stay static. Document it and make the UI honest (no motion affordance on bare rails).
+
+Whichever is chosen, write the tests **before** the feature: delete-first-key, split, copy/paste, undo/redo. Motion must travel with its rail or be explicitly dropped — never silently re-point.
+
+For loops, pin rail-local time: a Motion key at rail-local frame 0 must render at `placementStart + k*period + cycleOffset` for occurrence k. Test hold (freeze at last key) and fit-to-span (scale the track to the occurrence length) on the **second** occurrence, not the first.
 
 **Warning signs:**
-- Any `efx-paint-host` export mentioning `physicsMode` / `waterAmount` / libmypaint names
-- A5 needs `as any` / `@ts-expect-error`
-- Host imports from `efx-physic-paint` (dependency must point the other way)
+- Motion "jumps" to a different rail after deleting the first key
+- Copy/paste duplicates drawings but the pasted rail is static
+- Undo restores geometry but not motion (or vice versa)
+- Motion appears correct on occurrence 1 and offset on occurrence 2
+- A rail with only Motion keys has no row in the timeline (identity lookup returns nothing)
 
-**Phase to address:** Phase 55 (R2 + A5)
+**Phase to address:** Phase 59 (Gate B; identity + occurrence math). Phase 62 must not assume a stroke edit is the only invalidation — rail splits affect it too.
+---
+
+### Pitfall 8: The 18px frame pitch is a module literal in 66 places — zooming half of them
+
+**What goes wrong:**
+Phase 60 flips the zoom control on and everything works at 1×. At 0.25× or 4×, some surfaces scale and some do not: the playhead sits a fraction of a cell off, clicking a cell selects its neighbour, the ruler ticks drift from the cells, the sound stain detaches from its clip, Loop Clip rails keep their 1× width, and the insertion frame lands one column away. Each of these is a separate literal in a different file, so the failure is partial and easy to miss.
+
+**Why it happens:**
+`ROTO_CELL_WIDTH_PX = 18` is the design's single source **at 1×**, but many consumers independently convert frames to pixels:
+- cell grid: `gridTemplateColumns: repeat(n, 18px)` (`PhysicsPaintWorkflowStrip.tsx:5290`)
+- playhead: `left = 6 + clampedFrame * ROTO_CELL_WIDTH_PX + 8` (~1051)
+- ruler tick: `flex: 0 0 ${RULER_TICK_WIDTH_PX}px`, `RULER_TICK_WIDTH_PX = RULER_STEP * 18` = 54 (~607, ~5817)
+- scroll-to-frame: `target = frame * 18 + 18/2 - clientWidth/2` (~4581–4606)
+- drag/hit-test: `round((clientX - origin)/18)`, `floor(relativeX/18)`, `round((clientX - contentLeft + scrollLeft)/18)` (~3226, ~3373, ~3866, ~4167, ~3601)
+- ghost / push / set-drag previews multiply frame deltas by 18 (~5130, ~5517–5611)
+- Loop Clip rail `framePitch={ROTO_CELL_WIDTH_PX}` (~5228, ~5260, ~3529, ~3747)
+- sound stain: `soundStainLeftPx(startFrame, ROTO_CELL_WIDTH_PX)` (already parameterized — the call site is the problem)
+- audio visible window: `scrollLeft / ROTO_CELL_WIDTH_PX` (`physicsPaintAudioController.ts`)
+- `README.md` §4 also adds 18px channel rows whose geometry must scale/not scale with the same rules
+
+There is one latent seam already: `usePhysicsPaintCrossTrackDrag` accepts an optional `zoom` (default 1) and `computeInsertionFrame` computes `pitch = framePitch * zoom` (`usePhysicsPaintCrossTrackDrag.ts:98,202`). Nothing else has that seam, so a partial conversion would make only that hook correct.
+
+**How to avoid:**
+Make zoom a **single derivation**, not a per-call-site change:
+- Derive `framePitch = ROTO_CELL_WIDTH_PX * zoom` once in the strip (or a view-model) and pass it into every consumer. The hooks already take `framePitch` (group rail drag, Loop Clip presentation, background clip drag/resize, cross-track drag) — plumb one value, never multiply locally.
+- Any place that computes a pixel offset from a frame must take `framePitch` (and, where relevant, the cell width) as a parameter; the half-cell offset becomes `framePitch / 2 - 1`.
+- Keep the zoom **session-only** and out of the document/export path (Phase 60's locked scope). Zoom is presentation, never content.
+
+Add a zoom matrix test at 0.25, 0.5, 1, 2, 4 that asserts: playhead centre, hit-test frame at a given clientX, ruler tick extent, sound-stain left/width, Loop Clip rail extent, and the audio visible frame range.
+
+**Warning signs:**
+- Everything is correct at 1× and only at 1×
+- The playhead is off by a few pixels that scale with zoom
+- Clicking a cell selects an adjacent frame only when zoomed
+- Ruler labels no longer sit over their cells
+- Sound stain and Loop Clip rails keep their unzoomed width
+- A test suite that never sets zoom (all existing tests use 18)
+
+**Phase to address:** Phase 60 (single seam + matrix test). Phase 59 should avoid hard-coding any *new* pixel math into the expanded channel rows for the same reason.
 
 ---
 
-### Pitfall 7: Replay parity broken by "harmless" move drift — and "fixed" with compat shims
+### Pitfall 9: Half-cell offsets, 31/30 row drift, and index-based offsets break when rows are no longer uniform
 
 **What goes wrong:**
-After the split, the same recorded script bakes different pixels than the pre-split golden. The parity failure is subtle (1–2 LSB float drift, seed input change, iteration order, default drift), and the tempting fix — a dual reader, a normalization branch, a "legacy format" shim — is exactly what the clean-break law forbids. Parity is a refactor guard; compatibility code is out of scope forever.
+Three independent geometry assumptions collide in Phase 59/60:
+1. The playhead centres with a literal `+8` (half of 18 minus half of the 2px line). At 0.25× that arithmetic is wrong; at 4× it is wrong in the other direction.
+2. The row height is **31px** in production (`STRIP_ROW_HEIGHT_PX = 31`, `HEADER_ROW_HEIGHT_PX = 31`, and the CSS `height: 31px` rules) while the design token says **30** (`TIMELINE_GEOMETRY.rowHeight = 30` in `timelineRailDesign.ts:98`). The token has tests pinning 30 but no production consumer, so "read the token" is the wrong fix and "change the token" breaks tests without changing the UI.
+3. The header-column reorder insertion indicator is `top: reorderDragIndex * HEADER_ROW_HEIGHT_PX` (`physicsPaintTrackHeaderColumn.tsx:218`). With expanded channel blocks, rows are no longer `index × 31`; the indicator lands inside a channel block and the drop target lies about where the row will go.
+
+The README's integration map is explicit: inserted channel rows must add exactly 18px on **both** the header and the rows side, and the 2px post-block gap must match on both sides. Any mismatch desynchronizes lanes from headers while scrolling.
 
 **Why it happens:**
-Determinism here is load-bearing and fragile: `traceSeed` derives FNV-1a over the mutation id with arc-length-keyed draws (locked so resample/chunking can't shift noise — see `packages/efx-physic-paint/src/util/traceSeed.ts`), schedules (`progressiveStrokeSchedule` / `staticStrokeSchedule` / `recordedStrokeMotion`) carry timing defaults, and time is integer ticks (~1/60 s) — never raw ms. Any of these can drift during a "pure move" (reformatting the derivation path, reordering fields, changing a clamped default like `schemaRange`'s projection in `serializeRotoScriptStroke`).
+The v2.0.1 surface is uniform by construction, so index math was safe. Expanded blocks introduce variable heights in exactly the two places that share the index math, and the design token is a parallel copy that drifted.
 
 **How to avoid:**
-Capture the pre-split golden bake BEFORE moving anything (R5.2 is a measured WebP delta against that golden — not a green suite). Move code without touching derivation paths, seed inputs, or schedule defaults. No `Math.random()` / bare `rand()` anywhere in deposit or sim scheduling (R3.2) — including "temporary" debug draws. If parity fails, fix the move. NEVER add a reader that accepts both shapes. A4 (save/reopen replay identical) is the live twin of R5.2.
+- Phase 59: replace index math with **measured row offsets** computed once from the same model that renders the rows, and share that model with the header column (a single `rowOffsets: number[]`). Test expand/collapse at 3 and 4 channels.
+- Phase 59: the selected-rail outline height is `30 + 18 × channels` (README §2) and must use the live row height, not the token.
+- Phase 60: keep row and lane heights **fixed** (locked scope) — zoom changes only the pitch. Do not "fix" 30 vs 31 as part of zoom; if it is fixed at all, fix it in a separate, pinned change.
+- The half-cell offset becomes `framePitch / 2 - 1` and must be asserted at every zoom preset.
 
 **Warning signs:**
-- Golden WebP delta ≠ 0 after a commit that claims to be "just moving files"
-- A new `if (legacy…)` / `migrateScript()` appearing in the diff
-- `timestamp: number` (existing engine-1 field) getting "helpfully" converted to ticks mid-split — leave engine-1 payload as-is; the host timing law is for what the host owns
+- Outline/selection is 1px off (the 31/30 drift showing through)
+- The insertion indicator drops inside a motion channel block
+- Header labels and lane cells drift apart only when a rail is expanded
+- A test that reads `TIMELINE_GEOMETRY.rowHeight` passes while the UI is 31px
+- The playhead is centred at 1× but not at 0.25×/4×
 
-**Phase to address:** Phase 55 (R5.2 + A4)
+**Phase to address:** Phase 59 (measured offsets + lockstep test), Phase 60 (zoom-invariant geometry). The 30/31 token drift is tracked as VIS-02 in `PROJECT.md`; do not fold it into either phase silently.
 
 ---
 
-### Pitfall 8: "Normalizing" the brush-pack snapshot into a disk reference (and silent `.mce` field loss)
+### Pitfall 10: Zooming materializes the wrong thing (DOM width, ruler labels, scroll anchor)
 
 **What goes wrong:**
-During the split/persistence work, the brush-pack snapshot inside `.mce` gets converted to a 52.2-style disk reference, or new envelope/brush fields land in TS only. First breaks old-script replay after the pack evolves (the whole reason the snapshot exists). Second breaks worse and silently: serde drops keys the Rust structs don't declare — the PKG-06-class data-loss pattern — and the field vanishes on reopen.
+The timeline is fully materialized: `frameCells` spans the whole document and the grid renders one column node per frame. At 4× the content is four times wider in CSS pixels; the scroller's anchor resets or jumps; ruler labels (one per `RULER_STEP` = 3 frames = 54px at 1×) collide at 0.25× (13.5px) or become sparse at 4×. The audio preview's visible frame window (`scrollLeft / ROTO_CELL_WIDTH_PX`) and the sound stain silently disagree with the new scale. The user zooms in and the viewport "teleports".
 
 **Why it happens:**
-52.2's references-only law is strong muscle memory ("everything heavy is a ref"), and the snapshot is a **deliberate, documented exception** (old scripts must replay after the pack evolves; `toolOverrides` sit on top of a stable brush id). Meanwhile the v1.0.1 dual-language law (every `.mce` field declared in BOTH TS interface and Rust struct, enforced by `app/src/lib/mceFieldContract.test.ts`) is easy to forget when adding package-split fields.
+Zoom is a pixel-density change over a fixed set of frame columns — no frames are added — but scroll position, ruler labels and audio ranging were all derived from the assumption that 1 frame = 18px. `CONTEXT.md` §5.6 locks "row, lane and cell heights stay fixed", so the *vertical* geometry is safe; the horizontal derivations are not.
 
 **How to avoid:**
-Keep the snapshot embedded — R3.4 prohibition, do not "fix" it. Every new persisted field (envelope, payload slot, brush-pack entry, tick fields) extends the TS interface **and** the Rust struct in the same change, and extends `mceFieldContract.test.ts`. Round-trip pin per the v1.0.1 pattern: Rust save→open **and** TS build→hydrate. Clean break ≠ silent loss: unreadable scripts refuse with a named visible error (53.1 law).
+- Keep frame count as the source of truth; derive pixel widths from `framePitch` (never materialize extra frames). At 4× the grid is wider but the node count is unchanged — that is fine; do not virtualize in this phase.
+- Preserve the **anchor frame** across zoom: read the frame at the viewport centre (or under the cursor for Cmd+wheel) before applying zoom, then set `scrollLeft` so that frame stays put. Test at both viewport edges.
+- Choose an adaptive ruler step for label legibility, but keep tick width = `step × framePitch` so ticks stay cell-aligned; labels may thin out, cells may not.
+- Route `goToFrame`, the audio visible window and the sound stain through `framePitch`.
+- Keep Fit clamps inside [0.25, 4] and make the session-only reset to 1× deterministic on Studio reopen.
 
 **Warning signs:**
-- A PR that moves brush bytes to `frames/` / a media ref
-- `mceFieldContract.test.ts` untouched while `.mce` fields change
-- A script that opens with brushes: [] and nobody noticed
+- Zoom jumps the scroller to origin (or to the document start)
+- The frame under the cursor changes after Cmd+wheel
+- Ruler labels overlap at 0.25×
+- Scrollbar thumb / scrollWidth disagree with the visible cells
+- Audio snippet visibility lags the painted sound stain when zoomed
 
-**Phase to address:** Phase 55 (envelope + snapshot law) with Phase 56 (aquarelle brush-pack fields) extending the same contract
+**Phase to address:** Phase 60 (scroll anchoring + ruler step + audio/stain plumbing).
 
 ---
 
-### Pitfall 9: Inventing a new bake-cancellation model (or keeping dispose-abort for long cuissons)
+### Pitfall 11: A vector tool that does not replay through the deterministic engine
 
 **What goes wrong:**
-Two async bake-like systems exist and behave differently: `finalizationQueue` (Effect v4 bounded queue, survives leaving the frame, generation-stale + `isStillWanted` guards) and the PlayScript renderer (`renderRotoPlayScriptFrames`, **aborts on `dispose()`**). Unifying them into a new cancellation model mid-split drops either the leave-frame guarantee or the dispose-abort guarantee. Later, a watercolour cuisson (up to 600 diffusion frames of fluid evolution) gets killed when the user navigates away, or leaks a queue after Studio closes.
+The vector tool looks correct on canvas, but the same stroke produces a different wash after undo/redo, after reopen, or when the script is played back. Width/color changes along the stroke apply only to the first segment or drop entirely. The wireframe preview stutters on dense curves.
 
 **Why it happens:**
-"Two patterns is tech debt, let's make one" is a natural refactor reflex — and the PlayScript dispose-abort looks like the bug to fix. But the laws are deliberate: the host ports the `finalizationQueue` pattern (R4.1/R4.2), no Web Worker (WebGL2 + canvas encode are main-thread anyway), no new cancellation model. Long bake survival is a 56 requirement (R3.3) that 55 must make *possible*.
+Determinism in this engine is **sequential seeded consumption**, not per-point independence: `seededRng(stroke.traceSeed, 'deposit')` is consumed stamp by stamp in point order, and the host and engine already differ in how draws are keyed (arc-length vs sample order, per `traceSeed.ts`). A vector representation introduces a new sampling law — unless that law is fixed and shared, the stamp sequence changes and the whole texture re-rolls. Per-vertex properties are also easy to lose: `pointsToBezierAnchors` runs `fitCurve` on x/y only and **drops pressure**, and `MAX_POLYLINE_POINTS = 96` caps the preview polyline. The live `StrokeWriter` jitter uses `Math.random` and is documented as live-only; leaking it into a baked vector stroke breaks replay.
 
 **How to avoid:**
-Port patterns as-is; change neither's semantics in 55. Any queue/state machine new code follows `efx-async-orchestration` (XState v6 lifecycle machines, Effect v4 bounded-turn queues) — no timer/boolean-flag FSMs (the race factory this project already post-mortemed). UAT A3 (leave frame mid-bake, return: bake completes, no torn frame, no orphaned queue) is the closure row.
+- Define the vector payload as an ordered sample list with **per-vertex attributes** (pressure/size, color, brush/tool) and a **fixed re-sampling rule** (e.g. arc-length resample at authored curvature), shared by preview and bake.
+- Serialize it through the existing script envelope and the fail-closed Apply; malformed vector data is rejected, never partially applied.
+- Pin determinism: same vector stroke → identical baked raster hash across two runs, after undo/redo, and after reopen. Test the host and engine sampling agreement explicitly.
+- Do **not** reuse `pointsToBezierAnchors` unless it carries the attribute channels; raise or deliberately decimate for `MAX_POLYLINE_POINTS`.
+- Wireframe preview: cache projected points and redraw on change; avoid per-vertex DOM nodes and per-frame allocations (WKWebView layout thrash).
 
 **Warning signs:**
-- A new `AbortController` owned by the timeline instead of the bake host
-- Bake restarting from frame 0 after a navigation
-- `setInterval`/boolean `isBaking` clusters in the diff
+- "It looked different after I reopened it"
+- Per-vertex color/width ignored beyond the first stop
+- The preview polyline is visibly coarser than the baked stroke (96-point cap)
+- `Math.random` in a path that feeds the bake
+- Apply accepts a vector payload with missing vertex attributes
 
-**Phase to address:** Phase 55 (port, R4) — stressed for real by Phase 56 (long fluid bake)
+**Phase to address:** Phase 61 (payload contract + determinism pins). Phase 62 consumes the same payload shape for curve editing — settle it here.
 
 ---
 
-### Pitfall 10: Wall-clock time and unseeded randomness crossing into the host/engine time law
+### Pitfall 12: Curve-editing a baked stroke by moving its pixels (or re-rolling its texture)
 
 **What goes wrong:**
-Time becomes `performance.now()` deltas (float seconds) and noise becomes `Math.random()`, both of which look fine in interactive play and make script bake irreproducible: two bakes of one script differ, the WebP cache can't be trusted, A2 fails, and the timeline's cache-only contract quietly loses its meaning.
+The user drags a bezier handle on a painted stroke. If the editor deforms the cached raster, the stroke "melts": it no longer matches a replay of its script, and the lift/erase transmittance punch (applied to the cached raster, never alpha) is corrupted — erased regions reappear or the wash doubles. If instead the editor re-bakes a changed point set, the engine's sequential RNG stream shifts and the **entire texture re-rolls** — the user sees a different stroke, not a reshaped one. Loop Clips make it worse: editing the source frame must invalidate every occurrence.
 
 **Why it happens:**
-The oracle drives strokes with `performance.now()` timestamps (`Engine.ts`: `sdt = Math.max(q.t - s.t, 1) / 1000`, sample `t` fields) and seeds paper with `Math.random()` (`this.paperSeed = Math.random()`). Existing engine-1 scripts also carry a raw `timestamp: number`. Real pointer input arrives in ms. The project's law is stricter than all of this: fixed tick grid (~1/60 s), integer ticks, never raw ms (R3.3 / R1.5), FNV-1a `traceSeed` per stroke, no `Math.random()` in deposit or sim path (R3.2).
+The bake cache is keyed by stroke identity/content, and the engine's texture depends on draw order and point count. Base recovery (`aquarelleBaseRecovery`) is only valid outside script coverage; a handle edit can expand coverage. Lift is a transmittance punch on the cache, not an alpha edit, so pixel deformation is not recoverable.
 
 **How to avoid:**
-Record snaps each sample's `dt` to the nearest tick and stores integer ticks; replay steps the sim on that grid only. Paper/brush noise draws are keyed by `(strokeSeed, arcLength, drawKey)` (arc-length, not sample index — so resample/chunking can't reshuffle noise). Grep-gate `Math.random` / `Date.now` / `performance.now` in deposit+sim paths as a phase check. Keep engine-1's legacy `timestamp` field as an engine-1 payload detail — do not let it become the host time authority.
+- Curve edits are **script mutations**: edit the vector payload, invalidate the bake, recover the durable pre-script base, replay, re-bake. Never mutate cached pixels in place.
+- Preserve determinism where possible: prefer moving existing points over inserting/removing them, so the per-point RNG consumption is unchanged; if the point count must change, decide explicitly (and preview) whether the texture re-rolls. A stable per-point seed is a valid alternative if the phase accepts it.
+- Define invalidation across Loop Clips: a source-frame edit invalidates every occurrence (`sourceFrameRefs`, track/clip revisions), not just the visible frame.
+- Undo/redo must act on the script state and settle in-flight bakes: a stale bake landing after an undo is a visible regression. Use the existing bounded bake queue and revision checks.
+- Re-verify base recovery's provenance guards after the edit — a widened script area must rebuild the base, not invert an invalid one.
 
 **Warning signs:**
-- Any `performance.now()` in `efx-paint-host` / `efx-watercolor` sim code
-- Replay bakes that differ run-to-run ("GPU is flaky" is not an explanation — see Pitfall 11)
-- `dt` stored as float seconds "for precision"
+- The edited stroke's texture differs from a freshly drawn identical shape — and the user notices
+- Erased/lifted regions reappear after a curve edit
+- Loop occurrences keep the old shape while the source frame updates
+- Undo restores geometry but not pixels
+- Bake queue depth grows during rapid handle drags
+- The editor can produce a state where the cached raster and the script disagree
 
-**Phase to address:** Phase 55 (host timing law R3.3) + Phase 56 (engine R1.5, A1/A2)
+**Phase to address:** Phase 62 (re-bake pipeline + loop invalidation + undo/bake settling).
 
 ---
 
-### Pitfall 11: Porting the oracle's look — and its non-determinism — into the clean-room engine
+## Moderate Pitfalls
+
+### Pitfall 13: Two motion systems collide (`PhysicPaintRotoScriptMotionSettings` vs Motion channels)
 
 **What goes wrong:**
-The watercolour look the user is buying (scattered dry-brush breaks, angle jitter, granulation pooling) was tuned with **unseeded randomness**: `Math.random()` drives `rotation: 'random'`, `angleJitter`, `scatter`, `sizeJitter`, flow splatter, and `paperSeed` in the oracle's `Engine.ts`. A faithful clean-room reimplementation either copies that non-determinism (violates the law, breaks A1/A2) or drops the random character entirely (wrong look — the "no-pigment line" / softSat class of look regression this project already fought). Separately, GPU float pipelines are not bit-stable across drivers/GPUs; "same script ⇒ same pixels" needs an explicit tolerance or a deterministic reference path, not wishful thinking.
+`PROJECT.md` carries the constraint that `PhysicPaintRotoScriptMotionSettings` (script-motion wiggle, quick 261030-ey9) is a **different system** and must not be merged with Motion channels. Both are "motion" on the paint side; a refactor that unifies the types or reuses the wiggle evaluation produces double motion, or silently changes existing script playback.
 
-**Why it happens:**
-Clean-room work focuses on the physics (advection, tide line, fix/dry) and under-specifies the deposit noise model. The oracle never needed replay determinism — its history is raster undo tiles and `.wcp` is half-float layers; nothing stores strokes. Our Studio script law (record → play → bake → cache) demands determinism the reference never proved.
+**How to avoid:** Keep the types and evaluators separate; name the new model distinctly (rail motion) and add a static scan/pin that the two settings types never import each other. Document the difference in the phase plan.
 
-**How to avoid:**
-Reimplement the *distribution* of scatter/jitter with seeded draws via `traceSeed` (FNV-1a, arc-length keyed) so the look survives but the pixels are stable; `paperSeed` is **data** (per document/script), never runtime RNG. Define the determinism acceptance honestly at plan time: A2 "two plays bake identical WebP" may need a defined pixel-delta threshold on GPU paths (this project already accepts grouped render thresholds — `feedback_render_uat_evidence`) or a CPU reference for tests. Look rows (A3: bloom + tide line visible in baked frames) are native visual UAT, not hashes (`feedback_live_evidence_over_unit_probes`).
+**Warning signs:** A diff that touches both; "motion" used unqualified in code; existing script replay changes after the phase.
 
-**Warning signs:**
-- `paperSeed = Math.random()` carried over "because the reference does it"
-- Golden-hash tests that flake on the CI GPU but pass locally
-- A look regression report ("too uniform", "no sparkle") right after seeding lands
+**Phase to address:** Phase 59.
 
-**Phase to address:** Phase 56 (R1.5, A1–A3)
-
----
-
-### Pitfall 12: Acting on a stale licence premise in either direction
+### Pitfall 14: The channel-set contract disagrees with the mockup (Scale lane)
 
 **What goes wrong:**
-Phase 56 either (a) transliterates oracle code while prohibition P1 still stands (project-law violation, and the prohibition is lifted verbatim into `must_haves`), or (b) pays full clean-room cost while upstream is actually permissively licensed — and nobody asks. Either way the decision was made by inertia, not by the user.
+The v3 model requires Position, **Scale**, Rotation, Opacity; the v7 mockup shows only Position, Rotation, Opacity. Shipping whichever is easier creates a spec-vs-UI mismatch that will be flagged at UAT, and the outline height (`30 + 18 × channels`) and the expand math depend on the count.
 
-**Why it happens:**
-The grill context locked (2026-10-06) that `msurguy/watercolor-playground` and `johnowhitaker/inkwash` have **no licence** → method-only clean-room (P1). **But the local oracle copy on disk contradicts that premise:** `SPECS/v1.1.0-water-color/watercolor-playground/LICENSE` is the MIT License, "Copyright (c) 2026 Maksim Surguy"; `package.json` says `"license": "MIT"`; `THIRD_PARTY_NOTICES.md` states the app's own code is MIT and lists inkwash, WebGL-Fluid-Simulation, spectral.js and water-brush all as MIT. The grill's own reopening clause says: "if either ever lands an OSI licence, direct port becomes an option; until then clean-room only" (00-grill-context §10.10). The licence evidence in the fetched tree suggests that clause may already be satisfied — but the LOCKED prohibition is what phase 56's plan will inherit.
+**How to avoid:** Decide in the Phase 59 plan (README default: add Scale as a 4th lane; Position one lane vs X/Y is a separate decision) and pin the channel list in a test. UAT row 3 must assert the exact rows rendered.
 
-**How to avoid:**
-At Phase 56 **plan time**: re-verify upstream licence state (the on-disk LICENSE + upstream repo), then take an **explicit user decision** on whether P1 relaxes to "MIT port with attribution" or stays clean-room (user drives scope/decisions; the bake-model lock is NOT reopened by this). Until that decision, P1 stands — no copy, no transliteration. Whatever the outcome: MIT attribution/NOTICE obligations for anything reused (ship a `NOTICE` in `efx-spectral` per Q6), Mixbox stays banned (CC BY-NC, project-wide), single-line fonts stay out of scope (SIL OFL / Hershey terms), and record the verdict in PROJECT.md Key Decisions.
+**Warning signs:** UAT screenshots show 3 lanes while the spec says 4; two sources of truth for `channels`.
 
-**Warning signs:**
-- Phase 56 plan copies P1 forward without a licence re-check row
-- A PR that opens with oracle shader code and a "clean-room" label
-- `efx-spectral` ships without a `NOTICE` / attribution artefact
+**Phase to address:** Phase 59.
 
-**Phase to address:** Phase 56 (decision at plan time) + Phase 57 (efx-spectral `NOTICE` attributed, Q6 = vendor MIT data)
-
----
-
-### Pitfall 13: Baking paper into the WebP, forcing Dry at frame boundaries, or running a live sim on the timeline
+### Pitfall 15: Zoom sneaks into the document
 
 **What goes wrong:**
-Three "simplifications", each individually tempting, each destroying the product: (1) baking paper into the painted frames makes every paper change a rebake and breaks the compositor law (tracks transparent between each other, paper is the document fond); (2) forcing Dry at frame boundaries kills wet-in-wet blooms and tide lines — the entire reason this engine exists; (3) letting scrub/Loop Clips/export drive the live GPU sim breaks the cache-only timeline contract and export parity.
+Zoom is session-only by locked scope (`CONTEXT.md` §5.6: "no document/schema/export change"). A convenient "restore zoom on reopen" persists it into `.mce`, which violates the milestone contract and creates an export/schema delta nobody asked for.
 
-**Why it happens:**
-Frame-boundary Dry makes bake bookkeeping trivial (each frame independent). Baking paper into layers makes the engine "look right" in isolation. Live sim on scrub looks smooth in a demo. All three violate locked decisions: R2.1/R2.2 (composite-only paper, no rebake), P4 (no forced Dry), P3 (no live GPU fluid on the timeline), and the Studio law (after bake, timeline reads cache only).
+**How to avoid:** Keep zoom in view state only; add a test that document revision and export fingerprint are unchanged after zooming; explicitly rule out `.mce` changes for Phase 60.
 
-**How to avoid:**
-Paint WebPs stay transparent where unpainted (A5 export row). Paper = `paperPass` conditioned height map → valley/peak tiles swapped at the composite seam (`app/src/lib/paperPass.ts`); engine-side tooth/granulation is the **deposit role** (bakes into the mark, keeps WebP paper-agnostic). Per-stroke `diffusionFrames` (cap 600, Q1=C) owns how long physics evolves — duration is data, not wall clock. Bake captures PlayScript cadence frames during/after play; scrub, repeats, Loop Clips, export, save all read the cache. The 10-paper pack (cold press, hot press, rough, khadi, washi, laid, canvas, toned sand, kraft, cellulose — `PaperPreset[]` in the oracle `papers.ts`, clean-room height/mottle/fleck fields) joins the **Studio paper library for ALL paints** via `PaperPassTile`, and paper display state (id, strength, scale) lives on the document/fond (undo + save), never per-stroke (R2.5).
+**Warning signs:** A schema diff for zoom; a project reopens at a non-1× zoom; export tests change.
 
-**Warning signs:**
-- Opaque WebP where the sheet is unpainted
-- Any `dry()` call keyed to a frame index in the bake loop
-- Paper change triggering `renderRotoPlayScriptFrames`
-- Paper state appearing in a stroke payload as an authority field
-
-**Phase to address:** Phase 56 (R2 + R3.3/R3.4; paper pack R2.4)
-
----
-
-### Pitfall 14: GPU + texture footprint reintroduces the WKWebView OOM / decode-storm class
-
-**What goes wrong:**
-The wet-field engine's texture set (velocity RG16F, wet R16F, ink 2×RGBA16F, fixed 2×RGBA16F, paper RGBA8 at up to 2400×1600) plus undo tiles plus bake frames lands in the same WKWebView that this project already OOM-killed once (effect/signal feedback loop) and already slowed globally (image decode storms at HD, fixed in 52.1 by bytes/ImageBitmap + Rust WebP + 512 MB LRU). A second engine + module switcher + 10 paper tiles is the "heavier content breaks latent cost assumptions" pattern (`feedback_ride_existing_machinery`) all over again.
-
-**Why it happens:**
-Interactive painting at preview sizes is cheap; the Studio document is HD. Reference perf laws exist precisely because the oracle hit this: simulate only the wet region (wet-mask readback), stop when dry, cap sheet (`MAX_DOC_PIXELS` ~2048×1536), bounded undo tiles. It is easy to skip them while chasing the look, and easy to allocate GL textures per frame/draw and never free them across module switches (this project already learned the separate-WebGL-context lesson with `glMotionBlur`).
-
-**How to avoid:**
-Adopt the reference perf laws as acceptance criteria (R1.6), not aspirations. Reuse the 52.1 bytes/WebP + LRU cache path for bake output — do not invent a second frame cache. Dispose GL programs/textures/FBOs on module switch and Studio close (UAT A4's orphan hunt extends to GL objects). Measure the footprint before stacking the paper pack (deferred-and-measure is this project's own guidance). Decode-once + content-keyed cache discipline stays in force (`feedback_image_decode_cache`). Watch the vite chunk budget too: 2000 kB ceiling is a desktop lock with **no incremental raises** (`feedback_chunk_budget_desktop`) — watercolour shaders + spectral data + papers must not grow the main bundle without an explicit user decision.
-
-**Warning signs:**
-- Jetsam / "This webpage was reloaded because a problem occurred" in Studio
-- GPU memory climbing across module switches (context/texture leak)
-- Bakes re-decoding WebP per timeline paint
-- A quiet `chunkSizeWarningLimit` bump "just this once"
-
-**Phase to address:** Phase 56 (R1.6 perf laws + resource lifecycle) with Phase 54's bundle gate kept green
-
----
-
-### Pitfall 15: Module switcher forks Studio, leaks state across modules, or ships the Krita slot
-
-**What goes wrong:**
-The switcher becomes a second Studio per module (duplicated script/cache/timeline controllers), or module options bleed into shared engine state (a Water color slider overwriting Brush params — the play-global-vs-stroke-props bug shape), or shortcuts fire in the wrong module's canvas (the unguarded-shortcuts class), or someone implements the Krita pane because the dropdown says "Brush | Water color | Krita". Switching modules mid-bake tears down the queue and loses the cuisson.
-
-**Why it happens:**
-"Modules change only the options/features surface" is easy to say and easy to violate when each engine's UI is isolated per paint (a locked invariant). The three-module design invites implementing the third; the milestone says v2.0.0 ships Brush + Water color only — Krita is the v2.1.0 slot.
-
-**How to avoid:**
-ONE shared Studio engine (script, cache, timeline) for all modules — a module is a registration (engine + its options panel + fail-closed Apply + brush vocabulary), not a fork. Per-module options drain into per-engine payload/`toolOverrides` only, never into shared envelope/timeline state (play globals vs per-stroke props separation). Global shortcuts gate on the active module the way `isPaintEditMode()` gates paint shortcuts (`feedback_shortcuts` — the unguarded-S-key debt is the cautionary tale). Module switch during an active bake goes through `finalizationQueue` `beginFlush`/stale-generation discipline, not a hard teardown. The switcher UI is designed for three modules but only two are implemented — gray zones (top-bar placement, iconography, panel layout) resolve at discuss-phase, and the third slot stays a disabled/deferred affordance.
-
-**Warning signs:**
-- Two PlayScript controllers in the tree
-- A shared `toolOverrides` bucket mutated by both modules
-- Any krita/libmypaint import in a v2.0.0 diff
-- Shortcut firing while the wrong module's canvas is focused
-
-**Phase to address:** Phase 56 (switcher slice over the shared host) — scope fence enforced through Phase 57
-
----
-
-### Pitfall 16: Duplicating spectral mixing inside the watercolor engine (or misplacing efx-spectral)
-
-**What goes wrong:**
-The 7-coeff absorbance mixing gets implemented inside `efx-watercolor` (so engine 1 can never adopt it without depending on engine 2), or stuffed into `efx-paint-host` (host is Studio law, not a colour toolbox), or forked twice — CPU helper here, GLSL basis there — until the two mix differently (the hide/solo duplication debt pattern). Or spectral lands late in 56 and someone "temporarily" inlines `pigmentFromHex` into the engine.
-
-**Why it happens:**
-57 is scheduled after 56 but 56's mixing is the whole point of the engine ("yellow + blue = green"). The dependency pressure is real and already anticipated: if plan-time shows 56 needs spectral first, create `packages/efx-spectral` early inside 56 or pull 57's content forward — **never duplicate the mixing code** (decided).
-
-**How to avoid:**
-`packages/efx-spectral` as its own tiny shared package: MIT spectral.js method + reflectance data (vendor the data — Q6=A — do not regenerate it, or ΔE drifts), CPU helpers + GLSL basis export from **one** source of truth, `NOTICE` attributed. Consumers: `efx-watercolor` now, `efx-physic-paint` in v2.1.0 (replacing the `mixSubtractive` RYB heuristic — OUT of scope here; do not touch engine-1 colour now). `efx-krita` never uses it (libmypaint mixes internally). Add a CPU-vs-GPU mix parity test with a stated tolerance (ΔE_OK ≈ 0.1–0.2 is the reference's own accuracy). The oracle's shape is the spec: `COEFFS = 7`, `Pigment { coeffs: Float32Array, … }`, `pigmentFromHex` → reflectance → absorbance → basis projection (`spectral.ts` / `spectralData.ts`).
-
-**Warning signs:**
-- `coeffs` computed differently in TS vs GLSL
-- A second `mixSubtractive`-style helper under `efx-watercolor/`
-- Spectral source living under `efx-watercolor/src` or `efx-paint-host/src`
-- 56 finishing with a `TODO: move to efx-spectral later`
-
-**Phase to address:** Phase 56 (create early if needed — dependency order) / Phase 57 (own the package, NOTICE, parity test)
-
----
-
-### Pitfall 17: Fail-closed Apply eroded across engines (half-applied scripts, silent drops)
-
-**What goes wrong:**
-With two engines live behind one Studio, a Brush script applied to a Water color layer (or an unknown/malformed payload) partially applies — some strokes land, some vanish — or the parse error is swallowed and the user sees a successful Apply with missing marks. Clean-break does not license silent data loss; fail-closed is data honesty.
-
-**Why it happens:**
-Shared envelope + per-engine payload invites a "best effort" reader: default unknown fields, skip bad strokes, continue. This project's law is the opposite: `physicsPaintRotoScriptApplyRefusal` class refusals, named visible errors for anything unreadable (53.1 law), and the schema's own `schemaRange` projection exists precisely because silent clamp-and-continue once lost saves.
-
-**How to avoid:**
-Envelope carries a discriminating engine id + opaque payload; Apply validates before mutating anything (atomic refuse, never half-apply — R2.3). Cross-engine pairs get explicit refusal tests (Brush↔Water at minimum). Every refusal surfaces a named visible error, never a console warning. No legacy fallback readers (P5) — a pre-clean-break script refuses with a named error rather than "helpfully" migrating.
-
-**Warning signs:**
-- `catch { /* skip stroke */ }` in Apply
-- Engine id defaulted when missing
-- Apply "success" toast with brushCount mismatch vs the library row
-
-**Phase to address:** Phase 55 (contract R2.3) proven by Phase 56 (second engine live)
-
+**Phase to address:** Phase 60.
 ---
 
 ## Technical Debt Patterns
 
+Shortcuts that look reasonable in the phase and cost later. "Never" means this codebase has already paid for the mistake once.
+
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `preact/compat` import just to keep auto-px / defaultProps | Zero UI edits in 54 | Pulls the compat layer into a codebase that has never needed it; masks the real style/type migration; bundle + semantics drift | Never (prohibition: migrate explicitly) |
-| Inline a temporary `mixHex()` inside efx-watercolor "until 57" | Unblocks 56's mixing week 1 | Two mixing implementations; engine-1 adoption becomes a rewrite; ΔE drift | Never — create `packages/efx-spectral` early instead (decided) |
-| Engine-1 types reused in host payload "for now" (R5.2 format-identical pressure) | Smaller diff in 55 | Engine 2/3 blocked on engine-1 vocabulary; adapter-class rewrite later | Never — format-identical applies to replay pixels, not to type ownership |
-| Keep `timestamp: number` as the replay time authority | No tick conversion work | Non-deterministic bake; cache untrustworthy | Never for host/engine timing (legacy field may persist as engine-1 payload detail only) |
-| Skip the golden bake capture before the 55 move | Faster start | No R5.2 baseline; parity failures unattributable | Never — capture is the first task of 55 |
-| Grow the chunk budget for shaders/spectral data | Quiet green build | Desktop ceiling is a lock (2000 kB, no incremental raises) | Only with an explicit user decision |
-| Best-effort Apply (skip malformed strokes) | Fewer refusal dialogs | Silent data loss; 53.1 violation | Never |
+| Multiply `× zoom` ad hoc at each of the 66 pitch sites | Tiny per-site diff | Divergence at non-1×; the suite stays green because it only tests 18 | **Never** — derive one `framePitch` and pass it |
+| Put sampled motion values in the flattened cache key | No compositor change | One full flattened record per drag step in an unbounded `Map` → WKWebView OOM | **Never** |
+| Bake motion into drawing keys | "It just works" | Re-bake per motion edit; violates the render law; cache churn | **Never** |
+| Restrict motion to loop clips (README default) | No rail-identity work | Bare key rails stay static; a later migration | Acceptable for v1 **only if documented and the UI is honest** |
+| Skip motion blur for rail motion silently | No velocity work | Inconsistent with content layers; users report it as a bug | Acceptable **only as a locked, documented limitation** (Option B in Pitfall 3) |
+| Reuse `pointsToBezierAnchors` for vector strokes | No new fitter | Per-vertex pressure/props dropped; replay drift | **Never** without attribute channels |
+| Deform cached pixels for curve edits | Instant preview | Replay mismatch; lift/transmittance algebra broken | **Never** |
+| Fix the 30 vs 31 row drift inside the zoom phase | One-line cleanup | Cross-cutting visual change mixed with zoom; breaks token tests | Only as a **separate**, pinned change — not smuggled into Phase 60 |
+| Hard-code `+8` / `18` into the new channel-row math | Copies the existing shape | A second unzoomed geometry family in Phase 60 | **Never** — parameterize while writing it |
+| Accept unbounded memo growth "temporarily" | Faster feature | The exact class of prior OOM kills; hard to attribute later | **Never** in this runtime |
+| Persist zoom in `.mce` | "Nice to have" | Violates Phase 60's locked scope; schema/export delta | **Never** in this milestone |
 
 ## Integration Gotchas
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `.mce` package (TS ↔ Rust) | Add script/envelope/brush fields in TS only — serde silently drops them on open | Declare in BOTH TS interface and Rust struct; extend `mceFieldContract.test.ts`; round-trip pin both directions (v1.0.1 law) |
-| `efx-paint-host` ↔ `efx-physic-paint` | Host imports engine (cycle / engine-1 leakage) | Engine consumes host; host is Preact-free with a `./preact` entry (Q3), payload opaque |
-| `efx-watercolor` ↔ `efx-spectral` | Watercolor vendors its own spectral copy | Consume the shared package; create it early inside 56 if needed; engine 1 adopts only in v2.1.0 |
-| Studio bake host ↔ timeline navigation | Hard abort on nav / dispose (PlayScript pattern) for long fluid bakes | `finalizationQueue` pattern: bounded Effect queue, generation-stale, `beginFlush` on nav/close/save/export; PlayScript dispose-abort stays where it is |
-| Paper pack ↔ paints | Paper pack built as watercolour-only, or paper baked into WebP | 10 procedural papers → Studio paper library for ALL paints via `PaperPassTile`; composite-only fond, no rebake |
-| Package/cache IO | Renderer plugin-fs touching package or cache paths | All package/cache IO through Rust (`project_package_fs_scope` — both sides pinned by static scans) |
-| Oracle (`watercolor-playground/`) | Copy shaders because "it's MIT now" before a user decision; or ignore LICENSE evidence and over-clean-room | Re-verify licence at 56 plan time, explicit user decision on P1; attribution/NOTICE whatever is reused; fonts out of scope; Mixbox banned |
-| Preact 11 + lucide-preact / preset-vite / efx-physic-paint peers | Bump preact alone | Resolve Q1/Q2/Q3 in the same change; one preact copy (`pnpm why preact`); `./preact` entry A5 mounts |
+| `_flattenedMemo` ↔ `compositeFrame` | Assume the content revision covers motion | Motion revision term **or** transform-after-lookup; never sampled values in the key |
+| Export sub-frame accumulation ↔ `getFlattenedFrame` | Pass the fractional `physicPaintFrame` straight in | Integer content + fractional transform; a paint-specific sub-frame compose path |
+| `VelocityCache` ↔ paint layers | Assume keyframes describe all motion | Combine layer keyframes × rail motion, or lock the limitation explicitly |
+| Studio child realm ↔ main realm | Add the motion field only to the document revision | Add view-only parts to `buildEfxPaintDocumentSyncFingerprint`; pin a mutation → fingerprint change |
+| `serializeRuntimeIntoDocument` ↔ track revisions | Hand-map frames/roto only | Map the motion model too; compute the dirty token from the same revision (no second flag) |
+| `.mce` TS ↔ Rust field-diff pin | Believe the pin covers the paint document | It does not — paint rides as `serde_json::Value`; extend the pin or add a dedicated round-trip pin |
+| Header column ↔ rows region | Add 18px on one side only, or use `index × 31` | One measured row-offset model shared by both; 18px + 2px gap on both sides |
+| Loop Clip rail ↔ motion | Treat rail-local frame 0 as document frame 0 | Resolve per occurrence via `placementStart` + `cycleOffset`; test occurrence 2 |
+| Sound stain / audio window ↔ zoom | Keep dividing by `ROTO_CELL_WIDTH_PX` | Pass `framePitch`; the stain helpers are already parameterized |
+| Cross-track drag ↔ zoom | Reimplement the pitch math | Reuse `computeInsertionFrame(pointerX, scrollLeft, zoom, framePitch)`, the one hook that already multiplies correctly |
+| Vector preview ↔ bake host | Preview uses live jitter (Math.random) | The preview must render from the same deterministic sample list as the bake |
+| Curve editor ↔ bake queue | Fire bakes without revision checks | Cancel/settle on undo; revision-check before a bake lands |
 
 ## Performance Traps
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Full-doc fluid sim every tick | Studio stutter, GPU busy on dry sheet | Wet-region-only simulation (wet-mask readback), stop when dry (R1.6) | First HD sheet with a small wet patch |
-| Half-float texture set + undo tiles at doc size | WKWebView memory pressure / jetsam | Sheet cap (~2048×1536 class), bounded undo tiles, dispose GL on close/switch, measure before adding papers | Second module open / paper pack in |
-| Re-decoding bake WebPs per timeline paint | Global slowness class (decode storms) | 52.1 bytes/ImageBitmap + Rust WebP + 512 MB LRU — reuse it for engine-2 frames | Any HD multi-frame scrub |
-| Bake output outside the LRU budget | Memory climbs across scripts | Byte-budgeted cache accounting includes engine-2 WebPs | Several 600-frame cuissons |
-| Bundle growth from shaders + spectral data + papers | Silent chunk-size creep | 2000 kB ceiling lock; lazy-load engine-2 shader/paper assets; user decision to move the line | Milestone mid-point, casually |
-| Effect/signal feedback loops in new module UI | Idle CPU growth → OOM (past incident) | `efx-preact-reactivity` laws; no render-body signal writes; idempotent setters | First complex options panel |
+| Memo growth per motion drag step | Memory climbs during a drag; Studio slows over a session | Transform-after-lookup, or motion-revision keys + LRU | Within one drag of a 30-frame HD rail (~100 full records) |
+| Motion re-bake | Seconds per frame, new cache entries per edit | Compositor transform; no re-bake for motion | Immediately on the first animated rail |
+| 4× wide grid with full document extent | Scroll jank, layout thrash | Derive widths from pitch, keep node count = frame count | Long documents at 4× |
+| Per-vertex allocations / DOM in the wireframe preview | Stutter while dragging handles | Cached projected points, single canvas path, redraw on change | Dense curves near `MAX_POLYLINE_POINTS` |
+| Per-sub-frame flattened lookups | Motion-blur export slows / drops paint | One content raster per track + fractional transform | Sub-frame count > 1 |
+| Synchronously invalidating every loop occurrence on a source edit | Edits feel blocked on a long document | Mark dirty, re-bake lazily/queued; pin queue depth | Many occurrences × many frames |
+| Header/rows lockstep measured in the wrong order | Visible 1-frame desync while scrolling | Single model computed once per render; no per-region remeasure | Any expanded rail |
 
 ## Security Mistakes
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Copying oracle/inkwash code without a settled licence decision | Licence violation against project law (P1 is in `must_haves`) | Licence re-verification + explicit user decision at 56 plan time; until then method-only; keep attribution records |
-| Shipping spectral data / mixing code without MIT attribution | Licence breach even when reuse is allowed | `NOTICE` in `packages/efx-spectral` (Q6); THIRD_PARTY_NOTICES-style record of upstream origins |
-| Pulling Mixbox code/LUTs/spectra into the mixing path | CC BY-NC contamination (banned project-wide) | Q6 = spectral.js only; code review gate on the mixing package's provenance |
-| Importing single-line fonts/text tools with the engine port | SIL OFL / Hershey obligations smuggled in; out of scope | Text/Shape/Hand are out of v1.1.0 scope (locked); don't vendor `public/fonts/` |
-| Renderer fs access to package/cache paths from new engine code | Crosses the plugin-fs scope law | All package/cache IO through Rust; static scans cover new packages too |
+| Trusting motion fields loaded from `.mce` (opaque `serde_json::Value`) | NaN/Infinity or wrong-typed transforms reach the compositor; malformed payloads crash or corrupt the document | Validate fail-closed on load: reject or deterministically drop the motion block; never partial-apply |
+| Bypassing the fail-closed script Apply for vector payloads | Malformed vector strokes execute in the engine | Serialize through the same envelope/validation; reject with a real reason |
+| Accepting partial motion data from the child realm | Studio and main diverge silently | Sync fingerprint + revision gates; a rejected sync must keep the old state, not a half-applied one |
+| Adding a new local IPC/API surface for motion without the existing validation | Widens the trust boundary | Reuse the existing store/controller seam; no new ad-hoc endpoints in these phases |
 
 ## UX Pitfalls
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Silent success on unreadable/foreign-engine scripts | User loses marks with no explanation | Fail-closed Apply + named visible error (53.1 law); refuse, never half-apply |
-| Forcing Dry at frame boundaries for bake simplicity | Kills blooms/tide lines — the look they bought the engine for | Per-stroke `diffusionFrames` evolution; A3 UAT asserts the bloom survives into baked frames |
-| Paper baked into paint / rebake on paper change | Compose becomes destructive; paper exploration is slow | Composite-only `paperPass` fond; tile swap; document-level paper state (undo + save) |
-| Module switch mid-bake losing the cuisson | Lost work, torn frames | `finalizationQueue` flush/stale-generation on switch; A3-style "come back to a finished bake" row for the switcher too |
-| Options panels writing into shared Studio/global state | Wrong module's parameters change; play globals stomp per-stroke props | Drain module options into per-engine payload/`toolOverrides` only |
-| Unguarded global shortcuts during paint/module focus | Surprise tool changes (known S-key class) | Gate `shortcuts.ts` on active module/edit mode |
-| Krita shown as if it works in v2.0.0 | Broken third module discovered by users | Ship Brush + Water color; the third slot is the v2.1.0 design reserve, not a fake control |
+| A toggle that promises channels with no data | User clicks, nothing happens, trust erodes | Grey `minus` + `aria-disabled` with the real reason (README UAT 6) |
+| Active-track motion jumps on Play | Reads as "the app is broken", not "a bug in a new feature" | Fix Pitfall 4 before any visual polish |
+| Expanding a rail hides the previous one without a cue | Users think their keys disappeared | Expanding the selected rail collapses the other; keep the selection outline visible (design default) |
+| Curve edit changes the stroke's texture | User believes the edit destroyed their art | Preserve point order when possible; otherwise preview before commit |
+| Zoom teleports the viewport | User loses their place while navigating | Anchor on the frame under the cursor/centre |
+| Motion-key nav buttons silently no-op | User cannot tell missing plumbing from a bug | Disable with a real reason when the store action is absent |
+| Ruler labels collide at 0.25× | Timeline becomes unreadable at the zoom-out users try first | Adaptive label step, fixed tick pitch |
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Preact 11 bump:** suite green ≠ signals work — verify probe + live A1–A5 rows; check one preact copy; `./preact` entry mounts
-- [ ] **paintVersion discipline:** confirm no subscription was rewritten into effect cleanups; A4 open/close leaves no zombie effect
-- [ ] **Numeric styles:** Studio chrome visually verified (swatches/steppers sized); unitless props not px-ified
-- [ ] **Host split:** R5.2 measured against a **pre-move** golden (not "tests pass"); A5 fake engine-2 payload compiles with zero engine-1 types
-- [ ] **Brush-pack snapshot:** still embedded in `.mce`; every new field declared in TS **and** Rust with a round-trip pin
-- [ ] **Bake host:** leave-frame mid-bake completes (A3); dispose still aborts what should abort; no new cancellation model
-- [ ] **Tick/seed law:** grep gate clean for `Math.random`/`performance.now` in deposit+sim; A2 two bakes identical (or delta under the stated threshold)
-- [ ] **Watercolour look:** A3 bloom + tide line visible in **baked** frames — not just while painting live
-- [ ] **Paper:** transparent WebPs; paper swap does not rebake; 10 papers usable from **every** paint; paper state in undo/save
-- [ ] **Spectral:** one package, one basis source, CPU/GPU parity test, `NOTICE` shipped, no second mix helper
-- [ ] **Apply:** cross-engine refusal tested with named visible errors; no best-effort skip
-- [ ] **Switcher:** one Studio engine; two modules only; shortcuts gated; no krita code
-- [ ] **Licence:** 56 plan carries an explicit licence re-check + user decision row (P1 outcome recorded in Key Decisions)
+- [ ] **Motion cache:** A Motion-key edit updates the composite — and `_flattenedMemo.size` does **not** grow per drag step.
+- [ ] **Persistence:** Reopen the project → every Motion key is at the same frame with the same curve; the document revision and sync fingerprint changed when it was edited.
+- [ ] **Cross-realm:** Studio-side motion shows in the main window without a reload.
+- [ ] **Export:** Motion-blur export contains paint on every sub-frame; the frame count matches the blur-off export.
+- [ ] **Active track:** Edit mode, Play, and PNG export agree for the **active** animated track.
+- [ ] **Identity:** Delete the first drawing key, split a rail, copy/paste, undo — motion travels with its rail or is explicitly dropped.
+- [ ] **Loop occurrence:** Hold and fit-to-span are correct on occurrence 2, not only occurrence 1.
+- [ ] **Zoom matrix:** At 0.25/0.5/1/2/4×: playhead centred, hit-test exact, ruler ticks cell-aligned, sound stain aligned, Loop Clip width correct, audio window correct.
+- [ ] **Row lockstep:** Expanding a rail adds exactly 18px per channel to **both** header and rows, plus the 2px gap; the reorder indicator uses measured offsets.
+- [ ] **Vector replay:** The same vector stroke bakes to the same raster hash across two runs, after undo/redo, and after reopen; per-vertex properties survive.
+- [ ] **Curve edit:** The edited stroke re-bakes from the recovered base; lift-stamped regions survive; every loop occurrence updates; undo cannot leave a stale bake.
+- [ ] **Schema law:** Any `.mce` motion field has a real TS↔Rust pin (or a documented round-trip pin), not just the passing `mceFieldContract.test.ts`.
+- [ ] **Scope law:** Zoom changes nothing in the document or export; no motion fields are merged with `PhysicPaintRotoScriptMotionSettings`.
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Signals red on Preact 11 probe | HIGH (milestone re-plan) | STOP as R1.2 says; escalate as blocking decision; do not shim. Re-sequence: engines can still be designed against the host contract while the bump is re-scoped |
-| paintVersion regressions after bump | MEDIUM | Revert the cleanup rewrites (git is the truth — the freeze-list diff shows them); re-run A1–A4; re-apply only mechanical R2 items |
-| R5.2 parity failure after the split | MEDIUM | Bisect the move commits against the pre-split golden; fix drift at the source (seed/iteration/defaults); never add a dual reader |
-| Engine-1 types leaked into host | HIGH | Cut the type ownership over to host-defined payload interfaces before engine 2 code starts; A5 becomes the regression pin |
-| Oracle code copied under stale P1 | HIGH (legal + trust) | Revert the copies immediately; re-run clean-room from method notes; surface to user for the licence decision before any re-land |
-| Non-deterministic bake discovered mid-56 | HIGH | Introduce seeded draws + tick grid at the deposit/sim seam; rebaseline goldens deliberately (clean break accepted); A1/A2 re-run |
-| WKWebView OOM with wet-field engine | MEDIUM | Apply reference perf laws (wet-region sim, sheet cap, bounded undo); dispose GL on switch/close; measure before resuming features |
-| Chunk budget blown | LOW–MEDIUM | Lazy-load engine-2 assets; if the line must move, it is an explicit user decision, not a drive-by bump |
+| Stale composite after a Motion-key edit | LOW | Clear the affected memo (document-write path already does), then fix the key/revision seam |
+| Paint missing in sub-frame export | MEDIUM | Add the integer-content + fractional-transform path; re-export; verify frame count |
+| Memo OOM / runaway growth | HIGH | Bound the memo (LRU), remove sampled values from keys, restart the Studio; verify memory across a scrub |
+| Motion lost on reopen | MEDIUM | Audit the four carriers (`serializeRuntimeIntoDocument`, content encoder, sync fingerprint, change token); migration is **not** available — no backward compat for old projects |
+| Rail identity orphaned (split/delete-first-key) | HIGH | Prefer a durable `railId`; if motion was restricted to loop clips, re-attach by `loopId`; add repair-on-load only if the data cannot be reconstructed |
+| Zoom misalignment | LOW–MEDIUM | Collapse to one `framePitch` seam; rerun the zoom matrix; fix the half-cell offset formula |
+| Vector replay drift | MEDIUM | Fix the sampling law; re-bake affected strokes from the script; compare hashes |
+| Pixel-deformed stroke after an in-place curve edit | HIGH | Recover from the durable pre-script base, replay, accept that the pre-edit bake is lost; block in-place edits in code |
+| Stale loop occurrence after a source edit | LOW | Invalidate all occurrences by revision; re-bake on demand |
 
 ## Pitfall-to-Phase Mapping
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| 1 — signals peer range trusted | Phase 54 | R1.1 probe green before bump; R1.2 stop-if-red honored |
-| 2 — paintVersion → effect cleanups | Phase 54 | Diff freeze on subscription shape; UAT A4 |
-| 3 — auto-px / JSX namespace / RefObject types | Phase 54 | Property-aware migration; typecheck green; visual Studio UAT A1–A3 |
-| 4 — ESM-only / two preacts | Phase 54 | `pnpm why preact` single copy; A5 `./preact` entry mounts |
-| 5 — 55 opens before live UAT | Phase 54 exit gate | R4.2 rows user-asserted before 55 opens |
-| 6 — engine params in host API | Phase 55 | A5 fake engine-2 payload; R2.2 review gate |
-| 7 — replay parity drift / compat shims | Phase 55 | R5.2 delta vs pre-move golden; A4 save/reopen; no legacy readers in diff |
-| 8 — brush-pack ref / silent field loss | Phase 55 + 56 | Snapshot still embedded; mceFieldContract extended; round-trip pins |
-| 9 — new cancellation model | Phase 55 | A3 leave-frame mid-bake; `efx-async-orchestration` review |
-| 10 — wall-clock / unseeded RNG | Phase 55 + 56 | Tick grid + traceSeed; grep gate; A2 determinism row |
-| 11 — oracle non-determinism ported | Phase 56 | Seeded draws reproduce look; A1–A3 rows; stated pixel-delta policy |
-| 12 — stale licence premise | Phase 56 (plan time) | Licence re-check row + explicit user decision recorded; P1 outcome in Key Decisions |
-| 13 — paper baked / forced Dry / live sim | Phase 56 | A5 transparent export; no rebake on paper; cache-only timeline |
-| 14 — GPU/texture footprint | Phase 56 | Perf laws as acceptance rows; footprint measurement; chunk gate green |
-| 15 — switcher forks Studio / ships Krita | Phase 56 switcher slice | One Studio engine; two modules; shortcut gating; no krita imports |
-| 16 — duplicated/misplaced spectral mixing | Phase 56 early / 57 | Single package; CPU/GPU parity test; NOTICE shipped |
-| 17 — fail-closed Apply erosion | Phase 55 + 56 | Cross-engine refusal tests; named visible errors |
+| 1. Motion missing from the cache key / memo explosion | Phase 59 | Pin test: key edit changes the composite; memo size flat across a drag |
+| 2. Fractional sub-frame paint loss | Phase 59 | Motion-blur on/off export parity, frame count match |
+| 3. Motion blur blind to rail motion | Phase 59 | Velocity non-zero for a motion-only rail (or the limitation is locked + documented) |
+| 4. Active-track live-overlay drift | Phase 59 | Edit → Play → export frame equality on the active animated track |
+| 5. Two-stage resample at scale/rotation (Gate D) | Phase 59 | Measured memory + cropped 1×/2×/4× comparison; Gate D answered in the plan |
+| 6. Motion persistence / sync carriers | Phase 59 | Revision + sync fingerprint + change token all rotate; reopen test; `.mce` round-trip pin |
+| 7. Drawing-key-derived rail identity (Gate B) | Phase 59 | delete-first-key / split / copy-paste / undo tests; occurrence-2 hold & fit tests |
+| 8. The 66-site 18px pitch | Phase 60 | Zoom matrix at 0.25/0.5/1/2/4× (playhead, hit-test, ruler, stain, Loop Clip, audio) |
+| 9. Half-cell offset + 31/30 drift + index offsets | Phase 59 (measured offsets), Phase 60 (zoom-invariant) | Header/rows lockstep at 3 and 4 channels; indicator never inside a block; outline height from live row height |
+| 10. Zoom materialization / scroll anchor / ruler labels | Phase 60 | Anchor frame preserved at both edges; labels legible at 0.25×; Fit clamps |
+| 11. Vector determinism and payload | Phase 61 | Same stroke → same raster hash across runs/reopen; per-vertex props survive; fail-closed Apply |
+| 12. Curve-editing baked strokes | Phase 62 | Re-bake from recovered base; lift survives; loop occurrences update; undo cancels in-flight bakes |
+| 13. Two motion systems collide | Phase 59 | Static scan: the two settings types never import each other; script replay unchanged |
+| 14. Channel-set contract vs mockup | Phase 59 | Rendered channel list pinned in a test; UAT asserts the rows |
+| 15. Zoom in the document | Phase 60 | Document revision and export fingerprint unchanged after zoom; no schema diff |
 
 ## Sources
 
-- `SPECS/v1.1.0-preact11/context.md` (R1–R4, prohibitions, ambiguity Q1–Q3) — HIGH
-- `SPECS/v1.1.0-paint-host/context.md` (R1–R5, A5, prohibitions) — HIGH
-- `SPECS/v1.1.0-water-color/00-grill-context.md` + `01-gsd-context.md` (bake model lock, licence table, algorithm map, P1–P7, R1–R4) — HIGH
-- `.planning/PROJECT.md` Key Decisions + Known Debt (incidents: decode storms, OOM, adapter failure 27–32, PKG-06 serde drops, hide/solo duplication, unguarded shortcuts) — HIGH
-- Preact 11 upgrade guide — https://preactjs.com/guide/v11/upgrade-guide/ (verified 2026-10-14) — HIGH
-- `@preact/signals` peer range — https://github.com/preactjs/signals `packages/preact/package.json` (`preact >= 10.25.0 || >= 11.0.0-0`; no prose compat statement) — HIGH
-- Oracle on disk: `SPECS/v1.1.0-water-color/watercolor-playground/` — `LICENSE` (MIT, Maksim Surguy 2026), `THIRD_PARTY_NOTICES.md`, `src/engine/Engine.ts` (Math.random/performance.now sites), `spectral.ts`/`spectralData.ts`, `papers.ts` — HIGH
-- Codebase seams: `packages/efx-physic-paint/src/util/traceSeed.ts`, `src/animation/`, `app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts`, `physicsPaintRotoPlayScriptController.ts`, `app/src/components/physic-paint/pilot/finalizationQueue.ts`, `app/src/lib/mceFieldContract.test.ts`, `app/src/lib/paperPass.ts`, `app/vite.config.ts` (chunk ceiling 2000) — HIGH
-- Project memory laws: `feedback_paintversion`, `feedback_no_usestate_only_signals`, `feedback_live_evidence_over_unit_probes`, `feedback_chunk_budget_desktop`, `feedback_image_decode_cache`, `project_package_fs_scope`, `feedback_shortcuts`, `feedback_no_backward_compat` — HIGH
-- GPU bit-stability of float pipelines (general rendering knowledge; not re-verified against a specific driver matrix) — LOW–MEDIUM: treat as a design constraint to specify (tolerance / reference path), not as a measured claim
+Code verified on disk (2026-11-06):
+
+- `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` — `ROTO_CELL_WIDTH_PX` (56 refs), `RULER_STEP`, `RULER_TICK_WIDTH_PX`, `STRIP_ROW_HEIGHT_PX = 31`, playhead `+8` offset, `gridTemplateColumns`, scroll-to-frame, drag/hit-test math, ghost/set-drag previews, Loop Clip `framePitch`
+- `app/src/components/physic-paint/view/physicsPaintTrackHeaderColumn.tsx` — `HEADER_ROW_HEIGHT_PX = 31`, `index × 31` reorder indicator
+- `app/src/components/physic-paint/view/timelineRailDesign.ts` — `TIMELINE_GEOMETRY.rowHeight = 30`, `cellPitch = 18`, `motionLaneHeight = 18`
+- `app/src/components/physic-paint/physicsPaintStudio.css` — 31px row rules
+- `app/src/efx-paint/compositor/efxPaintCompositeCache.ts` — flattened key terms (no motion term), unbounded `createKeyedMemo`
+- `app/src/efx-paint/compositor/efxPaintCompositor.ts` — per-track `drawImage`, no transform stage
+- `app/src/stores/physicPaintStore.ts` — `_resolveFlattenedFrame` integer guard, `_flattenedMemo`, `getFlattenedFrame*`, `serializeRuntimeIntoDocument`
+- `app/src/efx-paint/document/efxPaintDocumentRevision.ts` — content encoder, `computeDocumentRevision`, `buildEfxPaintDocumentSyncFingerprint`, `buildEfxPaintCompositeRevision`
+- `app/src/lib/previewRenderer.ts` — paint branch without `layer.transform`; motion-blur block limited to keyframed content layers
+- `app/src/lib/exportRenderer.ts` — sub-frame accumulation passing fractional `physicPaintFrame`
+- `app/src/lib/motionBlurEngine.ts` — `VelocityCache`/`isStationary` from `KeyframeValues`
+- `app/src/lib/mceFieldContract.test.ts`; `app/src-tauri/src/models/project.rs` (`HashMap<String, Value>` paint carriers); `app/src/types/project.ts` (`efxPaint?: Record<string, unknown>`)
+- `app/src/components/physic-paint/hooks/usePhysicsPaintCrossTrackDrag.ts` — existing `zoom` seam and `framePitch × zoom`
+- `app/src/components/physic-paint/view/physicsPaintAudioController.ts`, `soundBandGeometry.ts`, `physicsPaintLoopClipPresentation.ts` — pitch consumers
+- `packages/efx-watercolor/src/engine/deposit.ts` — sequential `seededRng(traceSeed, 'deposit')`
+- `packages/efx-paint-host/src/util/traceSeed.ts` — `hashMutationId` / `mixStrokeSeed`, host-vs-engine draw keying
+- `app/src/components/physic-paint/roto/aquarelleBaseRecovery.ts`, `aquarelleLiftErase.ts` — base recovery and transmittance punch
+- `app/src/lib/bezierPath.ts`, `app/src/types/paint.ts` — `pointsToBezierAnchors` (2D only, drops pressure), `BezierAnchor`, `MAX_POLYLINE_POINTS = 96`
+- `app/src/components/physic-paint/view/PhysicsPaintProgramMonitor.tsx` — `getFlattenedFrameExcluding` live-overlay path
+
+Specs and planning:
+
+- `SPECS/v2.1.0-motion-channels/CONTEXT.md` — §3 v3 model, §3.5 render law, §3.6 Gates A–D, §5.6 locked zoom scope
+- `SPECS/v2.1.0-motion-channels/README.md` — §2 geometry, §3 toggle state machine, §4 integration map, §5 UAT, §6 open decisions
+- `.planning/PROJECT.md` — v2.1.0 scope (Phases 59–62, API/MCP at 63), constraints (dual-language `.mce`, 60 Hz determinism, one `preact` copy), known debt (VIS-02 row height, rail accent, dual paper fingerprint), the `PhysicPaintRotoScriptMotionSettings` separation constraint
+- `.planning/ROADMAP.md` — phase numbering (59 next; 57 retired, never reused)
 
 ---
-*Pitfalls research for: v2.0.0 multi-module paint workstation — Preact 11 bump, efx-paint-host split, efx-watercolor engine, efx-spectral package, module switcher*
-*Researched: 2026-10-14*
+
+*Pitfalls research for: EFX-Motion Editor v2.1.0 — rail motion channels, Studio timeline zoom, vector painting, painted-stroke curve editing*
+*Researched: 2026-11-06*

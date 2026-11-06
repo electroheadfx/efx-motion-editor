@@ -1,321 +1,479 @@
 # Feature Research
 
-**Domain:** Multi-module paint workstation (v2.0.0) — module switcher, watercolor engine, spectral pigment mixing, procedural paper pack
-**Researched:** 2026-10-14
-**Confidence:** HIGH on oracle/local facts (specs + `SPECS/v1.1.0-water-color/watercolor-playground/` tree read directly); MEDIUM on competitor/"generally" tier (Rebelle page fetched; Krita/CSP/Procreate knowledge tier, docs URLs 404'd)
+**Domain:** v2.1.0 — rail motion channels, timeline horizontal zoom, vector painting tool, painted-stroke curve editing
+**Researched:** 2026-11-06
+**Confidence:** MEDIUM overall — HIGH on local codebase facts (read directly), MEDIUM on official-documentation claims (Toon Boom, Adobe, Krita, Inkscape, TVPaint, Premiere, Dragonframe docs), LOW on knowledge-tier comparisons where no doc was fetched (marked).
 
-**Evidence tiers used throughout (quality gate):**
-- **[ORACLE]** — `msurguy/watercolor-playground` local tree demonstrates it (method + observable behaviour only; the repo is unlicensed — clean-room rule stands).
-- **[GENERAL]** — watercolor / paint apps generally do it (Rebelle confirmed on their site; Krita, Expresii, Clip Studio, Procreate on knowledge tier).
-- **[OOS]** — plausible but explicitly out of v2.0.0 scope (locked in specs / PROJECT.md).
+**Evidence tiers (quality gate):**
+- **[CODE]** — verified in this repository (HIGH).
+- **[DOC]** — official vendor documentation or manual fetched during this research (MEDIUM; single-source web tier per the seam).
+- **[X]** — cross-checked across two or more independent sources (MEDIUM).
+- **[K]** — knowledge-tier general industry behaviour, not fetched (LOW; never used alone to justify a requirement).
+
+**Scope rule:** only the four *new* capabilities. Existing features (multi-track paint document, paint keys, Loop Clips, compositor, per-stroke script replay, playback/export, undo/redo) are treated as dependencies, not re-researched.
 
 ---
 
-## Feature Landscape
+## Capability 1 — Per-rail 2D transform animation with independent animation keys
 
-### (a) Module switcher over ONE shared Studio engine
+### 1.1 What "correct" looks like, concretely
 
-The switcher is a **surface control, not a document control**. Locked law: modules change the options/features surface drained into the panels; the Studio engine (script record, bake, cache, timeline) is shared and does not fork.
+The rail is the animated object. Position, scale, rotation, opacity are rail channels. Motion keys are authored on those channels and are *independent of drawing keys* — Toon Boom Harmony's peg/drawing split is the exact precedent: a peg carries position, rotation, scale, skew, pivot and matrix, while drawing keys decide **which drawing is exposed** (F5 exposure, F6 keyframe, F7 delete) [DOC: Harmony 20 "Animating with Keyframes", Harmony 24 PegNode]. Harmony even ships a script to rescue users who accidentally keyed transforms on drawings instead of pegs — the failure mode is real and common.
 
-#### Table Stakes (Users Expect These)
+Behaviours that make the model feel professional:
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Top-bar MODULE SWITCHER icon near existing icons, three named slots "Brush \| Water color \| Krita" | The milestone's headline; users must see the product is multi-module | LOW | Placement/iconography/grouping are discuss-phase gray zones (DECIDED 2026-10-14) — do NOT pre-decide layout here |
-| Krita slot visible but inert ("coming in v2.1.0") | Switcher is designed for three modules; shipping two with a dead third slot is honest | LOW | **Do NOT implement krita** — slot only. Disabled-state styling + tooltip is enough |
-| Switching drains the selected module's OWN options into the panels (brush pack + option surface) | Locked: "each module drains its OWN options/features into the panels" | MEDIUM | Needs a declarative per-module panel descriptor (brush list + slider/option set) so adding Krita later is additive, not a rewrite |
-| ONE shared Studio engine — script, cache, timeline unchanged by the switcher | Locked architecture invariant | LOW (if respected) | The temptation to fork Studio per module is the main architecture risk |
-| Module-specific brush pack visible after switch (Brush = existing engine-1 brushes; Water color = 14 tips + custom) | A switcher that does not change what you can paint with is a dead control | MEDIUM | Brush pack snapshot travels in `.mce` per R1.7 (deliberate exception to 52.2 refs-only law) |
-| Fail-closed cross-engine behaviour | Already specified for script Apply (`physicsPaintRotoScriptApplyRefusal` class) | MEDIUM | Extend the same class to "drawing target" honesty: a module's strokes land on that engine's paint kind; unreadable/cross-engine scripts refuse with a named visible error (53.1 law) |
+1. **Independent key tracks.** A Motion key exists on a channel at a rail-local frame with no drawing key present. [context]
+2. **Value at frame.** Adding a key captures the channel's current evaluated value; editing the value at a frame where a key exists updates that key; editing at a frame without a key while the channel is already animated creates a key (After Effects stopwatch semantics) [DOC: AE reference]. Harmony's alternative — transform only in "Animate" mode, otherwise the whole peg gets a global offset — ships a dedicated preference to disable accidental key creation [DOC: Harmony 25 "Disabling Animation Keyframe Creation When Transforming Elements"]. Pick one, make it visible.
+3. **Endpoint hold.** Before the first key the value holds at the first key; after the last key it holds at the last key. This is standard AE/Harmony behaviour and is what makes a rail with one key simply "offset" rather than "animated." [X]
+4. **Unbounded rotation.** Rotation is not normalised: 0°, 360°, 720° are three different keys and interpolate linearly through the turns. After Effects rotation is multi-turn by default; normalising to 0..360 is what produces the classic "spins backwards" bug. [X]
+5. **Pivot exists and is time-invariant.** Scale and rotation need an anchor. Harmony requires pivots to be set before animating; the default is canvas centre (0,0), with Advanced Animation tools to move it [DOC: Harmony 20]. The pivot must be defined in the **rail's coordinate frame**, never recomputed from each frame's tight raster bounds — otherwise a cycling drawing makes the pivot jitter and the rail wobbles. Gate D's "scale/rotation resample the raster" is the quality consequence of a raster compositor [context].
+6. **Transform at the compositor.** Motion is applied when resolving the track raster, so a cycled rail keeps cycling its drawing content while the transform interpolates across the whole occurrence; no re-bake. [context; matches AE precomp "transform outside, content inside"]
+7. **Preview equals export.** One evaluator used by Studio preview and export (the project's existing preview/export parity law). Seeded wiggle must produce identical frame values at export. [context]
+8. **Position modes.** Default grouped (one Position lane), with a split X/Y mode for per-axis timing. Precedents: AE "Separate Dimensions" (right-click Position, or the Graph Editor button) [DOC: AE reference]; Harmony "Separate Positions" and "Separate Scales" checkboxes, with separate scales explicitly recommended for squash/stretch [DOC: Harmony docs]. Note that the project's existing `PhotoReferenceTransform` already carries `x, y, scaleX, scaleY, rotation` [CODE: `app/src/efx-paint/document/efxPaintDocument.ts:144`], so split scale is a naming question, not a new concept.
+9. **Repeat semantics.** "hold" vs "fit-to-span" correspond to the two classic ways of putting a motion inside a repeated block: the motion plays per authored span and holds at its end value for the remaining repeats (a precomp whose own timeline stops advancing), or the whole motion is time-scaled across the full repeated occurrence (AE time-remap stretch). The exact interpretation must be settled by Gate C in Phase 59; do not ship both silently.
 
-**Expected user-visible behaviour when switching mid-document (recommended default; exact UX is discuss-phase):**
-1. Canvas, timeline, caches, Loop Clips, export — completely untouched. No rebake, no reload, no document mutation.
-2. Panels repopulate: brush library + option sliders change to the selected module's surface. Panel layout grouping is a gray zone (user decides at integration).
-3. Existing layers keep their engine identity forever. A Physics-layer stroke stays physics; an aquarelle-layer stroke stays aquarelle.
-4. The switcher sets the **intent for the next stroke / next created paint layer**, not a conversion of what exists. (Recommended: creating a paint layer while a module is active defaults to that module's kind; naming of the 4th layer kind is UI-SPEC scope per Q7.)
-5. Script Apply stays fail-closed across engines: a watercolour script refuses onto a Brush-module layer and vice versa, with a named error — never half-applies.
-6. Undo/redo, save/reopen and `.mce` are unaffected by switcher position (session/tool state, not document authority). Whether the active module persists across reopen is a gray zone — recommend session-only, consistent with other tool state.
+### 1.2 Table stakes
 
-#### Differentiators
+| Feature | Why Expected | Complexity | Notes / dependency |
+|---|---|---|---|
+| Motion keys independent of drawing keys | The milestone's core semantic; keying a transform must not require a drawing | HIGH | Needs per-rail motion data keyed by stable rail identity (Gate B), plus `.mce` TS+Rust declaration |
+| Key at current frame via lane nav diamond | The only way to add a key without touching the canvas | MEDIUM | README §4: routes through store/controller seam, else disabled with a real reason |
+| Add/edit Motion key from the on-canvas gizmo | Animators expect to move the thing, not type numbers | MEDIUM | Reuse `canvas/transformHandles.ts` + `PhysicsPaintReferenceTransformHandles.tsx` pattern [CODE] |
+| Numeric channel entry (per channel, at cursor frame) | Precision on a 6 px timeline key is impossible otherwise | MEDIUM | Route through the same upsert path; one undo command |
+| Position grouped, split X/Y optional | Per-axis timing is how arcs, bounces, and holds are made | MEDIUM | AE Separate Dimensions / Harmony Separate Positions [DOC] |
+| Scale, Rotation, Opacity channels | The v3 transform set; Scale is missing from the v7 mockup and must be added | MEDIUM | Per-channel lane + header row; v7 geometry is `30 + 18 × channels` |
+| Endpoint hold outside the keyed range | Otherwise a one-key rail does nothing visible | LOW | Evaluator clamp |
+| Hold (constant) segment | Step motion is fundamental to stop-motion | LOW | AE hold keyframe; Harmony stop-motion keyframe (red) [DOC]; Spine `CURVE_STEPPED` [X] |
+| Ease on a Motion key | The default reason to touch interpolation | MEDIUM | AE Easy Ease sets speed 0 / influence 33.33% on both sides [DOC] |
+| Prev/next Motion key navigation per channel | Required by the v7 nav cluster | LOW | Needs a key navigator in the store, not view-local scanning |
+| Delete Motion key, one undo step | Basic edit law | LOW | Existing history command pattern |
+| Collapsed-state "this rail is animated" signal | Explicit v3 requirement: animated without opening lanes | LOW | Chevron state + colour (v7). See §1.4 |
+| Pivot default and correctness | Rotation/scale are wrong or jittery without it | MEDIUM | Time-invariant pivot in rail space; document or expose offset |
+| Compositor-applied transform (no re-bake) | Content cycles, motion continues; re-baking per frame would be O(frames × bake) | HIGH | `getFlattenedFrame` is the only content path [CODE]; the transform must apply there and in export |
+| Preview = export transform | A drift here is a silent delivery bug | MEDIUM | One evaluator; pin with a parity test |
+| Motion persistence in `.mce` | Motion is document data | MEDIUM | Every field declared in TS **and** Rust under `mceFieldContract.test.ts` |
+| Undo/redo per key operation | Existing product law | MEDIUM | One atomic command per add/delete/move/ease |
+
+### 1.3 Differentiators
 
 | Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Property-rich option surface per module (aquarelle exposes 8 global params + per-brush multipliers; krita later exposes .myb property stacks) | The whole point of modules: one engine, distinct craft surfaces | MEDIUM–HIGH | The option-surface contract is the real design work of the switcher, not the icon |
-| Per-engine stroke payload in one shared script envelope | Scripts remain first-class Studio artefacts across modules without a parallel library | MEDIUM | Locked: shared envelope + per-engine payload; rejected flat `PaintScript` and standalone `WatercolorScript` |
-| Brush pack snapshot in `.mce` per module | Old scripts replay identically after the app pack evolves | LOW–MEDIUM | Locked exception to refs-only law — do not "fix" into a reference |
-| Third-module readiness proven by two | Shipping 2 of 3 modules through the same seam proves the seam before Krita lands in v2.1.0 | — | Free if the descriptor contract is honest |
+|---|---|---|---|
+| Seeded Wiggle on a Motion key | The "alive" quality stop-motion needs, deterministic at export | MEDIUM | See §2.4; AE `wiggle(freq, amp)` + `seedRandom` is the reference [DOC] |
+| Stepped wiggle (held poses, not per-frame jitter) | Matches the stop-motion look and the project's established held-pose determinism | LOW–MEDIUM | AE `posterizeTime` / quantised-time wiggle is the analogue [DOC]; expose a "step" in frames |
+| Split position with per-axis key counts in one lane header | Compact, v7-shaped, better than two full lanes | MEDIUM | Lane sparkline can overlay X and Y |
+| Lane sparkline of the actual curve | Makes interpolation legible without a graph editor | MEDIUM | v7 already draws 1.5 px curves; must be data-driven, never decorative [README §6.3] |
+| Copy/paste Motion keys across rails | Duplicating a camera move or a float pattern | MEDIUM | Frame-relative paste, fresh identity, one undo |
+| Motion path on canvas (spatial Bezier) | Curved arcs without faking them with split X/Y | HIGH | AE spatial vs temporal independence [DOC]; defer past v1 |
+| Ease preset intensity (0–100%) | Faster than handle editing for "a bit more ease" | LOW | Superset of AE influence |
 
-#### Anti-Features
+### 1.4 Discoverability — what "one lane per channel, opened on demand" implies
+
+This is the highest-risk usability decision in the milestone, because the v3/v7 model deliberately hides lanes by default.
+
+1. **Collapsed rails must self-announce animation.** The only in-row signals are the chevron glyph (`minus` / `right` / `down`) and its colour [README §3]. That is defensible **only** because v3 explicitly requires "a rail must read as animated without opening its lanes" [CONTEXT §3.5]. Do not copy After Effects here: in AE, collapsing a property group hides every keyframe, and the only remaining cue is the motion path in the Composition panel — a recurring complaint in graph-editor guides [X].
+2. **Harmony is the better model:** peg keyframes are visible on the peg row whether or not the Function view is open [DOC]. Our equivalent is the rail row's chevron colour plus a key count that becomes discoverable after one click.
+3. **The empty state needs an action, not a passive chevron.** A grey `minus` that "does nothing" [README §3] teaches users the feature does not exist. The v3 action bar had `Animate`; AE has the property stopwatch; Harmony has Animate mode + F6. Recommendation: keep one rail-scope **Animate** command that (a) creates the first Motion key at the cursor frame on the channel(s) the user is about to touch, or (b) at minimum opens the lane block with an armed empty state. Without this, "opened on demand" equals "never opened."
+4. **One control, two scopes.** The chevron lives in the **track** header, but expansion belongs to the **selected rail** [README §3]. When no rail is selected, the meaning of "expand" is undefined; the control must either select the track's active rail first or be disabled with a real reason — never act on an invisible subject.
+5. **Lanes never change selection scope** [CONTEXT §3.4] is correct and should be stated in the empty state copy: clicking a lane adds/edits a Motion key, it does not turn the rail into a motion selection.
+6. **One open block at a time** (selection-owned expansion) is a deliberate simplification. AE and Harmony allow many groups open at once; the tradeoff is losing cross-rail comparison. Ship one, but the store shape should not make "several expanded" impossible later.
+7. **Header/lane lockstep must be exact.** Pinned header rows and lane rows scroll independently; any 18 px drift reads as a broken feature and makes the nav cluster target the wrong channel [README §4].
+8. **Target asymmetry.** Drawing cells are 16×22, Motion keys are 6×6 [README §2]. v2 already recorded the lesson: "the rail is a big target, keys are 8 px targets — no group drag when aiming at a key." Add hover affordances and never let a rail-body drag start inside a key/handle hit radius.
+9. **The action bar is the teaching surface.** Three scopes with three distinct command sets (rail: Animate/Transform/Edit/Delete; drawing key: Edit drawing/Duplicate/Delete; motion key: Ease/Wiggle/Hold/Delete) [CONTEXT §3.2]. Ease/Wiggle/Hold appearing **only** in the motion-key scope is itself the rule made visible — do not also expose them on the rail body "for convenience."
+
+### 1.5 The Ease / Wiggle / Hold ownership rule (locked, and why it is right)
+
+| Command | Attaches to | Applies to | Segment semantics | Real-tool precedent |
+|---|---|---|---|---|
+| **Ease** | Motion key | The rail transform | Eases the segment(s) adjacent to the key; symmetric by default, per-side later | AE Easy Ease + influence; Harmony velocity/bezier handles [DOC] |
+| **Hold** | Motion key (outgoing) | The rail transform | Value stays constant from this key to the next (a step), then jumps | AE hold keyframe; Harmony stop-motion keyframe; Spine stepped [DOC/X] |
+| **Wiggle** | Motion key | The rail transform | Deterministic noise added to the interpolated baseline for that segment | AE `wiggle()` + `seedRandom`; AE stepped wiggle via `posterizeTime` [DOC] |
+
+Why they must not sit on drawing keys or the rail body: a drawing key changes *which drawing is shown*; a rail body is a group-move target. Attaching interpolation commands to either produces exactly the v2 confusion the v3 model was written to end [CONTEXT §3.7]. It also keeps the three selection scopes disjoint: each scope's commands change only its own subject.
+
+### 1.6 Anti-features
 
 | Anti-Feature | Why Requested | Why Problematic | Alternative |
-|--------------|---------------|-----------------|-------------|
-| Converting an existing layer/strokes between modules | "I painted in the wrong module" | Engines have different physics and script payloads; conversion is lossy fiction | Delete/redraw, or paste as a baked result; never a convert command |
-| Live engine-per-frame or per-stroke module switching inside one layer | "Flexibility" | Breaks determinism, script replay, and cache identity | One engine per paint kind; module switcher only picks the surface |
-| Implementing Krita now "since the slot exists" | Third slot looks unfinished | libmypaint WASM + .myb pack is its own milestone (v2.1.0); folded-in it poisons 56 | Visible disabled slot with "v2.1.0" hint |
-| Per-module forks of Studio (script, cache, timeline) | Faster local shortcuts | Guarantees drift; the locked invariant exists to prevent it | `efx-paint-host` generic over stroke payload (Phase 55) |
-| Migrating v1.0.1 module/script state | "Nice reopen" | Clean break accepted 2026-10-14; migration code is banned | Fail-closed named error for unreadable data (53.1 law) |
-| Pre-deciding panel layout / iconography in specs | Desire for certainty | User decides at discuss-phase (DECIDED 2026-10-14) | Capture behaviour contracts only; layout is integration-time |
-
-#### Complexity & dependencies (switcher)
-
-- **Depends on:** Phase 55 `efx-paint-host` (shared Studio law, generic payload) — the switcher is a consumer of that seam, not a sibling implementation. Engine brush packs (aquarelle pack from 56; engine-1 brushes already exist).
-- **Complexity:** the shell is LOW; the **drain contract** (what a module publishes to the panels) is MEDIUM and is where future Krita cost is won or lost.
-- **Existing-feature coupling:** paint layer kinds (Basic/FX/Physics + the 4th aquarelle kind), script library + Apply refusal class, Studio window lifecycle (module switch must not re-open/re-mount Studio — Studio mirrors main-window bounds and stays one window).
+|---|---|---|---|
+| Baking motion into drawing keys / frame caches | "Simpler to render" | Breaks cycles, costs a re-bake per frame, contradicts v3, destroys determinism economics | Apply the transform at the compositor; cache content only |
+| Motion keys constrained to existing drawing keys | The initial notes said so | v3 superseded it; forces fake drawings to animate; Harmony/AE both allow independent keys | Independent Motion keys |
+| A full graph/curve editor in v1 | "Pro tools have one" | Large surface (handles, value vs speed graph, zoom, selection) and the frame-strip timeline has no natural home for it; TVPaint keeps easing in a separate speed-curve editor, Harmony in a separate Function view [DOC] | Lane sparkline + key commands (Ease/Hold/Wiggle) + numeric entry |
+| Silent auto-key on every transform | "Always animated" | Harmony ships a preference to disable exactly this; silent keys make ordinary layout edits undo-resistant [DOC] | Explicit Animate/armed state, visible indicator |
+| Pivot derived from per-frame raster bounds | "Easy" | Pivot drifts when the drawing changes per frame; rotation appears to wobble | Time-invariant pivot in rail space |
+| Normalising rotation to 0..360 | "Clean data" | Kills multi-turn spins; interpolation reverses at the wrap | Unbounded rotation values |
+| Skew / 3D / perspective channels | "Harmony has skew" | Adds channels to every lane, header, schema and export path for a rarely used transform; not in v3 | Position, Scale, Rotation, Opacity only |
+| Merging with `PhysicPaintRotoScriptMotionSettings` or the Roto in-between interpolation controls | Reuse | Three different systems: generated in-between drawings, per-stroke script wiggle, and rail transform channels [PROJECT.md constraint; CONTEXT §6.12] | Separate model, separate persistence, separate UI |
+| Animating per drawing key as the unit | v2 draft | Duplicates transform state per drawing; the v3 model made the occurrence the unit | One transform per rail |
 
 ---
 
-### (b) Watercolor engine (paint-aquarelle) with property-rich brush set
+## Capability 2 — Interpolation model
 
-#### Table Stakes (Users Expect These)
+### 2.1 What 2D animation tools actually expose
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Wet-in-wet blooms that survive into baked frames | The look the user is buying the engine for | HIGH | Locked: forcing Dry at frame boundaries is **prohibited** (P4). Global wet field, not per-stroke local diffusion |
-| Hard wet-on-dry edges | Second half of the watercolour look | HIGH | Pigment never seeps onto dry paper (conservation law) |
-| Dark tide lines at drying wash edges | Signature watercolour artefact | HIGH | Capillary flux down the wetness gradient, gated by mobility both sides [ORACLE] |
-| Subtractive pigment mixing (yellow + blue = green) | [ORACLE] headline demo; [GENERAL] table stakes for any watercolour claim | HIGH | Via `efx-spectral` absorbance model — see (c) |
-| Granulation tied to paper tooth | [ORACLE] + [GENERAL] (Rebelle lists granulation as a headline feature) | MEDIUM | Deposit role of the four-role law — bakes into the mark, does not make WebP paper-dependent |
-| Water control + pigment load + flow | Every wet-media tool has these [GENERAL] | LOW (surface) / HIGH (sim) | Oracle global params: `size, water, load, flow, bleed, dry, edge, granulation` (`Params` in `engine/Engine.ts`) |
-| Bleed / diffusion control | [ORACLE] exposes `bleed`; [GENERAL] diffusion is the wet-media essence | HIGH | Wet-gated diffusion pass |
-| Dry speed + explicit Dry/fix action | Glazing workflow requires it [ORACLE README: "Press Dry (D) when you want to glaze"] | MEDIUM | `fix` pass: mobile `ink` settles into `fixed`; in scripts dry is `dt`-driven, not a button |
-| Edge (tide-line darkening) control | [ORACLE] `edge` param | MEDIUM | User-facing slider in oracle Settings panel |
-| Four tools `brush \| water \| pen \| lift` | Locked scope (Q8=A) | MEDIUM | Water = clear water wets/moves paint; pen = ink line that feathers wet; lift = blot |
-| Property-rich brush set: 14 tips + custom | Locked: "full set with properties" — this is what makes engine 2 a *craft* engine vs engine 1's one brush type | MEDIUM | [ORACLE] preset ids: round, detail, rigger, flat, hake, filbert, mop, dry, fan, sponge, spatter, sumi, dagger, stipple (+ custom PNG/JPG tip import) |
-| Per-brush property surface | [ORACLE] `BrushPreset`: tip, aspect, rotation (follow/fixed/random), angle + angleJitter, size[pressure 0..1], pressureSize, speedThin, spacing, scatter, dabs, sizeJitter, water/load/flow multipliers, capacity (runs dry), grain (tooth gate), wetRound | MEDIUM | This is the "property-rich" payload the panels must drain; brush referenced by stable id + per-stroke `toolOverrides` (R1.7) |
-| Dry-brush skip on the tooth | [ORACLE] `grain`/dry brush presets; [GENERAL] | MEDIUM | Deposit role; bakes into mark |
-| Script record → physics play → WebP bake → cache | THE acceptance axis (R3) — Studio law unchanged | HIGH | Same bake pipeline as Physic Paint; per-stroke `diffusionFrames` (cap 600, Q1=C) |
-| Deterministic replay (same script ⇒ same pixels) | Cacheable bake requires it | HIGH | Fixed tick grid ~1/60 s, integer ticks (Q2=B); FNV-1a traceSeed per stroke; no `Math.random()` in deposit/sim path |
-| Bake survives user leaving the frame | Long fluid cuisson > one diffusion window | MEDIUM | Port `finalizationQueue` pattern (bounded Effect queue, generation-stale, `beginFlush`); existing PlayScript renderer aborts on dispose — not acceptable (R3.3) |
-| Transparent where unpainted | Compositor law: tracks transparent between each other | LOW | A5 acceptance row |
-| Durable script library (load/save/thumbnail, Apply, Loop Clip) | Same lifecycle class as Roto scripts (R3.5) | LOW | Reuse host envelope |
+| Curve / type | Where it really appears | What it buys the animator | Keep / drop here |
+|---|---|---|---|
+| **Cubic Bézier (user handles)** | Universal: Harmony Function view handles; AE Graph Editor (speed or value); TVPaint "Spline"; Spine Bezier runtime data [DOC/X] | Direct control of acceleration and overshoot; the only representation that covers all others | **KEEP** as the one editable representation |
+| **Linear** | Every tool; Harmony's default between motion keys; Spine `CURVE_LINEAR` [DOC] | Constant-rate moves; predictable spacing | **KEEP** as a preset |
+| **Hold / step / constant** | AE hold keyframes; Harmony stop-motion keyframes (red); Spine `CURVE_STEPPED`; TVPaint expresses holds as a flat speed curve [DOC/X] | Stop-motion timing; snaps; mechanical holds | **KEEP** as a preset (and a candidate default for a stop-motion product) |
+| **Catmull-Rom / auto-smooth** | Rarely named in 2D timelines; exposed as "Smooth"/"Auto" tangent modes (TVPaint Smooth, AE auto bezier) [DOC/K] | Smooth motion through many keys with zero handle work | **KEEP as a preset** that generates Bézier handles; do not expose the name |
+| **Hermite** | Not a user-facing curve type; the math under Catmull-Rom/TCB/Bézier | Nothing a user chooses | **DROP from UI** (it is the implementation) |
+| **B-Spline** | Path/shape design (Illustrator/Inkscape-class curves, path effects), not animation timelines; approximating, so it misses its control points and reduces wiggle on dense point sets [X] | Smooth flowing paths, local control | **DROP from animation channels**; optionally a path-smoothing option in the vector tool with an explicit "does not pass through points" warning |
+| **TCB (Kochanek-Bartels)** | 3ds Max TCB controllers; Harmony exposes Bias/Tension/Continuity as advanced function-curve parameters; t=c=b=0 reduces exactly to Catmull-Rom [DOC/X] | Overshoot/settle control and asymmetric tangents — all reproducible with Bézier handles | **DROP as a type** for v1; revisit as per-key tension/bias only if animators ask |
 
-**Expected user-visible behaviour (aquarelle):**
-- Painting wet-into-wet mixes and blooms in real time on the Studio canvas; wet-on-dry strokes keep hard edges; washes dry with tide lines.
-- Global sliders (water / pigment / flow / bleed / edges / grain / dry speed) + per-brush multipliers behave like the oracle's Settings + Brush Library: preset choice changes handling (mop floods, dry brush skips tooth, spatter scatters), sliders change the current stroke's physics.
-- Apply of an aquarelle script creates a Loop Clip whose baked WebP frames show blooms and tide lines — the wet look is in the frames, not a live sim.
-- Scrubbing/repeats/export read the WebP cache only (unchanged). Export with transparent background shows paint only.
-- Record → save → load → play reproduces marks (A1–A5 rows).
+The pattern across shipped 2D tools is consistent: **one editable representation (cubic Bézier) plus a small set of automatic tangent presets and a step mode.** Spine's runtime ships exactly three curve types — linear, stepped, Bezier [X]. After Effects stores Bézier plus hold; Harmony stores motion vs stop-motion keyframes and edits velocity/bezier [DOC]. None of them ask the animator to pick "Hermite vs Catmull-Rom vs B-Spline vs TCB" per key.
 
-#### Differentiators
+### 2.2 Recommendation for this product
+
+Expose **three segment behaviours plus two per-key modifiers**:
+
+1. **Linear** — for transforms that should not ease.
+2. **Ease** — symmetric auto-smooth (ease-in-out) plus an intensity; internally generated Bézier handles.
+3. **Hold** — step.
+4. **Wiggle** (per Motion key) — additive deterministic noise on the segment (see §2.4).
+5. **Per-key curve handles** — deferred; the lane sparkline shows the resulting curve, numeric/key commands set it.
+
+Reject the a-la-carte spline picker. It is not what 2D animation tools ship, it multiplies QA (five evaluators), and it makes the document schema carry per-key curve-type unions forever.
+
+### 2.3 Interpolation is key-based, and on frames — not on drawing frames
+
+The user's law is correct and matches the industry: interpolate between **Motion keys**, and let ordinary frames repeat the previous drawing (that is the content cycle, not interpolation) [CONTEXT §4]. Two distinct mechanisms must not be conflated:
+
+- **Content repetition** (the `-` frames in `x1--x2`) — the rail's drawing exposure.
+- **Transform interpolation** (the same `-` frames evaluate a moving transform) — Motion channels.
+
+A frame may be both: content repeated from the previous drawing key, transform interpolated in real time. That is exactly what "content cycles, motion continues" means, and it is why the transform cannot be baked into the content raster.
+
+### 2.4 Wiggle — concrete parameters and determinism
+
+| Parameter | Meaning | Unit | Default |
+|---|---|---|---|
+| Amplitude | Peak deviation from the interpolated value | Channel units (px, %, degrees, opacity points) | small (e.g. 2 px) |
+| Frequency | Cycles per second, or cycles per segment | Hz or cycles/segment | 1–2 |
+| Step / posterize | How many frames each noise sample is held | integer frames | 2 (stop-motion look) |
+| Seed | Deterministic noise seed | integer or derived | derived from stable rail + channel + key identity (FNV-1a, matching the project's traceSeed law) [CODE] |
+| Re-roll | Bumps the seed | button | optional |
+
+Grounding: AE exposes frequency and amplitude as `wiggle(freq, amp)` and determinism via `seedRandom`; stepped wiggle is achieved with quantised time or `posterizeTime` [DOC]. Storing a derived seed rather than a user-visible number keeps the UI clean while guaranteeing export determinism; an explicit re-roll is the escape hatch (AE's own escape hatch is the expression text rather than a seed field [K]).
+
+Do **not** evaluate wiggle at sub-frame time. The paint time law is an integer 60 Hz tick grid and the product's stop-motion stance is held poses, not per-frame jitter [PROJECT.md].
+
+---
+
+## Capability 3 — Timeline horizontal zoom (frame-strip timeline)
+
+### 3.1 What the minimum actually is
+
+| Tool | Zoom-in / out | Fit / reset | Wheel | Visible control | Notes |
+|---|---|---|---|---|---|
+| Premiere Pro | `=`, `-` | `\` zoom to fit sequence | Alt/Option+wheel; pinch | Bottom horizontal zoom scrollbar | Documented as expanding around the playhead; no user-selectable anchor found [DOC] |
+| After Effects | `=`, `-` | `Shift+/` zoom to fit in viewer panels | — | Scrollbar | Timeline anchor behaviour not documented in the fetched material [DOC/LOW] |
+| Toon Boom Harmony | `2`, `1` | **Reset Zoom** icon | Cmd/Ctrl+wheel over timeline | Timeline Zoom slider | Thumbnails appear only once frames are wide enough; **no Fit command** documented [DOC] |
+| Dragonframe | — | — | — | "M. Scale" control + scrollbar | Stop-motion comparator; no shortcut documented [DOC] |
+| This product (locked scope) | Cmd/Ctrl+wheel (cursor-anchored) | Fit (clamped) | Plain wheel stays horizontal scroll | Zoom pill: minus / percent / plus / Fit | 0.25×–4×, 100% = 18 px pitch, session-only [CONTEXT §5.6] |
+
+The consistent floor across tools: **a modifier+wheel gesture, a visible scale readout, and an escape back to a sane view.** "Fit" is an NLE expectation (Premiere `\`); Harmony does not have one, so Fit is table stakes **for this product's NLE-class bar**, not a universal.
+
+### 3.2 Table stakes
+
+| Feature | Why Expected | Complexity | Notes / dependency |
+|---|---|---|---|
+| Cursor-anchored Cmd/Ctrl+wheel zoom | The only gesture that keeps the frame you are looking at under the pointer | MEDIUM | Anchor = frame under cursor at wheel time; recompute scroll after scale |
+| Zoom pill: minus / percent / plus / Fit | A visible, clickable authority; no hidden state | LOW | Mirror the shipped Studio **canvas** zoom pill conventions [CODE: `PhysicsPaintCanvasZoomViewport.tsx`] — but keep the two systems independent |
+| Presets 0.25 / 0.5 / 0.75 / 1 / 1.5 / 2 / 3 / 4 | Predictable stops; Harmony ships graded zoom keys, Premiere graded steps | LOW | 100% = base 18 px pitch |
+| Fit computes and clamps, with overflow allowed at 0.25× | Escape hatch from 4×; a long document may still overflow | LOW | Never silently violate the min |
+| One scale authority feeding every frame→px mapping | 56 direct `ROTO_CELL_WIDTH_PX` uses plus v7 tokens; a second source of truth guarantees drift | HIGH | Ruler ticks, playhead, cells, ghosts, sound stains, scroll-to-frame, hit-testing, drag math, `frameCount × pitch − gap` rail rule [CODE/CONTEXT §5.6] |
+| Row, lane, and cell **heights** stay fixed | The milestone explicitly scopes zoom to frame density | LOW | Prevents reflow of motion lanes |
+| Session-only, no document/schema/export change | A view preference is not document data | LOW | Reset on Studio close, like canvas zoom |
+| Instant transition | Zooming is navigation, not an animation | LOW | No tweening |
+
+### 3.3 Differentiators
 
 | Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Animateable watercolour (scripted blooms over time) | [ORACLE] cannot do this — it has no stroke recording (raster undo tiles, `.wcp` raster layers). EFX adds the missing half via Studio law | HIGH | This IS the differentiator vs the oracle and vs painting-in-an-NLE workflows |
-| StrokeWriter-equivalent scripted driving proven as first-class | Text/shapes get genuine wet marks in the oracle via `StrokeWriter`; our PlayScript player is the analogue | MEDIUM | Bridge concept only (clean-room) |
-| Custom tip import (PNG/JPG → brush) | [ORACLE] feature; artists expect it [GENERAL] | LOW–MEDIUM | Packed like other tips in the brush-pack snapshot |
-| Wet-region-only simulation + stop-when-dry | [ORACLE] perf law; keeps Studio responsive at HD | MEDIUM | wet-mask readback; idle dry sheet costs no GPU |
-| White gouache as a pigment channel (opaque cover / bleach) | [ORACLE]; gouache-ish highlights on watercolour | LOW | 8th absorbance channel |
-| Brush-pack snapshot in `.mce` | Old scripts replay after pack evolution | LOW | Locked; deliberate exception |
+|---|---|---|---|
+| Keyboard presets (Harmony `1`/`2`, Premiere `=`/`-`) | Fast, discoverable, no pointer travel | LOW | Map to the same preset ladder |
+| Double-click the percent readout resets to 100% | One-gesture escape from any zoom | LOW | Cheap and expected of a pill |
+| Zoom anchored on selection / playhead as explicit commands | "Look at what I care about" | LOW–MEDIUM | Distinct from wheel anchoring (cursor) |
+| Thumbnails at high zoom | Harmony's payoff for zooming in; aids key timing | HIGH | Out of scope for Phase 60 (cells stay 16×22); note as future |
+| Adaptive ruler labels (ticks every N frames) | Readable ruler at 0.25× and 4× | MEDIUM | Without it the ruler becomes noise; one label-step function |
+| "Previous zoom" toggle | Comparing two densities | LOW | Session-only memory |
 
-#### Anti-Features
+### 3.4 Anti-features
 
 | Anti-Feature | Why Requested | Why Problematic | Alternative |
-|--------------|---------------|-----------------|-------------|
-| Forced Dry at every frame boundary to "simplify" the bake | Bakes look stable per frame | **Kills the look** (bloom must evolve across frames) — prohibited P4 | Per-stroke `diffusionFrames` owns the cuisson window |
-| Live GPU fluid sim on the timeline | "Real-time playback" | Scrub/repeats/export must read cache (P3); nondeterministic and heavy | Bake once, play the cache |
-| Text / Shape / Fill / Hand tools (v2.0.0) | [ORACLE] has all four | Locked out: Text/Shape carry OFL fonts + vpype-js, Hand carries MediaPipe; only `brush\|water\|pen\|lift` animate through scripts | Fill is the one plausible later add (distance-ramp front = own tranche) |
-| Transliterate oracle/inkwash shaders or TS | Fast | Both unlicensed (P1) | Clean-room reimplementation of published method |
-| Parallel standalone `WatercolorScript` library | Isolation instinct | Breaks Studio law | Shared envelope + per-engine payload |
-| Per-stroke paper authority / baked-in paper | Paper "belongs to the mark" | Breaks no-rebake compositor law | Paper = `paperPass` fond (see (d)) |
-| Engine-1 physics tweaks folded into 56 | Opportunism | Blast-radius creep; engine 1 unchanged until v2.1.0 spectral adoption | Keep 56 to engine 2 + paper pack |
-
-#### Complexity & dependencies (aquarelle)
-
-- **Hard prerequisites:** Phase 54 (Preact 11, live UAT gate) → Phase 55 (`efx-paint-host` split, format-identical, replay-parity guard) → 56. Spectral package must exist before pigment path works — 57 content may be created early inside 56 (locked fallback), never duplicated inside the engine.
-- **Texture/runtime cost:** velocity RG16F + wet R16F + `ink` 2×RGBA16F + `fixed` 2×RGBA16F + paper RGBA8 at doc size; oracle caps sheet ~2048×1536 / MAX_DOC_PIXELS — our HD runtime (52.1, 512 MB LRU) must budget this; fluid bake duration can exceed Physic Paint's max `diffusionFrames`.
-- **Existing machinery to ride (do not rebuild):** `renderRotoPlayScriptFrames` bake cadence, `finalizationQueue` (Effect v4 bounded queue), `traceSeed` determinism philosophy, `.mce` package IO through Rust (`project_package_fs_scope`), tick/`diffusionFrames` contract, script library lifecycle, compositor `getFlattenedFrame`.
-- **Open at plan time (from specs):** sim step-count/dt quantisation exact value; layer-kind naming (Water/Aquarelle/Wash — UI-SPEC); `types.ts` split shape (paint-host Q1/Q2).
+|---|---|---|---|
+| Vertical/row-height zoom bundled with horizontal zoom | "NLEs do it" | Reflows motion lanes, violates locked scope, doubles the gesture surface | Horizontal only; row height is a separate future feature if ever needed |
+| Persisting zoom in `.mce` | "Remember my view" | Turns a display preference into document churn and a schema field; the product already treats canvas zoom as session-only | Session-only signal |
+| Wheel zoom anchored to the playhead | "Keep the playhead visible" | The playhead can be off-screen; users aim with the pointer | Cursor anchor for wheel; playhead/centre anchor for pill and Fit |
+| Animated/tweened zoom | "Feels smooth" | Breaks scrub-drag math during the tween; disorienting in a frame strip | Instant |
+| Integer cell width but fractional pitch (or vice versa) | Sloppy rounding | At 0.25× the 18 px pitch is 4.5 px: cells, gaps, and playhead drift apart by up to a frame over a long document | One rounding rule: compute pitch as a float, derive cell width and gap from it, rasterise once |
+| Patching `ROTO_CELL_WIDTH_PX` at call sites with ad-hoc multipliers | Fastest local fix | Guarantees a missed site (drag ghosts, sound stains, scroll-to-frame) | A single `pitch = base × zoom` authority consumed everywhere |
+| Zoom during an active drag | Continuous input | Drags capture a start pitch; live rescale desynchronises ghost and target | Ignore wheel while a drag gesture is active |
+| Auto-zoom on scrub/playhead follow | "Always in view" | Steals control from the animator; fights the manual viewport law already shipped | Manual only |
 
 ---
 
-### (c) Shared spectral pigment mixing (`efx-spectral`, MIT)
+## Capability 4 — Vector painting tool
 
-#### Table Stakes
+### 4.1 What a vector stroke tool has to do
 
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Subtractive mixing visible in marks: yellow + blue = green (wet AND dry) | The mixing is the point of engine 2 | HIGH | Absorbance adds linearly with concentration → Beer–Lambert glazes [ORACLE] |
-| One shared package consumed by engines — not a private watercolour utility | Locked: "never duplicate mixing code inside the watercolor engine" | LOW | `packages/efx-spectral` + MIT `NOTICE` attributed |
-| Correct display of mixes in baked WebP (not just live canvas) | Cache is the playback path | MEDIUM | Display rebuild must match bake: 16-band quadrature + `exp(−A)` → sRGB (ΔE_OK ≈ 0.1–0.2 vs 38-band) [ORACLE] |
-| Licence hygiene | Mixbox banned project-wide (CC BY-NC) | LOW | spectral.js = MIT, attribute; method + reflectance data usable |
+**Creation (pen-tool).**
+- Click = corner vertex; click-drag = smooth vertex with symmetric out-handle (Illustrator/Krita/Inkscape/AE convention) [DOC/X].
+- Rubber-band preview of the segment from the last vertex to the pointer.
+- Close the path by clicking the first vertex; finish open with Enter or double-click; cancel with Esc; Backspace removes the last placed vertex while still drawing [K — near-universal, not separately fetched].
+- Width can come from pressure at creation (the project already captures `pressure` per anchor and preserves it: `BezierAnchor.pressure` [CODE: `app/src/types/paint.ts:46`]).
 
-**Expected user-visible behaviour:** colours mix like paint (rose + ultramarine → violet, sienna + ultramarine → soft grey); glazes stay translucent; white gouache covers opaquely; exported frames match the canvas.
+**Editing (spline-pointer).**
+- Drag an anchor; drag a handle with the opposite handle coupled; Alt/Option breaks coupling into a corner (the project already models this as `cornerMode` and `updateCoupledHandle` [CODE: `app/src/lib/bezierPath.ts`]).
+- Click a segment to insert a vertex there (`insertAnchorOnSegment` exists [CODE]).
+- Delete selected vertices (`deleteAnchor` exists [CODE]); delete the whole path from the path/objects surface.
+- Shift-click and marquee multi-select vertices; move several at once; one undo per gesture.
+- Cursor feedback per zone (anchor / handle / segment / body), with screen-pixel-sized hit targets.
 
-#### Differentiators
+**Per-vertex paint properties.**
+
+| Property | Industry reality | Recommendation here |
+|---|---|---|
+| **Width / size per vertex** | Standard: Illustrator Width tool (width points, Alt for one-sided, Shift multi-select, numeric Side1/Side2, lockable to anchors) [DOC]; Moho Line Width tool keys per-point width [DOC]; Inkscape PowerStroke width points [DOC]; CSP Adjust Line Width / Object tool [DOC] | **BUILD** — table stakes for a "vector painting" tool |
+| **Color per vertex** | Rare: Illustrator cannot vary color along one path (LPEs change geometry, not style) [DOC]; Inkscape single-style paths, workarounds require duplicates/flatten [DOC]; Moho outline color is shape-style level [DOC] | **BUILD WITH A SEGMENT MODEL, or defer** — either color applies from vertex *i* to *i+1* with a hard/gradient transition, or ship stroke-level color in v1; see §4.4 |
+| **Brush type per vertex** | Not offered by any tool surveyed; a stroke belongs to one brush | **DO NOT BUILD** — per-stroke brush identity; per-vertex brush mixing has no reference implementation and breaks stroke rendering |
+| **Opacity/pressure response per vertex** | Common as a by-product of width or of stylus pressure | Optional; cheap if width exists |
+
+The architectural constraint that decides this: `StudioStroke` carries **one** `color` per stroke and an opaque engine payload [CODE: `packages/efx-paint-host/src/animation/types.ts:34`]. Per-vertex color therefore forces either segmented rendering (N sub-strokes) or a new vector stroke kind that owns its own color ramp. That is a Phase-61 planning decision, not a UI toggle.
+
+**Curve-type choice.** Recommendation: the editable representation is cubic Bézier only, matching every mainstream vector drawing app [DOC: Krita "Edit Shapes"; Illustrator and Inkscape pen/path tools; Figma on knowledge tier]. Offer **auto-smooth (Catmull-Rom-equivalent)** as a creation/convert preset that generates handles. Do not offer Hermite (implementation), B-Spline (misses points), or TCB (superseded by handles) as per-vertex types. If a "curve type" selector is required by the milestone, implement it as a **smoothing preset** (Corner / Smooth / Auto), not as separate math per vertex.
+
+**Wireframe preview.** The real precedent is a *display mode*, not a geometry mode: Illustrator Outline view shows paths only for fast editing [K, high confidence]; Harmony's OpenGL view is the fast low-fidelity mode against Render view [DOC]; Harmony "Show Strokes" draws strokes as blue lines to inspect intersections [DOC]. Concretely: a canvas toggle that renders every stroke of the active vector layer as a 1 px line with visible anchors/handles, skipping paint fill/sim. This is not cosmetic in this product — it is the drag-time mode that makes vertex editing interactive (see §4.4).
+
+### 4.2 Table stakes
+
+| Feature | Why Expected | Complexity | Notes / dependency |
+|---|---|---|---|
+| pen-tool create: click corner, drag smooth, rubber band | The definition of a pen tool | MEDIUM | New tool in the Studio edit surface; must respect `isPaintEditMode()` shortcut guards [PROJECT.md] |
+| Finish / cancel gestures; close path | Without them every path is trapped | LOW | Enter, double-click, Esc, Backspace-last-vertex |
+| spline-pointer edit mode with visible anchors and handles | Locked by the milestone (two icons in the modal) | MEDIUM | Reuse `bezierPath.ts` math + hit-testing |
+| Coupled handles + Alt-break to corner | Industry-standard corner editing | LOW–MEDIUM | `cornerMode`, `updateCoupledHandle` exist [CODE] |
+| Add vertex on a segment; delete vertex; delete path | Basic topology editing | LOW–MEDIUM | `insertAnchorOnSegment`, `deleteAnchor` exist [CODE] |
+| Multi-select vertices and move them together | Required for real editing | MEDIUM | Marquee + shift-click; one undo |
+| Per-vertex width | The feature that makes it "painting", not "shapes" | MEDIUM | Width profile along the path, not just anchor marks |
+| Per-vertex value inspection and numeric entry (at least width) | Precision | LOW–MEDIUM | Inspector row per selected vertex |
+| Wireframe toggle | Locked by the milestone; also the performance escape | MEDIUM | Renders paths only; must not change the stored document |
+| Per-stroke brush + color baseline | A vector stroke is still a painted stroke | LOW | Existing brush/color surface |
+| Undo/redo per operation | Existing law | MEDIUM | One command per add/move/delete/insert |
+| Distinguishable stroke kind in the document and export | Must exist in `.mce` and in the flattened raster | HIGH | New stroke kind + TS/Rust fields under the field-diff pin |
+
+### 4.3 Differentiators
 
 | Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Engine-1 adoption in v2.1.0 (replaces RYB `mixSubtractive` heuristic) | One colour model across modules | MEDIUM | Explicitly OUT of v2.0.0; Q5-gated; may supersede kmerp path of `SPECS/real-paint/03-pigment-mixing.md` (decide at v2.0.0 close — do not decide now) |
-| 7-coeff absorbance basis advected in fluid textures | Enables mixing to happen *inside* the sim (add/advect/diffuse coeffs), not as a post-blend | HIGH | This is why the oracle's approach ≠ stock spectral.js API |
+|---|---|---|---|
+| Per-vertex color with segment semantics | Artists ask for it; few tools deliver it | HIGH | Segment color (vertex i to i+1), hard or interpolated; segmented rendering |
+| Per-vertex width keyframable on playback | A stroke that thickens as it draws | MEDIUM | Reuses the script envelope; deterministic replay |
+| Width profile presets (Illustrator-style) | Reusable tapered ends | LOW | Store a named profile, apply at creation |
+| Live cheap preview while dragging, exact on release | Best of both: responsive + faithful | HIGH | Requires a fast path renderer distinct from the sim |
+| Convert an existing freehand/fitted stroke into an editable vector path | Removes the "redo it with the pen" tax | MEDIUM | `pointsToBezierAnchors` already exists [CODE] |
+| Curve-type as smoothing presets (Corner/Smooth/Auto) | Satisfies the "curve choice" ask without five engines | LOW–MEDIUM | Generates handles; one evaluator |
+| Vertex-level snap/align guides | Clean shapes | MEDIUM | Defer |
 
-#### Anti-Features
+### 4.4 Anti-features
 
 | Anti-Feature | Why Requested | Why Problematic | Alternative |
-|--------------|---------------|-----------------|-------------|
-| Vendoring the npm `spectral.js` v3 API as-is for the sim path | It's the MIT library | v3 is CPU K/S mixing (`Color`/`mix`); the sim needs the 7-coeff absorbance basis the oracle built from the same method/data | `efx-spectral` = MIT data + CPU helpers + **GLSL basis export** (locked shape); do not adopt v3 K/S API blindly for GPU transport |
-| Hiding spectral inside `efx-watercolor` | Fewer packages | Makes engine 1 depend on engine 2 later | Standalone tiny shared package (locked; rejected alternatives documented) |
-| Hiding it inside `efx-paint-host` | "Shared = host" | Host is the Studio law, not a colour toolbox | As above |
-| Mixbox (any form) | Better gamut | CC BY-NC — banned project-wide | spectral.js method |
-| Per-stroke RGB averaging "mixing" | Simpler | Not subtractive; fails the look | Absorbance transport |
+|---|---|---|---|
+| Five independent curve engines (Bézier + Hermite + Catmull-Rom + B-Spline + TCB) selectable per vertex | The milestone names them | Five evaluators, five schemas, five QA surfaces; no 2D vector app ships this; mixed curve types inside one path are unpredictable | Bézier + smoothing presets |
+| B-Spline as a default creation type | "Smoother curves" | The path no longer passes through where the user clicked; every handle edit becomes indirect | Auto-smooth (interpolating) default |
+| Per-vertex brush *type* | "Maximum control" | No reference implementation; strokes are one brush; rendering and the sim cannot blend arbitrary brush engines mid-stroke | Per-vertex width/color, per-stroke brush |
+| Re-running the watercolor simulation on every pointer move | "WYSIWYG while dragging" | The engine replays a fluid sim; a per-drag bake cannot hold 60 fps and would flood the cache | Wireframe during drag, exact render on release (the milestone's own Gate 4) |
+| Auto-vectorising every existing paint stroke | "Make everything editable" | Destroys the baked watercolor look, inflates `.mce`, changes determinism economics | Explicit convert action on the selected stroke only |
+| Editing through a modal that blocks the canvas | "A clean editor" | Vertex editing is a direct-manipulation task; the milestone already places the toggles in the modal, but the canvas must stay live | Movable modal (the product's PlayScript dialog pattern) |
+| Reusing the main editor's motion-path UI for stroke paths | "There is already a Bezier editor" | The editor path edits a layer's spatial position keys; the vector tool edits stroke geometry with paint properties. Same math, different model | Share `bezierPath.ts`, never the store/UI |
 
-#### Complexity & dependencies (spectral)
+### 4.5 Gate answers (the milestone's five vector gates)
 
-- **Consumers:** `efx-watercolor` (mandatory now) · `efx-physic-paint` (v2.1.0, Q5-gated) · `efx-krita` does **not** use it (libmypaint mixes internally; smudge ≠ mixing).
-- **Cost:** LOW to create the package (data + helpers + GLSL export); the expensive part is the fluid-side integration (2×RGBA16F layout: coeffs 0–3 in A, 4–6 in B.rgb, gouache in B.a).
-- **Ordering:** tranche 0c in the spec's split; if 56 needs it first, create early inside 56 or pull 57 forward (locked fallback).
+| Gate | Answer from research |
+|---|---|
+| 1. Reuse the editor's existing Bezier / animation-path editing | Reuse the **math** (`bezierPath.ts`: evaluate, fit, insert, delete, couple, drag, hit-test) and the `BezierAnchor` type; do **not** reuse the motion-path store or overlay — different subject (stroke geometry vs layer position keys) |
+| 2. Per-vertex paint properties, and which | Width (standard, build), color (rare, segment model or defer), brush type (no precedent, do not build). Pressure already exists per anchor [CODE] |
+| 3. Add Hermite / Catmull-Rom / B-Spline / TCB | No — as curve types. Catmull-Rom-equivalent ships as "Auto/Smooth"; the others are either implementation (Hermite) or harmful defaults (B-Spline) or redundant (TCB). Revisit tension/bias only if asked |
+| 4. Wireframe preview | Yes — path-only display mode; also the drag-time performance mode. Precedent: Illustrator Outline, Harmony OpenGL vs Render, Harmony Show Strokes |
+| 5. Interpolation wiggle in the animation | Yes, but it belongs to **Motion keys** (Capability 1 / §2.4), not to vector vertices |
 
 ---
 
-### (d) 10-procedural-paper pack (ALL paints)
-
-#### Table Stakes
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| 10 named procedural papers: cold press, hot press, rough, khadi, washi, laid, canvas, toned sand, kraft, student/cellulose | Deliverable named in R2.4 and the milestone; the oracle's set [ORACLE] | MEDIUM | Clean-room procedural height/mottle/fleck fields → `PaperPassTile` shapes — no copied shaders |
-| Usable by ALL paints (normal, physic, aquarelle, later krita) through the same `paperPass` | Locked: "for ALL paints" | LOW–MEDIUM | `encodePassTiles(height, tint, …)` already exists (`app/src/lib/paperPass.ts`) |
-| Paper is composite-only: no rebake on paper change | Locked Q5 + P-level law | LOW | Paint WebPs stay transparent; paper = valley(multiply)+peak(lighten) tiles at the composite seam |
-| Paper display state (id, strength, scale) on the document/fond, in undo + save | R2.5 — never per-stroke/per-script authority | MEDIUM | Reuse PKG display-token care: paper display state must rotate the change token (learn from PKG-06/BKG-09 display-setter gap) |
-| Engine-side tooth (granulation settle, dry-brush skip) bakes into the mark (deposit role) | Four-role law (P6) | MEDIUM | Mark is paper-agnostic on the recompose axis even though tooth influenced deposit |
-
-**Expected user-visible behaviour:** pick a paper in the Studio paper library → the fond swaps tiles instantly (no rebake, no cache invalidation) → all paints sit on it; aquarelle granulation and dry-brush breakup change with the chosen tooth; changing paper after painting recomposes the stack without touching paint frames.
-
-#### Differentiators
-
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Paper influences paint *behaviour* (granulation, dry-brush skip), not just appearance | [ORACLE] and Rebelle both key on this; it is what makes paper a craft control | MEDIUM | Deposit role vs display role kept distinct |
-| Lit relief + mottle + fleck fields (per-preset bump/tint/fleck/mottle) | Visually credible surfaces | MEDIUM | [ORACLE] `PaperPreset`: kind (height-field id), tint, fleck, bump, mottle |
-| One pack, every module | Multi-module value at zero extra per-module cost | LOW | Rides Phase 56 |
-
-#### Anti-Features
-
-| Anti-Feature | Why Requested | Why Problematic | Alternative |
-|--------------|---------------|-----------------|-------------|
-| Baking paper into paint WebP frames | "Looks done" | Forces rebake on paper change; breaks recomposable stack | Composite-only `paperPass` fond (locked) |
-| Animatable per-frame paper | "Paper motion effects" | Rejected in Q5; explodes cache semantics | Static document paper; FX layer for motion needs |
-| Rebelle-style 180-surface library / user-uploaded paper scans now | Parity anxiety | Scope explosion; 10 procedural presets are the deliverable | Later: import-as-height-map as its own tranche |
-| Copied paper shaders from the oracle | Fast | Unlicensed (P1) | Clean-room procedural fields |
-| Paper state per stroke or per script authority | Script portability | R2.5: display hint at most on a script | Document/fond owns paper |
-
-#### Complexity & dependencies (paper pack)
-
-- **Rides Phase 56** (locked), but is engine-agnostic — it must land as Studio library content + `PaperPassTile` generation, not as watercolour-private code.
-- **Depends on:** existing `paperPass` contract and the four-role texture law (`SPECS/real-paint/00-overview.md`); document/fond authority (`physicPaintStore._resolveDocumentFondInstruction` / D-11 single fond authority).
-- **Watch:** display-class save token (PKG-06 lesson) and the deferred cache-footprint issue — 10 full-height tile pairs add memory; the paper pack should generate tiles at working resolution on demand, not cache 10 × HD pairs forever.
-
----
-
-## Feature Dependencies
+## Feature dependencies
 
 ```
-Phase 54 Preact 11 (hard gate, live UAT closes before 55)
-    └──requires──> Phase 55 efx-paint-host (Studio law split, generic payload, replay parity)
-                       ├──requires──> Phase 56 efx-watercolor engine core (fluid + brushes + determinism)
-                       │                   ├──consumes──> efx-spectral (Phase 57, or created early inside 56)
-                       │                   ├──consumes──> Studio bake pipeline (exists) + finalizationQueue pattern (exists)
-                       │                   └──rides────> Paper pack (10 procedural papers → paperPass, ALL paints)
-                       └──supports───> Module switcher (shell + per-module drain contract)
-                                           ├──drains──> Brush module surface (engine-1 brushes, exists)
-                                           ├──drains──> Water color surface (aquarelle pack + params, from 56)
-                                           └──slot────> Krita module (v2.1.0, NOT implemented)
+[Rail identity: loopId / railId]
+    └──requires──> [Motion keys per rail]
+                        ├──requires──> [Motion evaluator (rail-local time, channels)]
+                        │                  ├──requires──> [Compositor transform in getFlattenedFrame]
+                        │                  └──requires──> [Export parity + deterministic wiggle]
+                        ├──requires──> [.mce motion persistence, TS+Rust field-diff]
+                        └──requires──> [v7 lane UI + 3 selection scopes + action bar]
 
-Script record ──requires──> tick grid + diffusionFrames (host) + traceSeed
-Script Apply  ──conflicts─> cross-engine target (fail-closed refusal)
-Paper change  ──conflicts─> rebake (never; composite-only)
-Watercolour look ──conflicts──> forced Dry at frame boundaries (prohibited)
-efx-spectral  ──conflicts─> Mixbox (licence ban); per-stroke RGB averaging
+[Timeline zoom]
+    └──requires──> [Single frame→px authority over ROTO_CELL_WIDTH_PX + v7 tokens]
+    └──enhances──> [Motion lanes] (frame-level precision when editing Motion keys)
+
+[Vector tool]
+    ├──requires──> [bezierPath.ts math + BezierAnchor]
+    ├──requires──> [New vector stroke kind + render path (wireframe / paint)]
+    ├──requires──> [Per-vertex property model + .mce persistence]
+    └──requires──> [Undo command integration + tool mode switching]
+
+[Painted-stroke curve editing (Phase 62)]
+    ├──requires──> [Vector tool's path editing surface]
+    ├──requires──> [Deterministic re-bake of the edited stroke]
+    └──conflicts──> [Live sim-on-drag] (re-bake is bounded: diffusionFrames ≤ 600)
 ```
 
-### Dependency Notes
+### Dependency notes
 
-- **55 before 56 is hard:** aquarelle must consume the host, not re-grow script/tick/bake machinery. Pay the split once (it is also Krita's prerequisite).
-- **Spectral before pigment path:** mixing is not optional polish; if 56 hits pigment work before 57 exists, create `packages/efx-spectral` early (locked fallback). Never fork the mixing code into the engine.
-- **Paper pack depends only on `paperPass`** — it can land early or late inside 56 but must be Studio-library-shaped from the first commit (all paints), not watercolour-private.
-- **Module switcher depends on 55's generic payload seam** and on at least one module surface existing; it is the integration face, so it belongs late (after engine core + at least Brush surface is defined), and its layout is discuss-phase.
-- **Conflicts to keep out of the same work item:** engine-1 colour upgrade (v2.1.0), libmypaint/krita, Fill/Text/Shape/Hand tools, paper animation, any migration code.
-
----
-
-## MVP Definition (maps to the locked v2.0.0 scope)
-
-### Launch With (v2.0.0)
-
-- [ ] Phase 54 Preact 11 + live reactivity UAT — hard sequencing gate
-- [ ] Phase 55 `efx-paint-host` split, format-identical, engine-1 replay parity (A5: fake engine-2 payload round-trips)
-- [ ] `efx-spectral` package (MIT data + helpers + GLSL basis, attributed) — may land as 57 or early-in-56
-- [ ] Aquarelle engine core: fluid grid, wet-gated transport + tide line, fix/dry, granulation, determinism (tick grid + traceSeed)
-- [ ] Property-rich brush set: 14 tips + custom import; `BrushPreset` property surface + stable id + `toolOverrides`
-- [ ] Option surface: `size, water, load, flow, bleed, dry, edge, granulation` + per-brush multipliers (the oracle's Params set is the checklist)
-- [ ] Tools `brush | water | pen | lift` only
-- [ ] Studio script law for aquarelle: record → play physics (no forced Dry) → WebP bake (per-stroke `diffusionFrames` ≤ 600) → cache; bake host survives leaving the frame
-- [ ] Acceptance rows A1–A5 (replay parity, identical bakes, visible bloom/tide line in baked frames, independent cache ranges, transparent export)
-- [ ] Paper pack: 10 procedural papers in the Studio paper library, composite-only, all paints, document-owned paper state
-- [ ] Module switcher: top-bar icon, 3 slots (Krita inert), per-module option drain over the one Studio engine, fail-closed cross-engine Apply
-
-### Add After Validation (v2.0.x / v2.1.0)
-
-- [ ] Krita module (libmypaint WASM + .myb pack) — the v2.1.0 slot; planned only after v2.0.0 closes
-- [ ] Engine-1 adopts `efx-spectral` (replaces RYB heuristic) — v2.1.0, Q5-gated at v2.0.0 close
-- [ ] Fill tool (bucket wash) — the one plausible aquarelle annex; its own tranche
-- [ ] kmerp vs spectral sufficiency call for engine 1 — decide at v2.0.0 close, not now
-
-### Future Consideration (v2.2+)
-
-- [ ] Text (single-line OFL fonts) / Shape (SVG, vpype-js) / Hand (MediaPipe) annex tools — not motion-script material
-- [ ] User-imported paper scans as height maps — needs its own generation/validation story
-- [ ] 2K resolution, AI features — out of v2.0.0 scope by lock
-- [ ] Waveform in Paint timeline (existing FUT backlog — never fold into a phase)
+- **Motion channels require rail identity.** Loop clips already have a stable `loopId`; a bare key rail needs a `railId` plus split/delete rules, or v1 ships loop clips only (Gate B) [CONTEXT §3.6]. Motion persistence hangs off that identity.
+- **Motion channels require the compositor to be the transform owner.** `getFlattenedFrame` is the sole content path for preview and export [PROJECT.md]. The transform must be applied there, once, or preview/export diverge.
+- **Motion channels require `.mce` dual-language declarations** for every new field [PROJECT.md constraint; `mceFieldContract.test.ts`].
+- **Zoom requires collapsing 56 hard-coded `ROTO_CELL_WIDTH_PX` sites and the CSS custom properties onto one scale authority** [CODE; CONTEXT §5.6]. It is mechanical but wide; that is why it is a phase.
+- **Vector tool requires a rendering decision before UI work.** The watercolor engine bakes a simulation; a live-editable vector stroke needs a cheap path renderer. The vector stroke kind and its renderer are the real Phase-61 scope risk, not the pen tool.
+- **Phase 62 depends on Phase 61's editing surface and on a bounded, deterministic re-bake.** Editing a painted stroke is a script edit followed by a bake, not a live sim drag.
+- **Texture/quality trade-off (Gate D).** Scale/rotation resample the raster; a 2× bake or a vector source is the mitigation [CONTEXT §3.6]. This is a compositor cost, not a UI feature.
 
 ---
 
-## Feature Prioritization Matrix
+## MVP definition
+
+### Phase 59 — rail motion (launch set)
+
+- [ ] Independent Motion keys on Position / Scale / Rotation / Opacity
+- [ ] Grouped Position with split X/Y mode; pivot defined and time-invariant
+- [ ] Unbounded rotation; endpoint hold; Hold segment
+- [ ] Ease command on a Motion key (symmetric, one undo)
+- [ ] Seeded, stepped Wiggle on a Motion key (deterministic at export)
+- [ ] Prev/next key navigation, add/remove key from the lane nav cluster and from numeric entry
+- [ ] Collapsed-rail animated signal (chevron state/colour) and an explicit rail-scope Animate empty state
+- [ ] Three selection scopes with disjoint action-bar command sets; Ease/Wiggle/Hold only on Motion keys
+- [ ] Compositor-applied transform; content cycles, motion continues; preview equals export
+- [ ] `.mce` persistence (TS + Rust) and undo/redo per key operation
+
+### Phase 60 — timeline zoom (launch set)
+
+- [ ] Cursor-anchored Cmd/Ctrl+wheel
+- [ ] Zoom pill (minus / percent / plus / Fit), presets 0.25×–4×, 100% = 18 px
+- [ ] Fit computed and clamped; playhead-anchored pill, centre fallback
+- [ ] One pitch authority across every frame→px mapping; fixed heights; instant; session-only
+
+### Phase 61 — vector tool (launch set)
+
+- [ ] pen-tool creation (corner/smooth, rubber band, close/finish/cancel, backspace)
+- [ ] spline-pointer editing (anchors, coupled handles, Alt-break, insert, delete, multi-select)
+- [ ] Per-vertex width; per-stroke brush and color
+- [ ] Wireframe display toggle that also serves as the drag-time mode
+- [ ] New vector stroke kind persisted and exported; undo per operation
+- [ ] Curve behavior: Bézier + smoothing presets (Corner / Smooth / Auto)
+
+### Add after validation (v1.x)
+
+- Per-vertex color (segment model) — after measuring the render cost per segment
+- Per-key ease intensity; per-key tension/bias only if requested
+- Copy/paste Motion keys across rails
+- Motion path on canvas (spatial Bézier)
+- Zoom-to-selection / keyboard zoom presets / adaptive ruler labels
+- Width-profile presets; convert freehand stroke to vector path
+- Multiple simultaneously expanded motion blocks
+
+### Future consideration (v2+)
+
+- Graph/curve editor for motion channels
+- Skew/3D/perspective channels
+- Thumbnails in the timeline at high zoom
+- Vertex constraints/snapping for vector paths
+
+---
+
+## Feature prioritization matrix
 
 | Feature | User Value | Implementation Cost | Priority |
-|---------|------------|---------------------|----------|
-| Aquarelle wet look surviving bake (bloom + tide line + hard edges) | HIGH | HIGH | P1 |
-| Studio script record/play/bake for aquarelle (A1–A5) | HIGH | HIGH | P1 |
-| efx-spectral subtractive mixing | HIGH | MEDIUM | P1 |
-| Property-rich brush set (14 tips + custom + props) | HIGH | MEDIUM | P1 |
-| Option surface (water/load/flow/bleed/dry/edge/granulation) | HIGH | LOW (surface) | P1 |
-| Paper pack (10, all paints, composite-only) | HIGH | MEDIUM | P1 |
-| Module switcher shell + Krita slot + option drain | HIGH | MEDIUM | P1 |
-| Bake host survives navigation (finalizationQueue port) | HIGH | MEDIUM | P1 |
-| Brush-pack snapshot in `.mce` | MEDIUM | LOW | P1 |
-| Custom tip import | MEDIUM | LOW | P2 |
-| White gouache channel | MEDIUM | LOW | P2 |
-| Krita module | HIGH (later) | HIGH | P2 (v2.1.0) |
-| Engine-1 spectral adoption | MEDIUM | MEDIUM | P2 (v2.1.0) |
-| Fill tool | MEDIUM | MEDIUM | P3 |
-| Text/Shape/Hand annex tools | LOW | HIGH | P3 |
-| Imported paper scans | LOW | MEDIUM | P3 |
+|---|---|---|---|
+| Independent Motion keys per channel | HIGH | HIGH | P1 |
+| Compositor-applied transform (no re-bake) | HIGH | HIGH | P1 |
+| Position grouped + split X/Y | HIGH | MEDIUM | P1 |
+| Pivot correctness | HIGH | MEDIUM | P1 |
+| Hold / Ease on Motion keys | HIGH | MEDIUM | P1 |
+| Collapsed-rail animated signal + Animate empty state | HIGH | LOW | P1 |
+| Prev/next nav cluster | MEDIUM | LOW | P1 |
+| Seeded stepped Wiggle | HIGH | MEDIUM | P1 |
+| `.mce` motion persistence + dual-language pin | HIGH | MEDIUM | P1 |
+| Cursor-anchored wheel zoom + pill + Fit | HIGH | MEDIUM | P1 |
+| Single pitch authority (all mappings) | HIGH | HIGH | P1 |
+| Pen tool create/edit | HIGH | HIGH | P1 |
+| Per-vertex width | HIGH | MEDIUM | P1 |
+| Wireframe toggle | HIGH | MEDIUM | P1 |
+| Per-vertex color | MEDIUM | HIGH | P2 |
+| Motion path on canvas | MEDIUM | HIGH | P2 |
+| Ease intensity | MEDIUM | LOW | P2 |
+| Copy/paste Motion keys | MEDIUM | MEDIUM | P2 |
+| Zoom keyboard presets / zoom-to-selection | MEDIUM | LOW | P2 |
+| Width profile presets | MEDIUM | LOW | P2 |
+| Graph editor | LOW | HIGH | P3 |
+| Thumbnails at zoom | LOW–MEDIUM | HIGH | P3 |
+| Extra curve engines (B-Spline/TCB) | LOW | HIGH | P3 (reject) |
 
 ---
 
-## Competitor / Reference Feature Analysis
+## Competitor feature analysis
 
-| Feature | watercolor-playground [ORACLE] | Rebelle 8 [GENERAL] | Krita / CSP / Procreate [GENERAL] | Our Approach |
-|---------|-------------------------------|---------------------|-----------------------------------|--------------|
-| Wet-in-wet bloom + tide line | Yes (global wet field, inkwash-derived) | Yes (headline; drips, Blow, tilt) | Krita watercolor-ish engines approximate; CSP/Procreate are stylized | Clean-room global wet field; bloom survives bake (scripted — they don't animate) |
-| Subtractive mixing | Yes (7-coeff absorbance from spectral.js method) | Yes (pigment engine) | Approximate (Krita mix; Procreate smudge ≠ mixing) | `efx-spectral` shared package |
-| Brush property surface | 14 tips + rich `BrushPreset` props + custom PNG | 260+ presets, Brush Creator, stabilizer | Krita per-engine option stacks; CSP sub-tools; Procreate brush studio | 14 tips + custom; properties drained by the module switcher |
-| Paper | 10 procedural presets (tint/fleck/bump/mottle), size presets | 180+ surfaces, paper library, grain interacts with media | Paper is usually texture overlay only | 10 procedural papers, but paper = composite fond + deposit-role tooth (two roles kept distinct) |
-| Animation / script replay | **No** (raster undo, `.wcp` raster; only `StrokeWriter` for scripted text/shapes) | No (paint app) | No | **Our differentiator:** Studio script law → WebP bake → timeline |
-| Engine/module switcher | Single engine | Media switcher (watercolor/oils/inks…) | Krita brush engines per tool; CSP sub-tools; never document-level | Top-bar module switcher over one Studio engine |
-| Licence posture | **No LICENSE** (method-only for us) | Commercial | Mixed | Clean-room + MIT spectral only |
+| Feature | Toon Boom Harmony | After Effects | TVPaint | Moho / Illustrator | This product |
+|---|---|---|---|---|---|
+| Transform keys separate from content keys | Peg vs drawing exposure (F5/F6/F7) [DOC] | Transform properties vs source [DOC] | Keyframer FX vs drawing keys [DOC] | Layer transform vs switch/point data [DOC] | Motion keys vs drawing keys (v3) |
+| Split channels | Separate Positions / Separate Scales [DOC] | Separate Dimensions (X/Y/Z) [DOC] | Per-axis not documented | Point/line-width per point (Moho) [DOC] | Position split X/Y; Scale single lane |
+| Hold / step | Stop-motion keyframe (red) [DOC] | Hold keyframe [DOC] | Flat speed curve [DOC] | Stepped keyframe (K) | Hold on Motion key |
+| Ease | Velocity + Bezier handles in Function view; Bias/Tension/Continuity advanced params [DOC] | Easy Ease + influence/velocity [DOC] | Spline / Smooth + speed curve [DOC] | Bezier channels | Ease command + intensity (P2) |
+| Wiggle | Not a documented transform feature | `wiggle()` + `seedRandom`, stepped via `posterizeTime` [DOC] | Not documented | Noise/deformer (K) | Seeded, stepped, deterministic at export |
+| Timeline horizontal zoom | Slider + Reset + `1`/`2` + Cmd/Ctrl+wheel; no Fit [DOC] | `=`/`-`, fit in viewers [DOC] | Zoom via timeline UI (K) | — | Wheel + pill + Fit (locked) |
+| Per-vertex width | Variable line thickness exists; per-point keyed width is Moho's model [DOC] | Shape-path only (no paint) | N/A | Moho Line Width tool; Illustrator Width tool [DOC] | Yes (P1) |
+| Per-vertex color | Not on a shape stroke [DOC/K] | N/A | N/A | Not on one path (Illustrator/Inkscape) [DOC] | Segment model (P2) |
+| Wireframe / fast display | OpenGL vs Render; Show Strokes [DOC] | — | — | Illustrator Outline view (K) | Toggle (P1) |
+
+Legend: "—" = not documented in the fetched material; "(K)" = knowledge-tier.
 
 ---
+
+## Gaps to close at phase-plan time
+
+- **Gate C semantics** of repeat = hold vs fit-to-span: research gives the two industry analogues (per-span motion that stops, vs time-remapped stretch) but the milestone has not fixed which reading is intended. Phase 59 must decide before schema.
+- **Gate B identity** (loopId vs new railId) decides whether bare key rails can animate in v1 and how motion is stored.
+- **Harmony peg opacity** could not be confirmed as a peg channel from the fetched docs; opacity is a standard AE/Spine/Moho channel, so the feature stands, but do not cite Harmony for it.
+- **AE timeline zoom anchor** (playhead vs pointer) is not in the fetched reference; treat any "AE zooms around the playhead" claim as LOW.
+- **Spine 4.x curve presets** are not documented in the fetched material; only the runtime's linear/stepped/Bezier data model is confirmed.
+- **6×6 Motion keys** are smaller than the industry's typical 8–10 px key markers; no source supports 6 px as a comfortable target. The v7 spec locks it, so plan a hover affordance rather than reopening the visual.
+- **Per-vertex color rendering cost** on this engine is unmeasured; it is the deciding factor between P1 and P2.
 
 ## Sources
 
-- `SPECS/v1.1.0-water-color/00-grill-context.md` + `01-gsd-context.md` (Phase 56 locked context — bake model, licence boundary, tranche split)
-- `SPECS/v1.1.0-paint-host/context.md` (Phase 55 host split contract)
-- Local oracle tree `SPECS/v1.1.0-water-color/watercolor-playground/` — `README.md`, `src/engine/brushes.ts` (`BrushPreset` + 14 `BRUSH_PRESETS`), `src/engine/papers.ts` (10 `PAPERS`), `src/engine/Engine.ts` (`Params` = size/water/load/flow/bleed/dry/edge/granulation; tools brush/water/pen/lift), `src/app/registry.ts` (tool registry), `src/draw/StrokeWriter.ts` (scripted sample feeding), `src/components/SettingsPanel.tsx` (user-facing slider set) — read 2026-10-14
-- [Rebelle product page](https://www.escapemotions.com/products/rebelle) (fetched 2026-10-14 — MEDIUM confidence, marketing-level detail)
-- [rvanwijnen/spectral.js](https://github.com/rvanwijnen/spectral.js) (fetched 2026-10-14 — MIT, v3 K/S API; HIGH confidence)
-- `app/src/lib/paperPass.ts` (`PaperPassTile` / `encodePassTiles` valley+peak contract)
-- `.planning/PROJECT.md` v2.0.0 milestone lock (semver law, clean break, UI/UX stance 2026-10-14)
+**Official documentation (MEDIUM per single-source web tier):**
+- Toon Boom Harmony 20 Advanced — "Animating with Keyframes" (peg vs drawing keys, F5/F6/F7, Separate Positions/Scales)
+- Toon Boom Harmony 24 — PegNode class reference (transform channels, pivot)
+- Toon Boom Harmony 24 — Function view / About keyframes (bezier, velocity, stop-motion keyframes, Bias/Tension/Continuity)
+- Toon Boom Harmony 25 Premium — "Disabling Animation Keyframe Creation When Transforming Elements"
+- Toon Boom Harmony 27 — "Displaying Drawing Thumbnails in the Timeline View" (zoom slider, reset zoom, `1`/`2`, Cmd/Ctrl+wheel, no Fit)
+- Adobe After Effects reference — keyframes, Separate Dimensions, Graph Editor speed vs value, Easy Ease/influence, Keyframe Velocity, hold keyframes, `wiggle`/`seedRandom`/`posterizeTime`, timeline zoom keys
+- Adobe Illustrator — Width tool (width points, one-sided, multi-select, numeric, profiles)
+- Adobe Premiere Pro reference — timeline zoom `=`/`-`/`\`, Alt/Option+wheel, playhead-centred zoom
+- Krita — Vector Graphics manual (Path/Polyline/Bezier, style-defined uniform outline width, Edit Shapes)
+- Inkscape — Live Path Effects / PowerStroke (width points, geometry-not-style limitation, no color along one path)
+- TVPaint — Camera Speed Curves, FX Stack keyframes/additional operations (Linear/Spline/Smooth, flat curve = hold)
+- Dragonframe 2025 guide — timeline Scale control
+
+**Cross-checked / runtime sources (MEDIUM):**
+- EsotericSoftware spine-runtimes `Animation.c` / `spine-core` — `CURVE_LINEAR`, `CURVE_STEPPED`, Bezier segments per property timeline
+
+**Local codebase (HIGH):**
+- `app/src/lib/bezierPath.ts` — pure Bezier math, fit-curve conversion, insert/delete/couple/drag/hit-test
+- `app/src/types/paint.ts:46` — `BezierAnchor` with per-anchor pressure and corner mode
+- `app/src/types/layer.ts:63` — existing editor `EasingType` (linear / ease-in / ease-out / ease-in-out) — a separate, coarser model
+- `app/src/efx-paint/document/efxPaintDocument.ts:144` — `PhotoReferenceTransform` (x, y, scaleX, scaleY, rotation) as the existing 2D transform shape
+- `app/src/components/physic-paint/view/PhysicsPaintReferenceTransformHandles.tsx` + `app/src/components/canvas/transformHandles.ts` — reusable gizmo pattern
+- `app/src/components/physic-paint/view/PhysicsPaintCanvasZoomViewport.tsx` — shipped canvas zoom/pill conventions (separate system)
+- `packages/efx-paint-host/src/animation/types.ts:34` — `StudioStroke` (single `color`, per-point pressure, opaque engine payload)
+- `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` and `view/timelineRailDesign.ts` — `ROTO_CELL_WIDTH_PX = 18` and v7 tokens
+- `SPECS/v2.1.0-motion-channels/CONTEXT.md`, `README.md` — the v3 model and v7 lane contract
 
 ---
-*Feature research for: v2.0.0 multi-module paint workstation — module switcher, efx-watercolor, efx-spectral, paper pack*
-*Researched: 2026-10-14*
+*Feature research for: v2.1.0 rail motion, timeline zoom, vector painting, curve editing*
+*Researched: 2026-11-06*

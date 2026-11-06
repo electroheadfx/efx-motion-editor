@@ -1,617 +1,677 @@
-# Architecture Research — v2.0.0 Multi-Module Paint Workstation
+# Architecture Research — v2.1.0 Rail Motion Channels
 
-**Domain:** Multi-engine paint workstation over one shared Studio script/bake/timeline engine (Tauri + Preact monorepo)
-**Researched:** 2026-10-14
-**Confidence:** HIGH (seam map derived from locked specs `SPECS/v1.1.0-*` + live code inspection of `packages/efx-physic-paint` and `app/`; MEDIUM only on spectral.js upstream API details — local oracle `spectral.ts` is the working reference)
+**Domain:** Adding per-rail motion animation, timeline horizontal zoom, a vector painting layer, and painted-stroke curve editing to a shipped Tauri 2 + Preact 11 paint workstation
+**Researched:** 2026-11-06
+**Confidence:** HIGH on every integration seam (each claim cites live code); MEDIUM on the deferred bare-Key-Rail follow-up (Gate B, `SPECS/v2.1.0-motion-channels/CONTEXT.md` §3.6)
+
+This document assumes the shipped architecture as fact: Tauri 2 + Preact 11 + `@preact/signals`; paint side under `app/src/components/physic-paint/`; durable model in `roto/physicsPaintRotoPhysicalModel.ts`; loop clips carry `loopId` / `placementStart` / `sourceKeyIds` / `repeat` / `mode` / `railKind`; bare Key Rails are derived (`deriveKeyRailSegments` in `view/physicsPaintKeyRailPresentation.ts`, identity `firstKeyId` only); the Studio strip is `view/PhysicsPaintWorkflowStrip.tsx` with `ROTO_CELL_WIDTH_PX = 18`; the compositor flattens one raster per track per frame; `.mce` persistence is dual-language (TS interface AND Rust struct, pinned by `app/src/lib/mceFieldContract.test.ts`).
+
+---
+
+## 0. Verdicts
+
+| # | Question | Verdict | Minimal durable identity |
+|---|---|---|---|
+| A | Where does rail motion live? | Extend `PhysicPaintRotoLoopClip` with an optional **`railMotion`** field (field name deliberately NOT `motion` — that name belongs to `PhysicPaintRotoScriptMotionSettings`) | `loopId` (already stable) |
+| B | How does timeline zoom enter? | One session-only metrics module in `view/` that every pitch consumer reads; no context provider, no CSS scale transform | none (session-only, not persisted) |
+| C | Where does vector painting live? | A **`vector`** sub-document on `InternalPaintTrack`, sibling of `rotoPhysical`; v1 forbids both non-null; renderer feeds the existing per-track raster memo | `keyId` per vector key (same identity idea as roto keys) |
+| D | Can curve editing reuse Bézier tooling? | Yes — reuse `app/src/lib/bezierPath.ts` math and the `PaintOverlay` interaction model; durable authority stays `AquarellePoint[]`, chains stay in the existing edit ledger | none (derived anchors, resampled on commit) |
+
+**The one architectural rule that drives all four verdicts:** the compositor's law is one flattened raster per track per frame, and the persistence law is dual-language conditional encoding. Anything that changes what a frame looks like without moving key bytes must (i) join the canonical revision and (ii) be applied at composite time. Motion is the first rail property with that profile, which is why it is the most delicate of the four.
 
 ---
 
 ## 1. System Overview (target state)
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  app/ — ONE Studio window + ONE Studio engine (never forked)             │
-│                                                                          │
-│  TopBar: [existing icons] [MODULE SWITCHER: Brush | Water color | (Krita slot)] │
-│                                                                          │
-│  ┌────────────────┐  ┌─────────────────────────────────────────────┐    │
-│  │ Module options │  │ Shared Studio surface                        │    │
-│  │ panels         │  │ Roto timeline · script library · Apply dialog│    │
-│  │ (per engine)   │  │ bake host (finalizationQueue pattern)        │    │
-│  │                │  │ Loop Clips · cache · export                  │    │
-│  └───────┬────────┘  └──────────────────┬──────────────────────────┘    │
-│          │ drain options/features       │ script envelope + ticks        │
-├──────────┴──────────────────────────────┴────────────────────────────────┤
-│  packages/efx-paint-host  — Studio law (Preact-free, engine-agnostic)    │
-│    animation/ · util/traceSeed · script/ envelope · time/ ticks +        │
-│    diffusionFrames mechanism · bake-host queue pattern                   │
-├──────────────────────────────────────────────────────────────────────────┤
-│  Engine adapters (opaque payload carriers — host never parses them)      │
-│  ┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────┐  │
-│  │ efx-physic-paint     │ │ efx-watercolor       │ │ efx-krita (slot) │  │
-│  │ engine 1 (refactor)  │ │ engine 2 (clean-room)│ │ v2.1.0, OUT      │  │
-│  │ brush/core/engine/   │ │ WebGL2 fluid grid    │ │                  │  │
-│  │ render/paper         │ │ StrokeWriter-style   │ │                  │  │
-│  └──────────┬───────────┘ └──────────┬───────────┘ └──────────────────┘  │
-│             │                        │ consumes                          │
-│             │ (adopts v2.1.0)        ▼                                   │
-│             └──────────── packages/efx-spectral (MIT, shared, tiny)      │
-└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Studio surface (Preact)                                                     │
+│                                                                              │
+│  PhysicsPaintWorkflowStrip.tsx   ← motion channel lanes, zoom metrics        │
+│    ├─ track header column (185px) ← live motion toggle + channel headers     │
+│    ├─ key rail / loop rail / reveal rail                                 │
+│    ├─ TimelineMotionChannels (NEW) ← pure projection of railMotion            │
+│    └─ ruler, sound stains, playhead, ghosts                                   │
+│                                                                              │
+│  stores/physicPaintStore.ts                                                   │
+│    ├─ _resolveRotoPhysicalStructural  (revision + decode)                    │
+│    ├─ _trackContentRevision           (structural.contentRevision)           │
+│    ├─ _preResolveTrackContent         (roto branch | legacy branch  [+ vector])│
+│    └─ _resolveFlattenedFrame          (content revs, flattened key, memo,     │
+│                                        ports, compositeFrame)  [+ transforms] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  efx-paint/compositor (pure, port-driven)                                    │
+│    compositeFrame() → per track: resolveTrackContent(frame)                  │
+│                       → apply transform (NEW) → ctx.drawImage(raster)        │
+│    → one flattened canvas                                                    │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  Durable model (TS)                      Durable model (Rust mirror)         │
+│    physicsPaintRotoPhysicalModel.ts  ↔  src-tauri/src/services/script_library│
+│    buildPhysicPaintRotoPhysicalRevision   canonical_physical_hash            │
+│    encodeCanonicalLoopClips (1610)        canonical_loop_clips (~1382)       │
+│    (layer JSON, not models/project.rs — mceFieldContract does NOT apply)     │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The one rule everything else follows:** the Studio script law
-(`record → play that engine's physics → bake WebP → cache → timeline reads cache`)
-is shared. Engines and per-paint UIs are isolated. Modules change the
-options/features surface, never the engine.
+### Component Responsibilities
 
----
-
-## 2. (a) The efx-paint-host seam
-
-### 2.1 Where the seam goes
-
-`packages/efx-paint-host` sits **between** `app/` (Studio) and the engine
-packages. It is a **move + contract extraction** out of `efx-physic-paint`
-(tranche 0b), not a rewrite. Direction of dependency after the split:
-
-```
-app/  →  efx-paint-host  →  (nothing engine-specific)
-app/  →  efx-physic-paint  →  efx-paint-host      (engine 1 consumes host)
-app/  →  efx-watercolor    →  efx-paint-host
-efx-watercolor  →  efx-spectral                   (colour math only)
-efx-physic-paint →  efx-spectral                  (v2.1.0, NOT v2.0.0)
-```
-
-Host is **Preact-free** (decide Q3 of the paint-host spec that way): the
-watercolour engine is Preact-free, the host must not force Preact into engine
-packages. If anything Preact-flavoured is needed, it lives in a `./preact`
-entry exactly like `efx-physic-paint` already does
-(`exports: { ".", "./preact", "./animation" }`).
-
-### 2.2 Seam map — what moves out of efx-physic-paint
-
-| Module (today) | Destination | Notes |
+| Component | Responsibility | Communicates With |
 |---|---|---|
-| `packages/efx-physic-paint/src/animation/` (`AnimationPlayer`, `progressiveStrokeSchedule`, `staticStrokeSchedule`, `recordedStrokeMotion`, `types.ts`) | `efx-paint-host/animation/` | Whole folder (paint-host spec Q1 default). `AnimationStrokeStyleOverride` must lose `physicsMode` at the boundary — that becomes engine payload. |
-| `packages/efx-physic-paint/src/util/traceSeed.ts` (`fnv1a`, `hashMutationId`, `seededRng`) | `efx-paint-host/util/traceSeed.ts` | FNV-1a offset 2166136261 / prime 16777619 + mulberry32 stream — this IS the determinism law (R3.1–R3.2). Keep `seededRng(strokeSeed, streamKey)` signature so engine-1 deposit paths re-point without logic changes. |
-| Script envelope — today app-owned: `app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts` (`PersistedRotoScriptV1`, thumbnail, source, limits) | `efx-paint-host/script/` (generic envelope) | The app schema becomes **engine-1's payload codec** on top of the host envelope. The `kind`/`schemaVersion`/`id`/`name`/timestamps/`thumbnail`/library-row shape is shared Studio law. |
-| Tick grid + `diffusionFrames` **mechanism** (today implicit: `PaintStroke.diffusionFrames` + `AnimationConfig.fps`) | `efx-paint-host/time/` | Integer ticks (~1/60 s, exact value fixed at plan time). Host owns the mechanism; each engine owns its cap policy (e.g. watercolour cap 600 is the engine's bake window, not the host's). |
-| Bake-host pattern: `app/src/components/physic-paint/pilot/finalizationQueue.ts` (Effect v4 bounded queue, concurrency 2, `beginFlush`, generation-stale commits) | `efx-paint-host` bake host (port the pattern) | R4: **no Web Worker, no new cancellation model**. PlayScript bake aborts on dispose — port that semantics per bake type; long fluid cuissons use the flush-survives-navigation semantics. |
-
-**Stays in `efx-physic-paint` (engine 1 only):** `brush/`, `core/`, `engine/`,
-`render/`, `paper`, `BrushOpts`, `PhysicsMode`, `PaintStroke`'s engine-specific
-fields, the dual-canvas wet/dry buffers, fluid solver, drying LUT. Its name
-keeps meaning engine 1.
-
-**Stays in `app/`:** Studio window/UI, Roto timeline model (keyId/appFrame,
-finalizeProposal), compositor (`getFlattenedFrame`), `.mce` IO through Rust,
-the script library UI, `physicsPaintRotoPlayScriptController.ts` (re-pointed to
-host imports, no behaviour change at the seam — R1.3).
-
-### 2.3 The generic per-engine stroke payload
-
-One shared shape, engine-specific data carried **opaquely**. Host APIs are
-parameterised over `P`; host code never reads `P`'s fields (R2.2).
-
-```typescript
-// efx-paint-host/script/payload.ts — the ONLY stroke shape the host knows
-
-/** Shared stylus sample. `tick` is the integer tick of this sample (never ms). */
-export interface StudioPoint {
-  x: number; y: number;
-  p: number;            // pressure 0..1
-  tx: number; ty: number; tw: number;  // tilt / twist
-  tick: number;         // integer tick offset within the stroke
-}
-
-/** Host-owned motion schedule input (wiggle / held-pose / drift). */
-export interface StudioStrokeMotion {
-  strokeDeformation: number;   // 0..100
-  strokePosition: number;      // 0..100
-}
-
-/**
- * Shared stroke record. `engine` is the opaque per-engine payload slot.
- * Tool ids, colour model, and ALL engine params live inside `engine`.
- */
-export interface StudioStroke<P = unknown> {
-  pts: readonly StudioPoint[];
-  ticks: number;                       // stroke duration on the fixed tick grid
-  cuisson: number;                     // diffusion budget in ticks (per-stroke)
-  motion: StudioStrokeMotion | null;
-  brushId: string;                     // stable id into the engine's brush pack
-  toolOverrides: Readonly<Record<string, number | string | boolean>>;
-  traceSeed: number;                   // FNV-1a-derived, assigned at record time
-  engine: P;                           // OPAQUE — host never inspects this
-}
-
-/** Shared script envelope. engineId is the Apply fail-closed discriminator. */
-export interface StudioScriptEnvelope<P = unknown> {
-  kind: 'efx-studio-paint-script';
-  schemaVersion: number;
-  engineId: EngineId;                  // 'efx-physic-paint' | 'efx-watercolor' | 'efx-krita'
-  id: string; name: string;
-  createdAt: string; updatedAt: string;
-  source: StudioScriptSource;          // project/layer/frame/dims + display hint only
-  thumbnail: StudioScriptThumbnail;    // image/webp dataUrl, shared limits
-  brushPack: BrushPackSnapshot;        // TRAVELS IN .mce — deliberate exception to 52.2
-  strokes: readonly StudioStroke<P>[];
-}
-
-export type EngineId = 'efx-physic-paint' | 'efx-watercolor' | 'efx-krita';
-```
-
-**Per-engine payload examples** (each engine defines its own `P`; host code
-compiles against `StudioStroke<P>` generically):
-
-```typescript
-// efx-physic-paint — engine-1 payload extracted from today's PaintStroke
-interface PhysicStrokePayload {
-  tool: 'paint' | 'erase' | 'move';
-  color: string | null;
-  params: BrushOpts;                   // size, opacity, waterAmount, dryAmount, …
-  physicsMode: 'local' | 'last' | 'all' | null;
-  hasPenInput?: boolean;
-}
-
-// efx-watercolor — engine-2 payload (vocab locked in 01-gsd-context R3.1)
-interface WatercolorStrokePayload {
-  tool: 'brush' | 'water' | 'pen' | 'lift';   // ONLY these four in v2.0.0
-  color: string | null;
-  params: {
-    size: number; water: number; load: number; flow: number;
-    bleed: number; dry: number; edge: number; granulation: number;
-    // tip/aspect/rotation/size-curve/wetRound ride the brush-pack record,
-    // not per-stroke, except toolOverrides
-  };
-}
-```
-
-**Engine adapter contract** (the plug point engines implement; host drives it):
-
-```typescript
-export interface EngineAdapter<P> {
-  readonly engineId: EngineId;
-  readonly payloadCodec: {
-    serialize(stroke: EngineStroke<P>): StudioStroke<P>;
-    parse(raw: unknown): StudioStroke<P> | null;   // null → fail-closed refuse
-  };
-  /** Feed one recorded stroke sample stream into the live sim. */
-  applyStroke(stroke: StudioStroke<P>, ctx: PlayContext): void;
-  /** Advance the engine's physics by one tick. No forced dry at boundaries. */
-  stepTick(tick: number): void;
-  /** Capture the engine's composited pixels (transparent where unpainted). */
-  captureFrame(): CanvasImageSource;
-  dispose(): void;
-}
-```
-
-**Apply is fail-closed across engines** (R2.3, `physicsPaintRotoScriptApplyRefusal`
-class): unknown `engineId`, unparseable `engine` payload, or engine mismatch
-onto a different engine's layer → named visible refusal, never half-apply.
-
-### 2.4 Parity guard (why this is a refactor, not a rewrite)
-
-R5.2 / A4: the same recorded engine-1 script replayed after the split must bake
-the same pixels (golden / delta threshold). R5.3 A5: a **fake engine-2 payload**
-must compile against the host API and round-trip record → play → bake with zero
-engine-1 types leaking in. A5 is the genericity proof — treat it as the phase's
-signature acceptance row.
+| `roto/physicsPaintRotoPhysicalModel.ts` | Durable roto model, strict parser, canonical encoders, revision hash | `efxPaintDocumentRevision.ts`, `physicPaintStore.ts`, Rust mirror |
+| `src-tauri/src/services/script_library.rs` | Handwritten Rust mirror of the canonical encoding | TS encoders (byte parity is the contract) |
+| `efx-paint/document/efxPaintDocumentRevision.ts` | Track/collection revision terms (`frames:`, `loops:`, `roto:`) | store, flattened cache key |
+| `efx-paint/document/efxPaintDocumentParsers.ts` | Fail-closed allowlist parsing (`TRACK_KEYS`, line 69) | document load/save |
+| `efx-paint/compositor/efxPaintCompositor.ts` | Pure per-frame flatten; per-track raster memo; background transform | store ports |
+| `efx-paint/compositor/efxPaintCompositeCache.ts` | Flattened cache key (config/tracks/bg/bgtransform/…) | store |
+| `stores/physicPaintStore.ts` | Structural resolution, content revisions, flattened frame assembly | everything above + UI |
+| `view/PhysicsPaintWorkflowStrip.tsx` | Timeline chrome, lanes, gestures, ruler, stains, playhead | store, rails, header column |
+| `view/physicsPaintTrackHeaderColumn.tsx` | Pinned header rows (30px track rows) | strip |
+| `view/timelineRailDesign.ts` | Single source of lane geometry (pitch/cell/curve/outline) | rails, strip |
+| `view/physicsPaintCanvasZoom.ts` | Precedent: session-only zoom signals + anchoring helpers | canvas view |
 
 ---
 
-## 3. (b) efx-watercolor plugs into the Studio script law and the compositor
+## 2. Question A — Rail motion persistence and render
 
-### 3.1 Package and engine shape
+### 2.1 Recommendation
 
-`packages/efx-watercolor` = clean-room reimplementation of the published
-physics in the local oracle (`SPECS/v1.1.0-water-color/watercolor-playground/src/engine/`,
-**no licence → no code copy, method only**). It is UI-free (the oracle proves
-this: "The simulation and the rendering don't depend on the UI") and
-instantiable per canvas.
+Extend the existing loop clip. Add one optional field to `PhysicPaintRotoLoopClip` (`physicsPaintRotoPhysicalModel.ts:305-362`):
 
-Texture layout to reimplement (from the oracle's shader comments):
+```ts
+// New types, placed beside PhysicPaintRotoScriptMotionSettings (NOT reusing it)
+export interface TimelineRailMotionKey {
+  /** Rail-local frame (0 = rail start). Never an app frame. */
+  readonly frame: number;
+  readonly value: number;
+}
 
+export interface TimelineRailMotionChannel {
+  readonly id: 'position-x' | 'position-y' | 'scale' | 'rotation' | 'opacity';
+  readonly keys: readonly TimelineRailMotionKey[];
+}
+
+export interface TimelineRailMotion {
+  readonly channels: readonly TimelineRailMotionChannel[];
+  /** How rail-local time maps onto the occurrence: hold or fit-to-span. */
+  readonly repeat: 'hold' | 'fit';
+}
+
+// On PhysicPaintRotoLoopClip:
+readonly railMotion?: TimelineRailMotion;
 ```
-velocity  RG16F   sim grid      water flow
-wet       R16F    doc grid      standing water (dries over time)
-ink       2×RGBA16F            mobile pigment: A = absorbance 0..3, B.rgb = 4..6, B.a = gouache
-fixed     2×RGBA16F            settled pigment
-paper     RGBA8                r = lit relief, g = height, b = mottle, a = fleck
-```
 
-Transport passes: semi-Lagrangian advection → wet-gated diffusion (bleed) →
-capillary flux down the wetness gradient (tide line) → fix → dry. Conservation
-law: pigment fluxes gated by mobility on BOTH sides — never seeps onto dry
-paper.
+Why the clip and not a new record collection:
 
-### 3.2 Script law integration (the four steps)
+- The clip already *is* the rail's durable identity (`loopId`) and already owns placement (`placementStart`), duration (`sourceKeyIds.length × repeat`) and type (`railKind`). A motion record would have to duplicate all four and then answer "what happens when the clip moves / repeats / is deleted" — questions the clip answers for free.
+- A motion record separated from the clip would need a foreign key with the same lifetime as the clip. That is a 1:1 relationship expressed as two collections; there is no second consumer.
+- A new top-level `.mce` collection would also break the current layering: roto lives *inside* `layers/<layerId>.json` (`preparePackageLayer`, `app/src/lib/efxPaintPersistence.ts:544`, `layerFile: buildLayerFileRelativePath(layerId)` at 582), not in `models/project.rs`. New collections inflate the dual-language surface (`mceFieldContract.test.ts`) for no gain.
 
-| Step | Host provides | Engine-2 provides |
+**Rejected alternatives**
+
+| Alternative | Why rejected |
+|---|---|
+| Auto-adopt a bare Key Rail into a Loop Clip (repeat 1) on first Motion key | Hidden document mutation on a user gesture; silently changes rail type; collides with the explicit rail-edit prompt contract; merges two rail kinds into one, breaking the design's distinct chrome |
+| Separate motion collection keyed by `loopId` | Duplicate identity, duplicate lifecycle rules, extra dual-language struct, extra orphan handling |
+| Store motion on the drawing key | Contradicts v3: Motion keys are independent of drawing keys; a rail with no drawing key must animate (`CONTEXT.md` §3) |
+| Reuse `PhysicPaintRotoScriptMotionSettings` | It is script deformation/position jitter (`physicsPaintRotoPhysicalModel.ts:237-247`) applied during *bake*; rail motion is applied at *composite*. Different evaluation point, different lifetime, different semantics |
+
+### 2.2 Minimal durable identity and its invariants
+
+**Identity = `loopId`.** Motion is a property of the loop clip. No second identity, no cross-record reference.
+
+| # | Invariant | Why it matters |
 |---|---|---|
-| 1. record | envelope + `StudioStroke<P>` + integer-tick snapping (`time/`) + `traceSeed` | payload codec (`brush/water/pen/lift` + watercolour params), brush-pack snapshot entries |
-| 2. play | schedule player (`animation/`), `stepTick` drive, `cuisson` budget | the fluid sim evolves — **forcing Dry at frame boundaries is prohibited** (P4); blooms/tide lines must survive into baked frames |
-| 3. bake | bake host (finalizationQueue pattern — survives leaving the frame), WebP encode via existing Rust codec path | `captureFrame()` → transparent-where-unpainted pixels |
-| 4. after | timeline/cache/Loop Clips/export read **cache only** — unchanged Studio contract | nothing (no live GPU fluid on the timeline, P3) |
+| I1 | `railMotion` is optional; absent means "no motion" and encodes zero bytes | Every existing `.mce` stays byte-identical; no migration (`feedback_no_backward_compat` is satisfied by no format change) |
+| I2 | Motion keys are rail-local frames; they are never rewritten when `placementStart` moves | Move/repeat must not require touching motion (v3: motion is in rail-local time) |
+| I3 | Motion never enters content resolution and never touches key bytes | Motion re-evaluates per frame at composite; no re-bake, no source-key reads |
+| I4 | Motion is written only when non-empty, exactly like `colorize`, `photoWiggle`, `keyScriptEdits`, `paintSeedVariation` | Conditional-term idiom keeps absent-case output byte-identical |
+| I5 | Motion **must** join the physical revision | Unlike the re-bake-only flags, motion changes rendering without changing key bytes — if it is not in the hash, two different documents hash the same |
+| I6 | Split does not split motion; merge never unions motion | Splitting a rail duplicates the clip: copy `railMotion` verbatim to both halves. Merge (if ever added) keeps the target's motion, discards the source's — document it |
+| I7 | Deleting the clip deletes its motion; deleting source keys does not | Single owner. Dangling `sourceKeyIds` already legal; motion keeps animating |
+| I8 | `railMotion` never changes `placementStart`, `repeat`, `sourceKeyIds`, `mode`, `railKind` | Motion is a view-time transform, not a structural rail edit |
+| I9 | Channel order and key order in the encoding are canonical (fixed channel id list, keys sorted by frame) | TS and Rust must produce identical bytes |
 
-The oracle's `StrokeWriter` concept (feed scripted samples along a path with
-speed/pressure/taper) is the model for engine-2's `applyStroke`: the host
-replays recorded `pts` with recorded per-sample `ticks`; the engine does the
-rest. `dt`-in-the-mark is satisfied by the tick grid (Q2=B): record snaps each
-sample to the nearest tick and stores the integer.
+### 2.3 Lifecycle truth table
 
-### 3.3 Compositor integration (unchanged law, new producer)
+| Event | Motion outcome |
+|---|---|
+| Rail moved (drag) | Unchanged — rail-local frames |
+| Rail repeated (repeat N > 1) | Unchanged — per-occurrence evaluation uses rail-local time |
+| Source key deleted | Clip survives; motion survives; cycle length shrinks |
+| Source key added | Same |
+| Rail split | Motion copied verbatim to both halves (I6) |
+| Rail deleted | `railMotion` deleted with the clip |
+| Track hidden / soloed | No change; the transform is applied inside the per-track draw, so visibility rules are untouched |
+| Copy/paste of a rail | If rail copy exists today, copy `railMotion` with the clip |
+| Undo | Whatever the existing snapshot mechanism does with the clip — `railMotion` is part of the record, so it rides along with no new ledger |
+| Export | Evaluated per frame at composite; nothing baked into keys |
 
-`getFlattenedFrame` remains the **sole** content path for preview and export
-(CMP-01 keystone). Watercolour adds a **fourth paint layer kind** beside Basic
-(perfect-freehand) / FX (p5.brush) / Physics (engine 1) — naming is UI-SPEC
-scope. What the compositor sees is identical to today's Physics frames:
+### 2.4 Dual-language obligations (the `.mce` law)
 
-- baked WebP frames, **transparent where unpainted**;
-- v1.0 compositor law: tracks transparent between each other; paper is the
-  document fond (`physicPaintStore._resolveDocumentFondInstruction` + `paperPass`);
-- **no rebake on paper change** — paper = conditioned height map → valley/peak
-  tiles swapped at the composite seam (`app/src/lib/paperPass.ts`,
-  `PaperPassTile { valley, peak }`);
-- engine-side tooth (granulation settle, dry-brush skip) is the **deposit role**
-  of the four-role law — it bakes into the mark, does not make the WebP
-  paper-dependent (R2.3).
+The physical roto blob is persisted inside the layer JSON, so `mceFieldContract.test.ts` (which pins `models/project.rs` against `types/project.ts` / `types/audio.ts`) is **not** the gate. The gate is the TS strict parser plus byte parity between the TS and Rust canonical encoders.
 
-**Paper pack (rides phase 56):** the oracle's 10 procedural papers (cold press,
-hot press, rough, khadi, washi, kraft, …) become clean-room height/mottle/fleck
-fields exported as `PaperPassTile`-shaped entries into the **Studio paper
-library for ALL paints** (normal, physic, aquarelle, and later krita). This is
-the one deliverable of 56 that reaches beyond engine 2.
-
-### 3.4 Determinism
-
-Same script ⇒ same pixels. Seed per stroke through host `traceSeed`
-(FNV-1a → `seededRng(strokeSeed, streamKey)`). No `Math.random()` / bare
-`rand()` in deposit or sim path (P-level law + R1.5). Sim step count and `dt`
-quantisation are fixed by the tick grid — the open point from the grill context
-is closed by construction once `time/` is host-owned.
-
----
-
-## 4. (c) efx-spectral package boundary
-
-**One tiny shared package, zero engine dependencies.**
-
-```
-packages/efx-spectral/          # MIT (rvanwijnen/spectral.js method + data)
-  NOTICE                        # MIT attribution — required
-  src/
-    spectralData.ts             # 38-band PRIMARIES, 7-coeff BASIS, display weights (vendored MIT data)
-    spectral.ts                 # Pigment { coeffs: Float32Array(7), white },
-                                # pigmentFromHex, coeffsToHex, mixToHex, hexToRgb/rgbToHex
-    glsl.ts                     # displayBasisGLSL() — GLSL basis export as a string
-  (no preact, no host, no engine imports — pure colour math)
-```
-
-Surface mirrors the oracle's `spectral.ts` (which is itself the spectral.js
-method): `COEFFS = 7` absorbance basis + white gouache channel; display
-rebuilds 16 bands with `exp(-A)` → sRGB (ΔE_OK ≈ 0.1–0.2 per spec).
-
-**Dependency law (why this boundary):**
-
-| Placement | Verdict | Why |
+| Layer | Function | Change |
 |---|---|---|
-| `packages/efx-spectral` (chosen) | YES | engine 2 consumes now; engine 1 adopts in v2.1.0 (replaces `mixSubtractive` RYB heuristic) with **no rewrite** — it is already a dependency in the graph, just add the call sites |
-| inside `efx-watercolor` | NO | would force engine 1 → engine 2 dependency at adoption time |
-| inside `efx-paint-host` | NO | host is the Studio law, not a colour toolbox |
-| vendor into each engine | NO | duplicated mixing code — explicitly banned (milestone scope) |
+| TS type guard | `isPhysicPaintRotoLoopClip` (`:861`) | Accept and validate `railMotion` (channel ids in the fixed list, finite numbers, frames finite, repeat in `hold \| fit`) |
+| TS parser | `parsePhysicPaintRotoLoopClips` (`:1140-1209`) | Frozen verbatim copy of the optional fields — add `railMotion` copying so parse→encode round-trips |
+| TS canonical encoder | `encodeCanonicalLoopClips` (`:1610-1675`) | Add a **conditional** `railmotion:` block at the identical ordinal in the record (after the existing optional blocks). Emit only when present |
+| TS content encoder | `encodePhysicPaintRotoPhysicalContent` (`:1478-1575`) | No change — loops term already flows through |
+| TS revision | `buildPhysicPaintRotoPhysicalRevision` (`:1460`) | No change — it hashes the encoded content, so `railmotion:` rotates it automatically |
+| Rust mirror | `canonical_loop_clips` (`script_library.rs` ≈ `:1382`) | Add the same conditional block at the **same ordinal**, same number formatting |
+| Rust hash | `canonical_physical_hash` (`:1550`) | No structural change — the loops term is hashed as-is. If motion is emitted inside the loop record, it joins the hash automatically |
 
-`efx-krita` does **not** consume it (libmypaint mixes internally; smudge ≠
-mixing). Engine 2 keeps the GLSL display basis usage engine-side via
-`displayBasisGLSL()` — the package exports the string, the engine owns the
-shader program.
+Two traps:
 
-**Sequencing note (locked in milestone scope):** if plan-time shows phase 56
-needs spectral before 57 runs, **create `packages/efx-spectral` early inside 56**
-(or pull 57's content forward). Never duplicate the mixing code inside the
-watercolor engine to dodge the ordering. Phase 57 then finishes the shared
-hardening (NOTICE audit, CPU helper tests, API freeze for engine-1 adoption).
+1. **Ordinal parity.** `canonical_loop_clips` is handwritten; the existing comment in `encodeCanonicalLoopClips` already records that adding a term forces an identical-ordinal Rust mirror. Put `railmotion` after the last existing optional block in both languages and add a parity fixture (encode in TS, hash, compare against a Rust-produced fixture) to the existing canonical tests.
+2. **Do not copy the re-bake exclusion.** The comment near `encodeCanonicalLoopClips` explains that `photoWiggle`, `keyScriptEdits`, `paintSeedVariation` are deliberately excluded because every write re-bakes key bytes. Motion has no such re-bake, so it must be **inside** the encoded record, not excluded from the hash.
 
----
+### 2.5 Revision and cache wiring
 
-## 5. (d) Module switcher over ONE Studio
+No new plumbing is needed for persistence or flattened invalidation:
 
-### 5.1 What a "module" is
+- `encodeValidatedEfxPaintTrackContent` (`efxPaintDocumentRevision.ts:60-122`) emits `roto:<buildPhysicPaintRotoPhysicalRevision(...)>`. Motion in the physical revision rotates the document revision, so save fingerprints and cache keys follow.
+- `deriveEfxPaintFlattenedCacheKey` (`efxPaintCompositeCache.ts:125-204`) already includes the `frame` term and the per-track content revisions. A per-frame transform is therefore already inside the key space; **do not add a transform term** — it would be redundant and would churn the key on every frame for no reason.
+- `deriveEfxPaintTrackContentKey(trackId, contentRevision, frame)` keeps the per-track raster memo content-keyed, so motion does **not** invalidate rasters. This is exactly the "1 raster per track per frame; content cycles, motion continues" law.
 
-A module is a **registration record**, not a window or a Studio fork:
+### 2.6 Compositor integration
 
-```typescript
-interface StudioModule {
-  id: EngineId;
-  label: 'Brush' | 'Water color' | 'Krita';
-  engineAdapter: EngineAdapter<unknown>;      // bound instance
-  optionsPanel: ComponentType;                // drains OWN options into the panels
-  features: ModuleFeatures;                   // which Studio affordances apply
-  brushPackKind: string;                      // pack snapshot namespace in .mce
+`compositeFrame(document, frame, size, ports)` (`efxPaintCompositor.ts:243`) draws per participating track at 313-351. Two changes:
+
+1. **Add a `trackTransforms` port** (a map `trackId → TimelineTrackTransform | null`, resolved in the store before the call). Prefer a precomputed map over a `resolveTrackTransform` callback: the compositor stays pure and the store already has the loop ranges resolved.
+2. **Apply the transform at both draw sites**:
+   - normal path: before `ctx.drawImage(resolution.raster, 0, 0, size.width, size.height)` (`:349`);
+   - `engineOverlay` path (`:313-322`) — otherwise an overlay track silently ignores motion.
+
+Semantics:
+
+```ts
+interface TimelineTrackTransform {
+  readonly translateX: number;   // canvas px, already scaled by scale
+  readonly translateY: number;
+  readonly scale: number;        // default 1
+  readonly rotation: number;     // radians
+  readonly opacity: number;      // 0..1, multiplied into globalAlpha
 }
 ```
 
-- Placement: top-bar icon near the existing icons in
-  `app/src/components/physic-paint/view/PhysicsPaintTopBar.tsx` (exact placement
-  / iconography / panel layout = discuss-phase gray zone, per milestone scope).
-- v2.0.0 ships **Brush + Water color**; **Krita is a visible-but-inert slot**
-  (or absent) — do NOT implement krita here.
-- Switching selects the engine adapter + brush pack + options surface for
-  **new work**; it does not migrate or reinterpret existing frames/scripts.
+- **Anchor = composite canvas centre**, not the content bounding box. The content bbox changes as the cycle advances (that is the whole point of cycling content under constant motion); anchoring to it would make a perfect loop wobble. Centre-anchored is deterministic and cheap.
+- `ctx.globalAlpha = track.opacity × transform.opacity`, restored after draw.
+- **Identity fast path:** when the map has no entry, draw exactly as today (no `save`/`restore`), preserving v2.0.1 output bit-for-bit.
+- Precedent to copy verbatim: the background transform at 397-423 (contain-fit × clip scale, then translate to centre + `x`/`y`, rotate degrees→radians, scale, `drawImage`).
 
-### 5.2 One Studio engine — what never forks
+Everything else stays: `participatingPaintTracks` (`efxPaintHideSolo.ts`, kind-agnostic), `trackRasterMemo`, background, exclusion/solo, fond resolution.
 
-Shared across modules, single implementation each:
+### 2.7 Timeline (UI) integration
 
-- script law: record → play physics → WebP bake → cache (`efx-paint-host`);
-- script library lifecycle (load/save/thumbnail/Apply/Loop Clip) — one library,
-  rows tagged by `engineId`;
-- Roto timeline (keyId/appFrame, finalizeProposal, group ops, interpolation);
-- bake host + cache management + WebP runtime + 512 MB LRU;
-- compositor `getFlattenedFrame` + export;
-- `.mce` package IO through Rust (project_package_fs_scope law).
+The motion lane is a **pure projection** of the durable model. New module `view/TimelineMotionChannels.tsx` plus a store selector that returns `TimelineMotionRailModel` (contract already written in `SPECS/v2.1.0-motion-channels/README.md`).
 
-**Fail-closed Apply across engines:** a script refuses to apply onto a layer of
-a different engine (same class as `physicsPaintRotoScriptApplyRefusal`). The
-envelope's `engineId` is the discriminator.
+- Channel curves: 1.5 px cubic paths, viewBox `0 0 railWidth 18`. The model/selector supplies the path (README §6.3: the view must not invent interpolation maths). A pure `buildChannelCurvePath(channel, railWidth)` belongs beside the evaluator so the *same* easing function feeds the curve and the render.
+- Expansion belongs to the **selected rail** (design default, one open block per timeline). State lives in the selection/view model, never on the track record.
+- Row rhythm: expanded block = 30 px rail row (shipped strip uses 31 px; see §2.8) + 18 px per channel + 2 px post-block gap, mirrored in the header column.
+- The reorder insertion indicator currently uses `index × 30px`; with expanded blocks the offsets are non-uniform. Switch to measured row offsets (`getBoundingClientRect` once per drag start, or a computed offsets array) — never arithmetic that can land inside a channel block.
+- Nav cluster actions (`previous` / `next` / `diamond`) route through store actions that manipulate `railMotion`; if an action is missing, render disabled with a real reason — never a silent no-op (README §4).
 
-### 5.3 What the module changes
+### 2.8 New vs modified (Question A)
 
-Only the options/features surface:
-
-- left/right panels drain the module's own controls (Brush keeps today's
-  physics sliders; Water color drains `brush|water|pen|lift` + watercolour
-  params + its 14-tip brush set);
-- toolbars/feature flags per module (`features`) so shared Studio affordances
-  grey out rather than fork;
-- brush-pack namespace per module inside the `.mce` snapshot.
-
-**Layer kind is engine-addressed:** a document can hold tracks of different
-engines; the switcher changes the active editing surface. Scripts replay only
-onto matching-engine tracks.
+| Kind | Item |
+|---|---|
+| NEW | `TimelineRailMotion`, `TimelineRailMotionKey`, `TimelineRailMotionChannel` types (`physicsPaintRotoPhysicalModel.ts`) |
+| NEW | `roto/timelineRailMotion.ts` — `evalRailMotionChannel`, `evalRailMotionAt`, `buildChannelCurvePath` (pure, shared UI/render) |
+| NEW | `view/TimelineMotionChannels.tsx` (+ CSS in `physicsPaintStudio.css`) |
+| NEW | Store selector projecting `TimelineMotionRailModel`; motion mutation actions |
+| NEW | `trackTransforms` port + `TimelineTrackTransform` type on the compositor ports |
+| MODIFIED | `PhysicsPaintRotoLoopClip`, `isPhysicPaintRotoLoopClip`, `parsePhysicPaintRotoLoopClips`, `encodeCanonicalLoopClips` (TS) |
+| MODIFIED | `canonical_loop_clips` (Rust), parity fixture |
+| MODIFIED | `efxPaintCompositor.ts` draw sites (normal + engineOverlay) |
+| MODIFIED | `physicPaintStore.ts`: `_resolveFlattenedFrame` (transforms), `_trackContentRevision` unchanged, new action |
+| MODIFIED | `PhysicsPaintWorkflowStrip.tsx`, `physicsPaintTrackHeaderColumn.tsx`, `PhysicsPaintTrackRow.tsx` (toggle) |
+| UNTOUCHED | `mceFieldContract.test.ts`, `models/project.rs`, `.mce` top level |
 
 ---
 
-## 6. Recommended package structure (post-split)
+## 3. Question B — Timeline horizontal zoom
 
-```
-packages/
-  efx-paint-host/               # NEW — Studio law (Preact-free)
-    animation/                  # moved: schedules, motion, player (generic over P)
-    util/traceSeed.ts           # moved: FNV-1a + seededRng determinism
-    script/                     # NEW: StudioScriptEnvelope, StudioStroke<P>,
-                                #       EngineAdapter, fail-closed parse
-    time/                       # NEW: tick grid, cuisson/diffusionFrames mechanism
-    bake/                       # NEW: finalizationQueue pattern (Effect, bounded)
-    index.ts
-  efx-spectral/                 # NEW — MIT spectral colour (tiny, dep-free)
-  efx-physic-paint/             # engine 1 — keeps name, keeps ONLY physics
-    brush/ core/ engine/ render/ paper
-    (imports efx-paint-host; re-points its animation/traceSeed usages)
-  efx-watercolor/               # NEW — engine 2 (clean-room WebGL2)
-    engine/ (fluid grid, transport, fix/dry, paper field)
-    brushes/ (tip records → pack snapshot)
-    payload.ts (WatercolorStrokePayload + codec)
-    index.ts (EngineAdapter<WatercolorStrokePayload>)
-  efx-krita/                    # v2.1.0 SLOT — do not create in v2.0.0
+### 3.1 Recommendation
+
+One **session-only metrics module** `view/physicsPaintTimelineZoom.ts`, modeled directly on `view/physicsPaintCanvasZoom.ts` (module-level `@preact/signals`, presets, `clampZoomScale`, `resetForStudioOpen`, compare-then-write setters). It exports:
+
+```ts
+interface TimelineMetrics {
+  readonly scale: number;        // 0.25 .. 4
+  readonly cellWidth: number;    // 16 × scale
+  readonly cellGap: number;      // 2 × scale
+  readonly pitch: number;        // 18 × scale  (cellWidth + cellGap)
+  readonly rulerTickWidth: number; // 3 × pitch
+}
 ```
 
-`app/` gains: module registry + switcher in the top bar, per-module option
-panels, a fourth paint layer kind wiring, paper-pack library entries. `app/`
-re-points imports from `efx-physic-paint/animation` → `efx-paint-host` (one-time
-import churn accepted, R1.3).
+plus pure helpers: `clampTimelineZoomScale`, `nextTimelineZoomPreset`, `frameToPx(frame, metrics)`, `pxToFrame(px, metrics)`, `resolveAnchoredScrollLeft(...)`, and `timelineMetrics()`.
+
+Everything that maps frames to pixels reads `pitch` (or `cellWidth`) from this one object. Presets `[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4]`, min `0.25`, max `4` (`CONTEXT.md` §5.6).
+
+**Why not a Preact context:** the consumers include module-level components (`soundStain*` at `PhysicsPaintWorkflowStrip.tsx:2296-2400`) and CSS-driven sizes; a context would force those through props or hooks they do not have. **Why not a CSS `transform: scale`:** it double-scales client-rect math used by every drag/scrub handler — the canvas zoom module already records this exact prohibition. **CSS custom properties** are used only for values CSS itself renders: `--roto-cell-width`, `--roto-cell-gap`, `--roto-ruler-tick`.
+
+### 3.2 The duplication that must be fixed first
+
+Zoom cannot be correct while pitch is defined in more than one place. Today:
+
+| Source | Value | File |
+|---|---|---|
+| `ROTO_CELL_WIDTH_PX = 18` | 18 | `PhysicsPaintWorkflowStrip.tsx:601-623` |
+| `ROW_CELL_WIDTH_PX = 18` | 18 | `PhysicsPaintTrackRow.tsx:64` |
+| hard-coded `18` in loop geometry | 18 | `PhysicsPaintTrackRow.tsx:398` |
+| `.physics-paint-roto-cell { width: 16px }` | 16 | `physicsPaintStudio.css` (~4999) |
+| `.physics-paint-ruler-tick { flex: 0 0 54px }` | 54 | `physicsPaintStudio.css` (~5025, pre-inline-override) |
+| `TIMELINE_GEOMETRY.cellPitch = 18`, `cellWidth = 16`, `cellGap = 2`, `cellHeight = 22` | design | `timelineRailDesign.ts:97-113` |
+
+The new module becomes the single source; the constants become derived getters or are deleted. `timelineRailDesign.ts` keeps the *design* geometry (heights, radii, outline) and takes pitch as a parameter (as `projectTimelineRailLineWidth(frameCount, pitch, endVisible, gap)` at 251-259 already does).
+
+### 3.3 What scales and what stays fixed
+
+| Scales with zoom | Stays fixed |
+|---|---|
+| cell width (16 → 16×scale) | row height (31 shipped; design 30) |
+| gap (2 → 2×scale) | cell height (22), lane height (18) |
+| pitch (18 → 18×scale) | header column width (185 px) |
+| ruler tick width (3×pitch) | 6 px gutter left of the lanes |
+| every `frame → px` mapping | strip chrome 132 px, max height 270 px |
+| drag/scrub deltas (÷ pitch) | `RULER_STEP = 3` frames |
+| rail line widths (`frameCount × pitch − gap`) | outline radius/stroke (1.5 px / 4 px) |
+
+`frameCount × pitch − gap` is unchanged as a *rule*; both terms scale, so the visual result is a uniform scale.
+
+### 3.4 Call-site inventory (all must read the metrics module)
+
+| Group | Sites |
+|---|---|
+| Lane width | `PhysicsPaintWorkflowStrip.tsx:2716` |
+| Grid / cells | `:5290`; `PhysicsPaintTrackRow.tsx:699` |
+| Ruler | `:5774-5840`, inline tick `flex: 0 0 ${RULER_TICK_WIDTH_PX}px` at `:5818` |
+| Rails `framePitch` | `:5228`, `:5260`; props into `PhysicsPaintKeyRail.tsx` / `PhysicsPaintLoopClipRail.tsx` (`Math.round(dx / framePitch)`) |
+| Ruler scrub | `usePhysicsPaintRulerScrub.ts` (`cellWidthPx` option already exists) |
+| Sound stains | `:2296-2400`; `soundBandGeometry.ts:91,96` (already pitch-parameterized) |
+| Visibility window | `:2520-2521` (`scrollLeft / ROTO_CELL_WIDTH_PX`) |
+| Drag deltas | `:3226`, `:3373`, `:3866` |
+| Ghosts | `:3601-3700`, `:5130-5131`, `:5517-5611` |
+| Scroll-to-frame | `:4581-4606` |
+| Playhead origin | strip playhead block (follows the 6 px gutter) |
+| Rail line width | `timelineRailDesign.ts:251-259` (pass scaled gap) |
+| Scroll container padding | `.physics-paint-timeline-scroll` 6 px + scroll-snap (~4952-4975) |
+
+### 3.5 Anchoring rules
+
+- **Cmd/Ctrl + wheel:** keep the frame under the cursor fixed.
+  `frameAtCursor = (scrollLeft + cursorX − laneOrigin) / oldPitch`; then `newScrollLeft = frameAtCursor × newPitch + laneOrigin − cursorX`.
+  `resolveCursorAnchoredPan` in `physicsPaintCanvasZoom.ts` is the analogous helper.
+- **Pill minus/plus and Fit:** keep the playhead frame visible at the same screen position (fallback: viewport centre).
+- Compare-then-write signal setters (canvas zoom precedent) so a no-op wheel does not re-render.
+- **Session-only:** reset on Studio close/open; no `.mce`, no schema, no revision, no export change (`CONTEXT.md` §5.6).
+
+### 3.6 Header-column lockstep
+
+The header column is a fixed 185 px column with 30/31 px rows; it has no horizontal cells. What must stay in lockstep is the **row flow**: the channel header rows added in §2.7 must use the same 18 px and 2 px post-block gap as the lanes. Zoom does not change vertical geometry, so lockstep is preserved *if* both sides read the same row-height constants — introduce a single `TIMELINE_ROW` constants module or have the header column import from `timelineRailDesign.ts` rather than re-declaring `30`.
+
+### 3.7 New vs modified (Question B)
+
+| Kind | Item |
+|---|---|
+| NEW | `view/physicsPaintTimelineZoom.ts` (metrics, presets, helpers, signals, reset) |
+| NEW | Zoom pill UI in the strip chrome (minus / percent / plus / Fit) |
+| MODIFIED | `PhysicsPaintWorkflowStrip.tsx` (all pitch sites), `PhysicsPaintTrackRow.tsx`, `physicsPaintTrackHeaderColumn.tsx`, `physicsPaintStudio.css`, `timelineRailDesign.ts` (accept pitch), `PhysicsPaintKeyRail.tsx` / `PhysicsPaintLoopClipRail.tsx` (already prop-driven)` |
+| UNTOUCHED | document schema, revisions, cache keys, compositor |
+
+---
+
+## 4. Question C — Vector painting layer
+
+### 4.1 Recommendation
+
+Add a **track-kind slot** rather than a second rendering pipeline:
+
+```ts
+// app/src/efx-paint/document/efxPaintDocument.ts
+export interface EfxPaintVectorVertex {
+  readonly x: number; readonly y: number;          // app canvas coordinates
+  readonly pressure: number;                        // 0..1
+  readonly inHandle?: { x: number; y: number };     // relative, cubic
+  readonly outHandle?: { x: number; y: number };
+}
+
+export interface EfxPaintVectorPath {
+  readonly id: string;
+  readonly interpolation: 'bezier';
+  readonly closed: boolean;
+  readonly vertices: readonly EfxPaintVectorVertex[];
+  readonly style: { color: string; size: number; tool: string; seed: number };
+}
+
+export interface EfxPaintVectorKey {
+  readonly keyId: string;
+  readonly frame: number;                           // app frame, like roto real keys
+  readonly paths: readonly EfxPaintVectorPath[];
+}
+
+export interface EfxPaintVectorDocument {
+  readonly schemaVersion: 1;
+  readonly keys: readonly EfxPaintVectorKey[];
+}
+
+// InternalPaintTrack gains:
+readonly vector?: EfxPaintVectorDocument | null;
+```
+
+**v1 rule: `rotoPhysical` and `vector` are mutually exclusive on one track** (both non-null = fail-closed parse error). This keeps `_preResolveTrackContent` a two-way dispatch, keeps the reveal/loop machinery out of scope, and avoids inventing a compositing order between two content models on one rail.
+
+### 4.2 Why it coexists with the raster frame model
+
+- **Durable only real keys.** Generated frames are never persisted (`deriveVectorFrame` is a pure function of `(keys, frame, interpolationMode)`). This mirrors the roto model, where generated bytes are runtime caches — except vector needs no byte cache at all.
+- **The renderer produces a canvas, not a cache.** `_preResolveTrackContent` (`physicPaintStore.ts:1868-1912`) currently branches `roto` → then legacy `getFrame`. Insert a `vector` branch **before** roto: rasterize `deriveVectorFrame(...)` into a canvas sized to the composite. The per-track memo (`trackRasterMemo`, keyed by `deriveEfxPaintTrackContentKey`) absorbs per-frame work; nothing durable is written.
+- **No image caches** is a scope gate, not an optimization preference (`CONTEXT.md` §5.3 gate 7: "real object animation in the canvas, not image caches").
+- **Compositor untouched.** It still receives "one raster per track per frame" through `resolveTrackContent`; it neither knows nor cares that the raster came from a vector sampler. This is the strongest reason for the slot-over-pipeline design: it inherits hide/solo, opacity, blend mode, ordering, background and export for free.
+- **Script replay law.** The per-stroke script replay law applies to raster engines (`toStudioStroke` → engine bake). Vector strokes are already the durable drawing; replay would be a no-op. Do not route vector through `AquarelleScriptSnapshot`.
+
+### 4.3 Persistence
+
+- Lives in `layers/<layerId>.json` as a track sub-object (same place as `rotoPhysical`); no media projection (no bytes).
+- `TRACK_KEYS` (`efxPaintDocumentParsers.ts:69`) gains `'vector'`; `parseInternalPaintTrack` (`:238-295`) validates it fail-closed (finite numbers, unique `keyId`, `interpolation === 'bezier'`).
+- `encodeValidatedEfxPaintTrackContent` (`efxPaintDocumentRevision.ts:60-122`) gains a conditional `vector:` term so revisions rotate on edits. Emit only when present so absent-case output is byte-identical.
+- **No Rust struct, no `mceFieldContract.test.ts` change** — lawful because Rust never parses layer sub-files; `models/project.rs` has no layer-content struct. State this explicitly in the plan: the exemption is about *layer scope*, not about vector being special. If Rust ever validates layer content, this becomes a dual-language obligation overnight.
+- Interpolation mode (hold / linear / smooth) follows the existing document-level interpolation model rather than a per-track control, unless the phase decides otherwise.
+
+### 4.4 Rails and UI
+
+- Reuse the key-rail presentation: a vector track's real keys feed `deriveKeyRailSegments` as the key source, one rail, identity `firstKeyId`. No new rail kind in v1.
+- The paint surface gets a vector tool (pen/curve) that appends to the active key's `paths`; the `PaintOverlay` Bézier interaction (§5) is the natural base.
+- Adding a vector track is an explicit action; never auto-convert a raster track.
+
+### 4.5 New vs modified (Question C)
+
+| Kind | Item |
+|---|---|
+| NEW | Vector types in `efxPaintDocument.ts`; `efx-paint/vector/deriveVectorFrame.ts` (pure sampler) and `renderVectorFrame.ts` (canvas rasterizer) |
+| NEW | Vector tool UI in the paint surface |
+| MODIFIED | `InternalPaintTrack`, `TRACK_KEYS`, `parseInternalPaintTrack`, `encodeValidatedEfxPaintTrackContent`, `_preResolveTrackContent` |
+| UNTOUCHED | compositor, cache-key structure, `mceFieldContract.test.ts`, Rust |
+
+---
+
+## 5. Question D — Painted-stroke curve editing
+
+### 5.1 Reuse map (what actually exists)
+
+| Need | Reuse | Notes |
+|---|---|---|
+| Fit anchors from sampled points | `pointsToBezierAnchors` (`app/src/lib/bezierPath.ts:54`) | fit-curve based |
+| Render / sample | `sampleBezierPath` (`:244`) | pure |
+| Insert anchor on a segment | `insertAnchorOnSegment` (`:282`) | |
+| Delete anchor | `deleteAnchor` (`:330`) | |
+| Coupled handle drag | `updateCoupledHandle` (`:361`) | |
+| Segment drag | `dragSegment` (`:404`) | |
+| Hit testing | `findNearestSegment` (`:439`), `hitTestAnchor` (`:477`) | |
+| Interaction model (overlay, zoom-compensated handles) | `app/src/components/canvas/PaintOverlay.tsx:440 drawBezierOverlay` | Copy the model, not the file |
+
+**Do not cite `MotionPath.tsx` / `keyframeEngine` as the reuse source** — those use polynomial easing, not Bézier anchors/handles. Naming them in a plan sends the implementer to the wrong math.
+
+### 5.2 Durable representation
+
+The durable authority for a painted stroke stays `AquarellePoint[]` inside `AquarelleStroke` (`packages/efx-watercolor/src/payload/toStudioStroke.ts:112-123`; points carry `x, y, p, tx, ty, tw`). Bézier anchors are a **view/edit representation**: fit on entering curve mode, resample on commit. Every edit then flows through the existing ledger:
+
+`captureAquarelleSnapshot` (`aquarelleStrokeSelection.ts:658`) → mutate points → `applySnapshotContent` (`:707`) / `storeAquarelleEdit` (`:721`, 10-entry cap) → undo via `restoreAquarelleEditSnapshot` (`:972`).
+
+Model the curve edit on `beginAquarelleTransformEdit` (`:883`): capture once at gesture start, mutate in-memory during the drag, store one ledger entry per commit. Never one entry per pointermove.
+
+### 5.3 Optional durable anchors — explicit decision required
+
+Persisting anchors (e.g. `pathAnchors` on the stroke record) would avoid a fit/resample round trip but:
+
+- the aquarelle stroke payload is validated by Rust (`script_library.rs:2323-2492`); unknown engine keys are tolerated but numeric `params` must be finite, so anchors must be a declared field, not stuffed into `engine.params`;
+- it rotates the persisted script revision on every curve edit.
+
+**Recommendation: do not persist anchors in v1.** Fit on mode entry, resample on commit, and measure the round-trip deviation in the phase's tests. If deviation is visibly unacceptable, add a declared sidecar with TS + Rust parity — and treat that as a scope change, not a detail.
+
+### 5.4 New vs modified (Question D)
+
+| Kind | Item |
+|---|---|
+| NEW | `view/useAquarelleCurveEditing.ts` (anchor state, hit test, gestures) and a `drawCurveEditOverlay` renderer modeled on `PaintOverlay` |
+| NEW | `beginAquarelleCurveEdit` in `aquarelleStrokeSelection.ts` (snapshot-heavy, one ledger entry per commit) |
+| MODIFIED | Curve-mode toggle in the paint toolbar; overlay stacking above `PaintOverlay` |
+| UNTOUCHED | `bezierPath.ts` (reused as-is), stroke payload format, ledger semantics |
+
+---
+
+## 6. Architectural Patterns
+
+### Pattern 1: Conditional canonical term (absent = byte-identical)
+
+**What:** New durable fields are emitted only when present, at a fixed ordinal, in both the TS encoder and the Rust mirror.
+**When:** Any new `.mce` field in the physical model, including `railMotion`.
+**Trade-offs:** Keeps old files byte-stable and migration-free; costs an ordinal-parity discipline and a fixture test.
+**Example:** `encodeCanonicalLoopClips` (`:1610-1675`) and the Rust `canonical_loop_clips` (~`:1382`) emitting `scriptId`, `syncState`, etc. conditionally.
+
+### Pattern 2: Session-only view metrics module
+
+**What:** A module-level signal store + pure helpers that owns a transient view parameter, with a reset hook.
+**When:** Zoom, pan, overlays — anything the document must not know about.
+**Trade-offs:** No persistence risk and no plumbing; the module must be imported by every consumer (a missed import is a silent bug), so add a lint/test that forbids literal `18` in the strip/row files.
+**Example:** `view/physicsPaintCanvasZoom.ts` and the new `view/physicsPaintTimelineZoom.ts`.
+
+### Pattern 3: Kind dispatch at content resolution
+
+**What:** The store answers "what raster is this track at frame N" by branching on the track's content kind before the legacy byte path.
+**When:** Adding a content model (vector) that must reuse compositing, hide/solo, and export.
+**Trade-offs:** One more branch and a mutual-exclusion rule; in exchange the compositor stays untouched and no second pipeline is born.
+**Example:** `_preResolveTrackContent` (`physicPaintStore.ts:1868-1912`) — `roto` branch today, `vector` branch before it.
+
+### Pattern 4: Prepare-time geometry, composite-time transform
+
+**What:** Key bytes and rasters are prepared per content revision; motion transforms are applied when drawing.
+**When:** Any animation that must not disturb key content (motion channels).
+**Trade-offs:** The per-track raster memo survives motion edits (cheap), but every frame redraws `drawImage` with a new matrix (correct and still O(tracks)).
+**Example:** background transform (`efxPaintCompositor.ts:397-423`) + the new `trackTransforms`.
+
+### Pattern 5: Derive-then-bake durable authority
+
+**What:** An expressive edit representation (Bézier anchors) exists only during an edit; the durable form (points) is regenerated on commit through the existing snapshot ledger.
+**When:** Curve editing painted strokes.
+**Trade-offs:** Zero format change and full undo parity; the round trip must be measured.
+**Example:** `beginAquarelleTransformEdit` (`:883`) → `storeAquarelleEdit` (`:721`).
 
 ---
 
 ## 7. Data Flow
 
-### Script record → bake (all engines)
+### 7.1 Composite frame (target)
 
 ```
-User stroke (Studio canvas)
-  → engine adapter (live paint)
-  → record: StudioStroke<P>  { pts/ticks, cuisson, motion, brushId, toolOverrides, traceSeed }
-  → StudioScriptEnvelope<P>  (brushPack snapshot attached)
-  → Apply / Play:
-        host schedule player replays pts on the tick grid
-        adapter.stepTick() lets physics evolve (no forced dry)
-        cuisson budget (per-stroke) bounds the evolution
-  → bake host captures adapter.captureFrame() → WebP (Rust codec) → cache
-  → timeline / scrub / Loop Clips / export read cache ONLY
-  → getFlattenedFrame stacks transparent paint frames + paperPass fond
+frame requested
+  → _resolveFlattenedFrame (~physicPaintStore.ts:2938)
+       participating tracks → track content revisions
+       → deriveEfxPaintFlattenedCacheKey (frame + revisions + bgtransform…)
+         hit → return
+       → NEW: resolve trackTransforms (evaluate railMotion per track at frame,
+              rail-local, then map to canvas transform)
+       → per track: resolveTrackContent(frame)
+            roto → cached/generated raster
+            vector → NEW deriveVectorFrame + rasterize into canvas
+            legacy bytes → getFrame
+       → compositeFrame(... ports { …existing, trackTransforms })
+            per track: save → translate(center + t) → rotate → scale →
+                       globalAlpha = opacity × t.opacity → drawImage(raster) → restore
+       → flattened canvas
 ```
 
-### Module switch
+### 7.2 Motion edit flow
 
 ```
-TopBar module icon
-  → set active StudioModule (signal — Preact signals only, no useState)
-  → panels re-render from module.optionsPanel
-  → engine adapter bound for new record/play work
-  → existing scripts/frames untouched (engineId fail-closed Apply)
+UI nav cluster / lane gesture
+  → store action: add/remove/move rail motion key (validated, rail-local frame)
+  → new clip record with railMotion (immutable update)
+  → replaceRotoPhysicalLoopClips (store :4718)
+  → structural resolve → revision rotates (railmotion in the physical hash)
+  → flattened cache invalidated; rasters untouched
+  → UI projection re-derives TimelineMotionRailModel
+```
+
+### 7.3 Zoom flow
+
+```
+wheel / pill / Fit
+  → clamp scale to [0.25, 4] (compare-then-write)
+  → metrics recomputed (pitch, cellWidth, gap, ruler tick)
+  → CSS custom properties updated (cell width, gap, tick)
+  → scrollLeft recomputed to anchor cursor frame (wheel) or playhead (pill/Fit)
+  → strip re-renders lanes/rails/grid from the same metrics
+  → Studio close → reset
+```
+
+### 7.4 Curve edit flow
+
+```
+enter curve mode on a selected stroke → pointsToBezierAnchors(points)
+pointer gesture → hitTestAnchor / findNearestSegment → mutate anchors in memory
+commit → sampleBezierPath → rebuild points (pressure/handles mapped)
+       → captureAquarelleSnapshot once at gesture start (or at commit)
+       → storeAquarelleEdit (one entry) → stroke revision rotates
 ```
 
 ---
 
-## 8. Patterns to Follow
+## 8. Modified Pipelines (impact summary)
 
-### Pattern 1: Generic envelope + opaque engine payload
-**What:** host types parameterised over `P`; host never inspects `P`.
-**When:** every host API surface (record, play, bake, library).
-**Trade-off:** engine freedom without host forks; parse errors must be
-fail-closed by each engine's codec. Example in §2.3.
-
-### Pattern 2: EngineAdapter plug point
-**What:** one interface (`applyStroke` / `stepTick` / `captureFrame` / `dispose` +
-`payloadCodec`) per engine.
-**When:** engine 2 and (later) engine 3 land behind it; the Studio drives
-adapters, never engine internals. **Trade-off:** slight ceremony per engine;
-pays for itself the first time a second engine exists.
-
-### Pattern 3: Bake host = finalizationQueue pattern (ported, not reinvented)
-**What:** Effect v4 bounded turn queue, generation-stale commits, `beginFlush`
-on nav/close/save/export; PlayScript bake aborts on dispose.
-**When:** every bake in every engine. **Trade-off:** Effect machinery is heavier
-than a promise chain, but the alternative (boolean-flag FSM) is the known
-regression source (efx-async-orchestration law). No Web Worker.
-
-### Pattern 4: Composite-only paper (paperPass)
-**What:** paint WebPs stay transparent; paper is a conditioned height map →
-valley/peak tiles swapped at the composite seam; no rebake on paper change.
-**When:** all paints, including the new paper pack (10 procedural papers).
-**Trade-off:** engine-side tooth must be deposit-role only or WebPs become
-paper-dependent.
-
-### Pattern 5: Determinism by seeded draws only
-**What:** `traceSeed` (FNV-1a) + `seededRng(strokeSeed, streamKey)`; arc-length
-keyed draws (resample-stable); no `Math.random()` in deposit/sim.
-**When:** every engine, every stochastic pass (bristle lanes, shape detail,
-fluid noise, granulation).
+| Pipeline | Files | Impact |
+|---|---|---|
+| Canonical encode / hash | `physicsPaintRotoPhysicalModel.ts`, `script_library.rs` | Motion term; parity fixture |
+| Document revision | `efxPaintDocumentRevision.ts` | Motion free via `roto:`; vector needs its own conditional term |
+| Strict parse | `efxPaintDocumentParsers.ts`, `parsePhysicPaintRotoLoopClips` | `railMotion`, `vector` allowlist + validation |
+| Content resolution | `physicPaintStore.ts` `_preResolveTrackContent` | New vector branch |
+| Flatten | `physicPaintStore.ts` `_resolveFlattenedFrame` | Track transforms resolved pre-composite |
+| Composite | `efxPaintCompositor.ts` | Transform at both draw sites |
+| Timeline UI | strip, header column, track row, rails, CSS | Motion lanes, zoom metrics, toggle |
 
 ---
 
-## 9. Anti-Patterns to Avoid
+## 9. Scaling Considerations
 
-### Anti-Pattern 1: Engine params in the host API
-**What:** `waterAmount`, `physicsMode`, krita preset names on host types.
-**Why bad:** engine 3 then needs a host rewrite — exactly what the split is
-paying to avoid.
-**Instead:** opaque `engine: P` slot + `toolOverrides` bag (§2.3).
-
-### Anti-Pattern 2: Forking the Studio per module
-**What:** a watercolour timeline / script library / bake path.
-**Why bad:** breaks the shared script law; doubles every bug surface.
-**Instead:** one Studio; modules register an adapter + options panel only.
-
-### Anti-Pattern 3: Duplicate mixing code in efx-watercolor
-**What:** copying spectral mixing into the watercolor engine to dodge the 56/57
-ordering.
-**Why bad:** engine-1 adoption then re-does the work; two spectral
-implementations drift.
-**Instead:** create `packages/efx-spectral` early inside 56 if needed.
-
-### Anti-Pattern 4: Live GPU fluid sim on the timeline
-**What:** scrubbing a wet sheet instead of reading the WebP cache.
-**Why bad:** breaks the cache contract, non-deterministic playback, export
-drift. **Instead:** bake is the only playback path (P3).
-
-### Anti-Pattern 5: Forced Dry at frame boundaries
-**What:** drying the sheet each frame to "simplify" the bake.
-**Why bad:** kills wet-in-wet blooms and tide lines — the look the engine is
-for. **Instead:** per-stroke `cuisson`/`diffusionFrames` budget, physics evolves
-across frames (P4).
-
-### Anti-Pattern 6: Web Worker / new cancellation model for the bake
-**Why bad:** WebGL2 + canvas encode are main-thread anyway; a second
-cancellation model replaces a proven one. **Instead:** port the
-`finalizationQueue` + dispose-abort pattern (R4).
-
-### Anti-Pattern 7: "Fixing" the brush-pack snapshot into a disk reference
-**Why bad:** old scripts would stop replaying after the pack evolves (the
-52.2 refs-only law has this one deliberate exception). **Instead:** snapshot
-travels in `.mce` (R3.4).
-
-### Anti-Pattern 8: Compat shims for v1.0.1 scripts/projects
-**Why bad:** clean break is decided; migration code is dead weight and slows
-the engines. **Instead:** fail-closed named visible errors for unreadable
-script/asset (53.1 law) — data honesty, not compatibility.
+| Concern | Small (current docs) | Large (hundreds of keys, 20 tracks) | Mitigation |
+|---|---|---|---|
+| Motion evaluation | trivial | O(tracks × channels × keys) per frame | Cache evaluated transforms per (track, frame) inside the flattened pass; channels are tiny arrays |
+| Per-track raster churn | low | re-resolve per frame for cycled content | Already content-keyed; motion must never enter the content key |
+| Zoom redraw | trivial | full lane re-render per wheel tick | Compare-then-write; batch wheel events per animation frame |
+| Vector sampling | trivial | O(paths × vertices) per frame | Pure sampler; cache per `(key pair, t)` inside the memo; no durable images |
+| Curve resample | low | thousands of points per stroke | Sample adaptively (deviation-bounded); run off the pointer path (on commit) |
+| Revision hashing | low | many clips with motion | Same FNV-1a path; keep motion keys minimal and canonical |
 
 ---
 
-## 10. Integration Points
+## 10. Anti-Patterns
+
+1. **Baking motion into key bytes.** Destroys loops, forces re-bake per motion edit, violates "content cycles, motion continues."
+2. **CSS `transform: scale` for zoom.** Double-scales every `getBoundingClientRect` computation; drag/scrub silently drift.
+3. **Naming the new field `motion`.** Collides with `PhysicPaintRotoScriptMotionSettings`; a future reader will merge the two systems.
+4. **Excluding `railMotion` from the canonical hash.** Justified only for re-bake flags; motion would make two different documents hash identically.
+5. **Adding a transform term to the flattened cache key.** The `frame` term already covers it; a transform term churns keys and hides real revision bugs.
+6. **Anchoring motion to the content bbox.** Wobbling loops; anchor to the composite centre.
+7. **Persisting generated vector frames or image caches.** Violates gate 7 and the "real object animation" scope.
+8. **Storing Bézier anchors in numeric `engine.params`.** Rust validates finite numbers only; it will parse and then silently diverge.
+9. **Auto-adopting a bare Key Rail on first Motion key.** Hidden mutation; changes rail type; blocked by Gate B anyway.
+10. **A second pitch constant.** Zoom will misalign rows/rails/scroll; enforce one metrics source with a literal-`18` lint.
+11. **Expansion state on the track record.** Design says selection owns it; persisting it would also leak into revisions.
+12. **Clipping applied per-frame instead of per-container.** The v7 outline/curve clipping must live on the rounded container, not per draw call.
+
+---
+
+## 11. Integration Points
 
 ### Internal boundaries
 
-| Boundary | Communication | Notes |
+| Boundary | Contract | Change |
 |---|---|---|
-| `app/` ↔ `efx-paint-host` | typed imports | one-time import churn at the split (R1.3); `physicsPaintRotoPlayScriptController.ts`, `finalizationQueue.ts` callers re-point |
-| `efx-physic-paint` ↔ `efx-paint-host` | typed imports | engine 1 consumes host; format-identical split guarded by R5.2 replay parity |
-| `efx-watercolor` ↔ `efx-paint-host` | `EngineAdapter<P>` | payload codec is engine-owned; host drives ticks/bake |
-| `efx-watercolor` ↔ `efx-spectral` | typed imports | `Pigment`, `pigmentFromHex`, `mixToHex`, `displayBasisGLSL` |
-| `efx-physic-paint` ↔ `efx-spectral` | **deferred to v2.1.0** | replaces `mixSubtractive` RYB heuristic; not in v2.0.0 |
-| Studio ↔ engines | via host + adapter only | Studio never calls engine internals |
-| All packages ↔ cache/package FS | Rust only | `project_package_fs_scope` law; static scans pin it |
-| `.mce` | manifest + `layers/*.json` + `frames/*.webp` + brush-pack snapshot | brush-pack snapshot = deliberate exception to refs-only law |
+| TS ↔ Rust canonical | Byte-identical encoding, same ordinals | `railmotion` term both sides |
+| Model ↔ store | `replaceRotoPhysicalLoopClips` immutable replacement | Motion rides the clip record; no new action path for persistence |
+| Store ↔ compositor | Ports only (`resolveTrackContent`, `trackRasterMemo`, …) | Add `trackTransforms` |
+| Compositor ↔ UI | Raster only | Unchanged |
+| Layer JSON ↔ `.mce` | Layer sub-file, not `models/project.rs` | No `mceFieldContract` change for motion or vector |
+| Selection ↔ view model | `TimelineMotionRailModel` projection | New selector; expansion in selection/view state |
+| Zoom ↔ every frame→px consumer | Single `TimelineMetrics` | New module; delete duplicate constants |
 
-### New components (v2.0.0)
+### External services
 
-| Component | Package/Location | Purpose |
-|---|---|---|
-| `efx-paint-host` | `packages/efx-paint-host` | Studio law (moved + generic) |
-| `efx-spectral` | `packages/efx-spectral` | shared MIT spectral colour |
-| `efx-watercolor` | `packages/efx-watercolor` | engine 2 (clean-room WebGL2) |
-| Module registry + switcher | `app/` top bar | Brush / Water color / (Krita slot) |
-| Per-module options panels | `app/` panels | drain module's own options/features |
-| Paper pack (10 papers) | Studio paper library | all paints, composite-only |
-| 4th paint layer kind | app document/compositor | paint-aquarelle tracks |
+None new. No network, no registry, no native command surface added by any of the four features. (The existing Rust WebP / 512 MB LRU path is untouched; vector and motion deliberately avoid it.)
 
-### Modified components
+---
 
-| Component | Change |
+## 12. Suggested Build Order and Dependencies
+
+```
+59  Rail motion channels (v2.1.0)
+ 59.1  Durable model + encoders            ← blocks all
+       types, guard, parser, TS encoder, Rust mirror, parity fixture
+ 59.2  Pure evaluator + curve path builder ← after 59.1 (types)
+ 59.3  Store: projection, actions, revisions ← after 59.1/59.2
+ 59.4  Compositor: trackTransforms + both draw sites ← after 59.2/59.3
+ 59.5  Timeline UI: channels, headers, toggle, outline, nav cluster ← after 59.3
+ 59.6  UAT (v3 rows: independent motion keys, compositor render, three scopes)
+60  Timeline horizontal zoom                 ← after 59.5 (same files; avoid churn)
+61  Vector painting                          ← after 60; owns bezierPath reuse prep
+ 61.1  Vector model + sampler + renderer + store branch
+ 61.2  Vector tool UI + rail presentation
+62  Painted-stroke curve editing             ← after 61 (shares bezierPath + overlay)
+```
+
+Why this order:
+
+- 59.1 first because the dual-language encoding is the only change that can invalidate existing files; everything else is additive.
+- 59.4 before 59.5 so the UI can be validated against real rendering (UAT row 9 needs a real transform).
+- 60 after 59.5 because zoom touches every pitch site the motion lanes also touch — doing it in the other order means editing the same expressions twice.
+- 61 before 62 because 62's overlay/gesture code benefits from the vector tool's hit-testing scaffolding, and both share `bezierPath.ts`; 61 can land the shared curve-overlay extraction.
+- 62 last: lowest coupling, depends only on the aquarelle ledger and `bezierPath.ts`.
+
+Research flags:
+
+| Phase | Flag |
 |---|---|
-| `packages/efx-physic-paint` | loses `animation/`, `traceSeed`; gains host import; engine-1 behaviour unchanged (R5.2) |
-| `app/.../physicsPaintRotoScriptSchema.ts` | becomes engine-1 payload codec on host envelope |
-| `app/.../physicsPaintRotoPlayScriptController.ts` | re-points to host; bake semantics ported per R4 |
-| `app/.../finalizationQueue.ts` | pattern ported into host bake (or re-exported) |
-| `app/src/efx-paint/compositor/` | consumes 4th kind frames; `getFlattenedFrame` path unchanged |
-| `PhysicsPaintTopBar.tsx` | module switcher icons |
-| `.mce` format | brush-pack snapshot slot (clean break, `formatVersion` bump) |
+| 59.1 | Needs a byte-parity fixture between TS and Rust (no existing fixture covers a new optional block) |
+| 59.2 | Needs a decision on easing semantics (hold/linear/cubic) and seeded-wiggle determinism |
+| 59.3 | Needs the store action surface confirmed (prev/next/diamond) before UI enables buttons |
+| 59.4 | Needs the transform anchor confirmed (centre recommended) and engineOverlay parity |
+| 59.5 | Needs measured row offsets for the reorder indicator; v7 geometry exact |
+| 60 | Needs the literal-`18` audit to reach zero before zoom ships |
+| 61 | Needs a vector sampling quality decision (fixed step vs adaptive) |
+| 62 | Needs round-trip deviation measurement before the "no persisted anchors" decision is final |
 
 ---
 
-## 11. Build Order (hard gates respected)
+## 13. Open Decisions
 
-**Hard gates:** no watercolour before Preact 11 · phase 54 live UAT closes
-before 55 opens · 55 is the hard prerequisite of 56 and 57 · v2.1.0 (Krita +
-engine-1 spectral adoption) planned only after v2.0.0 closes.
-
-| Order | Phase | Delivers | Gate / exit criterion | Why this position |
-|---|---|---|---|---|
-| 1 | **54 — Preact 11** | dependency bump + mechanical migration | **hard gate:** `@preact/signals` probe green first (STOP if red); R4.2 live UAT (paint stroke, undo/redo, track switch, Studio open/close, standalone `./preact` mount) closes before 55 opens | engine 2's stack is Preact 11; nothing later builds on a dead major |
-| 2 | **55 — efx-paint-host** | tranche 0b split (§2.2 seam map) + generic payload (§2.3) | R5.2 script replay parity vs pre-split golden · R5.3 A1–A5 live UAT · **A5 fake engine-2 payload** proves genericity | pay the split ONCE before engines 2 and 3 exist; every later engine rides it |
-| 3a | **56 — efx-watercolor** (may open **efx-spectral early**) | engine 2 core + script record/play + bake + paper pack | A1–A5 (56): pixel-stable bake, blooms visible in baked frames, independent cache ranges, transparent export | consumes host (2) and spectral (3b); clean-room; paper pack is the all-paints deliverable |
-| 3b | **57 — efx-spectral** | shared package hardening (if not created inside 56: create it; else finish NOTICE/tests/API freeze) | MIT attribution audited; engine-2 consumption proven; API frozen for engine-1 adoption | **never blocks 56 on ceremony** — content may be pulled forward into 56; 57 closes the shared contract |
-| 4 | **Module switcher** | top-bar switcher + per-module panels over one Studio | switch Brush↔Water color with shared script library/timeline; fail-closed cross-engine Apply; Krita slot inert | needs ≥2 modules to be meaningful; ships inside v2.0.0 once 56 lands (shell UI can be built alongside 56, UAT after) |
-| 5 | (inside 56) **Paper pack** | 10 procedural papers → Studio library | usable by all paints through `paperPass`; no rebake on change | rides 56 per locked scope |
-
-**Do not reorder 55 after 56** — the host split is the hard prerequisite
-("pay it once"). **Do not fold spectral into the watercolor engine** to dodge
-the 56/57 ordering. **Do not implement Krita** (v2.1.0 slot).
-
-Milestone note: the specs still say "v1.1.0" for phases 54–57; PROJECT.md has
-relocked the milestone as **v2.0.0** (MAJOR — module switcher = new product
-shape + accepted clean break). Phase content is unchanged.
+1. **Gate B (rail identity).** v1 = loop clips only. Bare Key Rail follow-up = minted `railId` + `sourceKeyIds` membership snapshot, intersection per segment on split, merge never unions. Do not build in 59.
+2. **Position lanes.** One lane (v7) vs X/Y lanes (v3 prototype). Recommendation: two channels in the model (`position-x`, `position-y`), one lane in the UI initially with a later split — the model must not change when the UI does.
+3. **Scale lane.** The v7 mockup omits it; the v3 model requires it. Recommendation: ship the lane.
+4. **Repeat semantics.** `hold` (rail-local frame clamps at the last key) vs `fit` (rail-local time normalized to the occurrence). Default `hold`.
+5. **Expansion ownership.** Selected rail only (design default).
+6. **Track opacity × motion opacity.** Multiply (recommended) vs motion overrides.
+7. **Vector track creation flow.** Explicit action; never auto-convert.
+8. **Curve anchors persistence.** Not persisted in v1 (recommended), pending deviation measurement.
+9. **Zoom gap scaling.** All pitch terms scale per `CONTEXT.md` §5.6; confirm the 2 px post-block vertical gap stays unscaled (vertical geometry does not zoom).
 
 ---
 
-## 12. Scaling Considerations
+## 14. Confidence Assessment
 
-| Concern | v2.0.0 (2 engines) | v2.1.0 (3 engines) | Pressure point |
-|---|---|---|---|
-| Script envelope | one generic shape + 2 codecs | + krita codec | codec registry grows linearly — fine |
-| Bake host | one Effect queue per bake session | shared queue discipline | long fluid cuissons × concurrent bakes → bounded concurrency already (2) |
-| Brush packs in `.mce` | 2 pack namespaces | 3 | snapshot size — pack snapshot exception is deliberate; watch package weight |
-| WebGL contexts | 1 engine canvas at a time (mount/unmount) | same | context loss handlers per engine; do not share contexts across engines |
-| 512 MB frame LRU | shared across kinds | shared | heavier watercolour sheets stress the budget — measure, don't pre-squeeze |
-
----
-
-## Sources
-
-- `SPECS/v1.1.0-paint-host/context.md` — tranche 0b scope, host API law, R5.2/A5 parity, ambiguity Q1–Q4
-- `SPECS/v1.1.0-water-color/00-grill-context.md` — locked architecture (3 engines/4 paints), bake model, licence table, packages target, tick grid, brush-pack exception
-- `SPECS/v1.1.0-water-color/01-gsd-context.md` — R1–R4 requirements, payload vocab (`brush|water|pen|lift`), tranche split 0/0b/0c/1–5
-- `SPECS/v1.1.0-preact11/context.md` — phase 54 gate and R4.2 live UAT rows
-- `.planning/PROJECT.md` — v2.0.0 milestone lock (clean break, invariants, semver law)
-- `packages/efx-physic-paint/src/{animation,util/traceSeed.ts,types.ts,engine/EfxPaintEngine.ts,index.ts}` — live seam evidence (exports map, `PaintStroke`, `RecordedStrokeGroup`, `enqueueRecordedStroke`)
-- `app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts` + `physicsPaintRotoScriptClipboard.ts` — current envelope/clipboard shape
-- `app/src/components/physic-paint/pilot/finalizationQueue.ts` — bake-host pattern (Effect, flush-survives-nav)
-- `app/src/efx-paint/compositor/` + `app/src/lib/paperPass.ts` — compositor keystone + paper contract
-- `SPECS/v1.1.0-water-color/watercolor-playground/src/engine/{Engine.ts,spectral.ts,spectralData.ts}` — local oracle (method reference; **unlicensed, no code copy**)
-- [rvanwijnen/spectral.js](https://github.com/rvanwijnen/spectral.js) — MIT spectral colour method (attribution required)
-- [msurguy/watercolor-playground](https://github.com/msurguy/watercolor-playground) — provenance URL of the local oracle (no licence)
-- [johnowhitaker/inkwash](https://github.com/johnowhitaker/inkwash) — fluid sim origin (no licence; method only)
+| Area | Level | Reason |
+|---|---|---|
+| Motion persistence (A) | HIGH | Loop clip structure, parser, TS/Rust encoders, revision and cache wiring all read directly; only the encoding ordinal is a discipline, not an unknown |
+| Motion render (A) | HIGH | Compositor ports/draw sites and the background-transform precedent read directly; the only judgement call is the anchor point |
+| Zoom (B) | HIGH | Every pitch consumer enumerated by line; a session-only zoom module already exists as precedent |
+| Vector (C) | HIGH on integration, MEDIUM on scope | Dispatch and persistence seams are clear; interpolation/quality choices are product decisions |
+| Curve editing (D) | HIGH | `bezierPath.ts` API and the aquarelle ledger are both stable and read directly; only round-trip fidelity is unmeasured |
+| Bare Key Rail follow-up | MEDIUM | Deferred by Gate B; the described model is an inference from the loop-clip lifecycle |
 
 ---
-*Architecture research for: v2.0.0 multi-module paint workstation integration*
-*Researched: 2026-10-14*
+
+## 15. Sources
+
+- Live code (all line references above): `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx`, `PhysicsPaintTrackRow.tsx`, `physicsPaintTrackHeaderColumn.tsx`, `timelineRailDesign.ts`, `physicsPaintCanvasZoom.ts`, `soundBandGeometry.ts`, `usePhysicsPaintRulerScrub.ts`, `PhysicsPaintKeyRail.tsx`, `PhysicsPaintLoopClipRail.tsx`, `aquarelleStrokeSelection.ts`, `app/src/components/physic-paint/physicsPaintStudio.css`, `app/src/efx-paint/compositor/efxPaintCompositor.ts`, `efxPaintCompositeCache.ts`, `efxPaintHideSolo.ts`, `app/src/efx-paint/document/efxPaintDocument.ts`, `efxPaintDocumentParsers.ts`, `efxPaintDocumentRevision.ts`, `app/src/stores/physicPaintStore.ts`, `app/src/lib/bezierPath.ts`, `app/src/lib/efxPaintPersistence.ts`, `app/src/components/canvas/PaintOverlay.tsx`, `packages/efx-watercolor/src/payload/toStudioStroke.ts`, `app/src-tauri/src/services/script_library.rs`, `app/src/lib/mceFieldContract.test.ts`.
+- Specs: `SPECS/v2.1.0-motion-channels/CONTEXT.md` (§3 v3 model, §3.6 Gates A-D, §5.3 vector gates, §5.6 zoom scope), `SPECS/v2.1.0-motion-channels/README.md` (motion-lane contract, geometry, toggle state machine, integration map).
+- Template: `.claude/gsd-core/templates/research-project/ARCHITECTURE.md`.
+- Confidence tiers assigned by the GSD seam; code inspection is HIGH for seams, MEDIUM for deferred/deferred-product decisions.
