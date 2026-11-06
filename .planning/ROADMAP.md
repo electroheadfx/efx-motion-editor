@@ -110,7 +110,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 14 plans
+**Plans:** 16 plans
 
 Plans:
 - [ ] 59-01-PLAN.md — Gates A–D ratification + TS↔Rust `railKind` canonical parity tracer and golden fixture
@@ -125,8 +125,10 @@ Plans:
 - [ ] 59-10-PLAN.md — v7 lane surface: 18px lanes, header cluster, cells, evaluator curve, 6×6 keys, block outline
 - [ ] 59-11-PLAN.md — Timeline integration: chevron toggle over session-only expansion (collapsed after Animate), mirrored headers, measured layout, block-aware reorder
 - [ ] 59-12-PLAN.md — Animate (seed at the rail-local playhead) + motion commands, Hold/Ease/Wiggle, honest availability, three selection scopes
-- [ ] 59-13-PLAN.md — Rail-motion gizmo (session draft, one commit per drag) with the D-08 auto-key gate + inspector numeric fields via one projection
+- [ ] 59-13-PLAN.md — Rail-motion gizmo: session draft, one commit per drag, the D-08 auto-key gate, additive Studio mount
 - [ ] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
+- [ ] 59-15-PLAN.md — Gate B wiring at the real edit operations (reconciler at the bridge commit point) + copy/paste motion-follow law
+- [ ] 59-16-PLAN.md — Inspector numeric fields via one projection: grouped Position with independent values, unbounded rotation, opacity
 
 **Build order (research §12)**:
   1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
