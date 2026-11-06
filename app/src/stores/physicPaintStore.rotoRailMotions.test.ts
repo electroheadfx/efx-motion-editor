@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
+  resolveContentToken,
   rotoPhysicalRevision,
 } from './physicPaintStore';
 import {
@@ -423,5 +424,126 @@ describe('59-07: replaceRotoPhysicalRailMotions transactionality', () => {
     expect(replayed.ok).toBe(true);
     expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).toBe(revisionAfterAccept);
     expect(rotoPhysicalRevision.value).toBe(physicalRevisionAfterAccept);
+  });
+});
+
+describe('59-07: raster revision vs canonical revision (REL-03/MOTN-07)', () => {
+  const originalWindow = globalThis.window;
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER));
+    const layer = bridgeLayer();
+    sequenceStore.sequences.value = [{
+      id: 'store-rail-motion-raster-parent-sequence',
+      kind: 'fx',
+      extrapolation: 'hold',
+      name: 'Store rail motion raster authority',
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [layer],
+      inFrame: 0,
+      outFrame: 600,
+    }];
+    vi.spyOn(layerStore.layers, 'peek').mockReturnValue([layer]);
+    vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(() => ({ focus: vi.fn() })),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+    seedBridgeDocument();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  function frameSource(appFrame: number) {
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, appFrame);
+    // The seeded cycle has only real keys, so a placeholder source is a fixture
+    // fault — and it is the one variant without a pixel revision.
+    if (!source || source.kind === 'loop-placeholder') {
+      throw new Error(`Expected a renderable source at frame ${appFrame}.`);
+    }
+    return source;
+  }
+
+  it('leaves every frame cache key byte-identical across a motion-only edit while the canonical revision moves', () => {
+    const frames = [0, 1, 2, 3, 4];
+    const keysBefore = frames.map((appFrame) => frameSource(appFrame));
+    const tokensBefore = keysBefore.map((source) => resolveContentToken(source.contentRevision));
+    const canonicalBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+
+    const accepted = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID, [railMotion()]);
+    expect(accepted.ok).toBe(true);
+
+    const keysAfter = frames.map((appFrame) => frameSource(appFrame));
+    // Pixel identity is byte-identical: no cache entry is invalidated by motion.
+    expect(keysAfter.map((source) => source.cacheRevision)).toEqual(
+      keysBefore.map((source) => source.cacheRevision),
+    );
+    expect(keysAfter.map((source) => source.contentRevision)).toEqual(
+      keysBefore.map((source) => source.contentRevision),
+    );
+    // The content tokens observed by the FRAME path do not move.
+    expect(keysAfter.map((source) => resolveContentToken(source.contentRevision))).toEqual(tokensBefore);
+
+    // Persistence identity DID move, and the frame path never carries it.
+    const canonicalAfter = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    expect(canonicalAfter).not.toBe(canonicalBefore);
+    expect(keysAfter[0].contentRevision).not.toBe(canonicalAfter);
+  });
+
+  it('rotates both revisions when a drawing-key edit lands', async () => {
+    const sourceBefore = frameSource(0);
+    expect(sourceBefore.kind).toBe('real');
+    if (sourceBefore.kind !== 'real') throw new Error('Expected the seed frame to be a real key.');
+    expect(sourceBefore.keyId).toBe('A');
+    const rasterBefore = sourceBefore.contentRevision;
+    const canonicalBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+
+    const launchOperationId = await launchBridge();
+    const result = await applyBridgePayload(canonicalBridgePayload(launchOperationId, RIGID_CYCLE_MOVE, {
+      omitRailMotions: true,
+    }));
+    if (!result.ok) throw new Error(`drawing-key edit rejected: ${result.error}`);
+
+    const sourceAfter = frameSource(1);
+    expect(sourceAfter.kind).toBe('real');
+    if (sourceAfter.kind !== 'real') throw new Error('Expected the moved key to stay real.');
+    expect(sourceAfter.keyId).toBe('A');
+    // A drawing-key edit moves paint, so BOTH identities rotate.
+    expect(sourceAfter.contentRevision).not.toBe(rasterBefore);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).not.toBe(canonicalBefore);
+  });
+
+  it('keeps the canonical revision canonical for persistence and the frame path on the raster value', () => {
+    const accepted = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID, [railMotion()]);
+    expect(accepted.ok).toBe(true);
+
+    const canonical = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const document = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID);
+    const frame = frameSource(0);
+
+    expect(document?.railMotions).toHaveLength(1);
+    expect(document?.revision).toBe(canonical);
+    expect(frame.contentRevision).not.toBe(canonical);
+    expect(frame.cacheRevision.startsWith(`${frame.contentRevision}:`)).toBe(true);
   });
 });

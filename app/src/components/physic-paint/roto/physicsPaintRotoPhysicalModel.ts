@@ -1490,6 +1490,36 @@ export function buildPhysicPaintRotoPhysicalRevision(
 }
 
 /**
+ * Phase 59 (REL-03 / MOTN-07): the RASTER revision — pixel identity only.
+ *
+ * The canonical revision above is PERSISTENCE identity and includes the
+ * rail-motion collection. Frame cache keys are PIXEL identity: animating a rail
+ * moves nothing that is painted, so a motion edit must never rotate a single
+ * per-frame cache entry or trigger a content re-render.
+ *
+ * The two strings are derived from the same encoder on purpose — this helper
+ * delegates to the canonical builder with the shared frozen empty collection
+ * (59-02's zero-byte representation) rather than re-implementing the encoding,
+ * so the two can never drift in formatting.
+ */
+export function buildPhysicPaintRotoPhysicalRasterRevision(
+  records: unknown,
+  interpolation: unknown,
+  loopClips: unknown,
+  incomingInterpolationBreakKeyIds: unknown,
+  groupOverrideRecords: unknown,
+): string {
+  return buildPhysicPaintRotoPhysicalRevision(
+    records,
+    interpolation,
+    loopClips,
+    incomingInterpolationBreakKeyIds,
+    groupOverrideRecords,
+    PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  );
+}
+
+/**
  * Canonical allowlisted encoding shared by content revision and persisted
  * project equality. Strings are length-prefixed, so payload text cannot create
  * delimiter collisions. Records are ordered by stable identity, not input or

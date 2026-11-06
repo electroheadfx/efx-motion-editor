@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="12" failures="2" errors="0" time="1.366">
+    <testsuite name="src/stores/physicPaintStore.rotoRailMotions.test.ts" timestamp="2026-11-06T15:17:25.473Z" hostname="efx.local" tests="12" failures="2" errors="0" skipped="0" time="0.055670417">
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; lands one motion record in the parent document and moves the canonical revision" time="0.022820834">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245409-96aacc2d-9944-4a06-84a2-7c26ed836a9b&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;b55bebc9-5965-4fe2-a8b5-7f36d448619a&apos;,
+    projectId: &apos;dacf77ba-8070-4983-ad81-562c48285119&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; preserves the collection when a later payload omits railMotions" time="0.007001917">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245421-5b09af94-db3f-42f2-8178-b79a98ad3cd9&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;0f227e6b-4ebd-4b66-988f-3e40cc5aebf3&apos;,
+    projectId: &apos;0ef53a4f-7627-4cc6-a35e-6724899eb40e&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; clears the collection when a payload carries an explicit empty railMotions array" time="0.005896792">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245427-d2eb5b78-9dfc-4700-98e5-f3b422bd6467&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;ce99e90c-7980-42c6-b754-19e7bd48cb96&apos;,
+    projectId: &apos;c2fdd2b9-a71f-4b16-940b-7630ebd577ee&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; rejects a malformed motion payload before any mutation" time="0.002972459">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245433-f245db0e-8f5e-4dbc-8b73-738e8691ea86&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;fdf36055-abcc-4872-a835-17733d1c3271&apos;,
+    projectId: &apos;7e403008-ae04-4c8e-adbc-ca0eb35c24ed&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; rejects a payload carrying an unknown sibling key instead of bypassing the allowlist" time="0.002179375">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245436-4594b912-461f-4028-824c-f77ab3084199&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;c4c0a82d-6916-4e13-a1f4-7c13a1f7c05a&apos;,
+    projectId: &apos;65fdfb14-3264-4248-9ea7-9b28f8ecdd9c&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: isPhysicPaintRotoRailMotionCollection &gt; delegates to the 59-02 fail-closed parser and never repairs" time="0.000179125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; fails closed for a track that does not exist and mutates nothing" time="0.000393459">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; leaves records, interpolation, loop clips and breaks byte-identical on a rejected collection" time="0.000452584">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; re-applying the identical collection returns ok without bumping rotoPhysicalRevision" time="0.000545167">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: raster revision vs canonical revision (REL-03/MOTN-07) &gt; leaves every frame cache key byte-identical across a motion-only edit while the canonical revision moves" time="0.006661875">
+            <failure message="expected [ …(5) ] to deeply equal [ …(5) ]" type="AssertionError">
+AssertionError: expected [ …(5) ] to deeply equal [ …(5) ]
+
+- Expected
++ Received
+
+  Array [
+-   &quot;physical-1454-533171bc:real:A&quot;,
+-   &quot;physical-1454-533171bc:real:B&quot;,
+-   &quot;physical-1454-533171bc:real:C&quot;,
+-   &quot;physical-1454-533171bc:real:D&quot;,
+-   &quot;physical-1454-533171bc:real:E&quot;,
++   &quot;physical-1518-ebce4209:real:A&quot;,
++   &quot;physical-1518-ebce4209:real:B&quot;,
++   &quot;physical-1518-ebce4209:real:C&quot;,
++   &quot;physical-1518-ebce4209:real:D&quot;,
++   &quot;physical-1518-ebce4209:real:E&quot;,
+  ]
+
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:498:61
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: raster revision vs canonical revision (REL-03/MOTN-07) &gt; rotates both revisions when a drawing-key edit lands" time="0.003668583">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793978245447-0b446344-ef5d-4762-8660-1943ed5c1ee4&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;33b39ed0-5321-4165-9b58-9a52e43f7dc0&apos;,
+    projectId: &apos;8db3339d-2108-48a6-8a0a-8e3a4427a7aa&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: raster revision vs canonical revision (REL-03/MOTN-07) &gt; keeps the canonical revision canonical for persistence and the frame path on the raster value" time="0.002071875">
+            <failure message="expected &apos;physical-1518-ebce4209&apos; not to be &apos;physical-1518-ebce4209&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;physical-1518-ebce4209&apos; not to be &apos;physical-1518-ebce4209&apos; // Object.is equality
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:546:39
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

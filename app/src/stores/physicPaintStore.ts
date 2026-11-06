@@ -71,6 +71,7 @@ import {
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPayloadContentToken,
+  buildPhysicPaintRotoPhysicalRasterRevision,
   buildPhysicPaintRotoPhysicalRevision,
   isPhysicPaintRotoInterpolationState,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
@@ -409,8 +410,9 @@ const _rotoCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRo
 const _rotoGeneratedCacheMetadata = new Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>();
 
 // 52.1 lever 1: read-path cache for generated (blend/duplicate) frames, keyed
-// by the cacheRevision string (which embeds contentRevision — the freshness
-// signal, so a stale entry is never served). Populated on-demand in
+// by the cacheRevision string (which embeds rasterRevision — the pixel
+// freshness signal, so a stale entry is never served while a motion-only edit
+// leaves every key intact). Populated on-demand in
 // getRotoPhysicalRenderSource; cleared on store reset. Holds raw bytes (never
 // canvases/dataURLs); byte-budgeted with FIFO eviction so a long edit session
 // cannot grow it unbounded.
@@ -1120,6 +1122,18 @@ type RotoPhysicalStructuralCacheEntry = {
   incomingInterpolationBreakKeyIds: readonly string[];
   projection: PhysicPaintRotoPhysicalTimelineProjection | null;
   contentRevision: string;
+  /**
+   * Phase 59 (REL-03 / MOTN-07) — the pixel-identity revision.
+   *
+   * `contentRevision` is PERSISTENCE identity: it includes the rail-motion
+   * collection, so a motion-only edit changes it and the persisted document
+   * revision agrees with the track revision. `rasterRevision` is PIXEL
+   * identity: the same derivation WITHOUT the motion collection, because
+   * animating a rail paints nothing new. EVERY per-frame cacheRevision
+   * template must interpolate this value — putting motion into a frame cache
+   * key would make a key drag re-render the whole track.
+   */
+  rasterRevision: string;
   // Phase 43: ONE compact interval derivation per structural revision (D-32).
   // Memoized on the same identity quadruple; queried lazily per requested
   // frame by getRotoPhysicalRenderSource / getRotoPhysicalUnresolvedLoops.
@@ -1234,6 +1248,15 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
       incomingInterpolationBreakKeyIds,
       railMotions,
     }),
+    // Phase 59 (REL-03): the raster revision deliberately omits rail motion.
+    // Same encoder, same five pre-59 inputs — see the raster helper's contract.
+    rasterRevision: buildPhysicPaintRotoPhysicalRasterRevision(
+      records,
+      interpolation,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+      Array.from(groupOverrideMap.values()),
+    ),
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips,
@@ -5066,7 +5089,7 @@ export const physicPaintStore = {
    * cells stay the projection's authority; frames the projection reports
    * empty (or does not cover) consult the Phase 43 lazy per-frame loop query
    * (D-26/D-27): 'linked' occurrences return the SOURCE key's payload under
-   * the source-scoped cache revision `${contentRevision}:real:${sourceKeyId}`
+   * the source-scoped cache revision `${rasterRevision}:real:${sourceKeyId}`
    * — one source cache entry serves every occurrence — and 'linked-unresolved'
    * surfaces as the 'loop-placeholder' variant (D-28) instead of a blank.
    */
@@ -5075,7 +5098,13 @@ export const physicPaintStore = {
     const structural = _resolveRotoPhysicalStructural(layerId, trackId);
     if (!structural || !structural.projection) return null;
     const projection = structural.projection;
-    const contentRevision = structural.contentRevision;
+    // Phase 59 (REL-03): the frame path is PIXEL identity. The `contentRevision`
+    // field on the returned source carries this raster value because downstream
+    // consumers rebuild `${rasterRevision}:...` cache keys from it
+    // (useRotoReferenceController, useRotoFramePersistenceCoordinator,
+    // rebuildRotoPhysicalOwnership) — a canonical value here would desync every
+    // reconstructed key the moment a rail is animated.
+    const rasterRevision = structural.rasterRevision;
     const lifecycleTarget = classifyPhysicPaintRotoGroupFrameTarget({
       document: {
         loopClips: structural.loopClips,
@@ -5092,8 +5121,8 @@ export const physicPaintStore = {
           layerId,
           appFrame,
           keyId: record.keyId,
-          contentRevision,
-          cacheRevision: `${contentRevision}:group-phase:${lifecycleTarget.groupId}:${record.keyId}:${lifecycleTarget.cycleOffset}`,
+          contentRevision: rasterRevision,
+          cacheRevision: `${rasterRevision}:group-phase:${lifecycleTarget.groupId}:${record.keyId}:${lifecycleTarget.cycleOffset}`,
           renderedFrame: {
             ...record.payload,
             appFrame,
@@ -5108,7 +5137,7 @@ export const physicPaintStore = {
         const group = structural.loopClips.find((candidate) => candidate.loopId === lifecycleTarget.groupId);
         if (!group) return null;
         const sourceCycleId = getPhysicsPaintRotoSourceCycleId(group.sourceKeyIds);
-        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`;
+        const cacheRevision = `${rasterRevision}:linked-generated:${interpolation.mode}:${sourceCycleId}:${left.keyId}:${right.keyId}:${lifecycleTarget.cycleOffset}`;
         const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, lifecycleTarget.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
@@ -5127,7 +5156,7 @@ export const physicPaintStore = {
           interpolationMode: interpolation.mode,
           sourceCycleId,
           cycleOffset: lifecycleTarget.cycleOffset,
-          contentRevision,
+          contentRevision: rasterRevision,
           cacheRevision,
           renderedFrame,
         };
@@ -5158,8 +5187,8 @@ export const physicPaintStore = {
         layerId,
         appFrame,
         keyId: record.keyId,
-        contentRevision,
-        cacheRevision: `${contentRevision}:real:${record.keyId}`,
+        contentRevision: rasterRevision,
+        cacheRevision: `${rasterRevision}:real:${record.keyId}`,
         renderedFrame: record.payload,
       };
     }
@@ -5169,7 +5198,7 @@ export const physicPaintStore = {
       if (!left || !right || !(left.appFrame < appFrame && appFrame < right.appFrame)) return null;
       const interpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
       const distance = right.appFrame - left.appFrame;
-      const cacheRevision = `${contentRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`;
+      const cacheRevision = `${rasterRevision}:generated:${interpolation.mode}:${left.keyId}:${right.keyId}:${appFrame}`;
       const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, (appFrame - left.appFrame) / distance);
       if (!rendered) return null;
       const renderedFrame: PhysicPaintRotoRealKeyPayload = {
@@ -5186,7 +5215,7 @@ export const physicPaintStore = {
         leftKeyId: left.keyId,
         rightKeyId: right.keyId,
         interpolationMode: interpolation.mode,
-        contentRevision,
+        contentRevision: rasterRevision,
         cacheRevision,
         renderedFrame,
       };
@@ -5204,8 +5233,8 @@ export const physicPaintStore = {
           layerId,
           appFrame,
           keyId: record.keyId,
-          contentRevision,
-          cacheRevision: `${contentRevision}:real:${record.keyId}`,
+          contentRevision: rasterRevision,
+          cacheRevision: `${rasterRevision}:real:${record.keyId}`,
           renderedFrame: record.payload,
         };
       }
@@ -5219,8 +5248,8 @@ export const physicPaintStore = {
           layerId,
           appFrame,
           keyId: record.keyId,
-          contentRevision,
-          cacheRevision: `${contentRevision}:real:${record.keyId}`,
+          contentRevision: rasterRevision,
+          cacheRevision: `${rasterRevision}:real:${record.keyId}`,
           renderedFrame: record.payload,
         };
       }
@@ -5233,7 +5262,7 @@ export const physicPaintStore = {
         // Cycle-local identity: equivalent source cycles share generated
         // cache entries across repeat destinations and Loop Clip instances,
         // while distinct ordered cycles cannot collide on one adjacent pair.
-        const cacheRevision = `${contentRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`;
+        const cacheRevision = `${rasterRevision}:linked-generated:${interpolation.mode}:${resolution.sourceCycleId}:${left.keyId}:${right.keyId}:${resolution.cycleOffset}`;
         const rendered = _getOrRenderGeneratedRotoFrame(cacheRevision, interpolation.mode, left, right, appFrame, resolution.progress);
         if (!rendered) return null;
         const renderedFrame: PhysicPaintRotoRealKeyPayload = {
@@ -5252,7 +5281,7 @@ export const physicPaintStore = {
           interpolationMode: interpolation.mode,
           sourceCycleId: resolution.sourceCycleId,
           cycleOffset: resolution.cycleOffset,
-          contentRevision,
+          contentRevision: rasterRevision,
           cacheRevision,
           renderedFrame,
         };
