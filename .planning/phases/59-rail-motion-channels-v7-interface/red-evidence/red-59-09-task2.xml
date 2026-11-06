@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="12" failures="3" errors="0" time="1.046">
+    <testsuite name="src/lib/railMotionExportParity.test.ts" timestamp="2026-11-06T16:20:37.326Z" hostname="efx2.home" tests="12" failures="3" errors="0" skipped="0" time="0.021589708">
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; delivers paint on every motion-blur sub-frame (REL-04)" time="0.011634041">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; resolves content at the integer frame for every sub-frame" time="0.001303084">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; evaluates the rail transform at the unfloored frame" time="0.001302375">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; floors the content frame for the composite: a missing track reports the integer frame" time="0.001011625">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; never serves a fractional delivery from the integer flattened memo (T-59-27)" time="0.0007355">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; does not read the integer memo for a fractional frame" time="0.000556459">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; still rejects negative and non-finite frames" time="0.000281875">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; transform-frame parity (59-09 MOTN-08) &gt; applies the evaluator transform at the fractional frame (one interpolation authority)" time="0.002026958">
+            <failure message="the store applied a transform for the animated rail: expected undefined to be defined" type="AssertionError">
+AssertionError: the store applied a transform for the animated rail: expected undefined to be defined
+ ❯ src/lib/railMotionExportParity.test.ts:344:78
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; transform-frame parity (59-09 MOTN-08) &gt; carries the same transform through getFlattenedFrame and getFlattenedFrameExcluding" time="0.00063175">
+            <failure message="the excluding seam built a transform: expected undefined to be defined" type="AssertionError">
+AssertionError: the excluding seam built a transform: expected undefined to be defined
+ ❯ src/lib/railMotionExportParity.test.ts:372:70
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; transform-frame parity (59-09 MOTN-08) &gt; applies exactly one affine to the shared content raster (no second application)" time="0.000725916">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; transform-frame parity (59-09 MOTN-08) &gt; delivers the untransformed integer composite when the rail has no motion" time="0.000373375">
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; transform-frame parity (59-09 MOTN-08) &gt; clears the diagnostic seam with the document" time="0.000487625">
+            <failure message="expected undefined to be defined" type="AssertionError">
+AssertionError: expected undefined to be defined
+ ❯ src/lib/railMotionExportParity.test.ts:416:34
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -13,6 +13,11 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { type PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
+import {
+  evaluateRailMotion,
+  resolveRailLocalFrame,
+} from '../components/physic-paint/roto/railMotionEvaluator';
+import type { EfxPaintTrackMotionTransform } from '../efx-paint/compositor/efxPaintCompositor';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 
 // 59-09 (REL-04 / MOTN-08): the export sub-frame law, driven through the REAL
@@ -113,6 +118,7 @@ class RecordingCanvas {
 
 let createdCanvases: RecordingCanvas[];
 let trackRasters: { A: RecordingCanvas; B: RecordingCanvas };
+let activeTrackId: string;
 
 function rasterCanvas(width = 10, height = 10): RecordingCanvas {
   const canvas = new RecordingCanvas();
@@ -139,6 +145,7 @@ function installAnimatedTrack(options: { motion?: boolean } = {}): void {
   const document = createEfxPaintDocument(LAYER);
   registerDocument(document);
   const trackId = document.tracks[0].id;
+  activeTrackId = trackId;
 
   const seeded = physicPaintStore.replaceRotoPhysicalRecords(
     LAYER,
@@ -318,5 +325,97 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
     expect(physicPaintStore.getFlattenedFrame(LAYER, -1)).toBeNull();
     expect(physicPaintStore.getFlattenedFrame(LAYER, Number.NaN)).toBeNull();
     expect(physicPaintStore.getFlattenedFrame(LAYER, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  // 59-09 Task 2 (MOTN-08): export, Play and the edit view must agree on the
+  // transform at every sampled time. The seam below reports what the store
+  // ACTUALLY applied; the expectation is the 59-05 evaluator's own output at
+  // the rail-local sub-frame — never a hand-written number, never a second
+  // interpolation implemented in this test.
+  describe('transform-frame parity (59-09 MOTN-08)', () => {
+    function appliedTransform(): EfxPaintTrackMotionTransform | undefined {
+      return physicPaintStore.getLastAppliedTrackTransforms(LAYER).get(activeTrackId);
+    }
+
+    it('applies the evaluator transform at the fractional frame (one interpolation authority)', () => {
+      installAnimatedTrack();
+      deliveryAt(BASE_FRAME + 0.5);
+      const applied = appliedTransform();
+      expect(applied, 'the store applied a transform for the animated rail').toBeDefined();
+      // Key Rail [A@0 .. B@5]: the rail starts at frame 0, so the rail-local
+      // frame is the app frame itself.
+      const railStart = 0;
+      const expected = evaluateRailMotion(
+        MOTION_RECORD,
+        resolveRailLocalFrame(BASE_FRAME + 0.5, railStart),
+      );
+      expect(applied!.translateX).toBeCloseTo(expected.translateX, 12);
+      expect(applied!.translateY).toBeCloseTo(expected.translateY, 12);
+      expect(applied!.scale).toBeCloseTo(expected.scale, 12);
+      expect(applied!.rotationRadians).toBeCloseTo(expected.rotationRadians, 12);
+      expect(applied!.opacity).toBeCloseTo(expected.opacity, 12);
+      // The sub-frame is a genuinely different sample than the floored frame.
+      const atInteger = evaluateRailMotion(
+        MOTION_RECORD,
+        resolveRailLocalFrame(BASE_FRAME, railStart),
+      );
+      expect(applied!.translateX).not.toBeCloseTo(atInteger.translateX, 6);
+    });
+
+    it('carries the same transform through getFlattenedFrame and getFlattenedFrameExcluding', () => {
+      installAnimatedTrack();
+      // The empty exclude set adds no key term, so the first call builds and
+      // the second is a memo hit on the same record: one key, one transform.
+      const excluding = physicPaintStore.getFlattenedFrameExcluding(LAYER, BASE_FRAME, new Set());
+      expect(excluding).not.toBeNull();
+      const builtTransform = appliedTransform();
+      expect(builtTransform, 'the excluding seam built a transform').toBeDefined();
+      const plain = deliveryAt(BASE_FRAME);
+      expect(plain.cacheKey).toBe(excluding!.cacheKey);
+      expect(appliedTransform()).toBe(builtTransform);
+      const expected = evaluateRailMotion(MOTION_RECORD, resolveRailLocalFrame(BASE_FRAME, 0));
+      expect(builtTransform!.translateX).toBeCloseTo(expected.translateX, 12);
+    });
+
+    it('applies exactly one affine to the shared content raster (no second application)', () => {
+      installAnimatedTrack();
+      const integer = deliveryAt(BASE_FRAME);
+      const fractional = deliveryAt(BASE_FRAME + 0.5);
+      // One content raster per integer frame: both composites draw the SAME
+      // registered raster object.
+      expect(drawnTrackRaster(integer)).toBe(trackRasters.B);
+      expect(drawnTrackRaster(fractional)).toBe(trackRasters.B);
+      // The transform is baked into a DISTINCT composite...
+      expect(fractional.raster).not.toBe(integer.raster);
+      // ...at exactly one application site: one rotate, one scale and the two
+      // translate legs of the pivot sequence per draw.
+      const ops = transformOps(fractional);
+      expect(ops.filter((op) => op.type === 'rotate')).toHaveLength(1);
+      expect(ops.filter((op) => op.type === 'scale')).toHaveLength(1);
+      expect(ops.filter((op) => op.type === 'translate')).toHaveLength(2);
+      // Content metadata is the integer delivery's, unchanged.
+      expect(fractional.cacheKey).toBe(integer.cacheKey);
+      expect(fractional.missing).toEqual(integer.missing);
+      expect(fractional.renderedFrame.appFrame).toBe(integer.renderedFrame.appFrame);
+    });
+
+    it('delivers the untransformed integer composite when the rail has no motion', () => {
+      installAnimatedTrack({ motion: false });
+      const fractional = deliveryAt(BASE_FRAME + 0.5);
+      expect(fractional).not.toBeNull();
+      // The absent path stays the common path: no transform entry, no ops.
+      expect(physicPaintStore.getLastAppliedTrackTransforms(LAYER).size).toBe(0);
+      expect(transformOps(fractional)).toHaveLength(0);
+      expect(drawnTrackRaster(fractional)).toBe(trackRasters.B);
+      expect(deliveryAt(BASE_FRAME).cacheKey).toBe(fractional.cacheKey);
+    });
+
+    it('clears the diagnostic seam with the document', () => {
+      installAnimatedTrack();
+      deliveryAt(BASE_FRAME + 0.5);
+      expect(appliedTransform()).toBeDefined();
+      physicPaintStore.reset();
+      expect(physicPaintStore.getLastAppliedTrackTransforms(LAYER).size).toBe(0);
+    });
   });
 });

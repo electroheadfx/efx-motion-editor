@@ -598,6 +598,16 @@ export function _setPhysicPaintPackageDirProvider(cb: (() => string | null) | nu
 const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlattenedFrameRecord>>();
 const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
 
+/**
+ * 59-09 (REL-04, DIAGNOSTIC ONLY): the rail transforms the store applied in
+ * the most recent flattened build, per layer and track. It exists so the
+ * parity test compares the transform the store ACTUALLY applied against the
+ * 59-05 evaluator's own output — never so a renderer can read it back.
+ * `previewRenderer` and `exportRenderer` never import or call the seam.
+ */
+const _lastAppliedTrackTransforms = new Map<string, ReadonlyMap<string, EfxPaintTrackMotionTransform>>();
+const EMPTY_APPLIED_TRACK_TRANSFORMS: ReadonlyMap<string, EfxPaintTrackMotionTransform> = new Map();
+
 /** In-flight decode guard (D-12): prevents duplicate decode kicks for the same bytes token. */
 const _compositorDecodeLoading = new Set<string>();
 /** In-flight decode promises (52.1-05 D-13): lets the export preload await completion. */
@@ -3680,6 +3690,19 @@ export const physicPaintStore = {
     soloTrackId: string | null = null,
   ): EfxPaintFlattenedFrameRecord | null {
     return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS, includeFond, undefined, soloTrackId);
+  },
+
+  /**
+   * 59-09 (REL-04, DIAGNOSTIC ONLY — test seam): the rail transforms applied
+   * in the most recent flattened build for `layerId`, keyed by track id. The
+   * parity test asserts the store's applied transform against the 59-05
+   * evaluator's own output, proving a single interpolation authority.
+   * `previewRenderer` and `exportRenderer` never call this.
+   */
+  getLastAppliedTrackTransforms(
+    layerId: string,
+  ): ReadonlyMap<string, EfxPaintTrackMotionTransform> {
+    return _lastAppliedTrackTransforms.get(layerId) ?? EMPTY_APPLIED_TRACK_TRANSFORMS;
   },
 
   /**
