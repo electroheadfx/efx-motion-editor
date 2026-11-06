@@ -3304,9 +3304,20 @@ mod tests {
         let documents = fixture["documents"]
             .as_array()
             .expect("golden fixture must carry a documents array");
-        assert!(
-            documents.len() >= 3,
-            "golden fixture must carry at least three documents"
+        let names: Vec<&str> = documents
+            .iter()
+            .map(|entry| entry["name"].as_str().expect("golden fixture name"))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "rail-kind",
+                "untouched",
+                "rail-kind-script",
+                "rail-motion",
+                "rail-motion-empty",
+            ],
+            "golden fixture must carry the five frozen cross-language documents"
         );
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");
@@ -3335,6 +3346,90 @@ mod tests {
                 "{name}: recomputed project equality diverged from the TS authority"
             );
         }
+    }
+
+    #[test]
+    fn rail_motion_canonical_parity_emits_the_motion_term_at_the_reserved_ordinal() {
+        let fixture: Value =
+            serde_json::from_str(RAIL_MOTION_CANONICAL_FIXTURE).expect("golden fixture must parse");
+        let entry = fixture["documents"]
+            .as_array()
+            .expect("golden fixture must carry a documents array")
+            .iter()
+            .find(|entry| entry["name"].as_str() == Some("rail-motion"))
+            .expect("golden fixture must carry the rail-motion document");
+        let document = &entry["document"];
+        // This document is the exact runtime combination this phase exists to
+        // repair: a reveal Loop Clip AND a motion-bearing rail, recomputed by
+        // the guard and compared against the TypeScript authority.
+        assert_eq!(
+            document["loopClips"][0]["railKind"].as_str(),
+            Some("reveal"),
+            "the motion fixture must exercise a reveal clip"
+        );
+        assert_eq!(
+            document["railMotions"]
+                .as_array()
+                .expect("motion fixture railMotions")
+                .len(),
+            1,
+            "the motion fixture must exercise a motion-bearing rail"
+        );
+
+        let source = canonical_physical_source(document).expect("motion canonical source");
+        // The ordinal is asserted on the RUST-computed source, not the fixture
+        // literal: an insertion in the wrong branch of canonical_physical_source
+        // then fails even if the fixture were accidentally regenerated.
+        let loops_at = source.find("loops:").expect("loops term");
+        let motions_at = source.find("rail-motions:").expect("rail-motions term");
+        let breaks_at = source.find("incoming-breaks:").expect("incoming-breaks term");
+        assert!(
+            loops_at < motions_at,
+            "rail-motions must follow loops: {source}"
+        );
+        assert!(
+            motions_at < breaks_at,
+            "rail-motions must precede incoming-breaks: {source}"
+        );
+        assert_eq!(
+            source.matches("rail-motions:").count(),
+            1,
+            "the motion term must be emitted exactly once"
+        );
+
+        let expected_project = entry["expectedProject"]
+            .as_str()
+            .expect("golden fixture expectedProject");
+        assert_eq!(
+            canonical_physical_hash(document).expect("guard recompute"),
+            expected_project,
+            "the guard's recompute-and-compare step must accept a reveal clip carrying motion"
+        );
+    }
+
+    #[test]
+    fn rail_motion_canonical_parity_rejects_malformed_motion_before_the_guard_compares() {
+        // T-59-12: malformed input must fail closed with a field-naming error
+        // BEFORE the guard's hash comparison, never as a misleading mismatch.
+        let mut document = physical_document(json!("dGVzdA=="));
+        document["railMotions"] = json!([{
+            "railId": "rail",
+            "anchorKeyId": "k1",
+            "channels": [{
+                "id": "bogus",
+                "keys": [{ "frame": 0, "value": 1, "easing": "ease", "wiggle": 0 }]
+            }]
+        }]);
+        let error = canonical_physical_hash(&document)
+            .expect_err("an unknown channel id must fail closed");
+        assert!(
+            error.contains("channel"),
+            "the error must name the channel field: {error}"
+        );
+        assert!(
+            !error.contains("does not match the canonical physical document"),
+            "malformed input must fail before the guard comparison: {error}"
+        );
     }
 
     // ---- 59-04 (MOTN-12 / REL-02): Rust mirror of the rail-motion term ----

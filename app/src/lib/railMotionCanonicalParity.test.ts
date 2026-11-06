@@ -41,6 +41,8 @@ describe('rail motion canonical parity (TS half)', () => {
       'rail-kind',
       'untouched',
       'rail-kind-script',
+      'rail-motion',
+      'rail-motion-empty',
     ]);
   });
 
@@ -51,6 +53,41 @@ describe('rail motion canonical parity (TS half)', () => {
       expect(buildPhysicPaintRotoProjectEquality(entry.document)).toBe(entry.expectedProject);
     },
   );
+
+  // 59-04 (MOTN-12): the rail-motion term occupies the ordinal reserved by
+  // 59-01 and is emitted exactly once. Both languages assert this against the
+  // same frozen literals; the Rust half additionally checks the ordinal on its
+  // OWN computed source, so an insertion in the wrong branch cannot hide
+  // behind a regenerated fixture.
+  it('emits exactly one rail-motions term between loops and incoming-breaks', () => {
+    const motion = FIXTURE.documents.find((entry) => entry.name === 'rail-motion');
+    expect(motion).toBeDefined();
+    const source = motion!.expectedSource;
+    const occurrences = source.split('rail-motions:').length - 1;
+    expect(occurrences).toBe(1);
+    const loopsAt = source.indexOf('loops:');
+    const motionsAt = source.indexOf('rail-motions:');
+    const breaksAt = source.indexOf('incoming-breaks:');
+    expect(loopsAt).toBeGreaterThanOrEqual(0);
+    expect(breaksAt).toBeGreaterThanOrEqual(0);
+    expect(loopsAt).toBeLessThan(motionsAt);
+    expect(motionsAt).toBeLessThan(breaksAt);
+  });
+
+  // D-29 idiom: an empty rail-motion collection is semantically identical to a
+  // pre-Phase-59 document with no railMotions member, so it contributes NO
+  // term and every existing project value keeps its exact revision.
+  it('encodes the empty motion collection byte-identically to the untouched document', () => {
+    const untouched = FIXTURE.documents.find((entry) => entry.name === 'untouched');
+    const empty = FIXTURE.documents.find((entry) => entry.name === 'rail-motion-empty');
+    expect(untouched).toBeDefined();
+    expect(empty).toBeDefined();
+    expect(empty!.expectedSource).toBe(untouched!.expectedSource);
+    expect(empty!.expectedProject).toBe(untouched!.expectedProject);
+    expect(
+      (empty!.document as { revision?: string }).revision,
+    ).toBe((untouched!.document as { revision?: string }).revision);
+  });
 
   // 261030-ey9 / 260921-c7x: the TS encoder resolves the lifecycle block
   // UNCONDITIONALLY, so a lifecycle-less finite clip and its normalized
