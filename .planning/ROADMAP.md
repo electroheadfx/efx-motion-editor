@@ -110,14 +110,14 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 1/16 plans executed
+**Plans:** 2/16 plans executed
 
 Plans:
 **Wave 1**
 - [x] 59-01-PLAN.md — Gates A–D ratification + TS↔Rust `railKind` canonical parity tracer and golden fixture
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 59-02-PLAN.md — Rail-motion model: types, value domains, fail-closed parser, rail-id mint, pure edit reducer
+- [x] 59-02-PLAN.md — Rail-motion model: types, value domains, fail-closed parser, rail-id mint, pure edit reducer
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 59-03-PLAN.md — Persistence: document allowlist, conditional canonical term, one revision authority, save→reopen pin
@@ -239,7 +239,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 59. Rail Motion Channels & v7 Interface | 1/16 | In Progress | - |
+| 59. Rail Motion Channels & v7 Interface | 2/16 | In Progress | - |
 | 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |

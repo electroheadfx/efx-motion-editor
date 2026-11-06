@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-01-PLAN.md
-last_updated: "2026-11-06T12:04:49.610Z"
+stopped_at: Completed 59-02-PLAN.md
+last_updated: "2026-11-06T12:17:26.117Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: a14b43c9fa399c58730502cc2d46ddb624cead2d
+state_head: d72a10c3b47dcf93710c9bed2dda3eeb298e3a87
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 59 P01 | 7min | 2 tasks | 4 files |
+| Phase 59 P02 | 12min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: railKind term mirrored in Rust at the TS ordinal; shared frozen golden fixture is the cross-language authority
 - [Phase 59]: canonical_physical_source extracted (pure) so a term-order regression names the term, not an opaque hash
 - [Phase 59]: rail-motions ordinal reserved between loops and incoming-breaks; not emitted until Phase 59's motion encoder
+- [Phase 59]: Rail motion model lives in railMotionModel.ts with module-local guards (no import of physicsPaintRotoPhysicalModel.ts) so 59-03 can import it without a cycle
+- [Phase 59]: set-key carries an optional pairedValue for grouped Position inserts; absent, the sibling axis step-holds its outgoing value (D-12)
+- [Phase 59]: Grouped Position edits always address both axes: add/remove applies to the pair, and removing a Position key removes that frame from both axes
 
 ### Pending Todos
 
@@ -142,8 +146,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T12:04:49.590Z
-Stopped at: Completed 59-01-PLAN.md
+Last session: 2026-11-06T12:17:26.096Z
+Stopped at: Completed 59-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
