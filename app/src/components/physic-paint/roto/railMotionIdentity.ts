@@ -15,10 +15,12 @@
 
 import {
   createPhysicPaintRotoRailId,
+  parsePhysicPaintRotoRailMotions,
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 import type { KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
-import type { TimelineRailType } from '../view/timelineRailDesign';
+import { resolveTimelineRailType, type TimelineRailType } from '../view/timelineRailDesign';
 
 /**
  * The Loop Clip facts a rail view needs. Structural on purpose: the identity
@@ -158,48 +160,147 @@ export function describeRailMotionOrphan(record: PhysicPaintRotoRailMotionRecord
   return `Rail motion for rail "${record.railId}" no longer matches a live rail (last anchor key "${record.anchorKeyId}").`;
 }
 
+/**
+ * The Loop Clip occurrence count used for the rail view span. An `infinity`
+ * clip is a single visible occurrence here; the boundary scan that freezes its
+ * real duration belongs to the resolver, not to identity.
+ */
+function railViewOccurrences(repeat: number | 'infinity'): number {
+  if (typeof repeat !== 'number' || !Number.isFinite(repeat) || repeat < 1) return 1;
+  return Math.floor(repeat);
+}
+
+function freezeRailView(view: RailMotionRailView): RailMotionRailView {
+  return Object.freeze({
+    railId: view.railId,
+    anchorKeyId: view.anchorKeyId,
+    startFrame: view.startFrame,
+    endFrameExclusive: view.endFrameExclusive,
+    keyIds: Object.freeze([...view.keyIds]),
+    railType: view.railType,
+    loopId: view.loopId,
+  }) as RailMotionRailView;
+}
+
+/**
+ * Projects every live rail into the shape reconciliation consumes.
+ *
+ * Loop Clips bind by their own durable `loopId`. Key Rail segments carry no
+ * durable id, so their view is `railId: null` until a passed bound-id map
+ * carries the record's authoritative rail id forward. `boundRailIdByAnchor` is
+ * populated only by {@link assignRailMotionRailViews}' single first-bind
+ * lookup. This function is additive: the production `deriveKeyRailSegments`
+ * output and behavior are untouched.
+ */
 export function deriveRailMotionRailViews(
   loopClips: readonly RailMotionLoopClipSource[],
   keyRailSegments: readonly KeyRailSegment[],
   railTypeFor?: RailMotionRailTypeResolver,
   boundRailIdByAnchor?: ReadonlyMap<string, string>,
 ): readonly RailMotionRailView[] {
-  void loopClips;
-  void keyRailSegments;
-  void railTypeFor;
-  void boundRailIdByAnchor;
-  return Object.freeze([]) as readonly RailMotionRailView[];
+  const views: RailMotionRailView[] = [];
+
+  for (const clip of loopClips) {
+    const sourceKeyIds = clip.sourceKeyIds;
+    views.push(freezeRailView({
+      railId: clip.loopId,
+      anchorKeyId: sourceKeyIds[0] ?? clip.loopId,
+      startFrame: clip.placementStart,
+      endFrameExclusive: clip.placementStart + sourceKeyIds.length * railViewOccurrences(clip.repeat),
+      keyIds: sourceKeyIds,
+      railType: railTypeFor === undefined
+        ? resolveTimelineRailType(clip.railKind, clip.mode ?? null)
+        : railTypeFor(clip),
+      loopId: clip.loopId,
+    }));
+  }
+
+  for (const segment of keyRailSegments) {
+    views.push(freezeRailView({
+      railId: boundRailIdByAnchor?.get(segment.firstKeyId) ?? null,
+      anchorKeyId: segment.firstKeyId,
+      startFrame: segment.firstKeyFrame,
+      endFrameExclusive: segment.lastKeyFrame + 1,
+      keyIds: segment.keyIds,
+      railType: 'standard',
+      loopId: null,
+    }));
+  }
+
+  return Object.freeze(views) as readonly RailMotionRailView[];
 }
 
+/**
+ * The ONE permitted anchor-based lookup (T-59-16).
+ *
+ * A bare Key Rail has no durable id, so the first time it needs its stored
+ * record the only available join is `record.anchorKeyId === segment.firstKeyId`.
+ * That lookup is confined to this function and happens before reconciliation;
+ * once a record is bound, its `railId` is authoritative and every other path
+ * matches on `railId` alone. A record whose railId is a live Loop Clip's
+ * `loopId` is loop-owned and can never be captured by a key-rail anchor
+ * coincidence.
+ */
 export function assignRailMotionRailViews(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   loopClips: readonly RailMotionLoopClipSource[],
   keyRailSegments: readonly KeyRailSegment[],
   railTypeFor?: RailMotionRailTypeResolver,
 ): readonly RailMotionRailView[] {
-  void records;
-  void loopClips;
-  void keyRailSegments;
-  void railTypeFor;
-  return Object.freeze([]) as readonly RailMotionRailView[];
+  const liveLoopIds = new Set(loopClips.map((clip) => clip.loopId));
+  const boundRailIdByAnchor = new Map<string, string>();
+
+  for (const segment of keyRailSegments) {
+    if (boundRailIdByAnchor.has(segment.firstKeyId)) continue;
+    let boundRailId: string | null = null;
+    for (const record of records) {
+      if (record.anchorKeyId !== segment.firstKeyId) continue;
+      if (liveLoopIds.has(record.railId)) continue;
+      if (boundRailId === null || compareRailIds(record.railId, boundRailId) < 0) {
+        boundRailId = record.railId;
+      }
+    }
+    if (boundRailId !== null) boundRailIdByAnchor.set(segment.firstKeyId, boundRailId);
+  }
+
+  return deriveRailMotionRailViews(loopClips, keyRailSegments, railTypeFor, boundRailIdByAnchor);
 }
 
+/**
+ * Deleting a rail's first drawing key re-stamps the recovery hint. Identity
+ * (`railId`) and every rail-local key frame are unchanged: motion does not
+ * ripple when a drawing key disappears.
+ */
 export function onDeleteFirstKey(
   record: PhysicPaintRotoRailMotionRecord,
   nextAnchorKeyId: string,
 ): PhysicPaintRotoRailMotionRecord {
-  void nextAnchorKeyId;
-  return record;
+  if (record.anchorKeyId === nextAnchorKeyId) return record;
+  return Object.freeze({
+    railId: record.railId,
+    anchorKeyId: nextAnchorKeyId,
+    channels: record.channels,
+  }) as PhysicPaintRotoRailMotionRecord;
 }
 
+/**
+ * Deleting a rail's only drawing key removes its motion in the same
+ * operation (D-15 at the rail level). Unknown rails are a quiet no-op.
+ */
 export function onDeleteOnlyKey(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   railId: string,
 ): readonly PhysicPaintRotoRailMotionRecord[] {
-  void railId;
-  return records;
+  const remaining = records.filter((record) => record.railId !== railId);
+  if (remaining.length === records.length) return records;
+  if (remaining.length === 0) return PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+  return Object.freeze(remaining) as readonly PhysicPaintRotoRailMotionRecord[];
 }
 
+/**
+ * Splitting a rail at a break keeps the `railId` on the head segment. The tail
+ * has no motion of its own, so the collection is unchanged.
+ */
 export function onSplitRail(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   railId: string,
@@ -208,15 +309,82 @@ export function onSplitRail(
   return records;
 }
 
+function findRecordIndexByAnchor(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  anchorKeyId: string,
+): number {
+  return records.findIndex((record) => record.anchorKeyId === anchorKeyId);
+}
+
+function withAnchor(
+  record: PhysicPaintRotoRailMotionRecord,
+  anchorKeyId: string,
+): PhysicPaintRotoRailMotionRecord {
+  if (record.anchorKeyId === anchorKeyId) return record;
+  return Object.freeze({
+    railId: record.railId,
+    anchorKeyId,
+    channels: record.channels,
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+/**
+ * Merging two Key Rail segments addresses records by the segment anchors that
+ * survive the merge (`headAnchorKeyId` / `tailAnchorKeyId`), never by a railId
+ * the head may not have.
+ *
+ * - Both sides animated: the head record wins, the tail record is removed and
+ *   reported as `droppedRailId` so the settlement boundary can publish the
+ *   confirmation row (D-08: never a silent loss).
+ * - Only the tail animated: that record keeps its own `railId`, is re-anchored
+ *   to `mergedAnchorKeyId` and is reported as `adoptedRailId` (there is no head
+ *   record to re-key to).
+ * - Only the head animated, or neither: unchanged.
+ */
 export function onMergeRails(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   headAnchorKeyId: string,
   tailAnchorKeyId: string,
   mergedAnchorKeyId: string,
 ): RailMotionMergeTransitionResult {
-  void headAnchorKeyId;
-  void tailAnchorKeyId;
-  void mergedAnchorKeyId;
+  if (headAnchorKeyId === tailAnchorKeyId) {
+    return Object.freeze({
+      records,
+      adoptedRailId: null,
+      droppedRailId: null,
+    }) as RailMotionMergeTransitionResult;
+  }
+
+  const headIndex = findRecordIndexByAnchor(records, headAnchorKeyId);
+  const tailIndex = findRecordIndexByAnchor(records, tailAnchorKeyId);
+
+  if (headIndex >= 0 && tailIndex >= 0) {
+    const headRecord = withAnchor(records[headIndex], mergedAnchorKeyId);
+    const droppedRailId = records[tailIndex].railId;
+    const nextRecords = records
+      .map((record, index) => (index === headIndex ? headRecord : record))
+      .filter((_, index) => index !== tailIndex);
+    return Object.freeze({
+      records: Object.freeze(nextRecords) as readonly PhysicPaintRotoRailMotionRecord[],
+      adoptedRailId: null,
+      droppedRailId,
+    }) as RailMotionMergeTransitionResult;
+  }
+
+  if (tailIndex >= 0) {
+    const adopted = withAnchor(records[tailIndex], mergedAnchorKeyId);
+    const nextRecords = adopted === records[tailIndex]
+      ? records
+      : Object.freeze(
+        records.map((record, index) => (index === tailIndex ? adopted : record)),
+      ) as readonly PhysicPaintRotoRailMotionRecord[];
+    return Object.freeze({
+      records: nextRecords,
+      adoptedRailId: adopted.railId,
+      droppedRailId: null,
+    }) as RailMotionMergeTransitionResult;
+  }
+
   return Object.freeze({
     records,
     adoptedRailId: null,
@@ -224,18 +392,85 @@ export function onMergeRails(
   }) as RailMotionMergeTransitionResult;
 }
 
+/**
+ * Moving or resizing a rail start never rewrites a rail-local key frame: the
+ * motion is rail-local and shifts in application time with the rail.
+ */
 export function onRailStartMoved(
   record: PhysicPaintRotoRailMotionRecord,
 ): PhysicPaintRotoRailMotionRecord {
   return record;
 }
 
+function isBoundedIdentityId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 128;
+}
+
+/**
+ * Re-keys a copied rail set's motion onto the copy's fresh identities.
+ *
+ * The plan is validated as a whole before anything is built: any unbounded id,
+ * duplicate source or destination, destination already carrying a record, or
+ * an animated copied source with no plan entry returns `null` and the caller
+ * fails the paste. Nothing is ever partially applied, dropped or overwritten.
+ *
+ * A matched record adopts the destination `railId` and `anchorKeyId` and keeps
+ * every channel and key frame verbatim — the copy's rail-local time is
+ * identical. Records outside the copied set are retained by reference. The
+ * assembled result is free-parsed through the 59-02 parser before it is
+ * returned, so a re-key can never emit an unparseable collection.
+ */
 export function rekeyRailMotionsForCopy(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   plan: readonly RailMotionCopyPlanEntry[],
   copiedSourceRailIds?: readonly string[],
 ): readonly PhysicPaintRotoRailMotionRecord[] | null {
-  void plan;
-  void copiedSourceRailIds;
-  return records;
+  if (plan.length === 0) return records;
+
+  const recordByRailId = new Map(records.map((record) => [record.railId, record]));
+  const sources = new Set<string>();
+  const destinations = new Set<string>();
+
+  for (const entry of plan) {
+    if (!isBoundedIdentityId(entry.sourceRailId)
+      || !isBoundedIdentityId(entry.destinationRailId)
+      || !isBoundedIdentityId(entry.anchorKeyId)) {
+      return null;
+    }
+    if (sources.has(entry.sourceRailId)) return null;
+    if (destinations.has(entry.destinationRailId)) return null;
+    sources.add(entry.sourceRailId);
+    destinations.add(entry.destinationRailId);
+    if (recordByRailId.has(entry.destinationRailId)) return null;
+  }
+
+  if (copiedSourceRailIds !== undefined) {
+    for (const sourceRailId of copiedSourceRailIds) {
+      if (!recordByRailId.has(sourceRailId)) continue;
+      if (!sources.has(sourceRailId)) return null;
+    }
+  }
+
+  const rekeyed: PhysicPaintRotoRailMotionRecord[] = [];
+  for (const entry of plan) {
+    const source = recordByRailId.get(entry.sourceRailId);
+    if (source === undefined) continue;
+    rekeyed.push(Object.freeze({
+      railId: entry.destinationRailId,
+      anchorKeyId: entry.anchorKeyId,
+      channels: source.channels,
+    }) as PhysicPaintRotoRailMotionRecord);
+  }
+
+  if (rekeyed.length === 0) return records;
+
+  const bystanders = records.filter((record) => !sources.has(record.railId));
+  const assembled = Object.freeze([...bystanders, ...rekeyed].sort(
+    (left, right) => compareRailIds(left.railId, right.railId),
+  )) as readonly PhysicPaintRotoRailMotionRecord[];
+
+  // Free-parse as a validation gate. The parsed copies are discarded so the
+  // retained bystanders keep their original object identity.
+  parsePhysicPaintRotoRailMotions(assembled);
+  return assembled;
 }
