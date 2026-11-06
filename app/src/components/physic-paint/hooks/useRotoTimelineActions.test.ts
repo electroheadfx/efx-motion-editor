@@ -15,6 +15,11 @@ import type {
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
+import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
+import {
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../roto/railMotionModel';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -103,6 +108,8 @@ interface HarnessOptions {
   getIncomingInterpolationBreakKeyIds?: () => readonly string[];
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
+  /** 59-18 (G3/CR-01): the active track's stored rail motion, read by the copy builder. */
+  getRotoRailMotions?: () => readonly PhysicPaintRotoRailMotionRecord[];
   capacity?: number;
   parentEndExclusive?: number;
   blankDataUrl?: Uint8Array;
@@ -144,6 +151,7 @@ function createHarness(options: HarnessOptions = {}) {
       executePhysicalEdit: executePhysicalEdit as never,
     }),
     getRotoLoopClips: options.getRotoLoopClips ?? (() => options.loopClips ?? []),
+    ...(options.getRotoRailMotions ? { getRotoRailMotions: options.getRotoRailMotions } : {}),
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => options.physicalCells ?? [],
     getFrameResolution: () => options.frameResolution ?? { kind: 'empty' },
@@ -4678,6 +4686,146 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
     expect(await harness.actions.physicalActions.pasteRailSet()).toBe(false);
     expect(executeRailSetPaste).toHaveBeenCalledTimes(1);
     expect(harness.publishStatus).toHaveBeenCalled();
+  });
+});
+
+describe('59-18 G3/CR-01 rail-set Copy/Duplicate carry rail motion', () => {
+  const setRecords = [
+    realKeyRecord('k0', 0), realKeyRecord('k2', 2),
+    realKeyRecord('k6', 6), realKeyRecord('k8', 8),
+  ];
+  const setMembers: readonly RailSetIdentity[] = [
+    { kind: 'key-rail', firstKeyId: 'k0' },
+    { kind: 'key-rail', firstKeyId: 'k6' },
+  ];
+  // The stored record binds to the copied rail through its anchor (k0 is the
+  // segment's firstKeyId); 59-06's assignment is the only permitted lookup.
+  const storedMotion: readonly PhysicPaintRotoRailMotionRecord[] = Object.freeze([
+    Object.freeze({
+      railId: 'rail-a',
+      anchorKeyId: 'k0',
+      channels: Object.freeze([
+        Object.freeze({
+          id: 'opacity' as const,
+          keys: Object.freeze([
+            Object.freeze({ frame: 0, value: 0.5, easing: 'hold' as const, wiggle: 0 }),
+            Object.freeze({ frame: 2, value: 1, easing: 'ease' as const, wiggle: 0 }),
+          ]),
+        }),
+      ]),
+    }),
+  ]);
+
+  it('RED: copyRailSet builds a payload whose railMotions carries the copied rail motion', async () => {
+    const railClipboard = signal<RotoRailSetCopyPayload | null>(null);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      getRotoRailMotions: () => storedMotion,
+      getRailSetClipboard: () => railClipboard.value,
+      setRailSetClipboard: (payload) => { railClipboard.value = payload; },
+    });
+
+    expect(await harness.actions.physicalActions.copyRailSet()).toBe(true);
+    expect(railClipboard.value?.railMotions).toHaveLength(1);
+    const copied = railClipboard.value!.railMotions[0];
+    expect(copied.railId).toBe('rail-a');
+    expect(copied.anchorKeyId).toBe('k0');
+    expect(copied.channels).toEqual(storedMotion[0].channels);
+    // The member keeps the SOURCE rail id so paste can re-key it (59-15).
+    const keyRailA = railClipboard.value!.members[0];
+    if (keyRailA.kind !== 'key-rail') throw new Error('expected key-rail member');
+    expect(keyRailA.sourceRailId).toBe('rail-a');
+    // The motion-free member carries no source rail id.
+    const keyRailB = railClipboard.value!.members[1];
+    if (keyRailB.kind !== 'key-rail') throw new Error('expected key-rail member');
+    expect(keyRailB.sourceRailId).toBeUndefined();
+  });
+
+  it('RED: duplicateRailSet carries the same motion on its fresh payload', async () => {
+    const executeRailSetPaste = vi.fn(async (_input: unknown) => true);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      capacity: 80,
+      executeRailSetPaste,
+      getRotoRailMotions: () => storedMotion,
+    });
+
+    expect(await harness.actions.physicalActions.duplicateRailSet()).toBe(true);
+    const call = executeRailSetPaste.mock.calls[0][0] as Readonly<{ payload?: RotoRailSetCopyPayload }>;
+    expect(call.payload?.railMotions).toHaveLength(1);
+    expect(call.payload?.railMotions[0].railId).toBe('rail-a');
+  });
+
+  it('RED: the copied document revision includes the motion collection it carries', async () => {
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const breakIds = ['k6'];
+    const motionFreeRevision = buildPhysicPaintRotoPhysicalRevision(
+      setRecords, interpolation, [], breakIds,
+    );
+    const motionRevision = buildPhysicPaintRotoPhysicalRevision(
+      setRecords, interpolation, [], breakIds, [], storedMotion,
+    );
+    // The motion term really changes the canonical revision ...
+    expect(motionRevision).not.toBe(motionFreeRevision);
+    // ... and `parsePhysicPaintRotoPhysicalDocument` recomputes the revision
+    // from the document content and throws on a mismatch. A builder that parsed
+    // the motion but hashed the four-argument revision would fail closed here,
+    // so a successful copy with a non-empty payload proves both agree.
+    const railClipboard = signal<RotoRailSetCopyPayload | null>(null);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      getRotoRailMotions: () => storedMotion,
+      getRailSetClipboard: () => railClipboard.value,
+      setRailSetClipboard: (payload) => { railClipboard.value = payload; },
+    });
+    expect(await harness.actions.physicalActions.copyRailSet()).toBe(true);
+    expect(railClipboard.value?.railMotions).toHaveLength(1);
+  });
+
+  it('a motion-free copy keeps the shared empty collection and the four-argument revision', async () => {
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const breakIds = ['k6'];
+    expect(buildPhysicPaintRotoPhysicalRevision(
+      setRecords, interpolation, [], breakIds, [], PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+    )).toBe(buildPhysicPaintRotoPhysicalRevision(setRecords, interpolation, [], breakIds));
+
+    const railClipboard = signal<RotoRailSetCopyPayload | null>(null);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      getRotoRailMotions: () => PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+      getRailSetClipboard: () => railClipboard.value,
+      setRailSetClipboard: (payload) => { railClipboard.value = payload; },
+    });
+
+    expect(await harness.actions.physicalActions.copyRailSet()).toBe(true);
+    expect(railClipboard.value?.railMotions).toHaveLength(0);
+  });
+
+  it('the port is optional: a copy without getRotoRailMotions succeeds with the empty collection', async () => {
+    const railClipboard = signal<RotoRailSetCopyPayload | null>(null);
+    const harness = createHarness({
+      records: setRecords,
+      incomingInterpolationBreakKeyIds: ['k6'],
+      railSetMembers: setMembers,
+      currentAppFrame: 3,
+      getRailSetClipboard: () => railClipboard.value,
+      setRailSetClipboard: (payload) => { railClipboard.value = payload; },
+    });
+
+    expect(await harness.actions.physicalActions.copyRailSet()).toBe(true);
+    expect(railClipboard.value?.railMotions).toHaveLength(0);
   });
 });
 
