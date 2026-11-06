@@ -70,6 +70,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoPhysicalDocument,
 } from '../roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { PhysicPaintRotoPhysicalEditProposal } from '../roto/physicsPaintRotoPhysicalResolver';
 import type {
   RotoPhysicalEditAcceptedOutput,
@@ -138,6 +139,7 @@ export type RotoPhysicalEditReplaySourceSnapshot = Pick<
   | 'groupOverrideRecords'
   | 'interpolation'
   | 'loopClips'
+  | 'railMotions'
   | 'incomingInterpolationBreakKeyIds'
   | 'capacity'
   | 'selectedKeyId'
@@ -381,6 +383,44 @@ function physicalRecordsEqual(
   return true;
 }
 
+/**
+ * Phase 59 (MOTN-12): rail motion is durable canonical state, exactly like Loop
+ * Clips. Compare by reference first (canonical arrays are frozen and reused),
+ * then structurally, so a clone round-trip still compares equal while any value
+ * change registers as a real edit. An absent collection is impossible — the
+ * field is REQUIRED on the snapshot.
+ */
+function railMotionCollectionsEqual(
+  left: readonly PhysicPaintRotoRailMotionRecord[],
+  right: readonly PhysicPaintRotoRailMotionRecord[],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftRecord = left[index];
+    const rightRecord = right[index];
+    if (leftRecord === rightRecord) continue;
+    if (leftRecord.railId !== rightRecord.railId) return false;
+    if (leftRecord.anchorKeyId !== rightRecord.anchorKeyId) return false;
+    if (leftRecord.channels.length !== rightRecord.channels.length) return false;
+    for (let channelIndex = 0; channelIndex < leftRecord.channels.length; channelIndex += 1) {
+      const leftChannel = leftRecord.channels[channelIndex];
+      const rightChannel = rightRecord.channels[channelIndex];
+      if (leftChannel.id !== rightChannel.id) return false;
+      if (leftChannel.keys.length !== rightChannel.keys.length) return false;
+      for (let keyIndex = 0; keyIndex < leftChannel.keys.length; keyIndex += 1) {
+        const leftKey = leftChannel.keys[keyIndex];
+        const rightKey = rightChannel.keys[keyIndex];
+        if (leftKey.frame !== rightKey.frame
+          || leftKey.value !== rightKey.value
+          || leftKey.easing !== rightKey.easing
+          || leftKey.wiggle !== rightKey.wiggle) return false;
+      }
+    }
+  }
+  return true;
+}
+
 function snapshotRecordsEqual(
   before: RotoPhysicalEditReplaySourceSnapshot,
   after: RotoPhysicalEditReplaySourceSnapshot,
@@ -392,6 +432,7 @@ function snapshotRecordsEqual(
   // Loop Clips are durable canonical state (Phase 43, Q1): a loop-only
   // difference must register as a change; derived loop state never enters
   // the snapshot, so it can never register as one.
+  if (!railMotionCollectionsEqual(before.railMotions, after.railMotions)) return false;
   if (before.loopClips.length !== after.loopClips.length) return false;
   for (let index = 0; index < before.loopClips.length; index += 1) {
     const left = before.loopClips[index];
@@ -469,6 +510,7 @@ export function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot)
     snapshot.loopClips,
     snapshot.incomingInterpolationBreakKeyIds,
     snapshot.groupOverrideRecords,
+    snapshot.railMotions,
   );
 }
 
@@ -514,6 +556,7 @@ function snapshotCanonicalContentEqual(
     || left.incomingInterpolationBreakKeyIds.length !== right.incomingInterpolationBreakKeyIds.length) return false;
   if (left.interpolation.enabled !== right.interpolation.enabled
     || left.interpolation.mode !== right.interpolation.mode) return false;
+  if (!railMotionCollectionsEqual(left.railMotions, right.railMotions)) return false;
   if (left.loopClips.length !== right.loopClips.length) return false;
   for (let index = 0; index < left.records.length; index += 1) {
     const l = left.records[index];

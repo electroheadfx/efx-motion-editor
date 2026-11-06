@@ -10,6 +10,7 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoRailMotionRecord } from './railMotionModel';
 import type { RenderedFramePayload } from './rotoCanvasFrames';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import type { PhysicPaintRotoPhysicalOperationLeaseToken } from '../../../stores/physicPaintStore';
@@ -154,6 +155,14 @@ export interface RotoPhysicalEditSnapshot<EngineState> {
    * its derived loop shrink stays one coherent undoable outcome.
    */
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /**
+   * Durable rail-motion collection (Phase 59, MOTN-12). Motion rides the SAME
+   * snapshot as drawing keys and Loop Clips for the same reason loops do
+   * (D-29/Phase 43): a motion-only edit must be restorable, and an operator
+   * that only knows about drawing keys must never be able to silently drop
+   * animation on replay. REQUIRED — an absent member is a compile error.
+   */
+  readonly railMotions: readonly PhysicPaintRotoRailMotionRecord[];
   /** Complete immutable stable-key-owned incoming interpolation breaks. */
   readonly incomingInterpolationBreakKeyIds: readonly string[];
   readonly capacity: number;
@@ -247,6 +256,12 @@ export interface RotoPhysicalEditRecordsPort {
    * captured collection so replay restores keys and loops together.
    */
   getLoopClips: (layerId: string) => readonly PhysicPaintRotoLoopClip[];
+  /**
+   * Phase 59 (MOTN-12): durable rail-motion read for snapshot capture. Motion
+   * is staged on every launch and carried into the apply payload exactly like
+   * Loop Clips; there is no second staging authority.
+   */
+  getRailMotions: (layerId: string, trackId: string) => readonly PhysicPaintRotoRailMotionRecord[];
   getIncomingInterpolationBreakKeyIds: (layerId: string) => readonly string[];
   replaceIncomingInterpolationBreakKeyIds: (
     layerId: string,

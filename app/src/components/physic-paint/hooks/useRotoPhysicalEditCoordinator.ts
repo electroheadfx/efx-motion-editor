@@ -77,6 +77,10 @@ import {
   resolvePhysicPaintRotoLoopClipLifecycle,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
+  parsePhysicPaintRotoRailMotions,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../roto/railMotionModel';
+import {
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoDeleteRails,
@@ -266,6 +270,9 @@ type PhysicalEditResultTransition =
   | { readonly type: 'accepted'; readonly ok: boolean; readonly detail: PhysicPaintRotoPhysicalEditApplyResult };
 
 interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit {
+  /** Phase 59 (MOTN-12): the settled receipt must re-read motion from the same
+   *  track the payload targeted, or the canonical comparison silently misses it. */
+  readonly trackId: string;
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
   readonly cursorAppFrame: number;
@@ -309,6 +316,10 @@ export interface RotoPlayScriptExecuteInput extends RotoGeneratedPublicationExec
   readonly rotoBackground: PhysicPaintRotoBackgroundMetadata;
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'play-script' }>;
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /** Phase 59 (MOTN-12): staged rail motions for the publication. Publications
+   *  do not author motion (59-12 owns creation), so absent means "preserve the
+   *  track's current collection" — the snapshot field stages the pass-through. */
+  readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
   /** 52 UAT (AM-4): staged incoming breaks for a NEW-cycle Apply — the fresh
    *  cycle's first key owns the leading break. Absent passes the document's
    *  breaks through untouched. */
@@ -320,6 +331,9 @@ export interface RotoRegenerateGroupExecuteInput extends RotoGeneratedPublicatio
   readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly semanticDelta: Extract<PhysicPaintRotoPhysicalEditSemanticDelta, { readonly kind: 'regenerate-group' }>;
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /** Phase 59 (MOTN-12): absent preserves the track's current motion collection
+   *  (see RotoPlayScriptExecuteInput.railMotions). */
+  readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
   /** Never populated on the regenerate path — present only so the generated
    *  publication union stages the field uniformly. Regenerate retargets
    *  EXISTING keys, so the document's breaks pass through untouched. */
@@ -730,6 +744,24 @@ function cloneLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): PhysicPa
   });
 }
 
+/**
+ * Phase 59 (MOTN-12): the ONE rail-motion staging/clone helper, beside
+ * `cloneLoopClips` and following the same parse-then-map pattern. The snapshot
+ * field is the single staging authority; no parallel variable may exist.
+ */
+function cloneRailMotions(
+  railMotions: readonly PhysicPaintRotoRailMotionRecord[],
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  return parsePhysicPaintRotoRailMotions(railMotions).map((record) => ({
+    railId: record.railId,
+    anchorKeyId: record.anchorKeyId,
+    channels: record.channels.map((channel) => ({
+      id: channel.id,
+      keys: channel.keys.map((key) => ({ ...key })),
+    })),
+  }));
+}
+
 function recordsEqual(
   left: readonly PhysicPaintRotoRealKeyRecord[],
   right: readonly PhysicPaintRotoRealKeyRecord[],
@@ -1049,6 +1081,7 @@ function createPendingPhysicalEdit(
     operationId: payload.operationId,
     operationKind: payload.operationKind,
     layerId: payload.layerId,
+    trackId: payload.trackId,
     startFrame: payload.startFrame,
     launchOperationId: payload.launchOperationId,
     projectContextId: payload.projectContextId ?? null,
@@ -1226,6 +1259,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           mode: interpolation.mode,
         },
         loopClips: cloneLoopClips(portsRef.current.records.getLoopClips(launch.layerId)),
+        // Phase 59 (MOTN-12): motion rides the SAME snapshot as loops — the
+        // snapshot field is the single staging authority for both directions.
+        railMotions: cloneRailMotions(
+          portsRef.current.records.getRailMotions(
+            launch.layerId,
+            portsRef.current.launch.getActiveTrackId(launch.layerId),
+          ),
+        ),
         incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
           portsRef.current.records.getIncomingInterpolationBreakKeyIds(launch.layerId),
         ),
@@ -1285,6 +1326,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           groupOverrideRecords: snapshot.groupOverrideRecords,
           interpolation: snapshot.interpolation,
           loopClips: snapshot.loopClips,
+          // Phase 59 (MOTN-12): replay restores motion with the keys/loops — the
+          // motion-only difference this snapshot exists for must land here, and
+          // the revision must be computed WITH it or the parent rejects the echo.
+          railMotions: snapshot.railMotions,
           incomingInterpolationBreakKeyIds: snapshot.incomingInterpolationBreakKeyIds,
           capacity: snapshot.capacity,
           selectedKeyId: snapshot.selectedKeyId,
@@ -1295,6 +1340,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             snapshot.loopClips,
             snapshot.incomingInterpolationBreakKeyIds,
             snapshot.groupOverrideRecords,
+            snapshot.railMotions,
           ),
         });
       } catch {
@@ -1525,6 +1571,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         portsRef.current.records.getLoopClips(pending.layerId),
         portsRef.current.records.getIncomingInterpolationBreakKeyIds(pending.layerId),
         portsRef.current.records.getDocument(pending.layerId)?.groupOverrideRecords ?? [],
+        // Phase 59 (MOTN-12): motion is a canonical fingerprint term, so the
+        // settlement comparison must include the accepted collection.
+        portsRef.current.records.getRailMotions(pending.layerId, pending.trackId),
       );
       if (currentRevision !== pending.expectedRevision) {
         finalizeFailed(pending, before, 'settlement-mismatch', 'Accepted physical state no longer matches the child snapshot.');
@@ -1893,6 +1942,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         const currentRecords = portsRef.current.records.getRecords(revalidatedLaunch.layerId);
         const currentInterpolation = portsRef.current.records.getInterpolation(revalidatedLaunch.layerId);
         const currentLoopClips = portsRef.current.records.getLoopClips(revalidatedLaunch.layerId);
+        // Phase 59 (MOTN-12): the launch staging read — motion enters the
+        // canonical comparisons exactly like loops; a 5-arg build would report
+        // a stale document on every track that carries motion.
+        const currentRailMotions = portsRef.current.records.getRailMotions(
+          revalidatedLaunch.layerId,
+          portsRef.current.launch.getActiveTrackId(revalidatedLaunch.layerId),
+        );
         const currentIncomingInterpolationBreakKeyIds = portsRef.current.records.getIncomingInterpolationBreakKeyIds(
           revalidatedLaunch.layerId,
         );
@@ -1924,6 +1980,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           currentLoopClips,
           currentIncomingInterpolationBreakKeyIds,
           currentGroupOverrideRecords,
+          currentRailMotions,
         );
         let groupFramePaintProposal: PhysicPaintRotoPhysicalDocument | null = null;
         let groupFramePaintImpact: PhysicPaintRotoGroupFramePaintImpact | null = null;
@@ -1940,6 +1997,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             currentDocument.loopClips,
             currentDocument.incomingInterpolationBreakKeyIds,
             currentDocument.groupOverrideRecords,
+            currentRailMotions,
           );
           if (currentDocument.capacity !== capacity
             || currentDocument.revision !== expectedRevision

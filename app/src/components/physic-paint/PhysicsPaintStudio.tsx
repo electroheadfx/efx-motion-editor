@@ -43,6 +43,7 @@ import {
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY } from './roto/railMotionModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -2890,6 +2891,7 @@ export function PhysicsPaintStudio() {
         capacity,
       ),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getRailMotions: (layerId, trackId) => physicPaintStore.getRotoPhysicalRailMotions(layerId, trackId),
       getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
         physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
@@ -5877,6 +5879,7 @@ export function PhysicsPaintStudio() {
         capacity,
       ),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
+      getRailMotions: (layerId, trackId) => physicPaintStore.getRotoPhysicalRailMotions(layerId, trackId),
       getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
         physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId(), keyIds)
@@ -5906,6 +5909,9 @@ export function PhysicsPaintStudio() {
         loopClips: layerId
           ? physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId())
           : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+        railMotions: layerId
+          ? physicPaintStore.getRotoPhysicalRailMotions(layerId, studioActiveTrackId())
+          : PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
         incomingInterpolationBreakKeyIds: layerId
           ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId())
           : [],
