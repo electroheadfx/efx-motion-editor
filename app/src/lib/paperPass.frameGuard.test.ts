@@ -171,7 +171,12 @@ describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', (
 
   it('U3 the live-overlay path bypasses the flattened memo (result depends on live pixels)', () => {
     // The memo .set must be guarded so a live-overlay build is never cached.
-    expect(storeSource).toMatch(/if \(!liveOverlay\)[\s\S]{0,80}flattenedMemo\.set\(/);
+    // Phase 59-09 (REL-04): the guard also admits fractional frames — a
+    // sub-frame export samples a transform no integer frame represents, so it
+    // must never be memoized either. Both exclusions are required.
+    expect(storeSource).toMatch(
+      /if \(!liveOverlay && !isFractionalFrame\)[\s\S]{0,80}flattenedMemo\.set\(/,
+    );
   });
 
   it('U4 the Studio handler bumps physicPaintVersion at finalize (monitor redraw trigger)', () => {
