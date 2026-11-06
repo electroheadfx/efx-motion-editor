@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="16" failures="6" errors="0" time="0.819">
+    <testsuite name="src/components/physic-paint/roto/railMotionPersistence.test.ts" timestamp="2026-11-06T13:05:07.798Z" hostname="efx2.home" tests="16" failures="6" errors="0" skipped="0" time="0.014290875">
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; defaults an absent railMotions member to the frozen empty collection" time="0.006096833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; accepts an explicit empty railMotions array as the shared empty collection" time="0.000222375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; accepts a valid non-empty collection and freezes every level" time="0.001196541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; rejects a document whose railMotions changed without recomputing the revision" time="0.000453959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; adds nothing when the collection is empty (append-only 6th parameter)" time="0.000106208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; contributes exactly one term when the collection is non-empty" time="0.000162166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; sorts records by railId so input array order never changes the revision" time="0.000190125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; keeps an untouched document at its exact pre-Phase-59 revision" time="0.000109792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; moves project equality when one record is added" time="0.000241917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; moves the Paint track revision when the collection moves" time="0.000581375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; returns the shared frozen empty collection for an unset track" time="0.001327">
+            <failure message="physicPaintStore.getRotoPhysicalRailMotions is not a function" type="TypeError">
+TypeError: physicPaintStore.getRotoPhysicalRailMotions is not a function
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:269:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; rejects an invalid collection fail-closed and leaves the store untouched" time="0.000938458">
+            <failure message="physicPaintStore.replaceRotoPhysicalRailMotions is not a function" type="TypeError">
+TypeError: physicPaintStore.replaceRotoPhysicalRailMotions is not a function
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:279:37
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; publishes a collection and moves the structural content revision" time="0.000273166">
+            <failure message="physicPaintStore.replaceRotoPhysicalRailMotions is not a function" type="TypeError">
+TypeError: physicPaintStore.replaceRotoPhysicalRailMotions is not a function
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:294:37
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; does not bump any revision when the collection is unchanged" time="0.000181167">
+            <failure message="physicPaintStore.replaceRotoPhysicalRailMotions is not a function" type="TypeError">
+TypeError: physicPaintStore.replaceRotoPhysicalRailMotions is not a function
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:305:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; carries railMotions in the runtime document read and keeps the revision consistent" time="0.000169042">
+            <failure message="physicPaintStore.replaceRotoPhysicalRailMotions is not a function" type="TypeError">
+TypeError: physicPaintStore.replaceRotoPhysicalRailMotions is not a function
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:316:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: store collection and the ONE revision authority &gt; builds every store revision through exactly ONE direct call site" time="0.001518166">
+            <failure message="expected 7 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected 7 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 7
+
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:331:25
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

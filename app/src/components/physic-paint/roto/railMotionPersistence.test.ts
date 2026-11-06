@@ -25,8 +25,11 @@
  * boundary cast.
  */
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createEfxPaintDocument,
 } from '../../../efx-paint/document/efxPaintDocument';
@@ -42,6 +45,11 @@ import {
   buildPhysicPaintRotoProjectEquality,
   parsePhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
+import {
+  _setPhysicPaintMarkDirtyCallback,
+  physicPaintStore,
+  rotoPhysicalRevision,
+} from '../../../stores/physicPaintStore';
 
 const INTERPOLATION = Object.freeze({ enabled: false, mode: 'duplicate' as const });
 
@@ -234,6 +242,98 @@ describe('59-03: conditional canonical rail-motions term', () => {
     const without = buildEfxPaintTrackRevision(buildTrack(buildDocument()));
     const withMotion = buildEfxPaintTrackRevision(buildTrack(buildDocument({ railMotions: [RAIL_A] })));
     expect(withMotion).not.toBe(without);
+  });
+});
+
+describe('59-03: store collection and the ONE revision authority', () => {
+  const STORE_LAYER = 'layer-59-03-store';
+  const STORE_TRACK = 'track-1';
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  function installRecords(): void {
+    const result = physicPaintStore.replaceRotoPhysicalRecords(
+      STORE_LAYER,
+      STORE_TRACK,
+      RECORDS,
+      INTERPOLATION,
+      32,
+    );
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  it('returns the shared frozen empty collection for an unset track', () => {
+    expect(physicPaintStore.getRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK))
+      .toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+    installRecords();
+    expect(physicPaintStore.getRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK))
+      .toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+  });
+
+  it('rejects an invalid collection fail-closed and leaves the store untouched', () => {
+    installRecords();
+    const before = physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK);
+    const result = physicPaintStore.replaceRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK, [{
+      railId: 'rail-lone',
+      anchorKeyId: 'key-1',
+      // Position is grouped (D-12): a lone axis is rejected by the parser.
+      channels: [RAIL_A.channels[0]],
+    }]);
+    expect(result.ok).toBe(false);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK))
+      .toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK)).toBe(before);
+  });
+
+  it('publishes a collection and moves the structural content revision', () => {
+    installRecords();
+    const before = physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK);
+    const result = physicPaintStore.replaceRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK, [RAIL_A]);
+    expect(result.ok).toBe(true);
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toEqual(RAIL_A);
+    const after = physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK);
+    expect(after).not.toBe(before);
+  });
+
+  it('does not bump any revision when the collection is unchanged', () => {
+    installRecords();
+    expect(physicPaintStore.replaceRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK, [RAIL_A]).ok).toBe(true);
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK);
+    const visibleBefore = rotoPhysicalRevision.value;
+    const result = physicPaintStore.replaceRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK, [RAIL_A]);
+    expect(result.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK)).toBe(revisionBefore);
+    expect(rotoPhysicalRevision.value).toBe(visibleBefore);
+  });
+
+  it('carries railMotions in the runtime document read and keeps the revision consistent', () => {
+    installRecords();
+    expect(physicPaintStore.replaceRotoPhysicalRailMotions(STORE_LAYER, STORE_TRACK, [RAIL_A, RAIL_B]).ok).toBe(true);
+    const document = physicPaintStore.getRotoPhysicalDocument(STORE_LAYER, STORE_TRACK);
+    expect(document).not.toBeNull();
+    expect(document?.railMotions).toEqual([RAIL_A, RAIL_B]);
+    expect(document?.revision).toBe(physicPaintStore.getRotoPhysicalContentRevision(STORE_LAYER, STORE_TRACK));
+  });
+
+  it('builds every store revision through exactly ONE direct call site', () => {
+    const storePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../stores/physicPaintStore.ts');
+    const storeSource = readFileSync(storePath, 'utf8');
+    const callToken = 'buildPhysicPaintRotoPhysicalRevision(';
+    const occurrences = storeSource.split(callToken).length - 1;
+    // Baseline at HEAD was 7. The single authority is the plan's
+    // anti-bypass gate (T-59-08): a new call site outside the helper is a
+    // revision built without rail motion.
+    expect(occurrences).toBe(1);
+    const helperStart = storeSource.indexOf('function _buildRotoPhysicalRevisionFor');
+    expect(helperStart).toBeGreaterThan(-1);
+    const helperBody = storeSource.slice(helperStart, storeSource.indexOf('\n}', helperStart));
+    expect(helperBody.includes(callToken)).toBe(true);
+    expect(helperBody.includes('railMotions')).toBe(true);
   });
 });
 
