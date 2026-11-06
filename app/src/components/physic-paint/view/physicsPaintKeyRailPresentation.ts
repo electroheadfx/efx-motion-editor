@@ -166,6 +166,14 @@ export interface RailMotionInspectorField {
   readonly unit: RailMotionInspectorUnit;
   /** Display-unit value (px / percent / degrees). */
   readonly value: number;
+  /**
+   * 59-21 (IN-02): whether the channel EXISTS on the record's `channels`.
+   * Never whether the read frame is keyed — a rail can carry a channel whose
+   * keys sit elsewhere. An absent channel is still projected (the value an
+   * add would seed) and is simply marked not present, so the inspector can
+   * refuse the write instead of looking editable and always being rejected.
+   */
+  readonly present: boolean;
 }
 
 export interface RailMotionInspectorPresentation {
@@ -228,6 +236,9 @@ export function projectRailMotionInspector(
       label: RAIL_MOTION_INSPECTOR_LABELS[channelId],
       unit: RAIL_MOTION_INSPECTOR_UNITS[channelId],
       value: railMotionValueToUi(channelId, modelValue),
+      // Channel existence only: the same lookup the value read uses, never a
+      // second predicate and never `hasKeyAtSelection`.
+      present: channel !== undefined,
     }) as RailMotionInspectorField;
   });
 
