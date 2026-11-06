@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRailMotionMergeNotice, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
@@ -37,7 +37,8 @@ import {
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
 } from '../components/physic-paint/roto/railMotionModel';
-import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
+import { reconcileRailMotionsForDocumentEdit, type RailMotionDocumentReconciliation } from '../components/physic-paint/roto/railMotionDocumentReconciler';
+import { createRailMotionMergeNotice } from '../components/physic-paint/roto/railMotionMergeNotice';
 import {
   classifyPhysicPaintRotoGroupFrameTarget,
   proposePhysicPaintRotoActionGroupLifecycle,
@@ -1346,6 +1347,7 @@ function physicalEditResult(
     readonly selectedAppFrame?: number | null;
     readonly cursorAppFrame?: number;
     readonly error?: string;
+    readonly railMotionMergeNotice?: PhysicPaintRailMotionMergeNotice;
   },
 ): PhysicPaintRotoPhysicalEditApplyResult {
   let stagedRevision = options.stagedRevision;
@@ -1400,6 +1402,12 @@ function physicalEditResult(
     // never reads loopClips, so nothing is lost by dropping the echo.
     ...(payload.incomingInterpolationBreakKeyIds !== undefined
       ? { incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds }
+      : {}),
+    // 59-15 (MOTN-10): three bounded scalars from the two-sided merge
+    // classification. `applyFailureResult` never supplies this option, so a
+    // failed settlement can never carry a notice.
+    ...(options.railMotionMergeNotice !== undefined
+      ? { railMotionMergeNotice: options.railMotionMergeNotice }
       : {}),
   };
 }
@@ -1945,6 +1953,11 @@ async function applyPhysicPaintRotoPhysicalMap(
   // previous/next snapshots read only values staged in this scope — no new
   // store reads.
   let proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
+  // 59-15 Task 4 (MOTN-10): the drop report is captured beside the reconciled
+  // collection. It exists only on the forward, omitted-collection branch — the
+  // replay/paste branch bypasses reconciliation entirely, and a replay result
+  // must never carry the notice (the result validator enforces it).
+  let reconcileReport: RailMotionDocumentReconciliation | null = null;
   if (payload.railMotions !== undefined) {
     try {
       proposedRailMotions = parsePhysicPaintRotoRailMotions(payload.railMotions);
@@ -1952,7 +1965,7 @@ async function applyPhysicPaintRotoPhysicalMap(
       return reject(error instanceof Error ? error.message : 'Roto physical rail motions are malformed.');
     }
   } else {
-    proposedRailMotions = reconcileRailMotionsForDocumentEdit({
+    const reconciliation = reconcileRailMotionsForDocumentEdit({
       previous: {
         realKeyRecords: currentRecords,
         incomingInterpolationBreakKeyIds: new Set(currentIncomingInterpolationBreakKeyIds),
@@ -1964,7 +1977,9 @@ async function applyPhysicPaintRotoPhysicalMap(
         loopClips: proposedLoopClips,
       },
       railMotions: currentRailMotions,
-    }).railMotions;
+    });
+    proposedRailMotions = reconciliation.railMotions;
+    if (!isReplay) reconcileReport = reconciliation;
   }
   if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
     return reject('Roto physical selection identity and frame must both be null or both be present.');
@@ -2204,6 +2219,19 @@ async function applyPhysicPaintRotoPhysicalMap(
     }));
   }
 
+  // 59-15 Task 4 (MOTN-10): a two-sided merge reports the dropped rail and its
+  // prior app-frame span through the settlement return leg. A one-sided merge
+  // (adoption) produces a null drop report and settles normally with no notice;
+  // the bridge never synthesizes frames and never throws when the report is null.
+  const mergeNotice = reconcileReport !== null
+    && reconcileReport.droppedRailId !== null
+    && reconcileReport.droppedRailFrames !== null
+    ? createRailMotionMergeNotice({
+        railId: reconcileReport.droppedRailId,
+        startFrame: reconcileReport.droppedRailFrames.startFrame,
+        endFrameExclusive: reconcileReport.droppedRailFrames.endFrameExclusive,
+      })
+    : null;
   const result = physicalEditResult(payload, {
     ok: true,
     stagedRevision,
@@ -2211,6 +2239,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     selectedKeyId: acceptedSelectedKeyId,
     selectedAppFrame: acceptedSelectedAppFrame,
     cursorAppFrame: acceptedDocument.cursorAppFrame,
+    ...(mergeNotice !== null ? { railMotionMergeNotice: mergeNotice } : {}),
   });
   return result;
 }

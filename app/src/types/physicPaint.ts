@@ -1409,12 +1409,28 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   // result that carries it, so the contract fails loud at the boundary.
   /** Echo of the submitted incoming break collection when the payload carried one. */
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
+  /**
+   * 59-15 (MOTN-10): optional scalar settlement metadata produced ONLY by a
+   * two-sided rail-merge classification — the dropped rail id and its prior
+   * app-frame span, delivered unchanged from the reconciler's drop report.
+   * Never persisted: it does not join the document, the revision, any
+   * fingerprint, the accepted-command snapshot, or a replay payload.
+   */
+  readonly railMotionMergeNotice?: PhysicPaintRailMotionMergeNotice;
 }
 
 const PHYSIC_PAINT_ROTO_PHYSICAL_KEY_ID_MAX_LENGTH = 256;
 
 function isBoundedPhysicalKeyId(value: unknown): value is string {
   return isNonEmptyString(value) && value.length <= PHYSIC_PAINT_ROTO_PHYSICAL_KEY_ID_MAX_LENGTH;
+}
+
+function isPhysicPaintRailMotionMergeNotice(value: unknown): value is PhysicPaintRailMotionMergeNotice {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['railId', 'startFrame', 'endFrameExclusive'])) return false;
+  return isBoundedPhysicalKeyId(value.railId)
+    && isNonNegativeInteger(value.startFrame)
+    && isNonNegativeInteger(value.endFrameExclusive)
+    && value.endFrameExclusive > value.startFrame;
 }
 
 function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
@@ -1906,7 +1922,7 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   // studio-realm-divergence (nature: contract): `loopClips` is deliberately NOT
   // an allowed key. A settlement result carrying frame bytes is a contract
   // violation and is rejected here rather than shipped (fail loud at the edge).
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'incomingInterpolationBreakKeyIds'])) return false;
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'incomingInterpolationBreakKeyIds', 'railMotionMergeNotice'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -1926,6 +1942,14 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
+  // 59-15 (MOTN-10): the merge-drop notice is authorized only on an ordinary
+  // accepted settlement. A failed result and a replay result (which carries an
+  // explicit collection, so reconciliation is bypassed) must never carry it.
+  if (value.railMotionMergeNotice !== undefined) {
+    if (!isPhysicPaintRailMotionMergeNotice(value.railMotionMergeNotice)) return false;
+    if (!value.ok) return false;
+    if (value.operationKind === 'undo' || value.operationKind === 'redo') return false;
+  }
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;
   if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta, !value.ok)) return false;

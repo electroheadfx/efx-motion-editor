@@ -83,6 +83,10 @@ import {
 } from '../roto/railMotionModel';
 import { reconcileRailMotionsForDocumentEdit } from '../roto/railMotionDocumentReconciler';
 import {
+  dismissRailMotionMergeNotice,
+  publishRailMotionMergeNotice,
+} from '../roto/railMotionMergeNotice';
+import {
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoDeleteRails,
@@ -1431,6 +1435,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         portsRef.current.status.setApplyStatus('error');
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_FAILED_MESSAGE);
         return;
+      }
+      // 59-15 Task 4 (MOTN-10): the settlement's two-sided merge report owns
+      // the session row. Publish it here — after the accepted revision is
+      // confirmed and before the accepted-output signal — and dismiss on any
+      // accepted edit without a drop, so the restoring undo clears the row.
+      // `finalizeFailed` never touches the slot.
+      if (detail.railMotionMergeNotice !== undefined) {
+        publishRailMotionMergeNotice(detail.railMotionMergeNotice);
+      } else {
+        dismissRailMotionMergeNotice();
       }
       // Every accepted physical edit can change the paint the cursor frame
       // resolves to: delete-key, duplicate-key, moves, rail edits, and the
