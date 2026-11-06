@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
@@ -110,6 +111,24 @@ export function PhysicsPaintScriptsPanel({
   const refreshReasonId = useId();
   const scopeSelectId = useId();
   const keyRailEditReasonId = useId();
+  // 59-16: the ONLY transient state the Motion inspector owns. The numeric
+  // draft itself lives inside the shared NumericStepper (EU-comma free entry,
+  // commit on blur/Enter); this signal carries the reason a write was refused
+  // and a rejection sequence that remounts the field so its optimistic text is
+  // reverted to the projected value even when the same sentence repeats. A
+  // signal per the project rule; held in a ref because useSignal is
+  // unavailable to this component harness.
+  const motionCommitState = useRef(
+    signal<{ readonly reason: string | null; readonly rejectionSeq: number }>({ reason: null, rejectionSeq: 0 }),
+  );
+  const motionCommit = motionCommitState.current.value;
+  // A new projection (selection or document change) retires the stale reason.
+  useEffect(() => {
+    const current = motionCommitState.current.value;
+    if (current.reason !== null) {
+      motionCommitState.current.value = { reason: null, rejectionSeq: current.rejectionSeq };
+    }
+  }, [selectedRailMotion]);
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -160,25 +179,46 @@ export function PhysicsPaintScriptsPanel({
   // the panel imports no store and mutates no record. A Motion key can only be
   // selected while its rail owns the pane, so the section rides whichever
   // surface is mounted (normal Scripts, Key Rail or Loop Clip inspector).
-  // Task 1 wires Scale end-to-end; Task 2 opens the full five-field set.
+  // The fields render in the projection's fixed D-13 order. Grouped Position is
+  // a display grouping over two independent model channels: each field emits
+  // only its OWN channel, so no coupling control links the two axes.
+  const commitMotionValue = (channelId: PhysicPaintRotoRailMotionChannelId, value: number): void => {
+    const reason = onCommitRailMotionValue?.(channelId, value) ?? null;
+    const current = motionCommitState.current.value;
+    if (reason === null) {
+      if (current.reason !== null) {
+        motionCommitState.current.value = { reason: null, rejectionSeq: current.rejectionSeq };
+      }
+      return;
+    }
+    // Never a silent clamp: surface the sentence and bump the sequence so the
+    // rejected field remounts at the projected value.
+    motionCommitState.current.value = { reason, rejectionSeq: current.rejectionSeq + 1 };
+  };
   const motionValuesSection = selectedRailMotion === null
     ? null
     : (
       <section class="physics-paint-motion-inspector" role="group" aria-label="Motion values">
-        {selectedRailMotion.fields
-          .filter((field) => field.channelId === 'scale')
-          .map((field) => (
-            <div key={field.channelId} class="physics-paint-motion-field">
-              <span class="physics-paint-motion-field-label">{field.label} ({field.unit})</span>
-              <NumericStepper
-                ariaLabel={field.label}
-                value={field.value}
-                step={1}
-                precision={3}
-                onChange={(value) => { onCommitRailMotionValue?.(field.channelId, value); }}
-              />
-            </div>
-          ))}
+        {selectedRailMotion.fields.map((field) => (
+          <div key={field.channelId} class="physics-paint-motion-field">
+            <span class="physics-paint-motion-field-label">{field.label} ({field.unit})</span>
+            <NumericStepper
+              key={`${field.channelId}:${motionCommit.rejectionSeq}`}
+              ariaLabel={field.label}
+              value={field.value}
+              // Free entry, no grid snap: an out-of-domain number must reach
+              // the command layer and be refused with a reason, never silently
+              // clamped or rounded here (the 260924-d6l convention).
+              freeEntry
+              step={1}
+              precision={3}
+              onChange={(value) => { commitMotionValue(field.channelId, value); }}
+            />
+          </div>
+        ))}
+        {motionCommit.reason !== null ? (
+          <p class="physics-paint-motion-rejection" role="alert">{motionCommit.reason}</p>
+        ) : null}
       </section>
     );
 
