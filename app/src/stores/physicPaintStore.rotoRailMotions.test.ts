@@ -6,6 +6,7 @@ import {
 } from './physicPaintStore';
 import {
   buildPhysicPaintRotoPhysicalRevision,
+  type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -545,5 +546,113 @@ describe('59-07: raster revision vs canonical revision (REL-03/MOTN-07)', () => 
     expect(document?.revision).toBe(canonical);
     expect(frame.contentRevision).not.toBe(canonical);
     expect(frame.cacheRevision.startsWith(`${frame.contentRevision}:`)).toBe(true);
+  });
+});
+
+describe('59-15: store-direct removal reconciles the rail-motion collection (Gate B)', () => {
+  interface SeedOptions {
+    readonly records?: readonly PhysicPaintRotoRealKeyRecord[];
+    readonly breaks?: readonly string[];
+    readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+    readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
+  }
+
+  /**
+   * Seeds the track through the canonical document port, exactly like the
+   * real transport does, so the store holds records, loops, breaks and motion
+   * in one revision. The removal helpers below never touch the bridge.
+   */
+  function seedMotionDocument(options: SeedOptions = {}): void {
+    const records = options.records ?? cycleRecords();
+    const breaks = options.breaks ?? [];
+    const loopClips = options.loopClips ?? [];
+    const railMotions = options.railMotions ?? [];
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TEST_TRACK_ID, {
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        INTERPOLATION,
+        loopClips,
+        breaks,
+        [],
+        railMotions,
+      ),
+      loopClips,
+      railMotions,
+      incomingInterpolationBreakKeyIds: breaks,
+    });
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER));
+  });
+
+  it('re-anchors the record in the same helper call when clearTrackFrames deletes the rail first key', () => {
+    seedMotionDocument({ railMotions: [railMotion('rail-1', 'A')] });
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    const revisionBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [0]);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-1');
+    expect(stored[0].anchorKeyId).toBe('B');
+    expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).not.toBe(revisionBefore);
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the record when clearTrackFrames removes the loop clip that owns its rail', () => {
+    const loopClips: readonly PhysicPaintRotoLoopClip[] = [{
+      loopId: 'loop-1',
+      placementStart: 1,
+      sourceKeyIds: ['B'],
+      repeat: 1,
+      mode: 'static',
+    }];
+    seedMotionDocument({ loopClips, railMotions: [railMotion('loop-1', 'B')] });
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [1]);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+  });
+
+  it('removes the record when clearTrackFrames removes every key of the rail', () => {
+    seedMotionDocument({
+      records: [record('A', 0), record('B', 1)],
+      railMotions: [railMotion('rail-1', 'A')],
+    });
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [0, 1]);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+  });
+
+  it('leaves a non-first key deletion byte-identical through one reconcile call', () => {
+    seedMotionDocument({
+      records: [record('A', 0), record('B', 1), record('C', 2)],
+      railMotions: [railMotion('rail-1', 'A')],
+    });
+    const before = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    const replace = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [2]);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toBe(before);
   });
 });
