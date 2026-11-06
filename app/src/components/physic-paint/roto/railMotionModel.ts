@@ -69,6 +69,30 @@ const RAIL_MOTION_PERCENT_CHANNEL_IDS: ReadonlySet<PhysicPaintRotoRailMotionChan
 
 const RAIL_MOTION_EASING_VALUES: ReadonlySet<string> = new Set(['hold', 'ease']);
 
+/** Parser caps (T-59-05): enforced before any allocation-heavy work. */
+const RAIL_MOTION_MAX_RECORDS = 512;
+const RAIL_MOTION_MAX_CHANNELS_PER_RECORD = 5;
+const RAIL_MOTION_MAX_KEYS_PER_CHANNEL = 4096;
+const RAIL_MOTION_ID_MAX_LENGTH = 128;
+
+const RAIL_MOTION_RECORD_KEYS: ReadonlySet<string> = new Set(['railId', 'anchorKeyId', 'channels']);
+const RAIL_MOTION_CHANNEL_KEYS: ReadonlySet<string> = new Set(['id', 'keys']);
+const RAIL_MOTION_KEY_KEYS: ReadonlySet<string> = new Set(['frame', 'value', 'easing', 'wiggle']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function isBoundedRailMotionId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= RAIL_MOTION_ID_MAX_LENGTH;
+}
+
 function isRailMotionChannelId(value: unknown): value is PhysicPaintRotoRailMotionChannelId {
   return typeof value === 'string' && RAIL_MOTION_CHANNEL_ID_SET.has(value);
 }
@@ -79,6 +103,20 @@ function isRailMotionEasing(value: unknown): value is PhysicPaintRotoRailMotionE
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isRailMotionFrame(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 0
+    && value <= RAIL_MOTION_FRAME_LIMIT;
+}
+
+function isRailMotionWiggle(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && value <= RAIL_MOTION_WIGGLE_LIMIT;
 }
 
 /**
@@ -216,16 +254,148 @@ export function canonicalizeRailMotionChannels(
   return Object.freeze(ordered);
 }
 
+function parseRailMotionChannel(
+  value: unknown,
+  railId: string,
+  channelIndex: number,
+): PhysicPaintRotoRailMotionChannel {
+  if (!isRecord(value)) {
+    throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channel at index ${channelIndex} must be a plain object.`);
+  }
+  if (!hasOnlyAllowedKeys(value, RAIL_MOTION_CHANNEL_KEYS)) {
+    throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channel at index ${channelIndex} has unknown members; expected exactly id, keys.`);
+  }
+
+  const id = value.id;
+  if (!isRailMotionChannelId(id)) {
+    throw new Error(`PhysicPaintRotoRailMotions: unknown channel id "${String(id)}" in record "${railId}".`);
+  }
+
+  const rawKeys = value.keys;
+  if (!Array.isArray(rawKeys)) {
+    throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" keys must be an array.`);
+  }
+  if (rawKeys.length === 0) {
+    throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" must carry at least one key.`);
+  }
+  if (rawKeys.length > RAIL_MOTION_MAX_KEYS_PER_CHANNEL) {
+    throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" must carry at most ${RAIL_MOTION_MAX_KEYS_PER_CHANNEL} keys.`);
+  }
+
+  const seenFrames = new Set<number>();
+  const keys = rawKeys.map((rawKey, keyIndex): PhysicPaintRotoRailMotionKey => {
+    if (!isRecord(rawKey)) {
+      throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" key at index ${keyIndex} must be a plain object.`);
+    }
+    if (!hasOnlyAllowedKeys(rawKey, RAIL_MOTION_KEY_KEYS)) {
+      throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" key at index ${keyIndex} has unknown members; expected exactly frame, value, easing, wiggle.`);
+    }
+
+    const frame = rawKey.frame;
+    if (!isRailMotionFrame(frame)) {
+      throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" has an invalid frame ${String(frame)}; expected an integer in 0..${RAIL_MOTION_FRAME_LIMIT}.`);
+    }
+    if (seenFrames.has(frame)) {
+      throw new Error(`PhysicPaintRotoRailMotions: duplicate frame ${frame} in channel "${id}" of record "${railId}".`);
+    }
+    seenFrames.add(frame);
+
+    const keyValue = rawKey.value;
+    if (typeof keyValue !== 'number' || !railMotionValueIsValid(id, keyValue)) {
+      throw new Error(`PhysicPaintRotoRailMotions: value ${String(keyValue)} is outside the channel domain for "${id}" in record "${railId}".`);
+    }
+
+    const easing = rawKey.easing;
+    if (!isRailMotionEasing(easing)) {
+      throw new Error(`PhysicPaintRotoRailMotions: invalid easing ${String(easing)} in channel "${id}" of record "${railId}"; expected hold or ease.`);
+    }
+
+    const wiggle = rawKey.wiggle;
+    if (!isRailMotionWiggle(wiggle)) {
+      throw new Error(`PhysicPaintRotoRailMotions: invalid wiggle ${String(wiggle)} in channel "${id}" of record "${railId}"; expected a finite number in 0..${RAIL_MOTION_WIGGLE_LIMIT}.`);
+    }
+
+    return { frame, value: keyValue, easing, wiggle };
+  });
+
+  return { id, keys };
+}
+
 /**
  * Reconstructs the persisted rail motion collection from untrusted input.
  *
  * Fail-closed: no silent clamp, drop, merge or repair. Returns the shared
- * frozen empty constant for an empty array.
+ * frozen empty constant for an empty array. Check order keeps errors
+ * actionable: collection shape and cap, per-record allowlist and identity,
+ * channels, keys, then the grouped-Position pairing.
  */
 export function parsePhysicPaintRotoRailMotions(
-  _value: unknown,
+  value: unknown,
 ): readonly PhysicPaintRotoRailMotionRecord[] {
-  return PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+  if (!Array.isArray(value)) {
+    throw new Error('PhysicPaintRotoRailMotions: expected an array of rail motion records.');
+  }
+  if (value.length > RAIL_MOTION_MAX_RECORDS) {
+    throw new Error(`PhysicPaintRotoRailMotions: too many records (${value.length}); at most ${RAIL_MOTION_MAX_RECORDS} are supported.`);
+  }
+  if (value.length === 0) return PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+
+  const seenRailIds = new Set<string>();
+  const records: PhysicPaintRotoRailMotionRecord[] = [];
+
+  value.forEach((entry, recordIndex) => {
+    if (!isRecord(entry)) {
+      throw new Error(`PhysicPaintRotoRailMotions: record at index ${recordIndex} must be a plain object.`);
+    }
+    if (!hasOnlyAllowedKeys(entry, RAIL_MOTION_RECORD_KEYS)) {
+      throw new Error(`PhysicPaintRotoRailMotions: record at index ${recordIndex} has unknown members; expected exactly railId, anchorKeyId, channels.`);
+    }
+
+    const railId = entry.railId;
+    if (!isBoundedRailMotionId(railId)) {
+      throw new Error(`PhysicPaintRotoRailMotions: record at index ${recordIndex} has an invalid railId; expected a non-empty string of at most ${RAIL_MOTION_ID_MAX_LENGTH} characters.`);
+    }
+    if (seenRailIds.has(railId)) {
+      throw new Error(`PhysicPaintRotoRailMotions: duplicate railId "${railId}".`);
+    }
+    seenRailIds.add(railId);
+
+    const anchorKeyId = entry.anchorKeyId;
+    if (!isBoundedRailMotionId(anchorKeyId)) {
+      throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" has an invalid anchorKeyId; expected a non-empty string of at most ${RAIL_MOTION_ID_MAX_LENGTH} characters.`);
+    }
+
+    const rawChannels = entry.channels;
+    if (!Array.isArray(rawChannels)) {
+      throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channels must be an array.`);
+    }
+    if (rawChannels.length === 0) {
+      throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" must carry at least one channel; remove the record instead.`);
+    }
+    if (rawChannels.length > RAIL_MOTION_MAX_CHANNELS_PER_RECORD) {
+      throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" must carry at most ${RAIL_MOTION_MAX_CHANNELS_PER_RECORD} channels.`);
+    }
+
+    const seenChannelIds = new Set<PhysicPaintRotoRailMotionChannelId>();
+    const parsedChannels = rawChannels.map((rawChannel, channelIndex) => {
+      const parsed = parseRailMotionChannel(rawChannel, railId, channelIndex);
+      if (seenChannelIds.has(parsed.id)) {
+        throw new Error(`PhysicPaintRotoRailMotions: duplicate channel id "${parsed.id}" in record "${railId}".`);
+      }
+      seenChannelIds.add(parsed.id);
+      return parsed;
+    });
+
+    const channels = canonicalizeRailMotionChannels(parsedChannels);
+
+    records.push(Object.freeze({ railId, anchorKeyId, channels }));
+  });
+
+  records.sort((left, right) => (
+    left.railId < right.railId ? -1 : left.railId > right.railId ? 1 : 0
+  ));
+
+  return Object.freeze(records);
 }
 
 /**
@@ -235,5 +405,5 @@ export function parsePhysicPaintRotoRailMotions(
  * seam exists so a future migration can tell the two apart.
  */
 export function createPhysicPaintRotoRailId(): string {
-  return '';
+  return crypto.randomUUID();
 }
