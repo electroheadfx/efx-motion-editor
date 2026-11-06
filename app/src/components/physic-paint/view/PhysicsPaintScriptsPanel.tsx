@@ -13,6 +13,14 @@ import type { PhysicPaintRotoRailMotionChannelId } from '../roto/railMotionModel
 import { NumericStepper } from '../../shared/NumericStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 
+/**
+ * 59-21 (IN-02): the sentence the command layer answers an absent channel with.
+ * The panel owns this copy — the projection stays copy-free.
+ */
+const MOTION_ABSENT_CHANNEL_SENTENCE = 'This Motion channel is not present on the rail.';
+/** One section-level note describes every absent field of the section. */
+const MOTION_ABSENT_CHANNEL_NOTE_ID = 'physics-paint-motion-absent-channel-note';
+
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
   playScript: RotoPlayScriptController;
@@ -201,7 +209,14 @@ export function PhysicsPaintScriptsPanel({
       <section class="physics-paint-motion-inspector" role="group" aria-label="Motion values">
         {selectedRailMotion.fields.map((field) => (
           <div key={field.channelId} class="physics-paint-motion-field">
-            <span class="physics-paint-motion-field-label">{field.label} ({field.unit})</span>
+            <span class="physics-paint-motion-field-label">
+              {field.label} ({field.unit})
+              {/* 59-21: a channel the record does not carry is marked, never
+                  offered as an editable field the command layer must refuse. */}
+              {field.present ? null : (
+                <span class="physics-paint-motion-field-absent">not added</span>
+              )}
+            </span>
             <NumericStepper
               key={`${field.channelId}:${motionCommit.rejectionSeq}`}
               ariaLabel={field.label}
@@ -212,10 +227,24 @@ export function PhysicsPaintScriptsPanel({
               freeEntry
               step={1}
               precision={3}
-              onChange={(value) => { commitMotionValue(field.channelId, value); }}
+              disabled={!field.present}
+              ariaDisabled={!field.present}
+              ariaDescribedBy={field.present ? undefined : MOTION_ABSENT_CHANNEL_NOTE_ID}
+              onChange={(value) => {
+                // The disabled stepper already refuses pointer input; this
+                // guard keeps the zero-commit law even for a direct invocation.
+                if (!field.present) return;
+                commitMotionValue(field.channelId, value);
+              }}
             />
           </div>
         ))}
+        {/* One note per section, never one per absent field. */}
+        {selectedRailMotion.fields.some((field) => !field.present) ? (
+          <p id={MOTION_ABSENT_CHANNEL_NOTE_ID} class="physics-paint-motion-absent-note">
+            {MOTION_ABSENT_CHANNEL_SENTENCE}
+          </p>
+        ) : null}
         {motionCommit.reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{motionCommit.reason}</p>
         ) : null}

@@ -1435,11 +1435,27 @@ describe('Physics Paint Scripts panel Motion value inspector (59-16)', () => {
     railId: 'rail-1',
     frame: 5,
     fields: [
-      { channelId: 'position-x', label: 'Position X', unit: 'px', value: 120 },
-      { channelId: 'position-y', label: 'Position Y', unit: 'px', value: -12 },
-      { channelId: 'scale', label: 'Scale', unit: '%', value: 150 },
-      { channelId: 'rotation', label: 'Rotation', unit: '°', value: 720 },
-      { channelId: 'opacity', label: 'Opacity', unit: '%', value: 40 },
+      { channelId: 'position-x', label: 'Position X', unit: 'px', value: 120, present: true },
+      { channelId: 'position-y', label: 'Position Y', unit: 'px', value: -12, present: true },
+      { channelId: 'scale', label: 'Scale', unit: '%', value: 150, present: true },
+      { channelId: 'rotation', label: 'Rotation', unit: '°', value: 720, present: true },
+      { channelId: 'opacity', label: 'Opacity', unit: '%', value: 40, present: true },
+    ],
+  };
+  /**
+   * 59-21: a rail that carries only the Position pair. Scale, Rotation and
+   * Opacity are still projected (their identity value) but marked absent, so
+   * their fields must render non-editable and never reach the commit path.
+   */
+  const partialMotionProjection = {
+    railId: 'rail-partial',
+    frame: 5,
+    fields: [
+      { channelId: 'position-x', label: 'Position X', unit: 'px', value: 120, present: true },
+      { channelId: 'position-y', label: 'Position Y', unit: 'px', value: -12, present: true },
+      { channelId: 'scale', label: 'Scale', unit: '%', value: 100, present: false },
+      { channelId: 'rotation', label: 'Rotation', unit: '°', value: 0, present: false },
+      { channelId: 'opacity', label: 'Opacity', unit: '%', value: 100, present: false },
     ],
   };
 
@@ -1572,5 +1588,106 @@ describe('Physics Paint Scripts panel Motion value inspector (59-16)', () => {
     // D-12: one pre-existing `lock` (the 261022-o2a comment); no lock state.
     expect((panel.match(/lock/g) ?? [])).toHaveLength(1);
     expect(panel).not.toMatch(/lockedPosition|positionLock|lockToggle|coupledValue/);
+  });
+
+  /**
+   * 59-21 (IN-02 / MUI-06): a channel the rail does not carry renders visibly
+   * non-editable with a real visible reason — never an editable field whose
+   * every write the command layer refuses.
+   */
+  it('renders an absent channel disabled, aria-disabled and described by the exact command-layer sentence', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: partialMotionProjection,
+      onCommitRailMotionValue: vi.fn(() => null),
+    });
+
+    const note = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-absent-note'));
+    expect(note.props?.id).toBe('physics-paint-motion-absent-channel-note');
+    expect(textOf(note)).toBe('This Motion channel is not present on the rail.');
+
+    const scale = findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Scale'
+    ));
+    expect(scale.props?.disabled).toBe(true);
+    expect(scale.props?.ariaDisabled).toBe(true);
+    expect(scale.props?.ariaDescribedBy).toBe(note.props?.id);
+    // The absent channel keeps its projected identity value visible.
+    expect(scale.props?.value).toBe(100);
+
+    // A present field stays editable and carries no absent description.
+    const positionX = findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Position X'
+    ));
+    expect(positionX.props?.disabled).toBe(false);
+    expect(positionX.props?.ariaDisabled).toBe(false);
+    expect(positionX.props?.ariaDescribedBy).toBeUndefined();
+  });
+
+  it('marks absent labels `not added` and leaves present labels unmarked', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: partialMotionProjection,
+      onCommitRailMotionValue: vi.fn(() => null),
+    });
+    const fieldWrapper = (label: string) => findOne(tree, (vnode) => (
+      vnode.type === 'div'
+      && vnode.props?.class === 'physics-paint-motion-field'
+      && textOf(vnode).includes(label)
+    ));
+
+    expect(textOf(fieldWrapper('Scale'))).toContain('not added');
+    expect(textOf(fieldWrapper('Rotation'))).toContain('not added');
+    expect(textOf(fieldWrapper('Opacity'))).toContain('not added');
+    expect(textOf(fieldWrapper('Position X'))).not.toContain('not added');
+    expect(textOf(fieldWrapper('Position Y'))).not.toContain('not added');
+    // One marker per absent field — never a duplicated or shared marker.
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-field-absent')))
+      .toHaveLength(3);
+  });
+
+  it('never commits an absent channel, even when its onChange is invoked directly', () => {
+    const onCommitRailMotionValue = vi.fn(() => null as string | null);
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: partialMotionProjection,
+      onCommitRailMotionValue,
+    });
+    const field = (label: string) => findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === label
+    ));
+
+    (field('Scale').props?.onChange as (value: number) => void)(250);
+    (field('Rotation').props?.onChange as (value: number) => void)(-90);
+    (field('Opacity').props?.onChange as (value: number) => void)(50);
+    expect(onCommitRailMotionValue).not.toHaveBeenCalled();
+
+    // A present sibling still commits its own channel and display value.
+    (field('Position X').props?.onChange as (value: number) => void)(999);
+    expect(onCommitRailMotionValue.mock.calls).toEqual([['position-x', 999]]);
+  });
+
+  it('renders exactly one absent-channel note per section, and none when every channel is present', () => {
+    const partial = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: partialMotionProjection,
+      onCommitRailMotionValue: vi.fn(() => null),
+    });
+    expect(findAll(partial, (vnode) => hasClass(vnode, 'physics-paint-motion-absent-note'))).toHaveLength(1);
+
+    const full = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue: vi.fn(() => null),
+    });
+    expect(findAll(full, (vnode) => hasClass(vnode, 'physics-paint-motion-absent-note'))).toHaveLength(0);
+    expect(findAll(full, (vnode) => hasClass(vnode, 'physics-paint-motion-field-absent'))).toHaveLength(0);
+    expect(textOf(full)).not.toContain('This Motion channel is not present on the rail.');
+    // The rejection paragraph keeps its own single role="alert" slot.
+    expect(findAll(full, (vnode) => vnode.props?.role === 'alert')).toHaveLength(0);
+  });
+
+  it('pins the absent-channel copy and keeps the panel props-only with no state hook', () => {
+    expect(panel).toContain("const MOTION_ABSENT_CHANNEL_SENTENCE = 'This Motion channel is not present on the rail.';");
+    expect(panel).toContain("const MOTION_ABSENT_CHANNEL_NOTE_ID = 'physics-paint-motion-absent-channel-note';");
+    // Exactly one copy of the sentence lives in the panel — the projection is copy-free.
+    expect((panel.match(/This Motion channel is not present on the rail\./g) ?? [])).toHaveLength(1);
+    expect(panel).not.toContain('physicPaintStore');
+    expect(panel).not.toContain('useState');
   });
 });
