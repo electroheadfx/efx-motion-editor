@@ -10,17 +10,17 @@ Each maps to exactly one roadmap phase.
 
 ### Motion — core (Phase 59)
 
-- [ ] **MOTN-01**: User can add, edit, and remove Motion keys on any rail — Standard, Motion, Static, Reveal, and bare Key Rails — with no conversion step and no cycle value
+- [x] **MOTN-01**: User can add, edit, and remove Motion keys on any rail — Standard, Motion, Static, Reveal, and bare Key Rails — with no conversion step and no cycle value
 - [ ] **MOTN-02**: Motion keys are independent of drawing keys; a rail with no drawing key animates, and adding or removing a Motion key never creates or alters a drawing key
 - [ ] **MOTN-03**: User can animate Position (grouped whole-position, or split X + Y channels), Scale, Rotation, and Opacity
-- [ ] **MOTN-04**: Channels open on demand, one at a time; no lane appears by default
-- [ ] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
+- [x] **MOTN-04**: Channels open on demand, one at a time; no lane appears by default
+- [x] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
 - [ ] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
 - [ ] **MOTN-07**: The rail transform is applied at the compositor: one raster per track per frame, content cycles while motion continues, and nothing re-bakes
 - [x] **MOTN-08**: Edit view, Play, and export produce the same transform, including when the rail is on the active track
 - [ ] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
-- [ ] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
-- [ ] **MOTN-11**: Three selection scopes work independently — rail, drawing key, motion key — each with its own contextual commands
+- [x] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
+- [x] **MOTN-11**: Three selection scopes work independently — rail, drawing key, motion key — each with its own contextual commands
 - [ ] **MOTN-12**: Motion persists through save → close → reopen, with undo/redo per key operation
 
 ### Motion — v7 interface (Phase 59)
@@ -30,7 +30,7 @@ Each maps to exactly one roadmap phase.
 - [ ] **MUI-03**: The rounded bright outline wraps the rail row plus its expanded channels, and does not render when collapsed
 - [ ] **MUI-04**: Switching rail selection collapses the previous block — one open rail block at a time
 - [ ] **MUI-05**: Header column and lanes stay aligned while scrolling, including the 2px post-block gap; the reorder insertion indicator uses measured row offsets and never lands inside a channel block
-- [ ] **MUI-06**: Previous/next move the cursor to the adjacent Motion key; the diamond adds or removes a Motion key at the current frame; when an action is unavailable it is disabled with a real visible reason, never a silent no-op
+- [x] **MUI-06**: Previous/next move the cursor to the adjacent Motion key; the diamond adds or removes a Motion key at the current frame; when an action is unavailable it is disabled with a real visible reason, never a silent no-op
 
 ### Timeline zoom (Phase 60)
 
@@ -105,24 +105,24 @@ Deferred to a later milestone. Not in the current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MOTN-01 | Phase 59 | Pending |
+| MOTN-01 | Phase 59 | Complete |
 | MOTN-02 | Phase 59 | Pending |
 | MOTN-03 | Phase 59 | Pending |
-| MOTN-04 | Phase 59 | Pending |
-| MOTN-05 | Phase 59 | Pending |
+| MOTN-04 | Phase 59 | Complete |
+| MOTN-05 | Phase 59 | Complete |
 | MOTN-06 | Phase 59 | Pending |
 | MOTN-07 | Phase 59 | Pending |
 | MOTN-08 | Phase 59 | Complete |
 | MOTN-09 | Phase 59 | Pending |
-| MOTN-10 | Phase 59 | Pending |
-| MOTN-11 | Phase 59 | Pending |
+| MOTN-10 | Phase 59 | Complete |
+| MOTN-11 | Phase 59 | Complete |
 | MOTN-12 | Phase 59 | Pending |
 | MUI-01 | Phase 59 | Pending |
 | MUI-02 | Phase 59 | Pending |
 | MUI-03 | Phase 59 | Pending |
 | MUI-04 | Phase 59 | Pending |
 | MUI-05 | Phase 59 | Pending |
-| MUI-06 | Phase 59 | Pending |
+| MUI-06 | Phase 59 | Complete |
 | ZOOM-01 | Phase 60 | Pending |
 | ZOOM-02 | Phase 60 | Pending |
 | ZOOM-03 | Phase 60 | Pending |

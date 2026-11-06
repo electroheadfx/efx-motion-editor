@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-09-PLAN.md
-last_updated: "2026-11-06T16:23:48.827Z"
+stopped_at: Completed 59-12-PLAN.md
+last_updated: "2026-11-06T16:49:53.914Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: d221a5c65ca2f7239a994fbcbb4f2a7c9cd28ac3
+state_head: 7d1ca5bf52f81c2ad2e4dbe1584d12d4ab3ce2fc
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 11
+  completed_plans: 12
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 12 of 16
+Plan: 13 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P08 | 3h 50m | 3 tasks | 10 files |
 | Phase 59 P11 | 28min | 3 tasks | 8 files |
 | Phase 59 P09 | 14 | 2 tasks | 7 files |
+| Phase 59 P12 | 33min | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: One measured layout (31px rail row + 18px per display lane + 2px gap) is consumed by content height, header spacers and the reorder index; the active lane hosts the extracted TimelineMotionBlock
 - [Phase 59]: 59-09 REL-04: fractional flattened frames compose content at Math.floor(frame) while the rail transform samples the unfloored frame; fractional deliveries bypass the flattened memo and share the integer per-track raster memo
 - [Phase 59]: 59-09 MOTN-08: transform parity is asserted against evaluateRailMotion's own output through the test-only getLastAppliedTrackTransforms seam (set after the memo read, cleared with the layer and the store reset)
+- [Phase 59]: Motion-key selection lives in a module-scope Preact signal in the timeline-actions hook; no store field was added.
+- [Phase 59]: The three selection scopes and their clearing rules live with the rail-set authority; the command layer re-exports them as the one import site.
+- [Phase 59]: Hold/Ease/Wiggle are gated by the per-scope command table, so other scopes render no controls rather than disabled ones.
+- [Phase 59]: The merge notice is validated in its factory and published through exactly two named writers; the strip reads it only in a leaf component.
+- [Phase 59]: Motion-key stepping moves the playhead through the existing synced-frame navigation seam via a deferred ref, not a second navigation path.
 
 ### Pending Todos
 
@@ -181,8 +187,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T16:23:48.801Z
-Stopped at: Completed 59-09-PLAN.md
+Last session: 2026-11-06T16:49:53.889Z
+Stopped at: Completed 59-12-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
