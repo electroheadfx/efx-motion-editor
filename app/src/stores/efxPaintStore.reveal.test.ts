@@ -26,6 +26,8 @@ import {
 import type { BackgroundEditDescriptor } from './efxPaintStore';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import type { PhysicPaintRotoRealKeyRecord } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import type { PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
 
 /**
  * 52-01 (RVL-06): the reveal rail undo-by-reference semantics. Every committed
@@ -1356,6 +1358,200 @@ describe('261030-ig0 per-key script editing — reveal creation, replay, span (D
     expect(replay.ok).toBe(true);
     const replayedClip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
     expect(replayedClip.keyScriptEdits).toBe(true);
+  });
+
+});
+
+/**
+ * 59-20 (WR-04): every reveal-side direct door writes records, loops and
+ * breaks itself, so each one must reconcile the rail-motion collection from
+ * the SAME previous/next snapshots and write it before the transaction
+ * returns. Without that, motion survives an edit whose rail is gone (delete,
+ * resize-to-empty) or keeps describing a replaced cycle (the bake).
+ *
+ * The loop-bound record uses the clip's `loopId` as its `railId` — that is how
+ * `classifyRailMotionEdit` binds a motion record to a Loop Clip. The bare Key
+ * Rail record in the replay row is anchored on a key just OUTSIDE the reveal
+ * span; it is the guard against a next snapshot that leaves the fresh baked
+ * keys unowned, which would merge the neighbour into the reveal's cycle and
+ * silently re-anchor (or drop) its motion.
+ */
+describe('59-20: reveal doors reconcile rail motion in their own transaction (WR-04)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+    _setEfxPaintRevealScriptLoader(async () => script);
+    harness.renderReveal.mockReset();
+  });
+
+  afterEach(() => {
+    _setPhysicPaintCompositorSizeProvider(null);
+    _setEfxPaintRevealScriptLoader(null);
+  });
+
+  /** A rail motion record carrying one opacity key — the local copy of the 59-15 helper. */
+  function railMotionRecord(railId: string, anchorKeyId: string): PhysicPaintRotoRailMotionRecord {
+    return {
+      railId,
+      anchorKeyId,
+      channels: [
+        { id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
+      ],
+    };
+  }
+
+  /** Seed the durable motion collection through its validating port. */
+  function seedRailMotions(
+    layerId: string,
+    records: readonly PhysicPaintRotoRailMotionRecord[],
+  ): void {
+    const result = physicPaintStore.replaceRotoPhysicalRailMotions(layerId, TEST_TRACK_ID, records);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+  }
+
+  /** Create a reveal rail, then seed one loop-bound motion record on it. */
+  async function createRailWithLoopMotion(
+    layerId: string,
+    startFrame = 10,
+    frameCount = 2,
+  ): Promise<{ loopId: string; sourceKeyIds: readonly string[] }> {
+    const descriptor = await createRail(layerId, startFrame, frameCount);
+    const clip = descriptor.after.tracks[0].rotoPhysical!.loopClips[0];
+    seedRailMotions(layerId, [railMotionRecord(clip.loopId, clip.sourceKeyIds[0]!)]);
+    return { loopId: clip.loopId, sourceKeyIds: clip.sourceKeyIds };
+  }
+
+  function registerRevealLayer(layerId: string): void {
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+  }
+
+  it('delete removes the loop-bound motion record in the same transaction', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    const { loopId } = await createRailWithLoopMotion(layerId);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID)).toHaveLength(1);
+
+    const port = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    try {
+      const result = deleteRevealRail(layerId, loopId);
+      expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+      expect(port).toHaveBeenCalledTimes(1);
+      expect(physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID)).toHaveLength(0);
+      expect(port.mock.calls[0]![2]).toHaveLength(0);
+    } finally {
+      port.mockRestore();
+    }
+  });
+
+  it('resize that keeps a clip-owned key retains the record by reference with one motion write', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    const { loopId, sourceKeyIds } = await createRailWithLoopMotion(layerId, 10, 3);
+    const before = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+    expect(before).toHaveLength(1);
+
+    const port = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    try {
+      const result = resizeRevealRail(layerId, loopId, 12);
+      expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+      expect(port).toHaveBeenCalledTimes(1);
+      const after = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+      expect(after).toBe(before);
+      expect(after[0]!.railId).toBe(loopId);
+      expect(after[0]!.anchorKeyId).toBe(sourceKeyIds[0]);
+    } finally {
+      port.mockRestore();
+    }
+  });
+
+  it('a replay bake preserves the loop record and an adjacent Key Rail record byte-identically', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    const { loopId, sourceKeyIds } = await createRailWithLoopMotion(layerId);
+
+    // A bare Key Rail at frame 14, just outside the reveal span [10, 12).
+    const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, TEST_TRACK_ID);
+    const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, TEST_TRACK_ID);
+    const neighbour: PhysicPaintRotoRealKeyRecord = {
+      kind: 'real-key',
+      keyId: 'key-neighbour',
+      appFrame: 14,
+      payload: { frameIndex: 0, appFrame: 14, bytes: PNG_1X1_WEBP, width: 4, height: 3 },
+    };
+    const inserted = physicPaintStore.replaceRotoPhysicalRecords(
+      layerId,
+      TEST_TRACK_ID,
+      [...physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID), neighbour],
+      interpolation,
+      capacity,
+    );
+    expect(inserted.ok, inserted.ok ? undefined : inserted.error).toBe(true);
+    seedRailMotions(layerId, [
+      railMotionRecord(loopId, sourceKeyIds[0]!),
+      railMotionRecord('rail-neighbour', 'key-neighbour'),
+    ]);
+    const before = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+    expect(before).toHaveLength(2);
+
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, testWebpBytes('replayed')));
+    const port = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    try {
+      const replay = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
+      expect(replay.ok, replay.ok ? undefined : replay.reason).toBe(true);
+      expect(port).toHaveBeenCalledTimes(1);
+      const after = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+      // Nothing changed, so the store's revision gate keeps the SAME collection.
+      expect(after).toBe(before);
+      const neighbourAfter = after.find((record) => record.railId === 'rail-neighbour');
+      expect(neighbourAfter).toBe(before.find((record) => record.railId === 'rail-neighbour'));
+      expect(neighbourAfter!.anchorKeyId).toBe('key-neighbour');
+      const loopAfter = after.find((record) => record.railId === loopId);
+      expect(loopAfter).toBe(before.find((record) => record.railId === loopId));
+      expect(loopAfter!.anchorKeyId).toBe(sourceKeyIds[0]);
+    } finally {
+      port.mockRestore();
+    }
+  });
+
+  it('resize that prunes every clip-owned key drops the emptied clip and its record', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    // The renderer mock owns the app frames the bake returns: the clip's
+    // placementStart is 10 while both baked keys sit at frames 20-21, so a
+    // shrink to 11 prunes EVERY clip-owned key while the requested end stays
+    // above placementStart.
+    harness.renderReveal.mockResolvedValue(stagedFrames(20, 2));
+    const created = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+    });
+    expect(created.ok, created.ok ? undefined : created.reason).toBe(true);
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    expect(clip.placementStart).toBe(10);
+    expect(clip.sourceKeyIds).toHaveLength(2);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.appFrame)).toEqual([20, 21]);
+    seedRailMotions(layerId, [railMotionRecord(clip.loopId, clip.sourceKeyIds[0]!)]);
+
+    const port = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    try {
+      const result = resizeRevealRail(layerId, clip.loopId, 11);
+      expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+      expect(port).toHaveBeenCalledTimes(1);
+      expect(getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips).toHaveLength(0);
+      expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(0);
+      expect(physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    } finally {
+      port.mockRestore();
+    }
   });
 
 });
