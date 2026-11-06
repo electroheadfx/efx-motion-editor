@@ -18,10 +18,14 @@ import {
 } from './railMotionIdentity';
 import {
   applyRailMotionEditToCollection,
+  parsePhysicPaintRotoRailMotions,
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
-import type { KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
+import {
+  deriveKeyRailSegments,
+  type KeyRailSegment,
+} from '../view/physicsPaintKeyRailPresentation';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -426,5 +430,446 @@ describe('rail motion gate B transitions', () => {
     expect(rekeyRailMotionsForCopy(records, [
       { sourceRailId: 'rail-other', destinationRailId: 'rail-new', anchorKeyId: 'Z' },
     ], ['rail-src'])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gate B truth table driven end-to-end through the REAL deriveKeyRailSegments
+// projection. Every row declares the world before and after the structural
+// event, the record event, and the resolved identity outcome. Assertions are
+// on active/orphan identity and rail-local frames, never on function names.
+// ---------------------------------------------------------------------------
+
+interface TruthKey {
+  readonly keyId: string;
+  readonly appFrame: number;
+}
+
+interface TruthWorld {
+  readonly keys: readonly TruthKey[];
+  readonly breaks?: readonly string[];
+  readonly groupOwned?: readonly string[];
+  readonly loops?: readonly RailMotionLoopClipSource[];
+}
+
+type TruthEvent =
+  | { readonly kind: 'observe' }
+  | {
+    readonly kind: 'animate';
+    readonly railId: string;
+    readonly anchorKeyId: string;
+    readonly frame: number;
+  }
+  | { readonly kind: 'delete-first-key'; readonly railId: string; readonly nextAnchorKeyId: string }
+  | { readonly kind: 'delete-only-key'; readonly railId: string }
+  | { readonly kind: 'split'; readonly railId: string }
+  | {
+    readonly kind: 'merge';
+    readonly headAnchorKeyId: string;
+    readonly tailAnchorKeyId: string;
+    readonly mergedAnchorKeyId: string;
+  }
+  | { readonly kind: 'move-rail-start'; readonly railId: string }
+  | {
+    readonly kind: 'copy';
+    readonly plan: readonly RailMotionCopyPlanEntry[];
+    readonly copiedSourceRailIds?: readonly string[];
+  };
+
+interface TruthFrameExpectation {
+  readonly railId: string;
+  readonly frames: readonly number[];
+}
+
+interface TruthRow {
+  readonly name: string;
+  readonly before: TruthWorld;
+  readonly after: TruthWorld;
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly event: TruthEvent;
+  readonly active: readonly string[];
+  readonly orphaned: readonly string[];
+  readonly adoptedRailId: string | null;
+  readonly droppedRailId: string | null;
+  readonly frames: readonly TruthFrameExpectation[];
+  readonly absentRailIds?: readonly string[];
+  readonly unboundViewAnchors?: readonly string[];
+  readonly sourceUntouched?: boolean;
+}
+
+interface TruthOutcome {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly adoptedRailId: string | null;
+  readonly droppedRailId: string | null;
+}
+
+function deriveTruthSegments(world: TruthWorld): readonly KeyRailSegment[] {
+  return deriveKeyRailSegments({
+    orderedRealKeys: [...world.keys].sort((left, right) => left.appFrame - right.appFrame),
+    incomingInterpolationBreakKeyIds: new Set(world.breaks ?? []),
+    groupOwnedKeyIds: new Set(world.groupOwned ?? []),
+  });
+}
+
+function applyTruthEvent(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  event: TruthEvent,
+): TruthOutcome {
+  switch (event.kind) {
+    case 'observe':
+      return { records, adoptedRailId: null, droppedRailId: null };
+    case 'animate':
+      return {
+        records: applyRailMotionEditToCollection(records, {
+          kind: 'animate',
+          railId: event.railId,
+          anchorKeyId: event.anchorKeyId,
+          frame: event.frame,
+        }),
+        adoptedRailId: null,
+        droppedRailId: null,
+      };
+    case 'delete-first-key':
+      return {
+        records: records.map((record) => (
+          record.railId === event.railId
+            ? onDeleteFirstKey(record, event.nextAnchorKeyId)
+            : record
+        )),
+        adoptedRailId: null,
+        droppedRailId: null,
+      };
+    case 'delete-only-key':
+      return {
+        records: onDeleteOnlyKey(records, event.railId),
+        adoptedRailId: null,
+        droppedRailId: null,
+      };
+    case 'split':
+      return {
+        records: onSplitRail(records, event.railId),
+        adoptedRailId: null,
+        droppedRailId: null,
+      };
+    case 'merge': {
+      const result = onMergeRails(
+        records,
+        event.headAnchorKeyId,
+        event.tailAnchorKeyId,
+        event.mergedAnchorKeyId,
+      );
+      return {
+        records: result.records,
+        adoptedRailId: result.adoptedRailId,
+        droppedRailId: result.droppedRailId,
+      };
+    }
+    case 'move-rail-start':
+      return {
+        records: records.map((record) => (
+          record.railId === event.railId ? onRailStartMoved(record) : record
+        )),
+        adoptedRailId: null,
+        droppedRailId: null,
+      };
+    case 'copy': {
+      const next = rekeyRailMotionsForCopy(records, event.plan, event.copiedSourceRailIds);
+      if (next === null) throw new Error('copy plan was rejected by the identity layer');
+      return { records: next, adoptedRailId: null, droppedRailId: null };
+    }
+  }
+}
+
+function boundKeyRailRecord(
+  anchorKeyId: string,
+  frames: readonly number[] = [0],
+): PhysicPaintRotoRailMotionRecord {
+  const binding = bindKeyRail(anchorKeyId);
+  return animatedRecord(binding.railId, anchorKeyId, frames);
+}
+
+const loopRailSource: RailMotionLoopClipSource = loopClip({ loopId: 'loop-1' });
+
+const animatedBareRail = boundKeyRailRecord('A', [0]);
+const nonFirstKeyRecord = boundKeyRailRecord('A', [0, 4]);
+const firstKeyDeleteRecord = boundKeyRailRecord('A', [0, 4]);
+const onlyKeyRecord = boundKeyRailRecord('A');
+const splitRecord = boundKeyRailRecord('A', [0, 4]);
+const mergeTailRecord = animatedRecord('rail-tail', 'B', [0, 3]);
+const mergeHeadRecord = animatedRecord('rail-head', 'A', [0, 2]);
+const mergeBothTailRecord = animatedRecord('rail-tail-both', 'B', [0, 3]);
+const startMovedRecord = boundKeyRailRecord('A', [0, 4]);
+const orphanRecord = boundKeyRailRecord('A');
+const copyLoopSourceRecord = animatedRecord('loop-src', 'k1', [0, 5]);
+const copyKeySourceRecord = boundKeyRailRecord('A', [0, 2]);
+const copyDestinationKeyBinding = bindKeyRail('A-new');
+
+const KEYS_A_B_C: readonly TruthKey[] = Object.freeze([
+  Object.freeze({ keyId: 'A', appFrame: 4 }),
+  Object.freeze({ keyId: 'B', appFrame: 6 }),
+  Object.freeze({ keyId: 'C', appFrame: 8 }),
+]);
+
+const TRUTH_TABLE: readonly TruthRow[] = Object.freeze([
+  {
+    name: 'animate a bare key rail: the minted railId binds to the segment',
+    before: { keys: KEYS_A_B_C },
+    after: { keys: KEYS_A_B_C },
+    records: [],
+    event: {
+      kind: 'animate',
+      railId: animatedBareRail.railId,
+      anchorKeyId: 'A',
+      frame: 0,
+    },
+    active: [animatedBareRail.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: animatedBareRail.railId, frames: [0] }],
+  },
+  {
+    name: 'animate a loop rail: identity is the loopId, nothing is minted',
+    before: { keys: [], loops: [loopRailSource] },
+    after: { keys: [], loops: [loopRailSource] },
+    records: [],
+    event: { kind: 'animate', railId: 'loop-1', anchorKeyId: 'k1', frame: 0 },
+    active: ['loop-1'],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: 'loop-1', frames: [0] }],
+  },
+  {
+    name: 'delete a non-first key: the rail keeps its record and frames',
+    before: { keys: KEYS_A_B_C },
+    after: { keys: [{ keyId: 'A', appFrame: 4 }, { keyId: 'C', appFrame: 8 }] },
+    records: [nonFirstKeyRecord],
+    event: { kind: 'observe' },
+    active: [nonFirstKeyRecord.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: nonFirstKeyRecord.railId, frames: [0, 4] }],
+  },
+  {
+    name: 'delete the first key: re-anchor keeps the rail and its frames',
+    before: { keys: KEYS_A_B_C },
+    after: { keys: [{ keyId: 'B', appFrame: 6 }, { keyId: 'C', appFrame: 8 }] },
+    records: [firstKeyDeleteRecord],
+    event: {
+      kind: 'delete-first-key',
+      railId: firstKeyDeleteRecord.railId,
+      nextAnchorKeyId: 'B',
+    },
+    active: [firstKeyDeleteRecord.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: firstKeyDeleteRecord.railId, frames: [0, 4] }],
+  },
+  {
+    name: 'delete the only key: the motion record is removed with the rail',
+    before: { keys: [{ keyId: 'A', appFrame: 4 }] },
+    after: { keys: [] },
+    records: [onlyKeyRecord],
+    event: { kind: 'delete-only-key', railId: onlyKeyRecord.railId },
+    active: [],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [],
+    absentRailIds: [onlyKeyRecord.railId],
+  },
+  {
+    name: 'split at a break: the head keeps the railId and the tail has none',
+    before: { keys: KEYS_A_B_C },
+    after: { keys: KEYS_A_B_C, breaks: ['B'] },
+    records: [splitRecord],
+    event: { kind: 'split', railId: splitRecord.railId },
+    active: [splitRecord.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: splitRecord.railId, frames: [0, 4] }],
+    unboundViewAnchors: ['B'],
+  },
+  {
+    name: 'merge with only the tail animated: the tail record is adopted under its own railId',
+    before: { keys: KEYS_A_B_C, breaks: ['B'] },
+    after: { keys: KEYS_A_B_C },
+    records: [mergeTailRecord],
+    event: {
+      kind: 'merge',
+      headAnchorKeyId: 'A',
+      tailAnchorKeyId: 'B',
+      mergedAnchorKeyId: 'A',
+    },
+    active: [mergeTailRecord.railId],
+    orphaned: [],
+    adoptedRailId: mergeTailRecord.railId,
+    droppedRailId: null,
+    frames: [{ railId: mergeTailRecord.railId, frames: [0, 3] }],
+  },
+  {
+    name: 'merge with both sides animated: the head wins and the tail drop is reported',
+    before: { keys: KEYS_A_B_C, breaks: ['B'] },
+    after: { keys: KEYS_A_B_C },
+    records: [mergeHeadRecord, mergeBothTailRecord],
+    event: {
+      kind: 'merge',
+      headAnchorKeyId: 'A',
+      tailAnchorKeyId: 'B',
+      mergedAnchorKeyId: 'A',
+    },
+    active: [mergeHeadRecord.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: mergeBothTailRecord.railId,
+    frames: [{ railId: mergeHeadRecord.railId, frames: [0, 2] }],
+    absentRailIds: [mergeBothTailRecord.railId],
+  },
+  {
+    name: 'move the rail start: rail-local key frames do not move',
+    before: { keys: [{ keyId: 'A', appFrame: 4 }, { keyId: 'B', appFrame: 6 }] },
+    after: { keys: [{ keyId: 'A', appFrame: 9 }, { keyId: 'B', appFrame: 11 }] },
+    records: [startMovedRecord],
+    event: { kind: 'move-rail-start', railId: startMovedRecord.railId },
+    active: [startMovedRecord.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: startMovedRecord.railId, frames: [0, 4] }],
+  },
+  {
+    name: 'a rail that becomes Group-owned leaves its motion record retained as an orphan',
+    before: { keys: [{ keyId: 'A', appFrame: 4 }, { keyId: 'B', appFrame: 6 }] },
+    after: {
+      keys: [{ keyId: 'A', appFrame: 4 }, { keyId: 'B', appFrame: 6 }],
+      groupOwned: ['A', 'B'],
+    },
+    records: [orphanRecord],
+    event: { kind: 'observe' },
+    active: [],
+    orphaned: [orphanRecord.railId],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [{ railId: orphanRecord.railId, frames: [0] }],
+  },
+  {
+    name: 'copy a rail set: motion follows fresh destination identities, source untouched',
+    before: {
+      keys: [{ keyId: 'A', appFrame: 4 }, { keyId: 'B', appFrame: 6 }],
+      loops: [loopClip({ loopId: 'loop-src' })],
+    },
+    after: {
+      keys: [{ keyId: 'A-new', appFrame: 14 }, { keyId: 'B-new', appFrame: 15 }],
+      loops: [loopClip({
+        loopId: 'loop-dst',
+        placementStart: 20,
+        sourceKeyIds: ['k-new', 'k2-new', 'k3-new'],
+      })],
+    },
+    records: [copyLoopSourceRecord, copyKeySourceRecord],
+    event: {
+      kind: 'copy',
+      plan: [
+        { sourceRailId: 'loop-src', destinationRailId: 'loop-dst', anchorKeyId: 'k-new' },
+        {
+          sourceRailId: copyKeySourceRecord.railId,
+          destinationRailId: copyDestinationKeyBinding.railId,
+          anchorKeyId: 'A-new',
+        },
+      ],
+      copiedSourceRailIds: ['loop-src', copyKeySourceRecord.railId],
+    },
+    active: ['loop-dst', copyDestinationKeyBinding.railId],
+    orphaned: [],
+    adoptedRailId: null,
+    droppedRailId: null,
+    frames: [
+      { railId: 'loop-dst', frames: [0, 5] },
+      { railId: copyDestinationKeyBinding.railId, frames: [0, 2] },
+    ],
+    sourceUntouched: true,
+  },
+]);
+
+describe('rail motion identity truth table (real segment derivation)', () => {
+  for (const row of TRUTH_TABLE) {
+    it(row.name, () => {
+      const sourceJsonBefore = JSON.stringify(row.records);
+      const outcome = applyTruthEvent(row.records, row.event);
+      if (row.sourceUntouched) {
+        expect(JSON.stringify(row.records)).toBe(sourceJsonBefore);
+      }
+
+      const segments = deriveTruthSegments(row.after);
+      const views = assignRailMotionRailViews(outcome.records, row.after.loops ?? [], segments);
+      const reconciliation = reconcileRailMotions(outcome.records, views);
+
+      expect([...reconciliation.active.keys()].sort()).toEqual([...row.active].sort());
+      expect(reconciliation.orphaned.map((record) => record.railId).sort())
+        .toEqual([...row.orphaned].sort());
+      expect(outcome.adoptedRailId).toBe(row.adoptedRailId);
+      expect(outcome.droppedRailId).toBe(row.droppedRailId);
+
+      for (const expectation of row.frames) {
+        const record = outcome.records.find((entry) => entry.railId === expectation.railId);
+        if (record === undefined) {
+          throw new Error(`expected a motion record for rail "${expectation.railId}"`);
+        }
+        expect(positionFrames(record)).toEqual(expectation.frames);
+      }
+      for (const absentRailId of row.absentRailIds ?? []) {
+        expect(outcome.records.some((entry) => entry.railId === absentRailId)).toBe(false);
+      }
+      for (const anchorKeyId of row.unboundViewAnchors ?? []) {
+        const view = views.find((entry) => entry.anchorKeyId === anchorKeyId);
+        expect(view?.railId ?? null).toBeNull();
+      }
+
+      // Every surviving record keeps its rail-local key frames: deleting a
+      // neighbour, splitting or merging never ripples into motion.
+      for (const before of row.records) {
+        const after = outcome.records.find((entry) => entry.railId === before.railId);
+        if (after === undefined) continue;
+        expect(positionFrames(after)).toEqual(positionFrames(before));
+        expect(after.channels).toEqual(before.channels);
+      }
+    });
+  }
+
+  it('never rebinds an orphan whose anchor is a non-first key on a live rail', () => {
+    const orphan = motionRecord('rail-orphan', 'B');
+    const segments = deriveTruthSegments({
+      keys: [
+        { keyId: 'A', appFrame: 4 },
+        { keyId: 'B', appFrame: 6 },
+        { keyId: 'C', appFrame: 8 },
+      ],
+    });
+
+    const views = assignRailMotionRailViews([orphan], [], segments);
+    expect(views).toHaveLength(1);
+    expect(views[0].railId).toBeNull();
+
+    const reconciliation = reconcileRailMotions([orphan], views);
+    expect(reconciliation.active.size).toBe(0);
+    expect(reconciliation.orphaned.map((record) => record.railId)).toEqual(['rail-orphan']);
+  });
+
+  it('keeps session-only rail-set identity out of the persisted motion record', () => {
+    const record = motionRecord('rail-a', 'key-a');
+
+    expect(Object.keys(record).sort()).toEqual(['anchorKeyId', 'channels', 'railId']);
+    expect('kind' in record).toBe(false);
+
+    const serialized = JSON.stringify(record);
+    expect(serialized).not.toMatch(/"kind"\s*:\s*"(loop|key-rail)"/);
+
+    const parsed = parsePhysicPaintRotoRailMotions(JSON.parse(`[${serialized}]`));
+    expect(parsed).toHaveLength(1);
+    expect(Object.keys(parsed[0]).sort()).toEqual(['anchorKeyId', 'channels', 'railId']);
   });
 });
