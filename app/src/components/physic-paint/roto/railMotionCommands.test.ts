@@ -10,6 +10,7 @@ import type {
 import {
   CONTEXTUAL_COMMANDS_BY_SCOPE,
   RAIL_MOTION_SELECTION_SCOPES,
+  addMotionChannel,
   animateRail,
   clearSelectionForScope,
   railMotionCursorFrame,
@@ -1217,5 +1218,224 @@ describe('59-16 rail motion commands — numeric inspector write', () => {
     expect(gizmoPosition.ok).toBe(true);
     if (!fieldY.ok || !gizmoPosition.ok) return;
     expect(fieldY.records).toEqual(gizmoPosition.records);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 59-17: the add-channel command (G1 / CR-03). The affordance that makes
+// Scale, Rotation and Opacity reachable dispatches ONE command into the 59-02
+// reducer; this command validates the rail and the channel inventory first and
+// never seeds a key itself — grouped Position seeding stays the reducer's job.
+// ---------------------------------------------------------------------------
+
+/** The state right after a plain Animate: the grouped Position pair only. */
+function positionOnlyRecord(): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId: 'rail-1',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([
+      motionChannel('position-x', [motionKey(0, 0)]),
+      motionChannel('position-y', [motionKey(0, 0)]),
+    ]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+/** The same rail after Scale was added from the menu: Position plus Scale. */
+function scaleOnlySeedRecord(): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId: 'rail-1',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([
+      motionChannel('scale', [motionKey(0, 1)]),
+    ]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+/** The one seed shape every add writes: frame 0, identity, hold, no wiggle. */
+function identitySeed(value: number) {
+  return { frame: 0, value, easing: 'hold', wiggle: 0 };
+}
+
+describe('59-17 rail motion commands — add a Motion channel (G1)', () => {
+  it('adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 with hold easing', () => {
+    const before = positionOnlyRecord();
+    const records = [before];
+    const result = addMotionChannel({ records, railId: 'rail-1', channelId: 'scale' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    // Model unit: Scale is a FACTOR (1 === 100% in the inspector/gizmo pair).
+    expect(channelOf(record, 'scale').keys).toEqual([identitySeed(1)]);
+    expect(channelOf(record, 'scale').keys).toHaveLength(1);
+    // The previously carried channels are byte-identical and still ordered first.
+    expect(channelOf(record, 'position-x')).toEqual(channelOf(before, 'position-x'));
+    expect(channelOf(record, 'position-y')).toEqual(channelOf(before, 'position-y'));
+    expect(record.channels.map((channel) => channel.id)).toEqual([
+      'position-x', 'position-y', 'scale',
+    ]);
+    expect(record.railId).toBe('rail-1');
+    expect(record.anchorKeyId).toBe('key-a');
+    // Pure: the input collection keeps its reference and its shape.
+    expect(records[0]).toBe(before);
+    expect(before.channels).toHaveLength(2);
+  });
+
+  it('adds the grouped Position pair in ONE edit — both axes seeded at frame 0 with value 0 (D-11/D-12)', () => {
+    const records = [scaleOnlySeedRecord()];
+    const result = addMotionChannel({ records, railId: 'rail-1', channelId: 'position-x' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys).toEqual([identitySeed(0)]);
+    expect(channelOf(record, 'position-y').keys).toEqual([identitySeed(0)]);
+    // One reducer edit: the rail grew by the whole pair, and Scale is untouched.
+    expect(record.channels).toHaveLength(3);
+    expect(channelOf(record, 'scale')).toEqual(channelOf(scaleOnlySeedRecord(), 'scale'));
+  });
+
+  it('adds Rotation and Opacity as single channels with their own identity seeds', () => {
+    const rotation = addMotionChannel({
+      records: [positionOnlyRecord()],
+      railId: 'rail-1',
+      channelId: 'rotation',
+    });
+    expect(rotation.ok).toBe(true);
+    if (!rotation.ok) return;
+    expect(channelOf(recordOf(rotation.records), 'rotation').keys).toEqual([identitySeed(0)]);
+    expect(recordOf(rotation.records).channels).toHaveLength(3);
+
+    const opacity = addMotionChannel({
+      records: [positionOnlyRecord()],
+      railId: 'rail-1',
+      channelId: 'opacity',
+    });
+    expect(opacity.ok).toBe(true);
+    if (!opacity.ok) return;
+    // Opacity stores a fraction: 1 === 100%.
+    expect(channelOf(recordOf(opacity.records), 'opacity').keys).toEqual([identitySeed(1)]);
+    expect(recordOf(opacity.records).channels).toHaveLength(3);
+  });
+
+  it('refuses a channel the rail already carries with its exact sentence and writes nothing', () => {
+    const before = positionOnlyRecord();
+    const records = [before];
+
+    for (const channelId of ['position-x', 'position-y'] as const) {
+      const result = addMotionChannel({ records, railId: 'rail-1', channelId });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('This Motion channel is already present.');
+    }
+    expect(records[0]).toBe(before);
+    expect(before.channels).toHaveLength(2);
+
+    // The round trip: adding Scale once succeeds, adding it again refuses and
+    // never duplicates the channel.
+    const first = addMotionChannel({ records, railId: 'rail-1', channelId: 'scale' });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const again = addMotionChannel({
+      records: first.records,
+      railId: 'rail-1',
+      channelId: 'scale',
+    });
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.reason).toBe('This Motion channel is already present.');
+    expect(channelOf(recordOf(first.records), 'scale').keys).toHaveLength(1);
+  });
+
+  it('refuses a null, empty or over-long rail id with its exact sentence and no reducer write', () => {
+    for (const railId of [null, '', `rail-${'x'.repeat(260)}`]) {
+      const result = addMotionChannel({
+        records: [positionOnlyRecord()],
+        railId,
+        channelId: 'scale',
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('Select a rail first.');
+    }
+  });
+
+  it('refuses a rail that carries no Motion record yet', () => {
+    const records = [positionOnlyRecord()];
+    const result = addMotionChannel({
+      records,
+      railId: 'rail-missing',
+      channelId: 'scale',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('Animate this rail before adding a Motion channel.');
+    // No record was created by a refused add.
+    expect(records).toHaveLength(1);
+    expect(records[0]!.railId).toBe('rail-1');
+  });
+});
+
+describe('59-17 rail motion commands — add-channel availability (MUI-06)', () => {
+  it('names the missing rail, the missing record and the exhausted inventory in the fixed prerequisite order', () => {
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: false,
+    })).toEqual({ enabled: false, reason: 'Select a rail first.' });
+
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: false,
+    })).toEqual({
+      enabled: false,
+      reason: 'Animate this rail before adding a Motion channel.',
+    });
+
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: false,
+    })).toEqual({
+      enabled: false,
+      reason: 'Every Motion channel is already present on this rail.',
+    });
+
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: true,
+    })).toEqual({ enabled: true, reason: null });
+  });
+
+  it('answers BEFORE the channel-selection and cursor-span guards (the affordance needs neither)', () => {
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: true,
+      hasChannel: false,
+      cursorInsideRailSpan: false,
+    })).toEqual({ enabled: true, reason: null });
+
+    expect(resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: false,
+      hasChannel: false,
+      cursorInsideRailSpan: false,
+    })).toEqual({
+      enabled: false,
+      reason: 'Every Motion channel is already present on this rail.',
+    });
+  });
+
+  it('is never an action-bar command — the affordance is the block\'s own row', () => {
+    for (const scope of RAIL_MOTION_SELECTION_SCOPES) {
+      expect(CONTEXTUAL_COMMANDS_BY_SCOPE[scope]).not.toContain('add-motion-channel');
+    }
   });
 });

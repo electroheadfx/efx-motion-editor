@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="76" failures="8" errors="0" time="0.517">
+    <testsuite name="src/components/physic-paint/roto/railMotionCommands.test.ts" timestamp="2026-11-06T20:38:20.389Z" hostname="efx2.home" tests="76" failures="8" errors="0" skipped="0" time="0.0154445">
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; binds a Loop Clip rail by its own loopId and mints nothing" time="0.001237416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; mints exactly one rail id for a bare Key Rail and keeps the first key as the anchor hint" time="0.000336417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; animates Reveal and Static rails the same way — no conversion and no type gate" time="0.000466084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; seeds exactly the grouped Position pair with one value-0 key at the rail-local playhead" time="0.00057075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never seeds frame 0 when the cursor is elsewhere in the rail (D-02)" time="0.000086958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; clamps the seeded frame into the rail keyed span at both ends" time="0.000095291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; is idempotent: a second Animate returns the same collection reference" time="0.00011025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; keeps a re-animate on an already-bound view idempotent even without the anchor lookup" time="0.000083083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never touches a drawing key, loop clip or break: every input stays deep-equal" time="0.000178708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; fails with a plain sentence when the playhead is not a valid frame" time="0.000067792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selected rail view resolution &gt; resolves a Loop Clip rail through its loopId and a Key Rail through its first key" time="0.0001">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; adds a key at the rail-local cursor with the channel current evaluated value" time="0.000428625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; updates an existing frame in place without duplicating it" time="0.000161916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; writes both grouped Position axes atomically in one command call" time="0.000194625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes only the addressed key and keeps the rest of the rail" time="0.000205084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a channel when its last key is removed" time="0.000090875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes the record and reports recordRemoved when the rail last channel empties" time="0.000070291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a Motion key at a frame that carries none with a plain reason" time="0.000067584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; refuses to edit a rail that carries no motion" time="0.000044084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; steps to the adjacent key frame without wrapping" time="0.00008425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; accepts only hold and ease and preserves the key value" time="0.000145292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; bounds Wiggle to 0..1,000,000 and rejects non-finite or negative values" time="0.0002115">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; finds the addressed key and reports none for an empty frame" time="0.00005675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selection scope &gt; reports one scope, with a key scope winning over the rail it rides on" time="0.0000725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — honest availability &gt; answers every case and never reports an empty reason (T-59-35)" time="0.000316541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is enabled for every rail type whenever a rail is selected" time="0.000040417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is unavailable with a non-empty reason when no rail is selected" time="0.000040417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; maps every selection state to exactly one scope and one command list" time="0.000149792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; gives every command exactly one scope — a command from another scope is absent" time="0.000162959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing the motion-key selection keeps the rail set (expanded block stays open)" time="0.000091375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a motion key clears the drawing-key selection" time="0.000044583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a drawing key clears the motion-key selection" time="0.00044175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; deleting the rail clears every scope" time="0.000057541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing with no active scope leaves the rail set and drops both key selections" time="0.000056625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; a motion-key selection survives a rail re-selection" time="0.000045958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes the grouped Position pair at the rail-local cursor in ONE result" time="0.000241083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; converts Scale from UI percent to the model factor through the 59-02 pair" time="0.000072916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes Rotation in degrees with NO normalization" time="0.000095875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes only the channels present in the partial" time="0.000089208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; clamps the key frame into the rail span through railMotionCursorFrame" time="0.000083584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a drag on a channel with no keys, leaving the collection byte-identical (D-08)" time="0.0000705">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a Position drag when only one axis is animated (D-08 grouped pair)" time="0.000052167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an un-animated rail and a view without a railId with plain reasons" time="0.000048292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an empty partial and a non-finite cursor with plain reasons" time="0.000056333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a non-finite channel value instead of writing it (no NaN reaches the document)" time="0.000056375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; supplies the grouped sibling EXPLICITLY instead of deriving it (one atomic pair write)" time="0.000066459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when no animated rail is selected" time="0.000056208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when the rail carries no motion" time="0.000029542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the only animated channel is Opacity (D-07 — numeric-only)" time="0.000036292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the playhead is outside the rail span" time="0.000026833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is enabled with a null reason when a draggable channel is animated inside the span" time="0.000026375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; seeds a frozen draft from a null base" time="0.000076334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; overrides only the present channels and keeps the rest of the draft" time="0.000103">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; replaces the Position pair wholesale, never mixing one axis with the other" time="0.000033083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the command layer free of store, signal, component and DOM imports" time="0.000272583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; has exactly ONE writeMotionTransformAtCursor call, inside handlePointerUp" time="0.000083334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the gesture machine and the legacy write endpoints intact" time="0.000062667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; adds rail-motion as a third target with no opacity affordance and no rotation wrap" time="0.00009325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; mounts a third handles instance gated on a non-null railId" time="0.000048958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; edits an existing grouped Position key without touching the sibling value" time="0.000103916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; mirrors the independence rule for a Position Y edit" time="0.000053083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; creates ONE grouped key per axis, seeding the untouched axis from the evaluator" time="0.00009325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; passes rotation through with NO normalization" time="0.000073">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; converts Opacity between percent and the stored fraction" time="0.000052458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; rejects out-of-domain and non-finite entries with a visible reason and no write" time="0.000089666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; refuses a channel the rail does not carry" time="0.000032833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; produces the SAME collection as the 59-13 gizmo path" time="0.000253375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 with hold easing" time="0.002805125">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1263:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; adds the grouped Position pair in ONE edit — both axes seeded at frame 0 with value 0 (D-11/D-12)" time="0.000148292">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1286:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; adds Rotation and Opacity as single channels with their own identity seeds" time="0.00013625">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1299:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; refuses a channel the rail already carries with its exact sentence and writes nothing" time="0.000117916">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1326:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; refuses a null, empty or over-long rail id with its exact sentence and no reducer write" time="0.000105208">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1352:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add a Motion channel (G1) &gt; refuses a rail that carries no Motion record yet" time="0.000105208">
+            <failure message="addMotionChannel is not a function" type="TypeError">
+TypeError: addMotionChannel is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1365:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add-channel availability (MUI-06) &gt; names the missing rail, the missing record and the exhausted inventory in the fixed prerequisite order" time="0.001512417">
+            <failure message="expected { enabled: false, …(1) } to deeply equal { enabled: false, …(1) }" type="AssertionError">
+AssertionError: expected { enabled: false, …(1) } to deeply equal { enabled: false, …(1) }
+
+- Expected
++ Received
+
+  Object {
+    &quot;enabled&quot;: false,
+-   &quot;reason&quot;: &quot;Animate this rail before adding a Motion channel.&quot;,
++   &quot;reason&quot;: &quot;This Motion command is not available.&quot;,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1390:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add-channel availability (MUI-06) &gt; answers BEFORE the channel-selection and cursor-span guards (the affordance needs neither)" time="0.000336083">
+            <failure message="expected { enabled: false, …(1) } to deeply equal { enabled: true, reason: null }" type="AssertionError">
+AssertionError: expected { enabled: false, …(1) } to deeply equal { enabled: true, reason: null }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;enabled&quot;: true,
+-   &quot;reason&quot;: null,
++   &quot;enabled&quot;: false,
++   &quot;reason&quot;: &quot;Select a Motion channel first.&quot;,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1421:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-17 rail motion commands — add-channel availability (MUI-06) &gt; is never an action-bar command — the affordance is the block&apos;s own row" time="0.000075584">
+        </testcase>
+    </testsuite>
+</testsuites>
