@@ -72,6 +72,7 @@ import {
   type RailMotionLoopClipSource,
   type RailMotionRailView,
 } from '../components/physic-paint/roto/railMotionIdentity';
+import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
 import {
   evaluateRailMotion,
   resolveRailLocalFrame,
@@ -6033,6 +6034,24 @@ function _applyRotoTrackSelectionRemoval(
     store.getRotoPhysicalCapacity(layerId, trackId),
   );
   if (!recordsResult.ok) return { ok: false, reason: recordsResult.error };
+  // Phase 59 (59-15 Gate B): the motion collection is part of the same
+  // transaction. Deleting a rail's first key re-anchors its record, deleting
+  // every key of a rail (or the loop clip that owns it) removes the record.
+  const reconciledRailMotions = reconcileRailMotionsForDocumentEdit({
+    previous: {
+      realKeyRecords: records,
+      incomingInterpolationBreakKeyIds: new Set(currentBreaks),
+      loopClips: currentLoops,
+    },
+    next: {
+      realKeyRecords: remainingRecords,
+      incomingInterpolationBreakKeyIds: new Set(remainingBreaks),
+      loopClips: remainingLoops,
+    },
+    railMotions: store.getRotoPhysicalRailMotions(layerId, trackId),
+  }).railMotions;
+  const railMotionsResult = store.replaceRotoPhysicalRailMotions(layerId, trackId, reconciledRailMotions);
+  if (!railMotionsResult.ok) return { ok: false, reason: 'apply-failed' };
   const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, remainingLoops);
   if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
   for (const frame of removedFrames) store.removeRealRotoKeyFrame(layerId, trackId, frame);

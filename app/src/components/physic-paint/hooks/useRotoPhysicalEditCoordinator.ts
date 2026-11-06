@@ -80,6 +80,7 @@ import {
   parsePhysicPaintRotoRailMotions,
   type PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
+import { reconcileRailMotionsForDocumentEdit } from '../roto/railMotionDocumentReconciler';
 import {
   proposePhysicPaintRotoDeleteGroup,
   proposePhysicPaintRotoDeleteGroupFrame,
@@ -2370,13 +2371,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             ?? generatedPublicationInput?.loopClips
             ?? proposal?.nextLoopClips
             ?? currentLoopClips;
-        // Phase 59 (MOTN-12): motion rides the same staged decision as loops.
-        // Replay stages the replay target's collection so Undo restores the
-        // pre-edit motion and Redo restores the post-edit motion; no proposal
-        // emits motion yet, so every other kind stages the launch read.
-        const stagedRailMotions = isReplay && replayTarget
-          ? replayTarget.railMotions
-          : currentRailMotions;
+        // Phase 59 (59-15 Gate B): the staged motion is resolved AFTER the
+        // final staged collections are known, because a forward edit must
+        // reconcile it from the same previous/next facts the parent bridge
+        // will use. See below, immediately before `stagedRevision`.
         const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
           ? replayTarget.incomingInterpolationBreakKeyIds
           : railSetPasteProposal?.incomingInterpolationBreakKeyIds
@@ -2431,6 +2429,28 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         const publicationLoopClips = reconciledGroupFrames?.loopClips ?? stagedLoopClips;
         const publicationGroupOverrideRecords = reconciledGroupFrames?.groupOverrideRecords
           ?? stagedGroupOverrideRecords;
+        // Phase 59 (59-15 Gate B): the child stages the SAME reconciled
+        // motion the parent bridge will compute from this payload. Replay
+        // stages its immutable target collection (and ships it explicitly, so
+        // reconciliation is bypassed); every forward edit omits the wire
+        // field, letting the bridge reconcile the structural edit and produce
+        // the merge-drop report. Computing it here as well keeps the staged
+        // revision byte-identical to the parent's accepted revision.
+        const stagedRailMotions = isReplay && replayTarget
+          ? replayTarget.railMotions
+          : reconcileRailMotionsForDocumentEdit({
+              previous: {
+                realKeyRecords: currentRecords,
+                incomingInterpolationBreakKeyIds: new Set(currentIncomingInterpolationBreakKeyIds),
+                loopClips: currentLoopClips,
+              },
+              next: {
+                realKeyRecords: validatedStagedRecords,
+                incomingInterpolationBreakKeyIds: new Set(stagedIncomingInterpolationBreakKeyIds),
+                loopClips: publicationLoopClips,
+              },
+              railMotions: currentRailMotions,
+            }).railMotions;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
           validatedStagedRecords,
           stagedInterpolation,
@@ -2512,10 +2532,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           ...(targetCapacity !== undefined ? { targetCapacity } : {}),
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
           loopClips: cloneLoopClips(publicationLoopClips),
-          // Phase 59 (MOTN-12): motion ships on the same wire as the clips.
-          // Absent means preserve, so a forward edit restating the launch
-          // collection is a no-op and a replay writes the restored one.
-          railMotions: cloneRailMotions(stagedRailMotions),
+          // Phase 59 (59-15 Gate B): replay ships its target collection
+          // explicitly so the exact restoration bypasses reconciliation. A
+          // forward edit OMITS the field: the parent bridge reconciles the
+          // structural edit from records/loops/breaks and writes the result in
+          // the same commit. Shipping the pre-edit collection here would make
+          // the payload authoritative and freeze a stale anchor.
+          ...(isReplay && replayTarget
+            ? { railMotions: cloneRailMotions(stagedRailMotions) }
+            : {}),
           incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
             stagedIncomingInterpolationBreakKeyIds,
           ),

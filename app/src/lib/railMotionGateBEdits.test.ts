@@ -8,6 +8,9 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
+import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
+import { proposePhysicPaintRotoDeleteRails } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
+import type { RailSetDeleteMember } from '../types/physicPaint';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from '../stores/layerStore';
 import { projectStore } from '../stores/projectStore';
@@ -170,6 +173,54 @@ async function applyBridgePayload(payload: ReturnType<typeof bridgePayload>) {
 
 function bridgeRecordEntries(records: readonly PhysicPaintRotoRealKeyRecord[]) {
   return records.map(({ keyId, appFrame, payload: recordPayload }) => ({ keyId, appFrame, payload: recordPayload }));
+}
+
+/**
+ * Builds the lifecycle delete-rails payload from the REAL proposer (the same
+ * authority the child coordinator and the parent recompute use), never from a
+ * hand-written target document.
+ */
+function deleteRailsPayload(
+  launchOperationId: string,
+  members: readonly RailSetDeleteMember[],
+) {
+  const document = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+  const proposed = proposePhysicPaintRotoDeleteRails({ document, members });
+  if (!proposed.ok) throw new Error(`Expected canonical delete-rails proposal: ${proposed.reason}`);
+  return bridgePayload(launchOperationId, {
+    operationKind: 'delete-rails',
+    records: bridgeRecordEntries(proposed.proposal.realKeyRecords),
+    loopClips: proposed.proposal.loopClips,
+    incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+    selectedKeyId: proposed.proposal.selectedKeyId,
+    selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+    cursorAppFrame: proposed.proposal.cursorAppFrame,
+    semanticDelta: proposed.impact,
+  });
+}
+
+function documentSnapshot(document: PhysicPaintRotoPhysicalDocument) {
+  return {
+    realKeyRecords: document.realKeyRecords,
+    incomingInterpolationBreakKeyIds: new Set(document.incomingInterpolationBreakKeyIds),
+    loopClips: document.loopClips,
+  };
+}
+
+/** The coordinator's replay emission for one undo of the forward operation. */
+async function undoAcceptedEdit(
+  launchOperationId: string,
+  forwardOperationId: string,
+  beforeDocument: PhysicPaintRotoPhysicalDocument,
+  beforeRevision: string,
+) {
+  const sourceRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+  const undo = await applyBridgePayload(replayPayload(launchOperationId, 'undo', beforeDocument, {
+    historyCommandId: forwardOperationId,
+    sourceRevision,
+    targetRevision: beforeRevision,
+  }));
+  expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
 }
 
 /**
@@ -458,5 +509,216 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
     expect(changedCollection.ok ? null : changedCollection.error).toBe(
       'Operation ID was already used for a different payload.',
     );
+  });
+
+  it('keeps the collection byte-identical when a non-first key is deleted', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, { kind: 'delete-key', selectedKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toEqual(beforeMotions);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual(beforeMotions[0].channels);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
+  });
+
+  it('removes the record in the same commit when the whole Key Rail is deleted', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, {
+      kind: 'delete-key-rail',
+      keyIds: ['A', 'B', 'C', 'D', 'E'],
+    });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    const restored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(restored).toHaveLength(1);
+    expect(restored[0].railId).toBe('rail-1');
+    expect(restored[0].anchorKeyId).toBe('A');
+    expect(restored[0].channels).toEqual(beforeMotions[0].channels);
+  });
+
+  it('removes the record in the same commit when a rail-set delete removes the rail', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = deleteRailsPayload(launch, [{
+      kind: 'key-rail',
+      firstKeyId: 'A',
+      keyIds: ['A', 'B', 'C', 'D', 'E'],
+    }]);
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(0);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    const restored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(restored).toHaveLength(1);
+    expect(restored[0].railId).toBe('rail-1');
+    expect(restored[0].anchorKeyId).toBe('A');
+    expect(restored[0].channels).toEqual(beforeMotions[0].channels);
+  });
+
+  it('keeps the head record unchanged across a scissor split, inventing no tail', async () => {
+    seedBridgeDocument(
+      [record('A', 0), record('B', 1), record('C', 2), record('D', 3)],
+      { railMotions: [railMotion('rail-1', 'A')] },
+    );
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, { kind: 'scissor-key-rail', breakOwnerKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    // The break landed: the rail really split at C.
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER, TEST_TRACK_ID)).toContain('C');
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toEqual(beforeMotions);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-1');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual(beforeMotions[0].channels);
+    // The split's tail owns no motion of its own.
+    expect(stored.some((motion) => motion.anchorKeyId === 'C')).toBe(false);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER, TEST_TRACK_ID)).not.toContain('C');
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
+  });
+
+  it('adopts the surviving tail record onto the merged anchor when only the tail animated', async () => {
+    seedBridgeDocument(
+      [record('A', 0), record('B', 1), record('C', 2), record('D', 3)],
+      { breaks: ['C'], railMotions: [railMotion('rail-tail', 'C')] },
+    );
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    // Deleting the break owner is the product path that removes the break.
+    const forward = canonicalPayload(launch, { kind: 'delete-key', selectedKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-tail');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual(beforeMotions[0].channels);
+
+    const report = reconcileRailMotionsForDocumentEdit({
+      previous: documentSnapshot(beforeDocument),
+      next: documentSnapshot(acceptedDocument),
+      railMotions: beforeMotions,
+    });
+    expect(report.adoptedRailId).toBe('rail-tail');
+    expect(report.droppedRailId).toBeNull();
+    expect(report.droppedRailFrames).toBeNull();
+    expect(report.railMotions).toEqual(stored);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    const restored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(restored).toHaveLength(1);
+    expect(restored[0].railId).toBe('rail-tail');
+    expect(restored[0].anchorKeyId).toBe('C');
+  });
+
+  it('keeps the head record and drops the tail with its prior span when both sides animated', async () => {
+    seedBridgeDocument(
+      [record('A', 0), record('B', 1), record('C', 2), record('D', 3)],
+      { breaks: ['C'], railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'C')] },
+    );
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, { kind: 'delete-key', selectedKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-head');
+    expect(stored[0].anchorKeyId).toBe('A');
+
+    const report = reconcileRailMotionsForDocumentEdit({
+      previous: documentSnapshot(beforeDocument),
+      next: documentSnapshot(acceptedDocument),
+      railMotions: beforeMotions,
+    });
+    expect(report.adoptedRailId).toBeNull();
+    expect(report.droppedRailId).toBe('rail-tail');
+    // The dropped record's PRIOR segment span [C, D] in app frames.
+    expect(report.droppedRailFrames).toEqual({ startFrame: 2, endFrameExclusive: 4 });
+    expect(report.railMotions).toEqual(stored);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    const restored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(restored).toHaveLength(2);
+    expect(restored.find((motion) => motion.railId === 'rail-head')?.anchorKeyId).toBe('A');
+    expect(restored.find((motion) => motion.railId === 'rail-tail')?.anchorKeyId).toBe('C');
+  });
+
+  it('keeps every rail-local frame when the rail start moves', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, {
+      kind: 'move-key-rail',
+      memberKeyIds: ['A', 'B', 'C', 'D', 'E'],
+      destinationFirstKeyAppFrame: 10,
+    });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    // The rail really moved: the first key now sits at frame 10.
+    expect(
+      physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID).map((entry) => entry.appFrame),
+    ).toEqual([10, 11, 12, 13, 14]);
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toEqual(beforeMotions);
+    expect(stored[0].railId).toBe('rail-1');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual(beforeMotions[0].channels);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    expect(
+      physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID).map((entry) => entry.appFrame),
+    ).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
   });
 });

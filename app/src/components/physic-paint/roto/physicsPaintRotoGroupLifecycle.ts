@@ -164,10 +164,15 @@ export function proposePhysicPaintRotoGroupFramePaint(
       input.document.incomingInterpolationBreakKeyIds,
       nextGroupOverrideRecords,
     );
+    // Phase 59 (59-15): proposals are motion-agnostic. The rail-motion
+    // collection is committed by the bridge's commit-point reconciler, so the
+    // proposal parses with the EMPTY collection and a motion-free revision;
+    // otherwise the document parser rejects the mismatched revision.
     const proposal = parsePhysicPaintRotoPhysicalDocument({
       ...input.document,
       groupOverrideRecords: nextGroupOverrideRecords,
       loopClips: nextLoopClips,
+      railMotions: [],
       revision: nextRevision,
     });
     const impact = Object.freeze<PhysicPaintRotoGroupFramePaintImpact>({
@@ -606,6 +611,8 @@ function buildLifecycleProposal(
     incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
   );
+  // Phase 59 (59-15): proposals are motion-agnostic; the collection is
+  // reconciled at the bridge commit point (see the paint-group-frame above).
   return parsePhysicPaintRotoPhysicalDocument({
     ...document,
     realKeyRecords,
@@ -613,6 +620,7 @@ function buildLifecycleProposal(
     loopClips,
     incomingInterpolationBreakKeyIds,
     selectedKeyId,
+    railMotions: [],
     revision,
   });
 }
@@ -943,6 +951,8 @@ function applyKeyRailDeletion(
       nextIncomingInterpolationBreakKeyIds,
       document.groupOverrideRecords ?? [],
     );
+    // Phase 59 (59-15): proposals are motion-agnostic; the collection is
+    // reconciled at the bridge commit point (see the paint-group-frame above).
     const proposal = parsePhysicPaintRotoPhysicalDocument({
       ...document,
       realKeyRecords,
@@ -950,6 +960,7 @@ function applyKeyRailDeletion(
       incomingInterpolationBreakKeyIds: nextIncomingInterpolationBreakKeyIds,
       selectedKeyId,
       cursorAppFrame: selectedAppFrame ?? document.cursorAppFrame,
+      railMotions: [],
       revision,
     });
     return { ok: true, proposal };
