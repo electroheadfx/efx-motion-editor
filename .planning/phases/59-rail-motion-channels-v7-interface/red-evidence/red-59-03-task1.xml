@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="10" failures="8" errors="0" time="0.269">
+    <testsuite name="src/components/physic-paint/roto/railMotionPersistence.test.ts" timestamp="2026-11-06T12:21:55.291Z" hostname="efx2.home" tests="10" failures="8" errors="0" skipped="0" time="0.013583292">
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; defaults an absent railMotions member to the frozen empty collection" time="0.008948084">
+            <failure message="expected undefined to be [] // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be [] // Object.is equality
+
+- Expected: 
+Array []
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:149:35
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; accepts an explicit empty railMotions array as the shared empty collection" time="0.000869541">
+            <failure message="PhysicPaintRotoPhysicalDocument: unknown or missing document members." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: unknown or missing document members.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1781:11
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:153:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; accepts a valid non-empty collection and freezes every level" time="0.000220667">
+            <failure message="PhysicPaintRotoPhysicalDocument: unknown or missing document members." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: unknown or missing document members.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1781:11
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:158:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: document allowlist and parser routing &gt; rejects a document whose railMotions changed without recomputing the revision" time="0.001104167">
+            <failure message="expected [Function] to throw error matching /canonical revision mismatch/ but got &apos;PhysicPaintRotoPhysicalDocument: unkn…&apos;" type="AssertionError">
+AssertionError: expected [Function] to throw error matching /canonical revision mismatch/ but got &apos;PhysicPaintRotoPhysicalDocument: unkn…&apos;
+
+- Expected: 
+/canonical revision mismatch/
+
++ Received: 
+&quot;PhysicPaintRotoPhysicalDocument: unknown or missing document members.&quot;
+
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:178:66
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; adds nothing when the collection is empty (append-only 6th parameter)" time="0.000140834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; contributes exactly one term when the collection is non-empty" time="0.000232542">
+            <failure message="expected &apos;physical-404-c22673ae&apos; not to be &apos;physical-404-c22673ae&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;physical-404-c22673ae&apos; not to be &apos;physical-404-c22673ae&apos; // Object.is equality
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:206:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; sorts records by railId so input array order never changes the revision" time="0.000209417">
+            <failure message="expected &apos;physical-404-c22673ae&apos; not to be &apos;physical-404-c22673ae&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;physical-404-c22673ae&apos; not to be &apos;physical-404-c22673ae&apos; // Object.is equality
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:215:25
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; keeps an untouched document at its exact pre-Phase-59 revision" time="0.000120625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; moves project equality when one record is added" time="0.000280458">
+            <failure message="PhysicPaintRotoPhysicalDocument: unknown or missing document members." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: unknown or missing document members.
+ ❯ parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1781:11
+ ❯ buildPhysicPaintRotoProjectEqualitySource src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1612:20
+ ❯ Module.buildPhysicPaintRotoProjectEquality src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1633:48
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:229:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPersistence.test.ts" name="59-03: conditional canonical rail-motions term &gt; moves the Paint track revision when the collection moves" time="0.000950833">
+            <failure message="PhysicPaintRotoPhysicalDocument: unknown or missing document members." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: unknown or missing document members.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1781:11
+ ❯ Module.parseInternalPaintTrack src/efx-paint/document/efxPaintDocumentParsers.ts:281:7
+ ❯ Module.buildEfxPaintTrackRevision src/efx-paint/document/efxPaintDocumentRevision.ts:295:17
+ ❯ src/components/physic-paint/roto/railMotionPersistence.test.ts:235:24
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
