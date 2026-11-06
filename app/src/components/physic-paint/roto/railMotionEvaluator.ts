@@ -11,6 +11,7 @@
  * independent of motion evaluation.
  */
 
+import { Random } from '@efxlab/motion-canvas-core';
 import type {
   PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
@@ -202,15 +203,47 @@ export function resolveRailLocalFrame(
 }
 
 /**
- * Task 2 replaces this placeholder with the seeded, smooth, deterministic
- * implementation; it is exported so the determinism pin can address it
- * directly rather than inferring the noise from a composed channel.
+ * FNV-1a 32-bit string hash over the stable seed components. Pure and
+ * order-independent: the same (railId, channelId, keyFrame) triple always
+ * yields the same 32-bit seed, whatever was evaluated before.
+ */
+function hashRailMotionWiggleSeed(seedText: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < seedText.length; index += 1) {
+    hash ^= seedText.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * One draw per integer frame, mapped from [0,1) to [-1, 1). A fresh `Random`
+ * per sample means no sequential PRNG state survives between calls, which is
+ * what makes edit, Play and export agree bit for bit.
+ */
+function railMotionWiggleSample(seed: number, frame: number): number {
+  return new Random((seed + frame) >>> 0).nextFloat(-1, 1);
+}
+
+/**
+ * Seeded smooth wiggle in [-1, 1].
+ *
+ * The noise is sampled at the two neighbouring integer frames and interpolated
+ * with the same smoothstep the ease curve uses, so it never jitters frame to
+ * frame. The seed is a stable hash of (railId, channelId, keyFrame), so the
+ * noise is a pure function of its arguments — no wall-clock time, no unseeded
+ * randomness, no carried state.
  */
 export function railMotionWiggleAt(
-  _railId: string,
-  _channelId: PhysicPaintRotoRailMotionChannelId,
-  _keyFrame: number,
-  _frame: number,
+  railId: string,
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  keyFrame: number,
+  frame: number,
 ): number {
-  return 0;
+  const seed = hashRailMotionWiggleSeed(`${railId}|${channelId}|${keyFrame}`);
+  const previousFrame = Math.floor(frame);
+  const position = frame - previousFrame;
+  const previous = railMotionWiggleSample(seed, previousFrame);
+  const next = railMotionWiggleSample(seed, previousFrame + 1);
+  return previous + (next - previous) * railMotionSmoothstep(position);
 }
