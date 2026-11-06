@@ -5,6 +5,7 @@ import {
   RAIL_MOTION_FRAME_LIMIT,
   RAIL_MOTION_POSITION_LIMIT_PX,
   RAIL_MOTION_WIGGLE_LIMIT,
+  applyRailMotionEditToCollection,
   canonicalizeRailMotionChannels,
   createPhysicPaintRotoRailId,
   parsePhysicPaintRotoRailMotions,
@@ -14,6 +15,7 @@ import {
   type PhysicPaintRotoRailMotionChannel,
   type PhysicPaintRotoRailMotionChannelId,
   type PhysicPaintRotoRailMotionEasing,
+  type PhysicPaintRotoRailMotionEdit,
   type PhysicPaintRotoRailMotionKey,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
@@ -522,5 +524,430 @@ describe('createPhysicPaintRotoRailId', () => {
     expect(first).toMatch(pattern);
     expect(second).toMatch(pattern);
     expect(second).not.toBe(first);
+  });
+});
+
+function deepFreezeRecords(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  for (const entry of records) {
+    for (const entryChannel of entry.channels) {
+      for (const entryKey of entryChannel.keys) Object.freeze(entryKey);
+      Object.freeze(entryChannel.keys);
+      Object.freeze(entryChannel);
+    }
+    Object.freeze(entry.channels);
+    Object.freeze(entry);
+  }
+  return Object.freeze(records);
+}
+
+function animatedAt(frame: number, railId = 'rail-a'): PhysicPaintRotoRailMotionRecord {
+  return record(railId, positionChannels(frame, 0, 0));
+}
+
+describe('applyRailMotionEditToCollection', () => {
+  it('animate creates the identity Position pair at the edit frame', () => {
+    const records = applyRailMotionEditToCollection(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY, {
+      kind: 'animate',
+      railId: 'rail-a',
+      anchorKeyId: 'key-1',
+      frame: 6,
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0].railId).toBe('rail-a');
+    expect(records[0].anchorKeyId).toBe('key-1');
+    expect(records[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y']);
+    expect(records[0].channels.map((entry) => entry.keys)).toEqual([
+      [key(6, 0, 'ease', 0)],
+      [key(6, 0, 'ease', 0)],
+    ]);
+    expect(Object.isFrozen(records)).toBe(true);
+    expect(Object.isFrozen(records[0].channels[0].keys[0])).toBe(true);
+  });
+
+  it('animate is idempotent and returns the same reference', () => {
+    const existing = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    const next = applyRailMotionEditToCollection(existing, {
+      kind: 'animate',
+      railId: 'rail-a',
+      anchorKeyId: 'key-1',
+      frame: 6,
+    });
+
+    expect(next).toBe(existing);
+  });
+
+  it('animate never mutates a frozen input and keeps railIds sorted', () => {
+    const existing = deepFreezeRecords([record('rail-b', [channel('scale', [key(0, 1)])])]);
+
+    const next = applyRailMotionEditToCollection(existing, {
+      kind: 'animate',
+      railId: 'rail-a',
+      anchorKeyId: 'key-1',
+      frame: 2,
+    });
+
+    expect(next.map((entry) => entry.railId)).toEqual(['rail-a', 'rail-b']);
+    expect(existing).toEqual([record('rail-b', [channel('scale', [key(0, 1)])])]);
+  });
+
+  it('set-key inserts a key and writes both Position axes from one edit', () => {
+    const records = [animatedAt(0)];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 10,
+      pairedValue: 20,
+    });
+
+    expect(next).not.toBe(records);
+    expect(next[0].channels[0].keys).toEqual([key(0, 0), key(4, 10)]);
+    expect(next[0].channels[1].keys).toEqual([key(0, 0), key(4, 20)]);
+  });
+
+  it('set-key holds the sibling value when no paired value is supplied', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 5), key(8, 15)]),
+      channel('position-y', [key(0, 7), key(8, 9)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 12,
+    });
+
+    expect(next[0].channels[1].keys.map((entry) => entry.frame)).toEqual([0, 4, 8]);
+    expect(next[0].channels[1].keys[1].value).toBe(7);
+  });
+
+  it('set-key replaces an existing key in place without duplicating the frame', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1), key(3, 2)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 3,
+      value: 4,
+    });
+
+    expect(next[0].channels[0].keys).toEqual([key(0, 1), key(3, 4)]);
+  });
+
+  it('set-key defaults a new key to ease/0 and preserves an existing key fields', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1, 'hold', 5), key(3, 2, 'hold', 5)])])];
+
+    const replaced = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 3,
+      value: 4,
+    });
+    expect(replaced[0].channels[0].keys[1]).toEqual(key(3, 4, 'hold', 5));
+
+    const inserted = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 9,
+      value: 4,
+    });
+    expect(inserted[0].channels[0].keys[2]).toEqual(key(9, 4, 'ease', 0));
+  });
+
+  it('set-key accepts an explicit easing and wiggle on insert', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 2,
+      value: 3,
+      easing: 'hold',
+      wiggle: 12,
+    });
+
+    expect(next[0].channels[0].keys[1]).toEqual(key(2, 3, 'hold', 12));
+  });
+
+  it('set-key on an unknown rail creates no record (D-08)', () => {
+    const records = [animatedAt(0)];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-missing',
+      channel: 'scale',
+      frame: 1,
+      value: 2,
+    })).toBe(records);
+  });
+
+  it('set-key on a channel with no motion is a no-op (D-08)', () => {
+    const records = [record('rail-a', [channel('rotation', [key(0, 0)])])];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 1,
+      value: 2,
+    })).toBe(records);
+  });
+
+  it('set-key preserves the sibling value when replacing a Position key', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 1), key(4, 2)]),
+      channel('position-y', [key(0, 3), key(4, 4)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 9,
+    });
+
+    expect(next[0].channels[0].keys[1].value).toBe(9);
+    expect(next[0].channels[1].keys[1].value).toBe(4);
+  });
+
+  it('set-key throws on an out-of-domain value, an unknown channel and an invalid frame', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-key', railId: 'rail-a', channel: 'scale', frame: 1, value: 0,
+    })).toThrow(/outside the channel domain/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-key', railId: 'rail-a', channel: 'opacity', frame: 1, value: 1.5,
+    })).toThrow(/outside the channel domain/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'bogus' as PhysicPaintRotoRailMotionChannelId,
+      frame: 1,
+      value: 1,
+    })).toThrow(/unknown channel id/);
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-key', railId: 'rail-a', channel: 'scale', frame: -1, value: 1,
+    })).toThrow(/invalid frame/);
+  });
+
+  it('remove-key removes only the addressed key', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1), key(2, 2), key(5, 3)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'remove-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 2,
+    });
+
+    expect(next[0].channels[0].keys.map((entry) => entry.frame)).toEqual([0, 5]);
+  });
+
+  it('grouped Position remove-key removes the frame from both axes', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(4, 1)]),
+      channel('position-y', [key(0, 0), key(4, 2)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'remove-key',
+      railId: 'rail-a',
+      channel: 'position-y',
+      frame: 4,
+    });
+
+    expect(next[0].channels.map((entry) => entry.keys.map((entryKey) => entryKey.frame))).toEqual([[0], [0]]);
+  });
+
+  it('remove-key cascades channel removal, then record removal (D-15)', () => {
+    const singleKey = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    const channelGone = applyRailMotionEditToCollection(singleKey, {
+      kind: 'remove-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 0,
+    });
+    expect(channelGone).toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+
+    const withNeighbour = [record('rail-a', [
+      channel('scale', [key(0, 1)]),
+      channel('rotation', [key(0, 0)]),
+    ])];
+    const recordKept = applyRailMotionEditToCollection(withNeighbour, {
+      kind: 'remove-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 0,
+    });
+    expect(recordKept).toHaveLength(1);
+    expect(recordKept[0].channels.map((entry) => entry.id)).toEqual(['rotation']);
+  });
+
+  it('remove-key on a missing rail, channel or frame is a no-op', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'remove-key', railId: 'rail-missing', channel: 'scale', frame: 0,
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'remove-key', railId: 'rail-a', channel: 'opacity', frame: 0,
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'remove-key', railId: 'rail-a', channel: 'scale', frame: 9,
+    })).toBe(records);
+  });
+
+  it('add-channel seeds identity keys at frame 0 with hold', () => {
+    const records = [record('rail-a', [channel('rotation', [key(2, 45)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'add-channel',
+      railId: 'rail-a',
+      channel: 'scale',
+    });
+
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['scale', 'rotation']);
+    expect(next[0].channels[0].keys).toEqual([key(0, 1, 'hold', 0)]);
+
+    const opacity = applyRailMotionEditToCollection(next, {
+      kind: 'add-channel',
+      railId: 'rail-a',
+      channel: 'opacity',
+    });
+    expect(opacity[0].channels[2].keys).toEqual([key(0, 1, 'hold', 0)]);
+
+    const rotation = applyRailMotionEditToCollection(records, {
+      kind: 'add-channel',
+      railId: 'rail-a',
+      channel: 'rotation',
+    });
+    expect(rotation).toBe(records);
+  });
+
+  it('add-channel seeds both Position axes with zero', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'add-channel',
+      railId: 'rail-a',
+      channel: 'position-y',
+    });
+
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
+    expect(next[0].channels[0].keys).toEqual([key(0, 0, 'hold', 0)]);
+    expect(next[0].channels[1].keys).toEqual([key(0, 0, 'hold', 0)]);
+  });
+
+  it('add-channel on an existing channel or an unknown rail is a no-op', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'add-channel', railId: 'rail-a', channel: 'scale',
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'add-channel', railId: 'rail-missing', channel: 'opacity',
+    })).toBe(records);
+  });
+
+  it('remove-channel removes a channel and the record when it was the last one', () => {
+    const records = [record('rail-a', [
+      channel('scale', [key(0, 1)]),
+      channel('rotation', [key(0, 0)]),
+    ])];
+
+    const scaleGone = applyRailMotionEditToCollection(records, {
+      kind: 'remove-channel',
+      railId: 'rail-a',
+      channel: 'scale',
+    });
+    expect(scaleGone[0].channels.map((entry) => entry.id)).toEqual(['rotation']);
+
+    expect(applyRailMotionEditToCollection(scaleGone, {
+      kind: 'remove-channel',
+      railId: 'rail-a',
+      channel: 'rotation',
+    })).toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+  });
+
+  it('remove-channel removing either Position axis removes both axes', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0)]),
+      channel('position-y', [key(0, 0)]),
+      channel('scale', [key(0, 1)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'remove-channel',
+      railId: 'rail-a',
+      channel: 'position-y',
+    });
+
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['scale']);
+  });
+
+  it('remove-channel on a missing channel or an unknown rail is a no-op', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'remove-channel', railId: 'rail-a', channel: 'opacity',
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'remove-channel', railId: 'rail-missing', channel: 'scale',
+    })).toBe(records);
+  });
+
+  it('never mutates a deeply frozen input across every edit kind', () => {
+    const original = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(4, 8)]),
+      channel('position-y', [key(0, 0), key(4, 9)]),
+      channel('scale', [key(0, 1), key(4, 2)]),
+    ])];
+    const frozen = deepFreezeRecords(original);
+    const snapshot = JSON.parse(JSON.stringify(frozen));
+    const edits: readonly PhysicPaintRotoRailMotionEdit[] = [
+      { kind: 'animate', railId: 'rail-b', anchorKeyId: 'key-1', frame: 1 },
+      { kind: 'set-key', railId: 'rail-a', channel: 'scale', frame: 2, value: 3 },
+      { kind: 'remove-key', railId: 'rail-a', channel: 'scale', frame: 4 },
+      { kind: 'add-channel', railId: 'rail-a', channel: 'opacity' },
+      { kind: 'remove-channel', railId: 'rail-a', channel: 'position-x' },
+    ];
+
+    for (const edit of edits) {
+      expect(() => applyRailMotionEditToCollection(frozen, edit)).not.toThrow();
+    }
+    expect(JSON.parse(JSON.stringify(frozen))).toEqual(snapshot);
+  });
+
+  it('keeps the collection canonical after edits', () => {
+    const records = [
+      record('rail-b', [channel('rotation', [key(0, 0)])]),
+      record('rail-a', [channel('scale', [key(0, 1)])]),
+    ];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'add-channel',
+      railId: 'rail-b',
+      channel: 'opacity',
+    });
+
+    expect(next.map((entry) => entry.railId)).toEqual(['rail-a', 'rail-b']);
+    expect(next[1].channels.map((entry) => entry.id)).toEqual(['rotation', 'opacity']);
+    expect(Object.isFrozen(next)).toBe(true);
+    expect(Object.isFrozen(next[1].channels)).toBe(true);
   });
 });

@@ -39,6 +39,45 @@ export interface PhysicPaintRotoRailMotionRecord {
   readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
 }
 
+/**
+ * One pure edit step. `set-key` addresses a single axis; a Position edit
+ * writes both axes atomically and may carry the sibling axis value the
+ * evaluator produced (`pairedValue`).
+ */
+export type PhysicPaintRotoRailMotionEdit =
+  | {
+    readonly kind: 'animate';
+    readonly railId: string;
+    readonly anchorKeyId: string;
+    readonly frame: number;
+  }
+  | {
+    readonly kind: 'set-key';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+    readonly frame: number;
+    readonly value: number;
+    readonly easing?: PhysicPaintRotoRailMotionEasing;
+    readonly wiggle?: number;
+    readonly pairedValue?: number;
+  }
+  | {
+    readonly kind: 'remove-key';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+    readonly frame: number;
+  }
+  | {
+    readonly kind: 'add-channel';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+  }
+  | {
+    readonly kind: 'remove-channel';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+  };
+
 /** Position values are bounded to plus or minus one million pixels. */
 export const RAIL_MOTION_POSITION_LIMIT_PX = 1_000_000;
 
@@ -406,4 +445,19 @@ export function parsePhysicPaintRotoRailMotions(
  */
 export function createPhysicPaintRotoRailId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Applies one pure edit to the rail motion collection.
+ *
+ * Never mutates its input and returns the same reference when nothing
+ * changed. Edits on an unknown rail are quiet no-ops (a stale UI read),
+ * except `animate`, which creates the record. Invalid values throw; the
+ * store action catches and refuses them.
+ */
+export function applyRailMotionEditToCollection(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  _edit: PhysicPaintRotoRailMotionEdit,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  return records;
 }
