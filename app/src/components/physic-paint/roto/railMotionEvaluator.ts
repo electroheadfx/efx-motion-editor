@@ -202,6 +202,25 @@ export function resolveRailLocalFrame(
   return Math.max(0, appFrame - railStart);
 }
 
+export interface RailMotionCurvePathOptions {
+  /** Overrides the design-token pitch; defaults to TIMELINE_GEOMETRY.cellPitch. */
+  readonly cellPitch?: number;
+  /** The record's railId so the curve samples the exact applied wiggle seed. */
+  readonly railId?: string;
+}
+
+/**
+ * Task 3 replaces this placeholder with the evaluator-sampled lane path.
+ */
+export function buildRailMotionCurvePath(
+  _channel: PhysicPaintRotoRailMotionChannel,
+  _railFrameCount: number,
+  _laneHeight?: number,
+  _options: Readonly<RailMotionCurvePathOptions> = {},
+): string {
+  return 'M0,0';
+}
+
 /**
  * FNV-1a 32-bit string hash over the stable seed components. Pure and
  * order-independent: the same (railId, channelId, keyFrame) triple always

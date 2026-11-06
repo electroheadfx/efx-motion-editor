@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   RAIL_MOTION_IDENTITY_TRANSFORM,
+  buildRailMotionCurvePath,
   evaluateRailMotion,
   evaluateRailMotionChannel,
   railMotionWiggleAt,
@@ -12,6 +13,7 @@ import type {
   PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
+import { TIMELINE_GEOMETRY } from '../view/timelineRailDesign';
 
 function key(
   frame: number,
@@ -260,6 +262,164 @@ describe('rail motion wiggle', () => {
 
     expect(clampedHigh).toBe(true);
     expect(clampedLow).toBe(true);
+  });
+});
+
+interface CurvePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+function parseCurvePath(path: string): CurvePoint[] {
+  const points: CurvePoint[] = [];
+  const pattern = /([ML])(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(path)) !== null) {
+    points.push({ x: Number(match[2]), y: Number(match[3]) });
+  }
+  return points;
+}
+
+/** The SPECS display ranges, written independently of the implementation. */
+const CURVE_RANGES: Readonly<Record<PhysicPaintRotoRailMotionChannelId, readonly [number, number]>> = {
+  'position-x': [-100, 100],
+  'position-y': [-100, 100],
+  scale: [0, 2],
+  rotation: [-360, 360],
+  opacity: [0, 1],
+};
+
+function expectedCurveY(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  value: number,
+  laneHeight = TIMELINE_GEOMETRY.motionLaneHeight,
+): number {
+  const [min, max] = CURVE_RANGES[channelId];
+  const normalized = (value - min) / (max - min);
+  return Math.min(laneHeight, Math.max(0, laneHeight - normalized * laneHeight));
+}
+
+describe('rail motion lane curve', () => {
+  it('starts with M and writes at most one decimal place', () => {
+    const path = buildRailMotionCurvePath(channel('position-x', [key(0, 0), key(10, 100)]), 12);
+
+    expect(path.startsWith('M')).toBe(true);
+    expect(path).toMatch(/^M-?\d+(?:\.\d)?,-?\d+(?:\.\d)?(?: L-?\d+(?:\.\d)?,-?\d+(?:\.\d)?)+$/);
+  });
+
+  it('draws a horizontal line for a single-key channel', () => {
+    const path = buildRailMotionCurvePath(channel('opacity', [key(4, 0.5)]), 12);
+    const points = parseCurvePath(path);
+
+    expect(points.length).toBeGreaterThanOrEqual(2);
+    expect(points[0]).toEqual({ x: 0, y: 9 });
+    expect(points[points.length - 1]).toEqual({ x: 11 * TIMELINE_GEOMETRY.cellPitch, y: 9 });
+    for (const point of points) expect(point.y).toBe(9);
+  });
+
+  it('emits an explicit vertical step at a hold key frame', () => {
+    const path = buildRailMotionCurvePath(
+      channel('position-x', [key(0, -100, 'hold'), key(6, 100)]),
+      10,
+    );
+    const points = parseCurvePath(path);
+    const stepX = 6 * TIMELINE_GEOMETRY.cellPitch;
+
+    let stepIndex = -1;
+    for (let index = 1; index < points.length; index += 1) {
+      if (
+        points[index].x === stepX
+        && points[index - 1].x === stepX
+        && points[index].y !== points[index - 1].y
+      ) {
+        stepIndex = index;
+        break;
+      }
+    }
+
+    expect(stepIndex).toBeGreaterThan(0);
+    expect(points[stepIndex - 1].y).toBe(18);
+    expect(points[stepIndex].y).toBe(0);
+    for (const point of points.slice(0, stepIndex - 1)) expect(point.y).toBe(18);
+  });
+
+  it('samples an ease channel from the evaluator at each frame', () => {
+    const path = buildRailMotionCurvePath(
+      channel('position-x', [key(0, 0), key(10, 100)]),
+      11,
+    );
+    const points = parseCurvePath(path);
+    const atFrame = (frame: number): CurvePoint | undefined => (
+      points.find((point) => point.x === frame * TIMELINE_GEOMETRY.cellPitch)
+    );
+
+    expect(atFrame(0)?.y).toBe(9);
+    expect(atFrame(5)?.y).toBeCloseTo(4.5, 9);
+    expect(atFrame(10)?.y).toBe(0);
+  });
+
+  it('clamps every y inside the lane for values beyond the display range', () => {
+    const path = buildRailMotionCurvePath(
+      channel('rotation', [key(0, 720, 'hold'), key(5, -720)]),
+      8,
+    );
+    const points = parseCurvePath(path);
+
+    for (const point of points) {
+      expect(point.y).toBeGreaterThanOrEqual(0);
+      expect(point.y).toBeLessThanOrEqual(TIMELINE_GEOMETRY.motionLaneHeight);
+    }
+    expect(points[0].y).toBe(0);
+    expect(points[points.length - 1].y).toBe(TIMELINE_GEOMETRY.motionLaneHeight);
+  });
+
+  it('caps sampling for a rail longer than the sample budget but keeps the full width', () => {
+    const path = buildRailMotionCurvePath(
+      channel('position-x', [key(0, 0), key(4096, 100)]),
+      4097,
+    );
+    const points = parseCurvePath(path);
+
+    expect(points.length).toBeLessThanOrEqual(4096);
+    expect(points[points.length - 1].x).toBe(4096 * TIMELINE_GEOMETRY.cellPitch);
+  });
+
+  it('matches evaluateRailMotionChannel at every sampled frame', () => {
+    const railId = 'rail-curve';
+    const positionChannel = channel(
+      'position-x',
+      [key(0, -30, 'ease', 12), key(9, 70)],
+    );
+    const rec = record(railId, [positionChannel]);
+    const path = buildRailMotionCurvePath(positionChannel, 10, TIMELINE_GEOMETRY.motionLaneHeight, {
+      railId,
+    });
+    const points = parseCurvePath(path);
+
+    for (const frame of [0, 2, 4, 6, 8, 9]) {
+      const point = points.find(
+        (candidate) => candidate.x === frame * TIMELINE_GEOMETRY.cellPitch,
+      );
+      expect(point).toBeDefined();
+      const value = evaluateRailMotionChannel(rec, 'position-x', frame);
+      const expected = expectedCurveY('position-x', value);
+      expect(point?.y).toBeCloseTo(expected, 1);
+    }
+  });
+
+  it('honours an explicit cell pitch and lane height', () => {
+    const path = buildRailMotionCurvePath(channel('opacity', [key(0, 1)]), 5, 20, { cellPitch: 12 });
+    const points = parseCurvePath(path);
+
+    expect(points[0]).toEqual({ x: 0, y: 0 });
+    expect(points[points.length - 1].x).toBe(4 * 12);
+  });
+
+  it('uses the design-token pitch by default', () => {
+    const path = buildRailMotionCurvePath(channel('opacity', [key(0, 1)]), 4);
+    const points = parseCurvePath(path);
+
+    expect(points[points.length - 1].x).toBe(3 * TIMELINE_GEOMETRY.cellPitch);
   });
 });
 

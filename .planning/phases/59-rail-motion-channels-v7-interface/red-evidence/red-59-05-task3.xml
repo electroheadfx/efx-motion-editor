@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="29" failures="9" errors="0" time="0.485">
+    <testsuite name="src/components/physic-paint/roto/railMotionEvaluator.test.ts" timestamp="2026-11-06T13:19:05.348Z" hostname="efx2.home" tests="29" failures="9" errors="0" skipped="0" time="0.015763958">
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; returns the frozen identity transform for an absent or empty record" time="0.000855625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; contributes the identity value for a channel the record does not carry" time="0.000254709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; holds the first value before the first key and the last value after the last key" time="0.000113542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; steps across a hold segment and jumps at the next key" time="0.000081084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; eases between two keys with a monotone smoothstep that hits both endpoints" time="0.0020605">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; holds a single-key channel at that value everywhere" time="0.000096875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; interpolates rotation in degrees with no wrap and converts once at the boundary" time="0.000153833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; evaluates the grouped Position channels independently" time="0.000057625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; assembles a frozen transform with identity defaults for absent channels" time="0.000094625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; accepts fractional and negative rail-local frames" time="0.000069084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; clamps opacity to 0..1 and floors scale at 0 after evaluation" time="0.000054833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; seeds differently per rail, channel and key frame" time="0.000333667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; is deterministic across repeated and interleaved calls" time="0.000105542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; interpolates smoothly between integer-frame noise samples" time="0.000067959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; applies the outgoing key amplitude and drops a zero-amplitude outgoing key" time="0.000061625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; wiggles around a hold key step value" time="0.000062834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; returns exactly the eased value when the amplitude is zero" time="0.000215583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion wiggle &gt; clamps opacity to 0..1 and floors scale at 0 after adding wiggle" time="0.004538208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; starts with M and writes at most one decimal place" time="0.0031935">
+            <failure message="expected &apos;M0,0&apos; to match /^M-?\d+(?:\.\d)?,-?\d+(?:\.\d)?(?: L-…/" type="AssertionError">
+AssertionError: expected &apos;M0,0&apos; to match /^M-?\d+(?:\.\d)?,-?\d+(?:\.\d)?(?: L-…/
+
+- Expected: 
+/^M-?\d+(?:\.\d)?,-?\d+(?:\.\d)?(?: L-?\d+(?:\.\d)?,-?\d+(?:\.\d)?)+$/
+
++ Received: 
+&quot;M0,0&quot;
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:307:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; draws a horizontal line for a single-key channel" time="0.000331042">
+            <failure message="expected 1 to be greater than or equal to 2" type="AssertionError">
+AssertionError: expected 1 to be greater than or equal to 2
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:314:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; emits an explicit vertical step at a hold key frame" time="0.000182084">
+            <failure message="expected -1 to be greater than 0" type="AssertionError">
+AssertionError: expected -1 to be greater than 0
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:340:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; samples an ease channel from the evaluator at each frame" time="0.000637959">
+            <failure message="expected +0 to be 9 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 9 // Object.is equality
+
+- Expected
++ Received
+
+- 9
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:356:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; clamps every y inside the lane for values beyond the display range" time="0.000206042">
+            <failure message="expected +0 to be 18 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 18 // Object.is equality
+
+- Expected
++ Received
+
+- 18
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:373:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; caps sampling for a rail longer than the sample budget but keeps the full width" time="0.000174708">
+            <failure message="expected +0 to be 73728 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 73728 // Object.is equality
+
+- Expected
++ Received
+
+- 73728
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:384:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; matches evaluateRailMotionChannel at every sampled frame" time="0.0002375">
+            <failure message="expected +0 to be close to 10.899655499830843, received difference is 10.899655499830843, but expected 0.05" type="AssertionError">
+AssertionError: expected +0 to be close to 10.899655499830843, received difference is 10.899655499830843, but expected 0.05
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:406:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; honours an explicit cell pitch and lane height" time="0.000173292">
+            <failure message="expected +0 to be 48 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 48 // Object.is equality
+
+- Expected
++ Received
+
+- 48
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:415:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion lane curve &gt; uses the design-token pitch by default" time="0.0001595">
+            <failure message="expected +0 to be 54 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 54 // Object.is equality
+
+- Expected
++ Received
+
+- 54
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:422:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion rail-local frame resolution &gt; subtracts the rail start and clamps before the rail at zero" time="0.00006175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion rail-local frame resolution &gt; throws on a non-finite app frame or rail start" time="0.000432125">
+        </testcase>
+    </testsuite>
+</testsuites>
