@@ -9,9 +9,14 @@
  * DOM state, and it never reads drawing keys, key counts, raster bounds,
  * repeat counts or wall-clock time. Content cycling therefore stays
  * independent of motion evaluation.
+ *
+ * The only non-model imports are the seeded `Random` PRNG and the pure
+ * `TIMELINE_GEOMETRY` design-token block (data only — it carries no Preact,
+ * store or DOM import), so the lane pitch has one source and no literal 18.
  */
 
 import { Random } from '@efxlab/motion-canvas-core';
+import { TIMELINE_GEOMETRY } from '../view/timelineRailDesign';
 import type {
   PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
@@ -209,16 +214,133 @@ export interface RailMotionCurvePathOptions {
   readonly railId?: string;
 }
 
+/** One sample per frame is the budget; longer rails are strided, never truncated. */
+const RAIL_MOTION_CURVE_MAX_SAMPLES = 4096;
+const RAIL_MOTION_CURVE_HOLD_EPSILON = 1e-6;
+const RAIL_MOTION_CURVE_PREVIEW_RAIL_ID = 'rail-motion-lane-preview';
+
 /**
- * Task 3 replaces this placeholder with the evaluator-sampled lane path.
+ * The SPECS display range per channel, in model units. Position ±100 px,
+ * Scale 0..200%, Rotation ±360°, Opacity 0..100%. Values outside the range
+ * clamp to the lane edge rather than leaving the viewBox.
+ */
+function railMotionCurveDisplayRange(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+): readonly [number, number] {
+  switch (channelId) {
+    case 'position-x':
+    case 'position-y':
+      return [-100, 100];
+    case 'scale':
+      return [0, 2];
+    case 'rotation':
+      return [-360, 360];
+    case 'opacity':
+      return [0, 1];
+    default:
+      return [0, 1];
+  }
+}
+
+function railMotionCurveY(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  value: number,
+  laneHeight: number,
+): number {
+  const [min, max] = railMotionCurveDisplayRange(channelId);
+  const normalized = (value - min) / (max - min);
+  return Math.min(laneHeight, Math.max(0, laneHeight - normalized * laneHeight));
+}
+
+/** One decimal place at most, and never a trailing ".0". */
+function formatRailMotionCurveCoordinate(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+/**
+ * Sample frames for the lane path.
+ *
+ * The uniform grid is capped at RAIL_MOTION_CURVE_MAX_SAMPLES. Key frames are
+ * added on top (bounded by the parser's 4096-key cap), and for a hold segment
+ * the left-limit sample at `key − ε` is kept so the step renders as two points
+ * at the same x instead of a slope.
+ */
+function collectRailMotionCurveFrames(
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  frameCount: number,
+): number[] {
+  const lastFrame = frameCount - 1;
+  const boundaryFrames: number[] = [];
+  for (let index = 0; index < keys.length; index += 1) {
+    const frame = keys[index].frame;
+    if (frame <= 0 || frame > lastFrame) continue;
+    if (index > 0 && keys[index - 1].easing === 'hold') {
+      boundaryFrames.push(frame - RAIL_MOTION_CURVE_HOLD_EPSILON);
+    }
+    boundaryFrames.push(frame);
+  }
+
+  const uniformBudget = Math.max(1, RAIL_MOTION_CURVE_MAX_SAMPLES - boundaryFrames.length);
+  const stride = Math.max(1, Math.ceil(frameCount / uniformBudget));
+  const frames = new Set<number>();
+  frames.add(0);
+  for (let frame = stride; frame < lastFrame; frame += stride) frames.add(frame);
+  frames.add(lastFrame);
+  for (const frame of boundaryFrames) frames.add(frame);
+  return [...frames].sort((left, right) => left - right);
+}
+
+/**
+ * The lane curve, in lane-local coordinates (viewBox `0 0 width laneHeight`).
+ *
+ * Every y is sampled THROUGH `evaluateRailMotionChannel`: the lane holds no
+ * interpolation math of its own, so the drawn curve and the applied transform
+ * cannot disagree. `x = railLocalFrame * cellPitch`; the pitch comes from the
+ * design token unless the caller overrides it.
  */
 export function buildRailMotionCurvePath(
-  _channel: PhysicPaintRotoRailMotionChannel,
-  _railFrameCount: number,
-  _laneHeight?: number,
-  _options: Readonly<RailMotionCurvePathOptions> = {},
+  channel: PhysicPaintRotoRailMotionChannel,
+  railFrameCount: number,
+  laneHeight: number = TIMELINE_GEOMETRY.motionLaneHeight,
+  options: Readonly<RailMotionCurvePathOptions> = {},
 ): string {
-  return 'M0,0';
+  const cellPitch = options.cellPitch ?? TIMELINE_GEOMETRY.cellPitch;
+  if (!Number.isFinite(railFrameCount) || railFrameCount < 1) {
+    throw new Error(
+      `PhysicPaintRotoRailMotionEvaluator: buildRailMotionCurvePath needs a finite railFrameCount of at least 1 (got ${String(railFrameCount)}).`,
+    );
+  }
+  if (!Number.isFinite(laneHeight) || laneHeight <= 0) {
+    throw new Error(
+      `PhysicPaintRotoRailMotionEvaluator: buildRailMotionCurvePath needs a finite positive laneHeight (got ${String(laneHeight)}).`,
+    );
+  }
+  if (!Number.isFinite(cellPitch) || cellPitch <= 0) {
+    throw new Error(
+      `PhysicPaintRotoRailMotionEvaluator: buildRailMotionCurvePath needs a finite positive cellPitch (got ${String(cellPitch)}).`,
+    );
+  }
+
+  const frameCount = Math.max(1, Math.floor(railFrameCount));
+  // A one-channel probe lets the builder sample through the evaluator; the
+  // railId seeds wiggle exactly like the record's applied transform.
+  const probe: PhysicPaintRotoRailMotionRecord = {
+    railId: options.railId ?? RAIL_MOTION_CURVE_PREVIEW_RAIL_ID,
+    anchorKeyId: '',
+    channels: [channel],
+  };
+
+  const frames = collectRailMotionCurveFrames(channel.keys, frameCount);
+  let path = '';
+  for (let index = 0; index < frames.length; index += 1) {
+    const frame = frames[index];
+    const value = evaluateRailMotionChannel(probe, channel.id, frame);
+    const x = frame * cellPitch;
+    const y = railMotionCurveY(channel.id, value, laneHeight);
+    path += `${index === 0 ? 'M' : ' L'}${formatRailMotionCurveCoordinate(x)},${formatRailMotionCurveCoordinate(y)}`;
+  }
+  return path;
 }
 
 /**
