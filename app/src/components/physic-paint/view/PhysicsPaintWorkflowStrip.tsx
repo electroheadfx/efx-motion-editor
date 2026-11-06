@@ -113,6 +113,7 @@ import {
   resolveTimelineRailPalette,
   resolveTimelineRailType,
   timelineRailCellStyle,
+  TIMELINE_MOTION,
   type TimelineCellKind,
   type TimelineCellPresentation,
   type TimelineRailType,
@@ -193,9 +194,21 @@ import {
   TRACK_NAME_CONTROL_CHAR,
   type TrackDeletePreview,
 } from '../../../stores/efxPaintStore';
-import { physicPaintStore } from '../../../stores/physicPaintStore';
-import { PhysicsPaintTrackRow, type TrackRowRailSelection } from './PhysicsPaintTrackRow';
+import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
+import {
+  EMPTY_RAIL_MOTION_HOST_FACTS,
+  PhysicsPaintTrackRow,
+  TimelineMotionBlock,
+  railMotionExpandedSelection,
+  readTrackRailMotionFacts,
+  resolveMotionRecordForRail,
+  resolveSelectedRailMotionId,
+  resolveTrackMotionLaneCount,
+  type RailMotionHostFacts,
+  type TrackRowRailSelection,
+} from './PhysicsPaintTrackRow';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
+import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -621,6 +634,60 @@ const STRIP_ROW_HEIGHT_PX = 31;
 const STRIP_CHROME_HEIGHT_PX = 132;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
+
+/** 59-11 (MUI-04/MUI-05): the ONE measured row layout. Every rail row is one
+ *  strip row unit (31px) tall; an expanded motion block adds one
+ *  `TIMELINE_MOTION.laneHeight` row per VISIBLE display lane (grouped Position
+ *  counts once, so the maximum is four) plus a single post-block gap. The
+ *  content height, the header column and the reorder insertion index all read
+ *  this array — there is no second height derivation anywhere. */
+export interface TrackRowLayoutInput {
+  readonly trackId: string;
+  /** Visible DISPLAY-lane count for this row (0 for every row whose block is
+   *  closed, which is every row except the expanded one). */
+  readonly laneCount: number;
+}
+
+export interface TrackRowLayoutEntry {
+  readonly trackId: string;
+  /** Row top in the strip's scroll content, in px. */
+  readonly offset: number;
+  /** The rail/cell band — always one row unit. */
+  readonly railHeight: number;
+  /** Clamped visible display-lane count. */
+  readonly laneCount: number;
+  /** railHeight + lanes × laneHeight + (lanes > 0 ? postBlockGap : 0). */
+  readonly height: number;
+}
+
+export interface TrackRowLayout {
+  readonly rows: readonly TrackRowLayoutEntry[];
+  readonly totalHeight: number;
+}
+
+/** The display projection can never exceed four rows (59-10). */
+const MAX_MOTION_DISPLAY_LANES = 4;
+
+export function resolveTrackRowLayout(
+  rows: readonly TrackRowLayoutInput[],
+): TrackRowLayout {
+  // The strip always supplies the placeholder row for an empty document, so
+  // no rows here genuinely means no content (total 0), never a hidden 31.
+  const railHeight = STRIP_ROW_HEIGHT_PX;
+  const entries: TrackRowLayoutEntry[] = [];
+  let offset = 0;
+  for (const row of rows) {
+    const laneCount = Number.isFinite(row.laneCount)
+      ? Math.max(0, Math.min(MAX_MOTION_DISPLAY_LANES, Math.floor(row.laneCount)))
+      : 0;
+    const height = railHeight
+      + laneCount * TIMELINE_MOTION.laneHeight
+      + (laneCount > 0 ? TIMELINE_MOTION.postBlockGap : 0);
+    entries.push({ trackId: row.trackId, offset, railHeight, laneCount, height });
+    offset += height;
+  }
+  return { rows: entries, totalHeight: offset };
+}
 
 /** 52.5-01b Task 3: the live sound-band gesture session (identity fixed at
  *  pointer-down; `next` is the clamped preview state, `origin` the commit
@@ -2558,10 +2625,64 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const [stripHeightOverride, setStripHeightOverride] = useState<number | null>(null);
   const stripResizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const trackCount = props.tracks?.length ?? 0;
-  // 50-UAT redesign: the photo/reference is a strip camera icon, NOT a row, so
-  // the auto strip height reserves only the Paint rows + the Bg row.
-  const rowCount = trackCount > 0 ? trackCount + (props.background ? 1 : 0) : 1;
-  const contentHeightPx = rowCount * STRIP_ROW_HEIGHT_PX;
+  // 59-11 (MUI-04): ONE session identity, read narrowly here so a chevron
+  // toggle re-renders the strip's measured layout. The strip mirrors the
+  // Studio's single-rail precedence (key rail first, then a lone loop clip) —
+  // exactly the identity the active row's chevron toggles.
+  const activeRailSetIdentity: RailSetIdentity | null = props.selectedRotoKeyRail !== undefined && props.selectedRotoKeyRail !== null
+    ? { kind: 'key-rail', firstKeyId: props.selectedRotoKeyRail.firstKeyId }
+    : (props.selectedRotoLoopClipIds !== undefined && props.selectedRotoLoopClipIds.length === 1
+      ? { kind: 'loop', loopId: props.selectedRotoLoopClipIds[0]! }
+      : null);
+  // The active track's motion facts: the ONLY track whose rail can be selected
+  // (only the active lane's rails are interactive), so it is the only row that
+  // can carry a non-zero lane count. The revision read below subscribes the
+  // strip to motion edits so a changed lane count re-measures immediately.
+  if (props.layerId && props.activeTrackId) getTrackRotorRevision(props.layerId, props.activeTrackId).value;
+  const expandedRailSelection = railMotionExpandedSelection.value;
+  const activeMotionFacts: RailMotionHostFacts = props.layerId && props.activeTrackId
+    ? readTrackRailMotionFacts(props.layerId, props.activeTrackId)
+    : EMPTY_RAIL_MOTION_HOST_FACTS;
+  const activeSelectedRailMotionId = resolveSelectedRailMotionId(activeMotionFacts.views, activeRailSetIdentity);
+  const activeMotionRecord = resolveMotionRecordForRail(activeMotionFacts.records, activeSelectedRailMotionId);
+  const activeMotionLaneCount = resolveTrackMotionLaneCount({
+    views: activeMotionFacts.views,
+    record: activeMotionRecord,
+    expandedSelection: expandedRailSelection,
+    selectedRail: activeRailSetIdentity,
+    selectedRailMotionId: activeSelectedRailMotionId,
+  });
+  const activeMotionView = activeMotionRecord === null
+    ? null
+    : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
+  // 59-11 Task 2 (MUI-04/MUI-05): the ordered rail rows + the optional Bg row.
+  // A motion-free (or fully collapsed) document yields one 31px entry per row,
+  // byte-identical to the pre-59-11 `rowCount` product.
+  const rowLayout = useMemo(() => {
+    const inputs: TrackRowLayoutInput[] = [];
+    if (trackCount === 0) {
+      // Empty strip: one placeholder row, exactly like the old rowCount=1.
+      inputs.push({ trackId: '', laneCount: 0 });
+    } else {
+      for (const track of props.tracks ?? []) {
+        inputs.push({
+          trackId: track.id,
+          laneCount: track.id === props.activeTrackId ? activeMotionLaneCount : 0,
+        });
+      }
+      if (props.background) inputs.push({ trackId: props.background.id, laneCount: 0 });
+    }
+    return resolveTrackRowLayout(inputs);
+  }, [props.tracks, props.background, props.activeTrackId, activeMotionLaneCount, trackCount]);
+  const rowLayoutById = useMemo(() => {
+    const map = new Map<string, TrackRowLayoutEntry>();
+    for (const entry of rowLayout.rows) map.set(entry.trackId, entry);
+    return map;
+  }, [rowLayout]);
+  const activeRowLayoutEntry = props.activeTrackId
+    ? (rowLayoutById.get(props.activeTrackId) ?? null)
+    : null;
+  const contentHeightPx = rowLayout.totalHeight;
   const maxStripHeightPx = STRIP_CHROME_HEIGHT_PX + contentHeightPx;
   const minStripHeightPx = STRIP_CHROME_HEIGHT_PX + STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX;
   const defaultStripHeightPx = Math.min(maxStripHeightPx, STRIP_MAX_HEIGHT_PX);
@@ -5764,6 +5885,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // v2.0.1 (README §2): the active header's 3px left accent follows
             // the selected (or rail-set) rail's bright palette line.
             selectedRailType: railDesign.selectedRailType,
+            // 59-11 (MUI-04): the header consumes the ONE measured layout and
+            // the same rail identity the rows use, so a block's lane spacers
+            // and its body lanes share an offset and its chevron agrees with
+            // the row's.
+            selectedRail: activeRailSetIdentity,
+            rowLayout: rowLayout.rows,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
@@ -5860,7 +5987,37 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <>
                   {props.tracks.map((track) =>
                     track.id === props.activeTrackId
-                      ? <Fragment key={track.id}>{renderActiveLane()}</Fragment>
+                      ? (
+                        // 59-11 (MUI-03/MUI-04): the active track is rendered by
+                        // the strip, not by a track row, so its expanded motion
+                        // block is hosted HERE — inside the layout entry's
+                        // height, so the following rows start where the header
+                        // says they do.
+                        <Fragment key={track.id}>
+                          <div
+                            class="physics-paint-active-lane-group"
+                            data-lane-count={activeMotionLaneCount}
+                            style={activeRowLayoutEntry !== null && activeRowLayoutEntry.laneCount > 0
+                              ? {
+                                position: 'relative',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                height: `${activeRowLayoutEntry.height}px`,
+                              }
+                              : undefined}
+                          >
+                            {renderActiveLane()}
+                            {activeMotionLaneCount > 0 && activeMotionRecord !== null ? (
+                              <TimelineMotionBlock
+                                record={activeMotionRecord}
+                                view={activeMotionView}
+                                laneCount={activeMotionLaneCount}
+                                cursorFrame={props.currentFrame ?? 0}
+                              />
+                            ) : null}
+                          </div>
+                        </Fragment>
+                      )
                       : (
                         <PhysicsPaintTrackRow
                           key={track.id}

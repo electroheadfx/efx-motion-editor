@@ -365,7 +365,7 @@ export interface RailMotionHostFacts {
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
 }
 
-const EMPTY_RAIL_MOTION_HOST_FACTS: RailMotionHostFacts = Object.freeze({
+export const EMPTY_RAIL_MOTION_HOST_FACTS: RailMotionHostFacts = Object.freeze({
   views: Object.freeze([]) as readonly RailMotionRailView[],
   records: Object.freeze([]) as readonly PhysicPaintRotoRailMotionRecord[],
 });
@@ -498,6 +498,92 @@ export function resolveTrackMotionLaneCount(input: TrackMotionLaneCountInput): n
   if (input.record === null) return 0;
   if (!resolveMotionBlockExpanded(input)) return 0;
   return resolveVisibleMotionDisplayLanes(input.record.channels).length;
+}
+
+export interface TimelineMotionBlockProps {
+  readonly record: PhysicPaintRotoRailMotionRecord;
+  readonly view: RailMotionRailView | null;
+  /** 59-10 display-lane count; 0 renders nothing. */
+  readonly laneCount: number;
+  readonly cursorFrame: number;
+  readonly channelMenuOpen?: boolean;
+  readonly onSelectMotionKey?: (frame: number) => void;
+  readonly onMotionCursorStep?: (direction: -1 | 1) => void;
+  readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+}
+
+/**
+ * The expanded motion block, shared by the presentational row and the strip's
+ * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap, the
+ * optional keyless-channel menu and the rounded outline over the row. Both
+ * hosts pass the SAME lane count into the outline, so the outline and the
+ * rendered lane rows can never disagree (one derivation).
+ */
+export function TimelineMotionBlock({
+  record,
+  view,
+  laneCount,
+  cursorFrame,
+  channelMenuOpen = false,
+  onSelectMotionKey,
+  onMotionCursorStep,
+  onToggleMotionKeyAtCursor,
+  onAddMotionChannel,
+}: TimelineMotionBlockProps) {
+  const lanes = resolveVisibleMotionDisplayLanes(record.channels);
+  if (laneCount === 0 || lanes.length === 0) return null;
+  const railType: TimelineRailType = view?.railType ?? 'standard';
+  const railFrameCount = view === null
+    ? 0
+    : Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
+  return (
+    <>
+      <div
+        class="physics-paint-motion-block-lanes"
+        data-motion-block-rail-id={record.railId}
+        style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
+      >
+        {lanes.map((lane) => (
+          <TimelineMotionChannelLane
+            key={lane.id}
+            railId={record.railId}
+            lane={lane}
+            railType={railType}
+            selected
+            railFrameCount={railFrameCount}
+            cursorFrame={cursorFrame}
+            onSelectKey={onSelectMotionKey}
+            onMoveCursorToKey={onMotionCursorStep === undefined
+              ? undefined
+              : (frame: number) => onMotionCursorStep(frame < cursorFrame ? -1 : 1)}
+            onToggleKeyAtCursor={onToggleMotionKeyAtCursor === undefined
+              ? undefined
+              : () => onToggleMotionKeyAtCursor(lane.channels[0]?.id ?? 'position-x')}
+          />
+        ))}
+        <div
+          class="physics-paint-motion-block-gap"
+          style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
+          aria-hidden="true"
+        />
+        {channelMenuOpen ? (
+          <TimelineMotionChannelMenu
+            channels={record.channels}
+            onAddChannel={(channelId) => onAddMotionChannel?.(channelId)}
+            onClose={() => {}}
+          />
+        ) : null}
+      </div>
+      <TimelineMotionBlockOutline
+        rowTop={0}
+        rowHeight={TRACK_ROW_RAIL_HEIGHT_PX}
+        laneCount={laneCount}
+        selected
+        lineColor={resolveTimelineRailPalette(railType, 'selected').line}
+      />
+    </>
+  );
 }
 
 interface TrackRowLoopVisuals {
@@ -870,10 +956,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const motionView = motionRecord === null
     ? null
     : (motionFacts.views.find((view) => view.railId === motionRecord.railId) ?? null);
-  const motionRailType: TimelineRailType = motionView?.railType ?? 'standard';
-  const motionRailFrameCount = motionView === null
-    ? 0
-    : Math.max(0, Math.floor(motionView.endFrameExclusive - motionView.startFrame));
   const motionExpanded = motionRecord !== null && motionLanes.length > 0;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
@@ -1165,50 +1247,16 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           Rendered ONLY while this row's selected rail block is expanded; a
           collapsed rail renders no lane and no outline. */}
       {motionExpanded && motionRecord !== null ? (
-        <div
-          class="physics-paint-motion-block-lanes"
-          data-motion-block-rail-id={motionRecord.railId}
-          style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
-        >
-          {motionLanes.map((lane) => (
-            <TimelineMotionChannelLane
-              key={lane.id}
-              railId={motionRecord.railId}
-              lane={lane}
-              railType={motionRailType}
-              selected
-              railFrameCount={motionRailFrameCount}
-              cursorFrame={motionCursorFrame}
-              onSelectKey={onSelectMotionKey}
-              onMoveCursorToKey={onMotionCursorStep === undefined
-                ? undefined
-                : (frame: number) => onMotionCursorStep(frame < motionCursorFrame ? -1 : 1)}
-              onToggleKeyAtCursor={onToggleMotionKeyAtCursor === undefined
-                ? undefined
-                : () => onToggleMotionKeyAtCursor(lane.channels[0]?.id ?? 'position-x')}
-            />
-          ))}
-          <div
-            class="physics-paint-motion-block-gap"
-            style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
-            aria-hidden="true"
-          />
-          {motionChannelMenuOpen ? (
-            <TimelineMotionChannelMenu
-              channels={motionRecord.channels}
-              onAddChannel={(channelId) => onAddMotionChannel?.(channelId)}
-              onClose={() => {}}
-            />
-          ) : null}
-        </div>
-      ) : null}
-      {motionExpanded ? (
-        <TimelineMotionBlockOutline
-          rowTop={0}
-          rowHeight={TRACK_ROW_RAIL_HEIGHT_PX}
+        <TimelineMotionBlock
+          record={motionRecord}
+          view={motionView}
           laneCount={motionLaneCount}
-          selected
-          lineColor={resolveTimelineRailPalette(motionRailType, 'selected').line}
+          cursorFrame={motionCursorFrame}
+          channelMenuOpen={motionChannelMenuOpen}
+          onSelectMotionKey={onSelectMotionKey}
+          onMotionCursorStep={onMotionCursorStep}
+          onToggleMotionKeyAtCursor={onToggleMotionKeyAtCursor}
+          onAddMotionChannel={onAddMotionChannel}
         />
       ) : null}
     </div>

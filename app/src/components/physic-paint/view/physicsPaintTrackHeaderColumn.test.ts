@@ -55,7 +55,8 @@ import * as efxPaintStoreModule from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED } from '../roto/physicsPaintRotoPhysicalModel';
 import { signal } from '@preact/signals';
-import { PhysicsPaintWorkflowStrip, computeEnsureRowScrollDelta } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintWorkflowStrip, computeEnsureRowScrollDelta, resolveTrackRowLayout } from './PhysicsPaintWorkflowStrip';
+import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -165,6 +166,10 @@ interface ColumnRenderOptions {
   readonly onAddTrack?: () => void;
   readonly onDuplicateTrack?: (trackId: string) => void;
   readonly onRequestDeleteTrack?: (trackId: string) => void;
+  readonly selectedRail?: RailSetIdentity | null;
+  readonly rowLayout?: ReturnType<typeof resolveTrackRowLayout>['rows'] | null;
+  readonly reorderDragTrackId?: string | null;
+  readonly reorderDragIndex?: number | null;
 }
 
 function renderColumn(options: ColumnRenderOptions): TestVNode {
@@ -180,6 +185,10 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
     onAddTrack: options.onAddTrack ?? vi.fn(),
     onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
     onRequestDeleteTrack: options.onRequestDeleteTrack ?? vi.fn(),
+    selectedRail: options.selectedRail,
+    rowLayout: options.rowLayout,
+    reorderDragTrackId: options.reorderDragTrackId ?? null,
+    reorderDragIndex: options.reorderDragIndex ?? null,
   });
 }
 
@@ -1127,5 +1136,131 @@ describe('physicsPaintTrackHeaderColumn vertical scroll + ensure-active-row (47-
     harness.render({ activeTrackId: fixture.trackA.id });
     harness.flushEffects();
     expect(harness.rowsRegion.scrollTop).toBe(120);
+  });
+});
+
+describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/MUI-05)', () => {
+  /** The rendered header-band offset sequence: each header cell costs one row
+   *  unit, each expanded group costs the layout entry's height. This is the
+   *  header pane's OWN geometry, derived from what the column actually
+   *  rendered — never from the layout it was handed. */
+  function headerOffsetSequence(root: TestVNode): { offsets: number[]; total: number } {
+    const band = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-header-rows'));
+    const offsets: number[] = [];
+    let offset = 0;
+    // The track map renders one array child, so flatten arrays as we walk the
+    // band's direct children in document order.
+    const collect = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        for (const child of node) collect(child);
+        return;
+      }
+      if (!isVnode(node)) return;
+      if (node.type === PhysicsPaintTrackRowHeader) {
+        offsets.push(offset);
+        offset += 31;
+      } else if (hasClass(node, 'physics-paint-track-header-group')) {
+        offsets.push(offset);
+        offset += Number.parseFloat(String((node.props.style as { height: string }).height));
+      }
+    };
+    for (const child of childrenOf(band)) collect(child);
+    return { offsets, total: offset };
+  }
+
+  it('renders one blank 18px lane spacer per visible display lane plus ONE 2px gap, sized from the layout entry', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 3 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = renderColumn({ ...fixture, rowLayout: layout.rows });
+    const groups = findAll(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.props['data-header-lane-count']).toBe(3);
+    expect((groups[0]!.props.style as { height: string }).height).toBe(`${31 + 3 * 18 + 2}px`);
+    const spacers = findAll(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane'));
+    expect(spacers).toHaveLength(3);
+    for (const spacer of spacers) {
+      expect((spacer.props.style as { height: string }).height).toBe('18px');
+    }
+    const gap = findOne(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane-gap'));
+    expect((gap.props.style as { height: string }).height).toBe('2px');
+    // The group wraps the real header cell, so its lane spacers sit under the
+    // rail row, never above it.
+    expect(findAll(groups[0]!, (vnode) => vnode.type === PhysicsPaintTrackRowHeader)).toHaveLength(1);
+  });
+
+  it('renders no lane group and no spacer for a collapsed row (byte-identical geometry)', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 0 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = renderColumn({ ...fixture, rowLayout: layout.rows });
+    expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'))).toHaveLength(0);
+    expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane'))).toHaveLength(0);
+    const sequence = headerOffsetSequence(root);
+    expect(sequence.offsets).toEqual(layout.rows.map((row) => row.offset));
+    expect(sequence.offsets).toEqual([0, 31, 62]);
+    expect(sequence.total).toBe(layout.totalHeight);
+    expect(sequence.total).toBe(3 * 31);
+  });
+
+  it('derives the header offsets from the SAME layout sequence the body pans — 0/1/3 lanes', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 3 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = renderColumn({ ...fixture, rowLayout: layout.rows });
+    const sequence = headerOffsetSequence(root);
+    // The body's rail tops ARE the layout offsets; the header's rendered
+    // offsets must match them exactly, for any scrollTop (both panes share
+    // the same content height and the same offset sequence).
+    expect(sequence.offsets).toEqual(layout.rows.map((row) => row.offset));
+    expect(sequence.offsets).toEqual([0, 31, 118]);
+    expect(sequence.total).toBe(layout.totalHeight);
+    expect(sequence.total).toBe(31 + 87 + 31);
+    // The Bg row starts exactly where the expanded block ends.
+    expect(layout.rows[2]!.offset).toBe(31 + 87);
+  });
+
+  it('positions the reorder indicator at the resolved row\'s RAIL offset, never index × 31', () => {
+    const fixture = makeTwoTrackFixture();
+    // The FIRST row carries a 3-lane block, so the second row's rail sits at
+    // 31 + 54 + 2 = 87 — index 1 × 31 would land INSIDE the open block.
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 3 },
+      { trackId: fixture.trackB.id, laneCount: 0 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = renderColumn({
+      ...fixture,
+      rowLayout: layout.rows,
+      reorderDragTrackId: fixture.trackB.id,
+      reorderDragIndex: 1,
+    });
+    const indicator = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-track-row-insertion-indicator'));
+    expect((indicator.props.style as { top: string }).top).toBe('87px');
+    expect((indicator.props.style as { top: string }).top).not.toBe(`${1 * 31}px`);
+    // The Bg row's header starts where the block ends.
+    expect(layout.rows[2]!.offset).toBe(87 + 31);
+  });
+
+  it('forwards the selected rail identity to the ACTIVE track header only', () => {
+    const fixture = makeTwoTrackFixture();
+    const selectedRail: RailSetIdentity = { kind: 'loop', loopId: 'loop-59-11' };
+    const root = renderColumn({ ...fixture, selectedRail });
+    const cells = findAll(root, (vnode) => vnode.type === PhysicsPaintTrackRowHeader);
+    const headerA = cells.find((cell) => cell.props.trackId === fixture.trackA.id)!;
+    const headerB = cells.find((cell) => cell.props.trackId === fixture.trackB.id)!;
+    const headerBg = cells.find((cell) => cell.props.trackId === fixture.background.id)!;
+    expect(headerA.props.selectedRail).toEqual(selectedRail);
+    expect(headerB.props.selectedRail).toBeNull();
+    expect(headerBg.props.selectedRail).toBeUndefined();
   });
 });

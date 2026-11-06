@@ -13,6 +13,7 @@ import {
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
+import { resolveTrackRowLayout } from './PhysicsPaintWorkflowStrip';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -2884,5 +2885,73 @@ describe('Frame go-to popover source contract (261105-cgl Task 2)', () => {
     expect(code).toContain('formatRulerSecondsLabel(framesToSeconds(frame, props.projectFps ?? 1))');
     // A typed value must commit before the outside click unmounts the panel.
     expect(code).toContain('if (active instanceof HTMLElement && panelRef.current?.contains(active)) active.blur();');
+  });
+});
+
+describe('59-11 Task 2: resolveTrackRowLayout — one measured layout for body, header and content height (MUI-04/MUI-05)', () => {
+  it('reserves exactly one row unit per collapsed rail — byte-identical to the pre-59-11 rowCount product', () => {
+    const layout = resolveTrackRowLayout([
+      { trackId: 'a', laneCount: 0 },
+      { trackId: 'b', laneCount: 0 },
+      { trackId: 'bg', laneCount: 0 },
+    ]);
+    // The old derivation was `rowCount * 31`; the measured one must produce the
+    // same numbers for every collapsed document.
+    expect(layout.rows.map((row) => row.height)).toEqual([31, 31, 31]);
+    expect(layout.rows.map((row) => row.offset)).toEqual([0, 31, 62]);
+    expect(layout.totalHeight).toBe(3 * 31);
+  });
+
+  it('adds one 18px lane row per visible display lane plus ONE 2px post-block gap', () => {
+    const layout = resolveTrackRowLayout([
+      { trackId: 'a', laneCount: 0 },
+      { trackId: 'b', laneCount: 1 },
+      { trackId: 'c', laneCount: 3 },
+    ]);
+    expect(layout.rows.map((row) => row.height)).toEqual([31, 31 + 18 + 2, 31 + 3 * 18 + 2]);
+    expect(layout.rows.map((row) => row.height)).toEqual([31, 51, 87]);
+    expect(layout.rows.map((row) => row.offset)).toEqual([0, 31, 82]);
+    expect(layout.totalHeight).toBe(169);
+    // Every entry's rail band stays one row unit — only the block grows.
+    expect(layout.rows.map((row) => row.railHeight)).toEqual([31, 31, 31]);
+  });
+
+  it('caps a fully populated block at four display lanes (105px), never five (123px)', () => {
+    const layout = resolveTrackRowLayout([{ trackId: 'a', laneCount: 4 }]);
+    expect(layout.rows[0]!.laneCount).toBe(4);
+    expect(layout.rows[0]!.height).toBe(31 + 4 * 18 + 2);
+    expect(layout.rows[0]!.height).toBe(105);
+    expect(layout.rows[0]!.height).not.toBe(123);
+    // A caller that smuggles a fifth lane (five MODEL channels) is clamped to
+    // the four DISPLAY lanes 59-10 can produce.
+    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: 5 }]).rows[0]!.laneCount).toBe(4);
+    // Non-finite / negative inputs fail closed to a collapsed row.
+    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: Number.NaN }]).rows[0]!.laneCount).toBe(0);
+    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: -2 }]).rows[0]!.laneCount).toBe(0);
+  });
+
+  it('derives the content height, the row offsets and the lane count from the SAME measured array', () => {
+    const code = source();
+    // The uniform product is gone — the content height is the layout total.
+    expect(code).not.toContain('rowCount * STRIP_ROW_HEIGHT_PX');
+    expect(code).toContain('const contentHeightPx = rowLayout.totalHeight;');
+    // The row unit's uses are enumerated: its definition, the ONE use inside
+    // resolveTrackRowLayout, the min-height unit — and, until Task 3 replaces
+    // it, the uniform reorder division (the last remover of this plan).
+    const rowUnitLines = code.split('\n').filter((line) => line.includes('STRIP_ROW_HEIGHT_PX'));
+    expect(rowUnitLines).toHaveLength(4);
+    expect(rowUnitLines[0]).toContain('const STRIP_ROW_HEIGHT_PX = 31;');
+    expect(rowUnitLines[1]).toContain('const railHeight = STRIP_ROW_HEIGHT_PX;');
+    expect(rowUnitLines[2]).toContain('STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX');
+    expect(rowUnitLines[3]).toContain('/ STRIP_ROW_HEIGHT_PX');
+    // The lane count is the shared row-side derivation (59-10's display
+    // projection), never a second guess, and the strip reads the one session
+    // expansion signal narrowly — it never writes it.
+    expect(code).toContain('resolveTrackMotionLaneCount');
+    expect(code).toContain('const expandedRailSelection = railMotionExpandedSelection.value;');
+    expect(code).not.toContain('railMotionExpandedSelection.value =');
+    // The header column consumes the SAME array instance the body uses.
+    expect(code).toContain('rowLayout: rowLayout.rows,');
+    expect(code).toContain('rowLayout.rows');
   });
 });
