@@ -3310,15 +3310,43 @@ describe('59-12 Task 4: merge-drop confirmation row (MOTN-10)', () => {
     expect(rowStart).toBeGreaterThan(-1);
     const row = code.slice(rowStart, code.indexOf('/**', rowStart + 10));
     expect(row).toContain('const notice = railMotionMergeNotice.value;');
+    expect(row).toContain('const undoable = railMotionMergeNoticeUndoable.value;');
     expect(row).toContain('if (notice === null) return null;');
     expect(row).toContain('role="status"');
     expect(row).toContain('aria-live="polite"');
-    expect(row).toContain('{buildRailMotionMergeNoticeCopy(notice)}');
+    expect(row).toContain('{buildRailMotionMergeNoticeCopy(notice, { undoable })}');
     expect(row).toContain('aria-label="Dismiss rail merge notice"');
     expect(row).toContain('onClick={() => dismissRailMotionMergeNotice()}');
     // The strip body never subscribes to the notice signal — only the leaf does.
     expect(code.split('railMotionMergeNotice.value').length - 1).toBe(1);
     // The row renders at the top of the action-bar region.
     expect(code).toContain('<RailMotionMergeNoticeRow />');
+  });
+});
+
+describe('59-20: the move wrapper publishes a non-undoable drop notice (CR-02)', () => {
+  it('imports the publisher and the companion signal beside the existing notice imports', () => {
+    const code = source();
+    expect(code).toContain('publishRailMotionMergeNotice,');
+    expect(code).toContain('railMotionMergeNoticeUndoable,');
+  });
+
+  it('publishes the store drop as non-undoable and dismisses a stale notice otherwise', () => {
+    const code = source();
+    const portStart = code.indexOf('moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame, removeFromSource) => {');
+    expect(portStart).toBeGreaterThan(-1);
+    const portEnd = code.indexOf('publishStatus: (message)', portStart);
+    const port = code.slice(portStart, portEnd);
+    // The store's drop report is the ONLY input — the wrapper never invents
+    // an id or a span, and this direct-write path creates no undo entry.
+    expect(port).toContain('if (result.mergedDrop) {');
+    expect(port).toContain('publishRailMotionMergeNotice(result.mergedDrop, { undoable: false });');
+    expect(port).toContain('dismissRailMotionMergeNotice();');
+    // Publication happens before the destination selection, so a failing
+    // selection can never swallow the report.
+    expect(port.indexOf('publishRailMotionMergeNotice(result.mergedDrop, { undoable: false });'))
+      .toBeLessThan(port.indexOf('props.onSelectTrack?.(toTrackId);'));
+    // The pre-existing ship assertion stays inside the same slice.
+    expect(port).toContain('await props.publishDocumentSync?.()');
   });
 });

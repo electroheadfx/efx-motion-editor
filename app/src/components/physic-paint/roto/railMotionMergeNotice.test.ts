@@ -9,6 +9,9 @@ import {
   publishRailMotionMergeNotice,
   railMotionMergeNotice,
 } from './railMotionMergeNotice';
+// 59-20: the companion signal is read through the namespace so the RED run
+// fails on the missing member's assertion, never on a module-load error.
+import * as noticeModule from './railMotionMergeNotice';
 
 const modulePath = resolve(dirname(fileURLToPath(import.meta.url)), 'railMotionMergeNotice.ts');
 
@@ -96,5 +99,66 @@ describe('59-12 Task 4: copy and non-persistence', () => {
     expect(code).not.toMatch(/\buseState\b/);
     expect(code).not.toMatch(/\buseEffect\b/);
     expect(code.split('railMotionMergeNotice.value =').length - 1).toBe(2);
+  });
+});
+
+describe('59-20: undoability is a session companion signal (MOTN-10)', () => {
+  function undoableSignal(): { value: boolean } {
+    expect(typeof noticeModule.railMotionMergeNoticeUndoable).toBe('function');
+    return noticeModule.railMotionMergeNoticeUndoable;
+  }
+
+  it('publishing without options marks the notice undoable', () => {
+    const signal = undoableSignal();
+    publishRailMotionMergeNotice(validInput);
+    expect(signal.value).toBe(true);
+  });
+
+  it('publishing with { undoable: false } marks the notice non-undoable', () => {
+    const signal = undoableSignal();
+    publishRailMotionMergeNotice(validInput, { undoable: false });
+    expect(signal.value).toBe(false);
+    expect(railMotionMergeNotice.value).toEqual(validInput);
+  });
+
+  it('a later explicit undoable true restores the promise', () => {
+    const signal = undoableSignal();
+    publishRailMotionMergeNotice(validInput, { undoable: false });
+    publishRailMotionMergeNotice(validInput, { undoable: true });
+    expect(signal.value).toBe(true);
+  });
+
+  it('an invalid publish changes neither signal', () => {
+    const signal = undoableSignal();
+    publishRailMotionMergeNotice(validInput, { undoable: false });
+    const rejected = publishRailMotionMergeNotice(
+      { railId: '', startFrame: 0, endFrameExclusive: 1 },
+      { undoable: true },
+    );
+    expect(rejected).toBeNull();
+    expect(railMotionMergeNotice.value).toEqual(validInput);
+    expect(signal.value).toBe(false);
+  });
+
+  it('dismiss clears the notice and restores the undoable default', () => {
+    const signal = undoableSignal();
+    publishRailMotionMergeNotice(validInput, { undoable: false });
+    dismissRailMotionMergeNotice();
+    expect(railMotionMergeNotice.value).toBeNull();
+    expect(signal.value).toBe(true);
+  });
+
+  it('the non-undoable copy names the span and never promises a restore', () => {
+    const notice = createRailMotionMergeNotice(validInput);
+    expect(notice).not.toBeNull();
+    const undoableCopy = buildRailMotionMergeNoticeCopy(notice!);
+    const plainCopy = buildRailMotionMergeNoticeCopy(notice!, { undoable: false });
+    expect(plainCopy).not.toBe(undoableCopy);
+    expect(plainCopy).toContain(`${validInput.startFrame}–${validInput.endFrameExclusive}`);
+    expect(plainCopy).toContain('cannot be undone');
+    expect(plainCopy).not.toContain('Undo restores');
+    // The default path keeps today's exact sentence.
+    expect(undoableCopy)
+      .toBe('Merged rails — motion on frames 12–24 was removed. Undo restores it.');
   });
 });
