@@ -15,8 +15,8 @@ Each maps to exactly one roadmap phase.
 - [x] **MOTN-03**: User can animate Position (grouped whole-position, or split X + Y channels), Scale, Rotation, and Opacity
 - [x] **MOTN-04**: Channels open on demand, one at a time; no lane appears by default
 - [x] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
-- [ ] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
-- [ ] **MOTN-07**: The rail transform is applied at the compositor: one raster per track per frame, content cycles while motion continues, and nothing re-bakes
+- [x] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
+- [x] **MOTN-07**: The rail transform is applied at the compositor: one raster per track per frame, content cycles while motion continues, and nothing re-bakes
 - [x] **MOTN-08**: Edit view, Play, and export produce the same transform, including when the rail is on the active track
 - [x] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
 - [x] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
@@ -110,8 +110,8 @@ Deferred to a later milestone. Not in the current roadmap.
 | MOTN-03 | Phase 59 | Complete |
 | MOTN-04 | Phase 59 | Complete |
 | MOTN-05 | Phase 59 | Complete |
-| MOTN-06 | Phase 59 | Pending |
-| MOTN-07 | Phase 59 | Pending |
+| MOTN-06 | Phase 59 | Complete |
+| MOTN-07 | Phase 59 | Complete |
 | MOTN-08 | Phase 59 | Complete |
 | MOTN-09 | Phase 59 | Complete |
 | MOTN-10 | Phase 59 | Complete |

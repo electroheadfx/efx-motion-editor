@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-21-PLAN.md
-last_updated: "2026-11-06T20:57:50.417Z"
+stopped_at: Completed 59-19-PLAN.md
+last_updated: "2026-11-06T21:09:24.980Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 9e67f60ccff18ed9c97f6b9eb2bbfb39821b1c21
+state_head: b9c7750aea6825c45bfd6c5d49a52b6fa1f8aeea
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 20 of 21
+Plan: 21 of 21
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -75,6 +75,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P17 | 30min | 2 tasks | 11 files |
 | Phase 59 P18 | 2min | 2 tasks | 3 files |
 | Phase 59 P21 | 3min | 2 tasks | 4 files |
+| Phase 59 P19 | 6min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: 59-21: an absent channel keeps its projected identity value and unit; only the affordance changes.
 - [Phase 59]: 59-21: the panel owns the refusal copy and one section-level note id shared through ariaDescribedBy; the projection stays copy-free.
 - [Phase 59]: 59-21: the field onChange returns before commitMotionValue when present is false, so the zero-commit law holds under direct invocation.
+- [Phase 59]: Inject the infinite-rail span as a structural resolver: railMotionIdentity.ts gains no import and its no-resolver default stays byte-identical.
+- [Phase 59]: Consult the resolver only for repeat === 'infinity' and Math.max it against the fallback, so a wrong answer cannot shorten a view and a missing injection degrades to current behaviour (T-59-55).
+- [Phase 59]: Store, row and hook each build the resolver from the store's own memoized resolution context, so the compositor, lane and gizmo share one end.
+- [Phase 59]: physicsPaintRotoRailSetCopy.ts keeps the no-resolver default: copy binds a bare Key Rail's railId by anchor and frames a Loop Clip's motion by loopId.
 
 ### Pending Todos
 
@@ -218,8 +223,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T20:57:50.389Z
-Stopped at: Completed 59-21-PLAN.md
+Last session: 2026-11-06T21:09:24.951Z
+Stopped at: Completed 59-19-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
