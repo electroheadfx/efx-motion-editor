@@ -655,4 +655,88 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     expect(replace).toHaveBeenCalledTimes(1);
     expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toBe(before);
   });
+
+  // 59-20 (CR-02): the removal transaction computes the merge transition but
+  // used to keep only `.railMotions`, so a two-sided merge could never be
+  // announced. The fixture is the ONLY shape `onMergeRails` drops on: records
+  // A@0, B@1, C@2, D@3 with incoming breaks at B and D split the rails into
+  // [A] [B,C] [D]; clearing frame 1 joins [A] and the C half of [B,C] into
+  // [A,C], so the B-anchored record is a merge whose head (A) AND tail (B)
+  // anchors both carry records. The tail is dropped and must be reported.
+  const MERGE_RECORDS = [record('A', 0), record('B', 1), record('C', 2), record('D', 3)] as const;
+  const MERGE_BREAKS = ['B', 'D'] as const;
+
+  it('reports the dropped rail and its prior app-frame span from clearTrackFrames', () => {
+    seedMotionDocument({
+      records: MERGE_RECORDS,
+      breaks: MERGE_BREAKS,
+      railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'B')],
+    });
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [1]);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.mergedDrop?.railId).toBe('rail-tail');
+    expect(result.mergedDrop).toEqual({ railId: 'rail-tail', startFrame: 1, endFrameExclusive: 3 });
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-head');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
+  });
+
+  it('reports the same merge drop from cutTrackSelection', () => {
+    seedMotionDocument({
+      records: MERGE_RECORDS,
+      breaks: MERGE_BREAKS,
+      railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'B')],
+    });
+
+    const result = physicPaintStore.cutTrackSelection(LAYER, TEST_TRACK_ID, ['B']);
+
+    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload).toBeDefined();
+    expect(result.mergedDrop?.railId).toBe('rail-tail');
+    expect(result.mergedDrop).toEqual({ railId: 'rail-tail', startFrame: 1, endFrameExclusive: 3 });
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(1);
+  });
+
+  it('reports no drop for the same edit when the tail anchor carries no record (control)', () => {
+    // Same keys and breaks as the merge fixture, but the second record is
+    // anchored at C — `onMergeRails` needs a record at BOTH the head and the
+    // tail anchor of the merge, so this row proves the A/B fixture (not the
+    // assertion style) is what makes the merge reachable.
+    seedMotionDocument({
+      records: MERGE_RECORDS,
+      breaks: MERGE_BREAKS,
+      railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'C')],
+    });
+    const before = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [1]);
+
+    expect(result).toEqual({ ok: true });
+    const after = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(after).toEqual(before);
+    expect(after[0]).toBe(before[0]);
+    expect(after[1]).toBe(before[1]);
+  });
+
+  it('fails closed with apply-failed and reports no drop when the motion write is rejected', () => {
+    seedMotionDocument({
+      records: MERGE_RECORDS,
+      breaks: MERGE_BREAKS,
+      railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'B')],
+    });
+    vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions').mockReturnValue({
+      ok: false,
+      error: 'PhysicPaintRotoRailMotions: rejected',
+    });
+
+    const result = physicPaintStore.cutTrackSelection(LAYER, TEST_TRACK_ID, ['B']);
+
+    expect(result).toEqual({ ok: false, reason: 'apply-failed' });
+  });
 });
