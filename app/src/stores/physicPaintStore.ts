@@ -68,6 +68,7 @@ import {
 } from '../components/physic-paint/roto/railMotionModel';
 import {
   assignRailMotionRailViews,
+  createRailMotionViewSpanResolver,
   reconcileRailMotions,
   type RailMotionLoopClipSource,
   type RailMotionRailView,
@@ -1240,6 +1241,10 @@ function _resolveRotoRailMotionProjection(
   }
   const orderedRealKeys = [...structural.recordMap.values()]
     .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId));
+  // 59-19 (G2 / CR-04): the span resolver comes from the SAME structural entry
+  // the projection memoizes on — the loop context the drawings resolve
+  // against — so the compositor, the lane and the gizmo share one end.
+  const viewSpanResolver = createRailMotionViewSpanResolver(structural.loopResolution.ranges);
   const views = assignRailMotionRailViews(
     structural.railMotions,
     loopClips,
@@ -1248,6 +1253,8 @@ function _resolveRotoRailMotionProjection(
       incomingInterpolationBreakKeyIds: new Set(structural.incomingInterpolationBreakKeyIds),
       groupOwnedKeyIds,
     }),
+    undefined,
+    viewSpanResolver,
   );
   const projection: RotoRailMotionProjection = {
     structural,
