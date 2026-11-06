@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-04-PLAN.md
-last_updated: "2026-11-06T13:47:55.422Z"
+stopped_at: Completed 59-07-PLAN.md
+last_updated: "2026-11-06T15:22:22.914Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: f67f9b7a69823574ad620a100959d02e24a77820
+state_head: 4bf474e2d159d144f89083cefbeca2311ba26c50
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 6
+  completed_plans: 7
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 7 of 16
+Plan: 8 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P05 | 8min | 3 tasks | 8 files |
 | Phase 59 P06 | ~10min | 3 tasks | 2 files |
 | Phase 59 P04 | ~6min | 2 tasks | 5 files |
+| Phase 59 P07 | 21m | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Rust canonical_rail_motions mirrors the TypeScript byte format at the reserved ordinal; a present non-array railMotions fails closed instead of being silently skipped
 - [Phase 59]: The rail-motion fixture entries were appended from the TypeScript authority after the Rust encoder landed; the three 59-01 expected literals did not move and rail-motion-empty is byte-identical to untouched
 - [Phase 59]: The rail-motions ordinal is asserted on the Rust-computed source, so a wrong-branch insertion fails even if the fixture were regenerated
+- [Phase 59]: Render-source contentRevision field carries the raster revision; the structural entry and getRotoPhysicalContentRevision stay canonical
+- [Phase 59]: Coordinator stages rail motion like loop clips (replay target else launch read) and hashes it into stagedRevision, the deferred document and the payload
+- [Phase 59]: Requirements MOTN-01/02/12/REL-03 left pending per the 59-01/02/03/06 precedent; 59-08/59-12 and live UAT close them
 
 ### Pending Todos
 
@@ -160,8 +164,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T13:47:55.399Z
-Stopped at: Completed 59-04-PLAN.md
+Last session: 2026-11-06T15:22:22.885Z
+Stopped at: Completed 59-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
