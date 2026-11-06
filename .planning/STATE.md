@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-18-PLAN.md
-last_updated: "2026-11-06T20:53:05.038Z"
+stopped_at: Completed 59-21-PLAN.md
+last_updated: "2026-11-06T20:57:50.417Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: e0464ac557f3a2c9a6bcb7f8125e3e1a577be4c9
+state_head: 9e67f60ccff18ed9c97f6b9eb2bbfb39821b1c21
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 21
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 19 of 21
+Plan: 20 of 21
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -74,6 +74,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P14 | 22min | 3 tasks | 6 files |
 | Phase 59 P17 | 30min | 2 tasks | 11 files |
 | Phase 59 P18 | 2min | 2 tasks | 3 files |
+| Phase 59 P21 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Rail-set copy builders feed the parser and the revision from the SAME motion collection; the fail-closed parse is the structural proof they agree.
 - [Phase 59]: getRotoRailMotions stays optional with the shared empty constant default, so a hook host without the port keeps the exact motion-free payload.
 - [Phase 59]: The Studio motion closure mirrors getRotoLoopClips (launch context in scope, studioActiveTrackId() at call time), never a captured id or memo.
+- [Phase 59]: 59-21: present means channel existence on record.channels, never key presence at the read frame.
+- [Phase 59]: 59-21: an absent channel keeps its projected identity value and unit; only the affordance changes.
+- [Phase 59]: 59-21: the panel owns the refusal copy and one section-level note id shared through ariaDescribedBy; the projection stays copy-free.
+- [Phase 59]: 59-21: the field onChange returns before commitMotionValue when present is false, so the zero-commit law holds under direct invocation.
 
 ### Pending Todos
 
@@ -213,8 +218,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T20:53:05.011Z
-Stopped at: Completed 59-18-PLAN.md
+Last session: 2026-11-06T20:57:50.389Z
+Stopped at: Completed 59-21-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
