@@ -34,6 +34,10 @@ import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../types/physicPaint';
 import type { AquarelleStrokeFrameAnchor } from '@efxlab/efx-watercolor/bake';
 import { sliceRailKeyScripts, type RailKeyScriptResult } from '../components/physic-paint/roto/physicsPaintRotoRailKeyScripts';
+// 59-20 (WR-04): the reveal-side direct doors reconcile rail motion in their
+// OWN transaction. The reconciler is pure (no store/bridge/signal import) and
+// the store pair is already mutually imported, so this adds no cycle.
+import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
 import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
@@ -1820,14 +1824,11 @@ export function deleteRevealRail(layerId: string, loopId: string): RevealRailMut
   const rail = _findRevealRail(document, layerId, loopId);
   if (!rail) return { ok: false, reason: 'no-track' };
 
+  // 59-20 (WR-04): every read the motion reconciliation needs happens BEFORE
+  // the first write — `previous` is the pre-edit snapshot and `next` is exactly
+  // the state the writes below publish.
   const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
-  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
-    layerId,
-    rail.trackId,
-    currentClips.filter((clip) => clip.loopId !== loopId),
-  );
-  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
-
+  const remainingClips = currentClips.filter((clip) => clip.loopId !== loopId);
   const keyIdSet = new Set(rail.clip.sourceKeyIds);
   const records = physicPaintStore.getRotoRealKeyRecords(layerId, rail.trackId);
   const remaining = records.filter((record) => !keyIdSet.has(record.keyId));
@@ -1836,6 +1837,23 @@ export function deleteRevealRail(layerId: string, loopId: string): RevealRailMut
   // projection fails closed on a break that references a removed key.
   const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId);
   const prunedBreaks = currentBreaks.filter((keyId) => !keyIdSet.has(keyId));
+  const reconciliation = reconcileRailMotionsForDocumentEdit({
+    previous: {
+      realKeyRecords: records,
+      incomingInterpolationBreakKeyIds: new Set(currentBreaks),
+      loopClips: currentClips,
+    },
+    next: {
+      realKeyRecords: remaining,
+      incomingInterpolationBreakKeyIds: new Set(prunedBreaks),
+      loopClips: remainingClips,
+    },
+    railMotions: physicPaintStore.getRotoPhysicalRailMotions(layerId, rail.trackId),
+  });
+
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, rail.trackId, remainingClips);
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+
   if (prunedBreaks.length !== currentBreaks.length) {
     const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId, prunedBreaks);
     if (!breaksResult.ok) return { ok: false, reason: 'bake-failed' };
@@ -1844,6 +1862,16 @@ export function deleteRevealRail(layerId: string, loopId: string): RevealRailMut
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
   const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
   if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
+
+  // 59-20 (WR-04): a loop-bound record whose loop was deleted must disappear in
+  // the SAME acknowledged transaction — the reconciler's loop branch removes it,
+  // and nowhere here special-cases it.
+  const railMotionsResult = physicPaintStore.replaceRotoPhysicalRailMotions(
+    layerId,
+    rail.trackId,
+    reconciliation.railMotions,
+  );
+  if (!railMotionsResult.ok) return { ok: false, reason: 'bake-failed' };
 
   const candidate: EfxPaintDocument = {
     ...document,
@@ -1928,16 +1956,9 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
   const survivingKeyIdSet = new Set(remaining.map((record) => record.keyId));
   const currentBreaks = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId);
   const prunedBreaks = currentBreaks.filter((keyId) => survivingKeyIdSet.has(keyId));
-  if (prunedBreaks.length !== currentBreaks.length) {
-    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId, prunedBreaks);
-    if (!breaksResult.ok) return { ok: false, reason: 'bake-failed' };
-  }
+  const survivingKeyIds = rail.clip.sourceKeyIds.filter((keyId) => survivingKeyIdSet.has(keyId));
   const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, rail.trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, rail.trackId);
-  const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
-  if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
-
-  const survivingKeyIds = rail.clip.sourceKeyIds.filter((keyId) => remaining.some((record) => record.keyId === keyId));
   // The finite extent is the REQUESTED end — the shrink and the stretch land
   // on the same law, and what is stored matches what is shown (D-07).
   // G-52-4: Infinity keeps the pinned one-cycle lifecycle (the shape the
@@ -1955,13 +1976,47 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
     originalEndExclusive: resizedEnd,
     visibleRanges: [{ start: rail.clip.placementStart, endExclusive: resizedEnd }],
   };
+  // 59-20 (WR-04): a resize that prunes EVERY clip-owned key has emptied the
+  // rail — an emptied reveal rail is not a rail, so the clip is omitted from
+  // the replacement collection. Leaving it in place would make the reconciler
+  // classify the loop as surviving and retain its motion record forever.
   const currentClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, rail.trackId);
-  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(
+  const nextClips = survivingKeyIds.length === 0
+    ? currentClips.filter((clip) => clip.loopId !== loopId)
+    : currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip));
+  // 59-20 (WR-04): the same pre-write snapshot drives the motion reconciliation
+  // — `next` carries the surviving records, the pruned breaks and that loop
+  // collection, so the emptied case's record is classified as deleted.
+  const reconciliation = reconcileRailMotionsForDocumentEdit({
+    previous: {
+      realKeyRecords: records,
+      incomingInterpolationBreakKeyIds: new Set(currentBreaks),
+      loopClips: currentClips,
+    },
+    next: {
+      realKeyRecords: remaining,
+      incomingInterpolationBreakKeyIds: new Set(prunedBreaks),
+      loopClips: nextClips,
+    },
+    railMotions: physicPaintStore.getRotoPhysicalRailMotions(layerId, rail.trackId),
+  });
+
+  if (prunedBreaks.length !== currentBreaks.length) {
+    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, rail.trackId, prunedBreaks);
+    if (!breaksResult.ok) return { ok: false, reason: 'bake-failed' };
+  }
+  const recordResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, rail.trackId, remaining, interpolation, capacity);
+  if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
+  const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, rail.trackId, nextClips);
+  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+  // 59-20 (WR-04): the motion write is the LAST write of the same transaction,
+  // after the loop collection it was reconciled against is published.
+  const railMotionsResult = physicPaintStore.replaceRotoPhysicalRailMotions(
     layerId,
     rail.trackId,
-    currentClips.map((clip) => (clip.loopId === loopId ? updatedClip : clip)),
+    reconciliation.railMotions,
   );
-  if (!loopResult.ok) return { ok: false, reason: 'loop-clip-failed' };
+  if (!railMotionsResult.ok) return { ok: false, reason: 'bake-failed' };
 
   const candidate: EfxPaintDocument = {
     ...document,

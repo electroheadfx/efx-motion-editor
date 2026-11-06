@@ -2443,6 +2443,45 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     .filter((record) => record.appFrame >= spanStart && record.appFrame < spanEnd)
     .map((record) => record.keyId));
   const prunedBreaks = currentBreaks.filter((keyId) => !spanRecordKeyIds.has(keyId));
+  // 59-20 (WR-04): every fact the motion reconciliation needs is read BEFORE
+  // the first write, and the post-bake loop snapshot deliberately accounts for
+  // the clip rewrite `replayRevealRail` performs AFTER this bake: inside each
+  // current source cycle, every key whose record frame falls in the replaced
+  // span becomes the baked key written at that same frame. Skipping it would
+  // leave the new baked keys unowned in the snapshot, merge a neighbouring Key
+  // Rail segment into them and silently drop that rail's motion.
+  const leadingBakedKeyId = bakedRecords.find((record) => record.appFrame === spanStart)?.keyId ?? null;
+  const finalBreaks = leadingBakedKeyId !== null && !prunedBreaks.includes(leadingBakedKeyId)
+    ? [...prunedBreaks, leadingBakedKeyId]
+    : prunedBreaks;
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(input.layerId, input.trackId);
+  const bakedKeyIdByAppFrame = new Map(bakedRecords.map((record) => [record.appFrame, record.keyId] as const));
+  const existingRecordByKeyId = new Map(existingRecords.map((record) => [record.keyId, record] as const));
+  const nextLoopClips = currentLoopClips.map((clip) => {
+    let substituted = false;
+    const sourceKeyIds = clip.sourceKeyIds.map((keyId) => {
+      const record = existingRecordByKeyId.get(keyId);
+      if (record === undefined || record.appFrame < spanStart || record.appFrame >= spanEnd) return keyId;
+      const bakedKeyId = bakedKeyIdByAppFrame.get(record.appFrame);
+      if (bakedKeyId === undefined || bakedKeyId === keyId) return keyId;
+      substituted = true;
+      return bakedKeyId;
+    });
+    return substituted ? { ...clip, sourceKeyIds } : clip;
+  });
+  const reconciliation = reconcileRailMotionsForDocumentEdit({
+    previous: {
+      realKeyRecords: existingRecords,
+      incomingInterpolationBreakKeyIds: new Set(currentBreaks),
+      loopClips: currentLoopClips,
+    },
+    next: {
+      realKeyRecords: merged,
+      incomingInterpolationBreakKeyIds: new Set(finalBreaks),
+      loopClips: nextLoopClips,
+    },
+    railMotions: physicPaintStore.getRotoPhysicalRailMotions(input.layerId, input.trackId),
+  });
   // The prune port only runs when something is ACTUALLY pruned. A fresh track
   // has no mounted record/break maps (the port would fail closed), and any
   // break left after the prune references an outside-span record that the bake
@@ -2459,12 +2498,17 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   const commitResult = physicPaintStore.replaceRotoPhysicalRecords(input.layerId, input.trackId, merged, interpolation, capacity);
   if (!commitResult.ok) return { ok: false, error: commitResult.error };
 
-  const leadingBakedKeyId = bakedRecords.find((record) => record.appFrame === spanStart)?.keyId ?? null;
+  // 59-20 (WR-04): the reconciled motion collection lands between the records
+  // write and the leading-break write — the same acknowledged transaction.
+  const railMotionsResult = physicPaintStore.replaceRotoPhysicalRailMotions(
+    input.layerId,
+    input.trackId,
+    reconciliation.railMotions,
+  );
+  if (!railMotionsResult.ok) return { ok: false, error: railMotionsResult.error };
+
   if (leadingBakedKeyId !== null) {
-    const leadingBreaks = prunedBreaks.includes(leadingBakedKeyId)
-      ? prunedBreaks
-      : [...prunedBreaks, leadingBakedKeyId];
-    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(input.layerId, input.trackId, leadingBreaks);
+    const breaksResult = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(input.layerId, input.trackId, finalBreaks);
     if (!breaksResult.ok) return { ok: false, error: breaksResult.error };
   }
 
