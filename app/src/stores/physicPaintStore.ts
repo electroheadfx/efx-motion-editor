@@ -61,6 +61,11 @@ import { backgroundParticipates, participatingPaintTracks } from '../efx-paint/c
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { MceImageRef } from '../types/project';
 import {
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  parsePhysicPaintRotoRailMotions,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../components/physic-paint/roto/railMotionModel';
+import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
@@ -208,6 +213,7 @@ export function mountTrackRuntime(layerId: string, trackId: string): void {
   _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, 0);
   _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, PHYSIC_PAINT_MAX_APPLY_FRAMES);
   _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY);
+  _getOrCreateLayerTrackMap(_rotoPhysicalRailMotions, layerId).set(trackId, PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
   _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, Object.freeze([]));
   _getOrCreateTrackRevisions(trackId);
 }
@@ -239,6 +245,7 @@ export function removeTrackRuntime(layerId: string, trackId: string): boolean {
     _rotoPhysicalCursorAppFrame,
     _rotoPhysicalCapacity,
     _rotoPhysicalLoopClips,
+    _rotoPhysicalRailMotions,
     _rotoPhysicalIncomingInterpolationBreakKeyIds,
     _rotoPlaybackSettings,
   ]) {
@@ -508,6 +515,10 @@ const _rotoPhysicalCapacity = new Map<string, Map<string, number>>();
 // Durable Loop Clip collections (Phase 43, D-29). Values are always
 // frozen parser output; mutation sites REPLACE the array, never edit in place.
 const _rotoPhysicalLoopClips = new Map<string, Map<string, readonly PhysicPaintRotoLoopClip[]>>();
+// Durable rail-motion collections (Phase 59, MOTN-12). Same law as Loop Clips:
+// values are always frozen parser output; mutation sites REPLACE the array,
+// never edit in place.
+const _rotoPhysicalRailMotions = new Map<string, Map<string, readonly PhysicPaintRotoRailMotionRecord[]>>();
 const _rotoPhysicalIncomingInterpolationBreakKeyIds = new Map<string, Map<string, readonly string[]>>();
 const _rotoPlaybackSettings = new Map<string, Map<string, PhysicPaintRotoPlaybackSettings>>();
 const _rotoPhysicalOperationLeases = new Map<string, PhysicPaintRotoPhysicalOperationLeaseToken>();
@@ -1105,6 +1116,7 @@ type RotoPhysicalStructuralCacheEntry = {
   interpolation: PhysicPaintRotoInterpolationState;
   capacity: number;
   loopClips: readonly PhysicPaintRotoLoopClip[];
+  railMotions: readonly PhysicPaintRotoRailMotionRecord[];
   incomingInterpolationBreakKeyIds: readonly string[];
   projection: PhysicPaintRotoPhysicalTimelineProjection | null;
   contentRevision: string;
@@ -1120,6 +1132,51 @@ const _rotoPhysicalStructuralCache = new Map<string, RotoPhysicalStructuralCache
 /** Composite structural memo key: `${layerId}\0${trackId}` (46-01 TRK-03). */
 function _rotoPhysicalStructuralCacheKey(layerId: string, trackId: string): string {
   return `${layerId}\0${trackId}`;
+}
+
+/**
+ * Phase 59 (MOTN-12 / T-59-08): the ONE authority that builds a physical
+ * content revision inside the store.
+ *
+ * Every call site routes through here — a revision built without the
+ * rail-motion collection silently serves a stale composite (the defect class
+ * this plan exists to prevent), so a new direct
+ * `buildPhysicPaintRotoPhysicalRevision` call outside this helper is a bug,
+ * not a style violation. The source-string gate in
+ * `railMotionPersistence.test.ts` pins the single call site.
+ *
+ * `records`, `interpolation` and `groupOverrideRecords` are explicit because
+ * a "previous vs next" comparison holds both sides in hand. The three
+ * additive collections default to the CURRENT maps: every default must read
+ * the live collection, because a revision built from stale rail motions is
+ * exactly the silent-drop defect.
+ */
+type RotoPhysicalRevisionInputs = {
+  readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly interpolation: PhysicPaintRotoInterpolationState;
+  readonly groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
+  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  readonly incomingInterpolationBreakKeyIds?: readonly string[];
+  readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
+};
+
+function _buildRotoPhysicalRevisionFor(
+  layerId: string,
+  trackId: string,
+  inputs: RotoPhysicalRevisionInputs,
+): string {
+  return buildPhysicPaintRotoPhysicalRevision(
+    inputs.records,
+    inputs.interpolation,
+    inputs.loopClips
+      ?? (_rotoPhysicalLoopClips.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY),
+    inputs.incomingInterpolationBreakKeyIds
+      ?? (_rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)?.get(trackId)
+        ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY),
+    inputs.groupOverrideRecords,
+    inputs.railMotions
+      ?? (_rotoPhysicalRailMotions.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY),
+  );
 }
 
 /** Delete every structural memo entry owned by one layer. */
@@ -1139,6 +1196,7 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
   const interpolation = _rotoPhysicalInterpolationState.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED;
   const capacity = _rotoPhysicalCapacity.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_MAX_APPLY_FRAMES;
   const loopClips = _rotoPhysicalLoopClips.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  const railMotions = _rotoPhysicalRailMotions.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
   const incomingInterpolationBreakKeyIds = _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)?.get(trackId)
     ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY;
   const cacheKey = _rotoPhysicalStructuralCacheKey(layerId, trackId);
@@ -1149,6 +1207,7 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
     && cached.interpolation === interpolation
     && cached.capacity === capacity
     && cached.loopClips === loopClips
+    && cached.railMotions === railMotions
     && cached.incomingInterpolationBreakKeyIds === incomingInterpolationBreakKeyIds) return cached;
   const records = Array.from(recordMap.values()).sort((a, b) => a.appFrame - b.appFrame);
   const identities = records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame }));
@@ -1164,15 +1223,17 @@ function _resolveRotoPhysicalStructural(layerId: string, trackId: string): RotoP
     interpolation,
     capacity,
     loopClips,
+    railMotions,
     incomingInterpolationBreakKeyIds,
     projection: result.ok ? result.projection : null,
-    contentRevision: buildPhysicPaintRotoPhysicalRevision(
+    contentRevision: _buildRotoPhysicalRevisionFor(layerId, trackId, {
       records,
       interpolation,
+      groupOverrideRecords: Array.from(groupOverrideMap.values()),
       loopClips,
       incomingInterpolationBreakKeyIds,
-      Array.from(groupOverrideMap.values()),
-    ),
+      railMotions,
+    }),
     loopResolution: derivePhysicPaintRotoLoopRanges({
       identities,
       loopClips,
@@ -1263,6 +1324,7 @@ function _clearLayerState(layerId: string): boolean {
   changed = _rotoPhysicalInterpolationState.delete(layerId) || changed;
   changed = _rotoPhysicalScriptMotion.delete(layerId) || changed;
   changed = _rotoPhysicalLoopClips.delete(layerId) || changed;
+  changed = _rotoPhysicalRailMotions.delete(layerId) || changed;
   changed = _rotoPhysicalIncomingInterpolationBreakKeyIds.delete(layerId) || changed;
   changed = _rotoPhysicalSelectedKeyId.delete(layerId) || changed;
   changed = _rotoPhysicalCursorAppFrame.delete(layerId) || changed;
@@ -2833,6 +2895,7 @@ function _buildRotoPhysicalDocumentForLayer(
   const cursorCandidate = selectedRecord?.appFrame ?? _rotoPhysicalCursorAppFrame.get(layerId)?.get(trackId) ?? 0;
   const cursorAppFrame = Math.max(0, Math.min(capacity - 1, cursorCandidate));
   const loopClips = _rotoPhysicalLoopClips.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  const railMotions = _rotoPhysicalRailMotions.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
   const incomingInterpolationBreakKeyIds = _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)?.get(trackId)
     ?? PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY;
   return parsePhysicPaintRotoPhysicalDocument({
@@ -2844,14 +2907,16 @@ function _buildRotoPhysicalDocumentForLayer(
     background: _rotoBackgroundMetadata.get(layerId)?.get(trackId) ?? null,
     selectedKeyId,
     cursorAppFrame,
-    revision: buildPhysicPaintRotoPhysicalRevision(
-      persistedRealKeyRecords,
+    revision: _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: persistedRealKeyRecords,
       interpolation,
+      groupOverrideRecords: persistedGroupOverrideRecords,
       loopClips,
       incomingInterpolationBreakKeyIds,
-      persistedGroupOverrideRecords,
-    ),
+      railMotions,
+    }),
     loopClips,
+    railMotions,
     incomingInterpolationBreakKeyIds,
   });
 }
@@ -3667,6 +3732,8 @@ export const physicPaintStore = {
     scriptMotionTracks?.delete(trackId);
     const loopClipTracks = _rotoPhysicalLoopClips.get(layerId);
     loopClipTracks?.delete(trackId);
+    const railMotionTracks = _rotoPhysicalRailMotions.get(layerId);
+    railMotionTracks?.delete(trackId);
     const incomingBreakTracks = _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId);
     incomingBreakTracks?.delete(trackId);
     const selectedKeyTracks = _rotoPhysicalSelectedKeyId.get(layerId);
@@ -3717,6 +3784,7 @@ export const physicPaintStore = {
       _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(physical.interpolation));
       _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, physical.scriptMotion);
       _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, physical.loopClips);
+      _getOrCreateLayerTrackMap(_rotoPhysicalRailMotions, layerId).set(trackId, physical.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
       _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, physical.incomingInterpolationBreakKeyIds);
       _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, physical.selectedKeyId);
       _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, physical.cursorAppFrame);
@@ -3994,6 +4062,7 @@ export const physicPaintStore = {
     _rotoPhysicalInterpolationState.get(layerId)?.delete(trackId);
     _rotoPhysicalScriptMotion.get(layerId)?.delete(trackId);
     _rotoPhysicalLoopClips.get(layerId)?.delete(trackId);
+    _rotoPhysicalRailMotions.get(layerId)?.delete(trackId);
     _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)?.delete(trackId);
     _rotoPhysicalSelectedKeyId.get(layerId)?.delete(trackId);
     _rotoPhysicalCursorAppFrame.get(layerId)?.delete(trackId);
@@ -4032,7 +4101,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _flattenedFondSignatures.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalRailMotions.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _flattenedFondSignatures.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -4049,6 +4118,7 @@ export const physicPaintStore = {
     _rotoPhysicalInterpolationState.clear();
     _rotoPhysicalScriptMotion.clear();
     _rotoPhysicalLoopClips.clear();
+    _rotoPhysicalRailMotions.clear();
     _rotoPhysicalIncomingInterpolationBreakKeyIds.clear();
     _rotoPhysicalSelectedKeyId.clear();
     _rotoPhysicalCursorAppFrame.clear();
@@ -4151,23 +4221,27 @@ export const physicPaintStore = {
     const groupOverrideRecords = this.getRotoGroupOverrideRecords(layerId, trackId);
     const previousInterpolation = this.getRotoPhysicalInterpolationState(layerId, trackId);
     const previousCapacity = this.getRotoPhysicalCapacity(layerId, trackId);
-    // Records-only replacement: the Loop Clip collection is untouched, so both
-    // sides of the revision comparison carry the current collection.
+    // Records-only replacement: the Loop Clip and rail-motion collections are
+    // untouched, so both sides of the revision comparison carry the current
+    // collections explicitly.
     const currentLoopClips = this.getRotoPhysicalLoopClips(layerId, trackId);
-    const previousRevision = buildPhysicPaintRotoPhysicalRevision(
-      previousRecords,
-      previousInterpolation,
-      currentLoopClips,
-      currentIncomingBreaks,
+    const currentRailMotions = this.getRotoPhysicalRailMotions(layerId, trackId);
+    const previousRevision = _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: previousRecords,
+      interpolation: previousInterpolation,
       groupOverrideRecords,
-    );
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
-      validatedRecords,
-      nextInterpolation,
-      currentLoopClips,
-      currentIncomingBreaks,
+      loopClips: currentLoopClips,
+      incomingInterpolationBreakKeyIds: currentIncomingBreaks,
+      railMotions: currentRailMotions,
+    });
+    const nextRevision = _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: validatedRecords,
+      interpolation: nextInterpolation,
       groupOverrideRecords,
-    );
+      loopClips: currentLoopClips,
+      incomingInterpolationBreakKeyIds: currentIncomingBreaks,
+      railMotions: currentRailMotions,
+    });
     if (_rotoRealKeyRecords.get(layerId)?.has(trackId) && previousRevision === nextRevision && previousCapacity === capacity) return { ok: true };
 
     // Atomically replace the complete record set and indexes.
@@ -4320,6 +4394,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
+    _getOrCreateLayerTrackMap(_rotoPhysicalRailMotions, layerId).set(trackId, document.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
     _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, document.selectedKeyId);
     _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, document.cursorAppFrame);
@@ -4383,6 +4458,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalInterpolationState, layerId).set(trackId, _retireFrameBlendingMode(document.interpolation));
     _getOrCreateLayerTrackMap(_rotoPhysicalScriptMotion, layerId).set(trackId, document.scriptMotion);
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, document.loopClips);
+    _getOrCreateLayerTrackMap(_rotoPhysicalRailMotions, layerId).set(trackId, document.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
     _getOrCreateLayerTrackMap(_rotoPhysicalIncomingInterpolationBreakKeyIds, layerId).set(trackId, document.incomingInterpolationBreakKeyIds);
     _getOrCreateLayerTrackMap(_rotoPhysicalSelectedKeyId, layerId).set(trackId, document.selectedKeyId);
     _getOrCreateLayerTrackMap(_rotoPhysicalCursorAppFrame, layerId).set(trackId, document.cursorAppFrame);
@@ -4417,6 +4493,7 @@ export const physicPaintStore = {
       // the per-read dataUrl-inclusive rehash.
       revision: this.getRotoPhysicalContentRevision(layerId, trackId)!,
       loopClips: this.getRotoPhysicalLoopClips(layerId, trackId),
+      railMotions: this.getRotoPhysicalRailMotions(layerId, trackId),
       incomingInterpolationBreakKeyIds: this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
     });
   },
@@ -4535,14 +4612,17 @@ export const physicPaintStore = {
         groupOverrideRecords,
         // The revision fingerprint covers the raster carriers, so the healed
         // collections need their own revision — the same law the open leg's
-        // materialization applies.
-        revision: buildPhysicPaintRotoPhysicalRevision(
-          realKeyRecords,
-          physical.interpolation,
-          physical.loopClips,
-          physical.incomingInterpolationBreakKeyIds,
+        // materialization applies. The rail motions travel from the already
+        // parsed `physical` document: this helper builds the healed document
+        // BEFORE the mirror installs it, so the map is not the authority yet.
+        revision: _buildRotoPhysicalRevisionFor(layerId, trackId, {
+          records: realKeyRecords,
+          interpolation: physical.interpolation,
           groupOverrideRecords,
-        ),
+          loopClips: physical.loopClips,
+          incomingInterpolationBreakKeyIds: physical.incomingInterpolationBreakKeyIds,
+          railMotions: physical.railMotions,
+        }),
       };
       const installed = this.mirrorRotoPhysicalDocument(layerId, trackId, healed);
       if (!installed.ok) {
@@ -4642,6 +4722,15 @@ export const physicPaintStore = {
    */
   getRotoPhysicalLoopClips(layerId: string, trackId: string): readonly PhysicPaintRotoLoopClip[] {
     return _rotoPhysicalLoopClips.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  },
+
+  /**
+   * Read the durable rail-motion collection for a track (Phase 59, MOTN-12).
+   * Returns the shared frozen empty collection when the track has no physical
+   * state published.
+   */
+  getRotoPhysicalRailMotions(layerId: string, trackId: string): readonly PhysicPaintRotoRailMotionRecord[] {
+    return _rotoPhysicalRailMotions.get(layerId)?.get(trackId) ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
   },
 
   /** Return the complete immutable allowed-to-own incoming break collection for one track. */
@@ -4752,15 +4841,60 @@ export const physicPaintStore = {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : 'Invalid Loop Clip collection.' };
     }
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
-      this.getRotoRealKeyRecords(layerId, trackId),
-      this.getRotoPhysicalInterpolationState(layerId, trackId),
-      validated,
-      this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
-      this.getRotoGroupOverrideRecords(layerId, trackId),
-    );
+    const nextRevision = _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: this.getRotoRealKeyRecords(layerId, trackId),
+      interpolation: this.getRotoPhysicalInterpolationState(layerId, trackId),
+      groupOverrideRecords: this.getRotoGroupOverrideRecords(layerId, trackId),
+      loopClips: validated,
+      incomingInterpolationBreakKeyIds: this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
+      railMotions: this.getRotoPhysicalRailMotions(layerId, trackId),
+    });
     if (nextRevision === this.getRotoPhysicalContentRevision(layerId, trackId)) return { ok: true };
     _getOrCreateLayerTrackMap(_rotoPhysicalLoopClips, layerId).set(trackId, validated);
+    rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
+    bumpTrackRevision(layerId, trackId);
+    return { ok: true };
+  },
+
+  /**
+   * Validate and atomically replace the complete per-track rail-motion
+   * collection (Phase 59, MOTN-12). Records, interpolation and Loop Clips are
+   * untouched. Failure changes nothing; an accepted canonical change
+   * publishes one visible change and moves the canonical content revision
+   * (rail motions join the fingerprint, exactly like Loop Clips).
+   *
+   * The revision-equality early return makes an unchanged collection a
+   * no-op: no visible bump, no dirty signal — the idempotence law every
+   * store setter follows.
+   */
+  replaceRotoPhysicalRailMotions(
+    layerId: string,
+    trackId: string,
+    value: unknown,
+  ): { ok: true } | { ok: false; error: string } {
+    if (!layerId || typeof layerId !== 'string') {
+      return { ok: false, error: 'Layer ID must be a non-empty string.' };
+    }
+    if (!trackId || typeof trackId !== 'string') {
+      return { ok: false, error: 'Track ID must be a non-empty string.' };
+    }
+    if (!_rotoRealKeyRecords.get(layerId)?.has(trackId)) {
+      return { ok: false, error: 'Physical Roto layer does not exist.' };
+    }
+    let validated: readonly PhysicPaintRotoRailMotionRecord[];
+    try {
+      validated = parsePhysicPaintRotoRailMotions(value);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Invalid rail motion collection.' };
+    }
+    const nextRevision = _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: this.getRotoRealKeyRecords(layerId, trackId),
+      interpolation: this.getRotoPhysicalInterpolationState(layerId, trackId),
+      groupOverrideRecords: this.getRotoGroupOverrideRecords(layerId, trackId),
+      railMotions: validated,
+    });
+    if (nextRevision === this.getRotoPhysicalContentRevision(layerId, trackId)) return { ok: true };
+    _getOrCreateLayerTrackMap(_rotoPhysicalRailMotions, layerId).set(trackId, validated);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
     bumpTrackRevision(layerId, trackId);
     return { ok: true };
@@ -5175,13 +5309,14 @@ export const physicPaintStore = {
     } catch (error) {
       return reject(error instanceof Error ? error.message : 'Invalid physical render payload.');
     }
-    const nextRevision = buildPhysicPaintRotoPhysicalRevision(
-      validated,
-      this.getRotoPhysicalInterpolationState(layerId, trackId),
-      this.getRotoPhysicalLoopClips(layerId, trackId),
-      this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
-      this.getRotoGroupOverrideRecords(layerId, trackId),
-    );
+    const nextRevision = _buildRotoPhysicalRevisionFor(layerId, trackId, {
+      records: validated,
+      interpolation: this.getRotoPhysicalInterpolationState(layerId, trackId),
+      groupOverrideRecords: this.getRotoGroupOverrideRecords(layerId, trackId),
+      loopClips: this.getRotoPhysicalLoopClips(layerId, trackId),
+      incomingInterpolationBreakKeyIds: this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
+      railMotions: this.getRotoPhysicalRailMotions(layerId, trackId),
+    });
     if (nextRevision === currentRevision) return { ok: true, changed: false, contentRevision: currentRevision };
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(trackId, new Map(validated.map((record) => [record.keyId, record])));
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
@@ -5202,6 +5337,7 @@ export const physicPaintStore = {
     _rotoPhysicalInterpolationState.get(layerId)?.delete(trackId);
     _rotoPhysicalScriptMotion.get(layerId)?.delete(trackId);
     _rotoPhysicalLoopClips.get(layerId)?.delete(trackId);
+    _rotoPhysicalRailMotions.get(layerId)?.delete(trackId);
     _rotoPhysicalIncomingInterpolationBreakKeyIds.get(layerId)?.delete(trackId);
     _rotoPhysicalSelectedKeyId.get(layerId)?.delete(trackId);
     _rotoPhysicalCursorAppFrame.get(layerId)?.delete(trackId);
