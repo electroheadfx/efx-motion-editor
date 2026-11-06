@@ -110,7 +110,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 20/21 plans executed (16 executed, 5 gap-closure plans pending)
+**Plans:** 21/21 plans executed (16 executed, 5 gap-closure plans pending)
 
 Plans:
 **Wave 1**
@@ -156,7 +156,7 @@ Plans:
 - [x] 59-18-PLAN.md — G3/CR-01 + MOTN-05: rail-set Copy and Duplicate carry the rails' motion and hash it (wave 2)
 - [x] 59-21-PLAN.md — G1/IN-02: absent Motion channels render disabled and described, never as fake-editable fields (wave 2, depends on 59-17)
 - [x] 59-19-PLAN.md — G2/CR-04: an infinite Loop Clip's motion view spans its full resolved duration (wave 3)
-- [ ] 59-20-PLAN.md — G4/CR-02 + WR-04: merge-drop reporting and honest publication, plus reveal delete/resize/bake motion reconciliation (wave 4)
+- [x] 59-20-PLAN.md — G4/CR-02 + WR-04: merge-drop reporting and honest publication, plus reveal delete/resize/bake motion reconciliation (wave 4)
 
 **Build order (research §12)**:
   1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
@@ -246,7 +246,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 59. Rail Motion Channels & v7 Interface | 20/21 | In Progress | - |
+| 59. Rail Motion Channels & v7 Interface | 21/21 | In Progress | - |
 | 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
