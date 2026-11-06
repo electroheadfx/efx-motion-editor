@@ -493,6 +493,11 @@ export function projectLayerDocument(
           physical.loopClips,
           physical.incomingInterpolationBreakKeyIds,
           groupOverrideRecords,
+          // 59-14 (REL-02): rail motion is a canonical revision term (59-03).
+          // Omitting it here made every motion-bearing save emit a sub-file
+          // whose revision the on-disk parser recomputes differently, so the
+          // save threw and the reopen leg could never have run.
+          physical.railMotions,
         ),
       },
       // The persisted reading: the projected records carry media references

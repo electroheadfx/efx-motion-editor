@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="8" failures="3" errors="0" time="0.529">
+    <testsuite name="src/lib/railMotionDependencySurface.test.ts" timestamp="2026-11-06T18:36:50.932Z" hostname="efx.local" tests="4" failures="0" errors="0" skipped="0" time="0.011000292">
+        <testcase classname="src/lib/railMotionDependencySurface.test.ts" name="REL-01: the phase dependency surface (59-14) &gt; scans a non-empty module list — every phase module exists on disk" time="0.000949166">
+        </testcase>
+        <testcase classname="src/lib/railMotionDependencySurface.test.ts" name="REL-01: the phase dependency surface (59-14) &gt; resolves every bare import to a workspace-declared package" time="0.005088208">
+        </testcase>
+        <testcase classname="src/lib/railMotionDependencySurface.test.ts" name="REL-01: the phase dependency surface (59-14) &gt; finds the bare specifiers the phase really imports — the scan is not vacuous" time="0.004202875">
+        </testcase>
+        <testcase classname="src/lib/railMotionDependencySurface.test.ts" name="REL-01: the phase dependency surface (59-14) &gt; adds no entry to app/package.json dependencies — frozen against the phase start" time="0.000184625">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/railMotionPackageRoundTrip.test.ts" timestamp="2026-11-06T18:36:50.933Z" hostname="efx.local" tests="4" failures="3" errors="0" skipped="0" time="0.028263458">
+        <testcase classname="src/lib/railMotionPackageRoundTrip.test.ts" name="REL-02: rail motion survives the package save → reopen boundary (59-14) &gt; reopens with the collection deep-equal and the canonical revision identical" time="0.01787825">
+            <failure message="PhysicPaintRotoPhysicalDocument: canonical revision mismatch." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: canonical revision mismatch.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1942:11
+ ❯ src/lib/efxPaintPersistence.ts:485:26
+ ❯ projectLayerDocument src/lib/efxPaintPersistence.ts:480:34
+ ❯ Module.savePackage src/lib/efxPaintPersistence.ts:1224:25
+ ❯ src/lib/railMotionPackageRoundTrip.test.ts:407:5
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionPackageRoundTrip.test.ts" name="REL-02: rail motion survives the package save → reopen boundary (59-14) &gt; re-writes the reopened document to the same persisted physical bytes" time="0.00297925">
+            <failure message="PhysicPaintRotoPhysicalDocument: canonical revision mismatch." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: canonical revision mismatch.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1942:11
+ ❯ src/lib/efxPaintPersistence.ts:485:26
+ ❯ projectLayerDocument src/lib/efxPaintPersistence.ts:480:34
+ ❯ Module.savePackage src/lib/efxPaintPersistence.ts:1224:25
+ ❯ src/lib/railMotionPackageRoundTrip.test.ts:438:5
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionPackageRoundTrip.test.ts" name="REL-02: rail motion survives the package save → reopen boundary (59-14) &gt; still writes the per-key media files the records reference" time="0.002618209">
+            <failure message="PhysicPaintRotoPhysicalDocument: canonical revision mismatch." type="Error">
+Error: PhysicPaintRotoPhysicalDocument: canonical revision mismatch.
+ ❯ Module.parsePhysicPaintRotoPhysicalDocument src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1942:11
+ ❯ src/lib/efxPaintPersistence.ts:485:26
+ ❯ projectLayerDocument src/lib/efxPaintPersistence.ts:480:34
+ ❯ Module.savePackage src/lib/efxPaintPersistence.ts:1224:25
+ ❯ src/lib/railMotionPackageRoundTrip.test.ts:473:5
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionPackageRoundTrip.test.ts" name="REL-02: rail motion survives the package save → reopen boundary (59-14) &gt; fails closed on a tampered revision rather than re-deriving it" time="0.001733792">
+        </testcase>
+    </testsuite>
+</testsuites>
