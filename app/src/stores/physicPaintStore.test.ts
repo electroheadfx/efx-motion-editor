@@ -1929,10 +1929,13 @@ describe('physicPaintStore', () => {
       return null;
     }
 
-    it('RED 1 guard: returns null for an unknown layer and for non-integer/negative frames', () => {
+    it('RED 1 guard: returns null for an unknown layer and non-finite/negative frames', () => {
       expect(physicPaintStore.getFlattenedFrame('unknown-layer', 5)).toBeNull();
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
-      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 1.5)).toBeNull();
+      // 59-09 (REL-04): a fractional frame is no longer rejected — it delivers
+      // the INTEGER content frame's composite (the export sub-frame law); only
+      // frames with no content frame at all stay null.
+      expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, 1.5)?.frame).toBe(1);
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, -1)).toBeNull();
       expect(physicPaintStore.getFlattenedFrame(FLAT_LAYER, NaN)).toBeNull();
     });

@@ -995,6 +995,13 @@ const BACKGROUND_RESOLUTION_CAPACITY = PHYSIC_PAINT_MAX_APPLY_FRAMES;
 /** 48-03 D-11: the flattened straight-alpha delivery record (PreviewPhysicPaintFrameSource-compatible + missing). */
 export interface EfxPaintFlattenedFrameRecord {
   readonly layerId: string;
+  /**
+   * 59-09 (REL-04): the INTEGER content frame of this composite. A request at
+   * a sub-frame (`5.375`) delivers the content composed at the floored integer
+   * frame under a draw-time rail transform sampled at the unfloored frame, so this
+   * field — like `cacheKey` and `renderedFrame` — describes the CONTENT
+   * identity and never carries a fraction.
+   */
   readonly frame: number;
   readonly cacheKey: string;
   /**
@@ -1286,6 +1293,12 @@ function _measureRotoDrawingKeyInk(
  * frame. The 59-05 evaluator is the only interpolation authority; the
  * rail-local frame is the app frame minus the rail's start, clamped at 0.
  *
+ * 59-09 (REL-04 / D-18): the rail view is looked up at `contentFrame` (view
+ * spans are integer half-open, so this is the identical view a fractional
+ * sample falls in — and the view memo stays integer-only and bounded), while
+ * the EVALUATOR is sampled at the UNFLOORED `frame`. That split is the whole
+ * law: content at the integer frame, transform at the sub-frame.
+ *
  * The pivot is the union of the rail's drawing-key ink bounds (D-17),
  * memoized per rail + RASTER revision — the pixel-identity revision, so a
  * motion-only edit never re-measures a single key.
@@ -1294,11 +1307,12 @@ function _trackMotionTransformAtFrame(
   layerId: string,
   trackId: string,
   frame: number,
+  contentFrame: number,
   structural: RotoPhysicalStructuralCacheEntry,
 ): EfxPaintTrackMotionTransform | null {
   if (structural.railMotions.length === 0) return null;
   const projection = _resolveRotoRailMotionProjection(layerId, trackId, structural);
-  const view = _railMotionViewAtFrame(projection, frame);
+  const view = _railMotionViewAtFrame(projection, contentFrame);
   if (view === null || view.railId === null) return null;
   const record = projection.activeRecords.get(view.railId);
   if (record === undefined) return null;
@@ -3264,7 +3278,30 @@ function _resolveFlattenedFrame(
   soloTrackId: string | null = null,
   sliceOptions: FlattenedFrameSliceOptions = {},
 ): EfxPaintFlattenedFrameRecord | null {
-  if (!Number.isInteger(frame) || frame < 0) return null;
+  // 59-09 (REL-04): the export sub-frame law — TWO frames, deliberately split.
+  //
+  // CONTENT floor: `contentFrame` is the integer frame every content lookup,
+  // every content key term (per-track revision, per-track raster memo key,
+  // background clip resolution, cache key `frame:` term) and the composite are
+  // driven with — so every sub-frame of one export frame reuses ONE content
+  // raster and an integer call stays byte-identical to 59-08.
+  //
+  // TRANSFORM exact: the rail transform is evaluated at the UNFLOORED `frame`
+  // (the 59-05 evaluator is the only interpolation authority), so sub-frames
+  // differ only by the draw-time affine.
+  //
+  // The fractional path is deliberately UNCACHED at the flattened level: a
+  // sub-frame composite is a per-sample-time value and must never be read from
+  // or written into an integer cache entry (T-59-27). The per-track raster memo
+  // keeps its integer key, so the expensive content half is still shared.
+  //
+  // D-18 (v1): rail motion contributes NOTHING to the velocity/motion-blur
+  // buffer. The transform is a draw-time affine applied to the already-sampled
+  // integer content raster, so the motion-blur accumulation sees no new content
+  // and the documented v1 limitation holds.
+  if (!Number.isFinite(frame) || frame < 0) return null;
+  const contentFrame = Math.floor(frame);
+  const isFractionalFrame = frame !== contentFrame;
   const efxDocument = getEfxPaintDocument(layerId);
   if (!efxDocument) return null;
   // 260920-k34: the fond resolution is NOT a flattened-key term (activeTrackId
@@ -3278,7 +3315,9 @@ function _resolveFlattenedFrame(
   const participating = participatingAll.filter((track) => !excludeTrackIds.has(track.id));
   const trackContentRevisions = new Map<string, string>();
   for (const track of participating) {
-    const revision = _trackContentRevision(layerId, track.id, frame);
+    // 59-09: content identity resolves at the INTEGER frame (see the REL-04
+    // law above) — the same frame the per-track raster memo is keyed by.
+    const revision = _trackContentRevision(layerId, track.id, contentFrame);
     if (revision !== null) trackContentRevisions.set(track.id, revision);
   }
   // Phase 59-08 (MOTN-07/MOTN-08): the rail-motion supply. Transforms and the
@@ -3301,7 +3340,9 @@ function _resolveFlattenedFrame(
   for (const trackId of motionTrackIds) {
     const structural = _resolveRotoPhysicalStructural(layerId, trackId);
     if (!structural) continue;
-    const transform = _trackMotionTransformAtFrame(layerId, trackId, frame, structural);
+    // 59-09: the view half of the transform resolution is integer-bounded, so
+    // it may resolve at `contentFrame`; the transform itself samples `frame`.
+    const transform = _trackMotionTransformAtFrame(layerId, trackId, frame, contentFrame, structural);
     if (transform !== null) trackTransforms.set(trackId, transform);
     const motionRevision = _trackMotionRevision(layerId, trackId);
     if (motionRevision !== null) trackMotionRevisions.set(trackId, motionRevision);
@@ -3322,7 +3363,8 @@ function _resolveFlattenedFrame(
     trackMotionRevisions,
     backgroundClipRevisions,
     backgroundSourceRevision: _backgroundSourceRevision(efxDocument),
-    frame,
+    // 59-09: the CONTENT frame is the key identity — never the sub-frame.
+    frame: contentFrame,
     excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
     includeFond,
     soloTrackId,
@@ -3330,7 +3372,10 @@ function _resolveFlattenedFrame(
   });
 
   const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
-  if (!liveOverlay) {
+  // 59-09 (T-59-27): a fractional composite is per-sub-frame and must never be
+  // served from, or stored under, an integer key. The live-overlay variant is
+  // already uncached for its own reason (it carries a live canvas).
+  if (!liveOverlay && !isFractionalFrame) {
     const cached = flattenedMemo.get(flattenedKey);
     if (cached) return cached;
   }
@@ -3338,12 +3383,14 @@ function _resolveFlattenedFrame(
   const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
   const preResolved = new Map<string, EfxPaintTrackContentResolution>();
   for (const track of participating) {
-    const resolution = _preResolveTrackContent(layerId, track.id, frame);
+    const resolution = _preResolveTrackContent(layerId, track.id, contentFrame);
     if (resolution === null) return null;
     preResolved.set(track.id, resolution);
     const revision = trackContentRevisions.get(track.id);
     if (revision !== undefined) {
-      trackRasterMemo.set(deriveEfxPaintTrackContentKey(track.id, revision, frame), resolution);
+      // 59-09: the per-track raster memo keeps the INTEGER key — the REL-04
+      // "one content raster per frame per track, many transforms" contract.
+      trackRasterMemo.set(deriveEfxPaintTrackContentKey(track.id, revision, contentFrame), resolution);
     }
   }
 
@@ -3359,7 +3406,9 @@ function _resolveFlattenedFrame(
   let backgroundContentAtFrame = false;
   if (sliceOptions.includeBackground !== false && backgroundParticipates(efxDocument)) {
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
-    const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
+    // 59-09: Background clip content is content — it resolves at the integer
+    // content frame (and the compositor port below receives the same frame).
+    const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, contentFrame, knownSources);
     backgroundContentAtFrame = backgroundResolution.kind === 'content';
     if (backgroundResolution.kind === 'content') {
       if (_resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
@@ -3443,7 +3492,10 @@ function _resolveFlattenedFrame(
       : null,
   };
 
-  const result = compositeFrame(efxDocument, frame, size, ports);
+  // 59-09: the compositor is driven with the CONTENT frame. Its per-track
+  // raster memo key and its missing-source report entries are content
+  // metadata, so neither may ever carry a fractional frame.
+  const result = compositeFrame(efxDocument, contentFrame, size, ports);
   // 260925-iy6: the dynamic post-bake paper pass — ONE seam for preview,
   // program monitor, AND export (all three consume this record, so the paths
   // cannot drift into a second implementation). It modulates the FLATTENED
@@ -3550,13 +3602,17 @@ function _resolveFlattenedFrame(
   let encodedBytesPromise: Promise<Uint8Array> | null = null;
   const record: EfxPaintFlattenedFrameRecord = Object.freeze({
     layerId,
-    frame,
+    // 59-09: the record describes its CONTENT identity (the integer content
+    // frame); a sub-frame delivery is the same content under a different
+    // draw-time transform, so its metadata stays identical to the integer
+    // delivery's.
+    frame: contentFrame,
     cacheKey: flattenedKey,
     raster,
     transmittance,
     renderedFrame: Object.freeze({
-      frameIndex: frame,
-      appFrame: frame,
+      frameIndex: contentFrame,
+      appFrame: contentFrame,
       bytes: new Uint8Array(0),
       width: size.width,
       height: size.height,
@@ -3567,7 +3623,10 @@ function _resolveFlattenedFrame(
     },
     missing: result.missing,
   });
-  if (!liveOverlay) flattenedMemo.set(flattenedKey, record);
+  // 59-09 (T-59-27): only an integer rebuild is a cache entry. A fractional
+  // composite is per-sub-frame and must never be stored under the integer key
+  // (the live-overlay variant is uncached for its own reason).
+  if (!liveOverlay && !isFractionalFrame) flattenedMemo.set(flattenedKey, record);
   return record;
 }
 
