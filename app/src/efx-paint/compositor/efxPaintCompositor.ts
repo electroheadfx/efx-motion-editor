@@ -240,10 +240,65 @@ export interface EfxPaintTrackMotionTransform {
  * the common no-motion track takes the zero-transform-op fast path.
  */
 export function isEfxPaintTrackMotionIdentity(
-  _transform: EfxPaintTrackMotionTransform,
+  transform: EfxPaintTrackMotionTransform,
 ): boolean {
-  // RED stub — the GREEN implementation compares every field.
-  return true;
+  return transform.translateX === 0
+    && transform.translateY === 0
+    && transform.scale === 1
+    && transform.rotationRadians === 0
+    && transform.opacity === 1;
+}
+
+/**
+ * Applies one track's rail motion to the current draw state (MOTN-07/MOTN-08).
+ *
+ * Order is fixed: translate to the pivot PLUS the motion offset, rotate, scale,
+ * translate back by the pivot. The pivot is normalized, so the same transform
+ * is resolution-independent — it multiplies the rect the compositor draws into
+ * and never reads an intrinsic raster size.
+ *
+ * FORBIDDEN: a second application site. Rendering, export and any per-track
+ * renderer must feed `trackTransforms` into this module instead of transforming
+ * their own canvas — three surfaces applying their own transform are three
+ * surfaces guaranteed to drift.
+ */
+function applyEfxPaintTrackMotion(
+  ctx: CanvasRenderingContext2D,
+  transform: EfxPaintTrackMotionTransform,
+  size: EfxPaintCompositeSize,
+): void {
+  const pivotX = transform.pivotX * size.width;
+  const pivotY = transform.pivotY * size.height;
+  ctx.translate(pivotX + transform.translateX, pivotY + transform.translateY);
+  ctx.rotate(transform.rotationRadians);
+  ctx.scale(transform.scale, transform.scale);
+  ctx.translate(-pivotX, -pivotY);
+}
+
+/**
+ * The ONE track draw (MOTN-07/MOTN-08): both the normal store-raster site and
+ * the Studio engine-overlay site call this, so their op sequences cannot drift.
+ * Opacity is applied BEFORE blend mode (D-01); the motion opacity multiplies
+ * the track opacity here (D-19) — one product per draw. An absent or identity
+ * transform emits no translate/rotate/scale and keeps the pre-Phase-59 draw
+ * call byte-identical.
+ */
+function drawEfxPaintTrack(
+  ctx: CanvasRenderingContext2D,
+  raster: CanvasImageSource,
+  size: EfxPaintCompositeSize,
+  trackOpacity: number,
+  blendOp: GlobalCompositeOperation,
+  transform: EfxPaintTrackMotionTransform | undefined,
+): void {
+  ctx.save();
+  ctx.globalAlpha = trackOpacity * (transform?.opacity ?? 1);
+  ctx.globalCompositeOperation = blendOp;
+  if (transform !== undefined && !isEfxPaintTrackMotionIdentity(transform)) {
+    applyEfxPaintTrackMotion(ctx, transform, size);
+  }
+  ctx.drawImage(raster, 0, 0, size.width, size.height);
+  ctx.restore();
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
@@ -351,11 +406,14 @@ export function compositeFrame(
   let firstTrack = true;
   for (const track of drawOrder) {
     if (track.id === overlayTrackId) {
-      ctx.save();
-      ctx.globalAlpha = track.opacity;
-      ctx.globalCompositeOperation = firstTrack ? 'source-over' : ports.compositeOp(track.blendMode);
-      ctx.drawImage(ports.engineOverlay!.raster, 0, 0, size.width, size.height);
-      ctx.restore();
+      drawEfxPaintTrack(
+        ctx,
+        ports.engineOverlay!.raster,
+        size,
+        track.opacity,
+        firstTrack ? 'source-over' : ports.compositeOp(track.blendMode),
+        ports.trackTransforms?.get(track.id),
+      );
       firstTrack = false;
       continue;
     }
@@ -379,14 +437,19 @@ export function compositeFrame(
       missing.push({ trackId: track.id, frame, missingRefs: resolution.missingRefs });
       continue;
     }
-    ctx.save();
-    ctx.globalAlpha = track.opacity;
-    ctx.globalCompositeOperation = firstTrack ? 'source-over' : ports.compositeOp(track.blendMode);
     // Track rasters arrive at the engine's WORKING resolution (the Studio
     // paints on a long-edge-capped canvas); the flattened raster is
     // project-space, so the draw scales the raster to the composite size.
-    ctx.drawImage(resolution.raster, 0, 0, size.width, size.height);
-    ctx.restore();
+    // MOTN-07/MOTN-08: the rail transform rides through the shared draw helper
+    // (the same one the engine-overlay site uses) — never a second site.
+    drawEfxPaintTrack(
+      ctx,
+      resolution.raster,
+      size,
+      track.opacity,
+      firstTrack ? 'source-over' : ports.compositeOp(track.blendMode),
+      ports.trackTransforms?.get(track.id),
+    );
     firstTrack = false;
   }
 

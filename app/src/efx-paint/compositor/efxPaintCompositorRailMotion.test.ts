@@ -321,7 +321,11 @@ describe('compositeFrame — rail motion transform (MOTN-07/MOTN-08)', () => {
     );
 
     const mixed = makeHarness({
-      trackTransforms: new Map<string, EfxPaintTrackMotionTransform>([['track-a', ANIMATED_MOTION]]),
+      // opacity 1 so the only difference from the baseline is the geometry —
+      // the D-19 alpha product has its own row.
+      trackTransforms: new Map<string, EfxPaintTrackMotionTransform>([
+        ['track-a', { ...ANIMATED_MOTION, opacity: 1 }],
+      ]),
     });
     compositeFrame(
       makeDocument([
