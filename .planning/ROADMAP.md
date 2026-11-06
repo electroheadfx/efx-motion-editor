@@ -110,7 +110,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 10/16 plans executed
+**Plans:** 11/16 plans executed
 
 Plans:
 **Wave 1**
@@ -135,7 +135,7 @@ Plans:
 - [x] 59-10-PLAN.md — v7 lane surface: 18px lanes, header cluster, cells, evaluator curve, 6×6 keys, block outline
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
+- [x] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
 - [x] 59-11-PLAN.md — Timeline integration: chevron toggle over session-only expansion (collapsed after Animate), mirrored headers, measured layout, block-aware reorder
 
 **Wave 8** *(blocked on Wave 7 completion)*
@@ -239,7 +239,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 59. Rail Motion Channels & v7 Interface | 10/16 | In Progress | - |
+| 59. Rail Motion Channels & v7 Interface | 11/16 | In Progress | - |
 | 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |

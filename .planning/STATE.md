@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-11-PLAN.md
-last_updated: "2026-11-06T16:09:08.906Z"
+stopped_at: Completed 59-09-PLAN.md
+last_updated: "2026-11-06T16:23:48.827Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 15e17b4356a91a62eedf779a3b24ab0fefea9023
+state_head: d221a5c65ca2f7239a994fbcbb4f2a7c9cd28ac3
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 11 of 16
+Plan: 12 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -66,6 +66,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P10 | 7min | 2 tasks | 8 files |
 | Phase 59 P08 | 3h 50m | 3 tasks | 10 files |
 | Phase 59 P11 | 28min | 3 tasks | 8 files |
+| Phase 59 P09 | 14 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Pixel-array canvas APIs stay out of the store (P4(c)); the bounded alpha scan lives in railMotionInkScan.ts and the store resolves and delegates.
 - [Phase 59]: Chevron lives in the header cell; only the ACTIVE track's rail is selectable, so only its header receives the selected rail identity
 - [Phase 59]: One measured layout (31px rail row + 18px per display lane + 2px gap) is consumed by content height, header spacers and the reorder index; the active lane hosts the extracted TimelineMotionBlock
+- [Phase 59]: 59-09 REL-04: fractional flattened frames compose content at Math.floor(frame) while the rail transform samples the unfloored frame; fractional deliveries bypass the flattened memo and share the integer per-track raster memo
+- [Phase 59]: 59-09 MOTN-08: transform parity is asserted against evaluateRailMotion's own output through the test-only getLastAppliedTrackTransforms seam (set after the memo read, cleared with the layer and the store reset)
 
 ### Pending Todos
 
@@ -178,8 +181,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T16:09:08.882Z
-Stopped at: Completed 59-11-PLAN.md
+Last session: 2026-11-06T16:23:48.801Z
+Stopped at: Completed 59-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

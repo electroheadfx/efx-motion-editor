@@ -17,7 +17,7 @@ Each maps to exactly one roadmap phase.
 - [ ] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
 - [ ] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
 - [ ] **MOTN-07**: The rail transform is applied at the compositor: one raster per track per frame, content cycles while motion continues, and nothing re-bakes
-- [ ] **MOTN-08**: Edit view, Play, and export produce the same transform, including when the rail is on the active track
+- [x] **MOTN-08**: Edit view, Play, and export produce the same transform, including when the rail is on the active track
 - [ ] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
 - [ ] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
 - [ ] **MOTN-11**: Three selection scopes work independently — rail, drawing key, motion key — each with its own contextual commands
@@ -62,7 +62,7 @@ Each maps to exactly one roadmap phase.
 - [x] **REL-01**: No new runtime dependencies
 - [x] **REL-02**: Every new `.mce` field round-trips byte-identically through save → reopen, pinned by a test
 - [x] **REL-03**: Motion joins the canonical document revision; sampled values never enter the flattened cache key
-- [ ] **REL-04**: Motion-blur export keeps paint on every frame — integer content raster with a fractional transform
+- [x] **REL-04**: Motion-blur export keeps paint on every frame — integer content raster with a fractional transform
 
 ## Decisions locked
 
@@ -112,7 +112,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | MOTN-05 | Phase 59 | Pending |
 | MOTN-06 | Phase 59 | Pending |
 | MOTN-07 | Phase 59 | Pending |
-| MOTN-08 | Phase 59 | Pending |
+| MOTN-08 | Phase 59 | Complete |
 | MOTN-09 | Phase 59 | Pending |
 | MOTN-10 | Phase 59 | Pending |
 | MOTN-11 | Phase 59 | Pending |
@@ -142,7 +142,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | REL-01 | Phase 59 (enforced first; holds across Phases 59–62) | Complete |
 | REL-02 | Phase 59 (re-enforced on Phase 61's vector fields) | Complete |
 | REL-03 | Phase 59 (motion joins the canonical document revision) | Complete |
-| REL-04 | Phase 59 (motion-blur export keeps paint) | Pending |
+| REL-04 | Phase 59 (motion-blur export keeps paint) | Complete |
 
 **Coverage:**
 - v2.1.0 requirements: 38 total (12 MOTN + 6 MUI + 5 ZOOM + 7 VEC + 4 CRV + 4 REL)
