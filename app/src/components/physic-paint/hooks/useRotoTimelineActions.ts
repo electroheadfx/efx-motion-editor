@@ -80,7 +80,7 @@ import type {
   PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
-import { railMotionValueToUi } from '../roto/railMotionModel';
+import { PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY, railMotionValueToUi } from '../roto/railMotionModel';
 import { evaluateRailMotion } from '../roto/railMotionEvaluator';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import type { PhysicsPaintRailMotionGizmoProps } from '../view/PhysicsPaintReferenceTransformHandles';
@@ -1643,6 +1643,13 @@ export interface RotoTimelineActionsInput {
   getRotoInterpolationState?: () => PhysicPaintRotoInterpolationState;
   /** Durable Loop Clip collection from the store (Phase 43, Q1). */
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
+  /**
+   * The ACTIVE track's stored rail-motion collection (59-18, MOTN-12). The
+   * rail-set copy document must carry the motion its rails carry: the frozen
+   * payload only re-keys what the document holds. Defaults to the shared empty
+   * collection when the port is absent or the track has no motion.
+   */
+  getRotoRailMotions?: () => readonly PhysicPaintRotoRailMotionRecord[];
   /** 58: complete Group frame-override records, so a rail insert can retime painted phases. */
   getRotoGroupOverrideRecords?: () => readonly PhysicPaintRotoRealKeyRecord[];
   /** Current physical projection cells (D-10). */
@@ -4961,6 +4968,12 @@ function buildRailSetCopyDocument(input: RotoTimelineActionsInput): PhysicPaintR
   const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
   const interpolation = input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' };
   const incomingInterpolationBreakKeyIds = input.getIncomingInterpolationBreakKeyIds?.() ?? [];
+  // 59-18 (G3/CR-01): the copied document must carry the motion its rails
+  // carry — `buildRotoRailSetCopyPayload` freezes only what the document holds.
+  // The same collection feeds the parser AND the revision: the parser
+  // recomputes the canonical revision from the content and fails closed on a
+  // mismatch, so a 4-argument revision would reject the motion-bearing copy.
+  const railMotions = input.getRotoRailMotions?.() ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
   try {
     return parsePhysicPaintRotoPhysicalDocument({
       capacity,
@@ -4976,9 +4989,12 @@ function buildRailSetCopyDocument(input: RotoTimelineActionsInput): PhysicPaintR
         interpolation,
         loopClips,
         incomingInterpolationBreakKeyIds,
+        [],
+        railMotions,
       ),
       loopClips,
       incomingInterpolationBreakKeyIds,
+      railMotions,
     });
   } catch {
     return null;
