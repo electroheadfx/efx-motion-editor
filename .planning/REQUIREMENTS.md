@@ -11,7 +11,7 @@ Each maps to exactly one roadmap phase.
 ### Motion — core (Phase 59)
 
 - [x] **MOTN-01**: User can add, edit, and remove Motion keys on any rail — Standard, Motion, Static, Reveal, and bare Key Rails — with no conversion step and no cycle value
-- [ ] **MOTN-02**: Motion keys are independent of drawing keys; a rail with no drawing key animates, and adding or removing a Motion key never creates or alters a drawing key
+- [x] **MOTN-02**: Motion keys are independent of drawing keys; a rail with no drawing key animates, and adding or removing a Motion key never creates or alters a drawing key
 - [x] **MOTN-03**: User can animate Position (grouped whole-position, or split X + Y channels), Scale, Rotation, and Opacity
 - [x] **MOTN-04**: Channels open on demand, one at a time; no lane appears by default
 - [x] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
@@ -21,7 +21,7 @@ Each maps to exactly one roadmap phase.
 - [ ] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
 - [x] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
 - [x] **MOTN-11**: Three selection scopes work independently — rail, drawing key, motion key — each with its own contextual commands
-- [ ] **MOTN-12**: Motion persists through save → close → reopen, with undo/redo per key operation
+- [x] **MOTN-12**: Motion persists through save → close → reopen, with undo/redo per key operation
 
 ### Motion — v7 interface (Phase 59)
 
@@ -106,7 +106,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | MOTN-01 | Phase 59 | Complete |
-| MOTN-02 | Phase 59 | Pending |
+| MOTN-02 | Phase 59 | Complete |
 | MOTN-03 | Phase 59 | Complete |
 | MOTN-04 | Phase 59 | Complete |
 | MOTN-05 | Phase 59 | Complete |
@@ -116,7 +116,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | MOTN-09 | Phase 59 | Pending |
 | MOTN-10 | Phase 59 | Complete |
 | MOTN-11 | Phase 59 | Complete |
-| MOTN-12 | Phase 59 | Pending |
+| MOTN-12 | Phase 59 | Complete |
 | MUI-01 | Phase 59 | Pending |
 | MUI-02 | Phase 59 | Pending |
 | MUI-03 | Phase 59 | Pending |

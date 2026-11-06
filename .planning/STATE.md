@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-13-PLAN.md
-last_updated: "2026-11-06T17:10:04.778Z"
+stopped_at: Completed 59-15-PLAN.md
+last_updated: "2026-11-06T18:01:34.155Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: b43bd756907a9c48d4256b391b5478b292242b5e
+state_head: 01fb2a5c7bc025d2eb97dd45286d65d649c69d48
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 14 of 16
+Plan: 15 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -69,6 +69,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P09 | 14 | 2 tasks | 7 files |
 | Phase 59 P12 | 33min | 4 tasks | 11 files |
 | Phase 59 P13 | 7min | 1 tasks | 10 files |
+| Phase 59 P15 | 37min | 4 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Motion-key stepping moves the playhead through the existing synced-frame navigation seam via a deferred ref, not a second navigation path.
 - [Phase 59]: Rail-motion Position commits as ONE grouped call via an explicit pairedValue, so the derived sibling can never include outgoing wiggle and overwrite the gesture sample.
 - [Phase 59]: The gizmo payload is a computed with a primitive signature used as the canvas-stack memo key, keeping identity-stable deps while re-resolving on motion revisions.
+- [Phase 59]: 59-15: reconcile rail motion once in the bridge before stagedRevision and inside store-direct helpers, so motion and undo share one commit
+- [Phase 59]: 59-15: paste re-keys from the frozen payload collection via rekeyRailMotionsForCopy with copied source ids, then merges the destination sorted by railId
+- [Phase 59]: 59-15: parent paste recompute starts from the pre-edit collection to avoid the child's copies reading as destination collisions
+- [Phase 59]: 59-15: merge-drop notice is optional scalar settlement metadata, validated, absent on failure/replay, published after acceptance and dismissed otherwise
+- [Phase 59]: 59-15: every accepted edit without a drop dismisses the session slot, so the restoring undo clears the row
 
 ### Pending Todos
 
@@ -190,8 +196,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T17:10:04.750Z
-Stopped at: Completed 59-13-PLAN.md
+Last session: 2026-11-06T18:01:34.129Z
+Stopped at: Completed 59-15-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
