@@ -119,6 +119,10 @@ import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/roto
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
 import { deriveKeyRailSegments, projectSelectedKeyRailInspector } from './view/physicsPaintKeyRailPresentation';
+// 59-16: the numeric Motion inspector projection. A second named import keeps
+// the 58-05 authority pin's exact import line intact (no test outside this
+// plan's file list is modified).
+import { projectRailMotionInspector } from './view/physicsPaintKeyRailPresentation';
 import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings, type StudioBackgroundMode } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
@@ -4914,6 +4918,24 @@ export function PhysicsPaintStudio() {
     if (segment === undefined) return null;
     return projectSelectedKeyRailInspector(segment, { setSize: effectiveRailSetMembers.length });
   }, [effectiveSelectedRotoKeyRail, keyRailSegmentByFirstKeyId, railSetAnchorKeyRailId, effectiveRailSetMembers.length]);
+  // 59-16 (D-06/D-09): the ONE numeric Motion inspector projection. It reads
+  // the session-selected Motion key and the live collection for the active
+  // track, then lets the pure projection resolve every channel in the fixed
+  // D-13 order. The key's OWN rail-local frame is both the read frame and the
+  // frame a field edit writes back to — clicking a Motion key never moves the
+  // playhead. `rotoPhysicalRevision` keeps the displayed values on the
+  // document; the selection object re-resolves the memo on a key click.
+  const selectedMotionKeySelection = rotoTimelineActions.physicalActions.selectedMotionKey.value;
+  const railMotionInspector = useMemo(() => {
+    if (!launchContext || selectedMotionKeySelection === null) return null;
+    const records = physicPaintStore.getRotoPhysicalRailMotions(launchContext.layerId, activeTrackIdForReads);
+    const record = records.find((entry) => entry.railId === selectedMotionKeySelection.railId) ?? null;
+    return projectRailMotionInspector({
+      record,
+      selectedKeyFrame: selectedMotionKeySelection.frame,
+      railLocalFrame: selectedMotionKeySelection.frame,
+    });
+  }, [launchContext?.layerId, activeTrackIdForReads, rotoPhysicalRevision.value, selectedMotionKeySelection]);
   const resetRotoSpacingSelectionSession = useCallback((options?: { clearClipboard?: boolean }) => {
     rotoSpacingSelection.value = null;
     selectedRotoKeyRail.value = null;
@@ -7169,7 +7191,7 @@ export function PhysicsPaintStudio() {
     if (!aquarelleSelectMode.peek()) return;
     void aquarelleAppearanceCommitRef.current?.(ids, { color });
   }, []);
-  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, selectedKeyRailInspector, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.color, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, selectedKeyRailInspector, railMotionInspector, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleOpenRotoKeyRailCycleEdit, handleCloseRotoKeyRail, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleRightPanelColorCommit, handleActiveColorChanged, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -7262,6 +7284,11 @@ export function PhysicsPaintStudio() {
       selectedKeyRail: selectedKeyRailInspector,
       onOpenKeyRailEdit: handleOpenRotoKeyRailCycleEdit,
       onCloseKeyRail: handleCloseRotoKeyRail,
+      // 59-16 (MOTN-03/MOTN-09): the numeric Motion value inspector — one
+      // projection in, one command-layer write out; the panel never reads the
+      // store and never mutates the record.
+      selectedRailMotion: railMotionInspector,
+      onCommitRailMotionValue: rotoTimelineActions.physicalActions.commitRailMotionChannelValue,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },

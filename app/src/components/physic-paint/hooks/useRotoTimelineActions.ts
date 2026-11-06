@@ -66,6 +66,7 @@ import {
   setMotionKeyEasing as applySetMotionKeyEasing,
   setMotionKeyWiggle as applySetMotionKeyWiggle,
   stepMotionKey as findAdjacentMotionKeyFrame,
+  writeRailMotionChannelValueAtCursor as applyWriteRailMotionChannelValue,
   type RailMotionCommandId,
   type RailMotionCommandResult,
   type RailMotionKeySelection,
@@ -1407,6 +1408,18 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly removeMotionKeyAtCursor: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
   readonly canRemoveMotionKeyAtCursor: ReadonlySignal<boolean>;
   readonly removeMotionKeyAtCursorDisabledReason: ReadonlySignal<string | null>;
+  /**
+   * 59-16 (MOTN-03/MOTN-09): commit one display-unit numeric value on the
+   * selected Motion key's channel, at that key's own rail-local frame (a
+   * field edit never moves the playhead). Returns null on success, or the
+   * visible rejection reason — a rejected entry commits nothing. Grouped
+   * Position keeps its two values independent: the sibling axis is written
+   * at the same frame from its own stored/evaluated value.
+   */
+  readonly commitRailMotionChannelValue: (
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    uiValue: number,
+  ) => string | null;
   /** 59-12 Task 2: cursor-only stepping to the adjacent Motion key. */
   readonly stepMotionKeyForward: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
   readonly canStepMotionKeyForward: ReadonlySignal<boolean>;
@@ -2785,6 +2798,48 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       if (selection !== null && selection.railId === state.record.railId) selectRailMotionKey(null);
     }
     return committed;
+  }, [input]);
+
+  /**
+   * 59-16: the numeric inspector's ONE commit path. A Motion-key click never
+   * moves the playhead, so the write targets the SELECTED key's rail-local
+   * frame — the same frame the read projection uses. The pure command keeps
+   * the D-12 grouped-position pair atomic; this action only funnels its result
+   * into the 59-07 setter (one undo step) and publishes a rejection verbatim.
+   */
+  const commitRailMotionChannelValue = useCallback((
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    uiValue: number,
+  ): string | null => {
+    const state = readActiveRailMotionState(input);
+    const selection = railMotionSelectedKey.value;
+    if (state === null || state.view === null || state.record === null) {
+      return 'Select a rail with Motion first.';
+    }
+    if (selection === null || selection.railId !== state.record.railId) {
+      return 'Select a Motion key first.';
+    }
+    const result = applyWriteRailMotionChannelValue({
+      records: state.records,
+      railId: state.record.railId,
+      keyFrame: selection.frame,
+      channelId,
+      uiValue,
+    });
+    if (!result.ok) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.(result.reason);
+      return result.reason;
+    }
+    if (result.records === state.records) return null;
+    const written = commitRailMotionRecords(state, result.records);
+    if (!written.ok) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.(written.error);
+      return written.error;
+    }
+    input.publishStatus?.('Motion value updated.');
+    return null;
   }, [input]);
 
   const stepMotionKey = useCallback(async (
@@ -4257,6 +4312,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     removeMotionKeyAtCursor,
     canRemoveMotionKeyAtCursor,
     removeMotionKeyAtCursorDisabledReason,
+    commitRailMotionChannelValue,
     stepMotionKeyForward,
     canStepMotionKeyForward,
     stepMotionKeyForwardDisabledReason,
@@ -4306,7 +4362,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
     setApplyStatus: input.setApplyStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, commitRailMotionChannelValue, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

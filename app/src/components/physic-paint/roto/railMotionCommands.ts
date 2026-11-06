@@ -784,3 +784,78 @@ export function writeMotionTransformAtCursor(
   }
   return success(current);
 }
+
+// ---------------------------------------------------------------------------
+// 59-16: the numeric Motion inspector. `uiValue` is a DISPLAY-unit number
+// (pixels / percent / degrees) entered in one field; it is converted through
+// the same 59-02 pair the gizmo uses, so the two edit paths converge on one
+// stored collection. Rotation is passed through untouched: no wrap, no
+// shortest-arc rewrite, no degrees/radians conversion at this boundary.
+// ---------------------------------------------------------------------------
+
+/** The visible sentence for an out-of-domain entry, per channel (T-59-39). */
+function railMotionValueDomainReason(channelId: PhysicPaintRotoRailMotionChannelId): string {
+  if (channelId === 'scale') return 'Scale must be greater than 0.';
+  if (channelId === 'opacity') return 'Opacity must be between 0 and 100.';
+  if (channelId === 'position-x' || channelId === 'position-y') {
+    return 'Position must be between -1,000,000 and 1,000,000 px.';
+  }
+  return 'This value is outside the Motion channel range.';
+}
+
+export interface WriteRailMotionChannelValueAtCursorInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  /** The record's railId; null when no animated rail is selected. */
+  readonly railId: string | null;
+  /** The selected Motion key's rail-local frame (fields never move the playhead). */
+  readonly keyFrame: number | null;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  /** Display-unit value: px / percent / degrees. */
+  readonly uiValue: number;
+}
+
+/**
+ * The numeric inspector's ONE commit path. It updates one channel at the
+ * selected key's rail-local frame and delegates to {@link setMotionKeyAtCursor},
+ * so a typed value and a gizmo drag produce the same collection.
+ *
+ * Grouped Position shares FRAMES but never VALUES (D-11/D-12): the sibling
+ * axis is written explicitly through `pairedValue` — its stored value at that
+ * frame when it already carries a key, otherwise the evaluated value the pose
+ * already has there. A rejected entry returns a sentence and writes nothing.
+ */
+export function writeRailMotionChannelValueAtCursor(
+  input: WriteRailMotionChannelValueAtCursorInput,
+): RailMotionCommandResult {
+  const { records, railId, keyFrame, channelId, uiValue } = input;
+  if (!Number.isFinite(uiValue)) return failure('Enter a number.');
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (keyFrame === null || !isRailMotionFrameValue(keyFrame)) {
+    return failure('The Motion key frame is not valid.');
+  }
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  if (!record.channels.some((entry) => entry.id === channelId)) {
+    return failure('This Motion channel is not present on the rail.');
+  }
+
+  const value = railMotionValueFromUi(channelId, uiValue);
+  if (!Number.isFinite(value) || !railMotionValueIsValid(channelId, value)) {
+    return failure(railMotionValueDomainReason(channelId));
+  }
+
+  const siblingId = positionSiblingId(channelId);
+  const pairedValue = siblingId !== null && record.channels.some((entry) => entry.id === siblingId)
+    ? (resolveMotionKeyAtFrame(record, siblingId, keyFrame)?.value
+      ?? evaluateRailMotionChannel(record, siblingId, keyFrame))
+    : undefined;
+
+  return setMotionKeyAtCursor({
+    records,
+    railId,
+    channelId,
+    keyFrame,
+    value,
+    ...(pairedValue !== undefined ? { pairedValue } : {}),
+  });
+}

@@ -1,3 +1,11 @@
+import {
+  PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER,
+  railMotionValueToUi,
+  type PhysicPaintRotoRailMotionChannelId,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../roto/railMotionModel';
+import { evaluateRailMotionChannel } from '../roto/railMotionEvaluator';
+
 export interface KeyRailSegment {
   readonly firstKeyId: string;
   readonly keyIds: readonly string[];
@@ -141,6 +149,93 @@ export function projectSelectedKeyRailInspector(
     typeLabel: 'Standard',
     editDisabledReason: setSize >= 2 ? KEY_RAIL_EDIT_DISABLED_REASON : null,
   }) as SelectedKeyRailInspectorPresentation;
+}
+
+/**
+ * 59-16 (D-06/D-09): the numeric Motion inspector's ONE projection. It is the
+ * frozen, unit-formatted sibling of {@link projectSelectedKeyRailInspector}:
+ * it reads no store, no signal and no component, and it performs no rounding.
+ * Percent channels reuse the 59-02 `railMotionValueToUi` pair, so exactly one
+ * display-conversion authority exists.
+ */
+export type RailMotionInspectorUnit = 'px' | '%' | '°';
+
+export interface RailMotionInspectorField {
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly label: string;
+  readonly unit: RailMotionInspectorUnit;
+  /** Display-unit value (px / percent / degrees). */
+  readonly value: number;
+}
+
+export interface RailMotionInspectorPresentation {
+  readonly railId: string;
+  /** Rail-local frame the values were read at and a numeric edit writes. */
+  readonly frame: number;
+  readonly fields: readonly RailMotionInspectorField[];
+}
+
+export interface ProjectRailMotionInspectorInput {
+  /** The selected rail's motion record, or null when it carries no motion. */
+  readonly record: PhysicPaintRotoRailMotionRecord | null;
+  /** The selected Motion key's rail-local frame; null = no key selected. */
+  readonly selectedKeyFrame: number | null;
+  /** Rail-local frame whose values are projected (a numeric edit writes here). */
+  readonly railLocalFrame: number;
+}
+
+const RAIL_MOTION_INSPECTOR_LABELS: Readonly<Record<PhysicPaintRotoRailMotionChannelId, string>> = Object.freeze({
+  'position-x': 'Position X',
+  'position-y': 'Position Y',
+  scale: 'Scale',
+  rotation: 'Rotation',
+  opacity: 'Opacity',
+});
+
+const RAIL_MOTION_INSPECTOR_UNITS: Readonly<Record<PhysicPaintRotoRailMotionChannelId, RailMotionInspectorUnit>> = Object.freeze({
+  'position-x': 'px',
+  'position-y': 'px',
+  scale: '%',
+  rotation: '°',
+  opacity: '%',
+});
+
+/**
+ * Projects every channel at the read frame in the fixed D-13 order. A channel
+ * keyed at that frame shows its STORED value (a key frame must never display
+ * an outgoing-wiggle-perturbed evaluation); an unkeyed channel shows what the
+ * 59-05 evaluator reports, which is the value a create-key edit seeds.
+ */
+export function projectRailMotionInspector(
+  input: ProjectRailMotionInspectorInput,
+): RailMotionInspectorPresentation | null {
+  const { record, selectedKeyFrame } = input;
+  if (record === null || selectedKeyFrame === null || !Number.isFinite(selectedKeyFrame)) return null;
+  const hasKeyAtSelection = record.channels.some(
+    (channel) => channel.keys.some((key) => key.frame === selectedKeyFrame),
+  );
+  if (!hasKeyAtSelection) return null;
+
+  const readFrame = Number.isFinite(input.railLocalFrame) ? input.railLocalFrame : selectedKeyFrame;
+  const fields = PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER.map((channelId) => {
+    const channel = record.channels.find((entry) => entry.id === channelId);
+    const storedKey = channel?.keys.find((key) => key.frame === readFrame) ?? null;
+    const modelValue = storedKey !== null
+      ? storedKey.value
+      : evaluateRailMotionChannel(record, channelId, readFrame);
+    return Object.freeze({
+      channelId,
+      label: RAIL_MOTION_INSPECTOR_LABELS[channelId],
+      unit: RAIL_MOTION_INSPECTOR_UNITS[channelId],
+      value: railMotionValueToUi(channelId, modelValue),
+    }) as RailMotionInspectorField;
+  });
+
+  return Object.freeze({
+    railId: record.railId,
+    frame: readFrame,
+    fields: Object.freeze(fields) as readonly RailMotionInspectorField[],
+  }) as RailMotionInspectorPresentation;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {

@@ -7,7 +7,9 @@ import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScrip
 import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
-import type { SelectedKeyRailInspectorPresentation } from './physicsPaintKeyRailPresentation';
+import type { RailMotionInspectorPresentation, SelectedKeyRailInspectorPresentation } from './physicsPaintKeyRailPresentation';
+import type { PhysicPaintRotoRailMotionChannelId } from '../roto/railMotionModel';
+import { NumericStepper } from '../../shared/NumericStepper';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 
 export interface PhysicsPaintScriptsPanelProps {
@@ -17,6 +19,18 @@ export interface PhysicsPaintScriptsPanelProps {
   playButtonRef: RefObject<HTMLButtonElement | null>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
   selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;
+  /**
+   * 59-16 (D-06/D-09): the numeric Motion value inspector projection. Null
+   * when no Motion key is selected — the panel then renders no motion fields
+   * at all. Every displayed value comes from this prop; the panel reads no
+   * store.
+   */
+  selectedRailMotion?: RailMotionInspectorPresentation | null;
+  /**
+   * 59-16: the ONE write path out of a motion field. Receives the display-unit
+   * value and returns the visible rejection reason, or null on success.
+   */
+  onCommitRailMotionValue?: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number) => string | null;
   linkedGroupNavigation?: {
     currentIndex: number;
     total: number;
@@ -41,6 +55,8 @@ export function PhysicsPaintScriptsPanel({
   playButtonRef,
   selectedLoopClip = null,
   selectedKeyRail = null,
+  selectedRailMotion = null,
+  onCommitRailMotionValue,
   linkedGroupNavigation = null,
   onOpenLoopEdit,
   onOpenKeyRailEdit,
@@ -138,6 +154,34 @@ export function PhysicsPaintScriptsPanel({
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
   };
 
+  // 59-16 (D-06/D-09): the numeric Motion value inspector. Props-driven end to
+  // end — every displayed value arrives through `selectedRailMotion` (the
+  // 59-16 projection) and every write leaves through `onCommitRailMotionValue`;
+  // the panel imports no store and mutates no record. A Motion key can only be
+  // selected while its rail owns the pane, so the section rides whichever
+  // surface is mounted (normal Scripts, Key Rail or Loop Clip inspector).
+  // Task 1 wires Scale end-to-end; Task 2 opens the full five-field set.
+  const motionValuesSection = selectedRailMotion === null
+    ? null
+    : (
+      <section class="physics-paint-motion-inspector" role="group" aria-label="Motion values">
+        {selectedRailMotion.fields
+          .filter((field) => field.channelId === 'scale')
+          .map((field) => (
+            <div key={field.channelId} class="physics-paint-motion-field">
+              <span class="physics-paint-motion-field-label">{field.label} ({field.unit})</span>
+              <NumericStepper
+                ariaLabel={field.label}
+                value={field.value}
+                step={1}
+                precision={3}
+                onChange={(value) => { onCommitRailMotionValue?.(field.channelId, value); }}
+              />
+            </div>
+          ))}
+      </section>
+    );
+
   // 58-03 RAIL-01 (D-01): selecting a Key Rail takes over the Scripts pane with
   // exactly three facts (D-04) and one conversion entry. The branch returns
   // before the loop-clip inspector so a plain rail selection can never be
@@ -154,6 +198,7 @@ export function PhysicsPaintScriptsPanel({
           <IconButton label={`Close Rail inspector — ${railLabel}`} title={`Close Rail inspector — ${railLabel}`} onClick={() => { onCloseKeyRail?.(); }} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
         </div>
         <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
+          {motionValuesSection}
           <dl class="physics-paint-loop-clip-inspector">
             <div><dt>Frames</dt><dd>{selectedKeyRail.framesLabel}</dd></div>
             <div><dt>Keys</dt><dd>{selectedKeyRail.keysLabel}</dd></div>
@@ -178,6 +223,7 @@ export function PhysicsPaintScriptsPanel({
           <IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
         </div>
         <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
+        {motionValuesSection}
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
           <div><dt>Source Script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
@@ -214,6 +260,7 @@ export function PhysicsPaintScriptsPanel({
         <IconButton buttonRef={playButtonRef} label="Run Script…" title={`Run Script… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Run the selected Script to create or update a Motion or Static Rail')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /><span class="physics-paint-roto-key-icon-label">Run Script</span></IconButton>
         <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project Scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
       </div>
+      {motionValuesSection}
       {scopeEntries.length > 1 || linkedGroupNavigation ? (
         // quick-260922-jss amendment: ONE meta row carries both the scope
         // filter and the linked-Rail pager. They are independent — either can
