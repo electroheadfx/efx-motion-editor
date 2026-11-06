@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="8" failures="8" errors="0" time="0.22">
+    <testsuite name="src/components/physic-paint/roto/railMotionIdentity.test.ts" timestamp="2026-11-06T13:27:00.012Z" hostname="efx2.home" tests="8" failures="8" errors="0" skipped="0" time="0.006495041">
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion identity bindings &gt; binds a loop rail to its loopId without minting an id" time="0.003795">
+            <failure message="expected { railId: &apos;&apos;, …(1) } to deeply equal { railId: &apos;loop-rail-a&apos;, …(1) }" type="AssertionError">
+AssertionError: expected { railId: &apos;&apos;, …(1) } to deeply equal { railId: &apos;loop-rail-a&apos;, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;anchorKeyId&quot;: &quot;source-key-1&quot;,
+-   &quot;railId&quot;: &quot;loop-rail-a&quot;,
++   &quot;anchorKeyId&quot;: &quot;loop-rail-a&quot;,
++   &quot;railId&quot;: &quot;&quot;,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:43:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion identity bindings &gt; mints a distinct durable rail id for every key-rail binding" time="0.000448458">
+            <failure message="expected &apos;&apos; to match /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}…/i" type="AssertionError">
+AssertionError: expected &apos;&apos; to match /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}…/i
+
+- Expected: 
+/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
++ Received: 
+&quot;&quot;
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:54:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; matches only an exact railId" time="0.000447667">
+            <failure message="expected [] to deeply equal [ &apos;rail-a&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;rail-a&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;rail-a&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:68:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; keeps a record active when its anchor hint is stale" time="0.000292916">
+            <failure message="expected undefined to be { railId: &apos;rail-a&apos;, …(2) } // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be { railId: &apos;rail-a&apos;, …(2) } // Object.is equality
+
+- Expected: 
+Object {
+  &quot;anchorKeyId&quot;: &quot;deleted-first-key&quot;,
+  &quot;channels&quot;: Array [
+    Object {
+      &quot;id&quot;: &quot;opacity&quot;,
+      &quot;keys&quot;: Array [
+        Object {
+          &quot;easing&quot;: &quot;ease&quot;,
+          &quot;frame&quot;: 0,
+          &quot;value&quot;: 1,
+          &quot;wiggle&quot;: 0,
+        },
+      ],
+    },
+  ],
+  &quot;railId&quot;: &quot;rail-a&quot;,
+}
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:79:41
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; retains every unmatched record as an orphan in canonical railId order" time="0.000318917">
+            <failure message="expected [] to deeply equal [ &apos;rail-b&apos;, &apos;rail-c&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;rail-b&apos;, &apos;rail-c&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;rail-b&quot;,
+-   &quot;rail-c&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:93:58
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; never matches a record to a rail that was never animated" time="0.000322708">
+            <failure message="expected [] to deeply equal [ { railId: &apos;rail-a&apos;, …(2) } ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ { railId: &apos;rail-a&apos;, …(2) } ]
+
+- Expected
++ Received
+
+- Array [
+-   Object {
+-     &quot;anchorKeyId&quot;: &quot;key-1&quot;,
+-     &quot;channels&quot;: Array [
+-       Object {
+-         &quot;id&quot;: &quot;opacity&quot;,
+-         &quot;keys&quot;: Array [
+-           Object {
+-             &quot;easing&quot;: &quot;ease&quot;,
+-             &quot;frame&quot;: 0,
+-             &quot;value&quot;: 1,
+-             &quot;wiggle&quot;: 0,
+-           },
+-         ],
+-       },
+-     ],
+-     &quot;railId&quot;: &quot;rail-a&quot;,
+-   },
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:106:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; returns frozen records keyed by railId" time="0.000222792">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:116:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; describes an orphaned record with its rail and anchor ids" time="0.000159875">
+            <failure message="expected &apos;&apos; to contain &apos;rail-z&apos;" type="AssertionError">
+AssertionError: expected &apos;&apos; to contain &apos;rail-z&apos;
+
+- Expected
++ Received
+
+- rail-z
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:125:25
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
