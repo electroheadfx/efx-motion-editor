@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Phase 59 context gathered
-last_updated: "2026-11-06T11:52:24.992Z"
+stopped_at: Completed 59-01-PLAN.md
+last_updated: "2026-11-06T12:04:49.610Z"
 last_activity: 2026-11-06
-last_activity_desc: v2.1.0 roadmap created (Phases 59-62, 38/38 requirements mapped)
-state_head: 4b91a3922e5097c161ed694ba0c9d56bb55f5a5f
+last_activity_desc: Phase 59 execution started
+state_head: a14b43c9fa399c58730502cc2d46ddb624cead2d
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 59 — Rail Motion Channels & v7 Interface (1 of 4 in v2.1.0)
+**Current focus:** Phase 59 — Rail Motion Channels & v7 Interface
 
 ## Current Position
 
-Phase: 59 (Rail Motion Channels & v7 Interface) — READY TO EXECUTE
-Plan: — of TBD
+Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
+Plan: 2 of 16
 Status: Ready to execute
-Last activity: 2026-11-06 — v2.1.0 roadmap created (Phases 59-62, 38/38 requirements mapped)
+Last activity: 2026-11-06 — Phase 59 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,11 @@ Progress: [░░░░░░░░░░] 0%
 | 62. Painted-Stroke Curve Editing | TBD | - | - |
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 59 P01 | 7min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -63,6 +68,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - One evaluator; user-facing curves are Hold plus an eased/smoothed interpolation. No B-spline on motion channels.
 - The new persisted field is not named `motion`; `PhysicPaintRotoScriptMotionSettings` is a different system and stays unmerged.
 - Phase order is fixed: 59 motion → 60 zoom (same pitch expressions) → 61 vector (spike-gated) → 62 painted-stroke curves.
+- [Phase 59]: railKind term mirrored in Rust at the TS ordinal; shared frozen golden fixture is the cross-language authority
+- [Phase 59]: canonical_physical_source extracted (pure) so a term-order regression names the term, not an opaque hash
+- [Phase 59]: rail-motions ordinal reserved between loops and incoming-breaks; not emitted until Phase 59's motion encoder
 
 ### Pending Todos
 
@@ -134,9 +142,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T08:45:15.953Z
-Stopped at: Phase 59 context gathered
-Resume file: .planning/phases/59-rail-motion-channels-v7-interface/59-CONTEXT.md
+Last session: 2026-11-06T12:04:49.590Z
+Stopped at: Completed 59-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
