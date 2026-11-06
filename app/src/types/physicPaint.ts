@@ -6,6 +6,10 @@ import type { MceImageRef } from './project';
 import type { PersistedRotoScriptAnyV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+import {
+  parsePhysicPaintRotoRailMotions,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../components/physic-paint/roto/railMotionModel';
 import type {
   RotoRailSetCopyPayload,
   RotoRailSetCopyPlacementMode,
@@ -1289,6 +1293,14 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
    * unchanged; when absent, the layer's current loopClips are preserved.
    */
   readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  /**
+   * Complete staged rail-motion collection (Phase 59, MOTN-12). 59-01 D-05/D-06
+   * places motion at document level, exactly like Loop Clips: the collection is
+   * a complete value, so `undefined` preserves the target track's current
+   * collection and an explicit array replaces it atomically. Motion is never a
+   * per-frame payload, so it can never smuggle pixels or a sampled value.
+   */
+  readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
   /** Complete stable-key-owned incoming interpolation break collection. */
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
@@ -1775,9 +1787,26 @@ function failApplyPayload(clause: string): false {
   return false;
 }
 
+/**
+ * Thin fail-closed guard over the 59-02 rail-motion parser. The parser is the
+ * single shape authority (caps, allowlists, domains, grouped-Position pairing);
+ * this guard never repairs, reorders or drops anything — it only answers
+ * "would the parser accept this value?" so callers can reject before mutating.
+ */
+export function isPhysicPaintRotoRailMotionCollection(
+  value: unknown,
+): value is readonly PhysicPaintRotoRailMotionRecord[] {
+  try {
+    parsePhysicPaintRotoRailMotions(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return failApplyPayload('not-record');
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'beforeSelectedKeyId', 'beforeCursorAppFrame', 'targetCapacity', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'beforeSelectedKeyId', 'beforeCursorAppFrame', 'targetCapacity', 'semanticDelta', 'historyProvenance', 'loopClips', 'railMotions', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
   if (value.kind !== 'replace-roto-physical-map') return failApplyPayload('wrong-kind');
   if (!isNonEmptyString(value.operationId)) return failApplyPayload('bad-operationId');
   if (!isNonEmptyString(value.trackId)) return failApplyPayload('bad-trackId');
@@ -1801,6 +1830,7 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.groupOverrideRecords !== undefined
     && (!Array.isArray(value.groupOverrideRecords) || !value.groupOverrideRecords.every(isPhysicPaintRotoPhysicalEditRecord))) return failApplyPayload('bad-groupOverrideRecords');
   if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return failApplyPayload('bad-loopClips');
+  if (value.railMotions !== undefined && !isPhysicPaintRotoRailMotionCollection(value.railMotions)) return failApplyPayload('bad-railMotions');
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return failApplyPayload('bad-incomingBreaks');
   if (typeof value.interpolationEnabled !== 'boolean') return failApplyPayload('bad-interpolationEnabled');
   if (value.interpolationMode !== 'duplicate' && value.interpolationMode !== 'blend') return failApplyPayload('bad-interpolationMode');

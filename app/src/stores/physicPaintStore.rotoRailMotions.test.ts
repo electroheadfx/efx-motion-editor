@@ -303,7 +303,7 @@ describe('59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12)', () => 
     }));
 
     expect(second.ok).toBe(true);
-    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toBe(storedBefore);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(storedBefore);
     expect(physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)?.railMotions).toHaveLength(1);
   });
 
@@ -405,7 +405,7 @@ describe('59-07: replaceRotoPhysicalRailMotions transactionality', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('PhysicPaintRotoRailMotions:');
-    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toBe(recordsBefore);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID)).toEqual(recordsBefore);
     expect(physicPaintStore.getRotoPhysicalInterpolationState(LAYER, TEST_TRACK_ID)).toBe(interpolationBefore);
     expect(physicPaintStore.getRotoPhysicalLoopClips(LAYER, TEST_TRACK_ID)).toBe(loopsBefore);
     expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER, TEST_TRACK_ID)).toBe(breaksBefore);

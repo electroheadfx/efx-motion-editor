@@ -5722,6 +5722,14 @@ function _applyRotoTrackPaste(
   if (!recordsResult.ok) return { ok: false, reason: 'apply-failed' };
   const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, proposal.loopClips);
   if (!loopsResult.ok) return { ok: false, reason: 'apply-failed' };
+  // Phase 59 (MOTN-12): motion rides the same proposal as records and loops, so
+  // a copy/paste that re-keys motion lands the re-keyed collection with it.
+  const railMotionsResult = store.replaceRotoPhysicalRailMotions(
+    layerId,
+    trackId,
+    proposal.railMotions ?? store.getRotoPhysicalRailMotions(layerId, trackId),
+  );
+  if (!railMotionsResult.ok) return { ok: false, reason: 'apply-failed' };
   const breaksResult = store.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId, proposal.incomingInterpolationBreakKeyIds);
   if (!breaksResult.ok) return { ok: false, reason: 'apply-failed' };
   for (const record of freshRecords) {

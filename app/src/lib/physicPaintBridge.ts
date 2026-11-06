@@ -33,6 +33,10 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
+  parsePhysicPaintRotoRailMotions,
+  type PhysicPaintRotoRailMotionRecord,
+} from '../components/physic-paint/roto/railMotionModel';
+import {
   classifyPhysicPaintRotoGroupFrameTarget,
   proposePhysicPaintRotoActionGroupLifecycle,
   proposePhysicPaintRotoDeleteGroup,
@@ -814,6 +818,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   const groupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(request.layerId, trackId);
   const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(request.layerId, trackId);
   const loopClips = physicPaintStore.getRotoPhysicalLoopClips(request.layerId, trackId);
+  const railMotions = physicPaintStore.getRotoPhysicalRailMotions(request.layerId, trackId);
   const incomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(request.layerId, trackId);
   const physicalRevision = buildPhysicPaintRotoPhysicalRevision(
     records,
@@ -821,6 +826,7 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
     loopClips,
     incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
+    railMotions,
   );
   const physicalRecords = records.map((record) => (identitiesOnly
     ? {
@@ -1124,6 +1130,14 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
   readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  /**
+   * Phase 59 (MOTN-12): motion is payload-authoritative and carries no
+   * canonical-resolver intent, so the parent's recomputation must build its
+   * revision from the SAME proposed collection. Omitting it here made every
+   * ordinary edit reject with "does not match the canonical parent-resolved
+   * edit" once motion was non-empty.
+   */
+  readonly proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
   readonly selectedKeyId: string | null;
   readonly selectedAppFrame: number | null;
   readonly parentEndExclusive: number;
@@ -1179,6 +1193,7 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     canonicalLoopClips,
     canonicalIncomingInterpolationBreakKeyIds,
     canonicalGroupOverrideRecords,
+    input.proposedRailMotions,
   );
   if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
     || !sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)
@@ -1328,7 +1343,8 @@ function physicalEditResult(
       }, payload.loopClips ?? physicPaintStore.getRotoPhysicalLoopClips(payload.layerId, payload.trackId),
       payload.incomingInterpolationBreakKeyIds
         ?? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId, payload.trackId),
-      groupOverrideRecords);
+      groupOverrideRecords,
+      payload.railMotions ?? physicPaintStore.getRotoPhysicalRailMotions(payload.layerId, payload.trackId));
     } catch {
       stagedRevision = 'invalid-physical-revision';
     }
@@ -1546,6 +1562,8 @@ function validateCanonicalGroupLifecycleEdit(input: {
   readonly proposedGroupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[];
   readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
   readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
+  /** Phase 59 (MOTN-12): payload-authoritative motion carried through the proposal. */
+  readonly proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
   readonly stagedInterpolation: PhysicPaintRotoInterpolationState;
   readonly stagedRevision: string;
   readonly cursorAppFrame: number;
@@ -1569,6 +1587,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     ...currentDocument,
     selectedKeyId: payload.selectedKeyId,
     cursorAppFrame: payload.cursorAppFrame,
+    railMotions: input.proposedRailMotions,
   });
 
   let recomputed:
@@ -1649,6 +1668,18 @@ function validateCanonicalGroupLifecycleEdit(input: {
     return `${operationLabel} semantic impact does not match parent recomputation.`;
   }
   const proposal = recomputed.proposal;
+  // Phase 59 (MOTN-12): the proposal modules are motion-agnostic, so the
+  // parent recomputes the canonical revision from the SAME payload-authoritative
+  // motion collection the child staged. Comparing `proposal.revision` (built
+  // without motion) would reject every group edit once motion is non-empty.
+  const proposalRevision = buildPhysicPaintRotoPhysicalRevision(
+    proposal.realKeyRecords,
+    proposal.interpolation,
+    proposal.loopClips,
+    proposal.incomingInterpolationBreakKeyIds,
+    proposal.groupOverrideRecords ?? [],
+    input.proposedRailMotions,
+  );
   if (!sameCompletePhysicalRecords(proposal.realKeyRecords, input.proposedRecords)
     || !sameCompletePhysicalRecords(proposal.groupOverrideRecords ?? [], input.proposedGroupOverrideRecords)
     || !sameCanonicalLoopClips(proposal.loopClips, input.proposedLoopClips)
@@ -1658,7 +1689,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
     || proposal.interpolation.mode !== input.stagedInterpolation.mode
     || proposal.selectedKeyId !== payload.selectedKeyId
     || proposal.cursorAppFrame !== input.cursorAppFrame
-    || proposal.revision !== input.stagedRevision) {
+    || proposalRevision !== input.stagedRevision) {
     return `${operationLabel} target document does not match parent recomputation.`;
   }
   return null;
@@ -1762,6 +1793,7 @@ async function applyPhysicPaintRotoPhysicalMap(
   const currentGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(payload.layerId, payload.trackId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId, payload.trackId);
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(payload.layerId, payload.trackId);
+  const currentRailMotions = physicPaintStore.getRotoPhysicalRailMotions(payload.layerId, payload.trackId);
   const currentIncomingInterpolationBreakKeyIds = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(payload.layerId, payload.trackId);
   const currentDocument = physicPaintStore.getRotoPhysicalDocument(payload.layerId, payload.trackId);
   const currentRevision = buildPhysicPaintRotoPhysicalRevision(
@@ -1770,6 +1802,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     currentLoopClips,
     currentIncomingInterpolationBreakKeyIds,
     currentGroupOverrideRecords,
+    currentRailMotions,
   );
   // studio-blend-off-corruption: log the PARENT's revision components for every
   // physical-map apply, so a "revision became stale" reject can be attributed to
@@ -1855,6 +1888,18 @@ async function applyPhysicPaintRotoPhysicalMap(
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical Loop Clips are malformed.');
   }
+  // Rail-motion threading (Phase 59, MOTN-12): a commit carrying railMotions is
+  // validated fail-closed by the 59-02 parser and delivered unchanged; a commit
+  // without the member preserves the target track's current collection. Motion
+  // is a complete document-level collection (59-01 D-05/D-06), never per-frame.
+  let proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
+  try {
+    proposedRailMotions = payload.railMotions === undefined
+      ? physicPaintStore.getRotoPhysicalRailMotions(payload.layerId, payload.trackId)
+      : parsePhysicPaintRotoRailMotions(payload.railMotions);
+  } catch (error) {
+    return reject(error instanceof Error ? error.message : 'Roto physical rail motions are malformed.');
+  }
   let proposedIncomingInterpolationBreakKeyIds: readonly string[];
   try {
     proposedIncomingInterpolationBreakKeyIds = payload.incomingInterpolationBreakKeyIds === undefined
@@ -1928,6 +1973,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
     proposedGroupOverrideRecords,
+    proposedRailMotions,
   );
   if (payload.intent !== undefined) {
     if (canonicalParentEndExclusive === null) {
@@ -1945,6 +1991,7 @@ async function applyPhysicPaintRotoPhysicalMap(
       proposedLoopClips,
       currentIncomingInterpolationBreakKeyIds,
       proposedIncomingInterpolationBreakKeyIds,
+      proposedRailMotions,
       selectedKeyId: payload.selectedKeyId,
       selectedAppFrame: payload.selectedAppFrame,
       parentEndExclusive: canonicalParentEndExclusive,
@@ -1974,6 +2021,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     proposedGroupOverrideRecords,
     proposedLoopClips,
     proposedIncomingInterpolationBreakKeyIds,
+    proposedRailMotions,
     stagedInterpolation,
     stagedRevision,
     cursorAppFrame,
@@ -2021,6 +2069,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     cursorAppFrame,
     revision: stagedRevision,
     loopClips: proposedLoopClips,
+    railMotions: proposedRailMotions,
     incomingInterpolationBreakKeyIds: proposedIncomingInterpolationBreakKeyIds,
   });
   const replaceResult = physicPaintStore.replaceRotoPhysicalDocument(
