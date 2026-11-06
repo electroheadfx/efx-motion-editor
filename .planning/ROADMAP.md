@@ -110,7 +110,23 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans**: TBD
+**Plans:** 14 plans
+
+Plans:
+- [ ] 59-01-PLAN.md — Gates A–D ratification + TS↔Rust `railKind` canonical parity tracer and golden fixture
+- [ ] 59-02-PLAN.md — Rail-motion model: types, value domains, fail-closed parser, rail-id mint, pure edit reducer
+- [ ] 59-03-PLAN.md — Persistence: document allowlist, conditional canonical term, one revision authority, save→reopen pin
+- [ ] 59-04-PLAN.md — Rust `canonical_rail_motions` mirror + fail-closed validation + cross-language motion fixture
+- [ ] 59-05-PLAN.md — Pure evaluator: endpoint hold, Hold/Ease, unbounded rotation, seeded wiggle, lane curve path
+- [ ] 59-06-PLAN.md — Gate B durable rail identity: bindings, reconciliation, orphans, split/merge/delete transitions
+- [ ] 59-07-PLAN.md — Store/apply/bridge/undo wiring + canonical-vs-raster revision split (no re-bake on motion drags)
+- [ ] 59-08-PLAN.md — Compositor `trackTransforms` at both draw sites + motion key term + memoized rail-space pivot
+- [ ] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
+- [ ] 59-10-PLAN.md — v7 lane surface: 18px lanes, header cluster, cells, evaluator curve, 6×6 keys, block outline
+- [ ] 59-11-PLAN.md — Timeline integration: chevron, derived expansion, mirrored headers, measured layout, block-aware reorder
+- [ ] 59-12-PLAN.md — Animate + motion commands, Hold/Ease/Wiggle, honest availability, three selection scopes
+- [ ] 59-13-PLAN.md — Rail-motion gizmo with the D-08 auto-key gate + inspector numeric fields with unbounded rotation
+- [ ] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
 
 **Build order (research §12)**:
   1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
