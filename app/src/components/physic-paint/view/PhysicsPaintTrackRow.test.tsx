@@ -1014,6 +1014,23 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     const writes = body.match(/railMotionExpandedSelection\.value\s*=/g) ?? [];
     expect(writes).toHaveLength(1);
     expect(body).not.toMatch(/useEffect\s*\(/);
+    // The strip only READS it (one narrow read per render) — never writes.
+    const strip = readFileSync(
+      fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(strip).toContain('railMotionExpandedSelection.value;');
+    expect(strip).not.toMatch(/railMotionExpandedSelection\.value\s*=/);
+    // Session-only means SESSION-ONLY: the identity never reaches the
+    // document allowlist or the save/revision fingerprint.
+    const persistSources = [
+      fileURLToPath(new URL('../../../stores/physicPaintStore.ts', import.meta.url)),
+      fileURLToPath(new URL('../../../stores/efxPaintStore.ts', import.meta.url)),
+    ].map((path) => readFileSync(path, 'utf8'));
+    for (const persistSource of persistSources) {
+      expect(persistSource).not.toContain('railMotionExpandedSelection');
+      expect(persistSource).not.toContain('motionExpandedSelection');
+    }
   });
 
   it('keeps at most one block open: toggling another rail replaces the recorded identity', () => {
