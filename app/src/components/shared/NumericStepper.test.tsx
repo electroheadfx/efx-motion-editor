@@ -510,13 +510,20 @@ function stepperElements(source: string): string[] {
  *  261017-vcn Q6: the grain widget moved to the Paper tab (PaperPicker).
  *  261024-p5q: the Stroke Settings geometry rows type absolute targets
  *  (X/Y px, free-entry scale / rotation), so the dialog is a second explicit
- *  opt-in call site — the allowance stays a fixed list, never a blanket rule. */
+ *  opt-in call site — the allowance stays a fixed list, never a blanket rule.
+ *  Phase 59-16: the Motion value inspector types absolute channel targets
+ *  (Position px, Scale %, Rotation degrees) and must forward out-of-domain
+ *  entry to the command layer so it can be refused with a reason — a stepper
+ *  that silently clamped would hide the rejection. Third explicit call site. */
 const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PaperPicker.tsx';
 const STROKE_SETTINGS_CALL_SITE_REL =
   'src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx';
+const MOTION_INSPECTOR_CALL_SITE_REL =
+  'src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx';
 const EXCEPTION_CALL_SITE_RELS = new Set([
   GRAIN_CALL_SITE_REL,
   STROKE_SETTINGS_CALL_SITE_REL,
+  MOTION_INSPECTOR_CALL_SITE_REL,
 ]);
 
 /** The opt-in exception-option identifiers the paper grain field alone may pass. */
