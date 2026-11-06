@@ -2543,8 +2543,10 @@ describe('260922-rd4 background transform via the shared photo-reference handles
     expect(studioView).toContain('<PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />');
   });
 
-  it('pins (3) ONE handles component carries target: photo-reference | background and dispatches setBackgroundTransform (reuse)', () => {
-    expect(referenceTransformHandles).toContain("target: 'photo-reference' | 'background'");
+  it('pins (3) ONE handles component carries target: photo-reference | background | rail-motion and dispatches setBackgroundTransform (reuse)', () => {
+    // 59-13: the union is additive — the rail-motion target joined it without
+    // touching the two legacy branches.
+    expect(referenceTransformHandles).toContain("target: 'photo-reference' | 'background' | 'rail-motion'");
     expect(referenceTransformHandles).toContain('setBackgroundTransform');
     // The photo write endpoint still exists — same component, dispatch only.
     expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');

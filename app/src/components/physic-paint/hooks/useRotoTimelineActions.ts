@@ -59,6 +59,7 @@ import {
   animateRail,
   removeMotionKey as applyRemoveMotionKey,
   resolveMotionCommandAvailability,
+  resolveMotionGizmoAvailability,
   resolveMotionKeyAtFrame,
   resolveSelectedRailView,
   setMotionKeyAtCursor as applySetMotionKeyAtCursor,
@@ -68,6 +69,7 @@ import {
   type RailMotionCommandId,
   type RailMotionCommandResult,
   type RailMotionKeySelection,
+  type RailMotionTransformValues,
 } from '../roto/railMotionCommands';
 import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
 import type {
@@ -76,7 +78,10 @@ import type {
   PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
+import { railMotionValueToUi } from '../roto/railMotionModel';
+import { evaluateRailMotion } from '../roto/railMotionEvaluator';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
+import type { PhysicsPaintRailMotionGizmoProps } from '../view/PhysicsPaintReferenceTransformHandles';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
@@ -2060,6 +2065,16 @@ interface ActiveRailMotionState {
 }
 
 /**
+ * 59-13: the payload the Studio hands to the canvas gizmo. `signature` is the
+ * primitive memo key the Studio's canvas-stack memo watches — the payload
+ * object is rebuilt whenever this computed re-evaluates, so a memo entry that
+ * depended on its identity would never hit (identity-stable deps rule).
+ */
+export interface RailMotionGizmoBundle extends PhysicsPaintRailMotionGizmoProps {
+  readonly signature: string;
+}
+
+/**
  * 59-12: the live motion state behind the selected rail. Reads the 59-07
  * store getter, projects every live rail with the 59-06 assignment (the ONE
  * anchor-based first bind), and resolves the selected view. Nothing is cached
@@ -2358,6 +2373,66 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const canSetSelectedMotionKeyWiggle = computed(() => setSelectedMotionKeyWiggleAvailability.value.enabled);
   const setSelectedMotionKeyWiggleDisabledReason = computed(() => setSelectedMotionKeyWiggleAvailability.value.reason);
   const selectedMotionKey = computed(() => motionCommandFacts.value.selection);
+  /**
+   * 59-13: the canvas gizmo payload for the selected animated rail. It returns
+   * null unless the 59-06 view carries a non-null railId AND the command layer
+   * enables the gizmo, so the Studio mount gate and the availability gate
+   * cannot disagree. The evaluated transform is expressed in DISPLAY units
+   * (px / percent / degrees) at the ONE conversion boundary; a commit funnels
+   * through the same 59-07 setter as every other Motion action.
+   */
+  const railMotionGizmo = computed((): RailMotionGizmoBundle | null => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null || state.view.railId === null) return null;
+    const animatedChannelIds = state.record === null
+      ? []
+      : state.record.channels.map((channel) => channel.id);
+    const availability = resolveMotionGizmoAvailability({
+      selectedRailId: state.view.railId,
+      animatedChannelIds,
+      cursorInsideSpan: state.cursorFrame >= state.view.startFrame
+        && state.cursorFrame < state.view.endFrameExclusive,
+    });
+    if (!availability.enabled || state.record === null) return null;
+    const evaluated = evaluateRailMotion(state.record, state.localCursorFrame);
+    const values = Object.freeze({
+      position: Object.freeze({ x: evaluated.translateX, y: evaluated.translateY }),
+      scale: railMotionValueToUi('scale', evaluated.scale),
+      // The evaluator owns the ONE degrees -> radians conversion; the gizmo
+      // displays degrees and never wraps them (D-13).
+      rotation: evaluated.rotationRadians * (180 / Math.PI),
+    }) as RailMotionTransformValues;
+    const revision = physicPaintStore.getRotoPhysicalContentRevision(state.layerId, state.trackId) ?? '';
+    return Object.freeze({
+      records: state.records,
+      view: state.view,
+      cursorFrame: state.cursorFrame,
+      evaluated: values,
+      availability,
+      signature: [
+        state.layerId,
+        state.trackId,
+        state.view.railId,
+        String(state.view.startFrame),
+        String(state.view.endFrameExclusive),
+        String(state.cursorFrame),
+        animatedChannelIds.join(','),
+        String(values.position?.x ?? 0),
+        String(values.position?.y ?? 0),
+        String(values.scale ?? 100),
+        String(values.rotation ?? 0),
+        revision,
+      ].join('|'),
+      commit: (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
+        const written = commitRailMotionRecords(state, records);
+        if (!written.ok) publishMotionFailure(input, written.error);
+        else input.publishStatus?.('Motion key updated.');
+      },
+      report: (reason: string): void => {
+        publishMotionFailure(input, reason);
+      },
+    }) as RailMotionGizmoBundle;
+  });
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -4246,6 +4321,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     physicalKeyUtilities,
     // Quick 261105-raf: the one-shot `Edit this rail?` prompt bundle.
     railConversionDialog,
+    // 59-13: the canvas gizmo payload for the selected animated rail.
+    railMotionGizmo,
   };
 }
 

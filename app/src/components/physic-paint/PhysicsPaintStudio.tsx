@@ -9799,7 +9799,11 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, blockGeneratedFramePaintPointerDown, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
+  // 59-13: the canvas gizmo payload for the selected animated rail. The memo
+  // watches its PRIMITIVE signature (the payload object is rebuilt on every
+  // computed re-evaluation; depending on its identity would defeat the memo).
+  const railMotionGizmoForCanvas = rotoTimelineActions.railMotionGizmo.value;
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, blockGeneratedFramePaintPointerDown, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value, railMotionGizmoForCanvas?.signature ?? null], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -9964,6 +9968,22 @@ export function PhysicsPaintStudio() {
           width: canvasWidth,
           height: canvasHeight,
           zoom: paperTextureScale,
+        } : null,
+      // 59-13: the RAIL-MOTION gizmo — the same envelope and the same working
+      // space (zoom = paperTextureScale), gated on a selected rail whose 59-06
+      // view carries a non-null railId. The hook only emits a payload once the
+      // command layer enables the gizmo, so this mount and the D-08 gate share
+      // one verdict. The two legacy mounts above are unchanged.
+      railMotionTransformHandles: railMotionGizmoForCanvas !== null
+        ? {
+          layerId: programMonitorLayerId,
+          target: 'rail-motion' as const,
+          currentFrame,
+          isPlaying,
+          width: canvasWidth,
+          height: canvasHeight,
+          zoom: paperTextureScale,
+          railMotion: railMotionGizmoForCanvas,
         } : null,
     };
   });

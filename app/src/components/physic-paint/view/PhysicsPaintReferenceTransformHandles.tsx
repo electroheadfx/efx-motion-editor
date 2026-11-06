@@ -19,6 +19,14 @@ import {
   getCursorForHandle,
 } from '../../canvas/transformHandles';
 import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
+import {
+  mergeRailMotionDraft,
+  writeMotionTransformAtCursor,
+  type RailMotionTransformValues,
+} from '../roto/railMotionCommands';
+import type { RailMotionRailView } from '../roto/railMotionIdentity';
+import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import { railMotionValueFromUi, railMotionValueToUi } from '../roto/railMotionModel';
 
 /**
  * 50-05 (Task 2, S4): the interactive reference transform handles on the
@@ -55,18 +63,41 @@ import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
  * read/write endpoints are target-dispatched (one component, no fork).
  */
 
-/** 260922-rd4: the ONE handles target discriminator (no default — every mount passes it). */
-export type PhysicsPaintTransformHandleTarget = 'photo-reference' | 'background';
+/**
+ * 260922-rd4: the ONE handles target discriminator (no default — every mount
+ * passes it). 59-13 adds `'rail-motion'` as a third, additive branch: it reads
+ * the rail's evaluated transform and writes the motion collection, never a
+ * document display transform.
+ */
+export type PhysicsPaintTransformHandleTarget = 'photo-reference' | 'background' | 'rail-motion';
+
+/**
+ * 59-13: the rail-motion payload. The Studio supplies the mounted 59-06 view
+ * (railId non-null — the mount gate), the track's motion records, the app-frame
+ * cursor, the evaluated DISPLAY-unit transform at that cursor, the command
+ * layer's availability verdict, and the two callbacks that commit / report.
+ */
+export interface PhysicsPaintRailMotionGizmoProps {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly view: RailMotionRailView;
+  readonly cursorFrame: number;
+  readonly evaluated: RailMotionTransformValues;
+  readonly availability: { readonly enabled: boolean; readonly reason: string | null };
+  readonly commit: (records: readonly PhysicPaintRotoRailMotionRecord[]) => void;
+  readonly report: (reason: string) => void;
+}
 
 export interface PhysicsPaintReferenceTransformHandlesProps {
   /** Required discriminator — inline union so the reuse pin sees it literally. */
-  readonly target: 'photo-reference' | 'background';
+  readonly target: 'photo-reference' | 'background' | 'rail-motion';
   readonly layerId: string | null;
   readonly currentFrame: number;
   readonly isPlaying: boolean;
   readonly width: number;
   readonly height: number;
   readonly zoom: number;
+  /** rail-motion only; the legacy targets ignore it. */
+  readonly railMotion?: PhysicsPaintRailMotionGizmoProps | null;
 }
 
 interface DragState {
@@ -85,6 +116,10 @@ const IDENTITY_TRANSFORM: PhotoReferenceTransform = { x: 0, y: 0, scaleX: 1, sca
 export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferenceTransformHandlesProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageSize = useSignal<{ w: number; h: number } | null>(null);
+  // 59-13: the session-only rail-motion draft. Pointer moves write HERE and
+  // nowhere else; exactly one store mutation commits at pointer-up. It is a
+  // signal (never useState) and it never enters the document or a store.
+  const draftTransform = useSignal<RailMotionTransformValues | null>(null);
   const dragRef = useRef<DragState>({
     mode: 'none',
     startClientX: 0,
@@ -93,10 +128,19 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   });
 
   const { target, layerId, currentFrame, isPlaying, width, height, zoom } = props;
+  const railMotion = target === 'rail-motion' ? props.railMotion ?? null : null;
 
   // 260922-rd4 (STEP B): target-dispatched setter — the ONE write endpoint the
   // gesture bodies call. Same three apply* functions, no duplicated gesture.
-  function writeTransform(next: PhotoReferenceTransform) {
+  // 59-13: the rail-motion branch writes the SESSION DRAFT only — no document
+  // setter, no store, no revision bump until handlePointerUp commits once.
+  function writeTransform(next: PhotoReferenceTransform, railValues?: RailMotionTransformValues) {
+    if (target === 'rail-motion') {
+      if (railValues !== undefined) {
+        draftTransform.value = mergeRailMotionDraft(draftTransform.value, railValues);
+      }
+      return;
+    }
     if (!layerId) return;
     if (target === 'background') setBackgroundTransform(layerId, next);
     else setPhotoReferenceTransform(layerId, next);
@@ -111,6 +155,16 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   // pending or failed decode clears the size (fail-closed — no handles without
   // a resolved source, D-04).
   useEffect(() => {
+    // 59-13: a rail motion is relative to the PROJECT canvas — the neutral draw
+    // rect is the whole project frame, so the base is the working size divided
+    // by the project→working zoom. No document, image decode or frame loop.
+    if (target === 'rail-motion') {
+      imageSize.value = {
+        w: zoom > 0 ? width / zoom : width,
+        h: zoom > 0 ? height / zoom : height,
+      };
+      return;
+    }
     if (isPlaying || !layerId) {
       imageSize.value = null;
       return;
@@ -173,15 +227,50 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
   }, [target, layerId, currentFrame, isPlaying, width, height, zoom, efxPaintVersion.value, physicPaintVersion.value]);
 
   // Read accepted display state by target (narrow reads, no render-body writes).
-  const document = layerId ? getDocument(layerId) : null;
-  const track = target === 'background'
-    ? document?.background ?? null
-    : document?.photoReference ?? null;
-  const transformLocked = track?.transformLocked ?? true;
-  const transform = track?.transform ?? IDENTITY_TRANSFORM;
+  // 59-13: rail motion reads NO document — its source is the evaluated motion
+  // transform at the cursor, overlaid by the session draft while dragging.
+  const document = target === 'rail-motion' ? null : layerId ? getDocument(layerId) : null;
+  const track = target === 'rail-motion'
+    ? null
+    : target === 'background'
+      ? document?.background ?? null
+      : document?.photoReference ?? null;
+  const transformLocked = target === 'rail-motion' ? false : track?.transformLocked ?? true;
+  const evaluatedRailTransform: PhotoReferenceTransform = railMotion === null
+    ? IDENTITY_TRANSFORM
+    : {
+      x: railMotion.evaluated.position?.x ?? 0,
+      y: railMotion.evaluated.position?.y ?? 0,
+      scaleX: railMotionValueFromUi('scale', railMotion.evaluated.scale ?? 100),
+      scaleY: railMotionValueFromUi('scale', railMotion.evaluated.scale ?? 100),
+      rotation: railMotion.evaluated.rotation ?? 0,
+    };
+  // 59-13: the session draft is a PARTIAL of display-unit channel values; the
+  // geometry always needs a full transform, so absent channels fall back to the
+  // evaluated transform at the cursor (the gesture's start state).
+  const draftRail = draftTransform.value;
+  const transform: PhotoReferenceTransform = target === 'rail-motion'
+    ? (draftRail === null
+      ? evaluatedRailTransform
+      : {
+        x: draftRail.position?.x ?? evaluatedRailTransform.x,
+        y: draftRail.position?.y ?? evaluatedRailTransform.y,
+        scaleX: draftRail.scale !== undefined
+          ? railMotionValueFromUi('scale', draftRail.scale)
+          : evaluatedRailTransform.scaleX,
+        scaleY: draftRail.scale !== undefined
+          ? railMotionValueFromUi('scale', draftRail.scale)
+          : evaluatedRailTransform.scaleY,
+        rotation: draftRail.rotation ?? evaluatedRailTransform.rotation,
+      })
+    : track?.transform ?? IDENTITY_TRANSFORM;
 
-  // Locked / playing / no resolved size / no track → no handles, no grab.
-  if (transformLocked || isPlaying || !imageSize.value || !track) {
+  // Locked / playing / unavailable / no resolved size / no track → no handles,
+  // no grab. The rail-motion gate is the 59-13 command-layer verdict, so an
+  // un-animated rail or an out-of-span playhead renders nothing to drag.
+  const railMotionUnavailable = target === 'rail-motion'
+    && (railMotion === null || !railMotion.availability.enabled);
+  if (railMotionUnavailable || transformLocked || isPlaying || !imageSize.value || (target !== 'rail-motion' && !track)) {
     return (
       <div
         ref={containerRef}
@@ -198,6 +287,12 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
     : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
   const handles = getHandlePositions(bounds, zoom);
+  // 59-13: the rail-motion gizmo exposes move, CORNER scale and rotate only.
+  // A uniform `scale` channel is the whole model, so edge (per-axis) handles
+  // would have no honest target — they are not hit-tested and not rendered.
+  const interactiveHandles = target === 'rail-motion'
+    ? handles.filter((handle) => handle.type.startsWith('corner'))
+    : handles;
 
   const [tl, tr, br, bl] = bounds.corners;
   const polyPoints = `${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`;
@@ -256,7 +351,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       return;
     }
 
-    const handleHit = hitTestHandles(point, handles, zoom);
+    const handleHit = hitTestHandles(point, interactiveHandles, zoom);
     if (handleHit) {
       e.preventDefault();
       dragRef.current = {
@@ -330,11 +425,12 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     const current = getWorkingPointFromClient(e.clientX, e.clientY);
     const dx = (current.x - start.x) / zoom;
     const dy = (current.y - start.y) / zoom;
-    writeTransform({
+    const next = {
       ...state.startTransform,
       x: state.startTransform.x + dx,
       y: state.startTransform.y + dy,
-    });
+    };
+    writeTransform(next, { position: { x: next.x, y: next.y } });
   }
 
   function applyScale(e: PointerEvent, state: DragState) {
@@ -350,11 +446,14 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
 
     const ht = state.handleType;
     if (ht?.startsWith('corner')) {
-      writeTransform({
+      const next = {
         ...state.startTransform,
         scaleX: state.startTransform.scaleX * scaleFactor,
         scaleY: state.startTransform.scaleY * scaleFactor,
-      });
+      };
+      // Corner scale is uniform; the motion model has ONE `scale` channel, so
+      // the display-unit percent comes from scaleX (the two stay equal here).
+      writeTransform(next, { scale: railMotionValueToUi('scale', next.scaleX) });
     } else if (ht === 'edge-left' || ht === 'edge-right') {
       const rad = (state.startTransform.rotation * Math.PI) / 180;
       const axisX = Math.cos(rad);
@@ -392,13 +491,51 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
 
-    writeTransform({
+    const next = {
       ...state.startTransform,
       rotation: state.startTransform.rotation + deltaAngle,
-    });
+    };
+    // Degrees, exactly as sampled — no normalization, no wrap (D-13).
+    writeTransform(next, { rotation: next.rotation });
   }
 
   function handlePointerUp(e: PointerEvent) {
+    const gestureEnded = dragRef.current.mode !== 'none';
+    if (gestureEnded) endInteraction(e.pointerId);
+    // 59-13: the ONE rail-motion commit. The draft accumulated by the pointer
+    // moves is settled through the pure command; a refusal discards it and
+    // reports the reason, leaving the document byte-identical.
+    if (target === 'rail-motion') {
+      const draft = draftTransform.value;
+      draftTransform.value = null;
+      if (gestureEnded && draft !== null && railMotion !== null) {
+        const result = writeMotionTransformAtCursor({
+          records: railMotion.records,
+          view: railMotion.view,
+          cursorFrame: railMotion.cursorFrame,
+          values: draft,
+        });
+        if (result.ok) railMotion.commit(result.records);
+        else railMotion.report(result.reason);
+      }
+    }
+    dragRef.current = {
+      mode: 'none',
+      startClientX: 0,
+      startClientY: 0,
+      startTransform: IDENTITY_TRANSFORM,
+    };
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      // Pointer capture may not be active.
+    }
+  }
+
+  // 59-13: a cancelled gesture never commits — the draft is discarded and the
+  // interaction clock is released exactly like pointer-up.
+  function handlePointerCancel(e: PointerEvent) {
+    draftTransform.value = null;
     if (dragRef.current.mode !== 'none') endInteraction(e.pointerId);
     dragRef.current = {
       mode: 'none',
@@ -424,7 +561,9 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     <div
       ref={containerRef}
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-      aria-label={target === 'background' ? 'Background transform' : 'Reference transform'}
+      aria-label={target === 'background'
+        ? 'Background transform'
+        : target === 'rail-motion' ? 'Rail motion transform' : 'Reference transform'}
     >
       <svg
         style={{
@@ -440,6 +579,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <polygon
           points={polyPoints}
@@ -499,7 +639,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
             style={{ pointerEvents: 'all' }}
           />
         ))}
-        {handles.filter((h) => h.type.startsWith('edge')).map((h) => (
+        {target === 'rail-motion' ? null : handles.filter((h) => h.type.startsWith('edge')).map((h) => (
           <rect
             key={h.type}
             x={h.x - edgeSize / 2}

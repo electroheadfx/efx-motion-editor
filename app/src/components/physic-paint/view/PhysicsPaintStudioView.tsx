@@ -135,6 +135,12 @@ interface PhysicsPaintCanvasStackViewProps {
    * reference handles — never two active handle sets).
    */
   backgroundTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
+  /**
+   * 59-13: the rail-motion gizmo — a THIRD handles instance for the selected
+   * animated rail (the 59-06 view must carry a non-null railId). Additive:
+   * the two legacy mounts keep their exact props and seats.
+   */
+  railMotionTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
 }
 
 /**
@@ -342,6 +348,19 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />
+        </div>
+      ) : null}
+      {/* 59-13: the rail-motion gizmo — a third, additive handles instance for
+          the selected animated rail. The mount is gated on a non-null railId
+          (the Studio's envelope gates it first; this is the render-time belt),
+          and the component itself renders nothing when its availability verdict
+          is disabled (pointer-events none, aria-hidden). */}
+      {canvasBounds && props.railMotionTransformHandles?.railMotion?.view.railId ? (
+        <div
+          class="physics-paint-rail-motion-transform"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceTransformHandles {...props.railMotionTransformHandles} />
         </div>
       ) : null}
       {/* 261030-cnq: the brush ring, moved out of the isolated tracks group so

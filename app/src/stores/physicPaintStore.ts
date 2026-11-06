@@ -599,6 +599,16 @@ const _flattenedMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintFlatten
 const _trackRasterMemo = new Map<string, EfxPaintKeyedMemo<string, EfxPaintTrackContentResolution>>();
 
 /**
+ * 59-13 (T-59-42, test-only seam): the number of flattened cache entries that
+ * currently exist for a layer. READ-ONLY — it must never populate, clear or
+ * evict an entry, so the memo-delta assertion (+1 per motion commit, 0 on an
+ * identical overwrite) measures the real cache without perturbing it.
+ */
+export function getFlattenedMemoEntryCountForTests(layerId: string): number {
+  return _flattenedMemo.get(layerId)?.size ?? 0;
+}
+
+/**
  * 59-09 (REL-04, DIAGNOSTIC ONLY): the rail transforms the store applied in
  * the most recent flattened build, per layer and track. It exists so the
  * parity test compares the transform the store ACTUALLY applied against the

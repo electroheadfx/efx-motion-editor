@@ -16,6 +16,7 @@ import {
   RAIL_MOTION_FRAME_LIMIT,
   RAIL_MOTION_WIGGLE_LIMIT,
   applyRailMotionEditToCollection,
+  railMotionValueFromUi,
   railMotionValueIsValid,
   type PhysicPaintRotoRailMotionChannel,
   type PhysicPaintRotoRailMotionChannelId,
@@ -175,6 +176,12 @@ export interface SetMotionKeyAtCursorInput {
   readonly keyFrame: number;
   /** Explicit value; absent = the channel's current evaluated value. */
   readonly value?: number;
+  /**
+   * Explicit grouped Position sibling value (D-12). Absent = the sibling's
+   * current evaluated value. The gizmo supplies it so both axes are written
+   * from the SAME gesture sample, never from a wiggle-perturbed evaluation.
+   */
+  readonly pairedValue?: number;
   readonly easing?: PhysicPaintRotoRailMotionEasing;
   readonly wiggle?: number;
 }
@@ -292,9 +299,17 @@ export function setMotionKeyAtCursor(input: SetMotionKeyAtCursorInput): RailMoti
     return failure('This value is outside the Motion channel range.');
   }
   const siblingId = positionSiblingId(channelId);
-  const pairedValue = siblingId !== null && record.channels.some((entry) => entry.id === siblingId)
-    ? evaluateRailMotionChannel(record, siblingId, keyFrame)
-    : undefined;
+  let pairedValue: number | undefined;
+  if (siblingId !== null) {
+    if (input.pairedValue !== undefined) {
+      if (!railMotionValueIsValid(siblingId, input.pairedValue)) {
+        return failure('This value is outside the Motion channel range.');
+      }
+      pairedValue = input.pairedValue;
+    } else if (record.channels.some((entry) => entry.id === siblingId)) {
+      pairedValue = evaluateRailMotionChannel(record, siblingId, keyFrame);
+    }
+  }
 
   try {
     const next = applyRailMotionEditToCollection(records, {
@@ -563,4 +578,209 @@ export function resolveRecordChannels(
       .map((id) => record.channels.find((channel) => channel.id === id))
       .filter((channel): channel is PhysicPaintRotoRailMotionChannel => channel !== undefined),
   ) as readonly PhysicPaintRotoRailMotionChannel[];
+}
+
+// ---------------------------------------------------------------------------
+// 59-13: the canvas gizmo. `values` is expressed in DISPLAY units — pixels for
+// Position, PERCENT for Scale, DEGREES for Rotation — and is converted through
+// the 59-02 `railMotionValueFromUi` pair at this one boundary. Opacity is not
+// writable here (D-07); a rotation is never normalized or wrapped (D-13).
+// ---------------------------------------------------------------------------
+
+/** Display-unit transform values a gizmo drag produces (UI units, not model). */
+export interface RailMotionTransformValues {
+  /** Position in project pixels; when present BOTH axes are written. */
+  readonly position?: { readonly x: number; readonly y: number };
+  /** Uniform Scale in PERCENT (100 = identity). */
+  readonly scale?: number;
+  /** Rotation in DEGREES, never wrapped. */
+  readonly rotation?: number;
+}
+
+export interface RailMotionGizmoAvailability {
+  readonly enabled: boolean;
+  readonly reason: string | null;
+}
+
+export interface MotionGizmoAvailabilityInput {
+  /** The mounted rail's non-null railId, or null when no animated rail is selected. */
+  readonly selectedRailId: string | null;
+  /** Channel ids that already carry at least one Motion key on the selected rail. */
+  readonly animatedChannelIds: readonly PhysicPaintRotoRailMotionChannelId[];
+  readonly cursorInsideSpan: boolean;
+}
+
+/** The channels the canvas gizmo can drag; Opacity is numeric-only (D-07). */
+const MOTION_GIZMO_CHANNEL_IDS: ReadonlySet<PhysicPaintRotoRailMotionChannelId> = new Set([
+  'position-x',
+  'position-y',
+  'scale',
+  'rotation',
+]);
+
+/**
+ * The gizmo's availability gate. It answers, it never derives a disabled state
+ * inside the gesture: no animated rail, no draggable channel, or a playhead
+ * outside the rail's keyed span are the three refusals.
+ */
+export function resolveMotionGizmoAvailability(
+  input: MotionGizmoAvailabilityInput,
+): RailMotionGizmoAvailability {
+  if (!isBoundedId(input.selectedRailId)) {
+    return Object.freeze({
+      enabled: false,
+      reason: 'Select an animated rail to edit its motion.',
+    }) as RailMotionGizmoAvailability;
+  }
+  if (!input.animatedChannelIds.some((channelId) => MOTION_GIZMO_CHANNEL_IDS.has(channelId))) {
+    return Object.freeze({
+      enabled: false,
+      reason: input.animatedChannelIds.length === 0
+        ? 'Animate the rail before dragging it.'
+        : 'This rail has no draggable Motion channel.',
+    }) as RailMotionGizmoAvailability;
+  }
+  if (!input.cursorInsideSpan) {
+    return Object.freeze({
+      enabled: false,
+      reason: 'Move the playhead inside the rail to edit its motion.',
+    }) as RailMotionGizmoAvailability;
+  }
+  return Object.freeze({ enabled: true, reason: null }) as RailMotionGizmoAvailability;
+}
+
+/**
+ * The pointer-move sink: a PURE frozen merge of the gesture's present channels
+ * into the session draft. It imports no store and no signal, so "N draft steps
+ * write nothing" is structural — there is no write path to call from here.
+ */
+export function mergeRailMotionDraft(
+  draft: RailMotionTransformValues | null,
+  next: RailMotionTransformValues,
+): RailMotionTransformValues {
+  const position = next.position ?? draft?.position;
+  const scale = next.scale ?? draft?.scale;
+  const rotation = next.rotation ?? draft?.rotation;
+  return Object.freeze({
+    ...(position !== undefined
+      ? { position: Object.freeze({ x: position.x, y: position.y }) }
+      : {}),
+    ...(scale !== undefined ? { scale } : {}),
+    ...(rotation !== undefined ? { rotation } : {}),
+  }) as RailMotionTransformValues;
+}
+
+export interface WriteMotionTransformAtCursorInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  /** The mounted rail view; its railId MUST be non-null (59-06 mount gate). */
+  readonly view: RailMotionRailView;
+  /** App-frame playhead; converted by {@link railMotionCursorFrame}. */
+  readonly cursorFrame: number;
+  /** Display-unit values; every PRESENT channel is the D-08 gate input. */
+  readonly values: RailMotionTransformValues;
+}
+
+/**
+ * The gizmo's ONE commit path. It resolves the rail-local frame through the
+ * 59-12 helper (no second span clamp), applies the D-08 gate to every channel
+ * present in the partial, and delegates to {@link setMotionKeyAtCursor}. A
+ * Position drag writes the grouped pair in the SAME call via `pairedValue`, so
+ * both axes come from one gesture sample.
+ */
+export function writeMotionTransformAtCursor(
+  input: WriteMotionTransformAtCursorInput,
+): RailMotionCommandResult {
+  const { records, view, cursorFrame, values } = input;
+  if (!Number.isFinite(cursorFrame)) return failure('The playhead is not on a valid frame.');
+  const railId = view.railId;
+  if (!isBoundedId(railId)) return failure('Animate the rail before dragging it.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+
+  const hasPosition = values.position !== undefined;
+  const hasScale = values.scale !== undefined;
+  const hasRotation = values.rotation !== undefined;
+  if (!hasPosition && !hasScale && !hasRotation) {
+    return failure('The drag did not change a Motion channel.');
+  }
+
+  // D-08: a drag may only create keys inside channels that already animate.
+  // A grouped Position drag needs BOTH axes animated — writing one axis would
+  // invent motion on the other.
+  const gatedChannels: PhysicPaintRotoRailMotionChannelId[] = [];
+  if (hasPosition) gatedChannels.push('position-x', 'position-y');
+  if (hasScale) gatedChannels.push('scale');
+  if (hasRotation) gatedChannels.push('rotation');
+  for (const channelId of gatedChannels) {
+    if (!record.channels.some((entry) => entry.id === channelId)) {
+      return failure('This Motion channel has no keys yet.');
+    }
+  }
+
+  const keyFrame = railMotionCursorFrame(view, cursorFrame);
+  const position = hasPosition
+    ? {
+      x: railMotionValueFromUi('position-x', values.position!.x),
+      y: railMotionValueFromUi('position-y', values.position!.y),
+    }
+    : null;
+  const scale = hasScale ? railMotionValueFromUi('scale', values.scale!) : null;
+  const rotation = hasRotation ? railMotionValueFromUi('rotation', values.rotation!) : null;
+
+  const converted: number[] = [];
+  if (position !== null) converted.push(position.x, position.y);
+  if (scale !== null) converted.push(scale);
+  if (rotation !== null) converted.push(rotation);
+  if (!converted.every((value) => Number.isFinite(value))) {
+    return failure('This value is outside the Motion channel range.');
+  }
+  if (position !== null && (
+    !railMotionValueIsValid('position-x', position.x)
+    || !railMotionValueIsValid('position-y', position.y)
+  )) {
+    return failure('This value is outside the Motion channel range.');
+  }
+  if (scale !== null && !railMotionValueIsValid('scale', scale)) {
+    return failure('This value is outside the Motion channel range.');
+  }
+  if (rotation !== null && !railMotionValueIsValid('rotation', rotation)) {
+    return failure('This value is outside the Motion channel range.');
+  }
+
+  let current: readonly PhysicPaintRotoRailMotionRecord[] = records;
+  if (position !== null) {
+    const written = setMotionKeyAtCursor({
+      records: current,
+      railId,
+      channelId: 'position-x',
+      keyFrame,
+      value: position.x,
+      pairedValue: position.y,
+    });
+    if (!written.ok) return written;
+    current = written.records;
+  }
+  if (scale !== null) {
+    const written = setMotionKeyAtCursor({
+      records: current,
+      railId,
+      channelId: 'scale',
+      keyFrame,
+      value: scale,
+    });
+    if (!written.ok) return written;
+    current = written.records;
+  }
+  if (rotation !== null) {
+    const written = setMotionKeyAtCursor({
+      records: current,
+      railId,
+      channelId: 'rotation',
+      keyFrame,
+      value: rotation,
+    });
+    if (!written.ok) return written;
+    current = written.records;
+  }
+  return success(current);
 }

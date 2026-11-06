@@ -719,25 +719,27 @@ describe('59-13 rail motion commands — gizmo transform write', () => {
   });
 
   it('writes Rotation in degrees with NO normalization', () => {
+    // In-span cursors: app 14/15 on a rail starting at 10 → rail-local 4/5.
+    // (Out-of-span cursors clamp through railMotionCursorFrame, proven below.)
     const above = gizmoCommands.writeMotionTransformAtCursor({
       records: [motionRecord()],
       view: gizmoView(),
-      cursorFrame: 24,
+      cursorFrame: 14,
       values: { rotation: 720 },
     });
     expect(above.ok).toBe(true);
     if (!above.ok) return;
-    expect(keyAt(recordOf(above.records), 'rotation', 14)?.value).toBe(720);
+    expect(keyAt(recordOf(above.records), 'rotation', 4)?.value).toBe(720);
 
     const below = gizmoCommands.writeMotionTransformAtCursor({
       records: [motionRecord()],
       view: gizmoView(),
-      cursorFrame: 25,
+      cursorFrame: 15,
       values: { rotation: -90 },
     });
     expect(below.ok).toBe(true);
     if (!below.ok) return;
-    expect(keyAt(recordOf(below.records), 'rotation', 15)?.value).toBe(-90);
+    expect(keyAt(recordOf(below.records), 'rotation', 5)?.value).toBe(-90);
   });
 
   it('writes only the channels present in the partial', () => {
