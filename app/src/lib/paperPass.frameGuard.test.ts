@@ -160,7 +160,13 @@ describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', (
     expect(composite).toBeGreaterThanOrEqual(0);
     expect(pass).toBeGreaterThan(composite);
     expect(compositorSource).toMatch(/engineOverlay/);
-    expect(compositorSource).toMatch(/drawImage\(ports\.engineOverlay!\.raster/);
+    // Phase 59-08: both draw sites (engine overlay + store raster) now ride the
+    // shared `drawEfxPaintTrack` helper so the rail-motion transform can never
+    // be applied at one site only. The pin follows the call shape; the intent
+    // is unchanged — the overlay raster draws at the track slot.
+    expect(compositorSource).toMatch(
+      /drawEfxPaintTrack\(\s*ctx,\s*ports\.engineOverlay!\.raster,/,
+    );
   });
 
   it('U3 the live-overlay path bypasses the flattened memo (result depends on live pixels)', () => {

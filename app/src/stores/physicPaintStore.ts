@@ -80,6 +80,7 @@ import {
   resolveRailMotionPivot,
   type RailMotionMeasuredInk,
 } from '../components/physic-paint/roto/railMotionPivot';
+import { measureRailMotionRasterInk } from '../components/physic-paint/roto/railMotionInkScan';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -1249,19 +1250,17 @@ function _railMotionViewAtFrame(
   return found;
 }
 
-/** Gate D (T-59-24): the bounded pivot scan grid — 256px long edge. */
-const RAIL_MOTION_PIVOT_SCAN_LONG_EDGE = 256;
-
 /**
- * Production pivot measurer (Phase 59-08, D-17/T-59-24).
+ * Production pivot measurer input (Phase 59-08, D-17/T-59-24).
  *
- * Draws one drawing key's ALREADY-DECODED raster into a bounded offscreen
- * canvas (long edge <= 256px), reads the alpha channel once, and returns the
- * ink bounds normalized to the raster frame. Synchronous by construction
- * (the composite path is synchronous), so it reads the decoded registries —
- * the alpha-canvas registry first, then the decode LRU — and returns null when
- * neither holds the key yet: the pivot then legitimately falls back to the
- * raster centre (`measured: false`). It never triggers a decode.
+ * Resolves one drawing key's ALREADY-DECODED raster — the alpha-canvas
+ * registry first, then the decode LRU — and delegates the bounded alpha scan
+ * to `railMotionInkScan.ts`: the store itself must stay free of pixel-array
+ * canvas APIs (`paperPass.frameGuard.test.ts` P4(c), the real-time playback
+ * guardrail). Synchronous by construction (the composite path is synchronous)
+ * and it never triggers a decode; a key whose raster is not decoded yet
+ * returns null — the pivot then legitimately falls back to the raster centre
+ * (`measured: false`).
  */
 function _measureRotoDrawingKeyInk(
   record: PhysicPaintRotoRealKeyRecord,
@@ -1269,67 +1268,16 @@ function _measureRotoDrawingKeyInk(
   const bytes = record.payload.bytes;
   if (bytes === undefined) return null;
 
-  let source: CanvasImageSource | null = null;
-  let sourceWidth = 0;
-  let sourceHeight = 0;
   const token = buildFrameBytesToken(bytes);
   const registered = rotoAlphaCanvasRegistry.get(token);
   if (registered && registered.width > 0 && registered.height > 0) {
-    source = registered;
-    sourceWidth = registered.width;
-    sourceHeight = registered.height;
-  } else {
-    const decoded = frameLru.get(token);
-    if (decoded) {
-      source = decoded;
-      sourceWidth = decoded.width;
-      sourceHeight = decoded.height;
-    }
+    return measureRailMotionRasterInk(registered, registered.width, registered.height);
   }
-  if (source === null || sourceWidth <= 0 || sourceHeight <= 0) return null;
-
-  const longEdge = Math.max(sourceWidth, sourceHeight);
-  const scale = Math.min(1, RAIL_MOTION_PIVOT_SCAN_LONG_EDGE / longEdge);
-  const scanWidth = Math.max(1, Math.round(sourceWidth * scale));
-  const scanHeight = Math.max(1, Math.round(sourceHeight * scale));
-
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = scanWidth;
-    canvas.height = scanHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-    ctx.clearRect(0, 0, scanWidth, scanHeight);
-    ctx.drawImage(source, 0, 0, scanWidth, scanHeight);
-    const data = ctx.getImageData(0, 0, scanWidth, scanHeight).data;
-
-    let minX = scanWidth;
-    let minY = scanHeight;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y = 0; y < scanHeight; y += 1) {
-      const rowOffset = y * scanWidth * 4;
-      for (let x = 0; x < scanWidth; x += 1) {
-        // Alpha only: the rail's ink is whatever the alpha channel covers.
-        if (data[rowOffset + x * 4 + 3] === 0) continue;
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-    if (maxX < 0) return { x: 0, y: 0, width: 0, height: 0, alphaInk: false };
-    return {
-      x: minX / scanWidth,
-      y: minY / scanHeight,
-      width: (maxX - minX + 1) / scanWidth,
-      height: (maxY - minY + 1) / scanHeight,
-      alphaInk: true,
-    };
-  } catch {
-    // A released/failed raster is a fallback pivot, never a broken composite.
-    return null;
+  const decoded = frameLru.get(token);
+  if (decoded) {
+    return measureRailMotionRasterInk(decoded, decoded.width, decoded.height);
   }
+  return null;
 }
 
 /**
