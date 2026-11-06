@@ -236,6 +236,8 @@ interface ProjectedMotionFieldShape {
   readonly label: string;
   readonly unit: string;
   readonly value: number;
+  /** 59-21: the channel EXISTS on the record (never whether the frame is keyed). */
+  readonly present: boolean;
 }
 
 interface ProjectedMotionInspectorShape {
@@ -394,6 +396,101 @@ describe('projectRailMotionInspector (59-16: Motion value inspector)', () => {
       ['scale', 150, '%'],
       ['rotation', 0, '°'],
       ['opacity', 40, '%'],
+    ]);
+  });
+});
+
+/**
+ * 59-21 (G1 / IN-02): every field states whether its channel EXISTS on the
+ * record. Presence is channel existence — never key presence at the read frame
+ * — so an absent channel keeps being projected (the value an add would seed)
+ * and simply reports `present: false`.
+ */
+describe('projectRailMotionInspector channel presence (59-21: absent channels are marked)', () => {
+  const key = (frame: number, value: number) => Object.freeze({ frame, value, easing: 'ease' as const, wiggle: 0 });
+
+  it('marks exactly the channels a partially present record carries and still projects all five', () => {
+    const record = Object.freeze({
+      railId: 'rail-partial',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({ id: 'position-x' as const, keys: Object.freeze([key(0, 0), key(5, 120)]) }),
+        Object.freeze({ id: 'position-y' as const, keys: Object.freeze([key(0, 0), key(5, -12)]) }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+
+    const projection = requireProjectMotionInspector()({
+      record,
+      selectedKeyFrame: 5,
+      railLocalFrame: 5,
+    });
+    expect(projection).not.toBeNull();
+    if (projection === null) return;
+
+    // Fixed D-13 order, and presence follows the record's channel list.
+    expect(projection.fields.map((field) => [field.channelId, field.present])).toEqual([
+      ['position-x', true],
+      ['position-y', true],
+      ['scale', false],
+      ['rotation', false],
+      ['opacity', false],
+    ]);
+    // An absent channel is STILL projected: the value an add would seed stays
+    // visible, with its unit (scale 1 = 100%, opacity 1 = 100%, rotation 0).
+    expect(projection.fields.map((field) => [field.channelId, field.value, field.unit])).toEqual([
+      ['position-x', 120, 'px'],
+      ['position-y', -12, 'px'],
+      ['scale', 100, '%'],
+      ['rotation', 0, '°'],
+      ['opacity', 100, '%'],
+    ]);
+  });
+
+  it('marks every field present when the record carries all five channels', () => {
+    const record = Object.freeze({
+      railId: 'rail-full',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({ id: 'position-x' as const, keys: Object.freeze([key(2, 10)]) }),
+        Object.freeze({ id: 'position-y' as const, keys: Object.freeze([key(2, 20)]) }),
+        Object.freeze({ id: 'scale' as const, keys: Object.freeze([key(2, 1.5)]) }),
+        Object.freeze({ id: 'rotation' as const, keys: Object.freeze([key(2, 45)]) }),
+        Object.freeze({ id: 'opacity' as const, keys: Object.freeze([key(2, 0.4)]) }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+
+    const projection = requireProjectMotionInspector()({
+      record,
+      selectedKeyFrame: 2,
+      railLocalFrame: 2,
+    });
+    expect(projection?.fields.map((field) => [field.channelId, field.present])).toEqual([
+      ['position-x', true],
+      ['position-y', true],
+      ['scale', true],
+      ['rotation', true],
+      ['opacity', true],
+    ]);
+  });
+
+  it('keeps a channel present when the read frame carries no key on it', () => {
+    // `motionRecordFixture` carries Scale keys at 0 and 10 and a lone Rotation
+    // key at 4; frame 5 is keyed only on the Position pair. Presence tracks the
+    // RECORD — a rail can carry a channel whose keys sit elsewhere.
+    const projection = requireProjectMotionInspector()({
+      record: motionRecordFixture(),
+      selectedKeyFrame: 5,
+      railLocalFrame: 5,
+    });
+    expect(projection).not.toBeNull();
+    if (projection === null) return;
+
+    expect(projection.fields.map((field) => [field.channelId, field.present])).toEqual([
+      ['position-x', true],
+      ['position-y', true],
+      ['scale', true],
+      ['rotation', true],
+      ['opacity', false],
     ]);
   });
 });

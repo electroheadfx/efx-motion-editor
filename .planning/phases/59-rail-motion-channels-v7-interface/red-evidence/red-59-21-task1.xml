@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="22" failures="3" errors="0" time="0.443">
+    <testsuite name="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" timestamp="2026-11-06T20:55:19.121Z" hostname="efx2.home" tests="22" failures="3" errors="0" skipped="0" time="0.007755542">
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; derives ordinary rails from ordered real keys, breaks, and Group ownership" time="0.000832792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; keeps empty physical frames inside one half-open rail when no break exists" time="0.000107875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a real key to its own keyId (Key Rail member included)" time="0.00009825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a generated in-between frame to its containing Key Rail first key" time="0.000086">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a linked occurrence inside a Group to the Group loopId" time="0.000059625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; returns null for an empty/gap frame" time="0.000064875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; emits the four locked singular and plural forms without advertising Scissor" time="0.000119792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; substitutes exact guarded reasons for unavailable selected actions" time="0.000051791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; projects exactly the three facts plus the controller handoff fields for a single Rail" time="0.000191959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; disables Edit Rail with the locked reason for a multi-Rail set while keeping this Rail&apos;s own facts" time="0.000115459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; is anchor-agnostic — any segment the caller resolves projects its own facts" time="0.000078333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null without a motion record — never a partially filled object" time="0.000077666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when no Motion key is selected" time="0.000077458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when the selected frame carries no Motion key" time="0.0000585">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; projects every channel at the read frame with the 59-02 display conversion" time="0.000251375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; is frozen at every level" time="0.000092667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; owns one conversion authority and no store, signal or component import" time="0.000118834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; passes rotation through verbatim — 720 and -90 are never wrapped" time="0.000095958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; keeps the fixed D-13 order and shows Opacity in percent even when the record is unordered" time="0.000100417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector channel presence (59-21: absent channels are marked) &gt; marks exactly the channels a partially present record carries and still projects all five" time="0.003639209">
+            <failure message="expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]" type="AssertionError">
+AssertionError: expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]
+
+- Expected
++ Received
+
+  Array [
+    Array [
+      &quot;position-x&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;position-y&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;scale&quot;,
+-     false,
++     undefined,
+    ],
+    Array [
+      &quot;rotation&quot;,
+-     false,
++     undefined,
+    ],
+    Array [
+      &quot;opacity&quot;,
+-     false,
++     undefined,
+    ],
+  ]
+
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:431:80
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector channel presence (59-21: absent channels are marked) &gt; marks every field present when the record carries all five channels" time="0.000492625">
+            <failure message="expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]" type="AssertionError">
+AssertionError: expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]
+
+- Expected
++ Received
+
+  Array [
+    Array [
+      &quot;position-x&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;position-y&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;scale&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;rotation&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;opacity&quot;,
+-     true,
++     undefined,
+    ],
+  ]
+
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:467:81
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector channel presence (59-21: absent channels are marked) &gt; keeps a channel present when the read frame carries no key on it" time="0.000377375">
+            <failure message="expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]" type="AssertionError">
+AssertionError: expected [ [ &apos;position-x&apos;, undefined ], …(4) ] to deeply equal [ [ &apos;position-x&apos;, true ], …(4) ]
+
+- Expected
++ Received
+
+  Array [
+    Array [
+      &quot;position-x&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;position-y&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;scale&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;rotation&quot;,
+-     true,
++     undefined,
+    ],
+    Array [
+      &quot;opacity&quot;,
+-     false,
++     undefined,
+    ],
+  ]
+
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:488:80
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
