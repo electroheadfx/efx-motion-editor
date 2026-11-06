@@ -2370,6 +2370,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             ?? generatedPublicationInput?.loopClips
             ?? proposal?.nextLoopClips
             ?? currentLoopClips;
+        // Phase 59 (MOTN-12): motion rides the same staged decision as loops.
+        // Replay stages the replay target's collection so Undo restores the
+        // pre-edit motion and Redo restores the post-edit motion; no proposal
+        // emits motion yet, so every other kind stages the launch read.
+        const stagedRailMotions = isReplay && replayTarget
+          ? replayTarget.railMotions
+          : currentRailMotions;
         const stagedIncomingInterpolationBreakKeyIds = isReplay && replayTarget
           ? replayTarget.incomingInterpolationBreakKeyIds
           : railSetPasteProposal?.incomingInterpolationBreakKeyIds
@@ -2430,6 +2437,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           publicationLoopClips,
           stagedIncomingInterpolationBreakKeyIds,
           publicationGroupOverrideRecords,
+          // Phase 59 (MOTN-12): a 5-arg build would hash the empty motion
+          // collection and report a stale document on every track carrying
+          // motion once the parent echoes the preserved collection back.
+          stagedRailMotions,
         );
         if (isReplay && (
           !historyProvenance
@@ -2461,6 +2472,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
             cursorAppFrame: targetCursorAppFrame,
             revision: stagedRevision,
             loopClips: publicationLoopClips,
+            // Phase 59 (MOTN-12): the deferred document carries the same
+            // motion its revision hashes, or the accepted echo mismatches.
+            railMotions: stagedRailMotions,
             incomingInterpolationBreakKeyIds: stagedIncomingInterpolationBreakKeyIds,
           });
         } catch (error) {
@@ -2498,6 +2512,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           ...(targetCapacity !== undefined ? { targetCapacity } : {}),
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
           loopClips: cloneLoopClips(publicationLoopClips),
+          // Phase 59 (MOTN-12): motion ships on the same wire as the clips.
+          // Absent means preserve, so a forward edit restating the launch
+          // collection is a no-op and a replay writes the restored one.
+          railMotions: cloneRailMotions(stagedRailMotions),
           incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
             stagedIncomingInterpolationBreakKeyIds,
           ),
