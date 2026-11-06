@@ -443,3 +443,32 @@ export function TimelineMotionChannelLane({
     </div>
   );
 }
+
+export interface TimelineMotionBlockOutlineProps {
+  readonly rowTop: number;
+  readonly rowHeight: number;
+  readonly laneCount: number;
+  readonly selected: boolean;
+  /** The rail's bright line; the host resolves it from the rail type. */
+  readonly lineColor?: string;
+}
+
+export interface TimelineMotionChannelMenuProps {
+  readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
+  readonly onAddChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  readonly onClose: () => void;
+}
+
+/** RED stub: the block outline lands in GREEN. */
+export function TimelineMotionBlockOutline(
+  _props: TimelineMotionBlockOutlineProps,
+): null {
+  return null;
+}
+
+/** RED stub: the add-channel menu lands in GREEN. */
+export function TimelineMotionChannelMenu(
+  _props: TimelineMotionChannelMenuProps,
+): null {
+  return null;
+}

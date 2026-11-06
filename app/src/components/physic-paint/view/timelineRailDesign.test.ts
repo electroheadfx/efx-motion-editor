@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   projectTimelineRailLineWidth,
   resolveFrameRail,
+  resolveMotionBlockOutlineRect,
   resolveTimelineCellPresentation,
   resolveTimelineCycleGray,
   resolveTimelineRailPalette,
@@ -393,6 +394,40 @@ describe('TIMELINE_MOTION pins', () => {
     expect(TIMELINE_MOTION.laneHeight).toBe(TIMELINE_GEOMETRY.motionLaneHeight);
     expect(TIMELINE_MOTION.headerClusterWidth).toBeGreaterThan(0);
     expect(TIMELINE_MOTION.laneLabelGap).toBeGreaterThan(0);
+    expect(TIMELINE_MOTION.postBlockGap).toBe(2);
+  });
+
+  it('exposes the lighter rim colour per rail type from the locked palette', () => {
+    expect(TIMELINE_MOTION.keyRim).toEqual({
+      standard: TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
+      motion: TIMELINE_RAIL_PALETTES.motion.selected.keyRim,
+      static: TIMELINE_RAIL_PALETTES.static.selected.keyRim,
+      reveal: TIMELINE_RAIL_PALETTES.reveal.selected.keyRim,
+    });
+  });
+});
+
+describe('resolveMotionBlockOutlineRect', () => {
+  it('returns null for a collapsed block (MUI-03: no outline without lanes)', () => {
+    expect(
+      resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 0 }),
+    ).toBeNull();
+  });
+
+  it('wraps the rail row plus its lanes and the post-block gap', () => {
+    const oneLane = resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 1 });
+    expect(oneLane).toEqual({
+      top: 100,
+      height: 30 + TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap,
+      radius: TIMELINE_GEOMETRY.outlineRadius,
+      strokeWidth: TIMELINE_GEOMETRY.outlineWidth,
+      width: '100%',
+    });
+    expect(oneLane?.height).toBe(50);
+
+    const threeLanes = resolveMotionBlockOutlineRect({ rowTop: 40, rowHeight: 30, laneCount: 3 });
+    expect(threeLanes?.top).toBe(40);
+    expect(threeLanes?.height).toBe(86);
   });
 });
 

@@ -16,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   RAIL_MOTION_DISPLAY_LANE_ORDER,
+  TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
+  TimelineMotionChannelMenu,
   resolveKeylessMotionDisplayLanes,
   resolveMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
@@ -30,6 +32,7 @@ import type {
   PhysicPaintRotoRailMotionKey,
 } from '../roto/railMotionModel';
 import {
+  resolveMotionBlockOutlineRect,
   TIMELINE_GEOMETRY,
   TIMELINE_MOTION,
   TIMELINE_RAIL_PALETTES,
@@ -99,10 +102,14 @@ function styleOf(vnode: TestVNode): Record<string, unknown> {
   return (vnode.props.style ?? {}) as Record<string, unknown>;
 }
 
-/** Text content of a leaf vnode (Preact hands single-expression children as an array). */
+/** Recursive text content (Preact hands single-expression children as an array). */
 function textOf(vnode: TestVNode): string {
   return childrenOf(vnode)
-    .map((child) => (typeof child === 'string' || typeof child === 'number' ? String(child) : ''))
+    .map((child) => {
+      if (typeof child === 'string' || typeof child === 'number') return String(child);
+      if (child !== null && typeof child === 'object') return textOf(child as TestVNode);
+      return '';
+    })
     .join('');
 }
 
@@ -431,6 +438,115 @@ describe('TimelineMotionChannelLane', () => {
     expect(next.props.disabled).toBe(true);
     expect(next.props.title).toBe('Rail recording is locked');
     expect(next.props['aria-description']).toBe('Rail recording is locked');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* block outline                                                       */
+/* ------------------------------------------------------------------ */
+
+describe('TimelineMotionBlockOutline', () => {
+  it('renders nothing while the block is collapsed (MUI-03)', () => {
+    const tree = TimelineMotionBlockOutline({
+      rowTop: 100,
+      rowHeight: 30,
+      laneCount: 0,
+      selected: true,
+    });
+
+    expect(tree).toBeNull();
+  });
+
+  it('wraps the rail row plus its lanes in a rounded 1.5px rect', () => {
+    const rect = resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 3 });
+    expect(rect).not.toBeNull();
+
+    const tree = materialize(
+      TimelineMotionBlockOutline({ rowTop: 100, rowHeight: 30, laneCount: 3, selected: true }),
+    );
+    const nodes = findAll(
+      tree,
+      (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'),
+    );
+    expect(nodes).toHaveLength(1);
+
+    const style = styleOf(nodes[0] ?? { type: 'missing', props: {} });
+    expect(style.position).toBe('absolute');
+    expect(style.top).toBe(100);
+    expect(style.height).toBe(86);
+    expect(style.borderRadius).toBe(TIMELINE_GEOMETRY.outlineRadius);
+    expect(String(style.border)).toContain(`${TIMELINE_GEOMETRY.outlineWidth}px`);
+    expect(style.pointerEvents).toBe('none');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* add-channel menu                                                    */
+/* ------------------------------------------------------------------ */
+
+describe('TimelineMotionChannelMenu', () => {
+  function menuRows(tree: unknown): TestVNode[] {
+    return findAll(tree, (vnode) => vnode.props['data-motion-channel-menu-row'] !== undefined);
+  }
+
+  it('lists only the keyless display lanes in fixed order at the 18px rhythm', () => {
+    const tree = materialize(
+      TimelineMotionChannelMenu({
+        channels: POSITION_CHANNELS,
+        onAddChannel: () => {},
+        onClose: () => {},
+      }),
+    );
+    const rows = menuRows(tree);
+
+    expect(rows.map((row) => row.props['data-motion-channel-menu-row'])).toEqual([
+      'scale',
+      'rotation',
+      'opacity',
+    ]);
+    expect(rows.every((row) => styleOf(row).height === TIMELINE_MOTION.laneHeight)).toBe(true);
+  });
+
+  it('offers Position exactly once and adds position-x (the reducer seeds both axes)', () => {
+    const onAddChannel = vi.fn();
+    const onClose = vi.fn();
+    const tree = materialize(
+      TimelineMotionChannelMenu({
+        channels: [motionChannel('scale', [0])],
+        onAddChannel,
+        onClose,
+      }),
+    );
+    const rows = menuRows(tree);
+
+    expect(rows.map((row) => row.props['data-motion-channel-menu-row'])).toEqual([
+      'position',
+      'rotation',
+      'opacity',
+    ]);
+    expect(textOf(rows[0])).toBe('Position');
+
+    clickOf(rows[0])();
+    expect(onAddChannel).toHaveBeenCalledTimes(1);
+    expect(onAddChannel).toHaveBeenCalledWith('position-x');
+    expect(onAddChannel).not.toHaveBeenCalledWith('position-y');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders nothing when every display lane carries keys (D-15 complement)', () => {
+    const tree = TimelineMotionChannelMenu({
+      channels: [
+        motionChannel('position-x', [0]),
+        motionChannel('position-y', [0]),
+        motionChannel('scale', [0]),
+        motionChannel('rotation', [0]),
+        motionChannel('opacity', [0]),
+      ],
+      onAddChannel: () => {},
+      onClose: () => {},
+    });
+
+    expect(tree).toBeNull();
   });
 });
 

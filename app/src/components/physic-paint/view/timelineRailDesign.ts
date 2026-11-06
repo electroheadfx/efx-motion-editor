@@ -132,7 +132,37 @@ export const TIMELINE_MOTION = {
   /** Header cluster: icon x=10, label x=24, count x=84, nav ends at x≈157. */
   headerClusterWidth: 160,
   laneLabelGap: 6,
+  /** Empty row after the expanded block, matching v7's rail-to-rail gap. */
+  postBlockGap: 0,
+  /** The type's lighter key rim (SPECS §2). RED stub: values land in GREEN. */
+  keyRim: {
+    standard: '',
+    motion: '',
+    static: '',
+    reveal: '',
+  },
 } as const;
+
+export interface TimelineMotionBlockOutlineRect {
+  readonly top: number;
+  readonly height: number;
+  readonly radius: number;
+  readonly strokeWidth: number;
+  readonly width: string;
+}
+
+export interface TimelineMotionBlockOutlineInput {
+  readonly rowTop: number;
+  readonly rowHeight: number;
+  readonly laneCount: number;
+}
+
+/** RED stub: the outline arithmetic lands in GREEN. */
+export function resolveMotionBlockOutlineRect(
+  _input: TimelineMotionBlockOutlineInput,
+): TimelineMotionBlockOutlineRect | null {
+  return null;
+}
 
 /**
  * The single rail-type classifier: reveal wins, a playscript clip splits into
