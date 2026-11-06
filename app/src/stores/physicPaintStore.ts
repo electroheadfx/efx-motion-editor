@@ -1533,6 +1533,9 @@ function _clearLayerState(layerId: string): boolean {
   // resident (and a re-registered layer id can never be served stale output).
   _flattenedMemo.delete(layerId);
   _trackRasterMemo.delete(layerId);
+  // 59-09: the diagnostic seam is layer-scoped runtime state, torn down with
+  // the layer's compositor memos.
+  _lastAppliedTrackTransforms.delete(layerId);
   _flattenedFondSignatures.delete(layerId);
   changed = _frames.delete(layerId) || changed;
   changed = _rotoBackgroundMetadata.delete(layerId) || changed;
@@ -3390,6 +3393,12 @@ function _resolveFlattenedFrame(
     if (cached) return cached;
   }
 
+  // 59-09 (REL-04, DIAGNOSTIC ONLY): record what this BUILD actually applied so
+  // the parity test can compare against the evaluator's own output. It sits
+  // after the memo read (a memo hit builds nothing and leaves the previous map
+  // in place) and before the composite, so it reflects the draw that follows.
+  _lastAppliedTrackTransforms.set(layerId, trackTransforms);
+
   const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
   const preResolved = new Map<string, EfxPaintTrackContentResolution>();
   for (const track of participating) {
@@ -4462,6 +4471,8 @@ export const physicPaintStore = {
     // rest of the store (decode caches clear here only, per the plan).
     _flattenedMemo.clear();
     _trackRasterMemo.clear();
+    // 59-09: the diagnostic seam is session runtime state too.
+    _lastAppliedTrackTransforms.clear();
     _flattenedFondSignatures.clear();
     _compositorDecodeLoading.clear();
     _compositorDecodePromises.clear();
