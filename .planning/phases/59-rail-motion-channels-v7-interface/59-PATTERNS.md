@@ -15,7 +15,7 @@ Every analog path below was verified git-TRACKED with `git ls-files` (21/21 non-
 | `app/src/components/physic-paint/roto/railMotionIdentity.ts` (NEW) | utility (pure resolver) | transform | `roto/physicsPaintRotoRailSetSelection.ts` | role-match |
 | `app/src/components/physic-paint/roto/railMotionPivot.ts` (NEW) | utility (pure geometry, revision-cached) | batch/transform | `view/physicsPaintCanvasZoom.ts` (session metric shape) + `roto/aquarelleFramePose.ts` | partial |
 | `app/src/components/physic-paint/view/TimelineMotionChannels.tsx` (NEW) | component | event-driven UI | `view/PhysicsPaintKeyRail.tsx` + `view/timelineRailDesign.ts` | role-match |
-| `app/src/components/physic-paint/physicsPaintStudio.css` (MODIFY; preferred over a new css file) | config (styling) | n/a | existing `.physics-paint-track-row-motion-toggle` / `.physics-paint-key-rail*` blocks | exact |
+| `app/src/components/physic-paint/physicsPaintStudio.css` (NOT MODIFIED — superseded by token-derived inline styling in 59-10/59-11) | config (styling) | n/a | existing `.physics-paint-track-row-motion-toggle` / `.physics-paint-key-rail*` blocks | exact |
 | `.../roto/railMotionModel.test.ts`, `railMotionIdentity.test.ts`, `railMotionEvaluator.test.ts`, `railMotionRevision.test.ts` (NEW) | test | unit | `roto/physicsPaintRotoLoopClips.test.ts` | exact |
 | `app/src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts` (NEW) | test | unit (mock canvas) | `compositor/` port-mock style; pattern from `efxPaintCompositor.ts` pure ports | role-match |
 | `app/src/lib/railMotionExportParity.test.ts` (NEW) | test | unit (render math) | `lib/efxPaintPackageRoundTrip.test.ts` (assertion style) | partial |
@@ -207,12 +207,23 @@ Rules: consume `TIMELINE_GEOMETRY.cellPitch` / `motionLaneHeight`; never a local
 
 ---
 
-### `app/src/components/physic-paint/physicsPaintStudio.css` (config, extend)
+### `app/src/components/physic-paint/physicsPaintStudio.css` (NOT MODIFIED — deliberate supersession)
 
-**Analog:** the existing motion-slot and key-rail blocks in the same file.
+**Analog:** the existing motion-slot and key-rail blocks in the same file (read them; do not extend them).
 - `.physics-paint-track-row-motion-toggle` at `physicsPaintStudio.css:7369-7377` (`color: var(--motion-toggle-color, #58616B)`).
 - Key-rail blocks at `:5289-5327` (per rail-type/selected variants driven by `data-rail-type` / `data-rail-selected`) and `:5632-5719` (lane/segment/anchor/tooltip).
-Project convention is one large `physicsPaintStudio.css`; `PhysicsPaintWorkflowStrip.test.ts:20-21` reads it by path. Prefer extending it over inventing `timelineMotionChannels.css` unless the planner deliberately adds a second file to the pin list.
+
+**Supersession decision (ratified in 59-11):** the Phase 59 motion surface does NOT modify this
+stylesheet and does not add `timelineMotionChannels.css`. SPECS §4's "Motion channel CSS in
+`physicsPaintStudio.css`" (README:219) is therefore superseded for this phase: both the 14×14
+chevron (59-11) and the motion lanes (59-10) are styled from the `TIMELINE_SURFACE` /
+`TIMELINE_MOTION` token blocks with inline `style={{...}}`, so the value the contract test pins
+(59-14) and the value the component renders are the same constant and cannot drift. A stylesheet
+rule would reintroduce a second copy that the contract test cannot compare with rendering.
+`.physics-paint-track-row-motion-toggle` stays at HEAD as the v2.0.1 passive slot's rule until the
+slot element itself is replaced; it is not a target for new rules.
+`PhysicsPaintWorkflowStrip.test.ts:20-21` keeps reading the file by path and remains green because
+the file is unchanged. No Phase 59 plan declares this file in `files_modified`.
 
 ---
 
@@ -432,7 +443,11 @@ export function projectSelectedKeyRailInspector(segment, options = {}): Selected
   return Object.freeze({ /* ... */ editDisabledReason: setSize >= 2 ? KEY_RAIL_EDIT_DISABLED_REASON : null });
 }
 ```
-Add a sibling projection (e.g. `projectRailMotionInspector(record, playhead)`) returning frozen, unit-formatted values (`px`, `%`, `deg`) per D-09 — never JSX. Keep the existing projection unchanged so its source-string consumers stay green.
+Add the sibling projection `projectRailMotionInspector({ record, selectedKeyFrame, railLocalFrame })`
+returning a frozen object of unit-formatted display values (`px`, `%`, `deg`) per D-09 — never JSX.
+It takes only the record and the selected key frame (no store, no signals) and reuses the 59-02
+`railMotionValueToUi` pair, so the gizmo and the inspector share one conversion authority (59-13).
+Keep the existing projection unchanged so its source-string consumers stay green.
 
 ---
 

@@ -554,32 +554,31 @@ it('persists the motion record through save and reopen verbatim', () => {
 | A8 | Sub-frame export is the only path that needs the flattened-memo bypass | Compositor | If Play also samples sub-frames, the bypass rule must broaden |
 | A9 | Wiggle parameters can be expressed with the installed `Random` PRNG seeded from stable ids | Evaluator | A different PRNG changes determinism across runs |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Gate B merge and delete-first-key transfer rules**
+All five questions are answered before implementation. The binding answers live in
+`59-01-PLAN.md` §"Open-question resolutions (binding)"; each entry records its resolution here so
+this research reads as settled, not open.
+
+1. **Gate B merge and delete-first-key transfer rules** — RESOLVED (59-01, §Gate Ratification + 59-06)
    - What we know: split creates a successor segment with a new `firstKeyId`; delete-key and move-key incoming-break rules already exist in `physicsPaintRotoPhysicalResolver.ts:3423-3529`; merge is the removal of a break.
-   - What's unclear: whether a tail motion should transfer on merge (preserve appearance) or drop (head wins), and whether deleting the anchor key should re-anchor without shifting rail-local frames.
-   - Recommendation: ship the truth table in the plan; prefer "head wins, one undo step" for merge-with-both and "re-anchor, no key rewrite" for delete-first-key; add a confirmation row only where motion would otherwise silently disappear.
+   - Resolution: the Gate B truth table is ratified in 59-01 and implemented as pure transitions in 59-06. Merge with exactly one animated side adopts that record, re-anchored; merge with both sides keeps the head, drops the tail and reports the dropped rail so the store can surface a confirmation row. Delete-first-key re-anchors without rewriting rail-local key frames.
 
-2. **D-17 pivot computation and cost**
+2. **D-17 pivot computation and cost** — RESOLVED (59-01, §Open-question resolutions item 2)
    - What we know: no content-bounds utility exists; content rasters are full working-canvas (long edge 1920); D-17 forbids per-frame raster bounds.
-   - What's unclear: the cheapest time-invariant bounds source (bake-time stored bounds vs one-time alpha scan per key vs geometric union).
-   - Recommendation: measure a one-time union of per-key alpha bounding boxes per content revision, cache it with the revision, and record the cost under Gate D; fallback to canvas centre only if measured unacceptable, documented as a limitation.
+   - Resolution: a per-key alpha-bounds union, computed once and memoized by content revision; the one-time cost is measured on a 24-key rail at 1920px in 59-08 and recorded under Gate D.
 
-3. **TS↔Rust `railKind` parity**
+3. **TS↔Rust `railKind` parity** — RESOLVED (59-01, prerequisite task)
    - What we know: TS emits `railKind` at `physicsPaintRotoPhysicalModel.ts:1629`; Rust has no `railKind` in `app/src-tauri/src`; the guard compares recomputed vs caller hash at `script_library.rs:1244-1246`.
-   - What's unclear: whether reveal/playscript physical-edit applies currently fail, or whether such documents never reach that guard.
-   - Recommendation: treat as a prerequisite — add a parity fixture (cargo test) covering railKind and motion before 59.1's encoder work; fix the Rust mirror at the identical ordinal.
+   - Resolution: repaired as the Phase 59 prerequisite, not deferred. The Rust mirror emits `railKind` at the identical TS ordinal, and one shared golden fixture pins both languages (untouched, `railKind`-bearing, and `railKind` + scriptId/lifecycle documents).
 
-4. **Motion record placement: document collection vs per-clip field**
+4. **Motion record placement: document collection vs per-clip field** — RESOLVED (59-01, §Open-question resolutions item 4)
    - What we know: loop clips have stable `loopId`; bare Key Rails have none; ARCHITECTURE proposed a per-clip field.
-   - What's unclear: which shape the milestone owner prefers for future Split X/Y and fit-to-span.
-   - Recommendation: document-level `railMotions` collection — one validator, one encoder, one evaluator input, uniform for every rail kind.
+   - Resolution: a document-level `railMotions` collection keyed by durable `railId` — one validator, one encoder, one evaluator input, uniform for every rail kind. Position is two model channels (`position-x`, `position-y`) behind one grouped lane (D-11), so a future Split X/Y needs no schema change.
 
-5. **Inspector scope (discretion)**
+5. **Inspector scope (discretion)** — RESOLVED (59-01, §Open-question resolutions item 5 + 59-11/59-13)
    - What we know: `projectSelectedKeyRailInspector` is the extension point; Opacity must always be numeric.
-   - What's unclear: show all channels or only animated ones.
-   - Recommendation: show only channels that carry keys, plus the `+` action mirroring the lane block; Opacity always numeric.
+   - Resolution: only channels that carry keys are shown, plus the `+` affordance mirroring the lane block; Opacity is always numeric (D-07). The motion-facing sibling projection is `projectRailMotionInspector` (59-13).
 
 ## Environment Availability
 

@@ -123,9 +123,9 @@ Plans:
 - [ ] 59-08-PLAN.md — Compositor `trackTransforms` at both draw sites + motion key term + memoized rail-space pivot
 - [ ] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
 - [ ] 59-10-PLAN.md — v7 lane surface: 18px lanes, header cluster, cells, evaluator curve, 6×6 keys, block outline
-- [ ] 59-11-PLAN.md — Timeline integration: chevron, derived expansion, mirrored headers, measured layout, block-aware reorder
-- [ ] 59-12-PLAN.md — Animate + motion commands, Hold/Ease/Wiggle, honest availability, three selection scopes
-- [ ] 59-13-PLAN.md — Rail-motion gizmo with the D-08 auto-key gate + inspector numeric fields with unbounded rotation
+- [ ] 59-11-PLAN.md — Timeline integration: chevron toggle over session-only expansion (collapsed after Animate), mirrored headers, measured layout, block-aware reorder
+- [ ] 59-12-PLAN.md — Animate (seed at the rail-local playhead) + motion commands, Hold/Ease/Wiggle, honest availability, three selection scopes
+- [ ] 59-13-PLAN.md — Rail-motion gizmo (session draft, one commit per drag) with the D-08 auto-key gate + inspector numeric fields via one projection
 - [ ] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
 
 **Build order (research §12)**:
