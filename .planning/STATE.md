@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-07-PLAN.md
-last_updated: "2026-11-06T15:22:22.914Z"
+stopped_at: Completed 59-10-PLAN.md
+last_updated: "2026-11-06T15:32:09.565Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 4bf474e2d159d144f89083cefbeca2311ba26c50
+state_head: 43b089487f37cc3728826416395a97d719289d5d
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 8 of 16
+Plan: 9 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P06 | ~10min | 3 tasks | 2 files |
 | Phase 59 P04 | ~6min | 2 tasks | 5 files |
 | Phase 59 P07 | 21m | 3 tasks | 15 files |
+| Phase 59 P10 | 7min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Render-source contentRevision field carries the raster revision; the structural entry and getRotoPhysicalContentRevision stay canonical
 - [Phase 59]: Coordinator stages rail motion like loop clips (replay target else launch read) and hashes it into stagedRevision, the deferred document and the payload
 - [Phase 59]: Requirements MOTN-01/02/12/REL-03 left pending per the 59-01/02/03/06 precedent; 59-08/59-12 and live UAT close them
+- [Phase 59]: Motion lanes fold five model channels into four fixed display lanes; grouped Position exposes the first present axis's shared frames as ONE key set (three shared frames -> three dots and a 3-key header, never six)
+- [Phase 59]: Key dots are centred on the frame column (left = frame x cellPitch + (cellWidth - keySize)/2 = +5) per SPECS §2; the plan's 'at frame x cellPitch' is the column anchor, not the literal left edge
+- [Phase 59]: TIMELINE_MOTION is a separate token block (motion cell 16x18x3 vs drawing 16x22x3); TIMELINE_GEOMETRY stays untouched so the 59-05 evaluator defaults keep their contract
+- [Phase 59]: resolveMotionBlockOutlineRect keeps the documented (rowTop,rowHeight,laneCount) signature: width '100%', height = row + lanes x 18 + 2px postBlockGap, null at laneCount 0; the outline component accepts an optional lineColor for the 59-11 host
+- [Phase 59]: The keyless add-channel menu derives from the same display projection and emits position-x for Position so the 59-02 reducer seeds both axes atomically; MOTN-04/MUI-02/MUI-03 stay pending until 59-11 hosts the lanes and live UAT closes them
 
 ### Pending Todos
 
@@ -164,8 +170,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T15:22:22.885Z
-Stopped at: Completed 59-07-PLAN.md
+Last session: 2026-11-06T15:32:09.543Z
+Stopped at: Completed 59-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
