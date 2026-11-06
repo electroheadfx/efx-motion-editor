@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="9" failures="5" errors="0" time="1.422">
+    <testsuite name="src/stores/physicPaintStore.rotoRailMotions.test.ts" timestamp="2026-11-06T15:02:47.056Z" hostname="efx.local" tests="9" failures="5" errors="0" skipped="0" time="0.041429084">
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; lands one motion record in the parent document and moves the canonical revision" time="0.023765584">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793977367003-774058a0-8683-4b0e-9fbe-82f7053b579f&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;1c5bd2a1-e9f3-4503-8002-487109e591fe&apos;,
+    projectId: &apos;9f874fe0-214e-4bf2-8cb3-8c3d5abb32a7&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:281:23
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; preserves the collection when a later payload omits railMotions" time="0.003678375">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793977367015-5734a353-1383-4ddb-8fef-2a13d49c36a3&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;379bd44a-290f-47a6-8ce3-13ce5756ea2d&apos;,
+    projectId: &apos;51e9e7df-8c05-4982-ab51-3b3c245f4e23&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:297:22
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; clears the collection when a payload carries an explicit empty railMotions array" time="0.003038333">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793977367018-fa47cc58-34d3-4f2b-a3fd-b2b8a97d5b88&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;70b720e8-d7b6-4bd6-98dd-4b6972e96e08&apos;,
+    projectId: &apos;703bc453-ecc6-429b-81b9-96bb515f1735&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:316:22
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; rejects a malformed motion payload before any mutation" time="0.002553625">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793977367021-f1e8f438-79a0-40a4-8bd5-d58ee1e06c9b&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;2bd77b6d-c266-4c64-8da1-5d8e1a73777c&apos;,
+    projectId: &apos;ae29e244-3962-4f48-8859-ca4c6b07d2bf&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: apply payload railMotions acceptance (MOTN-01/MOTN-12) &gt; rejects a payload carrying an unknown sibling key instead of bypassing the allowlist" time="0.002497209">
+            <system-out>
+[physicPaintBridge] launch branch browser-fallback {
+  operationId: &apos;physic-paint-1793977367024-51018404-7c1d-43f4-9442-112a0fb9460b&apos;,
+  layerId: &apos;layer-roto-rail-motions&apos;,
+  project: {
+    name: &apos;Untitled Project&apos;,
+    saved: false,
+    contextId: &apos;aa203e34-89e8-4be4-9ddd-70425cf1fcdf&apos;,
+    projectId: &apos;f84c6be0-fdb3-4d74-a49c-6c1f4e2f278f&apos;
+  },
+  startFrame: 0,
+  layerName: &apos;Physics Paint&apos;,
+  rotoPlayback: { loop: false, fps: 12 },
+  document: {
+    version: 1,
+    parentLayerId: &apos;layer-roto-rail-motions&apos;,
+    documentRevision: 0,
+    activeTrackId: &apos;track-1&apos;,
+    tracks: [ [Object] ],
+    background: {
+      id: &apos;background-1&apos;,
+      clips: [],
+      fallback: [Object],
+      visible: true,
+      revision: 0,
+      transform: [Object],
+      transformLocked: true
+    },
+    photoReference: null,
+    audios: [],
+    compositeRevision: 0
+  }
+}
+
+            </system-out>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: isPhysicPaintRotoRailMotionCollection &gt; delegates to the 59-02 fail-closed parser and never repairs" time="0.000215625">
+            <failure message="isPhysicPaintRotoRailMotionCollection is not a function" type="TypeError">
+TypeError: isPhysicPaintRotoRailMotionCollection is not a function
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:367:12
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; fails closed for a track that does not exist and mutates nothing" time="0.000451875">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; leaves records, interpolation, loop clips and breaks byte-identical on a rejected collection" time="0.003446541">
+            <failure message="expected [ { kind: &apos;real-key&apos;, …(3) }, …(4) ] to be [ { kind: &apos;real-key&apos;, …(3) }, …(4) ] // Object.is equality
+
+If it should pass with deep equality, replace &quot;toBe&quot; with &quot;toStrictEqual&quot;
+
+Expected: [ { kind: &apos;real-key&apos;, …(3) }, …(4) ]
+Received: serializes to the same string
+" type="AssertionError">
+AssertionError: expected [ { kind: &apos;real-key&apos;, …(3) }, …(4) ] to be [ { kind: &apos;real-key&apos;, …(3) }, …(4) ] // Object.is equality
+
+If it should pass with deep equality, replace &quot;toBe&quot; with &quot;toStrictEqual&quot;
+
+Expected: [ { kind: &apos;real-key&apos;, …(3) }, …(4) ]
+Received: serializes to the same string
+
+
+Compared values have no visual difference.
+
+ ❯ src/stores/physicPaintStore.rotoRailMotions.test.ts:408:74
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.rotoRailMotions.test.ts" name="59-07: replaceRotoPhysicalRailMotions transactionality &gt; re-applying the identical collection returns ok without bumping rotoPhysicalRevision" time="0.00110425">
+        </testcase>
+    </testsuite>
+</testsuites>
