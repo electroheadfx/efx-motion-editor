@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="7" failures="6" errors="0" time="0.307">
+    <testsuite name="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" timestamp="2026-11-06T15:34:19.718Z" hostname="efx2.home" tests="7" failures="6" errors="0" skipped="0" time="0.008523916">
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; applies translate, rotate, scale, translate around the normalized pivot at the normal draw site" time="0.005100333">
+            <failure message="expected [] to deeply equal [ …(4) ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ …(4) ]
+
+- Expected
++ Received
+
+- Array [
+-   Object {
+-     &quot;type&quot;: &quot;translate&quot;,
+-     &quot;x&quot;: 60,
+-     &quot;y&quot;: 46,
+-   },
+-   Object {
+-     &quot;angle&quot;: 1.0471975511965976,
+-     &quot;type&quot;: &quot;rotate&quot;,
+-   },
+-   Object {
+-     &quot;type&quot;: &quot;scale&quot;,
+-     &quot;x&quot;: 2,
+-     &quot;y&quot;: 2,
+-   },
+-   Object {
+-     &quot;type&quot;: &quot;translate&quot;,
+-     &quot;x&quot;: -50,
+-     &quot;y&quot;: -50,
+-   },
+- ]
++ Array []
+
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:223:39
+            </failure>
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; applies the same op sequence at the engine-overlay draw site" time="0.000568792">
+            <failure message="expected [] to deeply equal [ …(4) ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ …(4) ]
+
+- Expected
++ Received
+
+- Array [
+-   Object {
+-     &quot;type&quot;: &quot;translate&quot;,
+-     &quot;x&quot;: 60,
+-     &quot;y&quot;: 46,
+-   },
+-   Object {
+-     &quot;angle&quot;: 1.0471975511965976,
+-     &quot;type&quot;: &quot;rotate&quot;,
+-   },
+-   Object {
+-     &quot;type&quot;: &quot;scale&quot;,
+-     &quot;x&quot;: 2,
+-     &quot;y&quot;: 2,
+-   },
+-   Object {
+-     &quot;type&quot;: &quot;translate&quot;,
+-     &quot;x&quot;: -50,
+-     &quot;y&quot;: -50,
+-   },
+- ]
++ Array []
+
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:251:39
+            </failure>
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; multiplies track opacity by motion opacity (D-19) and keeps track opacity when unmoved" time="0.000322292">
+            <failure message="expected 0.4 to be close to 0.2, received difference is 0.2, but expected 0.005" type="AssertionError">
+AssertionError: expected 0.4 to be close to 0.2, received difference is 0.2, but expected 0.005
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:276:56
+            </failure>
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; records zero transform ops and an identical drawImage for an identity transform" time="0.000306417">
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; leaves an un-animated sibling track on the byte-identical baseline path" time="0.00098925">
+            <failure message="expected [] to have a length of 4 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 4 but got +0
+
+- Expected
++ Received
+
+- 4
++ 0
+
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:337:37
+            </failure>
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; reuses the cached track raster unchanged across a motion-only edit" time="0.000564375">
+            <failure message="expected undefined to deeply equal { type: &apos;translate&apos;, x: 149, y: 46 }" type="AssertionError">
+AssertionError: expected undefined to deeply equal { type: &apos;translate&apos;, x: 149, y: 46 }
+
+- Expected: 
+Object {
+  &quot;type&quot;: &quot;translate&quot;,
+  &quot;x&quot;: 149,
+  &quot;y&quot;: 46,
+}
+
++ Received: 
+undefined
+
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:369:41
+            </failure>
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts" name="compositeFrame — rail motion transform (MOTN-07/MOTN-08) &gt; exposes an exact identity predicate" time="0.000238917">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts:374:87
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

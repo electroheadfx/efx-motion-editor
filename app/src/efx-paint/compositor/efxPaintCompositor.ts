@@ -173,6 +173,13 @@ export interface EfxPaintCompositorPorts {
   /** Per-clip `${clip.id}:${clip.revision}` terms, the flattened-key term. */
   backgroundClipRevisions?: readonly string[];
   /**
+   * Phase 59-08 (MOTN-07/MOTN-08): trackId → evaluated rail-motion transform.
+   * This is the ONLY place a rail transform is applied — never in a renderer,
+   * an export path or a second draw site. A track absent from this map draws
+   * on the pre-Phase-59 path byte-for-byte.
+   */
+  trackTransforms?: ReadonlyMap<string, EfxPaintTrackMotionTransform>;
+  /**
    * 48-05 (D-05): engine-supplied track ids to EXCLUDE from the participating
    * set — the Studio editing base. The monitor threads the active track through
    * this port (never by rewriting the document); the live engine canvas stacked
@@ -205,6 +212,38 @@ export interface EfxPaintCompositorPorts {
    * derives the same flag (`bg:0`), so the two variants never share a memo.
    */
   includeBackground?: boolean;
+}
+
+/**
+ * Phase 59-08 (MOTN-07/MOTN-08): ONE rail-motion transform per animated track,
+ * resolved store-side by the 59-05 evaluator and applied HERE — at the single
+ * compositor draw site — so edit view, Play and export cannot disagree.
+ *
+ * `pivotX`/`pivotY` are NORMALIZED (0..1) pivot coordinates: the compositor
+ * multiplies them by the rect it draws into, so it never reads an intrinsic
+ * raster size. Rotation is radians (59-05 converts degrees exactly once) and is
+ * unbounded (MOTN-09).
+ */
+export interface EfxPaintTrackMotionTransform {
+  readonly translateX: number;
+  readonly translateY: number;
+  readonly scale: number;
+  readonly rotationRadians: number;
+  readonly opacity: number;
+  readonly pivotX: number;
+  readonly pivotY: number;
+}
+
+/**
+ * Exact identity check (no epsilon): the evaluator returns the frozen
+ * `RAIL_MOTION_IDENTITY_TRANSFORM` by reference on the absent/empty path, so
+ * the common no-motion track takes the zero-transform-op fast path.
+ */
+export function isEfxPaintTrackMotionIdentity(
+  _transform: EfxPaintTrackMotionTransform,
+): boolean {
+  // RED stub — the GREEN implementation compares every field.
+  return true;
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
