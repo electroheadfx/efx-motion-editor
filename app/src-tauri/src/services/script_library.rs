@@ -1552,11 +1552,28 @@ fn hash_canonical_physical_value(source: &str) -> String {
     format!("{}-{:x}", source.len(), hash)
 }
 
-/// Recompute the canonical project equality fingerprint for one physical
-/// document, mirroring `buildPhysicPaintRotoProjectEquality` in
-/// physicsPaintRotoPhysicalModel.ts. Returns the `project-<len>-<hex>` string
-/// or a closed error when the document is not a canonical physical document.
-pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
+/// Canonical project-equality term order (59-01 / REL-02). ADDITIVE ONLY —
+/// every term is appended in this exact sequence in both languages:
+///
+///   records
+///   group-overrides     (non-empty only)
+///   interpolation
+///   mode
+///   loops               (non-empty only)
+///   rail-motions        (reserved for Phase 59 — non-empty only, NOT emitted yet)
+///   incoming-breaks     (non-empty only)
+///   capacity
+///   motion
+///   background
+///   selection
+///   cursor
+///
+/// The TypeScript authority is `buildPhysicPaintRotoProjectEqualitySource` in
+/// physicsPaintRotoPhysicalModel.ts; the shared golden fixture
+/// `app/src/lib/__fixtures__/railMotionCanonical.golden.json` pins both
+/// encodings term-for-term. Reordering an existing term moves every project
+/// value — add new terms at their reserved ordinal instead.
+pub(crate) fn canonical_physical_source(document: &Value) -> Result<String, String> {
     let object = document
         .as_object()
         .ok_or("Target physical document must be an object")?;
@@ -1621,6 +1638,10 @@ pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
     if !loop_clips.is_empty() {
         source.push_str(&format!("loops:{}", canonical_loop_clips(loop_clips)?));
     }
+    // 59-01: `rail-motions:` is RESERVED at this ordinal — after `loops:` and
+    // before `incoming-breaks:`. Phase 59's motion encoder owns the emission;
+    // this plan deliberately emits nothing here so no existing project value
+    // moves.
     if !incoming_breaks.is_empty() {
         source.push_str(&format!(
             "incoming-breaks:{}",
@@ -1665,6 +1686,15 @@ pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
     ));
     source.push_str(&format!("cursor:{}", canonical_number(cursor_app_frame)));
 
+    Ok(source)
+}
+
+/// Recompute the canonical project equality fingerprint for one physical
+/// document, mirroring `buildPhysicPaintRotoProjectEquality` in
+/// physicsPaintRotoPhysicalModel.ts. Returns the `project-<len>-<hex>` string
+/// or a closed error when the document is not a canonical physical document.
+pub fn canonical_physical_hash(document: &Value) -> Result<String, String> {
+    let source = canonical_physical_source(document)?;
     Ok(format!("project-{}", hash_canonical_physical_value(&source)))
 }
 
@@ -3000,9 +3030,20 @@ mod tests {
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");
             let document = &entry["document"];
+            let expected_source = entry["expectedSource"]
+                .as_str()
+                .expect("golden fixture expectedSource");
             let expected_project = entry["expectedProject"]
                 .as_str()
                 .expect("golden fixture expectedProject");
+            // Compare the SOURCE first: a term-order or phantom-term regression
+            // names the offending term instead of only moving an opaque hash.
+            let source = canonical_physical_source(document)
+                .unwrap_or_else(|error| panic!("{name}: canonical source failed: {error}"));
+            assert_eq!(
+                source, expected_source,
+                "{name}: canonical source diverged from the TS authority"
+            );
             // The guard compares the caller-supplied hash against the recomputed
             // canonical project equality; the fixture's frozen literal IS the
             // caller-supplied hash the TypeScript side would send.

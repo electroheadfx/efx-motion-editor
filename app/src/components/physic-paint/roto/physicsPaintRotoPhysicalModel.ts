@@ -1548,6 +1548,29 @@ function encodeCanonicalRealKeyRecordsTerm(
   return `${ordered.length}:${encoded}`;
 }
 
+/**
+ * 59-01 (REL-02): canonical project-equality term order. ADDITIVE ONLY —
+ * every term is appended in this exact sequence in both languages, and the
+ * shared golden fixture (`app/src/lib/__fixtures__/railMotionCanonical.golden.json`)
+ * pins the two encodings term-for-term:
+ *
+ *   records
+ *   group-overrides     (non-empty only)
+ *   interpolation
+ *   mode
+ *   loops               (non-empty only)
+ *   rail-motions        (reserved for Phase 59 — non-empty only, NOT emitted yet)
+ *   incoming-breaks     (non-empty only)
+ *   capacity
+ *   motion
+ *   background
+ *   selection
+ *   cursor
+ *
+ * This function emits the content half; `buildPhysicPaintRotoProjectEqualitySource`
+ * appends the document half (capacity … cursor). The Rust mirror is
+ * `canonical_physical_source` in app/src-tauri/src/services/script_library.rs.
+ */
 function encodeValidatedPhysicPaintRotoPhysicalContent(
   records: readonly PhysicPaintRotoRealKeyRecord[],
   interpolation: PhysicPaintRotoInterpolationState,
@@ -1568,16 +1591,26 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
     // contributes NO term — v0.8.1 documents keep their legacy revision and
     // load with no migration. Any non-empty collection joins the fingerprint.
     ...(loopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(loopClips)}`] : []),
+    // 59-01: `rail-motions:` is RESERVED at this ordinal — after `loops:` and
+    // before `incoming-breaks:`. Phase 59's motion encoder owns the emission;
+    // this plan emits nothing here so no existing project value moves.
     ...(incomingInterpolationBreakKeyIds.length > 0
       ? [`incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds)}`]
       : []),
   ].join('');
 }
 
-/** Build the broader persisted equality fingerprint for one complete layer. */
-export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
+/**
+ * 59-01 (REL-02): the canonical project-equality SOURCE (pre-fingerprint).
+ *
+ * The cross-language golden fixture freezes this string so the Rust mirror can
+ * report a term-level diff instead of an opaque hash mismatch, and the parity
+ * tests compare it byte-for-byte. `buildPhysicPaintRotoProjectEquality` is the
+ * fingerprint of exactly this string; the extraction is pure.
+ */
+export function buildPhysicPaintRotoProjectEqualitySource(value: unknown): string {
   const document = parsePhysicPaintRotoPhysicalDocument(value);
-  const source = [
+  return [
     // The content encoding already covers the Loop Clip collection (Q1), so
     // two documents differing only in loops never share a save-cache key.
     encodePhysicPaintRotoPhysicalContent(
@@ -1593,7 +1626,11 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
     `selection:${document.selectedKeyId === null ? 'null;' : encodeCanonicalString(document.selectedKeyId)}`,
     `cursor:${encodeCanonicalNumber(document.cursorAppFrame)}`,
   ].join('');
-  return `project-${hashCanonicalPhysicalValue(source)}`;
+}
+
+/** Build the broader persisted equality fingerprint for one complete layer. */
+export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
+  return `project-${hashCanonicalPhysicalValue(buildPhysicPaintRotoProjectEqualitySource(value))}`;
 }
 
 /**
