@@ -58,6 +58,11 @@ import {
   parseFrameMediaReference,
   type FrameMediaReference,
 } from '../../../lib/efxPaintPackage';
+import {
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  parsePhysicPaintRotoRailMotions,
+  type PhysicPaintRotoRailMotionRecord,
+} from './railMotionModel';
 
 /**
  * Stable durable real-key identity.
@@ -383,6 +388,17 @@ export interface PhysicPaintRotoPhysicalDocument extends PhysicPaintRotoPhysical
    * as the empty collection with no migration.
    */
   readonly loopClips: readonly PhysicPaintRotoLoopClip[];
+  /**
+   * Additive rail motion collection (Phase 59, MOTN-12).
+   *
+   * Optional in the TYPE for the same reason `groupOverrideRecords` is (a
+   * document literal built outside the parser may predate the member), but
+   * ALWAYS present on a reconstructed document: the parser emits the frozen
+   * empty collection when the persisted member is absent, so every read path
+   * sees an array. The empty collection contributes NO canonical term (the
+   * D-29 idiom), so every pre-Phase-59 document keeps its exact revision.
+   */
+  readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
   /** Stable real-key IDs whose incoming interpolation span is intentionally broken. */
   readonly incomingInterpolationBreakKeyIds: readonly string[];
 }
@@ -531,6 +547,10 @@ const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'cursorAppFrame',
   'revision',
   'loopClips',
+  // Phase 59 (MOTN-12): the additive rail motion collection — optional in the
+  // persisted shape (absent means the empty collection), always present on the
+  // reconstructed document.
+  'railMotions',
   'incomingInterpolationBreakKeyIds',
 ]);
 // 260923-bcm: `grainScale` joins the optional background members (finite
@@ -1463,8 +1483,9 @@ export function buildPhysicPaintRotoPhysicalRevision(
   loopClips: unknown,
   incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   groupOverrideRecords: unknown = [],
+  railMotions: unknown = PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
 ): string {
-  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, groupOverrideRecords);
+  const source = encodePhysicPaintRotoPhysicalContent(records, interpolation, loopClips, incomingInterpolationBreakKeyIds, groupOverrideRecords, railMotions);
   return `physical-${hashCanonicalPhysicalValue(source)}`;
 }
 
@@ -1481,6 +1502,7 @@ export function encodePhysicPaintRotoPhysicalContent(
   loopClips: unknown,
   incomingInterpolationBreakKeyIds: unknown = PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   groupOverrideRecords: unknown = [],
+  railMotions: unknown = PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
 ): string {
   const validated = parsePhysicPaintRotoRealKeyRecordCollection(records);
   const validatedGroupOverrides = parsePhysicPaintRotoRealKeyRecordCollection(groupOverrideRecords);
@@ -1488,6 +1510,10 @@ export function encodePhysicPaintRotoPhysicalContent(
     throw new Error('PhysicPaintRotoPhysicalRevision: invalid canonical interpolation state.');
   }
   const validatedLoopClips = parsePhysicPaintRotoLoopClips(loopClips);
+  // Phase 59: the collection is untrusted input on every door (persisted
+  // document, store read, direct revision call); the fail-closed parser is the
+  // only shape authority and the empty collection is a shared constant.
+  const validatedRailMotions = parsePhysicPaintRotoRailMotions(railMotions);
   const validatedIncomingBreaks = parsePhysicPaintRotoIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds, validated);
   return encodeValidatedPhysicPaintRotoPhysicalContent(
     validated,
@@ -1495,6 +1521,7 @@ export function encodePhysicPaintRotoPhysicalContent(
     validatedLoopClips,
     validatedIncomingBreaks,
     validatedGroupOverrides,
+    validatedRailMotions,
   );
 }
 
@@ -1559,7 +1586,7 @@ function encodeCanonicalRealKeyRecordsTerm(
  *   interpolation
  *   mode
  *   loops               (non-empty only)
- *   rail-motions        (reserved for Phase 59 — non-empty only, NOT emitted yet)
+ *   rail-motions        (non-empty only — Phase 59 motion collection)
  *   incoming-breaks     (non-empty only)
  *   capacity
  *   motion
@@ -1577,6 +1604,7 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
   loopClips: readonly PhysicPaintRotoLoopClip[],
   incomingInterpolationBreakKeyIds: readonly string[],
   groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [],
+  railMotions: readonly PhysicPaintRotoRailMotionRecord[] = PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   encodePayloadBytes: (bytes: Uint8Array) => string = encodeCanonicalBytesPayload,
 ): string {
   const encodeRecords = (source: readonly PhysicPaintRotoRealKeyRecord[]) =>
@@ -1591,9 +1619,12 @@ function encodeValidatedPhysicPaintRotoPhysicalContent(
     // contributes NO term — v0.8.1 documents keep their legacy revision and
     // load with no migration. Any non-empty collection joins the fingerprint.
     ...(loopClips.length > 0 ? [`loops:${encodeCanonicalLoopClips(loopClips)}`] : []),
-    // 59-01: `rail-motions:` is RESERVED at this ordinal — after `loops:` and
-    // before `incoming-breaks:`. Phase 59's motion encoder owns the emission;
-    // this plan emits nothing here so no existing project value moves.
+    // 59-03 (MOTN-12): the rail-motion collection occupies the ordinal reserved
+    // between `loops:` and `incoming-breaks:` in 59-01. Same D-29 idiom as
+    // Loop Clips: the empty collection is semantically identical to a
+    // pre-Phase-59 document with no railMotions member, so it contributes NO
+    // term and every existing project value keeps its exact revision.
+    ...(railMotions.length > 0 ? [`rail-motions:${encodeCanonicalRailMotions(railMotions)}`] : []),
     ...(incomingInterpolationBreakKeyIds.length > 0
       ? [`incoming-breaks:${encodeCanonicalIncomingInterpolationBreakKeyIds(incomingInterpolationBreakKeyIds)}`]
       : []),
@@ -1619,6 +1650,7 @@ export function buildPhysicPaintRotoProjectEqualitySource(value: unknown): strin
       document.loopClips,
       document.incomingInterpolationBreakKeyIds,
       document.groupOverrideRecords,
+      document.railMotions,
     ),
     `capacity:${encodeCanonicalNumber(document.capacity)}`,
     `motion:${encodeCanonicalNumber(document.scriptMotion.deformation)}${encodeCanonicalNumber(document.scriptMotion.position)}${document.scriptMotion.rotation ? encodeCanonicalNumber(document.scriptMotion.rotation) : ''}${document.scriptMotion.scale ? encodeCanonicalNumber(document.scriptMotion.scale) : ''}`,
@@ -1642,6 +1674,38 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
 function encodeCanonicalIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): string {
   const ordered = [...keyIds].sort((a, b) => a.localeCompare(b));
   return `${ordered.length}:${ordered.map(encodeCanonicalString).join('')}`;
+}
+
+/**
+ * Canonical rail-motion collection encoding (Phase 59, MOTN-12).
+ *
+ * Deterministic by construction: records are sorted by `railId`, channels keep
+ * their stored canonical order (the model's fixed channel order), and each
+ * channel's keys are already frame-ascending from the canonicalizing parser.
+ * Input array order therefore never changes the revision.
+ *
+ * The collection is length-prefixed like every other canonical collection, and
+ * the caller emits the whole term ONLY when the collection is non-empty (D-29
+ * idiom), so a pre-Phase-59 document keeps its exact revision.
+ */
+function encodeCanonicalRailMotions(records: readonly PhysicPaintRotoRailMotionRecord[]): string {
+  const ordered = [...records].sort((left, right) => left.railId.localeCompare(right.railId));
+  const encoded = ordered.map((record) => [
+    encodeCanonicalString(record.railId),
+    encodeCanonicalString(record.anchorKeyId),
+    `${record.channels.length}:`,
+    ...record.channels.flatMap((channel) => [
+      encodeCanonicalString(channel.id),
+      `${channel.keys.length}:`,
+      ...channel.keys.flatMap((key) => [
+        encodeCanonicalNumber(key.frame),
+        encodeCanonicalNumber(key.value),
+        encodeCanonicalString(key.easing),
+        encodeCanonicalNumber(key.wiggle),
+      ]),
+    ]),
+  ].join('')).join('');
+  return `${ordered.length}:${encoded}`;
 }
 
 function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): string {
@@ -1816,6 +1880,14 @@ export function parsePhysicPaintRotoPhysicalDocument(
   const loopClips = value.loopClips === undefined
     ? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY
     : parsePhysicPaintRotoLoopClips(value.loopClips);
+  // railMotions joins loopClips as an optional persisted member (Phase 59,
+  // MOTN-12): absent means the shared frozen empty collection, so every
+  // pre-Phase-59 document loads with no migration; present means parsed
+  // fail-closed by the model's single shape authority.
+  const rawRailMotions = value['railMotions'];
+  const railMotions = rawRailMotions === undefined
+    ? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY
+    : parsePhysicPaintRotoRailMotions(rawRailMotions);
   const groupOverrideRecords = value.groupOverrideRecords === undefined
     ? Object.freeze([] as PhysicPaintRotoRealKeyRecord[])
     : parsePhysicPaintRotoRealKeyRecordCollection(value.groupOverrideRecords, capacity, payloadMode);
@@ -1832,6 +1904,7 @@ export function parsePhysicPaintRotoPhysicalDocument(
     loopClips,
     incomingInterpolationBreakKeyIds,
     groupOverrideRecords,
+    railMotions,
   );
   if (value.revision !== revision) {
     // 52.1 clean break (D-01/D-06 one-way): the pre-bytes dataUrl revision
@@ -1854,6 +1927,7 @@ export function parsePhysicPaintRotoPhysicalDocument(
     cursorAppFrame: value.cursorAppFrame,
     revision,
     loopClips,
+    railMotions,
     incomingInterpolationBreakKeyIds,
   });
 }

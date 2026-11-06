@@ -85,6 +85,10 @@ function encodeValidatedEfxPaintTrackContent(track: InternalPaintTrack): string 
         track.rotoPhysical.loopClips,
         track.rotoPhysical.incomingInterpolationBreakKeyIds,
         track.rotoPhysical.groupOverrideRecords,
+        // Phase 59 (MOTN-12): the rail-motion carrier. Omitting this argument
+        // would break the document-revision chain while every model-level test
+        // still passes — it is load-bearing.
+        track.rotoPhysical.railMotions,
       )}`;
   return [
     `id:${encodeCanonicalString(track.id)}`,
