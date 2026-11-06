@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="13" failures="12" errors="0" time="0.225">
+    <testsuite name="src/components/physic-paint/roto/railMotionEvaluator.test.ts" timestamp="2026-11-06T13:16:27.145Z" hostname="efx2.home" tests="13" failures="12" errors="0" skipped="0" time="0.00891975">
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; returns the frozen identity transform for an absent or empty record" time="0.000785333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; contributes the identity value for a channel the record does not carry" time="0.002998333">
+            <failure message="expected +0 to be 20 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 20 // Object.is equality
+
+- Expected
++ Received
+
+- 20
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:61:61
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; holds the first value before the first key and the last value after the last key" time="0.000289417">
+            <failure message="expected +0 to be 5 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 5 // Object.is equality
+
+- Expected
++ Received
+
+- 5
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:69:62
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; steps across a hold segment and jumps at the next key" time="0.000252334">
+            <failure message="expected +0 to be 100 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 100 // Object.is equality
+
+- Expected
++ Received
+
+- 100
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:80:62
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; eases between two keys with a monotone smoothstep that hits both endpoints" time="0.000810542">
+            <failure message="expected +0 to be 50 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 50 // Object.is equality
+
+- Expected
++ Received
+
+- 50
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:88:59
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; holds a single-key channel at that value everywhere" time="0.000221458">
+            <failure message="expected 1 to be 2 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be 2 // Object.is equality
+
+- Expected
++ Received
+
+- 2
++ 1
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:106:57
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; interpolates rotation in degrees with no wrap and converts once at the boundary" time="0.000193209">
+            <failure message="expected +0 to be 180 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 180 // Object.is equality
+
+- Expected
++ Received
+
+- 180
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:113:64
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; evaluates the grouped Position channels independently" time="0.000154542">
+            <failure message="expected +0 to be 50 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 50 // Object.is equality
+
+- Expected
++ Received
+
+- 50
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:135:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; assembles a frozen transform with identity defaults for absent channels" time="0.000837333">
+            <failure message="expected { Object (translateX, translateY, ...) } to deeply equal { Object (translateX, translateY, ...) }" type="AssertionError">
+AssertionError: expected { Object (translateX, translateY, ...) } to deeply equal { Object (translateX, translateY, ...) }
+
+- Expected
++ Received
+
+  Object {
+    &quot;opacity&quot;: 1,
+-   &quot;rotationRadians&quot;: 1.5707963267948966,
++   &quot;rotationRadians&quot;: 0,
+    &quot;scale&quot;: 1,
+    &quot;translateX&quot;: 0,
+    &quot;translateY&quot;: 0,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:143:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; accepts fractional and negative rail-local frames" time="0.00042175">
+            <failure message="expected +0 to be 15.625 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 15.625 // Object.is equality
+
+- Expected
++ Received
+
+- 15.625
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:156:63
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion channel evaluation &gt; clamps opacity to 0..1 and floors scale at 0 after evaluation" time="0.00024875">
+            <failure message="expected 1 to be +0 // Object.is equality" type="AssertionError">
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:168:56
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion rail-local frame resolution &gt; subtracts the rail start and clamps before the rail at zero" time="0.000180042">
+            <failure message="expected +0 to be 60 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 60 // Object.is equality
+
+- Expected
++ Received
+
+- 60
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:174:44
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionEvaluator.test.ts" name="rail motion rail-local frame resolution &gt; throws on a non-finite app frame or rail start" time="0.000910458">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionEvaluator.test.ts:180:56
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
