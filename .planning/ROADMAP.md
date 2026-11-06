@@ -15,6 +15,7 @@
 - ✅ **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1 (shipped 2026-10-13)
 - ✅ **v2.0.0 Multi-Module Paint Workstation (MAJOR)** — Phases 54-56 (shipped 2026-11-02)
 - ✅ **v2.0.1 Rail Editing & v7 Timeline Rails (PATCH)** — Phase 58 + in-milestone v7 quick (shipped 2026-11-05)
+- 🚧 **v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)** — Phases 59-62 (in progress)
 
 ## Phases
 
@@ -61,26 +62,147 @@ PATCH milestone per the semver ladder locked 2026-10-12 (PATCH for debt, MINOR f
 <details>
 <summary>✅ v1.0.0 EFX Paint Multi-Track Frames and Reveal (Phases 45-53) — SHIPPED 2026-10-12</summary>
 
-See milestones/v1.0.0-ROADMAP.md for full phase details.
+See `milestones/v1.0.0-ROADMAP.md` for full phase details.
 
 </details>
 
 <details>
 <summary>✅ v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (Phases 39-44) — SHIPPED 2026-08-21</summary>
 
-See milestones/v0.9.0-ROADMAP.md for full phase details.
+See `milestones/v0.9.0-ROADMAP.md` for full phase details.
 
 </details>
 
 <details>
 <summary>✅ v0.8.0 Standalone Physics Paint (Phases 34-38.1) — SHIPPED 2026-08-01</summary>
 
-See milestones/v0.8.0-ROADMAP.md for full phase details.
+See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 
 </details>
 
 ---
 
-## Next Milestone
+### 🚧 v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (In Progress)
 
-**v2.0.1 is shipped** — GitHub Latest on 2026-11-05, tag `v2.0.1` → `49b5f7e57`, signed/notarized DMG with downloaded-artifact verification PASS. The next milestone is not yet opened. **v2.1.0 (Motion channels)** is the planned shape per `SPECS/v2.1.0-motion-channels/` — Position/Rotation/Opacity lanes, curves, nav cluster, and the selected-rail rounded outline on top of the v7 rail surface shipped here; it is a Phase 59 candidate, not yet inserted. Global phase numbering continues at Phase 59; Phase 57 was retired (spectral shipped inside Phase 56) and is never reused.
+**Milestone Goal:** Turn every rail into an animatable object — independent Motion keys driving a compositor-level transform — then add frame-density timeline zoom, a vector painting tool, and painted-stroke curve editing.
+
+- [ ] **Phase 59: Rail Motion Channels & v7 Interface** - Any rail animates through independent Motion keys applied at the compositor, with the v7 channel lanes
+- [ ] **Phase 60: Studio Timeline Horizontal Zoom** - Frame density zooms 0.25×-4× from one pitch authority with all vertical geometry fixed
+- [ ] **Phase 61: Vector Painting Tool** - Pen-drawn vector strokes with per-vertex width, per-stroke style, wireframe preview, persistence, and export
+- [ ] **Phase 62: Painted-Stroke Curve Editing** - A selected painted stroke reshapes as a curve and re-bakes from its pre-script base across every loop occurrence
+
+---
+
+## Phase Details
+
+### Phase 59: Rail Motion Channels & v7 Interface
+
+**Goal**: Every rail — Standard, Motion, Static, Reveal, or a bare Key Rail — can be animated by Motion keys that are independent of its drawing keys, and the transform is applied once at the compositor so edit view, Play, and export show the same frame.
+
+**Depends on**: Nothing (first phase of v2.1.0; builds on the shipped v2.0.1 rail surface)
+
+**Requirements**: MOTN-01, MOTN-02, MOTN-03, MOTN-04, MOTN-05, MOTN-06, MOTN-07, MOTN-08, MOTN-09, MOTN-10, MOTN-11, MOTN-12, MUI-01, MUI-02, MUI-03, MUI-04, MUI-05, MUI-06, REL-01, REL-02, REL-03, REL-04
+
+**Success Criteria** (what must be TRUE):
+  1. A Motion key can be added on any rail — Standard, Motion, Static, Reveal, or a bare Key Rail — with no cycle value, no conversion, and no drawing key created or altered, and that rail then animates.
+  2. Position (grouped whole-position or split X + Y), Scale, Rotation, and Opacity each animate with their own keys; channels open on demand one at a time; a track with motion shows the coloured chevron (right collapsed, down expanded) and a track without motion shows the grey minus.
+  3. Rail motion is applied at the compositor: one content raster per track per frame, content cycles while motion continues, nothing re-bakes; a Motion edit invalidates the composite and the flattened memo does not grow per drag step.
+  4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
+  5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
+
+**Plans**: TBD
+
+**Build order (research §12)**:
+  1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
+  2. 59.2 — pure evaluator + curve-path builder
+  3. 59.3 — store projection, actions, revision wiring
+  4. 59.4 — compositor `trackTransforms` at both draw sites (before the UI, so UAT sees a real transform)
+  5. 59.5 — timeline UI: channels, headers, toggle, outline, nav cluster, measured row offsets
+  6. 59.6 — UAT: independent Motion keys, compositor render, three scopes, active-track parity, motion-blur export
+
+**Gates (answer in the phase plan before 59.1)**: A — one active rail per track; B — durable identity for a motion-bearing bare Key Rail (any-rail animation is locked; the `railId` mint / split / merge / delete-first-key / copy-paste truth table is the planning work); C — rail-local time and repeat semantics (hold vs fit-to-span); D — quality at scale, with measured frame time and peak memory; plus an explicit sub-frame law for motion-blur export.
+
+**Delivery law**: REL-01 (no new runtime dependencies) is enforced first here and holds for all of Phases 59-62. REL-02 (byte-identical save → reopen, pinned by a test) covers every new `.mce` field and is re-enforced on Phase 61's vector fields. REL-03 (motion joins the canonical document revision; sampled values never enter the flattened cache key) belongs to Phase 59 alone. REL-04 (motion-blur export keeps paint on every frame) is Phase 59's export-parity law.
+
+**UI hint**: yes
+
+### Phase 60: Studio Timeline Horizontal Zoom
+
+**Goal**: Users can change the Studio timeline's frame density from 0.25× to 4× without moving a single vertical dimension, and every frame→pixel consumer reads the same pitch authority.
+
+**Depends on**: Phase 59 (zoom rebases on the same frame→pixel expressions the motion lanes touch, so it runs second)
+
+**Requirements**: ZOOM-01, ZOOM-02, ZOOM-03, ZOOM-04, ZOOM-05
+
+**Success Criteria** (what must be TRUE):
+  1. Cmd/Ctrl+wheel zooms the timeline frame density and keeps the frame under the cursor fixed, while a plain wheel keeps today's vertical-wheel-as-horizontal-scroll behavior.
+  2. The zoom pill offers minus / percent / plus / Fit; presets are 0.25×, 0.5×, 0.75×, 1×, 1.5×, 2×, 3×, 4×; 100% equals the base 18px pitch; pill and Fit keep the playhead frame fixed, falling back to the viewport centre, and Fit clamps into range.
+  3. The zoom matrix holds at 0.25×, 0.5×, 1×, 2×, and 4× across every gesture: playhead, ruler ticks, hit-testing, drag, scrub, selection, paste, sound stains, scroll-to-frame, and rail geometry all agree at each level.
+  4. Row, lane, and cell heights stay fixed at every zoom level — only horizontal frame density scales — and no frame→pixel consumer multiplies a local `18`.
+  5. Zoom is session-only: it resets when the Studio closes and changes no document, `.mce`, schema, persistence, or export output.
+
+**Plans**: TBD
+
+**Prerequisite**: the literal-`18` audit reaches zero before the zoom matrix test is written. The v2.0.1 VIS-02 30-vs-31 row-height drift is not part of this phase.
+
+**Delivery law**: REL-01 holds (no new runtime dependencies). This phase adds no `.mce` field, so REL-02 and REL-03 do not apply; REL-04 is untouched.
+
+**UI hint**: yes
+
+### Phase 61: Vector Painting Tool
+
+**Goal**: Users can draw and edit resolution-independent vector strokes whose paint properties vary per vertex, that persist, export, and replay deterministically.
+
+**Depends on**: Phase 60 (ordering only — the vector surface shares the Studio editor files with Phases 59-60; no data dependency)
+
+**Requirements**: VEC-01, VEC-02, VEC-03, VEC-04, VEC-05, VEC-06, VEC-07
+
+**Success Criteria** (what must be TRUE):
+  1. The pen tool draws a vector stroke with corner and smooth points, and the spline pointer edits it — anchors, coupled handles, handle break, insert, delete, and multi-select — inside the existing Move/Edit surface.
+  2. Stroke width varies per vertex, and brush type and colour are per stroke; the shipped data model expresses exactly the properties the phase committed to (no per-vertex brush type).
+  3. A wireframe preview toggle shows strokes and paths without render and is the drag-time performance mode; vertex editing stays responsive at the measured reference stroke count.
+  4. A vector stroke persists in `.mce` (declared in both TS and Rust), survives reopen, and exports exactly as previewed while keeping hide/solo, ordering, opacity, and background behavior.
+  5. Deterministic replay: the same vector stroke produces the same raster across runs, undo/redo, and reopen, and undo/redo covers each vector operation.
+
+**Plans**: TBD
+
+**Spike before the data model is locked**: per-vertex watercolour feasibility (segment runs vs payload extension), the sampling law, seam quality, stroke-count cost, and the determinism pin. The renderer, not the pen tool, is the scope risk.
+
+**Delivery law**: REL-01 holds (no new runtime dependencies). REL-02 applies to every new vector field in both TS and Rust. REL-03 (the motion revision term) is not involved; REL-04 is untouched.
+
+**UI hint**: yes
+
+### Phase 62: Painted-Stroke Curve Editing
+
+**Goal**: Users can reshape an already-painted stroke as a curve, and the change re-bakes correctly everywhere that stroke appears.
+
+**Depends on**: Phase 61 (curve mode reuses the vector editing surface and hit-testing)
+
+**Requirements**: CRV-01, CRV-02, CRV-03, CRV-04
+
+**Success Criteria** (what must be TRUE):
+  1. Selecting a painted stroke and entering curve mode fits anchors on entry and edits them with the same surface as the vector tool — no forked editor for "script" versus "vector" strokes.
+  2. Committing an anchor or handle edit is one ledger entry and re-bakes from the recovered pre-script base rather than deforming cached pixels — erased regions stay erased and the texture is not re-rolled.
+  3. Every loop occurrence of the edited stroke is invalidated together; no stale occurrence keeps the pre-edit pixels.
+  4. Undo cancels or settles an in-flight bake and leaves the stroke at its exact pre-edit state.
+
+**Plans**: TBD
+
+**Scope gate**: do not persist Bézier anchors in v1 unless the measured round-trip deviation is visibly unacceptable — that would be a declared schema change, not a detail.
+
+**Delivery law**: REL-01 holds (no new runtime dependencies). No new `.mce` field in the default scope (curve edits are script mutations), so REL-02 applies only if the scope gate opens; REL-04 is untouched.
+
+**UI hint**: yes
+
+---
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 59. Rail Motion Channels & v7 Interface | 0/TBD | Not started | - |
+| 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
+| 61. Vector Painting Tool | 0/TBD | Not started | - |
+| 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
+
+**Execution Order:** 59 → 60 → 61 → 62 (global numbering continues; Phase 57 is retired and never reused)

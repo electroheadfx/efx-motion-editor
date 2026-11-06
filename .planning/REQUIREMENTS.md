@@ -105,17 +105,52 @@ Deferred to a later milestone. Not in the current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MOTN-01 … MOTN-12 | Phase 59 | Pending |
-| MUI-01 … MUI-06 | Phase 59 | Pending |
-| ZOOM-01 … ZOOM-05 | Phase 60 | Pending |
-| VEC-01 … VEC-07 | Phase 61 | Pending |
-| CRV-01 … CRV-04 | Phase 62 | Pending |
-| REL-01 … REL-04 | Phases 59–62 | Pending |
+| MOTN-01 | Phase 59 | Pending |
+| MOTN-02 | Phase 59 | Pending |
+| MOTN-03 | Phase 59 | Pending |
+| MOTN-04 | Phase 59 | Pending |
+| MOTN-05 | Phase 59 | Pending |
+| MOTN-06 | Phase 59 | Pending |
+| MOTN-07 | Phase 59 | Pending |
+| MOTN-08 | Phase 59 | Pending |
+| MOTN-09 | Phase 59 | Pending |
+| MOTN-10 | Phase 59 | Pending |
+| MOTN-11 | Phase 59 | Pending |
+| MOTN-12 | Phase 59 | Pending |
+| MUI-01 | Phase 59 | Pending |
+| MUI-02 | Phase 59 | Pending |
+| MUI-03 | Phase 59 | Pending |
+| MUI-04 | Phase 59 | Pending |
+| MUI-05 | Phase 59 | Pending |
+| MUI-06 | Phase 59 | Pending |
+| ZOOM-01 | Phase 60 | Pending |
+| ZOOM-02 | Phase 60 | Pending |
+| ZOOM-03 | Phase 60 | Pending |
+| ZOOM-04 | Phase 60 | Pending |
+| ZOOM-05 | Phase 60 | Pending |
+| VEC-01 | Phase 61 | Pending |
+| VEC-02 | Phase 61 | Pending |
+| VEC-03 | Phase 61 | Pending |
+| VEC-04 | Phase 61 | Pending |
+| VEC-05 | Phase 61 | Pending |
+| VEC-06 | Phase 61 | Pending |
+| VEC-07 | Phase 61 | Pending |
+| CRV-01 | Phase 62 | Pending |
+| CRV-02 | Phase 62 | Pending |
+| CRV-03 | Phase 62 | Pending |
+| CRV-04 | Phase 62 | Pending |
+| REL-01 | Phase 59 (enforced first; holds across Phases 59–62) | Pending |
+| REL-02 | Phase 59 (re-enforced on Phase 61's vector fields) | Pending |
+| REL-03 | Phase 59 (motion joins the canonical document revision) | Pending |
+| REL-04 | Phase 59 (motion-blur export keeps paint) | Pending |
 
 **Coverage:**
 - v2.1.0 requirements: 38 total (12 MOTN + 6 MUI + 5 ZOOM + 7 VEC + 4 CRV + 4 REL)
 - Mapped to phases: 38
 - Unmapped: 0
+- Per phase: Phase 59 = 22 (MOTN-01..12, MUI-01..06, REL-01..04); Phase 60 = 5 (ZOOM-01..05); Phase 61 = 7 (VEC-01..07); Phase 62 = 4 (CRV-01..04)
+- Delivery law: REL-01..04 are cross-cutting but attached to Phase 59, the phase where each is first enforced — REL-01 holds for all four phases, REL-02 is re-enforced on every Phase 61 vector field, REL-03 covers motion only, REL-04 is Phase 59's motion-blur export parity
 
 ---
 *Requirements defined: 2026-11-06*
+*Traceability updated: 2026-11-06 — mapped to Phases 59-62 for milestone v2.1.0*
