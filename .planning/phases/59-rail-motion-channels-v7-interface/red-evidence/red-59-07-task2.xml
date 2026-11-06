@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="5" failures="3" errors="0" time="1.107">
+    <testsuite name="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" timestamp="2026-11-06T15:06:33.244Z" hostname="efx.local" tests="5" failures="3" errors="0" skipped="0" time="0.01935525">
+        <testcase classname="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" name="59-07: railMotions canonical revision fingerprint &gt; produces different revisions for documents identical in keys but differing in one motion value" time="0.009342833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" name="59-07: motion-only edit history (MOTN-12) &gt; records one command for a motion-only change; Undo restores the prior collection and Redo restores the edit" time="0.005935458">
+            <failure message="expected &apos;physical-1044-3bfe2d6e&apos; not to be &apos;physical-1044-3bfe2d6e&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;physical-1044-3bfe2d6e&apos; not to be &apos;physical-1044-3bfe2d6e&apos; // Object.is equality
+ ❯ src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts:216:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" name="59-07: motion-only edit history (MOTN-12) &gt; treats an equal collection with different array identity as a no-op and a different collection as a change" time="0.002331">
+            <failure message="expected { undo: +0, redo: +0 } to deeply equal { undo: 1, redo: +0 }" type="AssertionError">
+AssertionError: expected { undo: +0, redo: +0 } to deeply equal { undo: 1, redo: +0 }
+
+- Expected
++ Received
+
+  Object {
+    &quot;redo&quot;: 0,
+-   &quot;undo&quot;: 1,
++   &quot;undo&quot;: 0,
+  }
+
+ ❯ src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts:248:37
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" name="59-07: motion-only edit history (MOTN-12) &gt; a motion-only difference leaves every key-derived field identical" time="0.000671709">
+            <failure message="expected { undo: +0, redo: +0 } to deeply equal { undo: 1, redo: +0 }" type="AssertionError">
+AssertionError: expected { undo: +0, redo: +0 } to deeply equal { undo: 1, redo: +0 }
+
+- Expected
++ Received
+
+  Object {
+    &quot;redo&quot;: 0,
+-   &quot;undo&quot;: 1,
++   &quot;undo&quot;: 0,
+  }
+
+ ❯ src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts:257:37
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/hooks/physicsPaintRotoRailMotionHistory.test.ts" name="59-07: motion-only edit history (MOTN-12) &gt; requires railMotions on every snapshot literal" time="0.000217709">
+        </testcase>
+    </testsuite>
+</testsuites>
