@@ -3203,16 +3203,31 @@ export type RotoTrackSelectionFailureReason =
   | 'malformed-member'
   | 'stale-member';
 
+/**
+ * 59-20 (CR-02): the two-sided merge report a removal transaction produces
+ * when it drops a rail's motion. `startFrame`/`endFrameExclusive` are the
+ * dropped record's PRIOR derived segment span in app frames, so the UI can
+ * announce exactly what disappeared. Session-only: it never persists, never
+ * joins the content revision and never becomes an undo member — the store
+ * reports the drop and the UI decides whether/how to publish it (the store
+ * must not import the notice signal module).
+ */
+export interface RotoTrackMergedDrop {
+  readonly railId: string;
+  readonly startFrame: number;
+  readonly endFrameExclusive: number;
+}
+
 export type RotoTrackCopyResult =
-  | { ok: true; payload: RotoRailSetCopyPayload }
+  | { ok: true; payload: RotoRailSetCopyPayload; mergedDrop?: RotoTrackMergedDrop }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 export type RotoTrackPasteResult =
-  | { ok: true; impact: RotoRailSetPasteImpact }
+  | { ok: true; impact: RotoRailSetPasteImpact; mergedDrop?: RotoTrackMergedDrop }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 export type RotoTrackClearResult =
-  | { ok: true }
+  | { ok: true; mergedDrop?: RotoTrackMergedDrop }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 /** 48-05: the empty exclusion set — the including path (byte-identical to 48-03). */
@@ -5786,7 +5801,13 @@ export const physicPaintStore = {
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, carriedLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    return { ok: true, payload: exactPayload };
+    // 59-20 (CR-02): a conditional spread keeps a no-drop result byte-identical
+    // to today's `{ ok: true, payload }` shape (no `mergedDrop` key at all).
+    return {
+      ok: true,
+      payload: exactPayload,
+      ...(removed.mergedDrop !== null ? { mergedDrop: removed.mergedDrop } : {}),
+    };
   },
 
   /**
@@ -5869,7 +5890,10 @@ export const physicPaintStore = {
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, coveredLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    return { ok: true };
+    return {
+      ok: true,
+      ...(removed.mergedDrop !== null ? { mergedDrop: removed.mergedDrop } : {}),
+    };
   },
 
   /**
@@ -5951,7 +5975,14 @@ export const physicPaintStore = {
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, fromTrackId, keyIdSet, carriedLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    return { ok: true, impact: pasted.impact };
+    return {
+      ok: true,
+      impact: pasted.impact,
+      // 59-20 (CR-02): the move's delete half can merge two animated rails on
+      // the SOURCE track. Report it here; the `removeFromSource === false`
+      // early return above runs no removal, so it can never carry a drop.
+      ...(removed.mergedDrop !== null ? { mergedDrop: removed.mergedDrop } : {}),
+    };
   },
 };
 
@@ -6036,7 +6067,7 @@ function _applyRotoTrackSelectionRemoval(
   trackId: string,
   selectedKeyIds: ReadonlySet<string>,
   carriedLoopIds: ReadonlySet<string>,
-): { ok: true } | { ok: false; reason: string } {
+): { ok: true; mergedDrop: RotoTrackMergedDrop | null } | { ok: false; reason: string } {
   const records = store.getRotoRealKeyRecords(layerId, trackId);
   const remainingRecords = records.filter((record) => !selectedKeyIds.has(record.keyId));
   const currentBreaks = store.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId);
@@ -6059,7 +6090,7 @@ function _applyRotoTrackSelectionRemoval(
   // Phase 59 (59-15 Gate B): the motion collection is part of the same
   // transaction. Deleting a rail's first key re-anchors its record, deleting
   // every key of a rail (or the loop clip that owns it) removes the record.
-  const reconciledRailMotions = reconcileRailMotionsForDocumentEdit({
+  const reconciliation = reconcileRailMotionsForDocumentEdit({
     previous: {
       realKeyRecords: records,
       incomingInterpolationBreakKeyIds: new Set(currentBreaks),
@@ -6071,13 +6102,25 @@ function _applyRotoTrackSelectionRemoval(
       loopClips: remainingLoops,
     },
     railMotions: store.getRotoPhysicalRailMotions(layerId, trackId),
-  }).railMotions;
-  const railMotionsResult = store.replaceRotoPhysicalRailMotions(layerId, trackId, reconciledRailMotions);
+  });
+  const railMotionsResult = store.replaceRotoPhysicalRailMotions(layerId, trackId, reconciliation.railMotions);
   if (!railMotionsResult.ok) return { ok: false, reason: 'apply-failed' };
   const loopsResult = store.replaceRotoPhysicalLoopClips(layerId, trackId, remainingLoops);
   if (!loopsResult.ok) return { ok: false, reason: loopsResult.error };
   for (const frame of removedFrames) store.removeRealRotoKeyFrame(layerId, trackId, frame);
-  return { ok: true };
+  // 59-20 (CR-02): the reconciler sets both drop members together ONLY for a
+  // two-sided merge (`onMergeRails` removed a tail record). Never invent a
+  // fallback span when either is null — report nothing instead.
+  const mergedDrop: RotoTrackMergedDrop | null = (
+    reconciliation.droppedRailId !== null && reconciliation.droppedRailFrames !== null
+  )
+    ? Object.freeze({
+      railId: reconciliation.droppedRailId,
+      startFrame: reconciliation.droppedRailFrames.startFrame,
+      endFrameExclusive: reconciliation.droppedRailFrames.endFrameExclusive,
+    })
+    : null;
+  return { ok: true, mergedDrop };
 }
 
 /**
