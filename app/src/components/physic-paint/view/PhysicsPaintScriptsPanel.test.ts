@@ -38,6 +38,7 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import { PhysicsPaintScriptsPanel } from './PhysicsPaintScriptsPanel';
+import { NumericStepper } from '../../shared/NumericStepper';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -1420,5 +1421,56 @@ describe('Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01
     expect(panel).toContain('selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;');
     expect(panel).toContain('onOpenKeyRailEdit?: (firstKeyId: string) => Promise<unknown> | void;');
     expect(panel).toContain('onCloseKeyRail?: () => void;');
+  });
+});
+
+/**
+ * 59-16 (MOTN-03, MOTN-09): the Motion value inspector. The panel is
+ * props-driven — every displayed value arrives through `selectedRailMotion`
+ * and every write leaves through `onCommitRailMotionValue`; the panel still
+ * imports no store module (zero-import baseline at HEAD).
+ */
+describe('Physics Paint Scripts panel Motion value inspector (59-16)', () => {
+  const motionProjection = {
+    railId: 'rail-1',
+    frame: 5,
+    fields: [
+      { channelId: 'position-x', label: 'Position X', unit: 'px', value: 120 },
+      { channelId: 'position-y', label: 'Position Y', unit: 'px', value: -12 },
+      { channelId: 'scale', label: 'Scale', unit: '%', value: 150 },
+      { channelId: 'rotation', label: 'Rotation', unit: '°', value: 720 },
+      { channelId: 'opacity', label: 'Opacity', unit: '%', value: 40 },
+    ],
+  };
+
+  it('renders the Scale field from the prop and commits the display value through the callback', () => {
+    const onCommitRailMotionValue = vi.fn(() => null as string | null);
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue,
+    });
+
+    const field = findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Scale'
+    ));
+    // 1.5 model -> 150% display: the conversion is NOT duplicated in the panel.
+    expect(field.props.value).toBe(150);
+    (field.props.onChange as (value: number) => void)(120);
+    expect(onCommitRailMotionValue).toHaveBeenCalledTimes(1);
+    expect(onCommitRailMotionValue).toHaveBeenCalledWith('scale', 120);
+  });
+
+  it('renders no motion fields at all without a Motion key selection — no disabled ghosts', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary());
+    expect(findAll(tree, (vnode) => vnode.type === NumericStepper)).toHaveLength(0);
+    expect(findAll(tree, (vnode) => vnode.props?.role === 'group' && vnode.props?.['aria-label'] === 'Motion values'))
+      .toHaveLength(0);
+  });
+
+  it('pins the props-driven contract in source: one prop in, one callback out, no store read', () => {
+    expect(panel).toContain('selectedRailMotion?: RailMotionInspectorPresentation | null;');
+    expect(panel).toContain('onCommitRailMotionValue?: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number) => string | null;');
+    expect(panel).not.toContain('physicPaintStore');
+    expect(panel).not.toMatch(/from '@preact\/signals'/);
   });
 });

@@ -1,0 +1,945 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="81" failures="8" errors="0" time="0.524">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" timestamp="2026-11-06T18:07:45.266Z" hostname="efx2.home" tests="64" failures="2" errors="0" skipped="0" time="0.023823792">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; keeps the lower Scripts/Onion/Motion tab group, adds the tool pane&apos;s Paint/Track/Audio tabs (47 UAT), and exposes scans on Scripts entry" time="0.001107834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; renders Actions as the FIRST tab of its group while preserving the default-open scripts state key" time="0.000163166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; removes the LOG tab and the Save state / Load state buttons (36.15-11, UAT Gap G-6)" time="0.000184458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; keeps ordered accessible controls while swapping Play to contextual Loop Edit" time="0.000370834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; provides an accessible Run Script… dialog distinct from cached Roto playback" time="0.000204333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; provides load-only focusable rows, inline rename isolation, and focus-contained deletion" time="0.000266292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; locks deterministic compact CSS without claiming pixel layout proof" time="0.000522334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Clear Script Buffer relocation contract (260905-dso) &gt; removes the Clear Script Buffer control from the panel toolbar" time="0.000105084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Clear Script Buffer relocation contract (260905-dso) &gt; moves the discard handler to the Studio as a stable useCallback wired into the workflow memo" time="0.000346875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; removes the Delete Script and Copy Script toolbar controls while keeping Copy reachable in the Tools popover" time="0.000265667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; renders one labelled trash per row, gated only by the mutation lock and not by availability.canDelete" time="0.002114667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; selects the row then requests the shared confirmation — never a direct delete" time="0.000693833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; lays the four toolbar buttons out on one row and keeps the guarded disable visual" time="0.000130458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; pins the three-column row grid and the hover/focus-within trash reveal" time="0.000383708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar) &gt; labels only Apply and Run Script; Save and Refresh stay icon-only" time="0.000200667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar) &gt; lays the labeled toolbar buttons out with an icon-label gap and side padding" time="0.000089417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UAT Gap F-1; 261022-o2a four-label toolbar) &gt; renders the toolbar labels lowercase by opting the script icon buttons out of the global uppercase button rule" time="0.000112875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UAT Gap F-1; 261022-o2a four-label toolbar) &gt; keeps every toolbar icon at size 16 by preventing flex shrink in the grid cells" time="0.000135083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 261022-o2a four-label toolbar) &gt; sizes the toolbar cells to content so every label renders in full (no truncation)" time="0.000196709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 261022-o2a four-label toolbar) &gt; keeps the toolbar on one row with the row gap serving as breathing room (UAT Gap G-5)" time="0.000087125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; routes every toolbar button through the guarded IconButton idiom with no native title" time="0.00020525">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; uses the de-prefixed tooltip grammar and restores focus to the row trash that opened the confirmation" time="0.000109542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; keeps the four toolbar labels ordered with neither Delete nor Copy present" time="0.000092042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; wires descriptionId on every toolbar IconButton so sr-only disabled reasons are announced (260905-hfd)" time="0.000095541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; keeps unreferenced deletion compact with exact Action copy" time="0.000301417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; discloses exact one/many reference counts, visible ranges, ordered Rails, and consequences" time="0.0002875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; routes only closed controller choices and keeps long content in the approved scrollable family" time="0.000500334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while preparing disables the complete mutation surface" time="0.000586625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while committed disables the complete mutation surface" time="0.000389042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while recovery-required disables the complete mutation surface" time="0.0004095">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; shows only controller-mapped recovery or stale copy and never raw diagnostics" time="0.000248666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; keeps Escape cancellation and focus containment idle-only while restoring surviving or nearest Action focus" time="0.000088625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; hides linked navigation when the selected Action has no linked Rails" time="0.000175291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; shows one current link with a single Go to Rail action" time="0.000253042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; shows non-wrapping Previous and Next controls guarded at their ends" time="0.000221542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; uses guarded IconButton Previous/Next with Chevron icons and boundary reasons in both renderings" time="0.000167833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; no longer derives cursorOnCurrentLinkedRail or wires onEditCurrent through the Studio memo (260905-hfd)" time="0.000677833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; renders only Edit Rail and Close in the inspector top row when linked navigation is null" time="0.000220583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel compact sidebar contract &gt; keeps generated settings and operation status out of the script library surface" time="0.000358708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel compact sidebar contract &gt; keeps the Run Script… tooltip fallback covering both modes" time="0.000137417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; keeps the toolbar and the scope/pager meta row pinned above the scripts list scroll area in the normal view" time="0.000088459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; wraps only the scripts list in the scroll area and keeps the confirmation dialog outside it" time="0.000109458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; wraps the inspector view content in a scroll area" time="0.000094959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; compacts the list-view Linked Rails nav into the scope meta row as a pager (260922-jss)" time="0.000259">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; serves every Rail total with one pager shape and routes the Go action (260922-jss)" time="0.000322917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; renders a single 4-button top action row above the inspector scroll area (260905-hfd)" time="0.000196334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel readable rows contract (260905-f3v) &gt; renders script rows readable by default with a distinct selected state" time="0.000134792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel readable rows contract (260905-f3v) &gt; neutralizes the disabled script-title grey-out with a scoped override (260905-hfd)" time="0.000099292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders a native labelled select between the toolbar and the list, with All plus one entry per owning layer" time="0.000425791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders no selector when no layer owns an Action (a one-option select would be dead UI)" time="0.000132">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; changing it calls ONLY library.setScriptScope(value) — no select, no refresh" time="0.000200958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders the FILTERED projection while selection state is read from the unfiltered rows" time="0.000175208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders the LIVE layer name in provenance, and marks an orphan unavailable" time="0.000172417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; keeps the two empty states distinct, and the scope-aware one offers the way back to All" time="0.000196042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; falls back to All when the scope names no renderable entry (code review WR-02)" time="0.00018125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; pins the scope row and marker CSS without disturbing the toolbar grid" time="0.000131625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; replaces the Scripts surface with the Selected Key Rail takeover and exactly Frames, Keys, and Type" time="0.000397667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; fires onOpenKeyRailEdit with the segment first key id and onCloseKeyRail from the top actions" time="0.000207375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; keeps Edit Rail visible but guarded with the multi-select reason and its description id" time="0.000124125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; pins the branch order, the three fact rows, and the guarded Edit Rail contract in source" time="0.000139125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; types the Edit Rail handoff so 58-05&apos;s always-Promise handler assigns cleanly" time="0.000037958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; renders the Scale field from the prop and commits the display value through the callback" time="0.004163166">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ findOne src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:714:17
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1453:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; renders no motion fields at all without a Motion key selection — no disabled ghosts" time="0.00016575">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; pins the props-driven contract in source: one prop in, one callback out, no store read" time="0.000955292">
+            <failure message="expected &apos;import { ChevronLeft, ChevronRight, P…&apos; to contain &apos;selectedRailMotion?: RailMotionInspec…&apos;" type="AssertionError">
+AssertionError: expected &apos;import { ChevronLeft, ChevronRight, P…&apos; to contain &apos;selectedRailMotion?: RailMotionInspec…&apos;
+
+- Expected
++ Received
+
+- selectedRailMotion?: RailMotionInspectorPresentation | null;
++ import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from &apos;lucide-preact&apos;;
++ import type { ComponentChildren, Ref, RefObject } from &apos;preact&apos;;
++ import { useEffect, useId, useRef } from &apos;preact/hooks&apos;;
++ import type { RotoScriptClipboardController } from &apos;../roto/physicsPaintRotoScriptClipboard&apos;;
++ import type { RotoScriptLibraryController } from &apos;../roto/physicsPaintRotoScriptLibrary&apos;;
++ import type { RotoPlayScriptController } from &apos;../roto/physicsPaintRotoPlayScriptController&apos;;
++ import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from &apos;../roto/physicsPaintRotoScriptScope&apos;;
++ import { PhysicsPaintStyledTooltip, useStyledTooltip } from &apos;./PhysicsPaintStyledTooltip&apos;;
++ import type { PhysicsPaintLoopClipPresentation } from &apos;./physicsPaintLoopClipPresentation&apos;;
++ import type { SelectedKeyRailInspectorPresentation } from &apos;./physicsPaintKeyRailPresentation&apos;;
++ import { SidebarScrollArea } from &apos;../../sidebar/SidebarScrollArea&apos;;
++
++ export interface PhysicsPaintScriptsPanelProps {
++   library: RotoScriptLibraryController;
++   playScript: RotoPlayScriptController;
++   rotoScript: RotoScriptClipboardController;
++   playButtonRef: RefObject&lt;HTMLButtonElement | null&gt;;
++   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
++   selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;
++   linkedGroupNavigation?: {
++     currentIndex: number;
++     total: number;
++     onPrevious: () =&gt; void;
++     onNext: () =&gt; void;
++     onGoToGroup: () =&gt; void;
++   } | null;
++   onOpenLoopEdit: (loopId: string) =&gt; Promise&lt;unknown&gt;;
++   onOpenKeyRailEdit?: (firstKeyId: string) =&gt; Promise&lt;unknown&gt; | void;
++   onCloseLoopClip: () =&gt; void;
++   onCloseKeyRail?: () =&gt; void;
++   onSave: () =&gt; void;
++   onActivateRow: (id: string) =&gt; void;
++   onLoadAndApply: () =&gt; void;
++   onRefresh: () =&gt; void;
++ }
++
++ export function PhysicsPaintScriptsPanel({
++   library,
++   playScript,
++   rotoScript,
++   playButtonRef,
++   selectedLoopClip = null,
++   selectedKeyRail = null,
++   linkedGroupNavigation = null,
++   onOpenLoopEdit,
++   onOpenKeyRailEdit,
++   onCloseLoopClip,
++   onCloseKeyRail,
++   onSave,
++   onActivateRow,
++   onLoadAndApply,
++   onRefresh,
++ }: PhysicsPaintScriptsPanelProps) {
++   const rows = library.rows.value;
++   // quick-260922-al1: the scope narrows ONLY what is rendered. `rows` stays the
++   // unfiltered source for selection, rename, delete and the row lookup, so a
++   // hidden Action keeps every contract it had before the filter existed.
++   const scriptScope = library.scriptScope.value;
++   const scriptLayers = library.scriptLayers.value;
++   const scopeEntries = buildScriptScopeEntries(rows, scriptLayers);
++   // code review WR-02: a scope the selector cannot render (its layer&apos;s last
++   // Action was just deleted, or the id is stale) resolves to All, so the
++   // control and the list always agree.
++   const scopeValue = resolveScriptScopeValue(scopeEntries, scriptScope);
++   const visibleRows = filterScriptRows(rows, scopeValue);
++   const selectedActionId = library.selectedId.value;
++   const availability = library.availability.value;
++   const actionMutationDisabledReason = library.actionMutationDisabledReason.value;
++   const confirmationBusy = actionMutationDisabledReason !== null;
++   const loadAndApplyDisabledReason = actionMutationDisabledReason
++     ?? (!library.selected.value
++       ? &apos;Select a project Script first.&apos;
++       : rotoScript.availability.value.replacementApplyDisabledReason);
++   const saveDisabledReason = actionMutationDisabledReason ?? availability.saveDisabledReason;
++   const playScriptDisabledReason = actionMutationDisabledReason ?? playScript.disabledReason.value;
++   const rename = library.rename.value;
++   const confirmation = library.deleteConfirmation.value;
++   const deleteError = library.deleteError.value;
++   const referenceImpact = confirmation?.referenceImpact ?? null;
++   const toolbarRef = useRef&lt;HTMLDivElement&gt;(null);
++   const listRef = useRef&lt;HTMLDivElement&gt;(null);
++   const confirmationRef = useRef&lt;HTMLDivElement&gt;(null);
++   const cancelDeleteRef = useRef&lt;HTMLButtonElement&gt;(null);
++   // 261022-o2a: the row trash that opened the confirmation. The delete button
++   // lives inside the row, so the cancel/confirm round-trip restores focus to
++   // THAT trash (not a toolbar button) while the row still exists.
++   const deleteTriggerId = useRef&lt;string | null&gt;(null);
++   const previousConfirmation = useRef&lt;typeof confirmation&gt;(null);
++   const saveReasonId = useId();
++   const loadAndApplyReasonId = useId();
++   const playReasonId = useId();
++   const previousRailReasonId = useId();
++   const nextRailReasonId = useId();
++   const refreshReasonId = useId();
++   const scopeSelectId = useId();
++   const keyRailEditReasonId = useId();
++   useEffect(() =&gt; {
++     const previous = previousConfirmation.current;
++     previousConfirmation.current = confirmation;
++     let focusFrame: number | null = null;
++     if (confirmation &amp;&amp; !previous) {
++       focusFrame = requestAnimationFrame(() =&gt; cancelDeleteRef.current?.focus());
++     } else if (!confirmation &amp;&amp; previous) {
++       focusFrame = requestAnimationFrame(() =&gt; {
++         const triggerId = deleteTriggerId.current;
++         deleteTriggerId.current = null;
++         if (triggerId !== null &amp;&amp; rows.some((row) =&gt; row.id === triggerId)) {
++           const trigger = listRef.current?.querySelector&lt;HTMLElement&gt;(
++             `[data-action-id=&quot;${CSS.escape(triggerId)}&quot;] [data-script-delete]`,
++           );
++           if (trigger) {
++             trigger.focus();
++             return;
++           }
++         }
++         // The triggering row is gone: fall back to the nearest surviving row,
++         // then to the first enabled toolbar control.
++         const selectedRow = selectedActionId
++           ? listRef.current?.querySelector&lt;HTMLElement&gt;(`[data-action-id=&quot;${CSS.escape(selectedActionId)}&quot;]`)
++           : null;
++         const nearestRow = selectedRow ?? listRef.current?.querySelector&lt;HTMLElement&gt;(&apos;[data-action-id]&apos;);
++         const toolbarControl = toolbarRef.current?.querySelector&lt;HTMLElement&gt;(&apos;button:not(:disabled), [tabindex=&quot;0&quot;]&apos;);
++         (nearestRow ?? toolbarControl)?.focus();
++       });
++     }
++     return () =&gt; {
++       if (focusFrame !== null) cancelAnimationFrame(focusFrame);
++     };
++   }, [confirmation, rows, selectedActionId]);
++   const requestRowDelete = (id: string) =&gt; {
++     if (confirmationBusy) return;
++     deleteTriggerId.current = id;
++     library.select(id);
++     library.requestDelete();
++   };
++   const stopRowPointerActivation = (event: { stopPropagation: () =&gt; void }) =&gt; event.stopPropagation();
++   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () =&gt; void }) =&gt; {
++     if (event.key === &apos;Enter&apos; || event.key === &apos; &apos;) event.stopPropagation();
++   };
++
++   // 58-03 RAIL-01 (D-01): selecting a Key Rail takes over the Scripts pane with
++   // exactly three facts (D-04) and one conversion entry. The branch returns
++   // before the loop-clip inspector so a plain rail selection can never be
++   // shadowed by a stale loop target, and it intentionally omits the loop-only
++   // panel modifier (its declaration is a no-op CSS default) so the existing
++   // loop-inspector source anchors keep pointing at their own branch.
++   if (selectedKeyRail) {
++     const railLabel = selectedKeyRail.framesLabel;
++     const editDisabledReason = selectedKeyRail.editDisabledReason;
++     return (
++       &lt;div class=&quot;physics-paint-scripts-panel&quot; role=&quot;tabpanel&quot; aria-label={`Selected Key Rail — ${railLabel}`}&gt;
++         &lt;div class=&quot;physics-paint-loop-clip-inspector-top-actions&quot;&gt;
++           &lt;IconButton buttonRef={playButtonRef} label={`Edit Rail — ${railLabel}`} title={`Edit Rail — ${railLabel}`} disabled={editDisabledReason !== null} disabledReason={editDisabledReason ?? undefined} descriptionId={keyRailEditReasonId} onClick={() =&gt; { void onOpenKeyRailEdit?.(selectedKeyRail.firstKeyId); }} className=&quot;physics-paint-loop-clip-nav-compact-button primary labeled&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;Pencil size={16} aria-hidden=&quot;true&quot; /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Edit Rail&lt;/span&gt;&lt;/IconButton&gt;
++           &lt;IconButton label={`Close Rail inspector — ${railLabel}`} title={`Close Rail inspector — ${railLabel}`} onClick={() =&gt; { onCloseKeyRail?.(); }} className=&quot;physics-paint-loop-clip-nav-compact-button&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;X size={16} aria-hidden=&quot;true&quot; /&gt;&lt;/IconButton&gt;
++         &lt;/div&gt;
++         &lt;SidebarScrollArea class=&quot;physics-paint-scripts-list-scroll-area&quot; interactive&gt;
++           &lt;dl class=&quot;physics-paint-loop-clip-inspector&quot;&gt;
++             &lt;div&gt;&lt;dt&gt;Frames&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.framesLabel}&lt;/dd&gt;&lt;/div&gt;
++             &lt;div&gt;&lt;dt&gt;Keys&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.keysLabel}&lt;/dd&gt;&lt;/div&gt;
++             &lt;div&gt;&lt;dt&gt;Type&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.typeLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;/dl&gt;
++         &lt;/SidebarScrollArea&gt;
++       &lt;/div&gt;
++     );
++   }
++
++   if (selectedLoopClip) {
++     return (
++       &lt;div class=&quot;physics-paint-scripts-panel physics-paint-loop-clip-panel&quot; role=&quot;tabpanel&quot; aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}&gt;
++         &lt;div class=&quot;physics-paint-loop-clip-inspector-top-actions&quot;&gt;
++           &lt;IconButton buttonRef={playButtonRef} label={`Edit Rail — ${selectedLoopClip.displayName}`} title={`Edit Rail — ${selectedLoopClip.displayName}`} onClick={() =&gt; { void onOpenLoopEdit(selectedLoopClip.loopId); }} className=&quot;physics-paint-loop-clip-nav-compact-button primary labeled&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;Pencil size={16} aria-hidden=&quot;true&quot; /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Edit Rail&lt;/span&gt;&lt;/IconButton&gt;
++           {linkedGroupNavigation &amp;&amp; linkedGroupNavigation.total &gt; 1 ? (
++             &lt;&gt;
++               &lt;IconButton label=&quot;Previous Rail&quot; title=&quot;Previous Rail&quot; disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? &apos;Already on the first linked Rail&apos; : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className=&quot;physics-paint-loop-clip-nav-compact-button labeled&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;ChevronLeft size={16} aria-hidden=&quot;true&quot; /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Previous Rail&lt;/span&gt;&lt;/IconButton&gt;
++               &lt;IconButton label=&quot;Next Rail&quot; title=&quot;Next Rail&quot; disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? &apos;Already on the last linked Rail&apos; : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className=&quot;physics-paint-loop-clip-nav-compact-button labeled&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;ChevronRight size={16} aria-hidden=&quot;true&quot; /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Next Rail&lt;/span&gt;&lt;/IconButton&gt;
++             &lt;/&gt;
++           ) : null}
++           &lt;IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className=&quot;physics-paint-loop-clip-nav-compact-button&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;X size={16} aria-hidden=&quot;true&quot; /&gt;&lt;/IconButton&gt;
++         &lt;/div&gt;
++         &lt;SidebarScrollArea class=&quot;physics-paint-scripts-list-scroll-area&quot; interactive&gt;
++         &lt;dl class=&quot;physics-paint-loop-clip-inspector&quot;&gt;
++           &lt;div&gt;&lt;dt&gt;Name&lt;/dt&gt;&lt;dd title={selectedLoopClip.displayName}&gt;{selectedLoopClip.displayName}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Source Script&lt;/dt&gt;&lt;dd title={selectedLoopClip.sourceLabel}&gt;{selectedLoopClip.sourceLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Placement&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.placementLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Cycle&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.cycleLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Effective&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.effectiveLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Rail Type&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.modeLabel}&lt;/dd&gt;&lt;/div&gt;
++           &lt;div&gt;&lt;dt&gt;Status&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.statusLabel}&lt;/dd&gt;&lt;/div&gt;
++         &lt;/dl&gt;
++         {linkedGroupNavigation ? (
++           &lt;section class=&quot;physics-paint-loop-clip-linked-navigation&quot; aria-label=&quot;Linked Rail navigation&quot;&gt;
++             &lt;strong&gt;Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}&lt;/strong&gt;
++             {linkedGroupNavigation.total === 1 ? (
++               &lt;button
++                 type=&quot;button&quot;
++                 class=&quot;physics-paint-loop-clip-inspector-action&quot;
++                 onClick={linkedGroupNavigation.onGoToGroup}
++               &gt;
++                 Go to Rail
++               &lt;/button&gt;
++             ) : null}
++           &lt;/section&gt;
++         ) : null}
++         &lt;/SidebarScrollArea&gt;
++       &lt;/div&gt;
++     );
++   }
++
++   return (
++     &lt;div class=&quot;physics-paint-scripts-panel&quot; role=&quot;tabpanel&quot; aria-label=&quot;Project Scripts&quot;&gt;
++       &lt;div ref={toolbarRef} class=&quot;physics-paint-scripts-toolbar&quot; role=&quot;toolbar&quot; aria-label=&quot;Scripts&quot;&gt;
++         &lt;IconButton label=&quot;Save Script&quot; title={`Save Script — ${saveDisabledReason ?? &apos;Save the active real Roto frame&apos;}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}&gt;&lt;Save size={16} /&gt;&lt;/IconButton&gt;
++         &lt;IconButton label=&quot;Load + Apply to Frame&quot; title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? &apos;Reload the selected preset and apply it to this Roto frame&apos;}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}&gt;&lt;Paintbrush size={16} /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Apply&lt;/span&gt;&lt;/IconButton&gt;
++         &lt;IconButton buttonRef={playButtonRef} label=&quot;Run Script…&quot; title={`Run Script… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? &apos;Run the selected Script to create or update a Motion or Static Rail&apos;)}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() =&gt; { void playScript.openConfirmation(); }}&gt;&lt;Play size={16} /&gt;&lt;span class=&quot;physics-paint-roto-key-icon-label&quot;&gt;Run Script&lt;/span&gt;&lt;/IconButton&gt;
++         &lt;IconButton label=&quot;Refresh Scripts&quot; title={`Refresh Scripts — ${actionMutationDisabledReason ?? &apos;Scan the project Scripts folder&apos;}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}&gt;&lt;RefreshCw size={16} /&gt;&lt;/IconButton&gt;
++       &lt;/div&gt;
++       {scopeEntries.length &gt; 1 || linkedGroupNavigation ? (
++         // quick-260922-jss amendment: ONE meta row carries both the scope
++         // filter and the linked-Rail pager. They are independent — either can
++         // be absent — so the row renders when EITHER exists and each half
++         // keeps its own gate; the pager can never be hidden by the select&apos;s
++         // absence (a project whose Actions come from a single layer has no
++         // select but still navigates its Rails).
++         &lt;div class=&quot;physics-paint-scripts-meta-row&quot;&gt;
++           {scopeEntries.length &gt; 1 ? (
++             // quick-260922-al1: the select is a native control so it is
++             // keyboard reachable and announced without inventing a widget. It
++             // renders only when at least one layer actually owns an Action: a
++             // single-option select would be dead UI. Its width is capped so it
++             // cannot starve the pager beside it.
++             &lt;div class=&quot;physics-paint-scripts-scope&quot;&gt;
++               &lt;label class=&quot;physics-paint-scripts-scope-label&quot; htmlFor={scopeSelectId}&gt;Scope&lt;/label&gt;
++               &lt;select
++                 id={scopeSelectId}
++                 class=&quot;physics-paint-scripts-scope-select&quot;
++                 value={scopeValue}
++                 onChange={(event) =&gt; { library.setScriptScope(event.currentTarget.value); }}
++               &gt;
++                 {scopeEntries.map((entry) =&gt; &lt;option key={entry.id} value={entry.id}&gt;{entry.label}&lt;/option&gt;)}
++               &lt;/select&gt;
++             &lt;/div&gt;
++           ) : null}
++           {linkedGroupNavigation ? (
++             // The pager replaces both the old count line and the old
++             // total === 1 / total &gt; 1 markup split: one shape serves every
++             // total, the arrows simply disabling at the ends, so the row never
++             // changes shape as the count moves.
++             &lt;div class=&quot;physics-paint-scripts-pager&quot; role=&quot;group&quot; aria-label=&quot;Linked Rail navigation&quot;&gt;
++               &lt;IconButton label=&quot;Previous Rail&quot; title=&quot;Previous Rail&quot; disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? &apos;Already on the first linked Rail&apos; : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className=&quot;physics-paint-loop-clip-nav-compact-button&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;ChevronLeft size={16} aria-hidden=&quot;true&quot; /&gt;&lt;/IconButton&gt;
++               &lt;span class=&quot;physics-paint-scripts-pager-count&quot; aria-hidden=&quot;true&quot;&gt;{linkedGroupNavigation.currentIndex + 1}/{linkedGroupNavigation.total}&lt;/span&gt;
++               &lt;IconButton label=&quot;Next Rail&quot; title=&quot;Next Rail&quot; disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? &apos;Already on the last linked Rail&apos; : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className=&quot;physics-paint-loop-clip-nav-compact-button&quot; wrapperClassName=&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action&quot;&gt;&lt;ChevronRight size={16} aria-hidden=&quot;true&quot; /&gt;&lt;/IconButton&gt;
++               &lt;button type=&quot;button&quot; class=&quot;physics-paint-scripts-pager-go&quot; title=&quot;Go to the linked Rail and jump to its placement start&quot; aria-label=&quot;Go to the linked Rail&quot; onClick={linkedGroupNavigation.onGoToGroup}&gt;Go&lt;/button&gt;
++             &lt;/div&gt;
++           ) : null}
++         &lt;/div&gt;
++       ) : null}
++       &lt;SidebarScrollArea class=&quot;physics-paint-scripts-list-scroll-area&quot; interactive&gt;
++       &lt;div ref={listRef} class=&quot;physics-paint-scripts-list&quot; role=&quot;listbox&quot; aria-label=&quot;Saved Roto Scripts&quot;&gt;
++         {visibleRows.map((row) =&gt; {
++           const provenance = resolveScriptProvenance(row, scriptLayers);
++           return (
++           &lt;div
++             key={row.id}
++             data-action-id={row.id}
++             role=&quot;option&quot;
++             tabIndex={0}
++             aria-selected={library.selectedId.value === row.id}
++             aria-label={`Load ${row.name}`}
++             aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++             class={`physics-paint-script-row${selectedActionId === row.id ? &apos; selected&apos; : &apos;&apos;}`}
++             onClick={() =&gt; {
++               if (confirmationBusy) return;
++               onActivateRow(row.id);
++             }}
++             onKeyDown={(event) =&gt; {
++               if (event.key !== &apos;Enter&apos; &amp;&amp; event.key !== &apos; &apos;) return;
++               event.preventDefault();
++               if (confirmationBusy) return;
++               onActivateRow(row.id);
++             }}
++           &gt;
++             &lt;img class=&quot;physics-paint-script-thumbnail&quot; src={row.thumbnail.dataUrl} width={row.thumbnail.width} height={row.thumbnail.height} alt=&quot;&quot; /&gt;
++             &lt;span class=&quot;physics-paint-script-row-copy&quot;&gt;
++               {rename?.id === row.id ? (
++                 &lt;span class=&quot;physics-paint-script-rename-wrap&quot; onClick={stopRowPointerActivation} onKeyDown={stopRowKeyboardActivation}&gt;
++                   &lt;input
++                     autoFocus
++                     value={rename.draft}
++                     aria-label={`Rename ${row.name}`}
++                     onClick={stopRowPointerActivation}
++                     onInput={(event) =&gt; library.updateRenameDraft((event.currentTarget as HTMLInputElement).value)}
++                     onKeyDown={(event) =&gt; {
++                       event.stopPropagation();
++                       if (event.key === &apos;Enter&apos;) { event.preventDefault(); void library.commitRename(); }
++                       else if (event.key === &apos;Escape&apos;) { event.preventDefault(); library.cancelRename(); }
++                     }}
++                   /&gt;
++                   {rename.error ? &lt;span class=&quot;physics-paint-script-inline-error&quot;&gt;{rename.error}&lt;/span&gt; : null}
++                 &lt;/span&gt;
++               ) : (
++                 &lt;button
++                   type=&quot;button&quot;
++                   class=&quot;physics-paint-script-name&quot;
++                   aria-label={`Rename ${row.name}`}
++                   disabled={actionMutationDisabledReason !== null || !availability.canRename}
++                   onClick={(event) =&gt; {
++                     event.stopPropagation();
++                     library.select(row.id);
++                     library.beginRename();
++                   }}
++                 &gt;
++                   {row.name}
++                 &lt;/button&gt;
++               )}
++               {/* quick-260922-al1: the layer name is resolved LIVE (a renamed
++                   layer is reflected at once); an orphan — a row whose origin
++                   layer no longer exists — keeps its snapshotted name and says
++                   so, rather than silently claiming a layer that is gone. */}
++               &lt;span class=&quot;physics-paint-script-provenance&quot;&gt;
++                 {row.source.projectName} · {provenance.layerName} · F{row.source.displayFrame}
++                 {provenance.unavailable ? &lt;span class=&quot;physics-paint-script-provenance-unavailable&quot;&gt; · unavailable&lt;/span&gt; : null}
++               &lt;/span&gt;
++               &lt;span class=&quot;physics-paint-script-count&quot;&gt;{row.brushCount} {row.brushCount === 1 ? &apos;brush&apos; : &apos;brushes&apos;}&lt;/span&gt;
++             &lt;/span&gt;
++             {/* 261022-o2a: per-row trash. Gated ONLY by the library mutation
++                 lock — `availability.canDelete` requires an EXISTING selection
++                 and would disable every unselected row. The trash never commits
++                 a delete: it selects the row and opens the shared confirmation,
++                 which stays the only commit surface. */}
++             &lt;button
++               type=&quot;button&quot;
++               class=&quot;physics-paint-script-row-delete&quot;
++               data-script-delete
++               aria-label={`Delete ${row.name}`}
++               disabled={actionMutationDisabledReason !== null}
++               title={actionMutationDisabledReason ?? `Delete ${row.name}`}
++               onClick={(event) =&gt; {
++                 event.stopPropagation();
++                 requestRowDelete(row.id);
++               }}
++               onKeyDown={(event) =&gt; {
++                 if (event.key !== &apos;Enter&apos; &amp;&amp; event.key !== &apos; &apos;) return;
++                 // The row&apos;s own keydown would activate the row first; the
++                 // trash owns this press (default is suppressed so the native
++                 // click does not double-fire the request).
++                 event.stopPropagation();
++                 event.preventDefault();
++                 requestRowDelete(row.id);
++               }}
++             &gt;
++               &lt;Trash2 size={14} aria-hidden=&quot;true&quot; /&gt;
++             &lt;/button&gt;
++           &lt;/div&gt;
++           );
++         })}
++         {!rows.length ? (
++           &lt;div class=&quot;physics-paint-scripts-empty&quot;&gt;
++             &lt;p&gt;No project Scripts yet.&lt;/p&gt;
++             &lt;p&gt;Save the current real Roto frame as a Script to create a Rail.&lt;/p&gt;
++           &lt;/div&gt;
++         ) : !visibleRows.length ? (
++           // Defensive: `filterScriptRows` fails OPEN, so a scope that matches
++           // nothing renders every row rather than an empty list — this branch
++           // only exists so that a future narrowing can never read as data
++           // loss, and it always offers the way back.
++           &lt;div class=&quot;physics-paint-scripts-empty&quot;&gt;
++             &lt;p&gt;No Scripts from this layer.&lt;/p&gt;
++             &lt;p&gt;Every project Script is still available under All.&lt;/p&gt;
++             &lt;button type=&quot;button&quot; class=&quot;physics-paint-scripts-empty-action&quot; onClick={() =&gt; library.setScriptScope(ROTO_SCRIPT_SCOPE_ALL)}&gt;Show all Scripts&lt;/button&gt;
++           &lt;/div&gt;
++         ) : null}
++       &lt;/div&gt;
++       &lt;/SidebarScrollArea&gt;
++       {confirmation ? (
++         &lt;div ref={confirmationRef} class=&quot;physics-paint-script-confirmation&quot; role=&quot;dialog&quot; aria-modal=&quot;true&quot; aria-label={`Delete ${confirmation.name}`}
++           onKeyDown={(event) =&gt; {
++             if (event.key === &apos;Escape&apos;) {
++               event.preventDefault();
++               if (confirmationBusy) return;
++               library.cancelDelete();
++               return;
++             }
++             if (event.key !== &apos;Tab&apos;) return;
++             const controls = Array.from(confirmationRef.current?.querySelectorAll&lt;HTMLElement&gt;(&apos;button:not(:disabled), [tabindex]:not([tabindex=&quot;-1&quot;])&apos;) ?? []);
++             if (!controls.length) return;
++             const first = controls[0];
++             const last = controls[controls.length - 1];
++             if (event.shiftKey &amp;&amp; document.activeElement === first) { event.preventDefault(); last.focus(); }
++             else if (!event.shiftKey &amp;&amp; document.activeElement === last) { event.preventDefault(); first.focus(); }
++           }}&gt;
++           &lt;strong&gt;Delete “{confirmation.name}”?&lt;/strong&gt;
++           {deleteError ? &lt;span class=&quot;physics-paint-script-inline-error&quot; role=&quot;alert&quot;&gt;{deleteError}&lt;/span&gt; : null}
++           {referenceImpact ? (
++             &lt;div class=&quot;physics-paint-action-delete-groups&quot;&gt;
++               &lt;p&gt;
++                 This Script is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? &apos;Rail&apos; : &apos;Rails&apos;} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? &apos;range&apos; : &apos;ranges&apos;}.
++               &lt;/p&gt;
++               &lt;ul aria-label=&quot;Affected Rails&quot;&gt;
++                 {referenceImpact.affectedGroups.map((group) =&gt; (
++                   &lt;li key={group.groupId}&gt;
++                     &lt;strong&gt;{group.name} · {formatFrameRange(group.placementStart, group.endExclusive)}&lt;/strong&gt;
++                     {group.visibleRanges.length &gt; 1 ? &lt;span&gt; · {group.visibleRanges.length} ranges&lt;/span&gt; : null}
++                     &lt;span&gt;Visible ranges: {group.visibleRanges.map((range) =&gt; formatFrameRange(range.start, range.endExclusive)).join(&apos;, &apos;)}&lt;/span&gt;
++                   &lt;/li&gt;
++                 ))}
++               &lt;/ul&gt;
++               &lt;div class=&quot;physics-paint-action-delete-choices&quot;&gt;
++                 &lt;button
++                   type=&quot;button&quot;
++                   class=&quot;physics-paint-action-delete-choice recommended&quot;
++                   aria-label=&quot;Keep Rails&quot;
++                   aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++                   onClick={() =&gt; {
++                     if (confirmationBusy) return;
++                     void library.confirmDelete(&apos;keep-groups&apos;);
++                   }}
++                 &gt;
++                   &lt;strong&gt;Keep Rails&lt;/strong&gt;
++                   &lt;span&gt;Recommended. Delete the Script but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.&lt;/span&gt;
++                 &lt;/button&gt;
++                 &lt;button
++                   type=&quot;button&quot;
++                   class=&quot;physics-paint-action-delete-choice danger&quot;
++                   aria-label=&quot;Delete Script and Rails&quot;
++                   aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++                   onClick={() =&gt; {
++                     if (confirmationBusy) return;
++                     void library.confirmDelete(&apos;delete-action-and-groups&apos;);
++                   }}
++                 &gt;
++                   &lt;strong&gt;Delete Script and Rails&lt;/strong&gt;
++                   &lt;span&gt;Delete the Script and all {referenceImpact.groupCount} referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.&lt;/span&gt;
++                 &lt;/button&gt;
++                 &lt;button
++                   ref={cancelDeleteRef}
++                   type=&quot;button&quot;
++                   aria-label=&quot;Cancel&quot;
++                   aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++                   onClick={() =&gt; {
++                     if (confirmationBusy) return;
++                     library.cancelDelete();
++                   }}
++                 &gt;
++                   Cancel
++                 &lt;/button&gt;
++               &lt;/div&gt;
++             &lt;/div&gt;
++           ) : (
++             &lt;&gt;
++               &lt;span&gt;This removes the project Script file and cannot be undone.&lt;/span&gt;
++               &lt;div&gt;
++                 &lt;button
++                   ref={cancelDeleteRef}
++                   type=&quot;button&quot;
++                   aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++                   onClick={() =&gt; {
++                     if (confirmationBusy) return;
++                     library.cancelDelete();
++                   }}
++                 &gt;
++                   Cancel
++                 &lt;/button&gt;
++                 &lt;button
++                   type=&quot;button&quot;
++                   class=&quot;danger&quot;
++                   aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
++                   onClick={() =&gt; {
++                     if (confirmationBusy) return;
++                     void library.confirmDelete();
++                   }}
++                 &gt;
++                   Delete Script
++                 &lt;/button&gt;
++               &lt;/div&gt;
++             &lt;/&gt;
++           )}
++         &lt;/div&gt;
++       ) : null}
++     &lt;/div&gt;
++   );
++ }
++
++ function formatFrameRange(start: number, endExclusive: number): string {
++   return `F${start}–F${endExclusive - 1}`;
++ }
++
++ function IconButton(props: { buttonRef?: Ref&lt;HTMLButtonElement&gt;; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () =&gt; void; className?: string; wrapperClassName?: string; children: ComponentChildren }) {
++   const tooltip = useStyledTooltip();
++   const isDisabled = props.disabled ?? false;
++   const reason = props.disabledReason ?? null;
++   const buttonClass = props.className ?? &apos;physics-paint-script-icon-button&apos;;
++   const wrapperClass = props.wrapperClassName ?? &apos;physics-paint-roto-key-icon-action&apos;;
++   return (
++     &lt;span class={wrapperClass} onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}&gt;
++       &lt;button
++         ref={props.buttonRef}
++         type=&quot;button&quot;
++         class={buttonClass}
++         aria-label={props.label}
++         aria-disabled={isDisabled ? &apos;true&apos; : undefined}
++         aria-describedby={isDisabled &amp;&amp; reason ? props.descriptionId : undefined}
++         onFocus={tooltip.onFocus}
++         onBlur={tooltip.onBlur}
++         onClick={() =&gt; {
++           tooltip.hide();
++           if (isDisabled) return;
++           props.onClick?.();
++         }}
++         onKeyDown={(event) =&gt; {
++           if ((event.key === &apos;Enter&apos; || event.key === &apos; &apos;) &amp;&amp; isDisabled) event.preventDefault();
++         }}
++       &gt;
++         {props.children}
++       &lt;/button&gt;
++       {isDisabled &amp;&amp; reason ? (
++         &lt;span id={props.descriptionId} class=&quot;physics-paint-sr-only&quot;&gt;{reason}&lt;/span&gt;
++       ) : null}
++       &lt;PhysicsPaintStyledTooltip visible={tooltip.visible} region=&quot;right-edge&quot; avoidRowOverlap&gt;
++         {isDisabled &amp;&amp; reason ? `unavailable: ${reason}` : props.title}
++       &lt;/PhysicsPaintStyledTooltip&gt;
++     &lt;/span&gt;
++   );
++ }
++
+
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1471:19
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" timestamp="2026-11-06T18:07:45.272Z" hostname="efx2.home" tests="17" failures="6" errors="0" skipped="0" time="0.008274667">
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; derives ordinary rails from ordered real keys, breaks, and Group ownership" time="0.00083825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; keeps empty physical frames inside one half-open rail when no break exists" time="0.000110334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a real key to its own keyId (Key Rail member included)" time="0.000101583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a generated in-between frame to its containing Key Rail first key" time="0.000078083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a linked occurrence inside a Group to the Group loopId" time="0.000054584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; returns null for an empty/gap frame" time="0.000061041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; emits the four locked singular and plural forms without advertising Scissor" time="0.000102792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; substitutes exact guarded reasons for unavailable selected actions" time="0.000043208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; projects exactly the three facts plus the controller handoff fields for a single Rail" time="0.00017925">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; disables Edit Rail with the locked reason for a multi-Rail set while keeping this Rail&apos;s own facts" time="0.000113375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; is anchor-agnostic — any segment the caller resolves projects its own facts" time="0.000076958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null without a motion record — never a partially filled object" time="0.003056083">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ requireProjectMotionInspector src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:257:28
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:285:12
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when no Motion key is selected" time="0.000277667">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ requireProjectMotionInspector src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:257:28
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:293:12
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when the selected frame carries no Motion key" time="0.000240334">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ requireProjectMotionInspector src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:257:28
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:301:12
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; projects every channel at the read frame with the 59-02 display conversion" time="0.000205791">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ requireProjectMotionInspector src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:257:28
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:310:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; is frozen at every level" time="0.000211916">
+            <failure message="expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;undefined&apos; to be &apos;function&apos; // Object.is equality
+
+Expected: &quot;function&quot;
+Received: &quot;undefined&quot;
+
+ ❯ requireProjectMotionInspector src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:257:28
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:332:24
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; owns one conversion authority and no store, signal or component import" time="0.001961417">
+            <failure message="expected &apos;export interface KeyRailSegment {\n  …&apos; to contain &apos;railMotionValueToUi&apos;" type="AssertionError">
+AssertionError: expected &apos;export interface KeyRailSegment {\n  …&apos; to contain &apos;railMotionValueToUi&apos;
+
+- Expected
++ Received
+
+- railMotionValueToUi
++ export interface KeyRailSegment {
++   readonly firstKeyId: string;
++   readonly keyIds: readonly string[];
++   readonly firstKeyFrame: number;
++   readonly lastKeyFrame: number;
++ }
++
++ export interface DeriveKeyRailSegmentsInput {
++   readonly orderedRealKeys: readonly {
++     readonly keyId: string;
++     readonly appFrame: number;
++   }[];
++   readonly incomingInterpolationBreakKeyIds: ReadonlySet&lt;string&gt;;
++   readonly groupOwnedKeyIds: ReadonlySet&lt;string&gt;;
++ }
++
++ function freezeSegment(
++   keyIds: readonly string[],
++   firstKeyFrame: number,
++   lastKeyFrame: number,
++ ): KeyRailSegment {
++   const frozenKeyIds = Object.freeze([...keyIds]) as readonly string[];
++   return Object.freeze({
++     firstKeyId: frozenKeyIds[0],
++     keyIds: frozenKeyIds,
++     firstKeyFrame,
++     lastKeyFrame,
++   }) as KeyRailSegment;
++ }
++
++ /**
++  * Pure projection of ordinary real keys into maximal Key Rail segments. Group
++  * ownership closes the current segment; an incoming break starts a new segment
++  * immediately before its owning key. Empty physical frames are absent from the
++  * input and therefore remain inside the surrounding half-open rail span.
++  */
++ export function deriveKeyRailSegments(
++   input: DeriveKeyRailSegmentsInput,
++ ): readonly KeyRailSegment[] {
++   const segments: KeyRailSegment[] = [];
++   let currentKeyIds: readonly string[] = [];
++   let currentFirstKeyFrame: number | null = null;
++   let currentLastKeyFrame: number | null = null;
++
++   const flushCurrent = (): void =&gt; {
++     if (currentKeyIds.length === 0 || currentFirstKeyFrame === null || currentLastKeyFrame === null) return;
++     segments.push(freezeSegment(currentKeyIds, currentFirstKeyFrame, currentLastKeyFrame));
++     currentKeyIds = [];
++     currentFirstKeyFrame = null;
++     currentLastKeyFrame = null;
++   };
++
++   for (const key of input.orderedRealKeys) {
++     if (input.groupOwnedKeyIds.has(key.keyId)) {
++       flushCurrent();
++       continue;
++     }
++
++     if (currentKeyIds.length &gt; 0 &amp;&amp; input.incomingInterpolationBreakKeyIds.has(key.keyId)) {
++       flushCurrent();
++     }
++
++     if (currentKeyIds.length === 0) {
++       currentFirstKeyFrame = key.appFrame;
++     }
++     currentKeyIds = [...currentKeyIds, key.keyId];
++     currentLastKeyFrame = key.appFrame;
++   }
++
++   flushCurrent();
++   return Object.freeze(segments) as readonly KeyRailSegment[];
++ }
++
++ function buildKeyRailIdentityCopy(segment: KeyRailSegment, selected: boolean): string {
++   const prefix = selected ? &apos;Selected Key Rail&apos; : &apos;Key Rail&apos;;
++   return segment.keyIds.length === 1
++     ? `${prefix} — frame ${segment.firstKeyFrame}, 1 key.`
++     : `${prefix} — frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}, ${segment.keyIds.length} keys.`;
++ }
++
++ export function buildKeyRailBaseCopy(segment: KeyRailSegment): string {
++   return buildKeyRailIdentityCopy(segment, false);
++ }
++
++ export interface SelectedKeyRailCopyAvailability {
++   readonly dragUnavailableReason?: string | null;
++   readonly deleteUnavailableReason?: string | null;
++ }
++
++ export function buildSelectedKeyRailCopy(
++   segment: KeyRailSegment,
++   availability: SelectedKeyRailCopyAvailability = {},
++   setSentence: string | null = null,
++ ): string {
++   const dragCopy = availability.dragUnavailableReason ?? &apos;Drag to move.&apos;;
++   const deleteCopy = availability.deleteUnavailableReason
++     ?? (segment.keyIds.length === 1
++       ? &apos;Delete removes this rail.&apos;
++       : &apos;Delete removes all keys in this rail.&apos;);
++   // 43.6 M1: the set sentence (with its leading space) appends to the existing
++   // Selected form when this rail is a set member.
++   return `${buildKeyRailIdentityCopy(segment, true)} ${dragCopy} ${deleteCopy}${setSentence ?? &apos;&apos;}`;
++ }
++
++ /**
++  * 58-03 RAIL-01: the Selected Key Rail inspector shows classification facts
++  * only (D-04) — never per-frame cells or loop-edit math. The projection is
++  * anchor-agnostic: the caller resolves which segment is selected (a plain rail
++  * or the rail-set anchor) and passes the current member count beside it.
++  */
++ export const KEY_RAIL_EDIT_DISABLED_REASON = &apos;Select a single rail to edit it.&apos;;
++
++ export interface SelectedKeyRailInspectorPresentation {
++   readonly firstKeyId: string;
++   readonly keyIds: readonly string[];
++   readonly firstKeyFrame: number;
++   readonly lastKeyFrame: number;
++   readonly framesLabel: string;
++   readonly keysLabel: string;
++   readonly typeLabel: &apos;Standard&apos;;
++   readonly editDisabledReason: string | null;
++ }
++
++ export interface ProjectSelectedKeyRailInspectorOptions {
++   /** Rails in the current selection; 2+ disables Edit Rail (D-03). */
++   readonly setSize?: number;
++ }
++
++ export function projectSelectedKeyRailInspector(
++   segment: KeyRailSegment,
++   options: ProjectSelectedKeyRailInspectorOptions = {},
++ ): SelectedKeyRailInspectorPresentation {
++   const setSize = options.setSize ?? 1;
++   return Object.freeze({
++     firstKeyId: segment.firstKeyId,
++     keyIds: Object.freeze([...segment.keyIds]) as readonly string[],
++     firstKeyFrame: segment.firstKeyFrame,
++     lastKeyFrame: segment.lastKeyFrame,
++     framesLabel: `F${segment.firstKeyFrame}–F${segment.lastKeyFrame}`,
++     keysLabel: String(segment.keyIds.length),
++     typeLabel: &apos;Standard&apos;,
++     editDisabledReason: setSize &gt;= 2 ? KEY_RAIL_EDIT_DISABLED_REASON : null,
++   }) as SelectedKeyRailInspectorPresentation;
++ }
++
++ export interface ResolvePhysicPaintPushAnchorInput {
++   readonly keyIdByAppFrame: ReadonlyMap&lt;number, string&gt;;
++   readonly loopIdByAppFrame: ReadonlyMap&lt;number, string&gt;;
++   readonly keyRailSegments: readonly KeyRailSegment[];
++ }
++
++ /**
++  * 43.5-05 smoke fix: resolve ANY non-empty cell to its containing Rail anchor.
++  * A real key resolves to its own keyId (which derivePhysicPaintPushSet then
++  * maps to its containing Key Rail or Group); a linked occurrence inside a Group
++  * resolves to the Group loopId; a generated in-between frame resolves to the
++  * first key of the Key Rail segment that spans it (so the resolver derives the
++  * SAME segment from that anchorKeyId). Empty/gap frames resolve null — the
++  * not-allowed cursor and the no-drag preflight both key off this.
++  */
++ export function resolvePhysicPaintPushAnchor(
++   frame: number,
++   input: ResolvePhysicPaintPushAnchorInput,
++ ): { readonly kind: &apos;key&apos; | &apos;loop&apos;; readonly id: string } | null {
++   const keyId = input.keyIdByAppFrame.get(frame) ?? null;
++   if (keyId !== null) return { kind: &apos;key&apos;, id: keyId };
++   const loopId = input.loopIdByAppFrame.get(frame) ?? null;
++   if (loopId !== null) return { kind: &apos;loop&apos;, id: loopId };
++   const segment = input.keyRailSegments.find(
++     (candidate) =&gt; frame &gt;= candidate.firstKeyFrame &amp;&amp; frame &lt;= candidate.lastKeyFrame,
++   );
++   if (segment !== undefined) return { kind: &apos;key&apos;, id: segment.firstKeyId };
++   return null;
++ }
++
+
+ ❯ src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts:347:39
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

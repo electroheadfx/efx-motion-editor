@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   buildKeyRailBaseCopy,
@@ -6,6 +8,12 @@ import {
   resolvePhysicPaintPushAnchor,
 } from './physicsPaintKeyRailPresentation';
 import * as keyRailPresentationModule from './physicsPaintKeyRailPresentation';
+import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+
+const keyRailPresentationSource = readFileSync(
+  fileURLToPath(new URL('./physicsPaintKeyRailPresentation.ts', import.meta.url)),
+  'utf8',
+);
 
 describe('deriveKeyRailSegments', () => {
   it('derives ordinary rails from ordered real keys, breaks, and Group ownership', () => {
@@ -215,5 +223,130 @@ describe('projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail insp
     expect(anchor.keysLabel).toBe('1');
     expect(anchor.typeLabel).toBe('Standard');
     expect(anchor.editDisabledReason).toBe('Select a single rail to edit it.');
+  });
+});
+
+/**
+ * 59-16 (MOTN-03, MOTN-09): the Motion value inspector projection. The namespace
+ * import keeps this spec loadable before the export exists, so RED fails on the
+ * planned `typeof ... === 'function'` assertion rather than a module error.
+ */
+interface ProjectedMotionFieldShape {
+  readonly channelId: string;
+  readonly label: string;
+  readonly unit: string;
+  readonly value: number;
+}
+
+interface ProjectedMotionInspectorShape {
+  readonly railId: string;
+  readonly frame: number;
+  readonly fields: readonly ProjectedMotionFieldShape[];
+}
+
+type ProjectMotionInspector = (input: {
+  readonly record: PhysicPaintRotoRailMotionRecord | null;
+  readonly selectedKeyFrame: number | null;
+  readonly railLocalFrame: number;
+}) => ProjectedMotionInspectorShape | null;
+
+function requireProjectMotionInspector(): ProjectMotionInspector {
+  const candidate = (keyRailPresentationModule as unknown as {
+    projectRailMotionInspector?: unknown;
+  }).projectRailMotionInspector;
+  expect(typeof candidate).toBe('function');
+  if (typeof candidate !== 'function') {
+    throw new Error('projectRailMotionInspector is not implemented yet');
+  }
+  return candidate as ProjectMotionInspector;
+}
+
+/**
+ * Position x 0 -> 100 / y 0 -> 50 over rail-local frames 0..10, Scale 1 -> 2,
+ * Rotation a single key at frame 4, and no Opacity channel at all (the
+ * identity fallback the evaluator owns).
+ */
+function motionRecordFixture(): PhysicPaintRotoRailMotionRecord {
+  const key = (frame: number, value: number) => Object.freeze({ frame, value, easing: 'ease' as const, wiggle: 0 });
+  return Object.freeze({
+    railId: 'rail-motion',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([
+      Object.freeze({ id: 'position-x' as const, keys: Object.freeze([key(0, 0), key(5, 120), key(10, 100)]) }),
+      Object.freeze({ id: 'position-y' as const, keys: Object.freeze([key(0, 0), key(5, -12), key(10, 50)]) }),
+      Object.freeze({ id: 'scale' as const, keys: Object.freeze([key(0, 1), key(10, 2)]) }),
+      Object.freeze({ id: 'rotation' as const, keys: Object.freeze([key(4, 0)]) }),
+    ]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+describe('projectRailMotionInspector (59-16: Motion value inspector)', () => {
+  it('returns null without a motion record — never a partially filled object', () => {
+    expect(requireProjectMotionInspector()({
+      record: null,
+      selectedKeyFrame: 5,
+      railLocalFrame: 5,
+    })).toBeNull();
+  });
+
+  it('returns null when no Motion key is selected', () => {
+    expect(requireProjectMotionInspector()({
+      record: motionRecordFixture(),
+      selectedKeyFrame: null,
+      railLocalFrame: 5,
+    })).toBeNull();
+  });
+
+  it('returns null when the selected frame carries no Motion key', () => {
+    expect(requireProjectMotionInspector()({
+      record: motionRecordFixture(),
+      // 7 sits between keys on every channel.
+      selectedKeyFrame: 7,
+      railLocalFrame: 7,
+    })).toBeNull();
+  });
+
+  it('projects every channel at the read frame with the 59-02 display conversion', () => {
+    const projection = requireProjectMotionInspector()({
+      record: motionRecordFixture(),
+      selectedKeyFrame: 5,
+      railLocalFrame: 5,
+    });
+    expect(projection).not.toBeNull();
+    if (projection === null) return;
+
+    expect(projection.railId).toBe('rail-motion');
+    expect(projection.frame).toBe(5);
+    // Stored key values at frame 5; Scale is evaluated (1 -> 2 at frame 5 is
+    // the smoothstep midpoint) and Opacity falls back to the identity fraction.
+    expect(projection.fields.map((field) => [field.channelId, field.value])).toEqual([
+      ['position-x', 120],
+      ['position-y', -12],
+      ['scale', 150],
+      ['rotation', 0],
+      ['opacity', 100],
+    ]);
+  });
+
+  it('is frozen at every level', () => {
+    const projection = requireProjectMotionInspector()({
+      record: motionRecordFixture(),
+      selectedKeyFrame: 5,
+      railLocalFrame: 5,
+    });
+    expect(projection).not.toBeNull();
+    if (projection === null) return;
+    expect(Object.isFrozen(projection)).toBe(true);
+    expect(Object.isFrozen(projection.fields)).toBe(true);
+    expect(projection.fields.every((field) => Object.isFrozen(field))).toBe(true);
+  });
+
+  it('owns one conversion authority and no store, signal or component import', () => {
+    // The projection reuses the 59-02 pair; a second percent table would be a
+    // contract violation (T-59-39).
+    expect(keyRailPresentationSource).toContain('railMotionValueToUi');
+    expect(keyRailPresentationSource).not.toContain('physicPaintStore');
+    expect(keyRailPresentationSource).not.toMatch(/from '@preact\/signals'/);
+    expect(keyRailPresentationSource).not.toMatch(/from 'preact/);
   });
 });
