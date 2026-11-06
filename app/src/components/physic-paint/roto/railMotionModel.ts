@@ -215,3 +215,25 @@ export function canonicalizeRailMotionChannels(
 
   return Object.freeze(ordered);
 }
+
+/**
+ * Reconstructs the persisted rail motion collection from untrusted input.
+ *
+ * Fail-closed: no silent clamp, drop, merge or repair. Returns the shared
+ * frozen empty constant for an empty array.
+ */
+export function parsePhysicPaintRotoRailMotions(
+  _value: unknown,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  return PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+}
+
+/**
+ * Allocates a fresh durable `railId` for a rail that starts carrying motion.
+ *
+ * Rail identity is a different namespace from drawing-key identity: this
+ * seam exists so a future migration can tell the two apart.
+ */
+export function createPhysicPaintRotoRailId(): string {
+  return '';
+}

@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="45" failures="23" errors="0" time="0.24">
+    <testsuite name="src/components/physic-paint/roto/railMotionModel.test.ts" timestamp="2026-11-06T12:12:26.216Z" hostname="efx2.home" tests="45" failures="23" errors="0" skipped="0" time="0.01214175">
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion channel union &gt; accepts exactly the five model channel ids and rejects the lane id" time="0.000822083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion channel union &gt; freezes the channel order and the empty collection" time="0.000103333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion value domains &gt; bounds Position to plus or minus 1,000,000 px" time="0.000191584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion value domains &gt; requires Scale to be finite and strictly positive" time="0.000104541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion value domains &gt; accepts any finite Rotation, including negative and beyond 360, with no wrap" time="0.000086125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion value domains &gt; bounds Opacity to the inclusive 0..1 fraction" time="0.00007775">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion value domains &gt; pins the frame and wiggle limits at 1,000,000" time="0.00005175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion UI conversions &gt; keeps Position in px one to one" time="0.000068459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion UI conversions &gt; converts Scale to percent and back" time="0.000088541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion UI conversions &gt; keeps Rotation in degrees one to one and never wraps" time="0.00006675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="rail motion UI conversions &gt; converts Opacity to percent and back" time="0.000056667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; sorts channels into the fixed order and each channel by frame ascending" time="0.000450833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; returns a deeply frozen array" time="0.000116333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; throws on a duplicate channel id" time="0.000315333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; throws on a duplicate frame inside one channel" time="0.000076542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; throws on an unknown channel id" time="0.000058917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; throws on a channel with no keys" time="0.000054834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; rejects a lone Position axis (D-12)" time="0.000103875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; rejects Position axes with different frames (D-12)" time="0.000057083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="canonicalizeRailMotionChannels &gt; rejects an out-of-domain key value" time="0.000057959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; accepts a canonical record and freezes every level" time="0.003493834">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:265:20
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; returns the shared frozen empty constant for an empty array" time="0.000059083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; sorts records by railId and channels into the fixed order from shuffled input" time="0.000739458">
+            <failure message="expected [] to deeply equal [ &apos;rail-a&apos;, &apos;rail-b&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;rail-a&apos;, &apos;rail-b&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;rail-a&quot;,
+-   &quot;rail-b&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:303:49
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; sorts each channel by frame ascending from reversed input" time="0.000147709">
+            <failure message="Cannot read properties of undefined (reading &apos;channels&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;channels&apos;)
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:321:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; produces deeply equal frozen output for two parses of the same input" time="0.000076208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a non-array collection" time="0.00022225">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:347:60
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects more than 512 records before validating any record" time="0.000382833">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:356:58
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a duplicate railId" time="0.000178042">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:363:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects unknown record members" time="0.000186375">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:369:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an invalid railId or anchorKeyId" time="0.000175083">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:376:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a record with no channels" time="0.000138167">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:393:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects more than five channels in one record" time="0.00041525">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:405:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects unknown channel members" time="0.000214417">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:414:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an unknown channel id, including the lane id" time="0.000157542">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:420:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a duplicate channel id inside one record" time="0.000136666">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:429:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an empty or oversized key list" time="0.000168875">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:435:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects unknown key members" time="0.000139042">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:448:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an invalid frame" time="0.000155666">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:455:11
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a duplicate frame inside one channel" time="0.000142958">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:462:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects out-of-domain values" time="0.000157334">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:477:11
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an invalid easing" time="0.0001275">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:486:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects an invalid wiggle" time="0.000197166">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:493:11
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects a lone Position axis (D-12)" time="0.000138541">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:500:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="parsePhysicPaintRotoRailMotions &gt; rejects Position axes with different frame sets (D-12)" time="0.00012425">
+            <failure message="expected [Function] to throw an error" type="AssertionError">
+AssertionError: expected [Function] to throw an error
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:512:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionModel.test.ts" name="createPhysicPaintRotoRailId &gt; mints a fresh v4 UUID per call" time="0.000268958">
+            <failure message="expected &apos;&apos; to match /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}…/" type="AssertionError">
+AssertionError: expected &apos;&apos; to match /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}…/
+
+- Expected: 
+/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
++ Received: 
+&quot;&quot;
+
+ ❯ src/components/physic-paint/roto/railMotionModel.test.ts:522:19
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

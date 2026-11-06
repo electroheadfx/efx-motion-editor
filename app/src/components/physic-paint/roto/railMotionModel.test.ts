@@ -6,12 +6,16 @@ import {
   RAIL_MOTION_POSITION_LIMIT_PX,
   RAIL_MOTION_WIGGLE_LIMIT,
   canonicalizeRailMotionChannels,
+  createPhysicPaintRotoRailId,
+  parsePhysicPaintRotoRailMotions,
   railMotionValueFromUi,
   railMotionValueIsValid,
   railMotionValueToUi,
   type PhysicPaintRotoRailMotionChannel,
   type PhysicPaintRotoRailMotionChannelId,
+  type PhysicPaintRotoRailMotionEasing,
   type PhysicPaintRotoRailMotionKey,
+  type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 
 function key(
@@ -31,6 +35,22 @@ function channel(
 }
 
 const POSITION_IDS = ['position-x', 'position-y'] as const;
+
+function record(
+  railId: string,
+  channels: readonly PhysicPaintRotoRailMotionChannel[],
+  anchorKeyId = `anchor-${railId}`,
+): PhysicPaintRotoRailMotionRecord {
+  return { railId, anchorKeyId, channels };
+}
+
+function positionChannels(
+  frame: number,
+  x: number,
+  y: number,
+): PhysicPaintRotoRailMotionChannel[] {
+  return [channel('position-x', [key(frame, x)]), channel('position-y', [key(frame, y)])];
+}
 
 describe('rail motion channel union', () => {
   it('accepts exactly the five model channel ids and rejects the lane id', () => {
@@ -233,5 +253,274 @@ describe('canonicalizeRailMotionChannels', () => {
     expect(() => canonicalizeRailMotionChannels([
       channel('opacity', [key(0, 1.5)]),
     ])).toThrow(/outside the channel domain/);
+  });
+});
+
+describe('parsePhysicPaintRotoRailMotions', () => {
+  it('accepts a canonical record and freezes every level', () => {
+    const parsed = parsePhysicPaintRotoRailMotions([
+      record('rail-a', positionChannels(0, 10, -10)),
+    ]);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].railId).toBe('rail-a');
+    expect(parsed[0].anchorKeyId).toBe('anchor-rail-a');
+    expect(parsed[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y']);
+    expect(parsed[0].channels[0].keys).toEqual([key(0, 10)]);
+
+    expect(Object.isFrozen(parsed)).toBe(true);
+    for (const entry of parsed) {
+      expect(Object.isFrozen(entry)).toBe(true);
+      expect(Object.isFrozen(entry.channels)).toBe(true);
+      for (const entryChannel of entry.channels) {
+        expect(Object.isFrozen(entryChannel)).toBe(true);
+        expect(Object.isFrozen(entryChannel.keys)).toBe(true);
+        for (const entryKey of entryChannel.keys) expect(Object.isFrozen(entryKey)).toBe(true);
+      }
+    }
+  });
+
+  it('returns the shared frozen empty constant for an empty array', () => {
+    expect(parsePhysicPaintRotoRailMotions([])).toBe(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY);
+    expect(parsePhysicPaintRotoRailMotions(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY)).toBe(
+      PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+    );
+  });
+
+  it('sorts records by railId and channels into the fixed order from shuffled input', () => {
+    const parsed = parsePhysicPaintRotoRailMotions([
+      record('rail-b', [
+        channel('opacity', [key(0, 1)]),
+        channel('position-y', [key(0, 0)]),
+        channel('scale', [key(0, 1)]),
+        channel('position-x', [key(0, 0)]),
+      ]),
+      record('rail-a', [
+        channel('rotation', [key(0, 0)]),
+      ]),
+    ]);
+
+    expect(parsed.map((entry) => entry.railId)).toEqual(['rail-a', 'rail-b']);
+    expect(parsed[1].channels.map((entry) => entry.id)).toEqual([
+      'position-x',
+      'position-y',
+      'scale',
+      'opacity',
+    ]);
+  });
+
+  it('sorts each channel by frame ascending from reversed input', () => {
+    const parsed = parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        channel('position-x', [key(4, 10), key(0, 0)]),
+        channel('position-y', [key(4, 20), key(0, 0)]),
+        channel('scale', [key(9, 2), key(1, 1)]),
+      ]),
+    ]);
+
+    expect(parsed[0].channels.map((entry) => entry.keys.map((entryKey) => entryKey.frame))).toEqual([
+      [0, 4],
+      [0, 4],
+      [1, 9],
+    ]);
+  });
+
+  it('produces deeply equal frozen output for two parses of the same input', () => {
+    const input = [
+      record('rail-a', [
+        channel('opacity', [key(0, 1), key(2, 0.5)]),
+        channel('position-x', [key(0, 0)]),
+        channel('position-y', [key(0, 0)]),
+      ]),
+    ];
+
+    const first = parsePhysicPaintRotoRailMotions(input);
+    const second = parsePhysicPaintRotoRailMotions(input);
+
+    expect(first).toEqual(second);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Object.isFrozen(second)).toBe(true);
+  });
+
+  it('rejects a non-array collection', () => {
+    for (const value of [null, undefined, {}, 'records', 42, true]) {
+      expect(() => parsePhysicPaintRotoRailMotions(value)).toThrow(/PhysicPaintRotoRailMotions: expected an array/);
+    }
+  });
+
+  it('rejects more than 512 records before validating any record', () => {
+    const input = Array.from({ length: 513 }, (_, index) =>
+      record(`rail-${String(index).padStart(4, '0')}`, positionChannels(0, 0, 0)),
+    );
+
+    expect(() => parsePhysicPaintRotoRailMotions(input)).toThrow(/too many records/);
+  });
+
+  it('rejects a duplicate railId', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', positionChannels(0, 0, 0)),
+      record('rail-a', positionChannels(1, 0, 0)),
+    ])).toThrow(/duplicate railId/);
+  });
+
+  it('rejects unknown record members', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      { ...record('rail-a', positionChannels(0, 0, 0)), cycle: 'loop' },
+    ])).toThrow(/unknown members.*railId, anchorKeyId, channels/);
+  });
+
+  it('rejects an invalid railId or anchorKeyId', () => {
+    const validChannels = positionChannels(0, 0, 0);
+    expect(() => parsePhysicPaintRotoRailMotions([
+      { railId: '', anchorKeyId: 'anchor', channels: validChannels },
+    ])).toThrow(/invalid railId/);
+    expect(() => parsePhysicPaintRotoRailMotions([
+      { railId: 'rail-a', anchorKeyId: '', channels: validChannels },
+    ])).toThrow(/invalid anchorKeyId/);
+
+    const overlong = 'x'.repeat(129);
+    expect(() => parsePhysicPaintRotoRailMotions([
+      { railId: overlong, anchorKeyId: 'anchor', channels: validChannels },
+    ])).toThrow(/invalid railId/);
+    expect(() => parsePhysicPaintRotoRailMotions([
+      { railId: 'rail-a', anchorKeyId: overlong, channels: validChannels },
+    ])).toThrow(/invalid anchorKeyId/);
+  });
+
+  it('rejects a record with no channels', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', []),
+    ])).toThrow(/must carry at least one channel/);
+  });
+
+  it('rejects more than five channels in one record', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        ...positionChannels(0, 0, 0),
+        channel('scale', [key(0, 1)]),
+        channel('rotation', [key(0, 0)]),
+        channel('opacity', [key(0, 1)]),
+        channel('opacity', [key(1, 1)]),
+      ]),
+    ])).toThrow(/at most 5 channels/);
+  });
+
+  it('rejects unknown channel members', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        { ...channel('position-x', [key(0, 0)]), enabled: true },
+        channel('position-y', [key(0, 0)]),
+      ]),
+    ])).toThrow(/unknown members.*id, keys/);
+  });
+
+  it('rejects an unknown channel id, including the lane id', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('position' as PhysicPaintRotoRailMotionChannelId, [key(0, 0)])]),
+    ])).toThrow(/unknown channel id/);
+  });
+
+  it('rejects a duplicate channel id inside one record', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        channel('scale', [key(0, 1)]),
+        channel('scale', [key(1, 2)]),
+      ]),
+    ])).toThrow(/duplicate channel id/);
+  });
+
+  it('rejects an empty or oversized key list', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('scale', [])]),
+    ])).toThrow(/must carry at least one key/);
+
+    const keys = Array.from({ length: 4097 }, (_, index) => key(index, 1));
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('scale', keys)]),
+    ])).toThrow(/at most 4096 keys/);
+  });
+
+  it('rejects unknown key members', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        channel('scale', [{ ...key(0, 1), curve: 'bezier' }]),
+      ]),
+    ])).toThrow(/unknown members.*frame, value, easing, wiggle/);
+  });
+
+  it('rejects an invalid frame', () => {
+    for (const frame of [-1, 1.5, RAIL_MOTION_FRAME_LIMIT + 1, Number.NaN, '0']) {
+      expect(() => parsePhysicPaintRotoRailMotions([
+        record('rail-a', [channel('scale', [{ ...key(0, 1), frame: frame as number }])]),
+      ])).toThrow(/invalid frame/);
+    }
+  });
+
+  it('rejects a duplicate frame inside one channel', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('scale', [key(2, 1), key(2, 2)])]),
+    ])).toThrow(/duplicate frame/);
+  });
+
+  it('rejects out-of-domain values', () => {
+    const rows: readonly [PhysicPaintRotoRailMotionChannelId, number][] = [
+      ['scale', 0],
+      ['opacity', 1.1],
+      ['position-x', Number.NaN],
+    ];
+    for (const [id, value] of rows) {
+      const channels = id.startsWith('position')
+        ? [channel('position-x', [key(0, id === 'position-x' ? value : 0)]), channel('position-y', [key(0, 0)])]
+        : [channel(id, [key(0, value)])];
+      expect(() => parsePhysicPaintRotoRailMotions([
+        record('rail-a', channels),
+      ])).toThrow(/outside the channel domain/);
+    }
+  });
+
+  it('rejects an invalid easing', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        channel('scale', [{ ...key(0, 1), easing: 'linear' as PhysicPaintRotoRailMotionEasing }]),
+      ]),
+    ])).toThrow(/invalid easing/);
+  });
+
+  it('rejects an invalid wiggle', () => {
+    for (const wiggle of [-1, Number.NaN, RAIL_MOTION_WIGGLE_LIMIT + 1]) {
+      expect(() => parsePhysicPaintRotoRailMotions([
+        record('rail-a', [channel('scale', [key(0, 1, 'ease', wiggle)])]),
+      ])).toThrow(/invalid wiggle/);
+    }
+  });
+
+  it('rejects a lone Position axis (D-12)', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('position-x', [key(0, 0)])]),
+    ])).toThrow(/position-x and position-y must both be present/);
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [channel('position-y', [key(0, 0)])]),
+    ])).toThrow(/position-x and position-y must both be present/);
+  });
+
+  it('rejects Position axes with different frame sets (D-12)', () => {
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        channel('position-x', [key(0, 0), key(4, 10)]),
+        channel('position-y', [key(0, 0), key(5, 10)]),
+      ]),
+    ])).toThrow(/identical frame set/);
+  });
+});
+
+describe('createPhysicPaintRotoRailId', () => {
+  it('mints a fresh v4 UUID per call', () => {
+    const pattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    const first = createPhysicPaintRotoRailId();
+    const second = createPhysicPaintRotoRailId();
+
+    expect(first).toMatch(pattern);
+    expect(second).toMatch(pattern);
+    expect(second).not.toBe(first);
   });
 });
