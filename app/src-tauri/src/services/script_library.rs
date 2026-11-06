@@ -1428,6 +1428,15 @@ fn canonical_loop_clips(loop_clips: &[Value]) -> Result<String, String> {
             None => return Err("Target physical document loop repeat is missing".to_string()),
         }
         encoded.push_str(&canonical_string(mode));
+        // 59-01 (REL-02): the rail-kind discriminator joins the fingerprint at
+        // the identical TypeScript ordinal — immediately after `mode` and
+        // before the scriptId block — and only when present. Phase 52-01 added
+        // the term to the TS encoder and never mirrored it here, so every
+        // reveal/playscript clip produced a different project equality and the
+        // physical-edit guard rejected the request.
+        if let Some(rail_kind) = clip.get("railKind").and_then(Value::as_str) {
+            encoded.push_str(&canonical_string(rail_kind));
+        }
         if let Some(script_id) = clip.get("scriptId").and_then(Value::as_str) {
             let motion = clip
                 .get("motion")
