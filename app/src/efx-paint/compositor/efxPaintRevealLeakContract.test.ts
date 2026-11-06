@@ -26,6 +26,17 @@ const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRende
 
 const rasterSurface = [compositor, flattenedCache, previewRenderer, exportRenderer].join('\n');
 
+// 59-13: the canvas gizmo. Its third target is a distinct sink (the rail-motion
+// collection), so it must never acquire a display-transform or reference token.
+const transformHandles = readFileSync(
+  fileURLToPath(new URL('../../components/physic-paint/view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)),
+  'utf8',
+);
+const railMotionCommands = readFileSync(
+  fileURLToPath(new URL('../../components/physic-paint/roto/railMotionCommands.ts', import.meta.url)),
+  'utf8',
+);
+
 describe('Reveal leak contract (RVL-05, D-15 bake-time guarantee)', () => {
   it('keeps the Phase 50 reference-input tokens out of the four raster surfaces', () => {
     // The D-06 exclusion is structural: the compositor, flattened cache,
@@ -75,5 +86,38 @@ describe('Reveal leak contract (RVL-05, D-15 bake-time guarantee)', () => {
     for (const token of revealBakeTokens) {
       expect(rasterSurface).not.toContain(token);
     }
+  });
+
+  it('59-13 keeps the rail-motion gizmo tokens out of the four raster surfaces', () => {
+    // The new target writes the rail-motion collection through
+    // `writeMotionTransformAtCursor` -> `replaceRotoPhysicalRailMotions`
+    // (59-07). Neither the command layer nor the motion sink is a raster
+    // surface: the compositor consumes railMotions through the store's
+    // transform resolver, never by importing the command or the overlay.
+    const railMotionTokens = [
+      'writeMotionTransformAtCursor',
+      'getRotoPhysicalRailMotions',
+      'replaceRotoPhysicalRailMotions',
+      'railMotionTransformHandles',
+      'resolveMotionGizmoAvailability',
+    ];
+    for (const token of railMotionTokens) {
+      expect(rasterSurface).not.toContain(token);
+    }
+  });
+
+  it('59-13 keeps each handles target on its own write endpoint', () => {
+    // Legacy targets: exactly one display-transform write endpoint each — the
+    // rail-motion target is additive and does not widen them.
+    const backgroundWrites = transformHandles.match(/setBackgroundTransform\(layerId/g) ?? [];
+    const referenceWrites = transformHandles.match(/setPhotoReferenceTransform\(layerId/g) ?? [];
+    expect(backgroundWrites).toHaveLength(1);
+    expect(referenceWrites).toHaveLength(1);
+    expect(transformHandles).toContain("'rail-motion'");
+    // The rail-motion sink is the motion collection, and the command layer
+    // never imports either display-transform setter.
+    expect(railMotionCommands).not.toContain('setPhotoReferenceTransform');
+    expect(railMotionCommands).not.toContain('setBackgroundTransform');
+    expect(railMotionCommands).not.toContain('PhysicsPaintReferenceTransformHandles');
   });
 });

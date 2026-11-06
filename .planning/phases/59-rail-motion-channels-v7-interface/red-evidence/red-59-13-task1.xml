@@ -1,0 +1,2120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="195" failures="25" errors="0" time="1.154">
+    <testsuite name="src/stores/physicPaintStore.test.ts" timestamp="2026-11-06T17:02:11.350Z" hostname="efx2.home" tests="132" failures="1" errors="0" skipped="0" time="0.145587542">
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; defaults Roto interpolation mode to duplicate" time="0.001027375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 261030-ey9: keeps the rotation and scale channels through the store normalizer" time="0.000135666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 261030-ey9: clamps rotation and scale to integer 0-100" time="0.000127125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; stores a still apply payload at the start frame only" time="0.000523791">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; stores explicit Roto background metadata from apply payloads as runtime state" time="0.000227708">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; marks no-stroke paper Roto applies as background-only cache frames" time="0.000253167">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; uses saved Roto paper settings for interior and trailing missing frames" time="0.000236958">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; removes a durable real Roto key through a delete payload" time="0.00039525">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; increments version for each successful mutation and marks dirty" time="0.000139333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 260923-bcm: a scale-only metadata write is not early-returned by the idempotence guard" time="0.000095958">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 260923-bcm: getDocumentFondInstruction carries the grain scale from the mirror and the fallback" time="0.001093333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 260923-bcm: _fondSourceSignature includes the normalized grain scale" time="0.000633833">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; reports real-key, interpolation, and notification timing without changing the mutation" time="0.000716083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; tracks real Roto keys separately from generated cache and removes deleted real key output" time="0.000170666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; does not move source real keys when interpolation count changes" time="0.000585833">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; UAT truth table reconstructs normal and custom source/display projections through toggle and projection round-trip" time="0.00097375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; UAT keeps a far-empty saved key at display #14 with a custom previous segment" time="0.000458083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; preserves consecutive distant key identity and projection through ON/OFF/ON and projection round-trip" time="0.001758208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; preserves independent distant segment spacing and changes only the targeted segment" time="0.000427791">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; appends a distant real key saved while interpolation is enabled into compact source order through disable and projection round-trip" time="0.0004045">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; duplicates each source key across expanded display frames and deletes shifted display keys by source frame" time="0.000478458">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; replaces generated Roto cache through existing rendered frame storage" time="0.000217375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; v1.0 projection round-trips rendered frames without editable per-frame state" time="0.000135417">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; derives generated Roto frames from persisted real keys and enabled interpolation state" time="0.008131458">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; Debug 08 projection carries only durable rendered frames" time="0.000174917">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; Debug 08 ends the custom generated sequence at final real display 26" time="0.000420666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-09 clamps excessive custom spacing and bounds generated cache output" time="0.001786542">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; preserves custom segment spacing when the global count changes and invalidates the visual version" time="0.000338375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; derives duplicate Roto in-betweens from persisted real keys and enabled interpolation state" time="0.001275667">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; keeps interpolation disabled after project load and does not derive generated Roto frames" time="0.000845334">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; retires Frame blending at the interpolation-state setter — blend coerces to Frame duplicate and keeps enabled (260911-s1j follow-up)" time="0.00014">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; extracts and installs rendered output by layer and app frame" time="0.000160042">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; uses typed helpers to clamp invalid frame counts" time="0.000068375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; clears one layer and resets all output with version bumps" time="0.000247">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; clears and restores interpolation failure status with the layer snapshot" time="0.000402375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; restores complete layer state without replacing a shared alpha canvas" time="0.000868667">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; preserves real Roto keys while toggling interpolation generated frames on and off" time="0.00013275">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; writes generated interpolation cache with source-neighbor provenance without moving real keys" time="0.000198042">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; generates alpha-only Roto interpolation cache across whole integer spans with real-key authority" time="0.000370542">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; normalizes visible hold and alpha-blend modes to the selected generated render branch" time="0.000366709">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; renders blend interpolation as generated PNG data derived from both neighboring alpha sources" time="0.000443625">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; uses registered browser alpha canvases to produce a renderable blended PNG instead of a fake text payload" time="0.000290334">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-07 projection carries bounded background-only support only inside real Roto key spans" time="0.000110208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-05/D-06 does not keep leading or trailing background-only support" time="0.000108792">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-05/D-06 ignores stale trailing rendered frames that are not real Roto keys" time="0.000096917">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-08/D-14/D-15 keeps derived support separate from editable real-key alpha content" time="0.000196875">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; 36.11 merged repaint applyCanvas output stays a real-key alpha cache and not background-only support" time="0.000222709">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-09 applyCanvas replaces only the same-frame background-only support with a real Roto key" time="0.0001455">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; regenerates enabled interpolation after real-key upsert, removal, replacement, and disables cleanly" time="0.000508583">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; replacement keeps source real keys and exposes compact failure status when regeneration fails" time="0.000251208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; keeps real-key mutations and exposes compact failure status when regeneration fails" time="0.000195292">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; D-10 replaceRotoKeyFrames removes stale support and recomputes only current bounded interiors" time="0.000131208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; G-52-10: hasRotoAlphaCanvasFrame treats a zero-size entry as absent so a fresh registration can overwrite it" time="0.000082584">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; canonical physical-operation lease registry &gt; acquires one unique project/layer exclusive or recovery token and rejects cross-scope or replayed tokens" time="0.000223167">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; canonical physical-operation lease registry &gt; atomically transfers exclusive ownership to recovery and publishes reactive availability transitions" time="0.000154333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; canonical physical-operation lease registry &gt; requires the exact active token for complete replacement and direct real-key publication without changing accepted state on rejection" time="0.001009875">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; regression-refresh-multi-paint Layer 2: content-token registry &gt; assigns a monotonic CONTENT token per distinct content revision" time="0.000080125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; regression-refresh-multi-paint Layer 2: content-token registry &gt; getContentToken follows document replacement and stays monotonic" time="0.00028825">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 1 guard: returns null for an unknown layer and non-finite/negative frames" time="0.000880167">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 2 single-track parity: flattened dataUrl is the composite of fallback + the track frame" time="0.001787667">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; G-52-8 (FIX 3): a hydrated payload composites from the alpha registry canvas — zero compositor Image decodes" time="0.000511583">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; G-52-10: a zero-size registry entry is skipped — the compositor falls back to decoding the dataUrl" time="0.001653291">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; D-14 premultiplyAlpha: the decode path premultiplies at bitmap creation (WKWebView draws straight-flagged bitmaps as premultiplied — the washed-out wash)" time="0.00206425">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 261027 UAT: the compositor decode preserves an opaque transmittance sheet — the pigment-alpha discriminator must still see it" time="0.001704">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; REPRO 52.1 refresh: a real-key payload update rotates the flattened memo and re-decodes the new bytes" time="0.002980125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; G-52-8 (FIX 4): the flattened record carries its raster and encodes dataUrl lazily — once, on first read" time="0.001772209">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 3 multi-track: draws both visible tracks bottom-to-top and cacheKey equals deriveEfxPaintFlattenedCacheKey" time="0.00179675">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 4 hidden track excluded: hiding track B removes its pixels and its content term from the key" time="0.003058208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 4b background source bytes rotate the flattened key (49-06 UAT round 6)" time="0.002023666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 5 missing content renders transparent + a report and never contributes pixels" time="0.001935125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 6 cache hit: unchanged inputs return the identical cached record with zero recompute" time="0.001680542">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 7 decode pending: returns null for that tick and the raster after the decode completes" time="0.001597416">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 8 paper fond law: the per-track raster excludes paper; the fond draws once beneath the flattened composite" time="0.001678875">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath" time="0.002855041">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key" time="0.001848083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 49-03 T1 (rewritten by 260920-k34): the active track&apos;s own paper governs the fond over the document fallback" time="0.001561292">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond" time="0.001731333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 49-03 T4 (rewritten by 260920-k34): deleting the track&apos;s paper metadata falls back to the document fallback" time="0.003142709">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; k34-A (RED): the active track&apos;s own paper governs the fond — not the document fallback" time="0.00159">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; k34-B (control, green): a track with no paper of its own still draws the document fond" time="0.001520666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 260923-bcm: the fond draw passes the instruction grain scale into getProjectPaperCanvas" time="0.001570334">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; k34-C (RED): an active-track switch resolves the new track&apos;s paper and rotates the flattened memo" time="0.001848333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; k34-D (RED): each layer resolves its own document&apos;s active-track paper" time="0.003034333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; k34-E (control, green): the two-solo behavior never reaches the fond resolution" time="0.003009875">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing" time="0.001559125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; RED 10 background source-image port: pending decode returns null this tick, raster after the decode completes" time="0.001394083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; getFlattenedFrameExcluding omits the engine-supplied track pixels and uses its own `excl:` key term" time="0.003075">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; getFlattenedFrameExcluding with an empty set is byte-identical to getFlattenedFrame" time="0.001559333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; getFlattenedFrameSlice partitions the stack around the active track and isolates the background to the below slice" time="0.004480792">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; IFF-02/03: the session solo target narrows the composite and rotates the key; excluding the target yields an empty-track composite" time="0.00301425">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; quick-260921-bjm: the reopened library relinks the persisted refs &gt; RELINK LEG: a persisted ref resolves content — the untouched hydration is correct once the record exists" time="0.000550584">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; quick-260921-bjm: the reopened library relinks the persisted refs &gt; REFERENCE LEG: the same persisted ref used as a reference/reveal source relinks too" time="0.000337375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; quick-260921-bjm: the reopened library relinks the persisted refs &gt; MISS LEG: a ref ABSENT from the reopened library still reports asset-not-found and registers nothing" time="0.000146583">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; REGISTERS ALL: hydrating a document whose clips reference {a,b} and {b,c} registers each distinct ref exactly once with decoded bytes" time="0.000326042">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; MISSING IS EXPLICIT: a clip referencing an asset absent from the library registers nothing and resolves to the missing verdict" time="0.001494583">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; CONSERVATIVE DURING DECODE: a frame requested while an asset decode is pending resolves conservatively and re-renders on decode completion" time="0.001400459">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; SAVE DEDUP: hydration registration touches no document revision — two save projections of the same hydrated document produce an identical dedup fingerprint" time="0.000189209">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; background source-byte hydration (49-02 Task 3, BKG-09) &gt; FALLBACK URL IS TRIED: when the primary URL fails to decode, the next candidate URL registers the ref (the Bg-picker import path)" time="0.001455958">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; prefetchNeighborFrames decodes N+1, N+2, and N-1 into the LRU (D-10)" time="0.001586709">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; prefetchNeighborFrames uses the existing decode path (decode_webp_frame → createImageBitmap → frameLru.put)" time="0.001627375">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; prefetchNeighborFrames never evicts the just-drawn frame (LRU ordering)" time="0.002734125">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a real-key media reference yields a bitmap the first time the compositor needs it" time="0.002118584">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a GROUP-OVERRIDE media reference resolves through the same seam and yields a bitmap" time="0.001915">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a missing media file draws the slate path, naming the unresolved reference" time="0.001861959">
+            <system-err>
+[physicPaint] frame media &quot;frames/media-layer/key-missing.webp&quot; (digest b11cc63318f02bf071fa0fd7d7afc46947cfff659fa5356e7ea19832ace46d01) could not be resolved: missing. The frame renders as missing content.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a GROUP-OVERRIDE whose media file is missing stays on the slate path, named" time="0.00173975">
+            <system-err>
+[physicPaint] frame media &quot;frames/media-layer/override-phase-1.webp&quot; (digest 2dd53f3dcdc0586a4bddc9503a70f9a3fd1750cb865d61589584bac2f249435b) could not be resolved: missing. The frame renders as missing content.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a second frame referencing the same digest is served from the LRU with no IPC traffic" time="0.001639167">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; a digest mismatch refuses the frame and never reuses another frame&apos;s bitmap" time="0.002854375">
+            <system-err>
+[physicPaint] frame media &quot;frames/media-layer/key-tampered.webp&quot; (digest 94cf163b253a5f08c95f724ef61795f56d3a475a6009f001e8d2597c3160495f) could not be resolved: digest-mismatch. The frame renders as missing content.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; records a terminal verdict so a failed read is not re-issued on every compositor tick" time="0.002614042">
+            <system-err>
+[physicPaint] frame media &quot;frames/media-layer/key-1.webp&quot; (digest e4c66887d5c052951d039a88608f113e12a7e5968d62b4e10cb8966582463b83) could not be resolved: digest-mismatch. The frame renders as missing content.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; bumps the version clock when the media decode lands (the compositor repaints)" time="0.001418208">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; never fabricates an inline payload or a runtime frame to fill a missing media file" time="0.001406583">
+            <system-err>
+[physicPaint] frame media &quot;frames/media-layer/key-missing.webp&quot; (digest b11cc63318f02bf071fa0fd7d7afc46947cfff659fa5356e7ea19832ace46d01) could not be resolved: missing. The frame renders as missing content.
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; resolves a transport-installed digest from memory with zero package reads (52.2-10, D-12)" time="0.00222725">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 52.2-09 Task 3: on-demand media decode at the compositor seam &gt; refuses bridged bytes whose digest claim does not match their content (52.2-10, T-52.2-33/34)" time="0.001520834">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="physicPaintStore &gt; getFlattenedFrame &gt; 59-13: one motion commit adds exactly one flattened memo entry; an identical commit adds none" time="0.005143917">
+            <failure message="getFlattenedMemoEntryCountForTests is not a function" type="TypeError">
+TypeError: getFlattenedMemoEntryCountForTests is not a function
+ ❯ memoEntryCount src/stores/physicPaintStore.test.ts:3409:9
+ ❯ flattenAndCount src/stores/physicPaintStore.test.ts:3418:16
+ ❯ src/stores/physicPaintStore.test.ts:3421:22
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="52.2-06: reference-only roto records across the hydrate seam (D-06/D-07) &gt; installs reference-only records in BOTH collections without allocating a byte buffer" time="0.000314416">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="52.2-06: reference-only roto records across the hydrate seam (D-06/D-07) &gt; refuses a group-override record carrying neither media nor bytes, naming the keyId" time="0.000367625">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="52.2-06: reference-only roto records across the hydrate seam (D-06/D-07) &gt; recomputes the content revision for a reference-only document without reading a byte buffer" time="0.000286667">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="52.2-06: reference-only roto records across the hydrate seam (D-06/D-07) &gt; refuses to publish an empty frame for a duplicated key with no inline pixels" time="0.001004708">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="52.2-06: reference-only roto records across the hydrate seam (D-06/D-07) &gt; publishes a fresh frame from the available inline runtime source for a duplicated key" time="0.000633292">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; moves a contiguous F/F+1/F+2 chain atomically so each keyId keeps its own pixels" time="0.0007045">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; moves a single key A -&gt; A+1 and leaves the vacated frame clean" time="0.000390666">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; drops generated caches and regenerates them once from the moved identity set" time="0.000461083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; recomputes background-only support around new real-key positions and never on a real-key frame" time="0.000394083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; re-anchors from the record payload when the runtime source frame is absent" time="0.000378917">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; never fabricates pixels for a reference-only record with no runtime frame" time="0.0002295">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; is a no-op for a frameless passive mirror document" time="0.000245792">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; leaves runtime frames untouched when the record set is unchanged" time="0.000349292">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication &gt; re-anchors through mirrorRotoPhysicalDocument exactly like the replace door" time="0.000435333">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261031-qps renderRevealTailFrames: the render-only reveal bake &gt; renders every span frame through the placed reference and writes nothing" time="0.000548083">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261031-qps renderRevealTailFrames: the render-only reveal bake &gt; fails closed with missing reference source before a pixel is rendered" time="0.000285833">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261031-qps renderRevealTailFrames: the render-only reveal bake &gt; refuses without a document or a photo reference" time="0.001048417">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261031-qps renderRevealTailFrames: the render-only reveal bake &gt; rethrows AbortError so the caller keeps its cancel contract" time="0.000299416">
+        </testcase>
+        <testcase classname="src/stores/physicPaintStore.test.ts" name="261031-qps renderRevealTailFrames: the render-only reveal bake &gt; turns a render failure into a closed error result" time="0.000165166">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts" timestamp="2026-11-06T17:02:11.362Z" hostname="efx2.home" tests="4" failures="1" errors="0" skipped="0" time="0.005648083">
+        <testcase classname="src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts" name="Reveal leak contract (RVL-05, D-15 bake-time guarantee) &gt; keeps the Phase 50 reference-input tokens out of the four raster surfaces" time="0.001095209">
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts" name="Reveal leak contract (RVL-05, D-15 bake-time guarantee) &gt; keeps the reveal bake path tokens out of the four raster surfaces" time="0.000517084">
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts" name="Reveal leak contract (RVL-05, D-15 bake-time guarantee) &gt; 59-13 keeps the rail-motion gizmo tokens out of the four raster surfaces" time="0.000207416">
+        </testcase>
+        <testcase classname="src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts" name="Reveal leak contract (RVL-05, D-15 bake-time guarantee) &gt; 59-13 keeps each handles target on its own write endpoint" time="0.003353125">
+            <failure message="expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;\&apos;rail-motion\&apos;&apos;" type="AssertionError">
+AssertionError: expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;\&apos;rail-motion\&apos;&apos;
+
+- Expected
++ Received
+
+- &apos;rail-motion&apos;
++ import { useEffect, useRef } from &apos;preact/hooks&apos;;
++ import { useSignal } from &apos;@preact/signals&apos;;
++ import { beginInteraction, endInteraction, markInteractionActive } from &apos;../bridge/gestureIdleScheduler&apos;;
++ import type { PhotoReferenceTransform } from &apos;../../../efx-paint/document/efxPaintDocument&apos;;
++ import {
++   efxPaintVersion,
++   getDocument,
++   setBackgroundTransform,
++   setPhotoReferenceTransform,
++ } from &apos;../../../stores/efxPaintStore&apos;;
++ import { physicPaintStore, physicPaintVersion } from &apos;../../../stores/physicPaintStore&apos;;
++ import { computeEfxPaintBackgroundBaseDrawSize } from &apos;../../../efx-paint/compositor/efxPaintCompositor&apos;;
++ import { getBackgroundBounds, getReferenceBounds } from &apos;./PhysicsPaintReferenceTransform&apos;;
++ import {
++   getHandlePositions,
++   hitTestHandles,
++   getRotationZone,
++   pointInPolygon,
++   getCursorForHandle,
++ } from &apos;../../canvas/transformHandles&apos;;
++ import type { HandleType, LayerBounds } from &apos;../../canvas/transformHandles&apos;;
++
++ /**
++  * 50-05 (Task 2, S4): the interactive reference transform handles on the
++  * monitor surface. Reuses the main editor `TransformOverlay` PATTERN
++  * (counter-scaled fixed screen-pixel handles, drag-to-move body hit, corner
++  * scale handles, rotation handle) but writes to the reference DISPLAY
++  * properties via `setPhotoReferenceTransform` — NOT to `layerStore` /
++  * `keyframeStore` (the reference is not a layer, D-13).
++  *
++  * Locked by default (D-13): while `transformLocked` is true the overlay has no
++  * handles and no canvas grab — painting works normally. Unlocking enters
++  * reference-transform mode: drag moves the reference, corner handles scale, the
++  * rotation handle rotates; the overlay&apos;s `pointerEvents: all` intercepts
++  * painting gestures. The transform is applied identically in all three modes
++  * (what you align is what Reveal will reveal) and NEVER affects the flattened
++  * raster or export (D-13, D-06).
++  *
++  * The geometry reads ACCEPTED canonical state only (no optimistic changes):
++  * the bounds are computed from `track.transform` (the accepted display
++  * transform) and the resolved source image&apos;s natural dimensions, in WORKING
++  * space (the same space the ghost draws in — see `getReferenceBounds`). The
++  * image dimensions come from the shared decode-once cache
++  * (`physicPaintStore.getDecodedImage`, G-52-5) and are held in a signal (no
++  * useState — efx-preact-reactivity); while `transformLocked` is true (the
++  * default) the effect skips the resolution entirely — the handles are
++  * invisible in that state, so no decode work runs.
++  *
++  * 260922-rd4 (STEP B): ONE required `target` discriminator — `&apos;photo-reference&apos;`
++  * reads/writes the photo track via `getReferenceBounds` /
++  * `setPhotoReferenceTransform`; `&apos;background&apos;` reads/writes
++  * `document.background` via `getBackgroundBounds` (contain-fit × clip-scale
++  * base) / `setBackgroundTransform`. The gesture state machine, threshold,
++  * apply bodies, SVG markup, and counter-scaling are UNCHANGED — only the
++  * read/write endpoints are target-dispatched (one component, no fork).
++  */
++
++ /** 260922-rd4: the ONE handles target discriminator (no default — every mount passes it). */
++ export type PhysicsPaintTransformHandleTarget = &apos;photo-reference&apos; | &apos;background&apos;;
++
++ export interface PhysicsPaintReferenceTransformHandlesProps {
++   /** Required discriminator — inline union so the reuse pin sees it literally. */
++   readonly target: &apos;photo-reference&apos; | &apos;background&apos;;
++   readonly layerId: string | null;
++   readonly currentFrame: number;
++   readonly isPlaying: boolean;
++   readonly width: number;
++   readonly height: number;
++   readonly zoom: number;
++ }
++
++ interface DragState {
++   mode: &apos;none&apos; | &apos;pending&apos; | &apos;move&apos; | &apos;scale&apos; | &apos;rotate&apos;;
++   startClientX: number;
++   startClientY: number;
++   startTransform: PhotoReferenceTransform;
++   handleType?: HandleType;
++   startBounds?: LayerBounds;
++ }
++
++ const DRAG_THRESHOLD = 4; // pixels
++
++ const IDENTITY_TRANSFORM: PhotoReferenceTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
++
++ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferenceTransformHandlesProps) {
++   const containerRef = useRef&lt;HTMLDivElement&gt;(null);
++   const imageSize = useSignal&lt;{ w: number; h: number } | null&gt;(null);
++   const dragRef = useRef&lt;DragState&gt;({
++     mode: &apos;none&apos;,
++     startClientX: 0,
++     startClientY: 0,
++     startTransform: IDENTITY_TRANSFORM,
++   });
++
++   const { target, layerId, currentFrame, isPlaying, width, height, zoom } = props;
++
++   // 260922-rd4 (STEP B): target-dispatched setter — the ONE write endpoint the
++   // gesture bodies call. Same three apply* functions, no duplicated gesture.
++   function writeTransform(next: PhotoReferenceTransform) {
++     if (!layerId) return;
++     if (target === &apos;background&apos;) setBackgroundTransform(layerId, next);
++     else setPhotoReferenceTransform(layerId, next);
++   }
++
++   // Resolve the source image&apos;s natural dimensions (photo) or the contain-fit ×
++   // clip-scale base draw size (background) through the shared decode-once cache
++   // (G-52-5 — never a per-effect `new Image()` decode; the cache&apos;s onload bump
++   // of physicPaintVersion re-fires this effect). Gated on !isPlaying, a present
++   // layerId, AND !transformLocked — the handles are invisible while locked (the
++   // default), so no decode work runs at all. A missing track / missing source /
++   // pending or failed decode clears the size (fail-closed — no handles without
++   // a resolved source, D-04).
++   useEffect(() =&gt; {
++     if (isPlaying || !layerId) {
++       imageSize.value = null;
++       return;
++     }
++     const document = getDocument(layerId);
++     if (!document) {
++       imageSize.value = null;
++       return;
++     }
++     if (target === &apos;background&apos;) {
++       if (document.background.transformLocked) {
++         imageSize.value = null;
++         return;
++       }
++       const source = physicPaintStore.getBackgroundSourceAt(layerId, currentFrame);
++       if (!source) {
++         imageSize.value = null;
++         return;
++       }
++       const image = physicPaintStore.getDecodedImage(source.bytes);
++       if (image === null) {
++         imageSize.value = null;
++         return;
++       }
++       // PROJECT-space base = contain-fit × clip scale — the compositor&apos;s ONE
++       // formula (computeEfxPaintBackgroundBaseDrawSize). The handles props are
++       // WORKING size; project size recovers via zoom = paperTextureScale.
++       const projectSize = {
++         width: zoom &gt; 0 ? width / zoom : width,
++         height: zoom &gt; 0 ? height / zoom : height,
++       };
++       const base = computeEfxPaintBackgroundBaseDrawSize(
++         image.width,
++         image.height,
++         projectSize,
++         source.scale,
++       );
++       imageSize.value = { w: base.width, h: base.height };
++       return;
++     }
++     const track = document.photoReference;
++     if (!track || track.sourceFrameRefs.length === 0 || track.transformLocked) {
++       imageSize.value = null;
++       return;
++     }
++     const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, currentFrame);
++     if (!verdict) {
++       imageSize.value = null;
++       return;
++     }
++     const image = physicPaintStore.getDecodedImage(verdict.bytes);
++     imageSize.value = image === null ? null : { w: image.width, h: image.height };
++     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
++     // clocks are read inside the effect&apos;s dep array (narrow leaf subscription,
++     // never the Studio root); a source/transform/lock change re-resolves the
++     // size, and the cache&apos;s decode-complete bump re-fires for a pending decode.
++     // width/height/zoom ride along so a canvas resize re-fits the background
++     // contain-fit base (photo natural dims don&apos;t depend on them, re-run is a
++     // cheap cache-hit).
++   }, [target, layerId, currentFrame, isPlaying, width, height, zoom, efxPaintVersion.value, physicPaintVersion.value]);
++
++   // Read accepted display state by target (narrow reads, no render-body writes).
++   const document = layerId ? getDocument(layerId) : null;
++   const track = target === &apos;background&apos;
++     ? document?.background ?? null
++     : document?.photoReference ?? null;
++   const transformLocked = track?.transformLocked ?? true;
++   const transform = track?.transform ?? IDENTITY_TRANSFORM;
++
++   // Locked / playing / no resolved size / no track → no handles, no grab.
++   if (transformLocked || isPlaying || !imageSize.value || !track) {
++     return (
++       &lt;div
++         ref={containerRef}
++         style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++         aria-hidden=&quot;true&quot;
++       /&gt;
++     );
++   }
++
++   // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
++   // natural source size; background base = contain-fit × clip-scale (already
++   // project-space in imageSize for the background path).
++   const bounds = target === &apos;background&apos;
++     ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
++     : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
++   const handles = getHandlePositions(bounds, zoom);
++
++   const [tl, tr, br, bl] = bounds.corners;
++   const polyPoints = `${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`;
++
++   // Counter-scaled fixed screen-pixel handle geometry (TransformOverlay pattern).
++   const strokeWidth = 1.5 / zoom;
++   const cornerSize = 8 / zoom;
++   const edgeSize = 6 / zoom;
++
++   // 50-UAT (D-13 spec gap fix): the VISIBLE rotation handle — a stem + circle
++   // above the top-edge midpoint along the box&apos;s outward normal, counter-scaled
++   // to a fixed 20px stem / 5px knob on screen. The corner rotation zones stay
++   // (drag near a corner also rotates); the knob makes rotation discoverable.
++   const topMid = { x: (tl.x + tr.x) / 2, y: (tl.y + tr.y) / 2 };
++   const normalX = topMid.x - bounds.center.x;
++   const normalY = topMid.y - bounds.center.y;
++   const normalLen = Math.hypot(normalX, normalY) || 1;
++   const rotHandle = {
++     x: topMid.x + (normalX / normalLen) * (20 / zoom),
++     y: topMid.y + (normalY / normalLen) * (20 / zoom),
++   };
++   const rotHandleRadius = 5 / zoom;
++   const rotHandleHitRadius = 8 / zoom;
++
++   function getWorkingPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
++     const container = containerRef.current;
++     if (!container) return { x: 0, y: 0 };
++     const rect = container.getBoundingClientRect();
++     if (rect.width &lt;= 0 || rect.height &lt;= 0) return { x: 0, y: 0 };
++     return {
++       x: (clientX - rect.left) * (width / rect.width),
++       y: (clientY - rect.top) * (height / rect.height),
++     };
++   }
++
++   function handlePointerDown(e: PointerEvent) {
++     if (e.button !== 0) return;
++     const point = getWorkingPointFromClient(e.clientX, e.clientY);
++
++     // 50-UAT (D-13 spec): the visible rotation knob is a direct rotate target —
++     // checked BEFORE the corner/edge handles and the corner rotation zone.
++     const rotDx = point.x - rotHandle.x;
++     const rotDy = point.y - rotHandle.y;
++     if (rotDx * rotDx + rotDy * rotDy &lt;= rotHandleHitRadius * rotHandleHitRadius) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     const handleHit = hitTestHandles(point, handles, zoom);
++     if (handleHit) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: handleHit,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (getRotationZone(point, bounds, zoom)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (pointInPolygon(point, bounds.corners)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++   }
++
++   function handlePointerMove(e: PointerEvent) {
++     const state = dragRef.current;
++     if (state.mode === &apos;none&apos;) return;
++     markInteractionActive();
++
++     if (state.mode === &apos;pending&apos;) {
++       const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
++       if (dist &lt; DRAG_THRESHOLD) return;
++       if (state.handleType === &apos;rotate&apos;) {
++         dragRef.current = { ...state, mode: &apos;rotate&apos; };
++       } else if (state.handleType) {
++         dragRef.current = { ...state, mode: &apos;scale&apos; };
++       } else {
++         dragRef.current = { ...state, mode: &apos;move&apos; };
++       }
++     }
++
++     const current = dragRef.current;
++     if (current.mode === &apos;move&apos;) applyMove(e, current);
++     else if (current.mode === &apos;scale&apos;) applyScale(e, current);
++     else if (current.mode === &apos;rotate&apos;) applyRotation(e, current);
++   }
++
++   function applyMove(e: PointerEvent, state: DragState) {
++     const start = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const current = getWorkingPointFromClient(e.clientX, e.clientY);
++     const dx = (current.x - start.x) / zoom;
++     const dy = (current.y - start.y) / zoom;
++     writeTransform({
++       ...state.startTransform,
++       x: state.startTransform.x + dx,
++       y: state.startTransform.y + dy,
++     });
++   }
++
++   function applyScale(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const startDist = Math.hypot(startMouse.x - center.x, startMouse.y - center.y);
++     const currentDist = Math.hypot(mouse.x - center.x, mouse.y - center.y);
++     if (startDist &lt; 1) return;
++     const scaleFactor = currentDist / startDist;
++
++     const ht = state.handleType;
++     if (ht?.startsWith(&apos;corner&apos;)) {
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * scaleFactor,
++         scaleY: state.startTransform.scaleY * scaleFactor,
++       });
++     } else if (ht === &apos;edge-left&apos; || ht === &apos;edge-right&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = Math.cos(rad);
++       const axisY = Math.sin(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * factor,
++       });
++     } else if (ht === &apos;edge-top&apos; || ht === &apos;edge-bottom&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = -Math.sin(rad);
++       const axisY = Math.cos(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleY: state.startTransform.scaleY * factor,
++       });
++     }
++   }
++
++   function applyRotation(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const currentAngle = Math.atan2(mouse.y - center.y, mouse.x - center.x);
++     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
++     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
++
++     writeTransform({
++       ...state.startTransform,
++       rotation: state.startTransform.rotation + deltaAngle,
++     });
++   }
++
++   function handlePointerUp(e: PointerEvent) {
++     if (dragRef.current.mode !== &apos;none&apos;) endInteraction(e.pointerId);
++     dragRef.current = {
++       mode: &apos;none&apos;,
++       startClientX: 0,
++       startClientY: 0,
++       startTransform: IDENTITY_TRANSFORM,
++     };
++     try {
++       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
++     } catch {
++       // Pointer capture may not be active.
++     }
++   }
++
++   // 50-UAT (bounds-only capture): the overlay container is pointer-events NONE
++   // so painting outside the reference passes through to the engine canvas. The
++   // SVG children (bounds polygon, rotation-zone circles, handle rects) are the
++   // ONLY hit targets — each carries pointer-events: all and bubbles to the SVG
++   // root&apos;s handlers. The handler logic (hitTestHandles → getRotationZone →
++   // pointInPolygon) is unchanged; the SVG hit-testing only decides WHETHER the
++   // event fires at all.
++   return (
++     &lt;div
++       ref={containerRef}
++       style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++       aria-label={target === &apos;background&apos; ? &apos;Background transform&apos; : &apos;Reference transform&apos;}
++     &gt;
++       &lt;svg
++         style={{
++           position: &apos;absolute&apos;,
++           inset: 0,
++           width: &apos;100%&apos;,
++           height: &apos;100%&apos;,
++           overflow: &apos;visible&apos;,
++           pointerEvents: &apos;none&apos;,
++         }}
++         viewBox={`0 0 ${width} ${height}`}
++         preserveAspectRatio=&quot;none&quot;
++         onPointerDown={handlePointerDown}
++         onPointerMove={handlePointerMove}
++         onPointerUp={handlePointerUp}
++       &gt;
++         &lt;polygon
++           points={polyPoints}
++           fill=&quot;transparent&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: &apos;move&apos; }}
++         /&gt;
++         {/* 50-UAT (D-13 spec): the VISIBLE rotation handle — a decorative stem
++             (pointer-events none, pass-through) plus an interactive knob that
++             enters rotate mode (handlePointerDown&apos;s direct rotation target). */}
++         &lt;line
++           x1={topMid.x}
++           y1={topMid.y}
++           x2={rotHandle.x}
++           y2={rotHandle.y}
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           aria-hidden=&quot;true&quot;
++         /&gt;
++         &lt;circle
++           cx={rotHandle.x}
++           cy={rotHandle.y}
++           r={rotHandleRadius}
++           fill=&quot;white&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: getCursorForHandle(null, true, transform.rotation) }}
++         /&gt;
++         {/* Rotation-zone hit circles — one per corner, radius = the 15px screen
++             rotation zone (getRotationZone). Transparent fill + pointer-events
++             all; the handler disambiguates rotate vs move by pointInPolygon. */}
++         {bounds.corners.map((corner, index) =&gt; (
++           &lt;circle
++             key={`rotation-zone-${index}`}
++             cx={corner.x}
++             cy={corner.y}
++             r={15 / zoom}
++             fill=&quot;transparent&quot;
++             style={{ pointerEvents: &apos;all&apos;, cursor: &apos;grab&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;corner&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - cornerSize / 2}
++             y={h.y - cornerSize / 2}
++             width={cornerSize}
++             height={cornerSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;edge&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - edgeSize / 2}
++             y={h.y - edgeSize / 2}
++             width={edgeSize}
++             height={edgeSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++       &lt;/svg&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/efx-paint/compositor/efxPaintRevealLeakContract.test.ts:116:30
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/roto/railMotionCommands.test.ts" timestamp="2026-11-06T17:02:11.363Z" hostname="efx2.home" tests="59" failures="23" errors="0" skipped="0" time="0.01504625">
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; binds a Loop Clip rail by its own loopId and mints nothing" time="0.001231875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; mints exactly one rail id for a bare Key Rail and keeps the first key as the anchor hint" time="0.000315625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; animates Reveal and Static rails the same way — no conversion and no type gate" time="0.000459291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; seeds exactly the grouped Position pair with one value-0 key at the rail-local playhead" time="0.000568416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never seeds frame 0 when the cursor is elsewhere in the rail (D-02)" time="0.00009075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; clamps the seeded frame into the rail keyed span at both ends" time="0.000097292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; is idempotent: a second Animate returns the same collection reference" time="0.000109833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; keeps a re-animate on an already-bound view idempotent even without the anchor lookup" time="0.000076625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never touches a drawing key, loop clip or break: every input stays deep-equal" time="0.000182584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; fails with a plain sentence when the playhead is not a valid frame" time="0.000070083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selected rail view resolution &gt; resolves a Loop Clip rail through its loopId and a Key Rail through its first key" time="0.000103042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; adds a key at the rail-local cursor with the channel current evaluated value" time="0.000435166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; updates an existing frame in place without duplicating it" time="0.000132458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; writes both grouped Position axes atomically in one command call" time="0.000206625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes only the addressed key and keeps the rest of the rail" time="0.000199">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a channel when its last key is removed" time="0.00008275">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes the record and reports recordRemoved when the rail last channel empties" time="0.000068709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a Motion key at a frame that carries none with a plain reason" time="0.000072375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; refuses to edit a rail that carries no motion" time="0.000044792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; steps to the adjacent key frame without wrapping" time="0.000088334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; accepts only hold and ease and preserves the key value" time="0.000141833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; bounds Wiggle to 0..1,000,000 and rejects non-finite or negative values" time="0.000210166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; finds the addressed key and reports none for an empty frame" time="0.000058">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selection scope &gt; reports one scope, with a key scope winning over the rail it rides on" time="0.000070959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — honest availability &gt; answers every case and never reports an empty reason (T-59-35)" time="0.000322083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is enabled for every rail type whenever a rail is selected" time="0.000045584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is unavailable with a non-empty reason when no rail is selected" time="0.0000905">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; maps every selection state to exactly one scope and one command list" time="0.00016125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; gives every command exactly one scope — a command from another scope is absent" time="0.000166834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing the motion-key selection keeps the rail set (expanded block stays open)" time="0.000093291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a motion key clears the drawing-key selection" time="0.000043166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a drawing key clears the motion-key selection" time="0.0000415">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; deleting the rail clears every scope" time="0.000539958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing with no active scope leaves the rail set and drops both key selections" time="0.000092583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; a motion-key selection survives a rail re-selection" time="0.000059458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes the grouped Position pair at the rail-local cursor in ONE result" time="0.002654459">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:688:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; converts Scale from UI percent to the model factor through the 59-02 pair" time="0.000172416">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:708:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes Rotation in degrees with NO normalization" time="0.000131666">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:722:33
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes only the channels present in the partial" time="0.000116084">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:744:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; clamps the key frame into the rail span through railMotionCursorFrame" time="0.00012275">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:760:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a drag on a channel with no keys, leaving the collection byte-identical (D-08)" time="0.000122833">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:785:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a Position drag when only one axis is animated (D-08 grouped pair)" time="0.000101791">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:805:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an un-animated rail and a view without a railId with plain reasons" time="0.000101083">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:815:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an empty partial and a non-finite cursor with plain reasons" time="0.000097208">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:831:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a non-finite channel value instead of writing it (no NaN reaches the document)" time="0.000097125">
+            <failure message="gizmoCommands.writeMotionTransformAtCursor is not a function" type="TypeError">
+TypeError: gizmoCommands.writeMotionTransformAtCursor is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:847:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; supplies the grouped sibling EXPLICITLY instead of deriving it (one atomic pair write)" time="0.001129708">
+            <failure message="expected 25 to be -12 // Object.is equality" type="AssertionError">
+AssertionError: expected 25 to be -12 // Object.is equality
+
+- Expected
++ Received
+
+- -12
++ 25
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:869:51
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when no animated rail is selected" time="0.000096125">
+            <failure message="gizmoCommands.resolveMotionGizmoAvailability is not a function" type="TypeError">
+TypeError: gizmoCommands.resolveMotionGizmoAvailability is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:876:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when the rail carries no motion" time="0.000085125">
+            <failure message="gizmoCommands.resolveMotionGizmoAvailability is not a function" type="TypeError">
+TypeError: gizmoCommands.resolveMotionGizmoAvailability is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:884:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the only animated channel is Opacity (D-07 — numeric-only)" time="0.000072583">
+            <failure message="gizmoCommands.resolveMotionGizmoAvailability is not a function" type="TypeError">
+TypeError: gizmoCommands.resolveMotionGizmoAvailability is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:892:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the playhead is outside the rail span" time="0.000067333">
+            <failure message="gizmoCommands.resolveMotionGizmoAvailability is not a function" type="TypeError">
+TypeError: gizmoCommands.resolveMotionGizmoAvailability is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:900:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is enabled with a null reason when a draggable channel is animated inside the span" time="0.000067208">
+            <failure message="gizmoCommands.resolveMotionGizmoAvailability is not a function" type="TypeError">
+TypeError: gizmoCommands.resolveMotionGizmoAvailability is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:908:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; seeds a frozen draft from a null base" time="0.000077209">
+            <failure message="gizmoCommands.mergeRailMotionDraft is not a function" type="TypeError">
+TypeError: gizmoCommands.mergeRailMotionDraft is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:919:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; overrides only the present channels and keeps the rest of the draft" time="0.000079375">
+            <failure message="gizmoCommands.mergeRailMotionDraft is not a function" type="TypeError">
+TypeError: gizmoCommands.mergeRailMotionDraft is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:930:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; replaces the Position pair wholesale, never mixing one axis with the other" time="0.000075041">
+            <failure message="gizmoCommands.mergeRailMotionDraft is not a function" type="TypeError">
+TypeError: gizmoCommands.mergeRailMotionDraft is not a function
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:938:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the command layer free of store, signal, component and DOM imports" time="0.000268084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; has exactly ONE writeMotionTransformAtCursor call, inside handlePointerUp" time="0.000245458">
+            <failure message="expected +0 to be 1 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:976:78
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the gesture machine and the legacy write endpoints intact" time="0.000813292">
+            <failure message="expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;onPointerCancel={handlePointerCancel}&apos;" type="AssertionError">
+AssertionError: expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;onPointerCancel={handlePointerCancel}&apos;
+
+- Expected
++ Received
+
+- onPointerCancel={handlePointerCancel}
++ import { useEffect, useRef } from &apos;preact/hooks&apos;;
++ import { useSignal } from &apos;@preact/signals&apos;;
++ import { beginInteraction, endInteraction, markInteractionActive } from &apos;../bridge/gestureIdleScheduler&apos;;
++ import type { PhotoReferenceTransform } from &apos;../../../efx-paint/document/efxPaintDocument&apos;;
++ import {
++   efxPaintVersion,
++   getDocument,
++   setBackgroundTransform,
++   setPhotoReferenceTransform,
++ } from &apos;../../../stores/efxPaintStore&apos;;
++ import { physicPaintStore, physicPaintVersion } from &apos;../../../stores/physicPaintStore&apos;;
++ import { computeEfxPaintBackgroundBaseDrawSize } from &apos;../../../efx-paint/compositor/efxPaintCompositor&apos;;
++ import { getBackgroundBounds, getReferenceBounds } from &apos;./PhysicsPaintReferenceTransform&apos;;
++ import {
++   getHandlePositions,
++   hitTestHandles,
++   getRotationZone,
++   pointInPolygon,
++   getCursorForHandle,
++ } from &apos;../../canvas/transformHandles&apos;;
++ import type { HandleType, LayerBounds } from &apos;../../canvas/transformHandles&apos;;
++
++ /**
++  * 50-05 (Task 2, S4): the interactive reference transform handles on the
++  * monitor surface. Reuses the main editor `TransformOverlay` PATTERN
++  * (counter-scaled fixed screen-pixel handles, drag-to-move body hit, corner
++  * scale handles, rotation handle) but writes to the reference DISPLAY
++  * properties via `setPhotoReferenceTransform` — NOT to `layerStore` /
++  * `keyframeStore` (the reference is not a layer, D-13).
++  *
++  * Locked by default (D-13): while `transformLocked` is true the overlay has no
++  * handles and no canvas grab — painting works normally. Unlocking enters
++  * reference-transform mode: drag moves the reference, corner handles scale, the
++  * rotation handle rotates; the overlay&apos;s `pointerEvents: all` intercepts
++  * painting gestures. The transform is applied identically in all three modes
++  * (what you align is what Reveal will reveal) and NEVER affects the flattened
++  * raster or export (D-13, D-06).
++  *
++  * The geometry reads ACCEPTED canonical state only (no optimistic changes):
++  * the bounds are computed from `track.transform` (the accepted display
++  * transform) and the resolved source image&apos;s natural dimensions, in WORKING
++  * space (the same space the ghost draws in — see `getReferenceBounds`). The
++  * image dimensions come from the shared decode-once cache
++  * (`physicPaintStore.getDecodedImage`, G-52-5) and are held in a signal (no
++  * useState — efx-preact-reactivity); while `transformLocked` is true (the
++  * default) the effect skips the resolution entirely — the handles are
++  * invisible in that state, so no decode work runs.
++  *
++  * 260922-rd4 (STEP B): ONE required `target` discriminator — `&apos;photo-reference&apos;`
++  * reads/writes the photo track via `getReferenceBounds` /
++  * `setPhotoReferenceTransform`; `&apos;background&apos;` reads/writes
++  * `document.background` via `getBackgroundBounds` (contain-fit × clip-scale
++  * base) / `setBackgroundTransform`. The gesture state machine, threshold,
++  * apply bodies, SVG markup, and counter-scaling are UNCHANGED — only the
++  * read/write endpoints are target-dispatched (one component, no fork).
++  */
++
++ /** 260922-rd4: the ONE handles target discriminator (no default — every mount passes it). */
++ export type PhysicsPaintTransformHandleTarget = &apos;photo-reference&apos; | &apos;background&apos;;
++
++ export interface PhysicsPaintReferenceTransformHandlesProps {
++   /** Required discriminator — inline union so the reuse pin sees it literally. */
++   readonly target: &apos;photo-reference&apos; | &apos;background&apos;;
++   readonly layerId: string | null;
++   readonly currentFrame: number;
++   readonly isPlaying: boolean;
++   readonly width: number;
++   readonly height: number;
++   readonly zoom: number;
++ }
++
++ interface DragState {
++   mode: &apos;none&apos; | &apos;pending&apos; | &apos;move&apos; | &apos;scale&apos; | &apos;rotate&apos;;
++   startClientX: number;
++   startClientY: number;
++   startTransform: PhotoReferenceTransform;
++   handleType?: HandleType;
++   startBounds?: LayerBounds;
++ }
++
++ const DRAG_THRESHOLD = 4; // pixels
++
++ const IDENTITY_TRANSFORM: PhotoReferenceTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
++
++ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferenceTransformHandlesProps) {
++   const containerRef = useRef&lt;HTMLDivElement&gt;(null);
++   const imageSize = useSignal&lt;{ w: number; h: number } | null&gt;(null);
++   const dragRef = useRef&lt;DragState&gt;({
++     mode: &apos;none&apos;,
++     startClientX: 0,
++     startClientY: 0,
++     startTransform: IDENTITY_TRANSFORM,
++   });
++
++   const { target, layerId, currentFrame, isPlaying, width, height, zoom } = props;
++
++   // 260922-rd4 (STEP B): target-dispatched setter — the ONE write endpoint the
++   // gesture bodies call. Same three apply* functions, no duplicated gesture.
++   function writeTransform(next: PhotoReferenceTransform) {
++     if (!layerId) return;
++     if (target === &apos;background&apos;) setBackgroundTransform(layerId, next);
++     else setPhotoReferenceTransform(layerId, next);
++   }
++
++   // Resolve the source image&apos;s natural dimensions (photo) or the contain-fit ×
++   // clip-scale base draw size (background) through the shared decode-once cache
++   // (G-52-5 — never a per-effect `new Image()` decode; the cache&apos;s onload bump
++   // of physicPaintVersion re-fires this effect). Gated on !isPlaying, a present
++   // layerId, AND !transformLocked — the handles are invisible while locked (the
++   // default), so no decode work runs at all. A missing track / missing source /
++   // pending or failed decode clears the size (fail-closed — no handles without
++   // a resolved source, D-04).
++   useEffect(() =&gt; {
++     if (isPlaying || !layerId) {
++       imageSize.value = null;
++       return;
++     }
++     const document = getDocument(layerId);
++     if (!document) {
++       imageSize.value = null;
++       return;
++     }
++     if (target === &apos;background&apos;) {
++       if (document.background.transformLocked) {
++         imageSize.value = null;
++         return;
++       }
++       const source = physicPaintStore.getBackgroundSourceAt(layerId, currentFrame);
++       if (!source) {
++         imageSize.value = null;
++         return;
++       }
++       const image = physicPaintStore.getDecodedImage(source.bytes);
++       if (image === null) {
++         imageSize.value = null;
++         return;
++       }
++       // PROJECT-space base = contain-fit × clip scale — the compositor&apos;s ONE
++       // formula (computeEfxPaintBackgroundBaseDrawSize). The handles props are
++       // WORKING size; project size recovers via zoom = paperTextureScale.
++       const projectSize = {
++         width: zoom &gt; 0 ? width / zoom : width,
++         height: zoom &gt; 0 ? height / zoom : height,
++       };
++       const base = computeEfxPaintBackgroundBaseDrawSize(
++         image.width,
++         image.height,
++         projectSize,
++         source.scale,
++       );
++       imageSize.value = { w: base.width, h: base.height };
++       return;
++     }
++     const track = document.photoReference;
++     if (!track || track.sourceFrameRefs.length === 0 || track.transformLocked) {
++       imageSize.value = null;
++       return;
++     }
++     const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, currentFrame);
++     if (!verdict) {
++       imageSize.value = null;
++       return;
++     }
++     const image = physicPaintStore.getDecodedImage(verdict.bytes);
++     imageSize.value = image === null ? null : { w: image.width, h: image.height };
++     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
++     // clocks are read inside the effect&apos;s dep array (narrow leaf subscription,
++     // never the Studio root); a source/transform/lock change re-resolves the
++     // size, and the cache&apos;s decode-complete bump re-fires for a pending decode.
++     // width/height/zoom ride along so a canvas resize re-fits the background
++     // contain-fit base (photo natural dims don&apos;t depend on them, re-run is a
++     // cheap cache-hit).
++   }, [target, layerId, currentFrame, isPlaying, width, height, zoom, efxPaintVersion.value, physicPaintVersion.value]);
++
++   // Read accepted display state by target (narrow reads, no render-body writes).
++   const document = layerId ? getDocument(layerId) : null;
++   const track = target === &apos;background&apos;
++     ? document?.background ?? null
++     : document?.photoReference ?? null;
++   const transformLocked = track?.transformLocked ?? true;
++   const transform = track?.transform ?? IDENTITY_TRANSFORM;
++
++   // Locked / playing / no resolved size / no track → no handles, no grab.
++   if (transformLocked || isPlaying || !imageSize.value || !track) {
++     return (
++       &lt;div
++         ref={containerRef}
++         style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++         aria-hidden=&quot;true&quot;
++       /&gt;
++     );
++   }
++
++   // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
++   // natural source size; background base = contain-fit × clip-scale (already
++   // project-space in imageSize for the background path).
++   const bounds = target === &apos;background&apos;
++     ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
++     : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
++   const handles = getHandlePositions(bounds, zoom);
++
++   const [tl, tr, br, bl] = bounds.corners;
++   const polyPoints = `${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`;
++
++   // Counter-scaled fixed screen-pixel handle geometry (TransformOverlay pattern).
++   const strokeWidth = 1.5 / zoom;
++   const cornerSize = 8 / zoom;
++   const edgeSize = 6 / zoom;
++
++   // 50-UAT (D-13 spec gap fix): the VISIBLE rotation handle — a stem + circle
++   // above the top-edge midpoint along the box&apos;s outward normal, counter-scaled
++   // to a fixed 20px stem / 5px knob on screen. The corner rotation zones stay
++   // (drag near a corner also rotates); the knob makes rotation discoverable.
++   const topMid = { x: (tl.x + tr.x) / 2, y: (tl.y + tr.y) / 2 };
++   const normalX = topMid.x - bounds.center.x;
++   const normalY = topMid.y - bounds.center.y;
++   const normalLen = Math.hypot(normalX, normalY) || 1;
++   const rotHandle = {
++     x: topMid.x + (normalX / normalLen) * (20 / zoom),
++     y: topMid.y + (normalY / normalLen) * (20 / zoom),
++   };
++   const rotHandleRadius = 5 / zoom;
++   const rotHandleHitRadius = 8 / zoom;
++
++   function getWorkingPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
++     const container = containerRef.current;
++     if (!container) return { x: 0, y: 0 };
++     const rect = container.getBoundingClientRect();
++     if (rect.width &lt;= 0 || rect.height &lt;= 0) return { x: 0, y: 0 };
++     return {
++       x: (clientX - rect.left) * (width / rect.width),
++       y: (clientY - rect.top) * (height / rect.height),
++     };
++   }
++
++   function handlePointerDown(e: PointerEvent) {
++     if (e.button !== 0) return;
++     const point = getWorkingPointFromClient(e.clientX, e.clientY);
++
++     // 50-UAT (D-13 spec): the visible rotation knob is a direct rotate target —
++     // checked BEFORE the corner/edge handles and the corner rotation zone.
++     const rotDx = point.x - rotHandle.x;
++     const rotDy = point.y - rotHandle.y;
++     if (rotDx * rotDx + rotDy * rotDy &lt;= rotHandleHitRadius * rotHandleHitRadius) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     const handleHit = hitTestHandles(point, handles, zoom);
++     if (handleHit) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: handleHit,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (getRotationZone(point, bounds, zoom)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (pointInPolygon(point, bounds.corners)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++   }
++
++   function handlePointerMove(e: PointerEvent) {
++     const state = dragRef.current;
++     if (state.mode === &apos;none&apos;) return;
++     markInteractionActive();
++
++     if (state.mode === &apos;pending&apos;) {
++       const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
++       if (dist &lt; DRAG_THRESHOLD) return;
++       if (state.handleType === &apos;rotate&apos;) {
++         dragRef.current = { ...state, mode: &apos;rotate&apos; };
++       } else if (state.handleType) {
++         dragRef.current = { ...state, mode: &apos;scale&apos; };
++       } else {
++         dragRef.current = { ...state, mode: &apos;move&apos; };
++       }
++     }
++
++     const current = dragRef.current;
++     if (current.mode === &apos;move&apos;) applyMove(e, current);
++     else if (current.mode === &apos;scale&apos;) applyScale(e, current);
++     else if (current.mode === &apos;rotate&apos;) applyRotation(e, current);
++   }
++
++   function applyMove(e: PointerEvent, state: DragState) {
++     const start = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const current = getWorkingPointFromClient(e.clientX, e.clientY);
++     const dx = (current.x - start.x) / zoom;
++     const dy = (current.y - start.y) / zoom;
++     writeTransform({
++       ...state.startTransform,
++       x: state.startTransform.x + dx,
++       y: state.startTransform.y + dy,
++     });
++   }
++
++   function applyScale(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const startDist = Math.hypot(startMouse.x - center.x, startMouse.y - center.y);
++     const currentDist = Math.hypot(mouse.x - center.x, mouse.y - center.y);
++     if (startDist &lt; 1) return;
++     const scaleFactor = currentDist / startDist;
++
++     const ht = state.handleType;
++     if (ht?.startsWith(&apos;corner&apos;)) {
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * scaleFactor,
++         scaleY: state.startTransform.scaleY * scaleFactor,
++       });
++     } else if (ht === &apos;edge-left&apos; || ht === &apos;edge-right&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = Math.cos(rad);
++       const axisY = Math.sin(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * factor,
++       });
++     } else if (ht === &apos;edge-top&apos; || ht === &apos;edge-bottom&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = -Math.sin(rad);
++       const axisY = Math.cos(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleY: state.startTransform.scaleY * factor,
++       });
++     }
++   }
++
++   function applyRotation(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const currentAngle = Math.atan2(mouse.y - center.y, mouse.x - center.x);
++     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
++     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
++
++     writeTransform({
++       ...state.startTransform,
++       rotation: state.startTransform.rotation + deltaAngle,
++     });
++   }
++
++   function handlePointerUp(e: PointerEvent) {
++     if (dragRef.current.mode !== &apos;none&apos;) endInteraction(e.pointerId);
++     dragRef.current = {
++       mode: &apos;none&apos;,
++       startClientX: 0,
++       startClientY: 0,
++       startTransform: IDENTITY_TRANSFORM,
++     };
++     try {
++       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
++     } catch {
++       // Pointer capture may not be active.
++     }
++   }
++
++   // 50-UAT (bounds-only capture): the overlay container is pointer-events NONE
++   // so painting outside the reference passes through to the engine canvas. The
++   // SVG children (bounds polygon, rotation-zone circles, handle rects) are the
++   // ONLY hit targets — each carries pointer-events: all and bubbles to the SVG
++   // root&apos;s handlers. The handler logic (hitTestHandles → getRotationZone →
++   // pointInPolygon) is unchanged; the SVG hit-testing only decides WHETHER the
++   // event fires at all.
++   return (
++     &lt;div
++       ref={containerRef}
++       style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++       aria-label={target === &apos;background&apos; ? &apos;Background transform&apos; : &apos;Reference transform&apos;}
++     &gt;
++       &lt;svg
++         style={{
++           position: &apos;absolute&apos;,
++           inset: 0,
++           width: &apos;100%&apos;,
++           height: &apos;100%&apos;,
++           overflow: &apos;visible&apos;,
++           pointerEvents: &apos;none&apos;,
++         }}
++         viewBox={`0 0 ${width} ${height}`}
++         preserveAspectRatio=&quot;none&quot;
++         onPointerDown={handlePointerDown}
++         onPointerMove={handlePointerMove}
++         onPointerUp={handlePointerUp}
++       &gt;
++         &lt;polygon
++           points={polyPoints}
++           fill=&quot;transparent&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: &apos;move&apos; }}
++         /&gt;
++         {/* 50-UAT (D-13 spec): the VISIBLE rotation handle — a decorative stem
++             (pointer-events none, pass-through) plus an interactive knob that
++             enters rotate mode (handlePointerDown&apos;s direct rotation target). */}
++         &lt;line
++           x1={topMid.x}
++           y1={topMid.y}
++           x2={rotHandle.x}
++           y2={rotHandle.y}
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           aria-hidden=&quot;true&quot;
++         /&gt;
++         &lt;circle
++           cx={rotHandle.x}
++           cy={rotHandle.y}
++           r={rotHandleRadius}
++           fill=&quot;white&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: getCursorForHandle(null, true, transform.rotation) }}
++         /&gt;
++         {/* Rotation-zone hit circles — one per corner, radius = the 15px screen
++             rotation zone (getRotationZone). Transparent fill + pointer-events
++             all; the handler disambiguates rotate vs move by pointInPolygon. */}
++         {bounds.corners.map((corner, index) =&gt; (
++           &lt;circle
++             key={`rotation-zone-${index}`}
++             cx={corner.x}
++             cy={corner.y}
++             r={15 / zoom}
++             fill=&quot;transparent&quot;
++             style={{ pointerEvents: &apos;all&apos;, cursor: &apos;grab&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;corner&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - cornerSize / 2}
++             y={h.y - cornerSize / 2}
++             width={cornerSize}
++             height={cornerSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;edge&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - edgeSize / 2}
++             y={h.y - edgeSize / 2}
++             width={edgeSize}
++             height={edgeSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++       &lt;/svg&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:992:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; adds rail-motion as a third target with no opacity affordance and no rotation wrap" time="0.000530541">
+            <failure message="expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;export type PhysicsPaintTransformHand…&apos;" type="AssertionError">
+AssertionError: expected &apos;import { useEffect, useRef } from \&apos;p…&apos; to contain &apos;export type PhysicsPaintTransformHand…&apos;
+
+- Expected
++ Received
+
+- export type PhysicsPaintTransformHandleTarget = &apos;photo-reference&apos; | &apos;background&apos; | &apos;rail-motion&apos;;
++ import { useEffect, useRef } from &apos;preact/hooks&apos;;
++ import { useSignal } from &apos;@preact/signals&apos;;
++ import { beginInteraction, endInteraction, markInteractionActive } from &apos;../bridge/gestureIdleScheduler&apos;;
++ import type { PhotoReferenceTransform } from &apos;../../../efx-paint/document/efxPaintDocument&apos;;
++ import {
++   efxPaintVersion,
++   getDocument,
++   setBackgroundTransform,
++   setPhotoReferenceTransform,
++ } from &apos;../../../stores/efxPaintStore&apos;;
++ import { physicPaintStore, physicPaintVersion } from &apos;../../../stores/physicPaintStore&apos;;
++ import { computeEfxPaintBackgroundBaseDrawSize } from &apos;../../../efx-paint/compositor/efxPaintCompositor&apos;;
++ import { getBackgroundBounds, getReferenceBounds } from &apos;./PhysicsPaintReferenceTransform&apos;;
++ import {
++   getHandlePositions,
++   hitTestHandles,
++   getRotationZone,
++   pointInPolygon,
++   getCursorForHandle,
++ } from &apos;../../canvas/transformHandles&apos;;
++ import type { HandleType, LayerBounds } from &apos;../../canvas/transformHandles&apos;;
++
++ /**
++  * 50-05 (Task 2, S4): the interactive reference transform handles on the
++  * monitor surface. Reuses the main editor `TransformOverlay` PATTERN
++  * (counter-scaled fixed screen-pixel handles, drag-to-move body hit, corner
++  * scale handles, rotation handle) but writes to the reference DISPLAY
++  * properties via `setPhotoReferenceTransform` — NOT to `layerStore` /
++  * `keyframeStore` (the reference is not a layer, D-13).
++  *
++  * Locked by default (D-13): while `transformLocked` is true the overlay has no
++  * handles and no canvas grab — painting works normally. Unlocking enters
++  * reference-transform mode: drag moves the reference, corner handles scale, the
++  * rotation handle rotates; the overlay&apos;s `pointerEvents: all` intercepts
++  * painting gestures. The transform is applied identically in all three modes
++  * (what you align is what Reveal will reveal) and NEVER affects the flattened
++  * raster or export (D-13, D-06).
++  *
++  * The geometry reads ACCEPTED canonical state only (no optimistic changes):
++  * the bounds are computed from `track.transform` (the accepted display
++  * transform) and the resolved source image&apos;s natural dimensions, in WORKING
++  * space (the same space the ghost draws in — see `getReferenceBounds`). The
++  * image dimensions come from the shared decode-once cache
++  * (`physicPaintStore.getDecodedImage`, G-52-5) and are held in a signal (no
++  * useState — efx-preact-reactivity); while `transformLocked` is true (the
++  * default) the effect skips the resolution entirely — the handles are
++  * invisible in that state, so no decode work runs.
++  *
++  * 260922-rd4 (STEP B): ONE required `target` discriminator — `&apos;photo-reference&apos;`
++  * reads/writes the photo track via `getReferenceBounds` /
++  * `setPhotoReferenceTransform`; `&apos;background&apos;` reads/writes
++  * `document.background` via `getBackgroundBounds` (contain-fit × clip-scale
++  * base) / `setBackgroundTransform`. The gesture state machine, threshold,
++  * apply bodies, SVG markup, and counter-scaling are UNCHANGED — only the
++  * read/write endpoints are target-dispatched (one component, no fork).
++  */
++
++ /** 260922-rd4: the ONE handles target discriminator (no default — every mount passes it). */
++ export type PhysicsPaintTransformHandleTarget = &apos;photo-reference&apos; | &apos;background&apos;;
++
++ export interface PhysicsPaintReferenceTransformHandlesProps {
++   /** Required discriminator — inline union so the reuse pin sees it literally. */
++   readonly target: &apos;photo-reference&apos; | &apos;background&apos;;
++   readonly layerId: string | null;
++   readonly currentFrame: number;
++   readonly isPlaying: boolean;
++   readonly width: number;
++   readonly height: number;
++   readonly zoom: number;
++ }
++
++ interface DragState {
++   mode: &apos;none&apos; | &apos;pending&apos; | &apos;move&apos; | &apos;scale&apos; | &apos;rotate&apos;;
++   startClientX: number;
++   startClientY: number;
++   startTransform: PhotoReferenceTransform;
++   handleType?: HandleType;
++   startBounds?: LayerBounds;
++ }
++
++ const DRAG_THRESHOLD = 4; // pixels
++
++ const IDENTITY_TRANSFORM: PhotoReferenceTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
++
++ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferenceTransformHandlesProps) {
++   const containerRef = useRef&lt;HTMLDivElement&gt;(null);
++   const imageSize = useSignal&lt;{ w: number; h: number } | null&gt;(null);
++   const dragRef = useRef&lt;DragState&gt;({
++     mode: &apos;none&apos;,
++     startClientX: 0,
++     startClientY: 0,
++     startTransform: IDENTITY_TRANSFORM,
++   });
++
++   const { target, layerId, currentFrame, isPlaying, width, height, zoom } = props;
++
++   // 260922-rd4 (STEP B): target-dispatched setter — the ONE write endpoint the
++   // gesture bodies call. Same three apply* functions, no duplicated gesture.
++   function writeTransform(next: PhotoReferenceTransform) {
++     if (!layerId) return;
++     if (target === &apos;background&apos;) setBackgroundTransform(layerId, next);
++     else setPhotoReferenceTransform(layerId, next);
++   }
++
++   // Resolve the source image&apos;s natural dimensions (photo) or the contain-fit ×
++   // clip-scale base draw size (background) through the shared decode-once cache
++   // (G-52-5 — never a per-effect `new Image()` decode; the cache&apos;s onload bump
++   // of physicPaintVersion re-fires this effect). Gated on !isPlaying, a present
++   // layerId, AND !transformLocked — the handles are invisible while locked (the
++   // default), so no decode work runs at all. A missing track / missing source /
++   // pending or failed decode clears the size (fail-closed — no handles without
++   // a resolved source, D-04).
++   useEffect(() =&gt; {
++     if (isPlaying || !layerId) {
++       imageSize.value = null;
++       return;
++     }
++     const document = getDocument(layerId);
++     if (!document) {
++       imageSize.value = null;
++       return;
++     }
++     if (target === &apos;background&apos;) {
++       if (document.background.transformLocked) {
++         imageSize.value = null;
++         return;
++       }
++       const source = physicPaintStore.getBackgroundSourceAt(layerId, currentFrame);
++       if (!source) {
++         imageSize.value = null;
++         return;
++       }
++       const image = physicPaintStore.getDecodedImage(source.bytes);
++       if (image === null) {
++         imageSize.value = null;
++         return;
++       }
++       // PROJECT-space base = contain-fit × clip scale — the compositor&apos;s ONE
++       // formula (computeEfxPaintBackgroundBaseDrawSize). The handles props are
++       // WORKING size; project size recovers via zoom = paperTextureScale.
++       const projectSize = {
++         width: zoom &gt; 0 ? width / zoom : width,
++         height: zoom &gt; 0 ? height / zoom : height,
++       };
++       const base = computeEfxPaintBackgroundBaseDrawSize(
++         image.width,
++         image.height,
++         projectSize,
++         source.scale,
++       );
++       imageSize.value = { w: base.width, h: base.height };
++       return;
++     }
++     const track = document.photoReference;
++     if (!track || track.sourceFrameRefs.length === 0 || track.transformLocked) {
++       imageSize.value = null;
++       return;
++     }
++     const verdict = physicPaintStore.getReferenceSourceFrameVerdict(layerId, currentFrame);
++     if (!verdict) {
++       imageSize.value = null;
++       return;
++     }
++     const image = physicPaintStore.getDecodedImage(verdict.bytes);
++     imageSize.value = image === null ? null : { w: image.width, h: image.height };
++     // eslint-disable-next-line react-hooks/exhaustive-deps -- the store version
++     // clocks are read inside the effect&apos;s dep array (narrow leaf subscription,
++     // never the Studio root); a source/transform/lock change re-resolves the
++     // size, and the cache&apos;s decode-complete bump re-fires for a pending decode.
++     // width/height/zoom ride along so a canvas resize re-fits the background
++     // contain-fit base (photo natural dims don&apos;t depend on them, re-run is a
++     // cheap cache-hit).
++   }, [target, layerId, currentFrame, isPlaying, width, height, zoom, efxPaintVersion.value, physicPaintVersion.value]);
++
++   // Read accepted display state by target (narrow reads, no render-body writes).
++   const document = layerId ? getDocument(layerId) : null;
++   const track = target === &apos;background&apos;
++     ? document?.background ?? null
++     : document?.photoReference ?? null;
++   const transformLocked = track?.transformLocked ?? true;
++   const transform = track?.transform ?? IDENTITY_TRANSFORM;
++
++   // Locked / playing / no resolved size / no track → no handles, no grab.
++   if (transformLocked || isPlaying || !imageSize.value || !track) {
++     return (
++       &lt;div
++         ref={containerRef}
++         style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++         aria-hidden=&quot;true&quot;
++       /&gt;
++     );
++   }
++
++   // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
++   // natural source size; background base = contain-fit × clip-scale (already
++   // project-space in imageSize for the background path).
++   const bounds = target === &apos;background&apos;
++     ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
++     : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
++   const handles = getHandlePositions(bounds, zoom);
++
++   const [tl, tr, br, bl] = bounds.corners;
++   const polyPoints = `${tl.x},${tl.y} ${tr.x},${tr.y} ${br.x},${br.y} ${bl.x},${bl.y}`;
++
++   // Counter-scaled fixed screen-pixel handle geometry (TransformOverlay pattern).
++   const strokeWidth = 1.5 / zoom;
++   const cornerSize = 8 / zoom;
++   const edgeSize = 6 / zoom;
++
++   // 50-UAT (D-13 spec gap fix): the VISIBLE rotation handle — a stem + circle
++   // above the top-edge midpoint along the box&apos;s outward normal, counter-scaled
++   // to a fixed 20px stem / 5px knob on screen. The corner rotation zones stay
++   // (drag near a corner also rotates); the knob makes rotation discoverable.
++   const topMid = { x: (tl.x + tr.x) / 2, y: (tl.y + tr.y) / 2 };
++   const normalX = topMid.x - bounds.center.x;
++   const normalY = topMid.y - bounds.center.y;
++   const normalLen = Math.hypot(normalX, normalY) || 1;
++   const rotHandle = {
++     x: topMid.x + (normalX / normalLen) * (20 / zoom),
++     y: topMid.y + (normalY / normalLen) * (20 / zoom),
++   };
++   const rotHandleRadius = 5 / zoom;
++   const rotHandleHitRadius = 8 / zoom;
++
++   function getWorkingPointFromClient(clientX: number, clientY: number): { x: number; y: number } {
++     const container = containerRef.current;
++     if (!container) return { x: 0, y: 0 };
++     const rect = container.getBoundingClientRect();
++     if (rect.width &lt;= 0 || rect.height &lt;= 0) return { x: 0, y: 0 };
++     return {
++       x: (clientX - rect.left) * (width / rect.width),
++       y: (clientY - rect.top) * (height / rect.height),
++     };
++   }
++
++   function handlePointerDown(e: PointerEvent) {
++     if (e.button !== 0) return;
++     const point = getWorkingPointFromClient(e.clientX, e.clientY);
++
++     // 50-UAT (D-13 spec): the visible rotation knob is a direct rotate target —
++     // checked BEFORE the corner/edge handles and the corner rotation zone.
++     const rotDx = point.x - rotHandle.x;
++     const rotDy = point.y - rotHandle.y;
++     if (rotDx * rotDx + rotDy * rotDy &lt;= rotHandleHitRadius * rotHandleHitRadius) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     const handleHit = hitTestHandles(point, handles, zoom);
++     if (handleHit) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: handleHit,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (getRotationZone(point, bounds, zoom)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         handleType: &apos;rotate&apos;,
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++
++     if (pointInPolygon(point, bounds.corners)) {
++       e.preventDefault();
++       dragRef.current = {
++         mode: &apos;pending&apos;,
++         startClientX: e.clientX,
++         startClientY: e.clientY,
++         startTransform: { ...transform },
++         startBounds: bounds,
++       };
++       beginInteraction(e.pointerId);
++       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
++       return;
++     }
++   }
++
++   function handlePointerMove(e: PointerEvent) {
++     const state = dragRef.current;
++     if (state.mode === &apos;none&apos;) return;
++     markInteractionActive();
++
++     if (state.mode === &apos;pending&apos;) {
++       const dist = Math.hypot(e.clientX - state.startClientX, e.clientY - state.startClientY);
++       if (dist &lt; DRAG_THRESHOLD) return;
++       if (state.handleType === &apos;rotate&apos;) {
++         dragRef.current = { ...state, mode: &apos;rotate&apos; };
++       } else if (state.handleType) {
++         dragRef.current = { ...state, mode: &apos;scale&apos; };
++       } else {
++         dragRef.current = { ...state, mode: &apos;move&apos; };
++       }
++     }
++
++     const current = dragRef.current;
++     if (current.mode === &apos;move&apos;) applyMove(e, current);
++     else if (current.mode === &apos;scale&apos;) applyScale(e, current);
++     else if (current.mode === &apos;rotate&apos;) applyRotation(e, current);
++   }
++
++   function applyMove(e: PointerEvent, state: DragState) {
++     const start = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const current = getWorkingPointFromClient(e.clientX, e.clientY);
++     const dx = (current.x - start.x) / zoom;
++     const dy = (current.y - start.y) / zoom;
++     writeTransform({
++       ...state.startTransform,
++       x: state.startTransform.x + dx,
++       y: state.startTransform.y + dy,
++     });
++   }
++
++   function applyScale(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const startDist = Math.hypot(startMouse.x - center.x, startMouse.y - center.y);
++     const currentDist = Math.hypot(mouse.x - center.x, mouse.y - center.y);
++     if (startDist &lt; 1) return;
++     const scaleFactor = currentDist / startDist;
++
++     const ht = state.handleType;
++     if (ht?.startsWith(&apos;corner&apos;)) {
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * scaleFactor,
++         scaleY: state.startTransform.scaleY * scaleFactor,
++       });
++     } else if (ht === &apos;edge-left&apos; || ht === &apos;edge-right&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = Math.cos(rad);
++       const axisY = Math.sin(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleX: state.startTransform.scaleX * factor,
++       });
++     } else if (ht === &apos;edge-top&apos; || ht === &apos;edge-bottom&apos;) {
++       const rad = (state.startTransform.rotation * Math.PI) / 180;
++       const axisX = -Math.sin(rad);
++       const axisY = Math.cos(rad);
++       const startProj = (startMouse.x - center.x) * axisX + (startMouse.y - center.y) * axisY;
++       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
++       if (Math.abs(startProj) &lt; 1) return;
++       const factor = currProj / startProj;
++       writeTransform({
++         ...state.startTransform,
++         scaleY: state.startTransform.scaleY * factor,
++       });
++     }
++   }
++
++   function applyRotation(e: PointerEvent, state: DragState) {
++     if (!state.startBounds) return;
++     const mouse = getWorkingPointFromClient(e.clientX, e.clientY);
++     const startMouse = getWorkingPointFromClient(state.startClientX, state.startClientY);
++     const center = state.startBounds.center;
++
++     const currentAngle = Math.atan2(mouse.y - center.y, mouse.x - center.x);
++     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
++     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
++
++     writeTransform({
++       ...state.startTransform,
++       rotation: state.startTransform.rotation + deltaAngle,
++     });
++   }
++
++   function handlePointerUp(e: PointerEvent) {
++     if (dragRef.current.mode !== &apos;none&apos;) endInteraction(e.pointerId);
++     dragRef.current = {
++       mode: &apos;none&apos;,
++       startClientX: 0,
++       startClientY: 0,
++       startTransform: IDENTITY_TRANSFORM,
++     };
++     try {
++       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
++     } catch {
++       // Pointer capture may not be active.
++     }
++   }
++
++   // 50-UAT (bounds-only capture): the overlay container is pointer-events NONE
++   // so painting outside the reference passes through to the engine canvas. The
++   // SVG children (bounds polygon, rotation-zone circles, handle rects) are the
++   // ONLY hit targets — each carries pointer-events: all and bubbles to the SVG
++   // root&apos;s handlers. The handler logic (hitTestHandles → getRotationZone →
++   // pointInPolygon) is unchanged; the SVG hit-testing only decides WHETHER the
++   // event fires at all.
++   return (
++     &lt;div
++       ref={containerRef}
++       style={{ position: &apos;absolute&apos;, inset: 0, pointerEvents: &apos;none&apos; }}
++       aria-label={target === &apos;background&apos; ? &apos;Background transform&apos; : &apos;Reference transform&apos;}
++     &gt;
++       &lt;svg
++         style={{
++           position: &apos;absolute&apos;,
++           inset: 0,
++           width: &apos;100%&apos;,
++           height: &apos;100%&apos;,
++           overflow: &apos;visible&apos;,
++           pointerEvents: &apos;none&apos;,
++         }}
++         viewBox={`0 0 ${width} ${height}`}
++         preserveAspectRatio=&quot;none&quot;
++         onPointerDown={handlePointerDown}
++         onPointerMove={handlePointerMove}
++         onPointerUp={handlePointerUp}
++       &gt;
++         &lt;polygon
++           points={polyPoints}
++           fill=&quot;transparent&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: &apos;move&apos; }}
++         /&gt;
++         {/* 50-UAT (D-13 spec): the VISIBLE rotation handle — a decorative stem
++             (pointer-events none, pass-through) plus an interactive knob that
++             enters rotate mode (handlePointerDown&apos;s direct rotation target). */}
++         &lt;line
++           x1={topMid.x}
++           y1={topMid.y}
++           x2={rotHandle.x}
++           y2={rotHandle.y}
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           aria-hidden=&quot;true&quot;
++         /&gt;
++         &lt;circle
++           cx={rotHandle.x}
++           cy={rotHandle.y}
++           r={rotHandleRadius}
++           fill=&quot;white&quot;
++           stroke=&quot;#4A90D9&quot;
++           stroke-width={strokeWidth}
++           vector-effect=&quot;non-scaling-stroke&quot;
++           style={{ pointerEvents: &apos;all&apos;, cursor: getCursorForHandle(null, true, transform.rotation) }}
++         /&gt;
++         {/* Rotation-zone hit circles — one per corner, radius = the 15px screen
++             rotation zone (getRotationZone). Transparent fill + pointer-events
++             all; the handler disambiguates rotate vs move by pointInPolygon. */}
++         {bounds.corners.map((corner, index) =&gt; (
++           &lt;circle
++             key={`rotation-zone-${index}`}
++             cx={corner.x}
++             cy={corner.y}
++             r={15 / zoom}
++             fill=&quot;transparent&quot;
++             style={{ pointerEvents: &apos;all&apos;, cursor: &apos;grab&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;corner&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - cornerSize / 2}
++             y={h.y - cornerSize / 2}
++             width={cornerSize}
++             height={cornerSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++         {handles.filter((h) =&gt; h.type.startsWith(&apos;edge&apos;)).map((h) =&gt; (
++           &lt;rect
++             key={h.type}
++             x={h.x - edgeSize / 2}
++             y={h.y - edgeSize / 2}
++             width={edgeSize}
++             height={edgeSize}
++             fill=&quot;white&quot;
++             stroke=&quot;#4A90D9&quot;
++             stroke-width={strokeWidth}
++             vector-effect=&quot;non-scaling-stroke&quot;
++             style={{ pointerEvents: &apos;all&apos; }}
++           /&gt;
++         ))}
++       &lt;/svg&gt;
++     &lt;/div&gt;
++   );
++ }
++
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:996:27
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; mounts a third handles instance gated on a non-null railId" time="0.000187042">
+            <failure message="expected 2 to be 3 // Object.is equality" type="AssertionError">
+AssertionError: expected 2 to be 3 // Object.is equality
+
+- Expected
++ Received
+
+- 3
++ 2
+
+ ❯ src/components/physic-paint/roto/railMotionCommands.test.ts:1008:91
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

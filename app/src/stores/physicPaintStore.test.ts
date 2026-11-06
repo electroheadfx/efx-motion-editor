@@ -10,6 +10,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import * as physicPaintStoreModule from './physicPaintStore';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, registerReferenceSourceImage, hydrateBackgroundSourceImages, hydrateReferenceSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setBackgroundFallback, setActiveTrackId, setTrackVisible, setPhotoReferenceSource } from './efxPaintStore';
@@ -3394,6 +3395,48 @@ describe('physicPaintStore', () => {
         await flushDecode();
         expect(readFrameMediaMock).not.toHaveBeenCalled();
       });
+    });
+
+    // 59-13 (T-59-42): the flattened memo grows by EXACTLY one entry per
+    // accepted motion commit — the `motion:` term rotates the canonical
+    // revision once — and an identical second commit is a revision-equality
+    // no-op, so the memo count never grows by accumulation.
+    it('59-13: one motion commit adds exactly one flattened memo entry; an identical commit adds none', async () => {
+      const memoEntryCount = (layerId: string): number => (
+        physicPaintStoreModule as unknown as {
+          getFlattenedMemoEntryCountForTests: (targetLayerId: string) => number;
+        }
+      ).getFlattenedMemoEntryCountForTests(layerId);
+
+      const frameDataUrl = makeFrame(0, 5).bytes;
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
+
+      const flattenAndCount = async (): Promise<number> => {
+        const record = await flattenAfterDecode(FLAT_LAYER, 5);
+        expect(record).not.toBeNull();
+        return memoEntryCount(FLAT_LAYER);
+      };
+
+      const before = await flattenAndCount();
+      expect(before).toBeGreaterThan(0);
+
+      const records = [{
+        railId: 'rail-1',
+        anchorKeyId: 'ka',
+        channels: [
+          { id: 'position-x' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+          { id: 'position-y' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+        ],
+      }];
+
+      const first = physicPaintStore.replaceRotoPhysicalRailMotions(FLAT_LAYER, 'track-a', records);
+      expect(first.ok).toBe(true);
+      expect(await flattenAndCount()).toBe(before + 1);
+
+      const repeated = physicPaintStore.replaceRotoPhysicalRailMotions(FLAT_LAYER, 'track-a', records);
+      expect(repeated.ok).toBe(true);
+      expect(await flattenAndCount()).toBe(before + 1);
     });
   });
 });

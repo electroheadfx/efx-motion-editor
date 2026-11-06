@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import * as railMotionCommandModule from './railMotionCommands';
 import type { RailMotionRailView } from './railMotionIdentity';
 import type {
   PhysicPaintRotoRailMotionChannel,
@@ -627,5 +630,383 @@ describe('59-12 Task 3: three independent selection scopes (MOTN-11)', () => {
       hasDrawingKey: afterRailReselection.drawingKeyIds.length > 0,
       hasMotionKey: afterRailReselection.motionKey !== null,
     })).toBe('motion-key');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 59-13: the canvas gizmo — one pure write path, the D-08 gate, and the
+// session-draft reducer. The command module is read through a namespace cast
+// so the RED run reports per-test assertion failures instead of an import
+// collection failure while the 59-13 API is still absent.
+// ---------------------------------------------------------------------------
+
+type GizmoTransformValues = {
+  readonly position?: { readonly x: number; readonly y: number };
+  readonly scale?: number;
+  readonly rotation?: number;
+};
+
+type GizmoCommandResult =
+  | { readonly ok: true; readonly records: readonly PhysicPaintRotoRailMotionRecord[] }
+  | { readonly ok: false; readonly reason: string };
+
+interface GizmoCommandSurface {
+  mergeRailMotionDraft(
+    draft: GizmoTransformValues | null,
+    next: GizmoTransformValues,
+  ): GizmoTransformValues;
+  resolveMotionGizmoAvailability(input: {
+    readonly selectedRailId: string | null;
+    readonly animatedChannelIds: readonly string[];
+    readonly cursorInsideSpan: boolean;
+  }): { readonly enabled: boolean; readonly reason: string | null };
+  writeMotionTransformAtCursor(input: {
+    readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+    readonly view: RailMotionRailView;
+    readonly cursorFrame: number;
+    readonly values: GizmoTransformValues;
+  }): GizmoCommandResult;
+}
+
+const gizmoCommands = railMotionCommandModule as unknown as GizmoCommandSurface;
+
+/** The animated rail the gizmo mounts for — a 59-06 view with a non-null railId. */
+function gizmoView(overrides: Partial<RailMotionRailView> = {}): RailMotionRailView {
+  return railView({ railId: 'rail-1', ...overrides });
+}
+
+function keyAt(
+  record: PhysicPaintRotoRailMotionRecord,
+  channelId: PhysicPaintRotoRailMotionRecord['channels'][number]['id'],
+  frame: number,
+) {
+  return channelOf(record, channelId).keys.find((key) => key.frame === frame) ?? null;
+}
+
+describe('59-13 rail motion commands — gizmo transform write', () => {
+  it('writes the grouped Position pair at the rail-local cursor in ONE result', () => {
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      // App frame 15 on a rail that starts at 10 → rail-local 5.
+      cursorFrame: 15,
+      values: { position: { x: 40, y: -12 } },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys.map((key) => key.frame)).toEqual([0, 5, 10]);
+    expect(channelOf(record, 'position-y').keys.map((key) => key.frame)).toEqual([0, 5, 10]);
+    expect(keyAt(record, 'position-x', 5)?.value).toBe(40);
+    expect(keyAt(record, 'position-y', 5)?.value).toBe(-12);
+    // Only the dragged channel family changed — Scale and Rotation keep their keys.
+    expect(channelOf(record, 'scale').keys.map((key) => key.frame)).toEqual([0, 10]);
+    expect(channelOf(record, 'rotation').keys.map((key) => key.frame)).toEqual([4]);
+  });
+
+  it('converts Scale from UI percent to the model factor through the 59-02 pair', () => {
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { scale: 120 },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(keyAt(recordOf(result.records), 'scale', 4)?.value).toBe(1.2);
+    // The untouched Position keys keep the model values, not percent.
+    expect(keyAt(recordOf(result.records), 'position-x', 0)?.value).toBe(0);
+  });
+
+  it('writes Rotation in degrees with NO normalization', () => {
+    const above = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 24,
+      values: { rotation: 720 },
+    });
+    expect(above.ok).toBe(true);
+    if (!above.ok) return;
+    expect(keyAt(recordOf(above.records), 'rotation', 14)?.value).toBe(720);
+
+    const below = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 25,
+      values: { rotation: -90 },
+    });
+    expect(below.ok).toBe(true);
+    if (!below.ok) return;
+    expect(keyAt(recordOf(below.records), 'rotation', 15)?.value).toBe(-90);
+  });
+
+  it('writes only the channels present in the partial', () => {
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 15,
+      values: { scale: 150 },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys.map((key) => key.frame)).toEqual([0, 10]);
+    expect(channelOf(record, 'position-y').keys.map((key) => key.frame)).toEqual([0, 10]);
+    expect(channelOf(record, 'rotation').keys.map((key) => key.frame)).toEqual([4]);
+    expect(keyAt(record, 'scale', 5)?.value).toBe(1.5);
+  });
+
+  it('clamps the key frame into the rail span through railMotionCursorFrame', () => {
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 500,
+      values: { position: { x: 11, y: 12 } },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(keyAt(record, 'position-x', 10)?.value).toBe(11);
+    expect(keyAt(record, 'position-y', 10)?.value).toBe(12);
+    expect(channelOf(record, 'position-x').keys.some((key) => key.frame === 490)).toBe(false);
+  });
+
+  it('rejects a drag on a channel with no keys, leaving the collection byte-identical (D-08)', () => {
+    const scaleFree = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [motionKey(0, 0), motionKey(10, 100)]),
+        motionChannel('position-y', [motionKey(0, 0), motionKey(10, 50)]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const records = [scaleFree];
+    const before = JSON.stringify(records);
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records,
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { scale: 120 },
+    });
+    expect(result).toEqual({ ok: false, reason: 'This Motion channel has no keys yet.' });
+    expect(JSON.stringify(records)).toBe(before);
+    expect(records[0]).toBe(scaleFree);
+  });
+
+  it('rejects a Position drag when only one axis is animated (D-08 grouped pair)', () => {
+    const xOnly = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [motionKey(0, 0), motionKey(10, 100)]),
+        motionChannel('scale', [motionKey(0, 1)]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [xOnly],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { position: { x: 40, y: 40 } },
+    });
+    expect(result).toEqual({ ok: false, reason: 'This Motion channel has no keys yet.' });
+  });
+
+  it('rejects an un-animated rail and a view without a railId with plain reasons', () => {
+    expect(gizmoCommands.writeMotionTransformAtCursor({
+      records: [],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { position: { x: 1, y: 2 } },
+    })).toEqual({ ok: false, reason: 'This rail has no Motion to edit yet.' });
+
+    expect(gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: railView(),
+      cursorFrame: 14,
+      values: { position: { x: 1, y: 2 } },
+    })).toEqual({ ok: false, reason: 'Animate the rail before dragging it.' });
+  });
+
+  it('rejects an empty partial and a non-finite cursor with plain reasons', () => {
+    expect(gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: {},
+    })).toEqual({ ok: false, reason: 'The drag did not change a Motion channel.' });
+
+    expect(gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: Number.NaN,
+      values: { position: { x: 1, y: 2 } },
+    })).toEqual({ ok: false, reason: 'The playhead is not on a valid frame.' });
+  });
+
+  it('rejects a non-finite channel value instead of writing it (no NaN reaches the document)', () => {
+    const result = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { rotation: Number.NaN },
+    });
+    expect(result).toEqual({ ok: false, reason: 'This value is outside the Motion channel range.' });
+  });
+
+  it('supplies the grouped sibling EXPLICITLY instead of deriving it (one atomic pair write)', () => {
+    const result = setMotionKeyAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 5,
+      value: 40,
+      pairedValue: -12,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    // The evaluated sibling would have seeded 25 — the explicit value wins.
+    expect(keyAt(record, 'position-y', 5)?.value).toBe(-12);
+    expect(keyAt(record, 'position-x', 5)?.value).toBe(40);
+  });
+});
+
+describe('59-13 rail motion commands — gizmo availability', () => {
+  it('is disabled with a reason when no animated rail is selected', () => {
+    expect(gizmoCommands.resolveMotionGizmoAvailability({
+      selectedRailId: null,
+      animatedChannelIds: ['position-x', 'position-y'],
+      cursorInsideSpan: true,
+    })).toEqual({ enabled: false, reason: 'Select an animated rail to edit its motion.' });
+  });
+
+  it('is disabled with a reason when the rail carries no motion', () => {
+    expect(gizmoCommands.resolveMotionGizmoAvailability({
+      selectedRailId: 'rail-1',
+      animatedChannelIds: [],
+      cursorInsideSpan: true,
+    })).toEqual({ enabled: false, reason: 'Animate the rail before dragging it.' });
+  });
+
+  it('is disabled when the only animated channel is Opacity (D-07 — numeric-only)', () => {
+    expect(gizmoCommands.resolveMotionGizmoAvailability({
+      selectedRailId: 'rail-1',
+      animatedChannelIds: ['opacity'],
+      cursorInsideSpan: true,
+    })).toEqual({ enabled: false, reason: 'This rail has no draggable Motion channel.' });
+  });
+
+  it('is disabled when the playhead is outside the rail span', () => {
+    expect(gizmoCommands.resolveMotionGizmoAvailability({
+      selectedRailId: 'rail-1',
+      animatedChannelIds: ['scale'],
+      cursorInsideSpan: false,
+    })).toEqual({ enabled: false, reason: 'Move the playhead inside the rail to edit its motion.' });
+  });
+
+  it('is enabled with a null reason when a draggable channel is animated inside the span', () => {
+    expect(gizmoCommands.resolveMotionGizmoAvailability({
+      selectedRailId: 'rail-1',
+      animatedChannelIds: ['position-x', 'position-y', 'scale', 'rotation'],
+      cursorInsideSpan: true,
+    })).toEqual({ enabled: true, reason: null });
+  });
+});
+
+describe('59-13 rail motion commands — draft merge reducer', () => {
+  it('seeds a frozen draft from a null base', () => {
+    const next = { position: { x: 4, y: 6 } };
+    const merged = gizmoCommands.mergeRailMotionDraft(null, next);
+    expect(merged).toEqual({ position: { x: 4, y: 6 } });
+    expect(Object.isFrozen(merged)).toBe(true);
+    expect(Object.isFrozen(merged.position)).toBe(true);
+    // The caller's object is never frozen or mutated by the merge.
+    expect(Object.isFrozen(next)).toBe(false);
+    expect(Object.isFrozen(next.position)).toBe(false);
+  });
+
+  it('overrides only the present channels and keeps the rest of the draft', () => {
+    const draft = { position: { x: 4, y: 6 }, scale: 110 };
+    const merged = gizmoCommands.mergeRailMotionDraft(draft, { scale: 125 });
+    expect(merged).toEqual({ position: { x: 4, y: 6 }, scale: 125 });
+    expect(merged).not.toBe(draft);
+    expect(draft).toEqual({ position: { x: 4, y: 6 }, scale: 110 });
+    expect(Object.isFrozen(merged)).toBe(true);
+  });
+
+  it('replaces the Position pair wholesale, never mixing one axis with the other', () => {
+    const merged = gizmoCommands.mergeRailMotionDraft(
+      { position: { x: 4, y: 6 } },
+      { position: { x: 8, y: 9 } },
+    );
+    expect(merged.position).toEqual({ x: 8, y: 9 });
+  });
+});
+
+describe('59-13 rail motion commands — purity and source pins', () => {
+  const commandSource = readFileSync(
+    fileURLToPath(new URL('./railMotionCommands.ts', import.meta.url)),
+    'utf8',
+  );
+  const handlesSource = readFileSync(
+    fileURLToPath(new URL('../view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)),
+    'utf8',
+  );
+  const studioViewSource = readFileSync(
+    fileURLToPath(new URL('../view/PhysicsPaintStudioView.tsx', import.meta.url)),
+    'utf8',
+  );
+
+  function countOccurrences(source: string, token: string): number {
+    return source.split(token).length - 1;
+  }
+
+  it('keeps the command layer free of store, signal, component and DOM imports', () => {
+    expect(commandSource).not.toMatch(/from '.*physicPaintStore'/);
+    expect(commandSource).not.toMatch(/from '.*efxPaintStore'/);
+    expect(commandSource).not.toMatch(/from '@preact\/signals'/);
+    expect(commandSource).not.toMatch(/from 'preact/);
+    expect(commandSource).not.toContain('document.');
+    expect(commandSource).not.toContain('window.');
+    expect(countOccurrences(commandSource, 'setPhotoReferenceTransform')).toBe(0);
+    expect(countOccurrences(commandSource, 'setBackgroundTransform')).toBe(0);
+  });
+
+  it('has exactly ONE writeMotionTransformAtCursor call, inside handlePointerUp', () => {
+    expect(countOccurrences(handlesSource, 'writeMotionTransformAtCursor(')).toBe(1);
+    const upStart = handlesSource.indexOf('function handlePointerUp');
+    expect(upStart).toBeGreaterThan(-1);
+    const upBody = handlesSource.slice(upStart);
+    expect(upBody).toContain('writeMotionTransformAtCursor(');
+    const moveStart = handlesSource.indexOf('function handlePointerMove');
+    const moveEnd = handlesSource.indexOf('function applyMove');
+    expect(moveStart).toBeGreaterThan(-1);
+    expect(moveEnd).toBeGreaterThan(moveStart);
+    expect(handlesSource.slice(moveStart, moveEnd)).not.toContain('writeMotionTransformAtCursor(');
+  });
+
+  it('keeps the gesture machine and the legacy write endpoints intact', () => {
+    expect(handlesSource).toContain("mode: 'none' | 'pending' | 'move' | 'scale' | 'rotate';");
+    expect(countOccurrences(handlesSource, 'setBackgroundTransform(layerId')).toBe(1);
+    expect(countOccurrences(handlesSource, 'setPhotoReferenceTransform(layerId')).toBe(1);
+    expect(handlesSource).toContain('onPointerCancel={handlePointerCancel}');
+  });
+
+  it('adds rail-motion as a third target with no opacity affordance and no rotation wrap', () => {
+    expect(handlesSource).toContain(
+      "export type PhysicsPaintTransformHandleTarget = 'photo-reference' | 'background' | 'rail-motion';",
+    );
+    expect(handlesSource).toContain("target: 'photo-reference' | 'background' | 'rail-motion'");
+    expect(handlesSource).not.toContain("'opacity'");
+    expect(handlesSource).not.toContain('% 360');
+    expect(handlesSource).not.toContain('% 2 * Math.PI');
+    expect(commandSource).not.toContain('% 360');
+    expect(commandSource).not.toContain('% 2 * Math.PI');
+  });
+
+  it('mounts a third handles instance gated on a non-null railId', () => {
+    expect(countOccurrences(studioViewSource, '<PhysicsPaintReferenceTransformHandles ')).toBe(3);
+    expect(studioViewSource).toContain('railMotionTransformHandles');
+    expect(studioViewSource).toMatch(/railMotionTransformHandles\?\.railMotion\?\.view\.railId/);
   });
 });
