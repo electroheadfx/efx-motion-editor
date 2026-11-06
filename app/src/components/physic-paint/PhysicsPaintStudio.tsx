@@ -3166,6 +3166,9 @@ export function PhysicsPaintStudio() {
     getRotoKeyRecords: () => rotoKeyRecords,
     getRotoInterpolationState: () => rotoInterpolationState,
     getRotoLoopClips: () => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, studioActiveTrackId()) : [],
+    // 59-18 (G3/CR-01): the copy builder reads the SAME active track that
+    // produced the records and loop clips above, resolved at call time.
+    getRotoRailMotions: () => launchContext ? physicPaintStore.getRotoPhysicalRailMotions(launchContext.layerId, studioActiveTrackId()) : PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
     getRotoGroupOverrideRecords: () => launchContext
       ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())?.groupOverrideRecords ?? []
       : [],
