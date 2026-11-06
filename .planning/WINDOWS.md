@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 0
 waived_count: 18
-fixed_count: 90
-total_count: 108
-last_updated: 2026-11-02T10:34:06.540Z
+fixed_count: 91
+total_count: 109
+last_updated: 2026-11-06T13:48:11.828Z
 ---
 
 # Broken Windows Ledger
@@ -123,6 +123,7 @@ last_updated: 2026-11-02T10:34:06.540Z
 | 106 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3 | fixed |  | 2026-10-24T15:04:35.435Z | 2026-11-02T10:02:25.527Z |
 | 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | fixed |  | 2026-10-24T15:04:35.585Z | 2026-11-02T10:02:25.642Z |
 | 108 | 261030-v1t | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels | fixed |  | 2026-10-30T21:55:02.464Z | 2026-11-02T10:02:25.752Z |
+| 109 | 59 | deviation | app/src-tauri/src/services/script_library.rs |  | Rule 2: a present non-array railMotions fails closed instead of taking the plan snippet's silent-skip path | fixed |  | 2026-11-06T13:47:57.981Z | 2026-11-06T13:48:11.828Z |
 
 ````json
 [
@@ -1457,6 +1458,19 @@ last_updated: 2026-11-02T10:34:06.540Z
     "recorded_at": "2026-10-30T21:55:02.464Z",
     "resolved_at": "2026-11-02T10:02:25.752Z",
     "milestone": "v2.0.0"
+  },
+  {
+    "id": 109,
+    "kind": "deviation",
+    "phase": "59",
+    "file": "app/src-tauri/src/services/script_library.rs",
+    "line": null,
+    "description": "Rule 2: a present non-array railMotions fails closed instead of taking the plan snippet's silent-skip path",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-11-06T13:47:57.981Z",
+    "resolved_at": "2026-11-06T13:48:11.828Z",
+    "milestone": "v2.1.0"
   }
 ]
 ````
