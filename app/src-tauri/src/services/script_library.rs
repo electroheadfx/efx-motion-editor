@@ -1525,6 +1525,271 @@ fn canonical_loop_clips(loop_clips: &[Value]) -> Result<String, String> {
     Ok(format!("{}:{encoded}", ordered.len()))
 }
 
+// ---------------------------------------------------------------------------
+// 59-04 (MOTN-12 / REL-02): rail-motion canonical term.
+//
+// Mirrors `encodeCanonicalRailMotions` in physicsPaintRotoPhysicalModel.ts at
+// the ordinal reserved by 59-01: after `loops:` and before `incoming-breaks:`.
+// The collection is untrusted input on this boundary (a caller-supplied
+// physical document), so the encoder validates the whole record before it
+// builds any bytes and fails closed: a malformed collection is an error naming
+// the field, never a silently skipped term. The caps mirror the TypeScript
+// parser (T-59-11): 512 records, 5 channels per record, 4096 keys per channel,
+// 128-character ids.
+// ---------------------------------------------------------------------------
+
+const RAIL_MOTION_MAX_RECORDS: usize = 512;
+const RAIL_MOTION_MAX_CHANNELS: usize = 5;
+const RAIL_MOTION_MAX_KEYS: usize = 4096;
+const RAIL_MOTION_ID_MAX_LENGTH: usize = 128;
+const RAIL_MOTION_FRAME_LIMIT: f64 = 1_000_000.0;
+const RAIL_MOTION_WIGGLE_LIMIT: f64 = 1_000_000.0;
+const RAIL_MOTION_POSITION_LIMIT_PX: f64 = 1_000_000.0;
+
+/// The fixed channel order (D-13). Grouped Position occupies the first two
+/// slots; the writer canonicalizes input order into this sequence, so two
+/// channel arrays that differ only in order encode byte-identically.
+const RAIL_MOTION_CHANNEL_ORDER: [&str; RAIL_MOTION_MAX_CHANNELS] =
+    ["position-x", "position-y", "scale", "rotation", "opacity"];
+
+struct CanonicalRailMotionKey {
+    frame: f64,
+    value: f64,
+    easing: String,
+    wiggle: f64,
+}
+
+fn rail_motion_channel_is_known(channel_id: &str) -> bool {
+    RAIL_MOTION_CHANNEL_ORDER.contains(&channel_id)
+}
+
+/// Value domains (D-09), mirroring `railMotionValueIsValid` exactly.
+fn rail_motion_value_is_valid(channel_id: &str, value: f64) -> bool {
+    if !value.is_finite() {
+        return false;
+    }
+    match channel_id {
+        "position-x" | "position-y" => value.abs() <= RAIL_MOTION_POSITION_LIMIT_PX,
+        "scale" => value > 0.0,
+        "rotation" => true,
+        "opacity" => (0.0..=1.0).contains(&value),
+        _ => false,
+    }
+}
+
+fn rail_motion_bounded_id(value: Option<&str>) -> Option<&str> {
+    match value {
+        Some(id)
+            if !id.trim().is_empty() && id.chars().count() <= RAIL_MOTION_ID_MAX_LENGTH =>
+        {
+            Some(id)
+        }
+        _ => None,
+    }
+}
+
+fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
+    if rail_motions.len() > RAIL_MOTION_MAX_RECORDS {
+        return Err(format!(
+            "Target physical document railMotions carries {} records; at most {} are supported",
+            rail_motions.len(),
+            RAIL_MOTION_MAX_RECORDS
+        ));
+    }
+    let mut ordered: Vec<&Value> = rail_motions.iter().collect();
+    ordered.sort_by(|left, right| {
+        let left_id = left.get("railId").and_then(Value::as_str).unwrap_or("");
+        let right_id = right.get("railId").and_then(Value::as_str).unwrap_or("");
+        left_id.cmp(right_id)
+    });
+
+    let mut encoded = String::new();
+    let mut seen_rail_ids: Vec<&str> = Vec::new();
+    for record in &ordered {
+        let object = record
+            .as_object()
+            .ok_or("Target physical document railMotions record is malformed")?;
+        let rail_id = rail_motion_bounded_id(object.get("railId").and_then(Value::as_str))
+            .ok_or("Target physical document railMotions railId is malformed")?;
+        if seen_rail_ids.contains(&rail_id) {
+            return Err(format!(
+                "Target physical document railMotions duplicate railId {rail_id}"
+            ));
+        }
+        seen_rail_ids.push(rail_id);
+        let anchor_key_id =
+            rail_motion_bounded_id(object.get("anchorKeyId").and_then(Value::as_str))
+                .ok_or("Target physical document railMotions anchorKeyId is malformed")?;
+        let channels = object
+            .get("channels")
+            .and_then(Value::as_array)
+            .ok_or("Target physical document railMotions channels is malformed")?;
+        if channels.is_empty() {
+            return Err(format!(
+                "Target physical document railMotions record {rail_id} channels is empty"
+            ));
+        }
+        if channels.len() > RAIL_MOTION_MAX_CHANNELS {
+            return Err(format!(
+                "Target physical document railMotions record {rail_id} channels carries {} channels; at most {} are supported",
+                channels.len(),
+                RAIL_MOTION_MAX_CHANNELS
+            ));
+        }
+
+        let mut parsed_channels: Vec<(&str, Vec<CanonicalRailMotionKey>)> = Vec::new();
+        for channel in channels {
+            let channel_object = channel
+                .as_object()
+                .ok_or("Target physical document railMotions channel is malformed")?;
+            let channel_id = channel_object
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or("Target physical document railMotions channel id is malformed")?;
+            if !rail_motion_channel_is_known(channel_id) {
+                return Err(format!(
+                    "Target physical document railMotions record {rail_id} has unknown channel id {channel_id}"
+                ));
+            }
+            if parsed_channels
+                .iter()
+                .any(|(seen_channel_id, _)| *seen_channel_id == channel_id)
+            {
+                return Err(format!(
+                    "Target physical document railMotions record {rail_id} duplicate channel id {channel_id}"
+                ));
+            }
+            let keys = channel_object
+                .get("keys")
+                .and_then(Value::as_array)
+                .ok_or("Target physical document railMotions channel keys is malformed")?;
+            if keys.is_empty() {
+                return Err(format!(
+                    "Target physical document railMotions channel {channel_id} in record {rail_id} is empty"
+                ));
+            }
+            if keys.len() > RAIL_MOTION_MAX_KEYS {
+                return Err(format!(
+                    "Target physical document railMotions channel {channel_id} in record {rail_id} carries {} keys; at most {} are supported",
+                    keys.len(),
+                    RAIL_MOTION_MAX_KEYS
+                ));
+            }
+            let mut parsed_keys = Vec::with_capacity(keys.len());
+            let mut previous_frame: Option<f64> = None;
+            for key in keys {
+                let key_object = key
+                    .as_object()
+                    .ok_or("Target physical document railMotions key is malformed")?;
+                let frame = key_object
+                    .get("frame")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document railMotions key frame is malformed")?;
+                if !frame.is_finite()
+                    || frame.fract() != 0.0
+                    || !(0.0..=RAIL_MOTION_FRAME_LIMIT).contains(&frame)
+                {
+                    return Err(format!(
+                        "Target physical document railMotions channel {channel_id} in record {rail_id} has an invalid frame"
+                    ));
+                }
+                if let Some(previous) = previous_frame {
+                    if frame <= previous {
+                        return Err(format!(
+                            "Target physical document railMotions channel {channel_id} in record {rail_id} has non-ascending frames"
+                        ));
+                    }
+                }
+                previous_frame = Some(frame);
+                let value = key_object
+                    .get("value")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document railMotions key value is malformed")?;
+                if !rail_motion_value_is_valid(channel_id, value) {
+                    return Err(format!(
+                        "Target physical document railMotions channel {channel_id} in record {rail_id} has a value outside the channel domain"
+                    ));
+                }
+                let easing = key_object
+                    .get("easing")
+                    .and_then(Value::as_str)
+                    .ok_or("Target physical document railMotions key easing is malformed")?;
+                if easing != "hold" && easing != "ease" {
+                    return Err(format!(
+                        "Target physical document railMotions channel {channel_id} in record {rail_id} has an invalid easing"
+                    ));
+                }
+                let wiggle = key_object
+                    .get("wiggle")
+                    .and_then(Value::as_f64)
+                    .ok_or("Target physical document railMotions key wiggle is malformed")?;
+                if !wiggle.is_finite() || wiggle < 0.0 || wiggle > RAIL_MOTION_WIGGLE_LIMIT {
+                    return Err(format!(
+                        "Target physical document railMotions channel {channel_id} in record {rail_id} has an invalid wiggle"
+                    ));
+                }
+                parsed_keys.push(CanonicalRailMotionKey {
+                    frame,
+                    value,
+                    easing: easing.to_string(),
+                    wiggle,
+                });
+            }
+            parsed_channels.push((channel_id, parsed_keys));
+        }
+
+        // D-12 grouped Position: both axes present or both absent, and the
+        // pair carries an identical frame set. Checked before any bytes are
+        // written for the record, so a malformed pair fails deterministically.
+        let position_x = parsed_channels
+            .iter()
+            .find(|(channel_id, _)| *channel_id == "position-x");
+        let position_y = parsed_channels
+            .iter()
+            .find(|(channel_id, _)| *channel_id == "position-y");
+        match (position_x, position_y) {
+            (Some((_, x_keys)), Some((_, y_keys))) => {
+                let frames_match = x_keys.len() == y_keys.len()
+                    && x_keys
+                        .iter()
+                        .zip(y_keys.iter())
+                        .all(|(x_key, y_key)| x_key.frame == y_key.frame);
+                if !frames_match {
+                    return Err(format!(
+                        "Target physical document railMotions record {rail_id} position-x and position-y must carry an identical frame set"
+                    ));
+                }
+            }
+            (None, None) => {}
+            _ => {
+                return Err(format!(
+                    "Target physical document railMotions record {rail_id} position-x and position-y must both be present or both be absent"
+                ));
+            }
+        }
+
+        encoded.push_str(&canonical_string(rail_id));
+        encoded.push_str(&canonical_string(anchor_key_id));
+        encoded.push_str(&format!("{}:", parsed_channels.len()));
+        for channel_id in RAIL_MOTION_CHANNEL_ORDER {
+            if let Some((_, keys)) = parsed_channels
+                .iter()
+                .find(|(seen_channel_id, _)| *seen_channel_id == channel_id)
+            {
+                encoded.push_str(&canonical_string(channel_id));
+                encoded.push_str(&format!("{}:", keys.len()));
+                for key in keys {
+                    encoded.push_str(&canonical_number(key.frame));
+                    encoded.push_str(&canonical_number(key.value));
+                    encoded.push_str(&canonical_string(&key.easing));
+                    encoded.push_str(&canonical_number(key.wiggle));
+                }
+            }
+        }
+    }
+    Ok(format!("{}:{encoded}", ordered.len()))
+}
+
 fn canonical_incoming_breaks(breaks: &[Value]) -> Result<String, String> {
     let mut ordered: Vec<&Value> = breaks.iter().collect();
     ordered.sort_by(|left, right| {
@@ -1560,7 +1825,7 @@ fn hash_canonical_physical_value(source: &str) -> String {
 ///   interpolation
 ///   mode
 ///   loops               (non-empty only)
-///   rail-motions        (reserved for Phase 59 — non-empty only, NOT emitted yet)
+///   rail-motions        (non-empty only — Phase 59 motion collection)
 ///   incoming-breaks     (non-empty only)
 ///   capacity
 ///   motion
@@ -1589,6 +1854,16 @@ pub(crate) fn canonical_physical_source(document: &Value) -> Result<String, Stri
     let loop_clips = match object.get("loopClips").and_then(Value::as_array) {
         Some(loop_clips) => loop_clips.as_slice(),
         None => &[],
+    };
+    // 59-04: a present railMotions member is untrusted input and must fail
+    // closed when it is not an array — only absence means the empty collection
+    // (the TypeScript parser draws the same line).
+    let rail_motions: &[Value] = match object.get("railMotions") {
+        None => &[],
+        Some(value) => value
+            .as_array()
+            .map(Vec::as_slice)
+            .ok_or("Target physical document railMotions is malformed")?,
     };
     let incoming_breaks = match object
         .get("incomingInterpolationBreakKeyIds")
@@ -1638,10 +1913,16 @@ pub(crate) fn canonical_physical_source(document: &Value) -> Result<String, Stri
     if !loop_clips.is_empty() {
         source.push_str(&format!("loops:{}", canonical_loop_clips(loop_clips)?));
     }
-    // 59-01: `rail-motions:` is RESERVED at this ordinal — after `loops:` and
-    // before `incoming-breaks:`. Phase 59's motion encoder owns the emission;
-    // this plan deliberately emits nothing here so no existing project value
-    // moves.
+    // 59-04: `rail-motions:` occupies the ordinal reserved by 59-01 — after
+    // `loops:` and before `incoming-breaks:`. Same D-29 idiom as Loop Clips:
+    // an absent or empty collection contributes NO term, so every
+    // pre-Phase-59 project value keeps its exact revision.
+    if !rail_motions.is_empty() {
+        source.push_str(&format!(
+            "rail-motions:{}",
+            canonical_rail_motions(rail_motions)?
+        ));
+    }
     if !incoming_breaks.is_empty() {
         source.push_str(&format!(
             "incoming-breaks:{}",
