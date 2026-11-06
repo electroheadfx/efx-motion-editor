@@ -172,13 +172,32 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
-**Carried forward (no milestone assigned — v2.1.0 candidates need `/gsd-new-milestone`):**
+**v2.1.0 scope (defined 2026-11-06 — see `.planning/REQUIREMENTS.md`):** rail motion channels with the v7 interface (Phase 59), Studio timeline horizontal zoom (Phase 60), vector painting tool (Phase 61), painted-script/stroke curve editing (Phase 62).
+
+**Carried forward (not scheduled in v2.1.0):**
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 - [ ] Delete the dead `efx-spectral` path (package + workspace dependency + `engine/deposit.ts` import; only tests call it) — optional cleanup, no behavior change — v2.0.0 audit
 - [ ] Dual paper-fingerprint drift: `aquarelleBake` exports `aquarellePaperCacheFingerprint` while the app re-derives the paper term in `useRotoFramePersistenceCoordinator.ts:280` — v2.0.0 audit
 - [ ] Frame fade (compositing/export cumulative-frame crossfade, separate from opacity) — idea only, not scheduled — todo 261024-frame-fade-compositing
+
+## Current Milestone: v2.1.0 Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
+
+**Goal:** Turn every rail into an animatable object — independent Motion keys driving a compositor-level transform — then add frame-density timeline zoom, a vector painting tool, and painted-stroke curve editing.
+
+**Target features:**
+
+- **Phase 59 — Rail motion + v7 interface.** Motion keys are independent of drawing keys; three selection scopes (rail / drawing key / motion key); channels opened on demand one at a time — Position (two modes: grouped whole-position, or split X + Y as in Maya/Softimage), Scale, Rotation, Opacity; rail-local time with repeat = hold or fit-to-span; transform applied at the compositor (1 raster per track per frame, content cycles while motion continues, no re-bake); seeded wiggle deterministic at export; v7 chrome (18px lanes, header chevron minus/right/down, lane-header nav cluster, 6×6 Motion keys, rounded selected-rail outline). Gates A–D are answered in the phase plan. **Any rail animates** — Standard, Motion, Static, Reveal, and bare Key Rails — with no cycle value required or changed.
+- **Phase 60 — Studio timeline horizontal zoom.** Frame density only (row, lane and cell heights stay fixed); Cmd/Ctrl+wheel plus a zoom pill; 0.25×–4× with Fit; session-only, no document/schema/export change.
+- **Phase 61 — Vector painting tool.** `pen-tool` / `spline-pointer`, per-vertex paint properties, curve-type choice, wireframe preview.
+- **Phase 62 — Painted script/stroke curve editing.**
+
+**Out of scope:** Studio API/MCP → its own v2.2.0 milestone (Phase 63). Seconds/frames equivalence and Studio canvas zoom shipped in v2.0.1 (261105-cgl, 261104-uyv).
+
+**Source of truth:** `SPECS/v2.1.0-motion-channels/` — `CONTEXT.md` is the model/intent authority, `README.md` the motion-lane UI contract, `MOTION-CHANNELS.tsx` / `motion-channels.css` the surface reference. Chrome authority is v7 (`VjszJ`); the v3 frame (`w3YrPL`) supplies only the animation model; v2 chrome (20px lanes, orange selection, Animate dropdown) is superseded and must not ship.
+
+**Constraints carried into this milestone:** `.mce` gains motion persistence, so every new field is declared in BOTH TS and Rust under the field-diff pin; `PhysicPaintRotoScriptMotionSettings` (script-motion wiggle, 261030-ey9) is a different system and must not be merged with Motion channels; the paint time law (60 Hz integer tick grid, deterministic replay) still applies.
 
 ## Latest Milestone: v2.0.1 Rail Editing & v7 Timeline Rails (PATCH) — Shipped 2026-11-05
 
@@ -414,4 +433,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-05 after the v2.0.1 milestone — 15/15 requirements validated (RAIL-01..07, VIS-01..08), audit verdict `tech_debt` with 0 gaps, signed/notarized GitHub Latest published (tag `v2.0.1` → `49b5f7e57`), closeout `override_closeout` (Phase 58 verifier digest stale after the post-verification quicks; 1 quick acknowledged with live UAT unconfirmed). Next: `/gsd-new-milestone` — v2.1.0 motion channels per `SPECS/v2.1.0-motion-channels/`; global phase numbering continues at 59.*
+*Last updated: 2026-11-06 after opening milestone v2.1.0 — rail motion channels with the v7 interface, Studio timeline horizontal zoom, vector painting tool, and painted-script curve editing; global phase numbering continues at 59 (Phase 57 retired, never reused). Previous: v2.0.1 shipped 2026-11-05 (tag `v2.0.1` → `49b5f7e57`, 15/15 requirements, audit `tech_debt` with 0 gaps).*

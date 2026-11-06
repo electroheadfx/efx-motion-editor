@@ -1,19 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v2.0.1
-status: Awaiting next milestone
-stopped_at: v2.0.1 published as GitHub Latest; ready for milestone completion
-last_updated: "2026-11-05T21:27:37.231Z"
-last_activity: 2026-11-05
-last_activity_desc: Milestone v2.0.1 completed and archived
-state_head: 55c4b96503b2ebf781013d9f712bc9cf3831bead
+milestone: v2.1.0
+milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing
+status: planning
+last_updated: "2026-11-06T07:49:05.964Z"
+last_activity: 2026-11-06
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 10
-  completed_plans: 10
-milestone_name: Rail Editing & v7 Timeline Rails (PATCH)
-current_phase: 58
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,11 @@ See: .planning/PROJECT.md (updated 2026-11-05 after the v2.0.1 milestone)
 
 ## Current Position
 
-Phase: Milestone v2.0.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-11-05 — Milestone v2.0.1 completed and archived
+Status: Defining requirements
+Last activity: 2026-11-06 — Milestone v2.1.0 started
+
 
 ## Performance Metrics
 
