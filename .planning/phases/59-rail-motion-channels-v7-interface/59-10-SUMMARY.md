@@ -177,7 +177,7 @@ Each task was committed atomically with its TDD gate:
 3. **Task 2 RED: failing block outline and channel menu pins** — `685b501ef` (test)
 4. **Task 2 GREEN: block outline and keyless channel menu** — `43b089487` (feat)
 
-**Plan metadata:** `[pending final docs commit]` (docs: complete plan)
+**Plan metadata:** `88ffa5336` (docs: complete motion lane surface plan)
 
 ## TDD Gate Compliance
 
