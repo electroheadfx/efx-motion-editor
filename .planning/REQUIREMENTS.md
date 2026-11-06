@@ -18,7 +18,7 @@ Each maps to exactly one roadmap phase.
 - [ ] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
 - [ ] **MOTN-07**: The rail transform is applied at the compositor: one raster per track per frame, content cycles while motion continues, and nothing re-bakes
 - [x] **MOTN-08**: Edit view, Play, and export produce the same transform, including when the rail is on the active track
-- [ ] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
+- [x] **MOTN-09**: Rotation is unbounded (0°/360°/720° are distinct keys), values hold outside the keyed range, and the pivot is time-invariant in rail space
 - [x] **MOTN-10**: Ease, Wiggle, and Hold attach only to Motion keys — never to drawing keys or the rail body — and Wiggle is seeded and deterministic at export
 - [x] **MOTN-11**: Three selection scopes work independently — rail, drawing key, motion key — each with its own contextual commands
 - [x] **MOTN-12**: Motion persists through save → close → reopen, with undo/redo per key operation
@@ -113,7 +113,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | MOTN-06 | Phase 59 | Pending |
 | MOTN-07 | Phase 59 | Pending |
 | MOTN-08 | Phase 59 | Complete |
-| MOTN-09 | Phase 59 | Pending |
+| MOTN-09 | Phase 59 | Complete |
 | MOTN-10 | Phase 59 | Complete |
 | MOTN-11 | Phase 59 | Complete |
 | MOTN-12 | Phase 59 | Complete |

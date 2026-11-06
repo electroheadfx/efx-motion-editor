@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-15-PLAN.md
-last_updated: "2026-11-06T18:01:34.155Z"
+stopped_at: Completed 59-16-PLAN.md
+last_updated: "2026-11-06T18:18:03.861Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 01fb2a5c7bc025d2eb97dd45286d65d649c69d48
+state_head: 3c5283e3080228c136bd0ff1c0ce2e4da3e74127
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 14
+  completed_plans: 15
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 15 of 16
+Plan: 16 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -70,6 +70,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P12 | 33min | 4 tasks | 11 files |
 | Phase 59 P13 | 7min | 1 tasks | 10 files |
 | Phase 59 P15 | 37min | 4 tasks | 17 files |
+| Phase 59 P16 | 17 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -125,6 +126,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: 59-15: parent paste recompute starts from the pre-edit collection to avoid the child's copies reading as destination collisions
 - [Phase 59]: 59-15: merge-drop notice is optional scalar settlement metadata, validated, absent on failure/replay, published after acceptance and dismissed otherwise
 - [Phase 59]: 59-15: every accepted edit without a drop dismisses the session slot, so the restoring undo clears the row
+- [Phase 59]: 59-16: numeric Motion edits write at the selected key's rail-local frame; the panel stays props-driven with only a ref-held rejection signal.
+- [Phase 59]: 59-16: freeEntry + rejection-sequence remount surfaces domain rejections visibly instead of clamping; field and gizmo share writeRailMotionChannelValueAtCursor -> setMotionKeyAtCursor.
+- [Phase 59]: 59-16: rotation passes through unwrapped; grouped Position edited one axis at a time with the untouched axis seeded from stored key or evaluator.
 
 ### Pending Todos
 
@@ -196,8 +200,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T18:01:34.129Z
-Stopped at: Completed 59-15-PLAN.md
+Last session: 2026-11-06T18:18:03.835Z
+Stopped at: Completed 59-16-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
