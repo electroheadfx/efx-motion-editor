@@ -61,7 +61,7 @@ Each maps to exactly one roadmap phase.
 
 - [x] **REL-01**: No new runtime dependencies
 - [x] **REL-02**: Every new `.mce` field round-trips byte-identically through save → reopen, pinned by a test
-- [ ] **REL-03**: Motion joins the canonical document revision; sampled values never enter the flattened cache key
+- [x] **REL-03**: Motion joins the canonical document revision; sampled values never enter the flattened cache key
 - [ ] **REL-04**: Motion-blur export keeps paint on every frame — integer content raster with a fractional transform
 
 ## Decisions locked
@@ -141,7 +141,7 @@ Deferred to a later milestone. Not in the current roadmap.
 | CRV-04 | Phase 62 | Pending |
 | REL-01 | Phase 59 (enforced first; holds across Phases 59–62) | Complete |
 | REL-02 | Phase 59 (re-enforced on Phase 61's vector fields) | Complete |
-| REL-03 | Phase 59 (motion joins the canonical document revision) | Pending |
+| REL-03 | Phase 59 (motion joins the canonical document revision) | Complete |
 | REL-04 | Phase 59 (motion-blur export keeps paint) | Pending |
 
 **Coverage:**

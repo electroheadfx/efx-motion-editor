@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-10-PLAN.md
-last_updated: "2026-11-06T15:32:09.565Z"
+stopped_at: Completed 59-08-PLAN.md
+last_updated: "2026-11-06T15:46:46.540Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 43b089487f37cc3728826416395a97d719289d5d
+state_head: b3ef91e2dbe372847e277654d2c76b1cfcce304e
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 9 of 16
+Plan: 10 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P04 | ~6min | 2 tasks | 5 files |
 | Phase 59 P07 | 21m | 3 tasks | 15 files |
 | Phase 59 P10 | 7min | 2 tasks | 8 files |
+| Phase 59 P08 | 3h 50m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,10 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: TIMELINE_MOTION is a separate token block (motion cell 16x18x3 vs drawing 16x22x3); TIMELINE_GEOMETRY stays untouched so the 59-05 evaluator defaults keep their contract
 - [Phase 59]: resolveMotionBlockOutlineRect keeps the documented (rowTop,rowHeight,laneCount) signature: width '100%', height = row + lanes x 18 + 2px postBlockGap, null at laneCount 0; the outline component accepts an optional lineColor for the 59-11 host
 - [Phase 59]: The keyless add-channel menu derives from the same display projection and emits position-x for Position so the 59-02 reducer seeds both axes atomically; MOTN-04/MUI-02/MUI-03 stay pending until 59-11 hosts the lanes and live UAT closes them
+- [Phase 59]: Rail transform is applied once at the compositor through one shared draw helper used by both draw sites; a second application path is forbidden.
+- [Phase 59]: Pivot memo keys on the raster (pixel-identity) revision, so a motion-only edit never re-measures key ink bounds.
+- [Phase 59]: The flattened key motion: term carries the collection revision only, emitted when non-empty, so motion-free keys stay byte-identical.
+- [Phase 59]: Pixel-array canvas APIs stay out of the store (P4(c)); the bounded alpha scan lives in railMotionInkScan.ts and the store resolves and delegates.
 
 ### Pending Todos
 
@@ -170,8 +175,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T15:32:09.543Z
-Stopped at: Completed 59-10-PLAN.md
+Last session: 2026-11-06T15:46:46.516Z
+Stopped at: Completed 59-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
