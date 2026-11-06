@@ -30,7 +30,7 @@ import { useRef } from 'preact/hooks';
 import { AudioWaveform, Blend, Camera, ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Minus, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
-import type { PhysicPaintRotoRailMotionChannel, PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveVisibleMotionDisplayLanes,
@@ -388,11 +388,21 @@ function sameRailSetIdentity(left: RailSetIdentity, right: RailSetIdentity): boo
 }
 
 /**
- * This track's rail projections and stored motion records. RED stub: the
- * GREEN step binds it to the store reads and 59-06's assignment.
+ * This track's rail projections and stored motion records. The views are
+ * 59-06's assignment over the SAME loop clips and Key Rail segments the row
+ * paints, so a rail's motion identity always matches its visible rail.
  */
-export function readTrackRailMotionFacts(_layerId: string, _trackId: string): RailMotionHostFacts {
-  return EMPTY_RAIL_MOTION_HOST_FACTS;
+export function readTrackRailMotionFacts(layerId: string, trackId: string): RailMotionHostFacts {
+  const records = physicPaintStore.getRotoPhysicalRailMotions(layerId, trackId);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
+  const keyRailSegments = resolveTrackRowRailSegments(layerId, trackId);
+  if (records.length === 0 && loopClips.length === 0 && keyRailSegments.length === 0) {
+    return EMPTY_RAIL_MOTION_HOST_FACTS;
+  }
+  return {
+    views: assignRailMotionRailViews(records, loopClips, keyRailSegments),
+    records,
+  };
 }
 
 /**
@@ -402,9 +412,20 @@ export function readTrackRailMotionFacts(_layerId: string, _trackId: string): Ra
  * raw `firstKeyId`, which is only a recovery hint.
  */
 export function resolveSelectedRailMotionId(
-  _views: readonly RailMotionRailView[],
-  _selectedRail: RailSetIdentity | null,
+  views: readonly RailMotionRailView[],
+  selectedRail: RailSetIdentity | null,
 ): string | null {
+  if (selectedRail === null) return null;
+  if (selectedRail.kind === 'loop') {
+    for (const view of views) {
+      if (view.loopId === selectedRail.loopId) return view.railId;
+    }
+    return null;
+  }
+  for (const view of views) {
+    if (view.loopId !== null) continue;
+    if (view.anchorKeyId === selectedRail.firstKeyId && view.railId !== null) return view.railId;
+  }
   return null;
 }
 
@@ -415,8 +436,11 @@ export interface MotionBlockExpansionInput {
 }
 
 /** True only while the recorded expansion identity still IS the selected rail. */
-export function resolveMotionBlockExpanded(_input: MotionBlockExpansionInput): boolean {
-  return false;
+export function resolveMotionBlockExpanded(input: MotionBlockExpansionInput): boolean {
+  if (input.selectedRail === null || input.selectedRailMotionId === null || input.expandedSelection === null) {
+    return false;
+  }
+  return sameRailSetIdentity(input.expandedSelection, input.selectedRail);
 }
 
 export interface MotionChevronInput {
@@ -425,8 +449,9 @@ export interface MotionChevronInput {
 }
 
 /** The chevron's three-state glyph (MUI-01). */
-export function resolveMotionChevronKind(_input: MotionChevronInput): MotionChevronKind {
-  return 'minus';
+export function resolveMotionChevronKind(input: MotionChevronInput): MotionChevronKind {
+  if (!input.hasMotion) return 'minus';
+  return input.expanded ? 'chevron-down' : 'chevron-right';
 }
 
 /**
@@ -435,20 +460,28 @@ export function resolveMotionChevronKind(_input: MotionChevronInput): MotionChev
  * collapses it; clicking any other motion-bearing rail opens that one.
  */
 export function toggleRailMotionExpansion(
-  _selectedRail: RailSetIdentity | null,
-  _selectedRailMotionId: string | null,
-): void {}
+  selectedRail: RailSetIdentity | null,
+  selectedRailMotionId: string | null,
+): void {
+  const current = railMotionExpandedSelection.value;
+  const next = selectedRail === null || selectedRailMotionId === null
+    ? null
+    : (current !== null && sameRailSetIdentity(current, selectedRail) ? null : selectedRail);
+  railMotionExpandedSelection.value = next;
+}
 
 export function resolveMotionRecordForRail(
-  _records: readonly PhysicPaintRotoRailMotionRecord[],
-  _railId: string | null,
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string | null,
 ): PhysicPaintRotoRailMotionRecord | null {
-  return null;
+  if (railId === null) return null;
+  return records.find((record) => record.railId === railId) ?? null;
 }
 
 /** A record carries motion only while at least one DISPLAY lane has keys. */
-export function resolveRailMotionHasKeys(_record: PhysicPaintRotoRailMotionRecord | null): boolean {
-  return false;
+export function resolveRailMotionHasKeys(record: PhysicPaintRotoRailMotionRecord | null): boolean {
+  if (record === null) return false;
+  return record.channels.some((channel) => channel.keys.length > 0);
 }
 
 export interface TrackMotionLaneCountInput extends MotionBlockExpansionInput {
@@ -456,9 +489,15 @@ export interface TrackMotionLaneCountInput extends MotionBlockExpansionInput {
   readonly record: PhysicPaintRotoRailMotionRecord | null;
 }
 
-/** A DISPLAY-lane count: 0 unless this row's selected rail block is expanded. */
-export function resolveTrackMotionLaneCount(_input: TrackMotionLaneCountInput): number {
-  return 0;
+/**
+ * A DISPLAY-lane count: 0 unless this row's selected rail block is expanded.
+ * The non-zero branch is 59-10's projection, so grouped Position counts once
+ * and a rail keyed on all five model channels contributes four lanes.
+ */
+export function resolveTrackMotionLaneCount(input: TrackMotionLaneCountInput): number {
+  if (input.record === null) return 0;
+  if (!resolveMotionBlockExpanded(input)) return 0;
+  return resolveVisibleMotionDisplayLanes(input.record.channels).length;
 }
 
 interface TrackRowLoopVisuals {
@@ -1302,7 +1341,11 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     ? 'No motion channels'
     : !motionIsSelectedTrack
       ? 'Select this track’s rail to open its motion channels'
-      : null;
+      : selectedRailMotionId === null
+        ? (selectedRail === null
+          ? 'Select a rail to open its motion channels'
+          : 'The selected rail has no motion channels')
+        : null;
   const motionToggleInteractive = motionToggleReason === null && motionChevronKind !== 'minus';
   const motionLineType: TimelineRailType | null = isBackground
     ? null
