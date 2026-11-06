@@ -410,7 +410,7 @@ describe('parsePhysicPaintRotoRailMotions', () => {
   it('rejects unknown channel members', () => {
     expect(() => parsePhysicPaintRotoRailMotions([
       record('rail-a', [
-        { ...channel('position-x', [key(0, 0)]), enabled: true },
+        { ...channel('position-x', [key(0, 0)]), enabled: true } as unknown as PhysicPaintRotoRailMotionChannel,
         channel('position-y', [key(0, 0)]),
       ]),
     ])).toThrow(/unknown members.*id, keys/);
@@ -445,7 +445,7 @@ describe('parsePhysicPaintRotoRailMotions', () => {
   it('rejects unknown key members', () => {
     expect(() => parsePhysicPaintRotoRailMotions([
       record('rail-a', [
-        channel('scale', [{ ...key(0, 1), curve: 'bezier' }]),
+        channel('scale', [{ ...key(0, 1), curve: 'bezier' } as unknown as PhysicPaintRotoRailMotionKey]),
       ]),
     ])).toThrow(/unknown members.*frame, value, easing, wiggle/);
   });
