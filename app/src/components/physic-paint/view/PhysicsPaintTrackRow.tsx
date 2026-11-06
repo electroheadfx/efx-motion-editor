@@ -38,6 +38,7 @@ import {
   TimelineMotionChannelLane,
   TimelineMotionChannelMenu,
   type RailMotionDisplayLaneView,
+  type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
@@ -205,9 +206,9 @@ export interface PhysicsPaintTrackRowProps {
   /** This track's 59-06 rail projections (absent = read through the store). */
   readonly rotoRailViews?: readonly RailMotionRailView[];
   /** Motion-key selection intent — the motion key clicked in a lane. */
-  readonly onSelectMotionKey?: (frame: number) => void;
+  readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** Previous/next Motion key intent (direction resolved from the lane click). */
-  readonly onMotionCursorStep?: (direction: -1 | 1) => void;
+  readonly onMotionCursorStep?: (direction: -1 | 1, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** Diamond intent — add/remove a Motion key at the cursor frame. */
   readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** The expanded block's add-channel menu intent. */
@@ -505,12 +506,16 @@ export interface TimelineMotionBlockProps {
   readonly view: RailMotionRailView | null;
   /** 59-10 display-lane count; 0 renders nothing. */
   readonly laneCount: number;
+  /** The playhead in the rail's LOCAL frame space. */
   readonly cursorFrame: number;
   readonly channelMenuOpen?: boolean;
-  readonly onSelectMotionKey?: (frame: number) => void;
-  readonly onMotionCursorStep?: (direction: -1 | 1) => void;
+  /** 59-12: the lane identity rides along so the host knows which channel was clicked. */
+  readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  readonly onMotionCursorStep?: (direction: -1 | 1, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  /** 59-12: host-owned availability reasons, rendered by the lane verbatim. */
+  readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
 }
 
 /**
@@ -530,6 +535,7 @@ export function TimelineMotionBlock({
   onMotionCursorStep,
   onToggleMotionKeyAtCursor,
   onAddMotionChannel,
+  disabledReasons,
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
@@ -544,24 +550,32 @@ export function TimelineMotionBlock({
         data-motion-block-rail-id={record.railId}
         style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
       >
-        {lanes.map((lane) => (
-          <TimelineMotionChannelLane
-            key={lane.id}
-            railId={record.railId}
-            lane={lane}
-            railType={railType}
-            selected
-            railFrameCount={railFrameCount}
-            cursorFrame={cursorFrame}
-            onSelectKey={onSelectMotionKey}
-            onMoveCursorToKey={onMotionCursorStep === undefined
-              ? undefined
-              : (frame: number) => onMotionCursorStep(frame < cursorFrame ? -1 : 1)}
-            onToggleKeyAtCursor={onToggleMotionKeyAtCursor === undefined
-              ? undefined
-              : () => onToggleMotionKeyAtCursor(lane.channels[0]?.id ?? 'position-x')}
-          />
-        ))}
+        {lanes.map((lane) => {
+          // 59-12: the lane identity rides along with every intent, so the
+          // host never guesses which model channel a click addressed.
+          const laneChannelId = lane.channels[0]?.id ?? 'position-x';
+          return (
+            <TimelineMotionChannelLane
+              key={lane.id}
+              railId={record.railId}
+              lane={lane}
+              railType={railType}
+              selected
+              railFrameCount={railFrameCount}
+              cursorFrame={cursorFrame}
+              disabledReasons={disabledReasons}
+              onSelectKey={onSelectMotionKey === undefined
+                ? undefined
+                : (frame: number) => onSelectMotionKey(frame, laneChannelId)}
+              onMoveCursorToKey={onMotionCursorStep === undefined
+                ? undefined
+                : (frame: number) => onMotionCursorStep(frame < cursorFrame ? -1 : 1, laneChannelId)}
+              onToggleKeyAtCursor={onToggleMotionKeyAtCursor === undefined
+                ? undefined
+                : () => onToggleMotionKeyAtCursor(laneChannelId)}
+            />
+          );
+        })}
         <div
           class="physics-paint-motion-block-gap"
           style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}

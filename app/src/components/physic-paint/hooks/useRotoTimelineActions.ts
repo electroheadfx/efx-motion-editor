@@ -57,12 +57,26 @@ import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
 import {
   animateRail,
+  removeMotionKey as applyRemoveMotionKey,
   resolveMotionCommandAvailability,
+  resolveMotionKeyAtFrame,
   resolveSelectedRailView,
+  setMotionKeyAtCursor as applySetMotionKeyAtCursor,
+  setMotionKeyEasing as applySetMotionKeyEasing,
+  setMotionKeyWiggle as applySetMotionKeyWiggle,
+  stepMotionKey as findAdjacentMotionKeyFrame,
+  type RailMotionCommandId,
+  type RailMotionCommandResult,
+  type RailMotionKeySelection,
 } from '../roto/railMotionCommands';
 import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
-import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
-import { physicPaintStore } from '../../../stores/physicPaintStore';
+import type {
+  PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionEasing,
+  PhysicPaintRotoRailMotionKey,
+  PhysicPaintRotoRailMotionRecord,
+} from '../roto/railMotionModel';
+import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
@@ -1380,6 +1394,32 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly canAnimateSelectedRail: ReadonlySignal<boolean>;
   /** Reactive Animate disabled reason, or null when eligible. */
   readonly animateSelectedRailDisabledReason: ReadonlySignal<string | null>;
+  /** 59-12 Task 2: add or update a Motion key at the rail-local playhead. */
+  readonly setMotionKeyAtCursor: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
+  readonly canSetMotionKeyAtCursor: ReadonlySignal<boolean>;
+  readonly setMotionKeyAtCursorDisabledReason: ReadonlySignal<string | null>;
+  /** 59-12 Task 2: remove the Motion key at the rail-local playhead. */
+  readonly removeMotionKeyAtCursor: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
+  readonly canRemoveMotionKeyAtCursor: ReadonlySignal<boolean>;
+  readonly removeMotionKeyAtCursorDisabledReason: ReadonlySignal<string | null>;
+  /** 59-12 Task 2: cursor-only stepping to the adjacent Motion key. */
+  readonly stepMotionKeyForward: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
+  readonly canStepMotionKeyForward: ReadonlySignal<boolean>;
+  readonly stepMotionKeyForwardDisabledReason: ReadonlySignal<string | null>;
+  readonly stepMotionKeyBackward: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
+  readonly canStepMotionKeyBackward: ReadonlySignal<boolean>;
+  readonly stepMotionKeyBackwardDisabledReason: ReadonlySignal<string | null>;
+  /** 59-12 Task 2: the session-only selected Motion key (never persisted). */
+  readonly selectedMotionKey: ReadonlySignal<RailMotionKeySelection | null>;
+  readonly selectMotionKey: (selection: RailMotionKeySelection | null) => void;
+  /** 59-12 Task 2: Hold/Ease on the selected Motion key only. */
+  readonly setSelectedMotionKeyEasing: (easing: PhysicPaintRotoRailMotionEasing) => Promise<boolean>;
+  readonly canSetSelectedMotionKeyEasing: ReadonlySignal<boolean>;
+  readonly setSelectedMotionKeyEasingDisabledReason: ReadonlySignal<string | null>;
+  /** 59-12 Task 2: Wiggle on the selected Motion key only. */
+  readonly setSelectedMotionKeyWiggle: (wiggle: number) => Promise<boolean>;
+  readonly canSetSelectedMotionKeyWiggle: ReadonlySignal<boolean>;
+  readonly setSelectedMotionKeyWiggleDisabledReason: ReadonlySignal<string | null>;
   /** Reactive pending physical operation id, or null when idle. */
   readonly pendingOperationId: ReadonlySignal<string | null>;
   /**
@@ -1604,6 +1644,11 @@ export interface RotoTimelineActionsInput {
   getRotoSpacingSelection?: () => PhysicsPaintRotoSpacingSelection | null;
   /** Current direct physical navigation frame. */
   getCurrentAppFrame?: () => number;
+  /**
+   * 59-12: cursor-only navigation seam used by Motion key stepping. It moves
+   * the playhead to an app frame; it never mutates a document.
+   */
+  navigateToAppFrame?: (frame: number) => void;
   /** Launch context identity at action time (D-09). */
   getLaunchContext?: () => PhysicPaintLaunchContext | null;
   /** Bounded physical frame capacity (D-01/D-02). */
@@ -2006,6 +2051,12 @@ interface ActiveRailMotionState {
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
   readonly views: readonly RailMotionRailView[];
   readonly view: RailMotionRailView | null;
+  /** The motion record of the selected rail, when it carries motion. */
+  readonly record: PhysicPaintRotoRailMotionRecord | null;
+  /** App-frame playhead read at action time. */
+  readonly cursorFrame: number;
+  /** The same playhead in the selected rail's local frame (0 when no rail). */
+  readonly localCursorFrame: number;
 }
 
 /**
@@ -2020,6 +2071,8 @@ function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailM
   const trackId = launch?.document?.activeTrackId;
   if (!layerId || !trackId) return null;
 
+  // Subscribe the calling computed/render to motion edits on this track.
+  getTrackRotorRevision(layerId, trackId).value;
   const records = physicPaintStore.getRotoPhysicalRailMotions(layerId, trackId);
   const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
   const keyRecords = physicPaintStore.getRotoRealKeyRecords(layerId, trackId);
@@ -2039,7 +2092,153 @@ function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailM
   });
   const views = assignRailMotionRailViews(records, loopClips, keyRailSegments);
   const view = resolveSelectedRailView(views, readSelectedRailIdentity(input));
-  return { layerId, trackId, records, views, view };
+  const record = view === null || view.railId === null
+    ? null
+    : (records.find((entry) => entry.railId === view.railId) ?? null);
+  const cursorFrame = input.getCurrentAppFrame?.() ?? 0;
+  const localCursorFrame = view === null || !Number.isFinite(cursorFrame)
+    ? 0
+    : Math.max(0, Math.floor(cursorFrame - view.startFrame));
+  return { layerId, trackId, records, views, view, record, cursorFrame, localCursorFrame };
+}
+
+/**
+ * 59-12 Task 2 (MOTN-11): the session-only selected Motion key. It lives beside
+ * the existing rail-set selection, is never persisted, and is never part of the
+ * document allowlist or the revision fingerprint. Clearing it leaves the rail
+ * selection intact so the expanded block stays open.
+ */
+export const railMotionSelectedKey = signal<RailMotionKeySelection | null>(null);
+
+/** The ONE writer of the session Motion-key selection. */
+export function selectRailMotionKey(selection: RailMotionKeySelection | null): void {
+  railMotionSelectedKey.value = selection === null
+    ? null
+    : Object.freeze({
+      railId: selection.railId,
+      channelId: selection.channelId,
+      frame: selection.frame,
+    }) as RailMotionKeySelection;
+}
+
+interface ActiveMotionCommandFacts {
+  readonly state: ActiveRailMotionState | null;
+  readonly record: PhysicPaintRotoRailMotionRecord | null;
+  readonly selection: RailMotionKeySelection | null;
+  readonly selectedKey: PhysicPaintRotoRailMotionKey | null;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId | null;
+  readonly cursorInsideRailSpan: boolean;
+  readonly keyAtCursor: boolean;
+  readonly hasPreviousKey: boolean;
+  readonly hasNextKey: boolean;
+}
+
+/**
+ * The ONE facts read behind every Motion command availability signal. It
+ * never derives a disabled state: only booleans the command layer answers.
+ */
+function readActiveMotionCommandFacts(input: RotoTimelineActionsInput): ActiveMotionCommandFacts {
+  const state = readActiveRailMotionState(input);
+  const selection = railMotionSelectedKey.value;
+  if (state === null || state.view === null || state.record === null) {
+    return {
+      state,
+      record: null,
+      selection,
+      selectedKey: null,
+      channelId: null,
+      cursorInsideRailSpan: false,
+      keyAtCursor: false,
+      hasPreviousKey: false,
+      hasNextKey: false,
+    };
+  }
+  const record = state.record;
+  const channelId = selection?.channelId ?? record.channels[0]?.id ?? null;
+  const channel = channelId === null
+    ? null
+    : (record.channels.find((entry) => entry.id === channelId) ?? null);
+  const selectedKey = selection === null
+    ? null
+    : resolveMotionKeyAtFrame(record, selection.channelId, selection.frame);
+  const cursorInsideRailSpan = state.cursorFrame >= state.view.startFrame
+    && state.cursorFrame < state.view.endFrameExclusive;
+  const keyAtCursor = channelId !== null
+    && channel !== null
+    && resolveMotionKeyAtFrame(record, channelId, state.localCursorFrame) !== null;
+  return {
+    state,
+    record,
+    selection,
+    selectedKey,
+    channelId,
+    cursorInsideRailSpan,
+    keyAtCursor,
+    hasPreviousKey: channel !== null
+      && findAdjacentMotionKeyFrame({ channel, fromFrame: state.localCursorFrame, direction: -1 }) !== null,
+    hasNextKey: channel !== null
+      && findAdjacentMotionKeyFrame({ channel, fromFrame: state.localCursorFrame, direction: 1 }) !== null,
+  };
+}
+
+function motionAvailability(
+  command: RailMotionCommandId,
+  facts: ActiveMotionCommandFacts,
+) {
+  return resolveMotionCommandAvailability({
+    command,
+    hasRail: facts.state?.view !== null && facts.state?.view !== undefined,
+    hasMotionRecord: facts.record !== null,
+    hasChannel: facts.channelId !== null,
+    cursorInsideRailSpan: facts.cursorInsideRailSpan,
+    keyAtCursor: facts.keyAtCursor,
+    hasAdjacentKey: command === 'previous-motion-key' ? facts.hasPreviousKey : facts.hasNextKey,
+  });
+}
+
+function selectedMotionKeyAvailability(
+  command: 'set-motion-key-easing' | 'set-motion-key-wiggle',
+  facts: ActiveMotionCommandFacts,
+) {
+  return resolveMotionCommandAvailability({
+    command,
+    hasRail: facts.state?.view !== null && facts.state?.view !== undefined,
+    hasMotionRecord: facts.record !== null,
+    hasChannel: facts.selection !== null,
+    keyAtCursor: facts.selectedKey !== null,
+  });
+}
+
+/** The single motion commit path (59-07); every 59-12 action funnels here. */
+function commitRailMotionRecords(
+  state: ActiveRailMotionState,
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+): { ok: true } | { ok: false; error: string } {
+  return physicPaintStore.replaceRotoPhysicalRailMotions(state.layerId, state.trackId, records);
+}
+
+function publishMotionFailure(input: RotoTimelineActionsInput, reason: string): false {
+  input.setApplyStatus?.('error');
+  input.publishStatus?.(reason);
+  return false;
+}
+
+/** Publishes a pure command result and commits it through the 59-07 setter. */
+function commitMotionCommandResult(
+  input: RotoTimelineActionsInput,
+  state: ActiveRailMotionState,
+  result: RailMotionCommandResult,
+  successMessage: string,
+): boolean {
+  if (!result.ok) return publishMotionFailure(input, result.reason);
+  if (result.records === state.records) {
+    input.publishStatus?.('The Motion collection did not change.');
+    return true;
+  }
+  const written = commitRailMotionRecords(state, result.records);
+  if (!written.ok) return publishMotionFailure(input, written.error);
+  input.publishStatus?.(successMessage);
+  return true;
 }
 
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
@@ -2139,6 +2338,26 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }));
   const canAnimateSelectedRail = computed(() => animateAvailability.value.enabled);
   const animateSelectedRailDisabledReason = computed(() => animateAvailability.value.reason);
+  const motionCommandFacts = computed(() => readActiveMotionCommandFacts(input));
+  const setMotionKeyAvailability = computed(() => motionAvailability('set-motion-key', motionCommandFacts.value));
+  const canSetMotionKeyAtCursor = computed(() => setMotionKeyAvailability.value.enabled);
+  const setMotionKeyAtCursorDisabledReason = computed(() => setMotionKeyAvailability.value.reason);
+  const removeMotionKeyAvailability = computed(() => motionAvailability('remove-motion-key', motionCommandFacts.value));
+  const canRemoveMotionKeyAtCursor = computed(() => removeMotionKeyAvailability.value.enabled);
+  const removeMotionKeyAtCursorDisabledReason = computed(() => removeMotionKeyAvailability.value.reason);
+  const previousMotionKeyAvailability = computed(() => motionAvailability('previous-motion-key', motionCommandFacts.value));
+  const canStepMotionKeyBackward = computed(() => previousMotionKeyAvailability.value.enabled);
+  const stepMotionKeyBackwardDisabledReason = computed(() => previousMotionKeyAvailability.value.reason);
+  const nextMotionKeyAvailability = computed(() => motionAvailability('next-motion-key', motionCommandFacts.value));
+  const canStepMotionKeyForward = computed(() => nextMotionKeyAvailability.value.enabled);
+  const stepMotionKeyForwardDisabledReason = computed(() => nextMotionKeyAvailability.value.reason);
+  const setSelectedMotionKeyEasingAvailability = computed(() => selectedMotionKeyAvailability('set-motion-key-easing', motionCommandFacts.value));
+  const canSetSelectedMotionKeyEasing = computed(() => setSelectedMotionKeyEasingAvailability.value.enabled);
+  const setSelectedMotionKeyEasingDisabledReason = computed(() => setSelectedMotionKeyEasingAvailability.value.reason);
+  const setSelectedMotionKeyWiggleAvailability = computed(() => selectedMotionKeyAvailability('set-motion-key-wiggle', motionCommandFacts.value));
+  const canSetSelectedMotionKeyWiggle = computed(() => setSelectedMotionKeyWiggleAvailability.value.enabled);
+  const setSelectedMotionKeyWiggleDisabledReason = computed(() => setSelectedMotionKeyWiggleAvailability.value.reason);
+  const selectedMotionKey = computed(() => motionCommandFacts.value.selection);
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -2426,11 +2645,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.('This rail already has motion.');
       return true;
     }
-    const written = physicPaintStore.replaceRotoPhysicalRailMotions(
-      state.layerId,
-      state.trackId,
-      result.records,
-    );
+    const written = commitRailMotionRecords(state, result.records);
     if (!written.ok) {
       input.setApplyStatus?.('error');
       input.publishStatus?.(written.error);
@@ -2438,6 +2653,150 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     }
     input.publishStatus?.('Animated the selected rail.');
     return true;
+  }, [input]);
+
+  /** The ONE writer of the session Motion-key selection. */
+  const selectMotionKey = useCallback((selection: RailMotionKeySelection | null): void => {
+    selectRailMotionKey(selection);
+  }, []);
+
+  const setMotionKeyAtCursor = useCallback(async (
+    channelId?: PhysicPaintRotoRailMotionChannelId,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null || state.record === null) {
+      return publishMotionFailure(input, 'Select a rail with Motion first.');
+    }
+    const targetChannel = channelId
+      ?? railMotionSelectedKey.value?.channelId
+      ?? state.record.channels[0]?.id;
+    if (targetChannel === undefined) {
+      return publishMotionFailure(input, 'Select a Motion channel first.');
+    }
+    const result = applySetMotionKeyAtCursor({
+      records: state.records,
+      railId: state.record.railId,
+      channelId: targetChannel,
+      keyFrame: state.localCursorFrame,
+    });
+    return commitMotionCommandResult(input, state, result, 'Motion key added.');
+  }, [input]);
+
+  const removeMotionKeyAtCursor = useCallback(async (
+    channelId?: PhysicPaintRotoRailMotionChannelId,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null || state.record === null) {
+      return publishMotionFailure(input, 'Select a rail with Motion first.');
+    }
+    const targetChannel = channelId
+      ?? railMotionSelectedKey.value?.channelId
+      ?? state.record.channels[0]?.id;
+    if (targetChannel === undefined) {
+      return publishMotionFailure(input, 'Select a Motion channel first.');
+    }
+    const result = applyRemoveMotionKey({
+      records: state.records,
+      railId: state.record.railId,
+      channelId: targetChannel,
+      keyFrame: state.localCursorFrame,
+    });
+    const message = result.ok && result.recordRemoved
+      ? 'Removed the rail motion.'
+      : 'Motion key removed.';
+    const committed = commitMotionCommandResult(input, state, result, message);
+    if (committed) {
+      const selection = railMotionSelectedKey.value;
+      if (selection !== null && selection.railId === state.record.railId) selectRailMotionKey(null);
+    }
+    return committed;
+  }, [input]);
+
+  const stepMotionKey = useCallback(async (
+    direction: -1 | 1,
+    channelId?: PhysicPaintRotoRailMotionChannelId,
+  ): Promise<boolean> => {
+    const facts = readActiveMotionCommandFacts(input);
+    if (facts.state === null || facts.state.view === null || facts.record === null) {
+      return publishMotionFailure(input, 'Select a rail with Motion first.');
+    }
+    const targetChannelId = channelId ?? facts.channelId;
+    if (targetChannelId === null) {
+      return publishMotionFailure(input, 'Select a Motion channel first.');
+    }
+    const channel = facts.record.channels.find((entry) => entry.id === targetChannelId) ?? null;
+    if (channel === null) {
+      return publishMotionFailure(input, 'This Motion channel is not present on the rail.');
+    }
+    const adjacent = findAdjacentMotionKeyFrame({
+      channel,
+      fromFrame: facts.state.localCursorFrame,
+      direction,
+    });
+    if (adjacent === null) {
+      return publishMotionFailure(
+        input,
+        direction < 0
+          ? 'There is no earlier Motion key in this rail.'
+          : 'There is no later Motion key in this rail.',
+      );
+    }
+    if (input.navigateToAppFrame === undefined) {
+      return publishMotionFailure(input, 'Motion key navigation is unavailable.');
+    }
+    input.navigateToAppFrame(facts.state.view.startFrame + adjacent);
+    return true;
+  }, [input]);
+
+  const stepMotionKeyForward = useCallback(
+    (channelId?: PhysicPaintRotoRailMotionChannelId): Promise<boolean> => stepMotionKey(1, channelId),
+    [stepMotionKey],
+  );
+  const stepMotionKeyBackward = useCallback(
+    (channelId?: PhysicPaintRotoRailMotionChannelId): Promise<boolean> => stepMotionKey(-1, channelId),
+    [stepMotionKey],
+  );
+
+  const setSelectedMotionKeyEasing = useCallback(async (
+    easing: PhysicPaintRotoRailMotionEasing,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    const selection = railMotionSelectedKey.value;
+    if (state === null || selection === null) {
+      return publishMotionFailure(input, 'Select a Motion key first.');
+    }
+    if (!state.records.some((entry) => entry.railId === selection.railId)) {
+      return publishMotionFailure(input, 'Select a Motion key first.');
+    }
+    const result = applySetMotionKeyEasing({
+      records: state.records,
+      railId: selection.railId,
+      channelId: selection.channelId,
+      keyFrame: selection.frame,
+      easing,
+    });
+    return commitMotionCommandResult(input, state, result, 'Motion key easing changed.');
+  }, [input]);
+
+  const setSelectedMotionKeyWiggle = useCallback(async (
+    wiggle: number,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    const selection = railMotionSelectedKey.value;
+    if (state === null || selection === null) {
+      return publishMotionFailure(input, 'Select a Motion key first.');
+    }
+    if (!state.records.some((entry) => entry.railId === selection.railId)) {
+      return publishMotionFailure(input, 'Select a Motion key first.');
+    }
+    const result = applySetMotionKeyWiggle({
+      records: state.records,
+      railId: selection.railId,
+      channelId: selection.channelId,
+      keyFrame: selection.frame,
+      wiggle,
+    });
+    return commitMotionCommandResult(input, state, result, 'Motion key wiggle changed.');
   }, [input]);
 
   const duplicateKey = useCallback((sourceKeyId: string): Promise<boolean> => {
@@ -3817,6 +4176,26 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     animateSelectedRail,
     canAnimateSelectedRail,
     animateSelectedRailDisabledReason,
+    setMotionKeyAtCursor,
+    canSetMotionKeyAtCursor,
+    setMotionKeyAtCursorDisabledReason,
+    removeMotionKeyAtCursor,
+    canRemoveMotionKeyAtCursor,
+    removeMotionKeyAtCursorDisabledReason,
+    stepMotionKeyForward,
+    canStepMotionKeyForward,
+    stepMotionKeyForwardDisabledReason,
+    stepMotionKeyBackward,
+    canStepMotionKeyBackward,
+    stepMotionKeyBackwardDisabledReason,
+    selectedMotionKey,
+    selectMotionKey,
+    setSelectedMotionKeyEasing,
+    canSetSelectedMotionKeyEasing,
+    setSelectedMotionKeyEasingDisabledReason,
+    setSelectedMotionKeyWiggle,
+    canSetSelectedMotionKeyWiggle,
+    setSelectedMotionKeyWiggleDisabledReason,
     pendingOperationId: pendingOperationIdSignal,
     prepareRotoKeyDrag,
     commitRotoKeyDrag,
@@ -3852,7 +4231,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
     setApplyStatus: input.setApplyStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,

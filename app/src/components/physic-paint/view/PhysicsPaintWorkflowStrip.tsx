@@ -209,6 +209,13 @@ import {
 } from './PhysicsPaintTrackRow';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
+import {
+  resolveMotionKeyAtFrame,
+  resolveSelectionScope,
+  type RailMotionSelectionScope,
+} from '../roto/railMotionCommands';
+import type { PhysicPaintRotoRailMotionEasing } from '../roto/railMotionModel';
+import type { TimelineMotionLaneControl } from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -872,6 +879,86 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
  */
 function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null): string {
   return disabledReason ? `unavailable: ${disabledReason}` : description;
+}
+
+export interface PhysicsPaintRotoMotionKeyControlsProps {
+  /** The one resolved selection scope; controls exist ONLY in the motion-key scope. */
+  readonly scope: RailMotionSelectionScope | null;
+  readonly easing: PhysicPaintRotoRailMotionEasing | null;
+  readonly wiggle: number | null;
+  readonly canSetEasing: boolean;
+  readonly canSetWiggle: boolean;
+  readonly easingDisabledReason: string | null;
+  readonly wiggleDisabledReason: string | null;
+  readonly onSetEasing: (easing: PhysicPaintRotoRailMotionEasing) => void;
+  readonly onSetWiggle: (wiggle: number) => void;
+}
+
+/**
+ * 59-12 Task 2 (MOTN-05): the selected Motion key's Hold/Ease toggle and
+ * Wiggle field. A drawing-key or rail scope renders NOTHING here — the
+ * commands belong to another scope, so they are absent, not disabled. Pure and
+ * hook-free so the scope-visibility rows can materialize it directly.
+ */
+export function PhysicsPaintRotoMotionKeyControls(props: PhysicsPaintRotoMotionKeyControlsProps) {
+  if (props.scope !== 'motion-key' || props.easing === null || props.wiggle === null) return null;
+  const easingDisabled = !props.canSetEasing;
+  const wiggleDisabled = !props.canSetWiggle;
+  return (
+    <span
+      class="physics-paint-roto-key-icon-action physics-paint-roto-motion-key-controls"
+      role="group"
+      aria-label="Selected Motion key"
+      data-roto-motion-key-controls="true"
+    >
+      <button
+        type="button"
+        class="physics-paint-roto-key-icon-button"
+        aria-label="Hold motion key"
+        aria-pressed={props.easing === 'hold' ? 'true' : 'false'}
+        aria-disabled={easingDisabled ? 'true' : undefined}
+        aria-describedby={easingDisabled && props.easingDisabledReason ? 'roto-key-action-reason-motion-easing' : undefined}
+        onClick={() => {
+          if (!easingDisabled) props.onSetEasing('hold');
+        }}
+      >
+        Hold
+      </button>
+      <button
+        type="button"
+        class="physics-paint-roto-key-icon-button"
+        aria-label="Ease motion key"
+        aria-pressed={props.easing === 'ease' ? 'true' : 'false'}
+        aria-disabled={easingDisabled ? 'true' : undefined}
+        aria-describedby={easingDisabled && props.easingDisabledReason ? 'roto-key-action-reason-motion-easing' : undefined}
+        onClick={() => {
+          if (!easingDisabled) props.onSetEasing('ease');
+        }}
+      >
+        Ease
+      </button>
+      <span class="physics-paint-roto-key-icon-label">Wiggle</span>
+      <NumericStepper
+        value={props.wiggle}
+        onChange={(value) => {
+          if (!wiggleDisabled) props.onSetWiggle(value);
+        }}
+        step={1}
+        min={0}
+        ariaLabel="Motion key wiggle"
+        ariaDisabled={wiggleDisabled}
+        ariaDescribedBy={wiggleDisabled && props.wiggleDisabledReason ? 'roto-key-action-reason-motion-wiggle' : undefined}
+        inputStyle={{ width: '44px' }}
+        buttonStyle={{ width: '18px' }}
+      />
+      {easingDisabled && props.easingDisabledReason ? (
+        <span id="roto-key-action-reason-motion-easing" class="physics-paint-sr-only">{props.easingDisabledReason}</span>
+      ) : null}
+      {wiggleDisabled && props.wiggleDisabledReason ? (
+        <span id="roto-key-action-reason-motion-wiggle" class="physics-paint-sr-only">{props.wiggleDisabledReason}</span>
+      ) : null}
+    </span>
+  );
 }
 
 /** 261022-cfn follow-up: a linked Rail repeat is any virtual linked occurrence
@@ -2687,6 +2774,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionView = activeMotionRecord === null
     ? null
     : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
+  // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
+  // the hosting boundary keeps the lane's adjacency/span checks honest.
+  const activeMotionLocalCursorFrame = activeMotionView === null
+    ? 0
+    : Math.max(0, (props.currentFrame ?? 0) - activeMotionView.startFrame);
   // 59-11 Task 2 (MUI-04/MUI-05): the ordered rail rows + the optional Bg row.
   // A motion-free (or fully collapsed) document yields one 31px entry per row,
   // byte-identical to the pre-59-11 `rowCount` product.
@@ -3108,6 +3200,39 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
   const canAnimateSelectedRail = physicalActions?.canAnimateSelectedRail.value ?? false;
   const animateSelectedRailDisabledReason = physicalActions?.animateSelectedRailDisabledReason.value ?? null;
+  // 59-12 Task 2: the session Motion-key selection and the ONE scope resolver.
+  // The strip never decides the scope inline; the command layer answers it.
+  const selectedMotionKey = physicalActions?.selectedMotionKey.value ?? null;
+  const selectedMotionKeyData = selectedMotionKey !== null
+    && activeMotionRecord !== null
+    && activeMotionRecord.railId === selectedMotionKey.railId
+    ? resolveMotionKeyAtFrame(activeMotionRecord, selectedMotionKey.channelId, selectedMotionKey.frame)
+    : null;
+  const motionSelectionScope = resolveSelectionScope({
+    hasRail: activeRailSetIdentity !== null,
+    hasDrawingKey: (props.rotoSelectedKeyIds?.length ?? 0) > 0,
+    hasMotionKey: selectedMotionKeyData !== null,
+  });
+  const canSetMotionKeyAtCursor = physicalActions?.canSetMotionKeyAtCursor.value ?? false;
+  const setMotionKeyAtCursorDisabledReason = physicalActions?.setMotionKeyAtCursorDisabledReason.value ?? null;
+  const canRemoveMotionKeyAtCursor = physicalActions?.canRemoveMotionKeyAtCursor.value ?? false;
+  const removeMotionKeyAtCursorDisabledReason = physicalActions?.removeMotionKeyAtCursorDisabledReason.value ?? null;
+  const canSetSelectedMotionKeyEasing = physicalActions?.canSetSelectedMotionKeyEasing.value ?? false;
+  const setSelectedMotionKeyEasingDisabledReason = physicalActions?.setSelectedMotionKeyEasingDisabledReason.value ?? null;
+  const canSetSelectedMotionKeyWiggle = physicalActions?.canSetSelectedMotionKeyWiggle.value ?? false;
+  const setSelectedMotionKeyWiggleDisabledReason = physicalActions?.setSelectedMotionKeyWiggleDisabledReason.value ?? null;
+  // The lane's diamond is a toggle: it is available when either the add or the
+  // remove command is. Every reason comes from the command layer verbatim.
+  const motionLaneDisabledReasons = useMemo<Partial<Record<TimelineMotionLaneControl, string>>>(() => {
+    if (canSetMotionKeyAtCursor || canRemoveMotionKeyAtCursor) return {};
+    const reason = setMotionKeyAtCursorDisabledReason ?? removeMotionKeyAtCursorDisabledReason;
+    return reason === null ? {} : { diamond: reason };
+  }, [
+    canSetMotionKeyAtCursor,
+    canRemoveMotionKeyAtCursor,
+    setMotionKeyAtCursorDisabledReason,
+    removeMotionKeyAtCursorDisabledReason,
+  ]);
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
   const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
@@ -6059,7 +6184,30 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 record={activeMotionRecord}
                                 view={activeMotionView}
                                 laneCount={activeMotionLaneCount}
-                                cursorFrame={props.currentFrame ?? 0}
+                                cursorFrame={activeMotionLocalCursorFrame}
+                                disabledReasons={motionLaneDisabledReasons}
+                                onSelectMotionKey={(frame, channelId) => {
+                                  physicalActions?.selectMotionKey?.({
+                                    railId: activeMotionRecord.railId,
+                                    channelId,
+                                    frame,
+                                  });
+                                }}
+                                onMotionCursorStep={(direction, channelId) => {
+                                  void (direction < 0
+                                    ? physicalActions?.stepMotionKeyBackward?.(channelId)
+                                    : physicalActions?.stepMotionKeyForward?.(channelId));
+                                }}
+                                onToggleMotionKeyAtCursor={(channelId) => {
+                                  const key = resolveMotionKeyAtFrame(
+                                    activeMotionRecord,
+                                    channelId,
+                                    activeMotionLocalCursorFrame,
+                                  );
+                                  void (key === null
+                                    ? physicalActions?.setMotionKeyAtCursor?.(channelId)
+                                    : physicalActions?.removeMotionKeyAtCursor?.(channelId));
+                                }}
                               />
                             ) : null}
                           </div>
@@ -6180,6 +6328,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     </PhysicsPaintStyledTooltip>
                   </span>
                 ) : null}
+                {/* 59-12 (MOTN-05/MOTN-11): Hold/Ease and Wiggle exist ONLY in
+                    the motion-key scope. The component itself gates on the one
+                    resolved scope, so no inline disjunction lives here. */}
+                <PhysicsPaintRotoMotionKeyControls
+                  scope={motionSelectionScope}
+                  easing={selectedMotionKeyData?.easing ?? null}
+                  wiggle={selectedMotionKeyData?.wiggle ?? null}
+                  canSetEasing={canSetSelectedMotionKeyEasing}
+                  canSetWiggle={canSetSelectedMotionKeyWiggle}
+                  easingDisabledReason={setSelectedMotionKeyEasingDisabledReason}
+                  wiggleDisabledReason={setSelectedMotionKeyWiggleDisabledReason}
+                  onSetEasing={(easing) => {
+                    void physicalActions?.setSelectedMotionKeyEasing?.(easing);
+                  }}
+                  onSetWiggle={(wiggle) => {
+                    void physicalActions?.setSelectedMotionKeyWiggle?.(wiggle);
+                  }}
+                />
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
                   <button
                     type="button"

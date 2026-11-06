@@ -13,7 +13,11 @@ import {
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
-import { resolveReorderInsertionIndex, resolveTrackRowLayout } from './PhysicsPaintWorkflowStrip';
+import {
+  PhysicsPaintRotoMotionKeyControls,
+  resolveReorderInsertionIndex,
+  resolveTrackRowLayout,
+} from './PhysicsPaintWorkflowStrip';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -3049,5 +3053,132 @@ describe('59-11 Task 3: resolveReorderInsertionIndex — measured, block-aware r
     // caller that supplies no layout.
     const legacyUses = headerSource.split('reorderDragIndex * HEADER_ROW_HEIGHT_PX').length - 1;
     expect(legacyUses).toBe(1);
+  });
+});
+
+describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (MOTN-05, D-04)', () => {
+  interface VNodeLike {
+    type: unknown;
+    props: Record<string, unknown> | null;
+  }
+  function walkVNode(node: unknown, visit: (vnode: VNodeLike) => void): void {
+    if (node === null || node === undefined || typeof node === 'boolean') return;
+    if (Array.isArray(node)) {
+      for (const child of node) walkVNode(child, visit);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    const candidate = node as Partial<VNodeLike>;
+    if (!('type' in candidate) || !('props' in candidate)) return;
+    const vnode = candidate as VNodeLike;
+    visit(vnode);
+    if (vnode.props?.children !== undefined) walkVNode(vnode.props.children, visit);
+  }
+  function collectVNodes(root: unknown): VNodeLike[] {
+    const collected: VNodeLike[] = [];
+    walkVNode(root, (vnode) => collected.push(vnode));
+    return collected;
+  }
+  function collectStrings(node: unknown, collected: string[] = []): string[] {
+    if (typeof node === 'string') {
+      collected.push(node);
+      return collected;
+    }
+    if (Array.isArray(node)) {
+      for (const child of node) collectStrings(child, collected);
+      return collected;
+    }
+    if (node && typeof node === 'object' && 'props' in (node as VNodeLike)) {
+      collectStrings((node as VNodeLike).props?.children, collected);
+    }
+    return collected;
+  }
+  function buildControls(
+    scope: 'rail' | 'drawing-key' | 'motion-key' | null,
+    overrides: Partial<Parameters<typeof PhysicsPaintRotoMotionKeyControls>[0]> = {},
+  ) {
+    return PhysicsPaintRotoMotionKeyControls({
+      scope,
+      easing: 'ease',
+      wiggle: 20,
+      canSetEasing: true,
+      canSetWiggle: true,
+      easingDisabledReason: null,
+      wiggleDisabledReason: null,
+      onSetEasing: () => {},
+      onSetWiggle: () => {},
+      ...overrides,
+    });
+  }
+  function findLabeled(root: unknown, label: string): VNodeLike | null {
+    return collectVNodes(root).find((vnode) => vnode.props?.['aria-label'] === label) ?? null;
+  }
+
+  it('a motion-key scope renders Hold/Ease and the Wiggle field', () => {
+    const tree = buildControls('motion-key', { easing: 'hold', wiggle: 7 });
+    expect(tree).not.toBeNull();
+    expect(findLabeled(tree, 'Selected Motion key')).not.toBeNull();
+    expect(findLabeled(tree, 'Hold motion key')?.props?.['aria-pressed']).toBe('true');
+    expect(findLabeled(tree, 'Ease motion key')?.props?.['aria-pressed']).toBe('false');
+    // The Wiggle field is the shared NumericStepper, addressed by its ariaLabel.
+    const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
+    expect(wiggle).toBeDefined();
+    expect(wiggle?.props?.value).toBe(7);
+  });
+
+  it('rail, drawing-key and unresolved selections render NO Hold/Ease/Wiggle controls', () => {
+    expect(buildControls('rail')).toBeNull();
+    expect(buildControls('drawing-key')).toBeNull();
+    expect(buildControls(null)).toBeNull();
+    // A motion-key scope without a resolved key (easing/wiggle null) fails closed
+    // rather than rendering a control that has no key to edit.
+    expect(buildControls('motion-key', { easing: null })).toBeNull();
+    expect(buildControls('motion-key', { wiggle: null })).toBeNull();
+  });
+
+  it('each disabled control surfaces the command-layer reason verbatim', () => {
+    const easingReason = 'Select a Motion key first.';
+    const wiggleReason = 'There is no Motion key at this frame.';
+    const tree = buildControls('motion-key', {
+      canSetEasing: false,
+      canSetWiggle: false,
+      easingDisabledReason: easingReason,
+      wiggleDisabledReason: wiggleReason,
+    });
+    const hold = findLabeled(tree, 'Hold motion key');
+    expect(hold?.props?.['aria-disabled']).toBe('true');
+    expect(hold?.props?.['aria-describedby']).toBe('roto-key-action-reason-motion-easing');
+    const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
+    expect(wiggle?.props?.ariaDisabled).toBe(true);
+    expect(wiggle?.props?.ariaDescribedBy).toBe('roto-key-action-reason-motion-wiggle');
+    const text = collectStrings(tree);
+    expect(text).toContain(easingReason);
+    expect(text).toContain(wiggleReason);
+  });
+
+  it('the strip answers the scope from the command layer and wires the lane callbacks', () => {
+    const code = source();
+    // One scope resolver — the strip never compares selections inline.
+    expect(code).toContain('const motionSelectionScope = resolveSelectionScope({');
+    expect(code).not.toContain("motionSelectionScope === 'motion-key'");
+    expect(code).not.toContain("motionSelectionScope === 'rail'");
+    // The resolved scope gates the Hold/Ease/Wiggle controls.
+    expect(code).toContain('scope={motionSelectionScope}');
+    // The lane addresses the host with the channel the click hit, and the
+    // cursor it reads is the rail-LOCAL frame the lane contract expects.
+    expect(code).toContain('onSelectMotionKey={(frame, channelId) => {');
+    expect(code).toContain('onMotionCursorStep={(direction, channelId) => {');
+    expect(code).toContain('onToggleMotionKeyAtCursor={(channelId) => {');
+    expect(code).toContain('cursorFrame={activeMotionLocalCursorFrame}');
+    expect(code).toContain('disabledReasons={motionLaneDisabledReasons}');
+    // The diamond reason is a command-layer projection of the add OR remove
+    // availability — never computed from selection shape in the strip.
+    expect(code).toContain('if (canSetMotionKeyAtCursor || canRemoveMotionKeyAtCursor) return {};');
+    expect(code).toContain('const reason = setMotionKeyAtCursorDisabledReason ?? removeMotionKeyAtCursorDisabledReason;');
+    expect(code).toContain('diamond: reason');
+    // Session key selection rides the action bundle, not a second store.
+    const actions = timelineActionsSource();
+    expect(actions).toContain('export const railMotionSelectedKey = signal<RailMotionKeySelection | null>(null);');
+    expect(actions.split('physicPaintStore.replaceRotoPhysicalRailMotions(').length - 1).toBe(1);
   });
 });

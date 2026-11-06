@@ -885,6 +885,11 @@ export function PhysicsPaintStudio() {
   }>) => Promise<boolean>>(async () => false);
   const railSetClipboardReadRef = useRef<() => RotoRailSetCopyPayload | null>(() => null);
   const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
+  // 59-12 Task 2: Motion-key stepping moves the playhead through the SAME
+  // navigation seam as every other seek. handleNavigateToSyncedFrame is
+  // defined far below the timeline-actions hook, so the input port reads this
+  // deferred ref (same pattern as the execute refs above).
+  const navigateToAppFrameRef = useRef<(frame: number) => void>(() => {});
   const initialCarried = launchContext ? getCarriedRotoPhysical(launchContext) : null;
   // debug studio-reopen-empty-boot: the launch SEED is tolerant — a record whose
   // bytes could not be materialized at the launch door (reported loudly there)
@@ -3185,6 +3190,7 @@ export function PhysicsPaintStudio() {
         .map((loopClip) => ({ sourceKeyIds: loopClip.sourceKeyIds })),
     ),
     getCurrentAppFrame: () => currentFrame,
+    navigateToAppFrame: (frame) => navigateToAppFrameRef.current(frame),
     getLaunchContext: () => launchContextRef.current,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,
     getParentEndExclusive: () => launchContext
@@ -6799,6 +6805,7 @@ export function PhysicsPaintStudio() {
       }
     });
   }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame, previewBasePort]);
+  navigateToAppFrameRef.current = handleNavigateToSyncedFrame;
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target
   // in the SAME click. The selection is applied SYNCHRONOUSLY in the click

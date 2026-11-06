@@ -28,7 +28,7 @@ import {
   bindLoopRail,
   type RailMotionRailView,
 } from './railMotionIdentity';
-import { resolveRailLocalFrame } from './railMotionEvaluator';
+import { evaluateRailMotionChannel, resolveRailLocalFrame } from './railMotionEvaluator';
 import type { RailSetIdentity } from './physicsPaintRotoRailSetSelection';
 
 /** Successful command result: the next collection, never a mutated input. */
@@ -230,43 +230,197 @@ export interface ResolveSelectionScopeInput {
 
 /** One scope authority: a key scope wins over the rail scope it rides on. */
 export function resolveSelectionScope(
-  _input: ResolveSelectionScopeInput,
+  input: ResolveSelectionScopeInput,
 ): RailMotionSelectionScope | null {
+  if (input.hasMotionKey) return 'motion-key';
+  if (input.hasDrawingKey) return 'drawing-key';
+  if (input.hasRail) return 'rail';
   return null;
 }
 
 /** The addressed Motion key on a record, or null when the frame carries none. */
 export function resolveMotionKeyAtFrame(
-  _record: PhysicPaintRotoRailMotionRecord | null,
-  _channelId: PhysicPaintRotoRailMotionChannelId,
-  _railLocalFrame: number,
+  record: PhysicPaintRotoRailMotionRecord | null,
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  railLocalFrame: number,
 ): PhysicPaintRotoRailMotionKey | null {
+  if (record === null) return null;
+  const channel = record.channels.find((entry) => entry.id === channelId);
+  if (channel === undefined) return null;
+  return channel.keys.find((key) => key.frame === railLocalFrame) ?? null;
+}
+
+function isRailMotionFrameValue(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= RAIL_MOTION_FRAME_LIMIT;
+}
+
+function isRailMotionWiggleValue(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= RAIL_MOTION_WIGGLE_LIMIT;
+}
+
+function isRailMotionEasingValue(value: unknown): value is PhysicPaintRotoRailMotionEasing {
+  return value === 'hold' || value === 'ease';
+}
+
+function findRailMotionRecord(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+): PhysicPaintRotoRailMotionRecord | null {
+  return records.find((entry) => entry.railId === railId) ?? null;
+}
+
+function positionSiblingId(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+): 'position-x' | 'position-y' | null {
+  if (channelId === 'position-x') return 'position-y';
+  if (channelId === 'position-y') return 'position-x';
   return null;
 }
 
-/** Adds or updates the addressed Motion key. RED stub — GREEN fills the policy. */
-export function setMotionKeyAtCursor(_input: SetMotionKeyAtCursorInput): RailMotionCommandResult {
-  return failure('The Motion key could not be written.');
+/**
+ * Adds or updates a Motion key (D-12/D-15 are the reducer's policy; this
+ * composes it). A new key takes the channel's evaluated value at the cursor
+ * unless an explicit value is supplied, so adding a key never moves the pose.
+ * Grouped Position carries the sibling's evaluated value in the SAME reducer
+ * call, so both axes are written atomically.
+ */
+export function setMotionKeyAtCursor(input: SetMotionKeyAtCursorInput): RailMotionCommandResult {
+  const { records, railId, channelId, keyFrame } = input;
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  if (!record.channels.some((entry) => entry.id === channelId)) {
+    return failure('This Motion channel is not present on the rail.');
+  }
+  if (input.easing !== undefined && !isRailMotionEasingValue(input.easing)) {
+    return failure('Easing must be Hold or Ease.');
+  }
+  if (input.wiggle !== undefined && !isRailMotionWiggleValue(input.wiggle)) {
+    return failure('Wiggle must be between 0 and 1,000,000.');
+  }
+  const value = input.value ?? evaluateRailMotionChannel(record, channelId, keyFrame);
+  if (!railMotionValueIsValid(channelId, value)) {
+    return failure('This value is outside the Motion channel range.');
+  }
+  const siblingId = positionSiblingId(channelId);
+  const pairedValue = siblingId !== null && record.channels.some((entry) => entry.id === siblingId)
+    ? evaluateRailMotionChannel(record, siblingId, keyFrame)
+    : undefined;
+
+  try {
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId,
+      channel: channelId,
+      frame: keyFrame,
+      value,
+      ...(input.easing !== undefined ? { easing: input.easing } : {}),
+      ...(input.wiggle !== undefined ? { wiggle: input.wiggle } : {}),
+      ...(pairedValue !== undefined ? { pairedValue } : {}),
+    });
+    return success(next);
+  } catch {
+    return failure('The Motion key could not be written.');
+  }
 }
 
-/** Removes the addressed Motion key. RED stub — GREEN fills the policy. */
-export function removeMotionKey(_input: RemoveMotionKeyInput): RailMotionCommandResult {
-  return failure('The Motion key could not be removed.');
+/**
+ * Removes the addressed Motion key. D-15 (key -> channel -> record) is the
+ * reducer's cascade; this reports the whole-record removal back to the row.
+ */
+export function removeMotionKey(input: RemoveMotionKeyInput): RailMotionCommandResult {
+  const { records, railId, channelId, keyFrame } = input;
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  if (!record.channels.some((entry) => entry.id === channelId)) {
+    return failure('This Motion channel is not present on the rail.');
+  }
+  if (resolveMotionKeyAtFrame(record, channelId, keyFrame) === null) {
+    return failure('There is no Motion key at this frame.');
+  }
+
+  try {
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'remove-key',
+      railId,
+      channel: channelId,
+      frame: keyFrame,
+    });
+    return success(next, !next.some((entry) => entry.railId === railId));
+  } catch {
+    return failure('The Motion key could not be removed.');
+  }
 }
 
-/** Adjacent Motion key frame in the requested direction. RED stub. */
-export function stepMotionKey(_input: StepMotionKeyInput): number | null {
-  return null;
+/** The adjacent Motion key frame in one direction; never wraps (null at the end). */
+export function stepMotionKey(input: StepMotionKeyInput): number | null {
+  const { channel, fromFrame, direction } = input;
+  if (!Number.isFinite(fromFrame)) return null;
+  let best: number | null = null;
+  for (const key of channel.keys) {
+    if (!Number.isFinite(key.frame)) continue;
+    const isCandidate = direction < 0 ? key.frame < fromFrame : key.frame > fromFrame;
+    if (!isCandidate) continue;
+    if (best === null || (direction < 0 ? key.frame > best : key.frame < best)) {
+      best = key.frame;
+    }
+  }
+  return best;
 }
 
-/** Sets Hold/Ease on an existing Motion key. RED stub. */
-export function setMotionKeyEasing(_input: SetMotionKeyEasingInput): RailMotionCommandResult {
-  return failure('The Motion key easing could not be changed.');
+/** Sets Hold/Ease on an existing Motion key; the key's value is preserved. */
+export function setMotionKeyEasing(input: SetMotionKeyEasingInput): RailMotionCommandResult {
+  const { records, railId, channelId, keyFrame, easing } = input;
+  if (!isRailMotionEasingValue(easing)) return failure('Easing must be Hold or Ease.');
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  const key = resolveMotionKeyAtFrame(record, channelId, keyFrame);
+  if (key === null) return failure('There is no Motion key at this frame.');
+
+  try {
+    return success(applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId,
+      channel: channelId,
+      frame: keyFrame,
+      value: key.value,
+      easing,
+    }));
+  } catch {
+    return failure('The Motion key easing could not be changed.');
+  }
 }
 
-/** Sets Wiggle on an existing Motion key. RED stub. */
-export function setMotionKeyWiggle(_input: SetMotionKeyWiggleInput): RailMotionCommandResult {
-  return failure('The Motion key wiggle could not be changed.');
+/** Sets Wiggle on an existing Motion key; the key's value and easing are preserved. */
+export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCommandResult {
+  const { records, railId, channelId, keyFrame, wiggle } = input;
+  if (!isRailMotionWiggleValue(wiggle)) {
+    return failure('Wiggle must be between 0 and 1,000,000.');
+  }
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  const key = resolveMotionKeyAtFrame(record, channelId, keyFrame);
+  if (key === null) return failure('There is no Motion key at this frame.');
+
+  try {
+    return success(applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId,
+      channel: channelId,
+      frame: keyFrame,
+      value: key.value,
+      wiggle,
+    }));
+  } catch {
+    return failure('The Motion key wiggle could not be changed.');
+  }
 }
 
 /** The commands the 59-12 action bar can publish. */
@@ -300,26 +454,60 @@ export interface RailMotionCommandAvailability {
   readonly reason: string | null;
 }
 
+function available(): RailMotionCommandAvailability {
+  return Object.freeze({ enabled: true, reason: null }) as RailMotionCommandAvailability;
+}
+
+function unavailable(reason: string): RailMotionCommandAvailability {
+  return Object.freeze({ enabled: false, reason }) as RailMotionCommandAvailability;
+}
+
 /**
  * One availability authority (T-59-35). The view renders `reason` verbatim and
  * never derives a disabled state locally.
  *
  * Animate is available for EVERY rail type: there is no conversion step and no
  * cycle value (MUI-01/MOTN-01), so the only unavailable case is "no rail".
+ * Every other command names its exact missing prerequisite, in a fixed order:
+ * rail -> channel -> cursor span -> key presence -> adjacency.
  */
 export function resolveMotionCommandAvailability(
   input: RailMotionCommandAvailabilityInput,
 ): RailMotionCommandAvailability {
   if (input.command === 'animate') {
-    if (!input.hasRail) {
-      return Object.freeze({ enabled: false, reason: 'Select a rail to animate it.' }) as RailMotionCommandAvailability;
-    }
-    return Object.freeze({ enabled: true, reason: null }) as RailMotionCommandAvailability;
+    return input.hasRail ? available() : unavailable('Select a rail to animate it.');
   }
-  return Object.freeze({
-    enabled: false,
-    reason: 'This Motion command is not available.',
-  }) as RailMotionCommandAvailability;
+  if (!input.hasRail) return unavailable('Select a rail first.');
+  if (input.command === 'previous-motion-key') {
+    return input.hasAdjacentKey === true
+      ? available()
+      : unavailable('There is no earlier Motion key in this rail.');
+  }
+  if (input.command === 'next-motion-key') {
+    return input.hasAdjacentKey === true
+      ? available()
+      : unavailable('There is no later Motion key in this rail.');
+  }
+  if (input.hasChannel === false) return unavailable('Select a Motion channel first.');
+  if (input.command === 'set-motion-key-easing' || input.command === 'set-motion-key-wiggle') {
+    return input.keyAtCursor === true
+      ? available()
+      : unavailable('Select a Motion key first.');
+  }
+  if (input.cursorInsideRailSpan === false) {
+    return unavailable('Move the playhead inside this rail first.');
+  }
+  if (input.command === 'set-motion-key') {
+    return input.keyAtCursor === true
+      ? unavailable('A Motion key already exists at this frame.')
+      : available();
+  }
+  if (input.command === 'remove-motion-key') {
+    return input.keyAtCursor === true
+      ? available()
+      : unavailable('There is no Motion key at this frame.');
+  }
+  return unavailable('This Motion command is not available.');
 }
 
 /**
