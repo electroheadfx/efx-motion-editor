@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-02-PLAN.md
-last_updated: "2026-11-06T12:17:26.117Z"
+stopped_at: Completed 59-03-PLAN.md
+last_updated: "2026-11-06T13:12:21.336Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: d72a10c3b47dcf93710c9bed2dda3eeb298e3a87
+state_head: fc0d2bb34af6e38a4baf2a9e7380c3a901863b59
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 3 of 16
+Plan: 4 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 59 P01 | 7min | 2 tasks | 4 files |
 | Phase 59 P02 | 12min | 3 tasks | 2 files |
+| Phase 59 P03 | 55min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Rail motion model lives in railMotionModel.ts with module-local guards (no import of physicsPaintRotoPhysicalModel.ts) so 59-03 can import it without a cycle
 - [Phase 59]: set-key carries an optional pairedValue for grouped Position inserts; absent, the sibling axis step-holds its outgoing value (D-12)
 - [Phase 59]: Grouped Position edits always address both axes: add/remove applies to the pair, and removing a Position key removes that frame from both axes
+- [Phase 59]: railMotions is optional on the physical document (16 legacy fixtures omit it); the parser always emits the frozen empty collection at runtime
+- [Phase 59]: All seven store revision sites now route through _buildRotoPhysicalRevisionFor (grep count 7 -> 1); the rail-motions canonical term is conditional, so untouched documents keep revision physical-404-c22673ae
+- [Phase 59]: Carrier tests share ONE EFX_BASE document because createEfxPaintDocument mints random ids per call; the save/reopen pin uses registerDocument + hydrateRuntimeFromDocument
 
 ### Pending Todos
 
@@ -146,8 +150,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T12:17:26.096Z
-Stopped at: Completed 59-02-PLAN.md
+Last session: 2026-11-06T13:12:21.313Z
+Stopped at: Completed 59-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
