@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
-status: executing
-stopped_at: Completed 59-16-PLAN.md
-last_updated: "2026-11-06T18:18:03.861Z"
+status: verifying
+stopped_at: Completed 59-14-PLAN.md
+last_updated: "2026-11-06T18:42:59.713Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 3c5283e3080228c136bd0ff1c0ce2e4da3e74127
+state_head: 921ab14690f9dffa6f0a445ebd317db3e19db8ca
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 16 of 16
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-06 — Phase 59 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -71,6 +71,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P13 | 7min | 1 tasks | 10 files |
 | Phase 59 P15 | 37min | 4 tasks | 17 files |
 | Phase 59 P16 | 17 | 2 tasks | 8 files |
+| Phase 59 P14 | 22min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,11 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: 59-16: numeric Motion edits write at the selected key's rail-local frame; the panel stays props-driven with only a ref-held rejection signal.
 - [Phase 59]: 59-16: freeEntry + rejection-sequence remount surfaces domain rejections visibly instead of clamping; field and gizmo share writeRailMotionChannelValueAtCursor -> setMotionKeyAtCursor.
 - [Phase 59]: 59-16: rotation passes through unwrapped; grouped Position edited one axis at a time with the untouched axis seeded from stored key or evaluator.
+- [Phase 59]: 59-14: REL-01 freezes the full app/package.json dependency map at the phase-start commit; resolvability alone would let a transitive or dev package through.
+- [Phase 59]: 59-14: REL-02 mocks only the IPC/fs boundary so the real parser recomputes the canonical revision; that is what exposed the projectLayerDocument omission (railMotions is now a revision term).
+- [Phase 59]: 59-14: Rust acceptance of a motion-bearing revision is proven by the cargo services::script_library gate and the frozen-source parity pin, not by a TS-side bridge mock.
+- [Phase 59]: 59-14: the v7 surface contract asserts both token presence and literal absence because a value-only pin cannot see an inlined copy.
+- [Phase 59]: 59-14: live rows stay pending; MOTN-06, MOTN-07 and MUI-01..MUI-05 remain Pending in REQUIREMENTS.md until human evidence.
 
 ### Pending Todos
 
@@ -200,8 +206,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T18:18:03.835Z
-Stopped at: Completed 59-16-PLAN.md
+Last session: 2026-11-06T18:42:59.680Z
+Stopped at: Completed 59-14-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
