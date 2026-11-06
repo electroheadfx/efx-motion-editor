@@ -222,7 +222,9 @@ import type { PhysicPaintRotoRailMotionEasing } from '../roto/railMotionModel';
 import {
   buildRailMotionMergeNoticeCopy,
   dismissRailMotionMergeNotice,
+  publishRailMotionMergeNotice,
   railMotionMergeNotice,
+  railMotionMergeNoticeUndoable,
 } from '../roto/railMotionMergeNotice';
 import {
   resolveKeylessMotionDisplayLanes,
@@ -1318,6 +1320,7 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
  */
 function RailMotionMergeNoticeRow() {
   const notice = railMotionMergeNotice.value;
+  const undoable = railMotionMergeNoticeUndoable.value;
   if (notice === null) return null;
   return (
     <div
@@ -1339,7 +1342,7 @@ function RailMotionMergeNoticeRow() {
         lineHeight: '16px',
       }}
     >
-      <span>{buildRailMotionMergeNoticeCopy(notice)}</span>
+      <span>{buildRailMotionMergeNoticeCopy(notice, { undoable })}</span>
       <button
         type="button"
         class="physics-paint-roto-key-icon-button"
@@ -3918,6 +3921,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame, removeFromSource) => {
       const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame, removeFromSource);
       if (!result.ok) return result;
+      // 59-20 (CR-02): a two-sided merge reports what it dropped. This direct
+      // store write creates no undo-ledger entry, so the notice must not promise
+      // a restore — publish the report as non-undoable. A move that merged
+      // nothing clears any stale row instead of leaving an unrelated one up.
+      if (result.mergedDrop) {
+        publishRailMotionMergeNotice(result.mergedDrop, { undoable: false });
+      } else {
+        dismissRailMotionMergeNotice();
+      }
       props.onSelectTrack?.(toTrackId);
       // Ship the two mutated tracks to the main window before the gesture
       // returns (studio-realm-divergence). The parent's apply path awaits the

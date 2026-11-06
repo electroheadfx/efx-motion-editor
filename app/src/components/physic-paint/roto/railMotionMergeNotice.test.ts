@@ -104,7 +104,8 @@ describe('59-12 Task 4: copy and non-persistence', () => {
 
 describe('59-20: undoability is a session companion signal (MOTN-10)', () => {
   function undoableSignal(): { value: boolean } {
-    expect(typeof noticeModule.railMotionMergeNoticeUndoable).toBe('function');
+    // @preact/signals v2 exposes a Signal object, never a callable.
+    expect(noticeModule.railMotionMergeNoticeUndoable).toBeDefined();
     return noticeModule.railMotionMergeNoticeUndoable;
   }
 
