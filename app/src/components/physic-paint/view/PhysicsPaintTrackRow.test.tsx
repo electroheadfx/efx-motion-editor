@@ -32,7 +32,7 @@ import {
   toggleRailMotionChannelMenu,
   toggleRailMotionExpansion,
 } from './PhysicsPaintTrackRow';
-import { TIMELINE_MOTION } from './timelineRailDesign';
+import { TIMELINE_GEOMETRY, TIMELINE_MOTION } from './timelineRailDesign';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
@@ -877,6 +877,42 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     };
   }
 
+  const INFINITE_RAIL_ID = 'loop-inf-59-19';
+  const INFINITE_IDENTITY: RailSetIdentity = { kind: 'loop', loopId: INFINITE_RAIL_ID };
+
+  /**
+   * 59-19 (G2/CR-04): an INFINITE progressive loop over A@0/B@4. The derived
+   * range ends at capacity (600), so the resolved lane spans 600 frames — far
+   * past the two-frame first occurrence the identity fallback would report.
+   */
+  function seedInfiniteMotionRail(): void {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [makeRecord('A', 0, 'a@0'), makeRecord('B', 4, 'a@4')],
+      INTERPOLATION,
+      600,
+    );
+    if (!seeded.ok) throw new Error(`infinite rail seed failed: ${seeded.error}`);
+    const loop = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: INFINITE_RAIL_ID,
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      scriptId: 'script-59-19',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    }]);
+    if (!loop.ok) throw new Error(`infinite loop seed failed: ${loop.error}`);
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(
+      LAYER,
+      TRACK,
+      [motionRecord(INFINITE_RAIL_ID, ALL_CHANNEL_IDS)],
+    );
+    if (!motion.ok) throw new Error(`infinite motion seed failed: ${motion.error}`);
+  }
+
   /** Seed the store with one motion-bearing Loop Clip rail (k0..k1). */
   function seedMotionRail(): void {
     seedTrack(TRACK, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 4, 'a@4')]);
@@ -1123,6 +1159,44 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     railMotionExpandedSelection.value = OTHER_LOOP_IDENTITY;
     const stale = render(base);
     expect(findAll(stale, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(0);
+  });
+
+  it('spans an infinite rail lane to the store-resolved end (59-19 G2/CR-04)', () => {
+    seedInfiniteMotionRail();
+    // The expected frame count comes from the STORE's own loop context — the
+    // row must agree with the authority the compositor reads, not a constant.
+    const context = physicPaintStore.getTrackRotoResolutionContext(LAYER, TRACK);
+    const range = context?.context.ranges.find((entry) => entry.loopId === INFINITE_RAIL_ID);
+    expect(range).toBeDefined();
+    const resolvedFrameCount = range!.effectiveEnd - range!.placementStart;
+    expect(resolvedFrameCount).toBe(600);
+
+    railMotionExpandedSelection.value = INFINITE_IDENTITY;
+    const tree = render({ rotoSelectedRail: INFINITE_IDENTITY });
+    const lanes = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'));
+    expect(lanes).toHaveLength(4);
+    for (const lane of lanes) {
+      expect(lane.props.style).toMatchObject({
+        width: resolvedFrameCount * TIMELINE_GEOMETRY.cellPitch,
+      });
+    }
+    const firstLaneCells = findAll(
+      lanes[0],
+      (vnode) => vnode.props['data-motion-cell-frame'] !== undefined,
+    );
+    expect(firstLaneCells).toHaveLength(resolvedFrameCount);
+  });
+
+  it('keeps a finite rail lane at its prior first-cycle width (59-19)', () => {
+    seedMotionRail();
+    railMotionExpandedSelection.value = LOOP_IDENTITY;
+    const tree = render({ rotoSelectedRail: LOOP_IDENTITY });
+    const lanes = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'));
+    expect(lanes).toHaveLength(4);
+    // k0@0/k1@4 repeat 1: the view still spans its two-key first cycle.
+    for (const lane of lanes) {
+      expect(lane.props.style).toMatchObject({ width: 2 * TIMELINE_GEOMETRY.cellPitch });
+    }
   });
 });
 

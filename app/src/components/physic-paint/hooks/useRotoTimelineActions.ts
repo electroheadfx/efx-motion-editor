@@ -73,7 +73,11 @@ import {
   type RailMotionKeySelection,
   type RailMotionTransformValues,
 } from '../roto/railMotionCommands';
-import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
+import {
+  assignRailMotionRailViews,
+  createRailMotionViewSpanResolver,
+  type RailMotionRailView,
+} from '../roto/railMotionIdentity';
 import type {
   PhysicPaintRotoRailMotionChannelId,
   PhysicPaintRotoRailMotionEasing,
@@ -2132,7 +2136,17 @@ function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailM
     ),
     groupOwnedKeyIds,
   });
-  const views = assignRailMotionRailViews(records, loopClips, keyRailSegments);
+  // 59-19 (G2 / CR-04): cursor-inside-span and the gizmo gate must read the
+  // same resolved infinite-rail end the compositor and the lane read.
+  const loopRanges = physicPaintStore.getTrackRotoResolutionContext(layerId, trackId)
+    ?.context.ranges ?? [];
+  const views = assignRailMotionRailViews(
+    records,
+    loopClips,
+    keyRailSegments,
+    undefined,
+    createRailMotionViewSpanResolver(loopRanges),
+  );
   const view = resolveSelectedRailView(views, readSelectedRailIdentity(input));
   const record = view === null || view.railId === null
     ? null

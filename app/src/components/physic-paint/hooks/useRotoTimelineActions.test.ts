@@ -5074,3 +5074,99 @@ describe('59-17 addMotionChannel — the host action behind the keyless menu', (
     expect(harness.publishStatus).toHaveBeenCalledWith('Select a rail first.');
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* 59-19 (G2/CR-04) — the cursor span of an infinite Loop Clip rail    */
+/* ------------------------------------------------------------------ */
+
+describe('59-19 infinite Loop Clip cursor span', () => {
+  const LAYER = 'layer-1';
+  const TRACK = 'track-1';
+  const RAIL_ID = 'loop-inf-59-19';
+
+  function launchContext(): PhysicPaintLaunchContext {
+    return {
+      operationId: 'op-1',
+      layerId: LAYER,
+      document: { activeTrackId: TRACK },
+    } as unknown as PhysicPaintLaunchContext;
+  }
+
+  /**
+   * Seed an infinite progressive loop over A@0/B@4 with a motion record on the
+   * loop's own identity, then return the store-resolved half-open end.
+   */
+  function seedInfiniteRail(): number {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [realKeyRecord('A', 0), realKeyRecord('B', 4)],
+      { enabled: false, mode: 'duplicate' },
+      600,
+    );
+    if (!seeded.ok) throw new Error(`infinite rail seed failed: ${seeded.error}`);
+    const loop = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: RAIL_ID,
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 'infinity',
+      mode: 'progressive',
+      scriptId: 'script-59-19',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    }]);
+    if (!loop.ok) throw new Error(`infinite loop seed failed: ${loop.error}`);
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId: 'A',
+      channels: [
+        { id: 'position-x', keys: [{ frame: 0, value: 0, easing: 'hold', wiggle: 0 }] },
+        { id: 'position-y', keys: [{ frame: 0, value: 0, easing: 'hold', wiggle: 0 }] },
+      ],
+    }]);
+    if (!motion.ok) throw new Error(`infinite motion seed failed: ${motion.error}`);
+
+    const range = physicPaintStore
+      .getTrackRotoResolutionContext(LAYER, TRACK)
+      ?.context.ranges.find((entry) => entry.loopId === RAIL_ID);
+    if (range === undefined) throw new Error('expected a resolved infinite range');
+    return range.effectiveEnd;
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+  });
+
+  it('keeps the rail span alive in a later cycle and ends it at the resolved end', () => {
+    const resolvedEnd = seedInfiniteRail();
+    const cursor = signal(6);
+    const harness = createHarness({
+      launch: launchContext(),
+      selectedLoopClipIds: [RAIL_ID],
+      getCurrentAppFrame: () => cursor.value,
+    });
+    const { canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason } =
+      harness.actions.physicalActions;
+
+    // Frame 6 is cycle 2 — past the two-frame first occurrence, inside the
+    // store-resolved span, so the toggle-key command stays enabled.
+    expect(canSetMotionKeyAtCursor.value).toBe(true);
+    expect(setMotionKeyAtCursorDisabledReason.value).toBeNull();
+
+    // The last frame before the half-open end is still inside.
+    cursor.value = resolvedEnd - 1;
+    expect(canSetMotionKeyAtCursor.value).toBe(true);
+
+    // At the resolved end the span is over: the same command is disabled with
+    // the locked copy, so the gizmo and the lane agree with the compositor.
+    cursor.value = resolvedEnd;
+    expect(canSetMotionKeyAtCursor.value).toBe(false);
+    expect(setMotionKeyAtCursorDisabledReason.value)
+      .toBe('Move the playhead inside this rail first.');
+  });
+});

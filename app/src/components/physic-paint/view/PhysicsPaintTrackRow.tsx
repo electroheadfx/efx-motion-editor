@@ -29,7 +29,11 @@ import { signal } from '@preact/signals';
 import { useRef } from 'preact/hooks';
 import { AudioWaveform, Blend, Camera, ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Minus, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
-import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
+import {
+  assignRailMotionRailViews,
+  createRailMotionViewSpanResolver,
+  type RailMotionRailView,
+} from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
@@ -418,8 +422,19 @@ export function readTrackRailMotionFacts(layerId: string, trackId: string): Rail
   if (records.length === 0 && loopClips.length === 0 && keyRailSegments.length === 0) {
     return EMPTY_RAIL_MOTION_HOST_FACTS;
   }
+  // 59-19 (G2 / CR-04): the infinite rail's view ends at the SAME resolved
+  // boundary the compositor reads, so the lane width agrees with the transform
+  // instead of covering only the first occurrence.
+  const loopRanges = physicPaintStore.getTrackRotoResolutionContext(layerId, trackId)
+    ?.context.ranges ?? [];
   return {
-    views: assignRailMotionRailViews(records, loopClips, keyRailSegments),
+    views: assignRailMotionRailViews(
+      records,
+      loopClips,
+      keyRailSegments,
+      undefined,
+      createRailMotionViewSpanResolver(loopRanges),
+    ),
     records,
   };
 }
