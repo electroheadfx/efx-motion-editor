@@ -3106,6 +3106,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
   const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';
   const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
+  const canAnimateSelectedRail = physicalActions?.canAnimateSelectedRail.value ?? false;
+  const animateSelectedRailDisabledReason = physicalActions?.animateSelectedRailDisabledReason.value ?? null;
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
   const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
@@ -3277,6 +3279,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [pushArmedNow, keyRailSegments]);
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
+  const animateRailTooltip = useStyledTooltip();
   const railCreateTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
@@ -6143,6 +6146,40 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
+                {/* 59-12 (D-01): the ONE Animate command. Rail scope only —
+                    selecting a drawing key or a Motion key hides it. No
+                    conversion step and no cycle value: every rail type can be
+                    animated (MUI-01/MOTN-01). */}
+                {activeRailSetIdentity !== null ? (
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={animateRailTooltip.onPointerEnter} onPointerLeave={animateRailTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class="physics-paint-roto-key-icon-button"
+                      aria-label="Animate rail"
+                      aria-disabled={!canAnimateSelectedRail ? 'true' : undefined}
+                      aria-describedby={!canAnimateSelectedRail && animateSelectedRailDisabledReason ? 'roto-key-action-reason-animate' : undefined}
+                      onFocus={animateRailTooltip.onFocus}
+                      onBlur={animateRailTooltip.onBlur}
+                      onClick={() => {
+                        animateRailTooltip.hide();
+                        if (!canAnimateSelectedRail) return;
+                        void physicalActions?.animateSelectedRail?.();
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && !canAnimateSelectedRail) event.preventDefault();
+                      }}
+                    >
+                      <Play size={18} aria-hidden="true" />
+                      <span class="physics-paint-roto-key-icon-label">Animate</span>
+                    </button>
+                    {!canAnimateSelectedRail && animateSelectedRailDisabledReason ? (
+                      <span id="roto-key-action-reason-animate" class="physics-paint-sr-only">{animateSelectedRailDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={animateRailTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Animate the selected rail', animateSelectedRailDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                ) : null}
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={addKeyTooltip.onPointerEnter} onPointerLeave={addKeyTooltip.onPointerLeave}>
                   <button
                     type="button"

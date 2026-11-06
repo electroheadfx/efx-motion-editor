@@ -55,6 +55,14 @@ import type {
 } from '../roto/rotoCoordinatorPorts';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
+import {
+  animateRail,
+  resolveMotionCommandAvailability,
+  resolveSelectedRailView,
+} from '../roto/railMotionCommands';
+import { assignRailMotionRailViews, type RailMotionRailView } from '../roto/railMotionIdentity';
+import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
@@ -1362,6 +1370,16 @@ export interface RotoPhysicalTimelineActionBundle {
   readonly scissorDisabledReason: ReadonlySignal<string | null>;
   /** Contextual enabled Scissor tooltip; generated-frame targets use the split-at-point copy. */
   readonly scissorTooltipDescription: ReadonlySignal<string>;
+  /**
+   * 59-12 (D-01/D-02): animate the selected rail. Seeds its one identity
+   * Position key at the rail-local playhead and commits the whole collection
+   * through the 59-07 store setter — the single motion commit path.
+   */
+  readonly animateSelectedRail: () => Promise<boolean>;
+  /** Reactive Animate availability derived from the session rail selection. */
+  readonly canAnimateSelectedRail: ReadonlySignal<boolean>;
+  /** Reactive Animate disabled reason, or null when eligible. */
+  readonly animateSelectedRailDisabledReason: ReadonlySignal<string | null>;
   /** Reactive pending physical operation id, or null when idle. */
   readonly pendingOperationId: ReadonlySignal<string | null>;
   /**
@@ -1969,6 +1987,61 @@ function resolveRotoRailConversionKind(
   return clip.mode === 'static' ? 'static' : 'motion';
 }
 
+/** Session rail-set identity for the active rail scope (59-12, D-01). */
+function readSelectedRailIdentity(input: RotoTimelineActionsInput): RailSetIdentity | null {
+  const selectedKeyRail = input.getSelectedKeyRail?.() ?? null;
+  if (selectedKeyRail !== null) {
+    return Object.freeze({ kind: 'key-rail', firstKeyId: selectedKeyRail.firstKeyId }) as RailSetIdentity;
+  }
+  const selectedLoopClipIds = input.getSelectedLoopClipIds?.() ?? [];
+  if (selectedLoopClipIds.length === 1) {
+    return Object.freeze({ kind: 'loop', loopId: selectedLoopClipIds[0]! }) as RailSetIdentity;
+  }
+  return null;
+}
+
+interface ActiveRailMotionState {
+  readonly layerId: string;
+  readonly trackId: string;
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly views: readonly RailMotionRailView[];
+  readonly view: RailMotionRailView | null;
+}
+
+/**
+ * 59-12: the live motion state behind the selected rail. Reads the 59-07
+ * store getter, projects every live rail with the 59-06 assignment (the ONE
+ * anchor-based first bind), and resolves the selected view. Nothing is cached
+ * and no map is written here.
+ */
+function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailMotionState | null {
+  const launch = input.getLaunchContext?.() ?? null;
+  const layerId = launch?.layerId;
+  const trackId = launch?.document?.activeTrackId;
+  if (!layerId || !trackId) return null;
+
+  const records = physicPaintStore.getRotoPhysicalRailMotions(layerId, trackId);
+  const loopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
+  const keyRecords = physicPaintStore.getRotoRealKeyRecords(layerId, trackId);
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of loopClips) {
+    for (const keyId of clip.sourceKeyIds) groupOwnedKeyIds.add(keyId);
+    for (const override of clip.frameOverrides ?? []) groupOwnedKeyIds.add(override.keyId);
+  }
+  const keyRailSegments = deriveKeyRailSegments({
+    orderedRealKeys: [...keyRecords].sort((left, right) => (
+      left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)
+    )),
+    incomingInterpolationBreakKeyIds: new Set(
+      physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
+    ),
+    groupOwnedKeyIds,
+  });
+  const views = assignRailMotionRailViews(records, loopClips, keyRailSegments);
+  const view = resolveSelectedRailView(views, readSelectedRailIdentity(input));
+  return { layerId, trackId, records, views, view };
+}
+
 export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const forceSpacingInput = useMemo(() => signal('1'), []);
   // Quick 261105-raf: ONE in-memory holder owns the pending rail-conversion
@@ -2060,6 +2133,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);
   const scissorDisabledReason = computed(() => mapRotoScissorProductReason(scissorTarget.value));
   const scissorTooltipDescription = computed(() => mapRotoScissorTooltip(scissorTarget.value));
+  const animateAvailability = computed(() => resolveMotionCommandAvailability({
+    command: 'animate',
+    hasRail: readSelectedRailIdentity(input) !== null,
+  }));
+  const canAnimateSelectedRail = computed(() => animateAvailability.value.enabled);
+  const animateSelectedRailDisabledReason = computed(() => animateAvailability.value.reason);
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
   const canApplyForceSpacing = computed(() => computeForceSpacingAvailability(input).eligible);
@@ -2318,6 +2397,48 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ) ?? 'Scissor is unavailable.',
     });
   }, [input, runPhysicalAction]);
+
+  /**
+   * 59-12 Task 1: Animate the selected rail. The pure command owns identity
+   * and the seeded key; this action only reads the live state, publishes the
+   * refusal reason verbatim, and commits through the 59-07 store setter.
+   */
+  const animateSelectedRail = useCallback(async (): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.('Select a rail to animate it.');
+      return false;
+    }
+    const cursorFrame = input.getCurrentAppFrame?.() ?? 0;
+    const result = animateRail({
+      views: state.views,
+      records: state.records,
+      view: state.view,
+      cursorFrame,
+    });
+    if (!result.ok) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.(result.reason);
+      return false;
+    }
+    if (result.records === state.records) {
+      input.publishStatus?.('This rail already has motion.');
+      return true;
+    }
+    const written = physicPaintStore.replaceRotoPhysicalRailMotions(
+      state.layerId,
+      state.trackId,
+      result.records,
+    );
+    if (!written.ok) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.(written.error);
+      return false;
+    }
+    input.publishStatus?.('Animated the selected rail.');
+    return true;
+  }, [input]);
 
   const duplicateKey = useCallback((sourceKeyId: string): Promise<boolean> => {
     if (!isBoundedKeyId(sourceKeyId)) {
@@ -3693,6 +3814,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     canScissor,
     scissorDisabledReason,
     scissorTooltipDescription,
+    animateSelectedRail,
+    canAnimateSelectedRail,
+    animateSelectedRailDisabledReason,
     pendingOperationId: pendingOperationIdSignal,
     prepareRotoKeyDrag,
     commitRotoKeyDrag,
@@ -3728,7 +3852,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
     setApplyStatus: input.setApplyStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
