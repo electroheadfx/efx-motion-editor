@@ -216,6 +216,11 @@ import {
   type RailMotionSelectionScope,
 } from '../roto/railMotionCommands';
 import type { PhysicPaintRotoRailMotionEasing } from '../roto/railMotionModel';
+import {
+  buildRailMotionMergeNoticeCopy,
+  dismissRailMotionMergeNotice,
+  railMotionMergeNotice,
+} from '../roto/railMotionMergeNotice';
 import type { TimelineMotionLaneControl } from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -1284,6 +1289,49 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
         </span>
       )}
       <PhysicsPaintStyledTooltip visible={tooltip.visible} region="top">{capsuleText}</PhysicsPaintStyledTooltip>
+    </div>
+  );
+}
+
+/**
+ * 59-12 Task 4 (MOTN-10): the merge-drop confirmation row. This leaf alone
+ * subscribes to the session notice signal — the strip body never reads it, so a
+ * notice change re-renders just this row. Inline token styling keeps this task
+ * out of physicsPaintStudio.css. The notice is session-only: publish performs
+ * no store write, no revision bump and creates no undo entry.
+ */
+function RailMotionMergeNoticeRow() {
+  const notice = railMotionMergeNotice.value;
+  if (notice === null) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-roto-motion-merge-notice="true"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        minHeight: '24px',
+        margin: '0 8px',
+        padding: '2px 8px',
+        border: '1px solid var(--color-border-subtle, #2a3a4a)',
+        borderRadius: '4px',
+        background: 'var(--color-bg-root, #0f0f0f)',
+        color: 'var(--sidebar-text-primary, #e5edf8)',
+        fontSize: '11px',
+        lineHeight: '16px',
+      }}
+    >
+      <span>{buildRailMotionMergeNoticeCopy(notice)}</span>
+      <button
+        type="button"
+        class="physics-paint-roto-key-icon-button"
+        aria-label="Dismiss rail merge notice"
+        onClick={() => dismissRailMotionMergeNotice()}
+      >
+        Dismiss
+      </button>
     </div>
   );
 }
@@ -6296,6 +6344,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             />
           </div>
         </div>
+        {/* 59-12 Task 4: the merge-drop confirmation row sits at the top of the
+            action-bar region and renders only while a notice exists. */}
+        <RailMotionMergeNoticeRow />
         <div
           class="physics-paint-roto-action-row"
           onClickCapture={() => {

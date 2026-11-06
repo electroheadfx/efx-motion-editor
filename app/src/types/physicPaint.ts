@@ -33,6 +33,23 @@ import { isWebpBytes, isPngBytes, buildFrameBytesToken } from '../lib/webpBytes'
 export { isWebpBytes, isPngBytes, buildFrameBytesToken };
 import { parseFrameMediaReference, type FrameMediaReference } from '../lib/efxPaintPackage';
 
+/**
+ * 59-12 Task 4 (MOTN-10): session-only settlement metadata for a rail merge
+ * that dropped rail motion. Declared ONCE here — the notice module imports this
+ * shape and never redeclares it.
+ *
+ * This is a child-realm UI notice, never document state: it is never persisted,
+ * never joins a document allowlist, and never enters the revision or any
+ * fingerprint. The railId and frame span are the reconciler's `droppedRailId`
+ * and the dropped rail's prior app-frame span, delivered unchanged through the
+ * settlement contract; this type never classifies a merge itself.
+ */
+export interface PhysicPaintRailMotionMergeNotice {
+  readonly railId: string;
+  readonly startFrame: number;
+  readonly endFrameExclusive: number;
+}
+
 export type PhysicPaintActionTransactionDirection = 'forward' | 'undo' | 'redo';
 export type PhysicPaintActionTransactionMode = 'keep-groups' | 'delete-action-and-groups';
 export type PhysicPaintActionHistoryReleaseReason = 'eviction' | 'redo-branch-truncation' | 'session-history-clear';
