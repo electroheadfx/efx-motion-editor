@@ -1,0 +1,947 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="154" failures="5" errors="0" time="0.564">
+    <testsuite name="src/components/physic-paint/roto/railMotionCommands.test.ts" timestamp="2026-11-06T18:15:04.587Z" hostname="efx2.home" tests="67" failures="0" errors="0" skipped="0" time="0.01002925">
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; binds a Loop Clip rail by its own loopId and mints nothing" time="0.001226">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; mints exactly one rail id for a bare Key Rail and keeps the first key as the anchor hint" time="0.000325333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; animates Reveal and Static rails the same way — no conversion and no type gate" time="0.000471458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; seeds exactly the grouped Position pair with one value-0 key at the rail-local playhead" time="0.000585042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never seeds frame 0 when the cursor is elsewhere in the rail (D-02)" time="0.000088542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; clamps the seeded frame into the rail keyed span at both ends" time="0.000095958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; is idempotent: a second Animate returns the same collection reference" time="0.000114458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; keeps a re-animate on an already-bound view idempotent even without the anchor lookup" time="0.000086334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; never touches a drawing key, loop clip or break: every input stays deep-equal" time="0.000190791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate &gt; fails with a plain sentence when the playhead is not a valid frame" time="0.000070459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selected rail view resolution &gt; resolves a Loop Clip rail through its loopId and a Key Rail through its first key" time="0.000101208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; adds a key at the rail-local cursor with the channel current evaluated value" time="0.000444875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; updates an existing frame in place without duplicating it" time="0.000132875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; writes both grouped Position axes atomically in one command call" time="0.000202208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes only the addressed key and keeps the rest of the rail" time="0.000200625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a channel when its last key is removed" time="0.000084542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes the record and reports recordRemoved when the rail last channel empties" time="0.000071166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; removes a Motion key at a frame that carries none with a plain reason" time="0.00006825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; refuses to edit a rail that carries no motion" time="0.000044584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; steps to the adjacent key frame without wrapping" time="0.000083458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; accepts only hold and ease and preserves the key value" time="0.000145167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; bounds Wiggle to 0..1,000,000 and rejects non-finite or negative values" time="0.000215834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — Motion keys &gt; finds the addressed key and reports none for an empty frame" time="0.000062333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — selection scope &gt; reports one scope, with a key scope winning over the rail it rides on" time="0.000075625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — honest availability &gt; answers every case and never reports an empty reason (T-59-35)" time="0.0003275">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is enabled for every rail type whenever a rail is selected" time="0.000041625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 rail motion commands — animate availability &gt; is unavailable with a non-empty reason when no rail is selected" time="0.000041584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; maps every selection state to exactly one scope and one command list" time="0.000153">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; gives every command exactly one scope — a command from another scope is absent" time="0.000166041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing the motion-key selection keeps the rail set (expanded block stays open)" time="0.000090292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a motion key clears the drawing-key selection" time="0.000052083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; selecting a drawing key clears the motion-key selection" time="0.000043875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; deleting the rail clears every scope" time="0.000410833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; clearing with no active scope leaves the rail set and drops both key selections" time="0.000061333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-12 Task 3: three independent selection scopes (MOTN-11) &gt; a motion-key selection survives a rail re-selection" time="0.000046458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes the grouped Position pair at the rail-local cursor in ONE result" time="0.000247667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; converts Scale from UI percent to the model factor through the 59-02 pair" time="0.000073792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes Rotation in degrees with NO normalization" time="0.000094625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; writes only the channels present in the partial" time="0.00009175">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; clamps the key frame into the rail span through railMotionCursorFrame" time="0.000080333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a drag on a channel with no keys, leaving the collection byte-identical (D-08)" time="0.000069791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a Position drag when only one axis is animated (D-08 grouped pair)" time="0.000046125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an un-animated rail and a view without a railId with plain reasons" time="0.000047416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects an empty partial and a non-finite cursor with plain reasons" time="0.000058959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; rejects a non-finite channel value instead of writing it (no NaN reaches the document)" time="0.0000535">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo transform write &gt; supplies the grouped sibling EXPLICITLY instead of deriving it (one atomic pair write)" time="0.000067166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when no animated rail is selected" time="0.000057625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled with a reason when the rail carries no motion" time="0.000032708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the only animated channel is Opacity (D-07 — numeric-only)" time="0.000033417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is disabled when the playhead is outside the rail span" time="0.000026959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — gizmo availability &gt; is enabled with a null reason when a draggable channel is animated inside the span" time="0.0000305">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; seeds a frozen draft from a null base" time="0.00007675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; overrides only the present channels and keeps the rest of the draft" time="0.00010325">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — draft merge reducer &gt; replaces the Position pair wholesale, never mixing one axis with the other" time="0.000030417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the command layer free of store, signal, component and DOM imports" time="0.000278458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; has exactly ONE writeMotionTransformAtCursor call, inside handlePointerUp" time="0.000083875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; keeps the gesture machine and the legacy write endpoints intact" time="0.000063458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; adds rail-motion as a third target with no opacity affordance and no rotation wrap" time="0.000092875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-13 rail motion commands — purity and source pins &gt; mounts a third handles instance gated on a non-null railId" time="0.000048458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; edits an existing grouped Position key without touching the sibling value" time="0.000101667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; mirrors the independence rule for a Position Y edit" time="0.000053083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; creates ONE grouped key per axis, seeding the untouched axis from the evaluator" time="0.000094625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; passes rotation through with NO normalization" time="0.000077875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; converts Opacity between percent and the stored fraction" time="0.000052875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; rejects out-of-domain and non-finite entries with a visible reason and no write" time="0.000091875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; refuses a channel the rail does not carry" time="0.000033">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionCommands.test.ts" name="59-16 rail motion commands — numeric inspector write &gt; produces the SAME collection as the 59-13 gizmo path" time="0.000241958">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" timestamp="2026-11-06T18:15:04.591Z" hostname="efx2.home" tests="68" failures="5" errors="0" skipped="0" time="0.025260375">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; keeps the lower Scripts/Onion/Motion tab group, adds the tool pane&apos;s Paint/Track/Audio tabs (47 UAT), and exposes scans on Scripts entry" time="0.001182084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; renders Actions as the FIRST tab of its group while preserving the default-open scripts state key" time="0.000171666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; removes the LOG tab and the Save state / Load state buttons (36.15-11, UAT Gap G-6)" time="0.000170875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; keeps ordered accessible controls while swapping Play to contextual Loop Edit" time="0.000382667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; provides an accessible Run Script… dialog distinct from cached Roto playback" time="0.000206834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; provides load-only focusable rows, inline rename isolation, and focus-contained deletion" time="0.000281666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint SCRIPTS panel contract &gt; locks deterministic compact CSS without claiming pixel layout proof" time="0.000512916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Clear Script Buffer relocation contract (260905-dso) &gt; removes the Clear Script Buffer control from the panel toolbar" time="0.000104167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Clear Script Buffer relocation contract (260905-dso) &gt; moves the discard handler to the Studio as a stable useCallback wired into the workflow memo" time="0.00036425">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; removes the Delete Script and Copy Script toolbar controls while keeping Copy reachable in the Tools popover" time="0.000263209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; renders one labelled trash per row, gated only by the mutation lock and not by availability.canDelete" time="0.002203042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; selects the row then requests the shared confirmation — never a direct delete" time="0.000695125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; lays the four toolbar buttons out on one row and keeps the guarded disable visual" time="0.000135667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel per-row trash contract (261022-o2a) &gt; pins the three-column row grid and the hover/focus-within trash reveal" time="0.000392417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar) &gt; labels only Apply and Run Script; Save and Refresh stay icon-only" time="0.000197">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar) &gt; lays the labeled toolbar buttons out with an icon-label gap and side padding" time="0.000092292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UAT Gap F-1; 261022-o2a four-label toolbar) &gt; renders the toolbar labels lowercase by opting the script icon buttons out of the global uppercase button rule" time="0.000116375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UAT Gap F-1; 261022-o2a four-label toolbar) &gt; keeps every toolbar icon at size 16 by preventing flex shrink in the grid cells" time="0.000140416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 261022-o2a four-label toolbar) &gt; sizes the toolbar cells to content so every label renders in full (no truncation)" time="0.000195542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap G-1/G-5; 261022-o2a four-label toolbar) &gt; keeps the toolbar on one row with the row gap serving as breathing room (UAT Gap G-5)" time="0.000089417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; routes every toolbar button through the guarded IconButton idiom with no native title" time="0.0002025">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; uses the de-prefixed tooltip grammar and restores focus to the row trash that opened the confirmation" time="0.000107958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; keeps the four toolbar labels ordered with neither Delete nor Copy present" time="0.000092416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel guarded toolbar contract (260905-f3v) &gt; wires descriptionId on every toolbar IconButton so sr-only disabled reasons are announced (260905-hfd)" time="0.0000975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; keeps unreferenced deletion compact with exact Action copy" time="0.000319792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; discloses exact one/many reference counts, visible ranges, ordered Rails, and consequences" time="0.000294292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion disclosure contract (43.2-13) &gt; routes only closed controller choices and keeps long content in the approved scrollable family" time="0.000527125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while preparing disables the complete mutation surface" time="0.000620416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while committed disables the complete mutation surface" time="0.000408">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; retains accepted rows and one dialog while recovery-required disables the complete mutation surface" time="0.000415583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; shows only controller-mapped recovery or stale copy and never raw diagnostics" time="0.000264083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions deletion lifecycle contract (43.2-13) &gt; keeps Escape cancellation and focus containment idle-only while restoring surviving or nearest Action focus" time="0.000093042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; hides linked navigation when the selected Action has no linked Rails" time="0.000189708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; shows one current link with a single Go to Rail action" time="0.000232875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; shows non-wrapping Previous and Next controls guarded at their ends" time="0.000231458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; uses guarded IconButton Previous/Next with Chevron icons and boundary reasons in both renderings" time="0.000162083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; no longer derives cursorOnCurrentLinkedRail or wires onEditCurrent through the Studio memo (260905-hfd)" time="0.000681292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions inspector linked Group navigation (43.2-15) &gt; renders only Edit Rail and Close in the inspector top row when linked navigation is null" time="0.000219708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel compact sidebar contract &gt; keeps generated settings and operation status out of the script library surface" time="0.000329334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel compact sidebar contract &gt; keeps the Run Script… tooltip fallback covering both modes" time="0.000112208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; keeps the toolbar and the scope/pager meta row pinned above the scripts list scroll area in the normal view" time="0.000072958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; wraps only the scripts list in the scroll area and keeps the confirmation dialog outside it" time="0.000059208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; wraps the inspector view content in a scroll area" time="0.000102083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; compacts the list-view Linked Rails nav into the scope meta row as a pager (260922-jss)" time="0.000215292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; serves every Rail total with one pager shape and routes the Go action (260922-jss)" time="0.000249167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="PhysicsPaintScriptsPanel scroll hierarchy (260905-epb) &gt; renders a single 4-button top action row above the inspector scroll area (260905-hfd)" time="0.000194292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel readable rows contract (260905-f3v) &gt; renders script rows readable by default with a distinct selected state" time="0.000137333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel readable rows contract (260905-f3v) &gt; neutralizes the disabled script-title grey-out with a scoped override (260905-hfd)" time="0.000094125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders a native labelled select between the toolbar and the list, with All plus one entry per owning layer" time="0.000405">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders no selector when no layer owns an Action (a one-option select would be dead UI)" time="0.000149667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; changing it calls ONLY library.setScriptScope(value) — no select, no refresh" time="0.000195417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders the FILTERED projection while selection state is read from the unfiltered rows" time="0.000168792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; renders the LIVE layer name in provenance, and marks an orphan unavailable" time="0.000165125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; keeps the two empty states distinct, and the scope-aware one offers the way back to All" time="0.0001945">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; falls back to All when the scope names no renderable entry (code review WR-02)" time="0.000177375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Actions layer scope (quick-260922-al1) &gt; pins the scope row and marker CSS without disturbing the toolbar grid" time="0.000127625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; replaces the Scripts surface with the Selected Key Rail takeover and exactly Frames, Keys, and Type" time="0.000387334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; fires onOpenKeyRailEdit with the segment first key id and onCloseKeyRail from the top actions" time="0.000209167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; keeps Edit Rail visible but guarded with the multi-select reason and its description id" time="0.000143375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; pins the branch order, the three fact rows, and the guarded Edit Rail contract in source" time="0.000129333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Selected Key Rail inspector (58-03 RAIL-01) &gt; types the Edit Rail handoff so 58-05&apos;s always-Promise handler assigns cleanly" time="0.000037625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; renders the Scale field from the prop and commits the display value through the callback" time="0.000230375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; renders no motion fields at all without a Motion key selection — no disabled ghosts" time="0.000126875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; pins the props-driven contract in source: one prop in, one callback out, no store read" time="0.003528958">
+            <failure message="expected &apos;import { ChevronLeft, ChevronRight, P…&apos; to match /from &apos;@preact\/signals&apos;/signals&apos;" type="AssertionError">
+AssertionError: expected &apos;import { ChevronLeft, ChevronRight, P…&apos; to match /from &apos;@preact\/signals&apos;/signals&apos;
+
+- Expected: 
+/from &apos;@preact\/signals&apos;/
+
++ Received: 
+&quot;import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from &apos;lucide-preact&apos;;
+import type { ComponentChildren, Ref, RefObject } from &apos;preact&apos;;
+import { useEffect, useId, useRef } from &apos;preact/hooks&apos;;
+import type { RotoScriptClipboardController } from &apos;../roto/physicsPaintRotoScriptClipboard&apos;;
+import type { RotoScriptLibraryController } from &apos;../roto/physicsPaintRotoScriptLibrary&apos;;
+import type { RotoPlayScriptController } from &apos;../roto/physicsPaintRotoPlayScriptController&apos;;
+import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from &apos;../roto/physicsPaintRotoScriptScope&apos;;
+import { PhysicsPaintStyledTooltip, useStyledTooltip } from &apos;./PhysicsPaintStyledTooltip&apos;;
+import type { PhysicsPaintLoopClipPresentation } from &apos;./physicsPaintLoopClipPresentation&apos;;
+import type { RailMotionInspectorPresentation, SelectedKeyRailInspectorPresentation } from &apos;./physicsPaintKeyRailPresentation&apos;;
+import type { PhysicPaintRotoRailMotionChannelId } from &apos;../roto/railMotionModel&apos;;
+import { NumericStepper } from &apos;../../shared/NumericStepper&apos;;
+import { SidebarScrollArea } from &apos;../../sidebar/SidebarScrollArea&apos;;
+
+export interface PhysicsPaintScriptsPanelProps {
+  library: RotoScriptLibraryController;
+  playScript: RotoPlayScriptController;
+  rotoScript: RotoScriptClipboardController;
+  playButtonRef: RefObject&lt;HTMLButtonElement | null&gt;;
+  selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
+  selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;
+  /**
+   * 59-16 (D-06/D-09): the numeric Motion value inspector projection. Null
+   * when no Motion key is selected — the panel then renders no motion fields
+   * at all. Every displayed value comes from this prop; the panel reads no
+   * store.
+   */
+  selectedRailMotion?: RailMotionInspectorPresentation | null;
+  /**
+   * 59-16: the ONE write path out of a motion field. Receives the display-unit
+   * value and returns the visible rejection reason, or null on success.
+   */
+  onCommitRailMotionValue?: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number) =&gt; string | null;
+  linkedGroupNavigation?: {
+    currentIndex: number;
+    total: number;
+    onPrevious: () =&gt; void;
+    onNext: () =&gt; void;
+    onGoToGroup: () =&gt; void;
+  } | null;
+  onOpenLoopEdit: (loopId: string) =&gt; Promise&lt;unknown&gt;;
+  onOpenKeyRailEdit?: (firstKeyId: string) =&gt; Promise&lt;unknown&gt; | void;
+  onCloseLoopClip: () =&gt; void;
+  onCloseKeyRail?: () =&gt; void;
+  onSave: () =&gt; void;
+  onActivateRow: (id: string) =&gt; void;
+  onLoadAndApply: () =&gt; void;
+  onRefresh: () =&gt; void;
+}
+
+export function PhysicsPaintScriptsPanel({
+  library,
+  playScript,
+  rotoScript,
+  playButtonRef,
+  selectedLoopClip = null,
+  selectedKeyRail = null,
+  selectedRailMotion = null,
+  onCommitRailMotionValue,
+  linkedGroupNavigation = null,
+  onOpenLoopEdit,
+  onOpenKeyRailEdit,
+  onCloseLoopClip,
+  onCloseKeyRail,
+  onSave,
+  onActivateRow,
+  onLoadAndApply,
+  onRefresh,
+}: PhysicsPaintScriptsPanelProps) {
+  const rows = library.rows.value;
+  // quick-260922-al1: the scope narrows ONLY what is rendered. `rows` stays the
+  // unfiltered source for selection, rename, delete and the row lookup, so a
+  // hidden Action keeps every contract it had before the filter existed.
+  const scriptScope = library.scriptScope.value;
+  const scriptLayers = library.scriptLayers.value;
+  const scopeEntries = buildScriptScopeEntries(rows, scriptLayers);
+  // code review WR-02: a scope the selector cannot render (its layer&apos;s last
+  // Action was just deleted, or the id is stale) resolves to All, so the
+  // control and the list always agree.
+  const scopeValue = resolveScriptScopeValue(scopeEntries, scriptScope);
+  const visibleRows = filterScriptRows(rows, scopeValue);
+  const selectedActionId = library.selectedId.value;
+  const availability = library.availability.value;
+  const actionMutationDisabledReason = library.actionMutationDisabledReason.value;
+  const confirmationBusy = actionMutationDisabledReason !== null;
+  const loadAndApplyDisabledReason = actionMutationDisabledReason
+    ?? (!library.selected.value
+      ? &apos;Select a project Script first.&apos;
+      : rotoScript.availability.value.replacementApplyDisabledReason);
+  const saveDisabledReason = actionMutationDisabledReason ?? availability.saveDisabledReason;
+  const playScriptDisabledReason = actionMutationDisabledReason ?? playScript.disabledReason.value;
+  const rename = library.rename.value;
+  const confirmation = library.deleteConfirmation.value;
+  const deleteError = library.deleteError.value;
+  const referenceImpact = confirmation?.referenceImpact ?? null;
+  const toolbarRef = useRef&lt;HTMLDivElement&gt;(null);
+  const listRef = useRef&lt;HTMLDivElement&gt;(null);
+  const confirmationRef = useRef&lt;HTMLDivElement&gt;(null);
+  const cancelDeleteRef = useRef&lt;HTMLButtonElement&gt;(null);
+  // 261022-o2a: the row trash that opened the confirmation. The delete button
+  // lives inside the row, so the cancel/confirm round-trip restores focus to
+  // THAT trash (not a toolbar button) while the row still exists.
+  const deleteTriggerId = useRef&lt;string | null&gt;(null);
+  const previousConfirmation = useRef&lt;typeof confirmation&gt;(null);
+  const saveReasonId = useId();
+  const loadAndApplyReasonId = useId();
+  const playReasonId = useId();
+  const previousRailReasonId = useId();
+  const nextRailReasonId = useId();
+  const refreshReasonId = useId();
+  const scopeSelectId = useId();
+  const keyRailEditReasonId = useId();
+  useEffect(() =&gt; {
+    const previous = previousConfirmation.current;
+    previousConfirmation.current = confirmation;
+    let focusFrame: number | null = null;
+    if (confirmation &amp;&amp; !previous) {
+      focusFrame = requestAnimationFrame(() =&gt; cancelDeleteRef.current?.focus());
+    } else if (!confirmation &amp;&amp; previous) {
+      focusFrame = requestAnimationFrame(() =&gt; {
+        const triggerId = deleteTriggerId.current;
+        deleteTriggerId.current = null;
+        if (triggerId !== null &amp;&amp; rows.some((row) =&gt; row.id === triggerId)) {
+          const trigger = listRef.current?.querySelector&lt;HTMLElement&gt;(
+            `[data-action-id=\&quot;${CSS.escape(triggerId)}\&quot;] [data-script-delete]`,
+          );
+          if (trigger) {
+            trigger.focus();
+            return;
+          }
+        }
+        // The triggering row is gone: fall back to the nearest surviving row,
+        // then to the first enabled toolbar control.
+        const selectedRow = selectedActionId
+          ? listRef.current?.querySelector&lt;HTMLElement&gt;(`[data-action-id=\&quot;${CSS.escape(selectedActionId)}\&quot;]`)
+          : null;
+        const nearestRow = selectedRow ?? listRef.current?.querySelector&lt;HTMLElement&gt;(&apos;[data-action-id]&apos;);
+        const toolbarControl = toolbarRef.current?.querySelector&lt;HTMLElement&gt;(&apos;button:not(:disabled), [tabindex=\&quot;0\&quot;]&apos;);
+        (nearestRow ?? toolbarControl)?.focus();
+      });
+    }
+    return () =&gt; {
+      if (focusFrame !== null) cancelAnimationFrame(focusFrame);
+    };
+  }, [confirmation, rows, selectedActionId]);
+  const requestRowDelete = (id: string) =&gt; {
+    if (confirmationBusy) return;
+    deleteTriggerId.current = id;
+    library.select(id);
+    library.requestDelete();
+  };
+  const stopRowPointerActivation = (event: { stopPropagation: () =&gt; void }) =&gt; event.stopPropagation();
+  const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () =&gt; void }) =&gt; {
+    if (event.key === &apos;Enter&apos; || event.key === &apos; &apos;) event.stopPropagation();
+  };
+
+  // 59-16 (D-06/D-09): the numeric Motion value inspector. Props-driven end to
+  // end — every displayed value arrives through `selectedRailMotion` (the
+  // 59-16 projection) and every write leaves through `onCommitRailMotionValue`;
+  // the panel imports no store and mutates no record. A Motion key can only be
+  // selected while its rail owns the pane, so the section rides whichever
+  // surface is mounted (normal Scripts, Key Rail or Loop Clip inspector).
+  // Task 1 wires Scale end-to-end; Task 2 opens the full five-field set.
+  const motionValuesSection = selectedRailMotion === null
+    ? null
+    : (
+      &lt;section class=\&quot;physics-paint-motion-inspector\&quot; role=\&quot;group\&quot; aria-label=\&quot;Motion values\&quot;&gt;
+        {selectedRailMotion.fields
+          .filter((field) =&gt; field.channelId === &apos;scale&apos;)
+          .map((field) =&gt; (
+            &lt;div key={field.channelId} class=\&quot;physics-paint-motion-field\&quot;&gt;
+              &lt;span class=\&quot;physics-paint-motion-field-label\&quot;&gt;{field.label} ({field.unit})&lt;/span&gt;
+              &lt;NumericStepper
+                ariaLabel={field.label}
+                value={field.value}
+                step={1}
+                precision={3}
+                onChange={(value) =&gt; { onCommitRailMotionValue?.(field.channelId, value); }}
+              /&gt;
+            &lt;/div&gt;
+          ))}
+      &lt;/section&gt;
+    );
+
+  // 58-03 RAIL-01 (D-01): selecting a Key Rail takes over the Scripts pane with
+  // exactly three facts (D-04) and one conversion entry. The branch returns
+  // before the loop-clip inspector so a plain rail selection can never be
+  // shadowed by a stale loop target, and it intentionally omits the loop-only
+  // panel modifier (its declaration is a no-op CSS default) so the existing
+  // loop-inspector source anchors keep pointing at their own branch.
+  if (selectedKeyRail) {
+    const railLabel = selectedKeyRail.framesLabel;
+    const editDisabledReason = selectedKeyRail.editDisabledReason;
+    return (
+      &lt;div class=\&quot;physics-paint-scripts-panel\&quot; role=\&quot;tabpanel\&quot; aria-label={`Selected Key Rail — ${railLabel}`}&gt;
+        &lt;div class=\&quot;physics-paint-loop-clip-inspector-top-actions\&quot;&gt;
+          &lt;IconButton buttonRef={playButtonRef} label={`Edit Rail — ${railLabel}`} title={`Edit Rail — ${railLabel}`} disabled={editDisabledReason !== null} disabledReason={editDisabledReason ?? undefined} descriptionId={keyRailEditReasonId} onClick={() =&gt; { void onOpenKeyRailEdit?.(selectedKeyRail.firstKeyId); }} className=\&quot;physics-paint-loop-clip-nav-compact-button primary labeled\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;Pencil size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Edit Rail&lt;/span&gt;&lt;/IconButton&gt;
+          &lt;IconButton label={`Close Rail inspector — ${railLabel}`} title={`Close Rail inspector — ${railLabel}`} onClick={() =&gt; { onCloseKeyRail?.(); }} className=\&quot;physics-paint-loop-clip-nav-compact-button\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;X size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;/IconButton&gt;
+        &lt;/div&gt;
+        &lt;SidebarScrollArea class=\&quot;physics-paint-scripts-list-scroll-area\&quot; interactive&gt;
+          {motionValuesSection}
+          &lt;dl class=\&quot;physics-paint-loop-clip-inspector\&quot;&gt;
+            &lt;div&gt;&lt;dt&gt;Frames&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.framesLabel}&lt;/dd&gt;&lt;/div&gt;
+            &lt;div&gt;&lt;dt&gt;Keys&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.keysLabel}&lt;/dd&gt;&lt;/div&gt;
+            &lt;div&gt;&lt;dt&gt;Type&lt;/dt&gt;&lt;dd&gt;{selectedKeyRail.typeLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;/dl&gt;
+        &lt;/SidebarScrollArea&gt;
+      &lt;/div&gt;
+    );
+  }
+
+  if (selectedLoopClip) {
+    return (
+      &lt;div class=\&quot;physics-paint-scripts-panel physics-paint-loop-clip-panel\&quot; role=\&quot;tabpanel\&quot; aria-label={`Selected Rail — ${selectedLoopClip.displayName}`}&gt;
+        &lt;div class=\&quot;physics-paint-loop-clip-inspector-top-actions\&quot;&gt;
+          &lt;IconButton buttonRef={playButtonRef} label={`Edit Rail — ${selectedLoopClip.displayName}`} title={`Edit Rail — ${selectedLoopClip.displayName}`} onClick={() =&gt; { void onOpenLoopEdit(selectedLoopClip.loopId); }} className=\&quot;physics-paint-loop-clip-nav-compact-button primary labeled\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;Pencil size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Edit Rail&lt;/span&gt;&lt;/IconButton&gt;
+          {linkedGroupNavigation &amp;&amp; linkedGroupNavigation.total &gt; 1 ? (
+            &lt;&gt;
+              &lt;IconButton label=\&quot;Previous Rail\&quot; title=\&quot;Previous Rail\&quot; disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? &apos;Already on the first linked Rail&apos; : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className=\&quot;physics-paint-loop-clip-nav-compact-button labeled\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;ChevronLeft size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Previous Rail&lt;/span&gt;&lt;/IconButton&gt;
+              &lt;IconButton label=\&quot;Next Rail\&quot; title=\&quot;Next Rail\&quot; disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? &apos;Already on the last linked Rail&apos; : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className=\&quot;physics-paint-loop-clip-nav-compact-button labeled\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;ChevronRight size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Next Rail&lt;/span&gt;&lt;/IconButton&gt;
+            &lt;/&gt;
+          ) : null}
+          &lt;IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className=\&quot;physics-paint-loop-clip-nav-compact-button\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;X size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;/IconButton&gt;
+        &lt;/div&gt;
+        &lt;SidebarScrollArea class=\&quot;physics-paint-scripts-list-scroll-area\&quot; interactive&gt;
+        {motionValuesSection}
+        &lt;dl class=\&quot;physics-paint-loop-clip-inspector\&quot;&gt;
+          &lt;div&gt;&lt;dt&gt;Name&lt;/dt&gt;&lt;dd title={selectedLoopClip.displayName}&gt;{selectedLoopClip.displayName}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Source Script&lt;/dt&gt;&lt;dd title={selectedLoopClip.sourceLabel}&gt;{selectedLoopClip.sourceLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Placement&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.placementLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Cycle&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.cycleLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Effective&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.effectiveLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Rail Type&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.modeLabel}&lt;/dd&gt;&lt;/div&gt;
+          &lt;div&gt;&lt;dt&gt;Status&lt;/dt&gt;&lt;dd&gt;{selectedLoopClip.statusLabel}&lt;/dd&gt;&lt;/div&gt;
+        &lt;/dl&gt;
+        {linkedGroupNavigation ? (
+          &lt;section class=\&quot;physics-paint-loop-clip-linked-navigation\&quot; aria-label=\&quot;Linked Rail navigation\&quot;&gt;
+            &lt;strong&gt;Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}&lt;/strong&gt;
+            {linkedGroupNavigation.total === 1 ? (
+              &lt;button
+                type=\&quot;button\&quot;
+                class=\&quot;physics-paint-loop-clip-inspector-action\&quot;
+                onClick={linkedGroupNavigation.onGoToGroup}
+              &gt;
+                Go to Rail
+              &lt;/button&gt;
+            ) : null}
+          &lt;/section&gt;
+        ) : null}
+        &lt;/SidebarScrollArea&gt;
+      &lt;/div&gt;
+    );
+  }
+
+  return (
+    &lt;div class=\&quot;physics-paint-scripts-panel\&quot; role=\&quot;tabpanel\&quot; aria-label=\&quot;Project Scripts\&quot;&gt;
+      &lt;div ref={toolbarRef} class=\&quot;physics-paint-scripts-toolbar\&quot; role=\&quot;toolbar\&quot; aria-label=\&quot;Scripts\&quot;&gt;
+        &lt;IconButton label=\&quot;Save Script\&quot; title={`Save Script — ${saveDisabledReason ?? &apos;Save the active real Roto frame&apos;}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}&gt;&lt;Save size={16} /&gt;&lt;/IconButton&gt;
+        &lt;IconButton label=\&quot;Load + Apply to Frame\&quot; title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? &apos;Reload the selected preset and apply it to this Roto frame&apos;}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}&gt;&lt;Paintbrush size={16} /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Apply&lt;/span&gt;&lt;/IconButton&gt;
+        &lt;IconButton buttonRef={playButtonRef} label=\&quot;Run Script…\&quot; title={`Run Script… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? &apos;Run the selected Script to create or update a Motion or Static Rail&apos;)}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() =&gt; { void playScript.openConfirmation(); }}&gt;&lt;Play size={16} /&gt;&lt;span class=\&quot;physics-paint-roto-key-icon-label\&quot;&gt;Run Script&lt;/span&gt;&lt;/IconButton&gt;
+        &lt;IconButton label=\&quot;Refresh Scripts\&quot; title={`Refresh Scripts — ${actionMutationDisabledReason ?? &apos;Scan the project Scripts folder&apos;}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}&gt;&lt;RefreshCw size={16} /&gt;&lt;/IconButton&gt;
+      &lt;/div&gt;
+      {motionValuesSection}
+      {scopeEntries.length &gt; 1 || linkedGroupNavigation ? (
+        // quick-260922-jss amendment: ONE meta row carries both the scope
+        // filter and the linked-Rail pager. They are independent — either can
+        // be absent — so the row renders when EITHER exists and each half
+        // keeps its own gate; the pager can never be hidden by the select&apos;s
+        // absence (a project whose Actions come from a single layer has no
+        // select but still navigates its Rails).
+        &lt;div class=\&quot;physics-paint-scripts-meta-row\&quot;&gt;
+          {scopeEntries.length &gt; 1 ? (
+            // quick-260922-al1: the select is a native control so it is
+            // keyboard reachable and announced without inventing a widget. It
+            // renders only when at least one layer actually owns an Action: a
+            // single-option select would be dead UI. Its width is capped so it
+            // cannot starve the pager beside it.
+            &lt;div class=\&quot;physics-paint-scripts-scope\&quot;&gt;
+              &lt;label class=\&quot;physics-paint-scripts-scope-label\&quot; htmlFor={scopeSelectId}&gt;Scope&lt;/label&gt;
+              &lt;select
+                id={scopeSelectId}
+                class=\&quot;physics-paint-scripts-scope-select\&quot;
+                value={scopeValue}
+                onChange={(event) =&gt; { library.setScriptScope(event.currentTarget.value); }}
+              &gt;
+                {scopeEntries.map((entry) =&gt; &lt;option key={entry.id} value={entry.id}&gt;{entry.label}&lt;/option&gt;)}
+              &lt;/select&gt;
+            &lt;/div&gt;
+          ) : null}
+          {linkedGroupNavigation ? (
+            // The pager replaces both the old count line and the old
+            // total === 1 / total &gt; 1 markup split: one shape serves every
+            // total, the arrows simply disabling at the ends, so the row never
+            // changes shape as the count moves.
+            &lt;div class=\&quot;physics-paint-scripts-pager\&quot; role=\&quot;group\&quot; aria-label=\&quot;Linked Rail navigation\&quot;&gt;
+              &lt;IconButton label=\&quot;Previous Rail\&quot; title=\&quot;Previous Rail\&quot; disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? &apos;Already on the first linked Rail&apos; : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className=\&quot;physics-paint-loop-clip-nav-compact-button\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;ChevronLeft size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;/IconButton&gt;
+              &lt;span class=\&quot;physics-paint-scripts-pager-count\&quot; aria-hidden=\&quot;true\&quot;&gt;{linkedGroupNavigation.currentIndex + 1}/{linkedGroupNavigation.total}&lt;/span&gt;
+              &lt;IconButton label=\&quot;Next Rail\&quot; title=\&quot;Next Rail\&quot; disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? &apos;Already on the last linked Rail&apos; : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className=\&quot;physics-paint-loop-clip-nav-compact-button\&quot; wrapperClassName=\&quot;physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action\&quot;&gt;&lt;ChevronRight size={16} aria-hidden=\&quot;true\&quot; /&gt;&lt;/IconButton&gt;
+              &lt;button type=\&quot;button\&quot; class=\&quot;physics-paint-scripts-pager-go\&quot; title=\&quot;Go to the linked Rail and jump to its placement start\&quot; aria-label=\&quot;Go to the linked Rail\&quot; onClick={linkedGroupNavigation.onGoToGroup}&gt;Go&lt;/button&gt;
+            &lt;/div&gt;
+          ) : null}
+        &lt;/div&gt;
+      ) : null}
+      &lt;SidebarScrollArea class=\&quot;physics-paint-scripts-list-scroll-area\&quot; interactive&gt;
+      &lt;div ref={listRef} class=\&quot;physics-paint-scripts-list\&quot; role=\&quot;listbox\&quot; aria-label=\&quot;Saved Roto Scripts\&quot;&gt;
+        {visibleRows.map((row) =&gt; {
+          const provenance = resolveScriptProvenance(row, scriptLayers);
+          return (
+          &lt;div
+            key={row.id}
+            data-action-id={row.id}
+            role=\&quot;option\&quot;
+            tabIndex={0}
+            aria-selected={library.selectedId.value === row.id}
+            aria-label={`Load ${row.name}`}
+            aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+            class={`physics-paint-script-row${selectedActionId === row.id ? &apos; selected&apos; : &apos;&apos;}`}
+            onClick={() =&gt; {
+              if (confirmationBusy) return;
+              onActivateRow(row.id);
+            }}
+            onKeyDown={(event) =&gt; {
+              if (event.key !== &apos;Enter&apos; &amp;&amp; event.key !== &apos; &apos;) return;
+              event.preventDefault();
+              if (confirmationBusy) return;
+              onActivateRow(row.id);
+            }}
+          &gt;
+            &lt;img class=\&quot;physics-paint-script-thumbnail\&quot; src={row.thumbnail.dataUrl} width={row.thumbnail.width} height={row.thumbnail.height} alt=\&quot;\&quot; /&gt;
+            &lt;span class=\&quot;physics-paint-script-row-copy\&quot;&gt;
+              {rename?.id === row.id ? (
+                &lt;span class=\&quot;physics-paint-script-rename-wrap\&quot; onClick={stopRowPointerActivation} onKeyDown={stopRowKeyboardActivation}&gt;
+                  &lt;input
+                    autoFocus
+                    value={rename.draft}
+                    aria-label={`Rename ${row.name}`}
+                    onClick={stopRowPointerActivation}
+                    onInput={(event) =&gt; library.updateRenameDraft((event.currentTarget as HTMLInputElement).value)}
+                    onKeyDown={(event) =&gt; {
+                      event.stopPropagation();
+                      if (event.key === &apos;Enter&apos;) { event.preventDefault(); void library.commitRename(); }
+                      else if (event.key === &apos;Escape&apos;) { event.preventDefault(); library.cancelRename(); }
+                    }}
+                  /&gt;
+                  {rename.error ? &lt;span class=\&quot;physics-paint-script-inline-error\&quot;&gt;{rename.error}&lt;/span&gt; : null}
+                &lt;/span&gt;
+              ) : (
+                &lt;button
+                  type=\&quot;button\&quot;
+                  class=\&quot;physics-paint-script-name\&quot;
+                  aria-label={`Rename ${row.name}`}
+                  disabled={actionMutationDisabledReason !== null || !availability.canRename}
+                  onClick={(event) =&gt; {
+                    event.stopPropagation();
+                    library.select(row.id);
+                    library.beginRename();
+                  }}
+                &gt;
+                  {row.name}
+                &lt;/button&gt;
+              )}
+              {/* quick-260922-al1: the layer name is resolved LIVE (a renamed
+                  layer is reflected at once); an orphan — a row whose origin
+                  layer no longer exists — keeps its snapshotted name and says
+                  so, rather than silently claiming a layer that is gone. */}
+              &lt;span class=\&quot;physics-paint-script-provenance\&quot;&gt;
+                {row.source.projectName} · {provenance.layerName} · F{row.source.displayFrame}
+                {provenance.unavailable ? &lt;span class=\&quot;physics-paint-script-provenance-unavailable\&quot;&gt; · unavailable&lt;/span&gt; : null}
+              &lt;/span&gt;
+              &lt;span class=\&quot;physics-paint-script-count\&quot;&gt;{row.brushCount} {row.brushCount === 1 ? &apos;brush&apos; : &apos;brushes&apos;}&lt;/span&gt;
+            &lt;/span&gt;
+            {/* 261022-o2a: per-row trash. Gated ONLY by the library mutation
+                lock — `availability.canDelete` requires an EXISTING selection
+                and would disable every unselected row. The trash never commits
+                a delete: it selects the row and opens the shared confirmation,
+                which stays the only commit surface. */}
+            &lt;button
+              type=\&quot;button\&quot;
+              class=\&quot;physics-paint-script-row-delete\&quot;
+              data-script-delete
+              aria-label={`Delete ${row.name}`}
+              disabled={actionMutationDisabledReason !== null}
+              title={actionMutationDisabledReason ?? `Delete ${row.name}`}
+              onClick={(event) =&gt; {
+                event.stopPropagation();
+                requestRowDelete(row.id);
+              }}
+              onKeyDown={(event) =&gt; {
+                if (event.key !== &apos;Enter&apos; &amp;&amp; event.key !== &apos; &apos;) return;
+                // The row&apos;s own keydown would activate the row first; the
+                // trash owns this press (default is suppressed so the native
+                // click does not double-fire the request).
+                event.stopPropagation();
+                event.preventDefault();
+                requestRowDelete(row.id);
+              }}
+            &gt;
+              &lt;Trash2 size={14} aria-hidden=\&quot;true\&quot; /&gt;
+            &lt;/button&gt;
+          &lt;/div&gt;
+          );
+        })}
+        {!rows.length ? (
+          &lt;div class=\&quot;physics-paint-scripts-empty\&quot;&gt;
+            &lt;p&gt;No project Scripts yet.&lt;/p&gt;
+            &lt;p&gt;Save the current real Roto frame as a Script to create a Rail.&lt;/p&gt;
+          &lt;/div&gt;
+        ) : !visibleRows.length ? (
+          // Defensive: `filterScriptRows` fails OPEN, so a scope that matches
+          // nothing renders every row rather than an empty list — this branch
+          // only exists so that a future narrowing can never read as data
+          // loss, and it always offers the way back.
+          &lt;div class=\&quot;physics-paint-scripts-empty\&quot;&gt;
+            &lt;p&gt;No Scripts from this layer.&lt;/p&gt;
+            &lt;p&gt;Every project Script is still available under All.&lt;/p&gt;
+            &lt;button type=\&quot;button\&quot; class=\&quot;physics-paint-scripts-empty-action\&quot; onClick={() =&gt; library.setScriptScope(ROTO_SCRIPT_SCOPE_ALL)}&gt;Show all Scripts&lt;/button&gt;
+          &lt;/div&gt;
+        ) : null}
+      &lt;/div&gt;
+      &lt;/SidebarScrollArea&gt;
+      {confirmation ? (
+        &lt;div ref={confirmationRef} class=\&quot;physics-paint-script-confirmation\&quot; role=\&quot;dialog\&quot; aria-modal=\&quot;true\&quot; aria-label={`Delete ${confirmation.name}`}
+          onKeyDown={(event) =&gt; {
+            if (event.key === &apos;Escape&apos;) {
+              event.preventDefault();
+              if (confirmationBusy) return;
+              library.cancelDelete();
+              return;
+            }
+            if (event.key !== &apos;Tab&apos;) return;
+            const controls = Array.from(confirmationRef.current?.querySelectorAll&lt;HTMLElement&gt;(&apos;button:not(:disabled), [tabindex]:not([tabindex=\&quot;-1\&quot;])&apos;) ?? []);
+            if (!controls.length) return;
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (event.shiftKey &amp;&amp; document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey &amp;&amp; document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }}&gt;
+          &lt;strong&gt;Delete “{confirmation.name}”?&lt;/strong&gt;
+          {deleteError ? &lt;span class=\&quot;physics-paint-script-inline-error\&quot; role=\&quot;alert\&quot;&gt;{deleteError}&lt;/span&gt; : null}
+          {referenceImpact ? (
+            &lt;div class=\&quot;physics-paint-action-delete-groups\&quot;&gt;
+              &lt;p&gt;
+                This Script is referenced by {referenceImpact.groupCount} {referenceImpact.groupCount === 1 ? &apos;Rail&apos; : &apos;Rails&apos;} across {referenceImpact.visibleRangeCount} visible {referenceImpact.visibleRangeCount === 1 ? &apos;range&apos; : &apos;ranges&apos;}.
+              &lt;/p&gt;
+              &lt;ul aria-label=\&quot;Affected Rails\&quot;&gt;
+                {referenceImpact.affectedGroups.map((group) =&gt; (
+                  &lt;li key={group.groupId}&gt;
+                    &lt;strong&gt;{group.name} · {formatFrameRange(group.placementStart, group.endExclusive)}&lt;/strong&gt;
+                    {group.visibleRanges.length &gt; 1 ? &lt;span&gt; · {group.visibleRanges.length} ranges&lt;/span&gt; : null}
+                    &lt;span&gt;Visible ranges: {group.visibleRanges.map((range) =&gt; formatFrameRange(range.start, range.endExclusive)).join(&apos;, &apos;)}&lt;/span&gt;
+                  &lt;/li&gt;
+                ))}
+              &lt;/ul&gt;
+              &lt;div class=\&quot;physics-paint-action-delete-choices\&quot;&gt;
+                &lt;button
+                  type=\&quot;button\&quot;
+                  class=\&quot;physics-paint-action-delete-choice recommended\&quot;
+                  aria-label=\&quot;Keep Rails\&quot;
+                  aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+                  onClick={() =&gt; {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete(&apos;keep-groups&apos;);
+                  }}
+                &gt;
+                  &lt;strong&gt;Keep Rails&lt;/strong&gt;
+                  &lt;span&gt;Recommended. Delete the Script but keep every Rail, fragment, key, timing value, cache, and rendered result. Rails become detached and timeline space stays occupied.&lt;/span&gt;
+                &lt;/button&gt;
+                &lt;button
+                  type=\&quot;button\&quot;
+                  class=\&quot;physics-paint-action-delete-choice danger\&quot;
+                  aria-label=\&quot;Delete Script and Rails\&quot;
+                  aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+                  onClick={() =&gt; {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete(&apos;delete-action-and-groups&apos;);
+                  }}
+                &gt;
+                  &lt;strong&gt;Delete Script and Rails&lt;/strong&gt;
+                  &lt;span&gt;Delete the Script and all {referenceImpact.groupCount} referencing Rails, including uniquely owned source, cache, and Rail-gap data. Their occupied timeline ranges are freed.&lt;/span&gt;
+                &lt;/button&gt;
+                &lt;button
+                  ref={cancelDeleteRef}
+                  type=\&quot;button\&quot;
+                  aria-label=\&quot;Cancel\&quot;
+                  aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+                  onClick={() =&gt; {
+                    if (confirmationBusy) return;
+                    library.cancelDelete();
+                  }}
+                &gt;
+                  Cancel
+                &lt;/button&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+          ) : (
+            &lt;&gt;
+              &lt;span&gt;This removes the project Script file and cannot be undone.&lt;/span&gt;
+              &lt;div&gt;
+                &lt;button
+                  ref={cancelDeleteRef}
+                  type=\&quot;button\&quot;
+                  aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+                  onClick={() =&gt; {
+                    if (confirmationBusy) return;
+                    library.cancelDelete();
+                  }}
+                &gt;
+                  Cancel
+                &lt;/button&gt;
+                &lt;button
+                  type=\&quot;button\&quot;
+                  class=\&quot;danger\&quot;
+                  aria-disabled={confirmationBusy ? &apos;true&apos; : undefined}
+                  onClick={() =&gt; {
+                    if (confirmationBusy) return;
+                    void library.confirmDelete();
+                  }}
+                &gt;
+                  Delete Script
+                &lt;/button&gt;
+              &lt;/div&gt;
+            &lt;/&gt;
+          )}
+        &lt;/div&gt;
+      ) : null}
+    &lt;/div&gt;
+  );
+}
+
+function formatFrameRange(start: number, endExclusive: number): string {
+  return `F${start}–F${endExclusive - 1}`;
+}
+
+function IconButton(props: { buttonRef?: Ref&lt;HTMLButtonElement&gt;; label: string; title: string; disabled?: boolean; disabledReason?: string; descriptionId?: string; onClick?: () =&gt; void; className?: string; wrapperClassName?: string; children: ComponentChildren }) {
+  const tooltip = useStyledTooltip();
+  const isDisabled = props.disabled ?? false;
+  const reason = props.disabledReason ?? null;
+  const buttonClass = props.className ?? &apos;physics-paint-script-icon-button&apos;;
+  const wrapperClass = props.wrapperClassName ?? &apos;physics-paint-roto-key-icon-action&apos;;
+  return (
+    &lt;span class={wrapperClass} onPointerEnter={tooltip.onPointerEnter} onPointerLeave={tooltip.onPointerLeave}&gt;
+      &lt;button
+        ref={props.buttonRef}
+        type=\&quot;button\&quot;
+        class={buttonClass}
+        aria-label={props.label}
+        aria-disabled={isDisabled ? &apos;true&apos; : undefined}
+        aria-describedby={isDisabled &amp;&amp; reason ? props.descriptionId : undefined}
+        onFocus={tooltip.onFocus}
+        onBlur={tooltip.onBlur}
+        onClick={() =&gt; {
+          tooltip.hide();
+          if (isDisabled) return;
+          props.onClick?.();
+        }}
+        onKeyDown={(event) =&gt; {
+          if ((event.key === &apos;Enter&apos; || event.key === &apos; &apos;) &amp;&amp; isDisabled) event.preventDefault();
+        }}
+      &gt;
+        {props.children}
+      &lt;/button&gt;
+      {isDisabled &amp;&amp; reason ? (
+        &lt;span id={props.descriptionId} class=\&quot;physics-paint-sr-only\&quot;&gt;{reason}&lt;/span&gt;
+      ) : null}
+      &lt;PhysicsPaintStyledTooltip visible={tooltip.visible} region=\&quot;right-edge\&quot; avoidRowOverlap&gt;
+        {isDisabled &amp;&amp; reason ? `unavailable: ${reason}` : props.title}
+      &lt;/PhysicsPaintStyledTooltip&gt;
+    &lt;/span&gt;
+  );
+}
+&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1477:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; renders all five fields in the fixed D-13 order with their units and display values" time="0.001201625">
+            <failure message="expected [ &apos;Scale&apos; ] to deeply equal [ &apos;Position X&apos;, &apos;Position Y&apos;, …(3) ]" type="AssertionError">
+AssertionError: expected [ &apos;Scale&apos; ] to deeply equal [ &apos;Position X&apos;, &apos;Position Y&apos;, …(3) ]
+
+- Expected
++ Received
+
+  Array [
+-   &quot;Position X&quot;,
+-   &quot;Position Y&quot;,
+    &quot;Scale&quot;,
+-   &quot;Rotation&quot;,
+-   &quot;Opacity&quot;,
+  ]
+
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1493:59
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; commits every field through the ONE callback with its channel id and display value" time="0.000830958">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ findOne src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:714:17
+ ❯ field src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1510:38
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1514:6
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; shows the rejection reason and re-renders the field to the projected value" time="0.001091542">
+            <failure message="expected &apos;ApplyRun ScriptScale (%)No project Sc…&apos; to contain &apos;Scale must be greater than 0.&apos;" type="AssertionError">
+AssertionError: expected &apos;ApplyRun ScriptScale (%)No project Sc…&apos; to contain &apos;Scale must be greater than 0.&apos;
+
+Expected: &quot;Scale must be greater than 0.&quot;
+Received: &quot;ApplyRun ScriptScale (%)No project Scripts yet.Save the current real Roto frame as a Script to create a Rail.&quot;
+
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1544:28
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts" name="Physics Paint Scripts panel Motion value inspector (59-16) &gt; edits grouped Position one axis at a time — no lock, no coupled write" time="0.000287167">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ findOne src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:714:17
+ ❯ src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts:1559:15
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" timestamp="2026-11-06T18:15:04.598Z" hostname="efx2.home" tests="19" failures="0" errors="0" skipped="0" time="0.003436708">
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; derives ordinary rails from ordered real keys, breaks, and Group ownership" time="0.000887292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="deriveKeyRailSegments &gt; keeps empty physical frames inside one half-open rail when no break exists" time="0.000117667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a real key to its own keyId (Key Rail member included)" time="0.000108375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a generated in-between frame to its containing Key Rail first key" time="0.000088791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; resolves a linked occurrence inside a Group to the Group loopId" time="0.000062959">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="resolvePhysicPaintPushAnchor (43.5-05 smoke RED: cell → containing rail) &gt; returns null for an empty/gap frame" time="0.000074834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; emits the four locked singular and plural forms without advertising Scissor" time="0.00011675">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="Key Rail copy family &gt; substitutes exact guarded reasons for unavailable selected actions" time="0.000047375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; projects exactly the three facts plus the controller handoff fields for a single Rail" time="0.000188833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; disables Edit Rail with the locked reason for a multi-Rail set while keeping this Rail&apos;s own facts" time="0.000121459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectSelectedKeyRailInspector (58-03 RAIL-01: Selected Key Rail inspector) &gt; is anchor-agnostic — any segment the caller resolves projects its own facts" time="0.00007875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null without a motion record — never a partially filled object" time="0.000080625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when no Motion key is selected" time="0.000081375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; returns null when the selected frame carries no Motion key" time="0.0000635">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; projects every channel at the read frame with the 59-02 display conversion" time="0.000283125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; is frozen at every level" time="0.000094167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; owns one conversion authority and no store, signal or component import" time="0.00012725">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; passes rotation through verbatim — 720 and -90 are never wrapped" time="0.000102792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts" name="projectRailMotionInspector (59-16: Motion value inspector) &gt; keeps the fixed D-13 order and shows Opacity in percent even when the record is unordered" time="0.000106625">
+        </testcase>
+    </testsuite>
+</testsuites>

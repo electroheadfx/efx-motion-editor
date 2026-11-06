@@ -349,4 +349,51 @@ describe('projectRailMotionInspector (59-16: Motion value inspector)', () => {
     expect(keyRailPresentationSource).not.toMatch(/from '@preact\/signals'/);
     expect(keyRailPresentationSource).not.toMatch(/from 'preact/);
   });
+
+  it('passes rotation through verbatim — 720 and -90 are never wrapped', () => {
+    const key = (frame: number, value: number) => Object.freeze({ frame, value, easing: 'ease' as const, wiggle: 0 });
+    const record = Object.freeze({
+      railId: 'rail-rotation',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({ id: 'rotation' as const, keys: Object.freeze([key(0, 720), key(10, -90)]) }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const rotationAt = (frame: number) => requireProjectMotionInspector()({
+      record,
+      selectedKeyFrame: frame,
+      railLocalFrame: frame,
+    })?.fields.find((field) => field.channelId === 'rotation')?.value;
+
+    expect(rotationAt(0)).toBe(720);
+    expect(rotationAt(10)).toBe(-90);
+  });
+
+  it('keeps the fixed D-13 order and shows Opacity in percent even when the record is unordered', () => {
+    const key = (frame: number, value: number) => Object.freeze({ frame, value, easing: 'ease' as const, wiggle: 0 });
+    const record = Object.freeze({
+      railId: 'rail-order',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({ id: 'opacity' as const, keys: Object.freeze([key(2, 0.4)]) }),
+        Object.freeze({ id: 'rotation' as const, keys: Object.freeze([key(2, 0)]) }),
+        Object.freeze({ id: 'scale' as const, keys: Object.freeze([key(2, 1.5)]) }),
+        Object.freeze({ id: 'position-y' as const, keys: Object.freeze([key(2, -12)]) }),
+        Object.freeze({ id: 'position-x' as const, keys: Object.freeze([key(2, 120)]) }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const projection = requireProjectMotionInspector()({
+      record,
+      selectedKeyFrame: 2,
+      railLocalFrame: 2,
+    });
+
+    expect(projection?.fields.map((field) => [field.channelId, field.value, field.unit])).toEqual([
+      ['position-x', 120, 'px'],
+      ['position-y', -12, 'px'],
+      ['scale', 150, '%'],
+      ['rotation', 0, '°'],
+      ['opacity', 40, '%'],
+    ]);
+  });
 });

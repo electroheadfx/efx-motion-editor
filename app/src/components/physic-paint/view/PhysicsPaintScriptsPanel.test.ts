@@ -1471,6 +1471,106 @@ describe('Physics Paint Scripts panel Motion value inspector (59-16)', () => {
     expect(panel).toContain('selectedRailMotion?: RailMotionInspectorPresentation | null;');
     expect(panel).toContain('onCommitRailMotionValue?: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number) => string | null;');
     expect(panel).not.toContain('physicPaintStore');
-    expect(panel).not.toMatch(/from '@preact\/signals'/);
+    // The plan requires signal-held transient state, never useState. The only
+    // signal is the rejection sentence; the numeric draft stays inside the
+    // shared NumericStepper.
+    expect(panel).toMatch(/from '@preact\/signals'/);
+    expect(panel).not.toContain('useState');
+  });
+
+  /**
+   * 59-16 Task 2: the full five-field inspector. Grouped Position is a DISPLAY
+   * grouping only — the panel emits one channel per edit and never a coupled
+   * pair, so the two stored values stay independent.
+   */
+  it('renders all five fields in the fixed D-13 order with their units and display values', () => {
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue: vi.fn(() => null),
+    });
+
+    const fields = findAll(tree, (vnode) => vnode.type === NumericStepper);
+    expect(fields.map((field) => field.props?.ariaLabel)).toEqual([
+      'Position X', 'Position Y', 'Scale', 'Rotation', 'Opacity',
+    ]);
+    // Display units only: the projection already converted model -> UI.
+    expect(fields.map((field) => field.props?.value)).toEqual([120, -12, 150, 720, 40]);
+    const copy = textOf(tree);
+    for (const label of ['Position X (px)', 'Position Y (px)', 'Scale (%)', 'Rotation (°)', 'Opacity (%)']) {
+      expect(copy).toContain(label);
+    }
+  });
+
+  it('commits every field through the ONE callback with its channel id and display value', () => {
+    const onCommitRailMotionValue = vi.fn(() => null as string | null);
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue,
+    });
+    const field = (label: string) => findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === label
+    ));
+
+    (field('Position X').props?.onChange as (value: number) => void)(999);
+    (field('Position Y').props?.onChange as (value: number) => void)(-999);
+    (field('Scale').props?.onChange as (value: number) => void)(250);
+    (field('Rotation').props?.onChange as (value: number) => void)(-90);
+    (field('Opacity').props?.onChange as (value: number) => void)(40);
+
+    expect(onCommitRailMotionValue.mock.calls).toEqual([
+      ['position-x', 999],
+      ['position-y', -999],
+      ['scale', 250],
+      ['rotation', -90],
+      ['opacity', 40],
+    ]);
+  });
+
+  it('shows the rejection reason and re-renders the field to the projected value', () => {
+    const onCommitRailMotionValue = vi.fn(() => 'Scale must be greater than 0.');
+    const first = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue,
+    });
+    const scale = findOne(first, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Scale'
+    ));
+    (scale.props?.onChange as (value: number) => void)(0);
+
+    const second = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue,
+    });
+    expect(textOf(second)).toContain('Scale must be greater than 0.');
+    expect(findOne(second, (vnode) => vnode.props?.role === 'alert').props?.children)
+      .toBe('Scale must be greater than 0.');
+    // The projected value is still the one the document holds — no clamp echo.
+    expect(findOne(second, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Scale'
+    )).props?.value).toBe(150);
+  });
+
+  it('edits grouped Position one axis at a time — no lock, no coupled write', () => {
+    const onCommitRailMotionValue = vi.fn(() => null);
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      selectedRailMotion: motionProjection,
+      onCommitRailMotionValue,
+    });
+    const x = findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Position X'
+    ));
+    (x.props?.onChange as (value: number) => void)(999);
+
+    // ONE channel per edit: the panel never emits a coupled pair.
+    expect(onCommitRailMotionValue.mock.calls).toEqual([['position-x', 999]]);
+    // The sibling keeps ITS projected value and stays independently editable.
+    const y = findOne(tree, (vnode) => (
+      vnode.type === NumericStepper && vnode.props?.ariaLabel === 'Position Y'
+    ));
+    expect(y.props?.value).toBe(-12);
+    expect(y.props?.disabled).toBeFalsy();
+    // D-12: one pre-existing `lock` (the 261022-o2a comment); no lock state.
+    expect((panel.match(/lock/g) ?? [])).toHaveLength(1);
+    expect(panel).not.toMatch(/lockedPosition|positionLock|lockToggle|coupledValue/);
   });
 });

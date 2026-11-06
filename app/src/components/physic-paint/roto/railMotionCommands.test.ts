@@ -23,6 +23,7 @@ import {
   setMotionKeyEasing,
   setMotionKeyWiggle,
   stepMotionKey,
+  writeRailMotionChannelValueAtCursor,
   type RailMotionCommandAvailabilityInput,
   type RailSelectionScopesState,
 } from './railMotionCommands';
@@ -1010,5 +1011,211 @@ describe('59-13 rail motion commands — purity and source pins', () => {
     expect(countOccurrences(studioViewSource, '<PhysicsPaintReferenceTransformHandles ')).toBe(3);
     expect(studioViewSource).toContain('railMotionTransformHandles');
     expect(studioViewSource).toMatch(/railMotionTransformHandles\?\.railMotion\?\.view\.railId/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 59-16: the numeric Motion inspector's pure write path. It addresses the
+// SELECTED key's rail-local frame directly (fields never move the playhead)
+// and must agree with the 59-13 gizmo path on the final collection.
+// ---------------------------------------------------------------------------
+
+function opacityRecord(): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId: 'rail-1',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([
+      motionChannel('opacity', [motionKey(0, 1), motionKey(10, 0.4)]),
+    ]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+describe('59-16 rail motion commands — numeric inspector write', () => {
+  it('edits an existing grouped Position key without touching the sibling value', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 10,
+      channelId: 'position-x',
+      uiValue: 250,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(keyAt(record, 'position-x', 10)?.value).toBe(250);
+    // D-11/D-12: the sibling's STORED value at that frame is deep-equal.
+    expect(keyAt(record, 'position-y', 10)?.value).toBe(50);
+  });
+
+  it('mirrors the independence rule for a Position Y edit', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 10,
+      channelId: 'position-y',
+      uiValue: -75,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(keyAt(record, 'position-y', 10)?.value).toBe(-75);
+    expect(keyAt(record, 'position-x', 10)?.value).toBe(100);
+  });
+
+  it('creates ONE grouped key per axis, seeding the untouched axis from the evaluator', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'position-x',
+      uiValue: 40,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys.map((key) => key.frame)).toEqual([0, 5, 10]);
+    expect(channelOf(record, 'position-y').keys.map((key) => key.frame)).toEqual([0, 5, 10]);
+    expect(keyAt(record, 'position-x', 5)?.value).toBe(40);
+    // The pre-edit evaluated Y value at rail-local 5 (the pose the user saw).
+    expect(keyAt(record, 'position-y', 5)?.value).toBe(25);
+  });
+
+  it('passes rotation through with NO normalization', () => {
+    const above = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 4,
+      channelId: 'rotation',
+      uiValue: 720,
+    });
+    expect(above.ok).toBe(true);
+    if (!above.ok) return;
+    expect(keyAt(recordOf(above.records), 'rotation', 4)?.value).toBe(720);
+
+    const below = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'rotation',
+      uiValue: -90,
+    });
+    expect(below.ok).toBe(true);
+    if (!below.ok) return;
+    expect(keyAt(recordOf(below.records), 'rotation', 5)?.value).toBe(-90);
+  });
+
+  it('converts Opacity between percent and the stored fraction', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [opacityRecord()],
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'opacity',
+      uiValue: 25,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(keyAt(recordOf(result.records), 'opacity', 5)?.value).toBe(0.25);
+  });
+
+  it('rejects out-of-domain and non-finite entries with a visible reason and no write', () => {
+    const records = [motionRecord()];
+    const zeroScale = writeRailMotionChannelValueAtCursor({
+      records,
+      railId: 'rail-1',
+      keyFrame: 4,
+      channelId: 'scale',
+      uiValue: 0,
+    });
+    expect(zeroScale.ok).toBe(false);
+    if (zeroScale.ok) return;
+    expect(zeroScale.reason).toBe('Scale must be greater than 0.');
+
+    const overOpacity = writeRailMotionChannelValueAtCursor({
+      records: [opacityRecord()],
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'opacity',
+      uiValue: 140,
+    });
+    expect(overOpacity.ok).toBe(false);
+    if (overOpacity.ok) return;
+    expect(overOpacity.reason).toBe('Opacity must be between 0 and 100.');
+
+    const notANumber = writeRailMotionChannelValueAtCursor({
+      records,
+      railId: 'rail-1',
+      keyFrame: 4,
+      channelId: 'rotation',
+      uiValue: Number.NaN,
+    });
+    expect(notANumber.ok).toBe(false);
+    if (notANumber.ok) return;
+    expect(notANumber.reason).toBe('Enter a number.');
+
+    // The input collection is untouched by every rejection (pure command).
+    expect(keyAt(records[0]!, 'scale', 0)?.value).toBe(1);
+    expect(keyAt(records[0]!, 'rotation', 4)?.value).toBe(0);
+  });
+
+  it('refuses a channel the rail does not carry', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 4,
+      channelId: 'opacity',
+      uiValue: 40,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('This Motion channel is not present on the rail.');
+  });
+
+  it('produces the SAME collection as the 59-13 gizmo path', () => {
+    const fieldScale = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 4,
+      channelId: 'scale',
+      uiValue: 150,
+    });
+    const gizmoScale = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 14,
+      values: { scale: 150 },
+    });
+    expect(fieldScale.ok).toBe(true);
+    expect(gizmoScale.ok).toBe(true);
+    if (!fieldScale.ok || !gizmoScale.ok) return;
+    expect(fieldScale.records).toEqual(gizmoScale.records);
+
+    // A grouped Position pair: two independent field edits reach the same
+    // final collection as one gizmo drag sample.
+    const fieldX = writeRailMotionChannelValueAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'position-x',
+      uiValue: 40,
+    });
+    expect(fieldX.ok).toBe(true);
+    if (!fieldX.ok) return;
+    const fieldY = writeRailMotionChannelValueAtCursor({
+      records: fieldX.records,
+      railId: 'rail-1',
+      keyFrame: 5,
+      channelId: 'position-y',
+      uiValue: -12,
+    });
+    const gizmoPosition = gizmoCommands.writeMotionTransformAtCursor({
+      records: [motionRecord()],
+      view: gizmoView(),
+      cursorFrame: 15,
+      values: { position: { x: 40, y: -12 } },
+    });
+    expect(fieldY.ok).toBe(true);
+    expect(gizmoPosition.ok).toBe(true);
+    if (!fieldY.ok || !gizmoPosition.ok) return;
+    expect(fieldY.records).toEqual(gizmoPosition.records);
   });
 });
