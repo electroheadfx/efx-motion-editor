@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { RailMotionRailView } from './railMotionIdentity';
-import type { PhysicPaintRotoRailMotionRecord } from './railMotionModel';
+import type {
+  PhysicPaintRotoRailMotionChannel,
+  PhysicPaintRotoRailMotionRecord,
+} from './railMotionModel';
 import {
   animateRail,
   railMotionCursorFrame,
+  removeMotionKey,
   resolveMotionCommandAvailability,
+  resolveMotionKeyAtFrame,
+  resolveSelectionScope,
   resolveSelectedRailView,
+  setMotionKeyAtCursor,
+  setMotionKeyEasing,
+  setMotionKeyWiggle,
+  stepMotionKey,
+  type RailMotionCommandAvailabilityInput,
 } from './railMotionCommands';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -163,6 +174,306 @@ describe('59-12 rail motion commands — selected rail view resolution', () => {
     expect(resolveSelectedRailView(views, { kind: 'key-rail', firstKeyId: 'key-a' })?.railId).toBe('rail-bound');
     expect(resolveSelectedRailView(views, { kind: 'key-rail', firstKeyId: 'missing' })).toBeNull();
     expect(resolveSelectedRailView(views, null)).toBeNull();
+  });
+});
+
+function motionKey(frame: number, value: number, easing: 'hold' | 'ease' = 'ease', wiggle = 0) {
+  return Object.freeze({ frame, value, easing, wiggle });
+}
+
+function motionChannel(
+  id: PhysicPaintRotoRailMotionChannel['id'],
+  keys: ReturnType<typeof motionKey>[],
+): PhysicPaintRotoRailMotionChannel {
+  return Object.freeze({ id, keys: Object.freeze(keys) });
+}
+
+/** Position x 0 -> 100, y 0 -> 50 across rail-local frames 0..10. */
+function motionRecord(
+  overrides: Partial<PhysicPaintRotoRailMotionRecord> = {},
+): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId: 'rail-1',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([
+      motionChannel('position-x', [motionKey(0, 0), motionKey(10, 100)]),
+      motionChannel('position-y', [motionKey(0, 0), motionKey(10, 50)]),
+      motionChannel('scale', [motionKey(0, 1), motionKey(10, 2)]),
+      motionChannel('rotation', [motionKey(4, 0)]),
+    ]),
+    ...overrides,
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+/** A record with one single-key channel, so removing its last key empties the rail. */
+function soleChannelRecord(): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId: 'rail-sole',
+    anchorKeyId: 'key-a',
+    channels: Object.freeze([motionChannel('scale', [motionKey(3, 1.5)])]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+function recordOf(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId = 'rail-1',
+): PhysicPaintRotoRailMotionRecord {
+  const record = records.find((entry) => entry.railId === railId);
+  if (record === undefined) throw new Error(`missing record ${railId}`);
+  return record;
+}
+
+function channelOf(
+  record: PhysicPaintRotoRailMotionRecord,
+  id: PhysicPaintRotoRailMotionChannel['id'],
+): PhysicPaintRotoRailMotionChannel {
+  const channel = record.channels.find((entry) => entry.id === id);
+  if (channel === undefined) throw new Error(`missing channel ${id}`);
+  return channel;
+}
+
+describe('59-12 rail motion commands — Motion keys', () => {
+  it('adds a key at the rail-local cursor with the channel current evaluated value', () => {
+    const records = [motionRecord()];
+    const result = setMotionKeyAtCursor({
+      records,
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 5,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const x = channelOf(recordOf(result.records), 'position-x');
+    expect(x.keys.map((key) => key.frame)).toEqual([0, 5, 10]);
+    expect(x.keys.find((key) => key.frame === 5)?.value).toBe(50);
+    // The grouped Position sibling is seeded with ITS evaluated value (D-12).
+    const y = channelOf(recordOf(result.records), 'position-y');
+    expect(y.keys.find((key) => key.frame === 5)?.value).toBe(25);
+  });
+
+  it('updates an existing frame in place without duplicating it', () => {
+    const result = setMotionKeyAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 10,
+      value: 250,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const x = channelOf(recordOf(result.records), 'position-x');
+    expect(x.keys.filter((key) => key.frame === 10)).toHaveLength(1);
+    expect(x.keys.find((key) => key.frame === 10)?.value).toBe(250);
+  });
+
+  it('writes both grouped Position axes atomically in one command call', () => {
+    const result = setMotionKeyAtCursor({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-y',
+      keyFrame: 6,
+      value: 70,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys.map((key) => key.frame)).toContain(6);
+    expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 6)?.value).toBe(70);
+  });
+
+  it('removes only the addressed key and keeps the rest of the rail', () => {
+    const result = removeMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 10,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    expect(result.recordRemoved).toBe(false);
+    expect(channelOf(record, 'position-x').keys.map((key) => key.frame)).toEqual([0]);
+    expect(channelOf(record, 'position-y').keys.map((key) => key.frame)).toEqual([0]);
+    expect(channelOf(record, 'scale').keys.map((key) => key.frame)).toEqual([0, 10]);
+  });
+
+  it('removes a channel when its last key is removed', () => {
+    const first = removeMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'rotation',
+      keyFrame: 4,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.records[0]!.channels.some((channel) => channel.id === 'rotation')).toBe(false);
+    expect(first.records[0]!.channels.length).toBe(3);
+  });
+
+  it('removes the record and reports recordRemoved when the rail last channel empties', () => {
+    const result = removeMotionKey({
+      records: [soleChannelRecord()],
+      railId: 'rail-sole',
+      channelId: 'scale',
+      keyFrame: 3,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.records).toEqual([]);
+    expect(result.recordRemoved).toBe(true);
+  });
+
+  it('removes a Motion key at a frame that carries none with a plain reason', () => {
+    const result = removeMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 7,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason.trim().length).toBeGreaterThan(0);
+  });
+
+  it('refuses to edit a rail that carries no motion', () => {
+    const result = setMotionKeyAtCursor({
+      records: [],
+      railId: 'rail-missing',
+      channelId: 'position-x',
+      keyFrame: 2,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason.trim().length).toBeGreaterThan(0);
+  });
+
+  it('steps to the adjacent key frame without wrapping', () => {
+    const channel = channelOf(motionRecord(), 'scale');
+    expect(stepMotionKey({ channel, fromFrame: 5, direction: -1 })).toBe(0);
+    expect(stepMotionKey({ channel, fromFrame: 5, direction: 1 })).toBe(10);
+    expect(stepMotionKey({ channel, fromFrame: 0, direction: -1 })).toBeNull();
+    expect(stepMotionKey({ channel, fromFrame: 10, direction: 1 })).toBeNull();
+  });
+
+  it('accepts only hold and ease and preserves the key value', () => {
+    const result = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'rotation',
+      keyFrame: 4,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const key = channelOf(recordOf(result.records), 'rotation').keys[0]!;
+    expect(key).toMatchObject({ frame: 4, value: 0, easing: 'hold' });
+
+    const rejected = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'rotation',
+      keyFrame: 4,
+      easing: 'linear' as unknown as 'hold',
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) return;
+    expect(rejected.reason.trim().length).toBeGreaterThan(0);
+  });
+
+  it('bounds Wiggle to 0..1,000,000 and rejects non-finite or negative values', () => {
+    const applied = setMotionKeyWiggle({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      keyFrame: 10,
+      wiggle: 12,
+    });
+    expect(applied.ok).toBe(true);
+    if (applied.ok) {
+      expect(channelOf(recordOf(applied.records), 'scale').keys.find((key) => key.frame === 10)?.wiggle).toBe(12);
+    }
+    expect(setMotionKeyWiggle({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      keyFrame: 10,
+      wiggle: 1_000_000,
+    }).ok).toBe(true);
+
+    for (const wiggle of [-1, Number.NaN, Number.POSITIVE_INFINITY, 1_000_001]) {
+      const result = setMotionKeyWiggle({
+        records: [motionRecord()],
+        railId: 'rail-1',
+        channelId: 'scale',
+        keyFrame: 10,
+        wiggle,
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.reason.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it('finds the addressed key and reports none for an empty frame', () => {
+    const record = motionRecord();
+    expect(resolveMotionKeyAtFrame(record, 'scale', 10)?.value).toBe(2);
+    expect(resolveMotionKeyAtFrame(record, 'scale', 4)).toBeNull();
+    expect(resolveMotionKeyAtFrame(null, 'scale', 4)).toBeNull();
+  });
+});
+
+describe('59-12 rail motion commands — selection scope', () => {
+  it('reports one scope, with a key scope winning over the rail it rides on', () => {
+    expect(resolveSelectionScope({ hasRail: true, hasDrawingKey: false, hasMotionKey: true })).toBe('motion-key');
+    expect(resolveSelectionScope({ hasRail: true, hasDrawingKey: true, hasMotionKey: false })).toBe('drawing-key');
+    expect(resolveSelectionScope({ hasRail: true, hasDrawingKey: false, hasMotionKey: false })).toBe('rail');
+    expect(resolveSelectionScope({ hasRail: false, hasDrawingKey: false, hasMotionKey: false })).toBeNull();
+  });
+});
+
+describe('59-12 rail motion commands — honest availability', () => {
+  const ready: RailMotionCommandAvailabilityInput = {
+    command: 'set-motion-key',
+    hasRail: true,
+    hasChannel: true,
+    cursorInsideRailSpan: true,
+    keyAtCursor: false,
+  };
+
+  const rows: ReadonlyArray<{
+    readonly name: string;
+    readonly input: RailMotionCommandAvailabilityInput;
+    readonly enabled: boolean;
+  }> = [
+    { name: 'animate without a rail', input: { command: 'animate', hasRail: false }, enabled: false },
+    { name: 'animate with a rail', input: { command: 'animate', hasRail: true }, enabled: true },
+    { name: 'add without a rail', input: { ...ready, hasRail: false }, enabled: false },
+    { name: 'add without a channel', input: { ...ready, hasChannel: false }, enabled: false },
+    { name: 'add outside the rail span', input: { ...ready, cursorInsideRailSpan: false }, enabled: false },
+    { name: 'add when a key already sits at the cursor', input: { ...ready, keyAtCursor: true }, enabled: false },
+    { name: 'add when ready', input: ready, enabled: true },
+    { name: 'remove when no key sits at the cursor', input: { ...ready, command: 'remove-motion-key', keyAtCursor: false }, enabled: false },
+    { name: 'remove when a key sits at the cursor', input: { ...ready, command: 'remove-motion-key', keyAtCursor: true }, enabled: true },
+    { name: 'previous with no adjacent key', input: { ...ready, command: 'previous-motion-key', hasAdjacentKey: false }, enabled: false },
+    { name: 'previous with an adjacent key', input: { ...ready, command: 'previous-motion-key', hasAdjacentKey: true }, enabled: true },
+    { name: 'next with no adjacent key', input: { ...ready, command: 'next-motion-key', hasAdjacentKey: false }, enabled: false },
+    { name: 'next with an adjacent key', input: { ...ready, command: 'next-motion-key', hasAdjacentKey: true }, enabled: true },
+    { name: 'easing without a selected key', input: { ...ready, command: 'set-motion-key-easing', keyAtCursor: false }, enabled: false },
+    { name: 'easing with a selected key', input: { ...ready, command: 'set-motion-key-easing', keyAtCursor: true }, enabled: true },
+    { name: 'wiggle without a selected key', input: { ...ready, command: 'set-motion-key-wiggle', keyAtCursor: false }, enabled: false },
+    { name: 'wiggle with a selected key', input: { ...ready, command: 'set-motion-key-wiggle', keyAtCursor: true }, enabled: true },
+  ];
+
+  it('answers every case and never reports an empty reason (T-59-35)', () => {
+    for (const row of rows) {
+      const result = resolveMotionCommandAvailability(row.input);
+      expect(result.enabled, row.name).toBe(row.enabled);
+      if (row.enabled) {
+        expect(result.reason, row.name).toBeNull();
+      } else {
+        expect(result.reason?.trim().length ?? 0, row.name).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

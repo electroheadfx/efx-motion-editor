@@ -13,9 +13,14 @@
 
 import {
   PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER,
+  RAIL_MOTION_FRAME_LIMIT,
+  RAIL_MOTION_WIGGLE_LIMIT,
   applyRailMotionEditToCollection,
+  railMotionValueIsValid,
   type PhysicPaintRotoRailMotionChannel,
   type PhysicPaintRotoRailMotionChannelId,
+  type PhysicPaintRotoRailMotionEasing,
+  type PhysicPaintRotoRailMotionKey,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 import {
@@ -162,13 +167,132 @@ export function animateRail(input: AnimateRailInput): RailMotionCommandResult {
   return success(next);
 }
 
+export interface SetMotionKeyAtCursorInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  /** The rail-local frame the key lands on (see {@link railMotionCursorFrame}). */
+  readonly keyFrame: number;
+  /** Explicit value; absent = the channel's current evaluated value. */
+  readonly value?: number;
+  readonly easing?: PhysicPaintRotoRailMotionEasing;
+  readonly wiggle?: number;
+}
+
+export interface RemoveMotionKeyInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly keyFrame: number;
+}
+
+export interface StepMotionKeyInput {
+  readonly channel: PhysicPaintRotoRailMotionChannel;
+  readonly fromFrame: number;
+  readonly direction: -1 | 1;
+}
+
+export interface SetMotionKeyEasingInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly keyFrame: number;
+  readonly easing: PhysicPaintRotoRailMotionEasing;
+}
+
+export interface SetMotionKeyWiggleInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly keyFrame: number;
+  readonly wiggle: number;
+}
+
+/**
+ * The three independent selection scopes (MOTN-11). A rail scope may coexist
+ * with a key scope; the two key scopes never coexist. The strip renders one
+ * contextual command list per active scope and never decides the scope itself.
+ */
+export type RailMotionSelectionScope = 'rail' | 'drawing-key' | 'motion-key';
+
+/** Session-only identity of the selected Motion key (rail-local frame). */
+export interface RailMotionKeySelection {
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly frame: number;
+}
+
+export interface ResolveSelectionScopeInput {
+  readonly hasRail: boolean;
+  readonly hasDrawingKey: boolean;
+  readonly hasMotionKey: boolean;
+}
+
+/** One scope authority: a key scope wins over the rail scope it rides on. */
+export function resolveSelectionScope(
+  _input: ResolveSelectionScopeInput,
+): RailMotionSelectionScope | null {
+  return null;
+}
+
+/** The addressed Motion key on a record, or null when the frame carries none. */
+export function resolveMotionKeyAtFrame(
+  _record: PhysicPaintRotoRailMotionRecord | null,
+  _channelId: PhysicPaintRotoRailMotionChannelId,
+  _railLocalFrame: number,
+): PhysicPaintRotoRailMotionKey | null {
+  return null;
+}
+
+/** Adds or updates the addressed Motion key. RED stub — GREEN fills the policy. */
+export function setMotionKeyAtCursor(_input: SetMotionKeyAtCursorInput): RailMotionCommandResult {
+  return failure('The Motion key could not be written.');
+}
+
+/** Removes the addressed Motion key. RED stub — GREEN fills the policy. */
+export function removeMotionKey(_input: RemoveMotionKeyInput): RailMotionCommandResult {
+  return failure('The Motion key could not be removed.');
+}
+
+/** Adjacent Motion key frame in the requested direction. RED stub. */
+export function stepMotionKey(_input: StepMotionKeyInput): number | null {
+  return null;
+}
+
+/** Sets Hold/Ease on an existing Motion key. RED stub. */
+export function setMotionKeyEasing(_input: SetMotionKeyEasingInput): RailMotionCommandResult {
+  return failure('The Motion key easing could not be changed.');
+}
+
+/** Sets Wiggle on an existing Motion key. RED stub. */
+export function setMotionKeyWiggle(_input: SetMotionKeyWiggleInput): RailMotionCommandResult {
+  return failure('The Motion key wiggle could not be changed.');
+}
+
 /** The commands the 59-12 action bar can publish. */
-export type RailMotionCommandId = 'animate';
+export type RailMotionCommandId =
+  | 'animate'
+  | 'set-motion-key'
+  | 'remove-motion-key'
+  | 'previous-motion-key'
+  | 'next-motion-key'
+  | 'set-motion-key-easing'
+  | 'set-motion-key-wiggle';
 
 export interface RailMotionCommandAvailabilityInput {
   readonly command: RailMotionCommandId;
   /** A rail is selected in the active track's rail scope. */
   readonly hasRail: boolean;
+  /** The rail carries a motion record. */
+  readonly hasMotionRecord?: boolean;
+  /** A Motion channel is selected (or the addressed lane carries one). */
+  readonly hasChannel?: boolean;
+  /** The playhead sits inside the rail's keyed span. */
+  readonly cursorInsideRailSpan?: boolean;
+  /** A Motion key exists at the playhead in the addressed channel. */
+  readonly keyAtCursor?: boolean;
+  /** An adjacent Motion key exists in the requested direction. */
+  readonly hasAdjacentKey?: boolean;
 }
 
 export interface RailMotionCommandAvailability {
