@@ -5,9 +5,13 @@ import type {
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 import {
+  CONTEXTUAL_COMMANDS_BY_SCOPE,
+  RAIL_MOTION_SELECTION_SCOPES,
   animateRail,
+  clearSelectionForScope,
   railMotionCursorFrame,
   removeMotionKey,
+  resolveContextualMotionCommands,
   resolveMotionCommandAvailability,
   resolveMotionKeyAtFrame,
   resolveSelectionScope,
@@ -17,6 +21,7 @@ import {
   setMotionKeyWiggle,
   stepMotionKey,
   type RailMotionCommandAvailabilityInput,
+  type RailSelectionScopesState,
 } from './railMotionCommands';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -487,5 +492,140 @@ describe('59-12 rail motion commands — animate availability', () => {
     const result = resolveMotionCommandAvailability({ command: 'animate', hasRail: false });
     expect(result.enabled).toBe(false);
     expect(result.reason).toBe('Select a rail to animate it.');
+  });
+});
+
+describe('59-12 Task 3: three independent selection scopes (MOTN-11)', () => {
+  const railIdentity = Object.freeze({ kind: 'loop', loopId: 'loop-1' } as const);
+  const motionKeySelection = Object.freeze({
+    railId: 'loop-1',
+    channelId: 'position-x' as const,
+    frame: 3,
+  });
+
+  function scopes(overrides: Partial<RailSelectionScopesState> = {}): RailSelectionScopesState {
+    return {
+      railSet: { members: [railIdentity], anchor: railIdentity },
+      drawingKeyIds: ['key-a', 'key-b'],
+      motionKey: null,
+      ...overrides,
+    };
+  }
+
+  it('maps every selection state to exactly one scope and one command list', () => {
+    const rows = [
+      {
+        input: { hasRail: true, hasDrawingKey: false, hasMotionKey: false },
+        scope: 'rail',
+        commands: ['animate', 'scissor-key-rail', 'delete-rails'],
+      },
+      {
+        input: { hasRail: true, hasDrawingKey: true, hasMotionKey: false },
+        scope: 'drawing-key',
+        commands: ['insert-key', 'delete-key', 'move-keys'],
+      },
+      {
+        input: { hasRail: true, hasDrawingKey: false, hasMotionKey: true },
+        scope: 'motion-key',
+        commands: [
+          'set-motion-key',
+          'remove-motion-key',
+          'set-motion-key-easing',
+          'set-motion-key-wiggle',
+          'previous-motion-key',
+          'next-motion-key',
+        ],
+      },
+      {
+        // The scope resolver is total: a key scope always outranks the rail it
+        // rides on, so the rail can never mask a selected key.
+        input: { hasRail: true, hasDrawingKey: true, hasMotionKey: true },
+        scope: 'motion-key',
+        commands: ['set-motion-key', 'remove-motion-key', 'set-motion-key-easing', 'set-motion-key-wiggle', 'previous-motion-key', 'next-motion-key'],
+      },
+      {
+        input: { hasRail: false, hasDrawingKey: false, hasMotionKey: false },
+        scope: null,
+        commands: [],
+      },
+    ] as const;
+    for (const row of rows) {
+      const scope = resolveSelectionScope(row.input);
+      expect(scope).toBe(row.scope);
+      expect(resolveContextualMotionCommands(scope)).toEqual(row.commands);
+    }
+  });
+
+  it('gives every command exactly one scope — a command from another scope is absent', () => {
+    const allCommands = RAIL_MOTION_SELECTION_SCOPES.flatMap(
+      (scope) => resolveContextualMotionCommands(scope),
+    );
+    expect(new Set(allCommands).size).toBe(allCommands.length);
+    // The rail scope carries no Motion command and the key scopes carry no rail command.
+    expect(resolveContextualMotionCommands('rail')).not.toContain('set-motion-key-easing');
+    expect(resolveContextualMotionCommands('rail')).not.toContain('set-motion-key');
+    expect(resolveContextualMotionCommands('drawing-key')).not.toContain('animate');
+    expect(resolveContextualMotionCommands('motion-key')).not.toContain('scissor-key-rail');
+    // The exported table IS the resolver's source (one authority).
+    expect(resolveContextualMotionCommands('rail')).toBe(CONTEXTUAL_COMMANDS_BY_SCOPE.rail);
+    expect(resolveContextualMotionCommands(null)).toEqual([]);
+  });
+
+  it('clearing the motion-key selection keeps the rail set (expanded block stays open)', () => {
+    const state = scopes({ drawingKeyIds: [], motionKey: motionKeySelection });
+    const cleared = clearSelectionForScope(state, 'motion-key');
+    expect(cleared.motionKey).toBeNull();
+    expect(cleared.drawingKeyIds).toEqual([]);
+    // Same rail set reference: the block and the rail scope survive untouched.
+    expect(cleared.railSet).toBe(state.railSet);
+  });
+
+  it('selecting a motion key clears the drawing-key selection', () => {
+    const state = scopes({ motionKey: null });
+    const cleared = clearSelectionForScope(state, 'motion-key');
+    expect(cleared.drawingKeyIds).toEqual([]);
+    expect(cleared.railSet).toBe(state.railSet);
+  });
+
+  it('selecting a drawing key clears the motion-key selection', () => {
+    const state = scopes({ drawingKeyIds: [], motionKey: motionKeySelection });
+    const cleared = clearSelectionForScope(state, 'drawing-key');
+    expect(cleared.motionKey).toBeNull();
+    expect(cleared.railSet).toBe(state.railSet);
+  });
+
+  it('deleting the rail clears every scope', () => {
+    const state = scopes({ motionKey: motionKeySelection });
+    const cleared = clearSelectionForScope(state, 'rail');
+    expect(cleared.railSet.members).toEqual([]);
+    expect(cleared.railSet.anchor).toBeNull();
+    expect(cleared.drawingKeyIds).toEqual([]);
+    expect(cleared.motionKey).toBeNull();
+  });
+
+  it('clearing with no active scope leaves the rail set and drops both key selections', () => {
+    const state = scopes({ drawingKeyIds: [], motionKey: motionKeySelection });
+    const cleared = clearSelectionForScope(state, null);
+    expect(cleared.motionKey).toBeNull();
+    expect(cleared.railSet).toBe(state.railSet);
+    // Nothing left to clear → the same reference, so subscribers never churn.
+    expect(clearSelectionForScope(cleared, null)).toBe(cleared);
+    expect(clearSelectionForScope(cleared, 'motion-key')).toBe(cleared);
+  });
+
+  it('a motion-key selection survives a rail re-selection', () => {
+    const before = scopes({ drawingKeyIds: [], motionKey: motionKeySelection });
+    // Re-selecting a rail REPLACES only the rail-set identity; selecting a rail
+    // never calls the clearing rules, so the key scopes ride through untouched.
+    const afterRailReselection: RailSelectionScopesState = {
+      ...before,
+      railSet: { members: [Object.freeze({ kind: 'key-rail', firstKeyId: 'key-a' } as const)], anchor: null },
+    };
+    expect(afterRailReselection.motionKey).toBe(motionKeySelection);
+    expect(resolveSelectionScope({
+      hasRail: true,
+      hasDrawingKey: afterRailReselection.drawingKeyIds.length > 0,
+      hasMotionKey: afterRailReselection.motionKey !== null,
+    })).toBe('motion-key');
   });
 });

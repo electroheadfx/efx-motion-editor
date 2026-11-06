@@ -3182,3 +3182,40 @@ describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (
     expect(actions.split('physicPaintStore.replaceRotoPhysicalRailMotions(').length - 1).toBe(1);
   });
 });
+
+describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11)', () => {
+  it('gates the motion-key controls from the contextual command table, never inline', () => {
+    const code = source();
+    expect(code).toContain('const contextualRotoCommands = resolveContextualMotionCommands(motionSelectionScope);');
+    expect(code).toContain("const motionKeyScopeActive = contextualRotoCommands.includes('set-motion-key-easing');");
+    expect(code).toContain('{motionKeyScopeActive ? (');
+    expect(code).not.toContain("motionSelectionScope === 'motion-key'");
+  });
+
+  it('clears the drawing-key selection when a motion key is selected, keeping the rail scope', () => {
+    const code = source();
+    const handlerStart = code.indexOf('onSelectMotionKey={(frame, channelId) => {');
+    const handler = code.slice(handlerStart, code.indexOf('onMotionCursorStep=', handlerStart));
+    expect(handler).toContain('props.onClearRotoKeySelection?.();');
+    expect(handler).toContain('props.onClearRotoSpacingSelection?.();');
+    expect(handler).toContain('physicalActions?.selectMotionKey?.({');
+    // The rail set is never cleared here — the expanded block stays open.
+    expect(handler).not.toContain('onSelectRotoLoopClip');
+  });
+
+  it('ends the motion-key scope on a drawing-key selection and highlights the selected key in its lane', () => {
+    const code = source();
+    expect(code).toContain('selectMotionKey: physicalActions?.selectMotionKey,');
+    expect(code).toContain('current.selectMotionKey?.(null);');
+    expect(code).toContain('selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}');
+    expect(code).toContain('props.onSelectAllRotoKeys?.();');
+    // The lane receives the selection through the block, not a second signal.
+    const trackRow = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx'),
+      'utf8',
+    );
+    expect(trackRow).toContain('readonly selectedMotionKey?: {');
+    expect(trackRow).toContain('selectedKeyFrames={laneSelectedKeyFrames}');
+    expect(trackRow).toContain('lane.channels.some((channel) => channel.id === selectedMotionKey.channelId)');
+  });
+});
