@@ -3219,3 +3219,24 @@ describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11
     expect(trackRow).toContain('lane.channels.some((channel) => channel.id === selectedMotionKey.channelId)');
   });
 });
+
+describe('59-12 Task 4: merge-drop confirmation row (MOTN-10)', () => {
+  it('renders the built copy verbatim inside a polite status row with a wired Dismiss', () => {
+    const code = source();
+    expect(code).toContain("from '../roto/railMotionMergeNotice';");
+    const rowStart = code.indexOf('function RailMotionMergeNoticeRow()');
+    expect(rowStart).toBeGreaterThan(-1);
+    const row = code.slice(rowStart, code.indexOf('/**', rowStart + 10));
+    expect(row).toContain('const notice = railMotionMergeNotice.value;');
+    expect(row).toContain('if (notice === null) return null;');
+    expect(row).toContain('role="status"');
+    expect(row).toContain('aria-live="polite"');
+    expect(row).toContain('{buildRailMotionMergeNoticeCopy(notice)}');
+    expect(row).toContain('aria-label="Dismiss rail merge notice"');
+    expect(row).toContain('onClick={() => dismissRailMotionMergeNotice()}');
+    // The strip body never subscribes to the notice signal — only the leaf does.
+    expect(code.split('railMotionMergeNotice.value').length - 1).toBe(1);
+    // The row renders at the top of the action-bar region.
+    expect(code).toContain('<RailMotionMergeNoticeRow />');
+  });
+});
