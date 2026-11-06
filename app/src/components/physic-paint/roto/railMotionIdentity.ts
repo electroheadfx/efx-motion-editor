@@ -17,7 +17,39 @@ import {
   createPhysicPaintRotoRailId,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
+import type { KeyRailSegment } from '../view/physicsPaintKeyRailPresentation';
 import type { TimelineRailType } from '../view/timelineRailDesign';
+
+/**
+ * The Loop Clip facts a rail view needs. Structural on purpose: the identity
+ * module never imports the physical document model, so it cannot create a
+ * module cycle with the persistence layer.
+ */
+export interface RailMotionLoopClipSource {
+  readonly loopId: string;
+  readonly placementStart: number;
+  readonly sourceKeyIds: readonly string[];
+  readonly repeat: number | 'infinity';
+  readonly mode?: 'progressive' | 'static';
+  readonly railKind?: 'playscript' | 'reveal';
+}
+
+/** Resolves the presentation rail type for a Loop Clip rail. */
+export type RailMotionRailTypeResolver = (clip: RailMotionLoopClipSource) => TimelineRailType;
+
+/** The merge outcome, so the settlement boundary can publish a drop notice. */
+export interface RailMotionMergeTransitionResult {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly adoptedRailId: string | null;
+  readonly droppedRailId: string | null;
+}
+
+/** One member of a rail-set copy: source identity to fresh destination identity. */
+export interface RailMotionCopyPlanEntry {
+  readonly sourceRailId: string;
+  readonly destinationRailId: string;
+  readonly anchorKeyId: string;
+}
 
 /** The identity pair a rail adopts when it starts carrying motion. */
 export interface RailMotionBinding {
@@ -124,4 +156,86 @@ export function reconcileRailMotions(
  */
 export function describeRailMotionOrphan(record: PhysicPaintRotoRailMotionRecord): string {
   return `Rail motion for rail "${record.railId}" no longer matches a live rail (last anchor key "${record.anchorKeyId}").`;
+}
+
+export function deriveRailMotionRailViews(
+  loopClips: readonly RailMotionLoopClipSource[],
+  keyRailSegments: readonly KeyRailSegment[],
+  railTypeFor?: RailMotionRailTypeResolver,
+  boundRailIdByAnchor?: ReadonlyMap<string, string>,
+): readonly RailMotionRailView[] {
+  void loopClips;
+  void keyRailSegments;
+  void railTypeFor;
+  void boundRailIdByAnchor;
+  return Object.freeze([]) as readonly RailMotionRailView[];
+}
+
+export function assignRailMotionRailViews(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  loopClips: readonly RailMotionLoopClipSource[],
+  keyRailSegments: readonly KeyRailSegment[],
+  railTypeFor?: RailMotionRailTypeResolver,
+): readonly RailMotionRailView[] {
+  void records;
+  void loopClips;
+  void keyRailSegments;
+  void railTypeFor;
+  return Object.freeze([]) as readonly RailMotionRailView[];
+}
+
+export function onDeleteFirstKey(
+  record: PhysicPaintRotoRailMotionRecord,
+  nextAnchorKeyId: string,
+): PhysicPaintRotoRailMotionRecord {
+  void nextAnchorKeyId;
+  return record;
+}
+
+export function onDeleteOnlyKey(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  void railId;
+  return records;
+}
+
+export function onSplitRail(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  void railId;
+  return records;
+}
+
+export function onMergeRails(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  headAnchorKeyId: string,
+  tailAnchorKeyId: string,
+  mergedAnchorKeyId: string,
+): RailMotionMergeTransitionResult {
+  void headAnchorKeyId;
+  void tailAnchorKeyId;
+  void mergedAnchorKeyId;
+  return Object.freeze({
+    records,
+    adoptedRailId: null,
+    droppedRailId: null,
+  }) as RailMotionMergeTransitionResult;
+}
+
+export function onRailStartMoved(
+  record: PhysicPaintRotoRailMotionRecord,
+): PhysicPaintRotoRailMotionRecord {
+  return record;
+}
+
+export function rekeyRailMotionsForCopy(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  plan: readonly RailMotionCopyPlanEntry[],
+  copiedSourceRailIds?: readonly string[],
+): readonly PhysicPaintRotoRailMotionRecord[] | null {
+  void plan;
+  void copiedSourceRailIds;
+  return records;
 }

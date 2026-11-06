@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="23" failures="11" errors="0" time="0.232">
+    <testsuite name="src/components/physic-paint/roto/railMotionIdentity.test.ts" timestamp="2026-11-06T13:29:20.315Z" hostname="efx2.home" tests="23" failures="11" errors="0" skipped="0" time="0.00996625">
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion identity bindings &gt; binds a loop rail to its loopId without minting an id" time="0.000711583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion identity bindings &gt; mints a distinct durable rail id for every key-rail binding" time="0.0004365">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; matches only an exact railId" time="0.000167458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; keeps a record active when its anchor hint is stale" time="0.000073583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; retains every unmatched record as an orphan in canonical railId order" time="0.000115125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; never matches a record to a rail that was never animated" time="0.000086166">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; returns frozen records keyed by railId" time="0.000090708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion reconciliation &gt; describes an orphaned record with its rail and anchor ids" time="0.000127208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion rail views &gt; derives one view per loop clip with the loop lifecycle span" time="0.003334084">
+            <failure message="expected [] to deeply equal [ &apos;loop-1&apos;, &apos;loop-inf&apos;, …(2) ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;loop-1&apos;, &apos;loop-inf&apos;, …(2) ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;loop-1&quot;,
+-   &quot;loop-inf&quot;,
+-   &quot;loop-reveal&quot;,
+-   &quot;loop-static&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:210:46
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion rail views &gt; derives one view per key rail segment with a null railId until bound" time="0.000742417">
+            <failure message="expected [] to deeply equal [ { railId: null, …(6) }, …(1) ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ { railId: null, …(6) }, …(1) ]
+
+- Expected
++ Received
+
+- Array [
+-   Object {
+-     &quot;anchorKeyId&quot;: &quot;A&quot;,
+-     &quot;endFrameExclusive&quot;: 10,
+-     &quot;keyIds&quot;: Array [
+-       &quot;A&quot;,
+-       &quot;B&quot;,
+-     ],
+-     &quot;loopId&quot;: null,
+-     &quot;railId&quot;: null,
+-     &quot;railType&quot;: &quot;standard&quot;,
+-     &quot;startFrame&quot;: 4,
+-   },
+-   Object {
+-     &quot;anchorKeyId&quot;: &quot;C&quot;,
+-     &quot;endFrameExclusive&quot;: 13,
+-     &quot;keyIds&quot;: Array [
+-       &quot;C&quot;,
+-     ],
+-     &quot;loopId&quot;: null,
+-     &quot;railId&quot;: null,
+-     &quot;railType&quot;: &quot;standard&quot;,
+-     &quot;startFrame&quot;: 12,
+-   },
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:234:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion rail views &gt; binds key-rail records by their anchor hint at first binding only" time="0.000181833">
+            <failure message="Cannot read properties of undefined (reading &apos;railId&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;railId&apos;)
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:261:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion rail views &gt; binds loop views by loopId even when the anchor hint is stale" time="0.000785209">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:274:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion rail views &gt; never binds a loop-owned record to a key rail by anchor coincidence" time="0.000171875">
+            <failure message="expected undefined to be null" type="AssertionError">
+AssertionError: expected undefined to be null
+
+- Expected: 
+null
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:288:29
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; re-stamps the anchor when the first key is deleted without rewriting frames" time="0.000768">
+            <failure message="expected &apos;A&apos; to be &apos;B&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;A&apos; to be &apos;B&apos; // Object.is equality
+
+Expected: &quot;B&quot;
+Received: &quot;A&quot;
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:297:30
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; removes the record when its only key is deleted" time="0.000258875">
+            <failure message="expected [ { railId: &apos;rail-a&apos;, …(2) }, …(1) ] to have a length of 1 but got 2" type="AssertionError">
+AssertionError: expected [ { railId: &apos;rail-a&apos;, …(2) }, …(1) ] to have a length of 1 but got 2
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:311:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; keeps the head record and creates no tail record on split" time="0.000082833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; adopts the tail record when only the tail carries motion" time="0.000188833">
+            <failure message="expected null to be &apos;rail-t&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;rail-t&apos; // Object.is equality
+
+- Expected: 
+&quot;rail-t&quot;
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:327:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; keeps the head record and reports the dropped tail when both carry motion" time="0.000169333">
+            <failure message="expected null to be &apos;rail-t&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected null to be &apos;rail-t&apos; // Object.is equality
+
+- Expected: 
+&quot;rail-t&quot;
+
++ Received: 
+null
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:340:34
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; reports nothing when only the head carries motion or neither does" time="0.0000885">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; returns the same record reference when the rail start moves" time="0.000057583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; rekeys a copied rail set onto fresh identities without rewriting frames" time="0.000365292">
+            <failure message="expected [ Array(3) ] to deeply equal [ Array(3) ]" type="AssertionError">
+AssertionError: expected [ Array(3) ] to deeply equal [ Array(3) ]
+
+- Expected
++ Received
+
+  Array [
+-   &quot;loop-dst&quot;,
+-   &quot;rail-dst&quot;,
++   &quot;loop-src&quot;,
++   &quot;rail-src&quot;,
+    &quot;rail-other&quot;,
+  ]
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:382:48
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; returns the same collection for an empty plan or an un-animated source" time="0.000054375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionIdentity.test.ts" name="rail motion gate B transitions &gt; fails closed when a copy plan omits a destination, duplicates one, collides, or misses a member" time="0.000313125">
+            <failure message="expected [ { railId: &apos;rail-src&apos;, …(2) }, …(1) ] to be null" type="AssertionError">
+AssertionError: expected [ { railId: &apos;rail-src&apos;, …(2) }, …(1) ] to be null
+
+- Expected: 
+null
+
++ Received: 
+Array [
+  Object {
+    &quot;anchorKeyId&quot;: &quot;A&quot;,
+    &quot;channels&quot;: Array [
+      Object {
+        &quot;id&quot;: &quot;position-x&quot;,
+        &quot;keys&quot;: Array [
+          Object {
+            &quot;easing&quot;: &quot;ease&quot;,
+            &quot;frame&quot;: 0,
+            &quot;value&quot;: 0,
+            &quot;wiggle&quot;: 0,
+          },
+        ],
+      },
+      Object {
+        &quot;id&quot;: &quot;position-y&quot;,
+        &quot;keys&quot;: Array [
+          Object {
+            &quot;easing&quot;: &quot;ease&quot;,
+            &quot;frame&quot;: 0,
+            &quot;value&quot;: 0,
+            &quot;wiggle&quot;: 0,
+          },
+        ],
+      },
+    ],
+    &quot;railId&quot;: &quot;rail-src&quot;,
+  },
+  Object {
+    &quot;anchorKeyId&quot;: &quot;Z&quot;,
+    &quot;channels&quot;: Array [
+      Object {
+        &quot;id&quot;: &quot;position-x&quot;,
+        &quot;keys&quot;: Array [
+          Object {
+            &quot;easing&quot;: &quot;ease&quot;,
+            &quot;frame&quot;: 0,
+            &quot;value&quot;: 0,
+            &quot;wiggle&quot;: 0,
+          },
+        ],
+      },
+      Object {
+        &quot;id&quot;: &quot;position-y&quot;,
+        &quot;keys&quot;: Array [
+          Object {
+            &quot;easing&quot;: &quot;ease&quot;,
+            &quot;frame&quot;: 0,
+            &quot;value&quot;: 0,
+            &quot;wiggle&quot;: 0,
+          },
+        ],
+      },
+    ],
+    &quot;railId&quot;: &quot;rail-other&quot;,
+  },
+]
+
+ ❯ src/components/physic-paint/roto/railMotionIdentity.test.ts:415:9
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
