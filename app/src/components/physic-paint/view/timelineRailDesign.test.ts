@@ -9,6 +9,7 @@ import {
   resolveTrackAccentColor,
   timelineRailCellStyle,
   TIMELINE_GEOMETRY,
+  TIMELINE_MOTION,
   TIMELINE_RAIL_PALETTES,
   TIMELINE_SURFACE,
   type FrameRailOwnership,
@@ -369,6 +370,29 @@ describe('TIMELINE_GEOMETRY pins', () => {
     expect(TIMELINE_GEOMETRY.motionLaneHeight).toBe(18);
     expect(TIMELINE_GEOMETRY.outlineWidth).toBe(1.5);
     expect(TIMELINE_GEOMETRY.outlineRadius).toBe(4);
+  });
+});
+
+describe('TIMELINE_MOTION pins', () => {
+  it('pins the motion cell footprint to 16 x 18 radius 3 (never the drawing key 22px)', () => {
+    expect(TIMELINE_MOTION.cellWidth).toBe(16);
+    expect(TIMELINE_MOTION.cellHeight).toBe(18);
+    expect(TIMELINE_MOTION.cellRadius).toBe(3);
+    // The motion cell is deliberately SHORTER than the drawing-key cell.
+    expect(TIMELINE_MOTION.cellHeight).not.toBe(TIMELINE_GEOMETRY.cellHeight);
+    // The footprint is a separate value from the 18px pitch.
+    expect(TIMELINE_MOTION.cellWidth).not.toBe(TIMELINE_GEOMETRY.cellPitch);
+    expect(TIMELINE_GEOMETRY.cellPitch).toBe(18);
+  });
+
+  it('pins the lane, key and curve metrics', () => {
+    expect(TIMELINE_MOTION.keySize).toBe(6);
+    expect(TIMELINE_MOTION.keyRimWidth).toBe(1);
+    expect(TIMELINE_MOTION.keyRadius).toBe(1.5);
+    expect(TIMELINE_MOTION.curveWidth).toBe(1.5);
+    expect(TIMELINE_MOTION.laneHeight).toBe(TIMELINE_GEOMETRY.motionLaneHeight);
+    expect(TIMELINE_MOTION.headerClusterWidth).toBeGreaterThan(0);
+    expect(TIMELINE_MOTION.laneLabelGap).toBeGreaterThan(0);
   });
 });
 

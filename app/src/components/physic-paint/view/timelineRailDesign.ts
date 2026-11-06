@@ -113,6 +113,25 @@ export const TIMELINE_GEOMETRY = {
 } as const;
 
 /**
+ * Motion lane tokens (Phase 59, v2.1.0). `TIMELINE_GEOMETRY` stays the drawing
+ * cell contract: the motion cell is a shorter 16 × 18 footprint at the same
+ * 18px pitch, so it is a SEPARATE block rather than a mutation of the existing
+ * geometry. RED stub: the values land in GREEN.
+ */
+export const TIMELINE_MOTION = {
+  cellWidth: 0,
+  cellHeight: 0,
+  cellRadius: 0,
+  keySize: 0,
+  keyRimWidth: 0,
+  keyRadius: 0,
+  curveWidth: 0,
+  laneHeight: TIMELINE_GEOMETRY.motionLaneHeight,
+  headerClusterWidth: 0,
+  laneLabelGap: 0,
+} as const;
+
+/**
  * The single rail-type classifier: reveal wins, a playscript clip splits into
  * Static (stored mode) or Motion (everything else), and a standard/absent rail
  * kind stays standard.

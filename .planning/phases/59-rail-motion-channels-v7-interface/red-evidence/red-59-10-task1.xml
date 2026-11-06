@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="51" failures="18" errors="0" time="1.215">
+    <testsuite name="src/components/physic-paint/view/TimelineMotionChannels.test.ts" timestamp="2026-11-06T15:26:32.374Z" hostname="efx.local" tests="18" failures="16" errors="0" skipped="0" time="0.020369584">
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; folds the five model channels into four fixed-order display lanes" time="0.00877">
+            <failure message="expected [] to deeply equal [ &apos;position-x&apos;, &apos;position-y&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;position-x&apos;, &apos;position-y&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;position-x&quot;,
+-   &quot;position-y&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:215:60
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; yields exactly one visible Position lane for a record holding only X and Y" time="0.002056833">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:229:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; keeps a single Position lane when only one axis carries keys" time="0.000715542">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:238:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; never exceeds four display lanes for a record on all five model channels" time="0.000850542">
+            <failure message="expected [] to have a length of 4 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 4 but got +0
+
+- Expected
++ Received
+
+- 4
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:260:9
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; reports four keyless display lanes when nothing carries keys" time="0.00053825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders one motionLane surface of the 18px lane height" time="0.000720042">
+            <failure message="the motion lane root element: expected 0 to be greater than 0" type="AssertionError">
+AssertionError: the motion lane root element: expected 0 to be greater than 0
+ ❯ laneNode src/components/physic-paint/view/TimelineMotionChannels.test.ts:167:56
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:282:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders the header cluster as icon, label, key count, previous, diamond, next" time="0.000867042">
+            <failure message="expected [] to deeply equal [ &apos;icon&apos;, &apos;label&apos;, &apos;count&apos;, …(3) ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;icon&apos;, &apos;label&apos;, &apos;count&apos;, …(3) ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;icon&quot;,
+-   &quot;label&quot;,
+-   &quot;count&quot;,
+-   &quot;previous&quot;,
+-   &quot;diamond&quot;,
+-   &quot;next&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:292:86
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; draws one 6px key per SHARED Position frame, never one per axis" time="0.000816916">
+            <failure message="expected [] to have a length of 3 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 3 but got +0
+
+- Expected
++ Received
+
+- 3
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:307:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders exactly the evaluator curve path for each model channel" time="0.000742084">
+            <failure message="expected [] to have a length of 2 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 2 but got +0
+
+- Expected
++ Received
+
+- 2
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:328:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; draws the 16 x 18 motion cells at the 18px pitch" time="0.000306458">
+            <failure message="expected [] to have a length of 12 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 12 but got +0
+
+- Expected
++ Received
+
+- 12
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:339:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; marks the key at the cursor frame as the current tier" time="0.000372791">
+            <failure message="expected [] to deeply equal [ &apos;idle&apos;, &apos;current&apos;, &apos;idle&apos; ]" type="AssertionError">
+AssertionError: expected [] to deeply equal [ &apos;idle&apos;, &apos;current&apos;, &apos;idle&apos; ]
+
+- Expected
++ Received
+
+- Array [
+-   &quot;idle&quot;,
+-   &quot;current&quot;,
+-   &quot;idle&quot;,
+- ]
++ Array []
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:357:55
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; does not render keys outside the rail band" time="0.00032525">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:373:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; routes key and nav clicks to the frame handlers" time="0.000669042">
+            <failure message="Cannot read properties of undefined (reading &apos;props&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;props&apos;)
+ ❯ clickOf src/components/physic-paint/view/TimelineMotionChannels.test.ts:103:25
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:383:5
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; selects the rail from the lane surface" time="0.000239042">
+            <failure message="the motion lane root element: expected 0 to be greater than 0" type="AssertionError">
+AssertionError: the motion lane root element: expected 0 to be greater than 0
+ ❯ laneNode src/components/physic-paint/view/TimelineMotionChannels.test.ts:167:56
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:400:13
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; disables an inert nav control WITH a visible reason, never a silent no-op" time="0.000255083">
+            <failure message="header cluster part &quot;previous&quot;: expected undefined to be defined" type="AssertionError">
+AssertionError: header cluster part &quot;previous&quot;: expected undefined to be defined
+ ❯ headerPart src/components/physic-paint/view/TimelineMotionChannels.test.ts:179:50
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:407:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; lets the host override a disabled reason" time="0.000181209">
+            <failure message="header cluster part &quot;next&quot;: expected undefined to be defined" type="AssertionError">
+AssertionError: header cluster part &quot;next&quot;: expected undefined to be defined
+ ❯ headerPart src/components/physic-paint/view/TimelineMotionChannels.test.ts:179:50
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:423:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannels source contract &gt; reads no store, hook, signal or DOM state" time="0.000338">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannels source contract &gt; derives every geometry value from a design token" time="0.000431416">
+            <failure message="expected &apos;\n\nimport type {\n  PhysicPaintRotoR…&apos; to match /TIMELINE_GEOMETRY/" type="AssertionError">
+AssertionError: expected &apos;\n\nimport type {\n  PhysicPaintRotoR…&apos; to match /TIMELINE_GEOMETRY/
+
+- Expected: 
+/TIMELINE_GEOMETRY/
+
++ Received: 
+&quot;
+
+import type {
+  PhysicPaintRotoRailMotionChannel,
+  PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionKey,
+} from &apos;../roto/railMotionModel&apos;;
+import type { TimelineRailType } from &apos;./timelineRailDesign&apos;;
+
+export type RailMotionDisplayLaneId = &apos;position&apos; | &apos;scale&apos; | &apos;rotation&apos; | &apos;opacity&apos;;
+
+
+export const RAIL_MOTION_DISPLAY_LANE_ORDER: readonly RailMotionDisplayLaneId[] = Object.freeze([
+  &apos;position&apos;,
+  &apos;scale&apos;,
+  &apos;rotation&apos;,
+  &apos;opacity&apos;,
+]);
+
+export interface RailMotionDisplayLaneView {
+  readonly id: RailMotionDisplayLaneId;
+  readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
+  readonly keys: readonly PhysicPaintRotoRailMotionKey[];
+  readonly keyCount: number;
+}
+
+export type TimelineMotionLaneControl = &apos;previous&apos; | &apos;diamond&apos; | &apos;next&apos; | &apos;select-key&apos;;
+
+export interface TimelineMotionChannelLaneProps {
+  readonly railId: string;
+  readonly lane: RailMotionDisplayLaneView;
+  readonly railType: TimelineRailType;
+  readonly selected: boolean;
+  readonly railFrameCount: number;
+  readonly cursorFrame: number;
+  readonly selectedKeyFrames?: readonly number[];
+  readonly onSelectRail?: (railId: string) =&gt; void;
+  readonly onSelectKey?: (frame: number) =&gt; void;
+  readonly onMoveCursorToKey?: (frame: number) =&gt; void;
+  readonly onToggleKeyAtCursor?: () =&gt; void;
+  readonly disabledReasons?: Partial&lt;Record&lt;TimelineMotionLaneControl, string&gt;&gt;;
+}
+
+const POSITION_MODEL_CHANNEL_ORDER: readonly PhysicPaintRotoRailMotionChannelId[] = Object.freeze([
+  &apos;position-x&apos;,
+  &apos;position-y&apos;,
+]);
+
+
+export function resolveMotionDisplayLanes(
+  _channels: readonly PhysicPaintRotoRailMotionChannel[],
+): readonly RailMotionDisplayLaneView[] {
+  return RAIL_MOTION_DISPLAY_LANE_ORDER.map((id) =&gt; ({
+    id,
+    channels: [] as readonly PhysicPaintRotoRailMotionChannel[],
+    keys: [] as readonly PhysicPaintRotoRailMotionKey[],
+    keyCount: 0,
+  }));
+}
+
+export function resolveVisibleMotionDisplayLanes(
+  channels: readonly PhysicPaintRotoRailMotionChannel[],
+): readonly RailMotionDisplayLaneView[] {
+  return resolveMotionDisplayLanes(channels).filter((lane) =&gt; lane.keyCount &gt; 0);
+}
+
+export function resolveKeylessMotionDisplayLanes(
+  channels: readonly PhysicPaintRotoRailMotionChannel[],
+): readonly RailMotionDisplayLaneView[] {
+  return resolveMotionDisplayLanes(channels).filter((lane) =&gt; lane.keyCount === 0);
+}
+
+
+export function TimelineMotionChannelLane(
+  _props: TimelineMotionChannelLaneProps,
+): null {
+  void POSITION_MODEL_CHANNEL_ORDER;
+  return null;
+}
+&quot;
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:455:20
+            </failure>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/timelineRailDesign.test.ts" timestamp="2026-11-06T15:26:32.390Z" hostname="efx.local" tests="33" failures="2" errors="0" skipped="0" time="0.021921709">
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailType &gt; maps a reveal rail to reveal in both modes" time="0.001329834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailType &gt; splits a playscript rail by its stored mode" time="0.000424541">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailType &gt; maps a standard or missing rail kind to standard" time="0.00037625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailPalette &gt; returns the exact locked selected palette per type" time="0.00082">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailPalette &gt; returns the exact locked active-track palette per type" time="0.000272458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailPalette &gt; returns the exact locked unselected palette per type" time="0.000311334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineRailPalette &gt; keeps the three tiers distinct for all four types" time="0.000686834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCycleGray &gt; returns the selected cycle grays" time="0.000218167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCycleGray &gt; returns the unselected cycle grays" time="0.000141917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCellPresentation &gt; renders empty when no rail covers the frame, even inside a repeat" time="0.000188042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCellPresentation &gt; maps repeat parity to cycle 2 / cycle 3 and beats key / generated" time="0.000254167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCellPresentation &gt; paints a source-cycle real key as key" time="0.000189584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCellPresentation &gt; paints generated and cached-only frames as interp" time="0.000138375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTimelineCellPresentation &gt; falls back to empty inside a rail with no key, interpolation or cache" time="0.000152875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="timelineRailCellStyle &gt; always emits the three rail vars" time="0.000239333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="timelineRailCellStyle &gt; adds the cycle pair only for a cycle cell, matching parity and selection" time="0.000290292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="timelineRailCellStyle &gt; emits no cycle vars for key, interp or empty" time="0.000311791">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveFrameRail &gt; lets the selected rail that covers the frame win over loop and key" time="0.000232833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveFrameRail &gt; falls through to the covering loop rail with its own type" time="0.000106042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveFrameRail &gt; falls through to the key rail as unselected standard" time="0.000119667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveFrameRail &gt; returns null when no rail covers the frame" time="0.000123291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveFrameRail &gt; ignores non-covering selected and loop entries" time="0.000214208">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTrackAccentColor &gt; falls back to the neutral accent when no rail is selected" time="0.000202416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="resolveTrackAccentColor &gt; uses the selected line of the selected rail type" time="0.000661334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="projectTimelineRailLineWidth &gt; subtracts the 2px gap when the rail end is visible" time="0.000210917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="projectTimelineRailLineWidth &gt; keeps the full extent when the end is clipped by the viewport" time="0.000089958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="projectTimelineRailLineWidth &gt; ends a single-frame visible rail on the cell right edge (v2.0.1 UAT)" time="0.0001315">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="projectTimelineRailLineWidth &gt; projects a two-frame visible rail to 34px" time="0.000099583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="projectTimelineRailLineWidth &gt; defaults to an 18px pitch and a visible end" time="0.000147083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="TIMELINE_GEOMETRY pins &gt; locks the v7 geometry constants" time="0.000945875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="TIMELINE_MOTION pins &gt; pins the motion cell footprint to 16 x 18 radius 3 (never the drawing key 22px)" time="0.006411834">
+            <failure message="expected +0 to be 16 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 16 // Object.is equality
+
+- Expected
++ Received
+
+- 16
++ 0
+
+ ❯ src/components/physic-paint/view/timelineRailDesign.test.ts:378:39
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="TIMELINE_MOTION pins &gt; pins the lane, key and curve metrics" time="0.000553291">
+            <failure message="expected +0 to be 6 // Object.is equality" type="AssertionError">
+AssertionError: expected +0 to be 6 // Object.is equality
+
+- Expected
++ Received
+
+- 6
++ 0
+
+ ❯ src/components/physic-paint/view/timelineRailDesign.test.ts:389:37
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/timelineRailDesign.test.ts" name="TIMELINE_SURFACE pins &gt; locks the v7 surface values" time="0.000244875">
+        </testcase>
+    </testsuite>
+</testsuites>
