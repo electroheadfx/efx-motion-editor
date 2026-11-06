@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="12" failures="9" errors="0" time="0.231">
+    <testsuite name="src/components/physic-paint/roto/railMotionPivot.test.ts" timestamp="2026-11-06T15:39:46.780Z" hostname="efx2.home" tests="12" failures="9" errors="0" skipped="0" time="0.007408">
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="computeRailInkBounds &gt; returns the raster-centre fallback for an empty list" time="0.000723625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="computeRailInkBounds &gt; unions two boxes and returns the centre of the union" time="0.003460708">
+            <failure message="expected { x: 0.5, y: 0.5 } to deeply equal { x: 0.4, y: 0.55 }" type="AssertionError">
+AssertionError: expected { x: 0.5, y: 0.5 } to deeply equal { x: 0.4, y: 0.55 }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;x&quot;: 0.4,
+-   &quot;y&quot;: 0.55,
++   &quot;x&quot;: 0.5,
++   &quot;y&quot;: 0.5,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:49:7
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="computeRailInkBounds &gt; ignores degenerate and non-finite boxes" time="0.0004325">
+            <failure message="expected { x: 0.5, y: 0.5 } to deeply equal { x: 0.4, y: 0.4 }" type="AssertionError">
+AssertionError: expected { x: 0.5, y: 0.5 } to deeply equal { x: 0.4, y: 0.4 }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;x&quot;: 0.4,
+-   &quot;y&quot;: 0.4,
++   &quot;x&quot;: 0.5,
++   &quot;y&quot;: 0.5,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:59:7
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="computeRailInkBounds &gt; clamps the centre into 0..1" time="0.000297291">
+            <failure message="expected { x: 0.5, y: 0.5 } to deeply equal { x: +0, y: +0 }" type="AssertionError">
+AssertionError: expected { x: 0.5, y: 0.5 } to deeply equal { x: +0, y: +0 }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;x&quot;: 0,
+-   &quot;y&quot;: 0,
++   &quot;x&quot;: 0.5,
++   &quot;y&quot;: 0.5,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:63:66
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; measures each source exactly once and returns zero measures on a memo hit" time="0.000428584">
+            <failure message="expected &quot;spy&quot; to be called 3 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 3 times, but got 0 times
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:79:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; contributes no bounds for a key whose alpha scan finds no ink" time="0.000337125">
+            <failure message="expected { pivotX: 0.5, pivotY: 0.5, …(1) } to deeply equal { pivotX: 0.5, pivotY: 0.5, …(1) }" type="AssertionError">
+AssertionError: expected { pivotX: 0.5, pivotY: 0.5, …(1) } to deeply equal { pivotX: 0.5, pivotY: 0.5, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;measured&quot;: true,
++   &quot;measured&quot;: false,
+    &quot;pivotX&quot;: 0.5,
+    &quot;pivotY&quot;: 0.5,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:99:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; uses the fallback (measured: false) for no sources or an unavailable decode" time="0.000131583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; re-measures when the content revision changes" time="0.000152625">
+            <failure message="expected &quot;spy&quot; to be called 2 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 2 times, but got 0 times
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:136:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; does not re-measure when only the evaluated frame changes" time="0.000160792">
+            <failure message="expected &quot;spy&quot; to be called 1 times, but got 0 times" type="AssertionError">
+AssertionError: expected &quot;spy&quot; to be called 1 times, but got 0 times
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:153:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; is independent of the evaluated transform values" time="0.000268416">
+            <failure message="expected { pivotX: 0.5, pivotY: 0.5, …(1) } to deeply equal { pivotX: 0.2, pivotY: 0.4, …(1) }" type="AssertionError">
+AssertionError: expected { pivotX: 0.5, pivotY: 0.5, …(1) } to deeply equal { pivotX: 0.2, pivotY: 0.4, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;measured&quot;: true,
+-   &quot;pivotX&quot;: 0.2,
+-   &quot;pivotY&quot;: 0.4,
++   &quot;measured&quot;: false,
++   &quot;pivotX&quot;: 0.5,
++   &quot;pivotY&quot;: 0.5,
+  }
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:172:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="resolveRailMotionPivot &gt; stays pure: no store, DOM or evaluator import" time="0.000186542">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/railMotionPivot.test.ts" name="Gate D — pivot resolution cost (24 keys, 1920px long edge) &gt; records the first-resolution and memo-hit timings" time="0.000277125">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/roto/railMotionPivot.test.ts:250:28
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
