@@ -46,6 +46,7 @@ import {
   type EfxPaintCompositorPorts,
   type EfxPaintMissingSourceEntry,
   type EfxPaintTrackContentResolution,
+  type EfxPaintTrackMotionTransform,
 } from '../efx-paint/compositor/efxPaintCompositor';
 import {
   createKeyedMemo,
@@ -65,6 +66,16 @@ import {
   parsePhysicPaintRotoRailMotions,
   type PhysicPaintRotoRailMotionRecord,
 } from '../components/physic-paint/roto/railMotionModel';
+import {
+  assignRailMotionRailViews,
+  reconcileRailMotions,
+  type RailMotionLoopClipSource,
+  type RailMotionRailView,
+} from '../components/physic-paint/roto/railMotionIdentity';
+import {
+  evaluateRailMotion,
+  resolveRailLocalFrame,
+} from '../components/physic-paint/roto/railMotionEvaluator';
 import {
   PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
   PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
@@ -1149,6 +1160,125 @@ function _rotoPhysicalStructuralCacheKey(layerId: string, trackId: string): stri
 }
 
 /**
+ * Phase 59-08: one track's rail-view projection, memoized on the STRUCTURAL
+ * ENTRY IDENTITY (the same identity-drop pattern `_rotoPhysicalStructuralCache`
+ * uses — any edit replaces the entry, so the memo self-invalidates without an
+ * explicit invalidation hook). Deriving views walks the drawing keys into Key
+ * Rail segments, so doing it per frame would tax every composite.
+ */
+type RotoRailMotionProjection = {
+  readonly structural: RotoPhysicalStructuralCacheEntry;
+  readonly views: readonly RailMotionRailView[];
+  /** railId → record for the rails the views resolve right now (59-06). */
+  readonly activeRecords: ReadonlyMap<string, PhysicPaintRotoRailMotionRecord>;
+  /** frame → containing view (null when no rail covers it); memoized per frame. */
+  readonly viewByFrame: Map<number, RailMotionRailView | null>;
+};
+const _rotoRailMotionProjection = new Map<string, RotoRailMotionProjection>();
+
+/**
+ * Builds (or returns) the rail-view projection for one track. Views come from
+ * 59-06's `assignRailMotionRailViews` over the track's Loop Clips plus the Key
+ * Rail segments derived exactly like the Studio's (loop-source and frame
+ * override keys are group-owned and close a segment). Records are matched to
+ * views by {@link reconcileRailMotions} — railId only, never the anchor hint.
+ */
+function _resolveRotoRailMotionProjection(
+  layerId: string,
+  trackId: string,
+  structural: RotoPhysicalStructuralCacheEntry,
+): RotoRailMotionProjection {
+  const memoKey = _rotoPhysicalStructuralCacheKey(layerId, trackId);
+  const cached = _rotoRailMotionProjection.get(memoKey);
+  if (cached !== undefined && cached.structural === structural) return cached;
+
+  const loopClips: RailMotionLoopClipSource[] = structural.loopClips.map((clip) => ({
+    loopId: clip.loopId,
+    placementStart: clip.placementStart,
+    sourceKeyIds: clip.sourceKeyIds,
+    repeat: clip.repeat,
+    mode: clip.mode,
+    railKind: clip.railKind,
+  }));
+  const groupOwnedKeyIds = new Set<string>();
+  for (const clip of structural.loopClips) {
+    for (const keyId of clip.sourceKeyIds) groupOwnedKeyIds.add(keyId);
+    for (const override of clip.frameOverrides ?? []) groupOwnedKeyIds.add(override.keyId);
+  }
+  const orderedRealKeys = [...structural.recordMap.values()]
+    .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId));
+  const views = assignRailMotionRailViews(
+    structural.railMotions,
+    loopClips,
+    deriveKeyRailSegments({
+      orderedRealKeys,
+      incomingInterpolationBreakKeyIds: new Set(structural.incomingInterpolationBreakKeyIds),
+      groupOwnedKeyIds,
+    }),
+  );
+  const projection: RotoRailMotionProjection = {
+    structural,
+    views,
+    activeRecords: reconcileRailMotions(structural.railMotions, views).active,
+    viewByFrame: new Map(),
+  };
+  _rotoRailMotionProjection.set(memoKey, projection);
+  return projection;
+}
+
+/**
+ * The view covering `frame` — half-open `[startFrame, endFrameExclusive)`, the
+ * same span the rail draws. A frame outside every view has no motion (no
+ * transform entry at all, never an identity entry): the compositor's absent
+ * path stays the common path.
+ */
+function _railMotionViewAtFrame(
+  projection: RotoRailMotionProjection,
+  frame: number,
+): RailMotionRailView | null {
+  const cached = projection.viewByFrame.get(frame);
+  if (cached !== undefined) return cached;
+  const found = projection.views.find(
+    (view) => frame >= view.startFrame && frame < view.endFrameExclusive,
+  ) ?? null;
+  projection.viewByFrame.set(frame, found);
+  return found;
+}
+
+/**
+ * Phase 59-08 (MOTN-07/MOTN-08): resolves ONE track's rail transform at
+ * `frame` — or null when the track carries no motion record reaching this
+ * frame. The 59-05 evaluator is the only interpolation authority; the
+ * rail-local frame is the app frame minus the rail's start, clamped at 0.
+ *
+ * Returns are additive: the pivot fields the compositor expects (Task 3
+ * replaces this 0.5/0.5 with the measured rail ink centre).
+ */
+function _trackMotionTransformAtFrame(
+  layerId: string,
+  trackId: string,
+  frame: number,
+  structural: RotoPhysicalStructuralCacheEntry,
+): EfxPaintTrackMotionTransform | null {
+  if (structural.railMotions.length === 0) return null;
+  const projection = _resolveRotoRailMotionProjection(layerId, trackId, structural);
+  const view = _railMotionViewAtFrame(projection, frame);
+  if (view === null || view.railId === null) return null;
+  const record = projection.activeRecords.get(view.railId);
+  if (record === undefined) return null;
+  const motion = evaluateRailMotion(record, resolveRailLocalFrame(frame, view.startFrame));
+  return {
+    translateX: motion.translateX,
+    translateY: motion.translateY,
+    scale: motion.scale,
+    rotationRadians: motion.rotationRadians,
+    opacity: motion.opacity,
+    pivotX: 0.5,
+    pivotY: 0.5,
+  };
+}
+
+/**
  * Phase 59 (MOTN-12 / T-59-08): the ONE authority that builds a physical
  * content revision inside the store.
  *
@@ -1707,16 +1837,35 @@ export function awaitPendingDecodes(): Promise<void> {
 
 /**
  * One track's content term for the flattened key (48-03): the roto track's
- * structural contentRevision, or the cached-frame dataUrl-slice idiom for
- * non-roto tracks (previewRenderer.ts:175). Null when the track has no content
- * at this frame — its term is then absent from the key.
+ * RASTER revision — pixel identity, which deliberately excludes the rail-motion
+ * collection (REL-03/MOTN-07, see `RotoPhysicalStructuralCacheEntry`) — or the
+ * cached-frame dataUrl-slice idiom for non-roto tracks
+ * (previewRenderer.ts:175). Null when the track has no content at this frame —
+ * its term is then absent from the key. A motion-only edit therefore leaves
+ * this term (and every per-track raster memo key) unchanged.
  */
 function _trackContentRevision(layerId: string, trackId: string, frame: number): string | null {
   const structural = _resolveRotoPhysicalStructural(layerId, trackId);
-  if (structural) return structural.contentRevision;
+  if (structural) return structural.rasterRevision;
   const renderedFrame = physicPaintStore.getFrame(layerId, trackId, frame);
   if (!renderedFrame) return null;
   return buildFrameBytesToken(renderedFrame.bytes);
+}
+
+/**
+ * Phase 59-08 (REL-03): one track's motion-COLLECTION term for the flattened
+ * key — the canonical revision, emitted only when the track actually carries
+ * motion so a motion-free document's key stays byte-identical to the pre-59
+ * derivation. This is a revision, never a sampled value.
+ *
+ * This and `getRotoPhysicalContentRevision` are the ONLY two readers of the
+ * structural content revision in this file: every frame cache key must stay
+ * motion-independent, or a key drag would re-render the whole track.
+ */
+function _trackMotionRevision(layerId: string, trackId: string): string | null {
+  const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+  if (!structural || structural.railMotions.length === 0) return null;
+  return structural.contentRevision;
 }
 
 /**
@@ -3081,12 +3230,37 @@ function _resolveFlattenedFrame(
   _rotateFlattenedMemoOnFondChange(layerId, efxDocument);
   const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
 
-  const participating = participatingPaintTracks(efxDocument, soloTrackId)
-    .filter((track) => !excludeTrackIds.has(track.id));
+  const participatingAll = participatingPaintTracks(efxDocument, soloTrackId);
+  const participating = participatingAll.filter((track) => !excludeTrackIds.has(track.id));
   const trackContentRevisions = new Map<string, string>();
   for (const track of participating) {
     const revision = _trackContentRevision(layerId, track.id, frame);
     if (revision !== null) trackContentRevisions.set(track.id, revision);
+  }
+  // Phase 59-08 (MOTN-07/MOTN-08): the rail-motion supply. Transforms and the
+  // motion key term cover every track the compositor can DRAW — the
+  // participating set PLUS the Studio's engine-overlay track (excluded from the
+  // store raster but still drawn at its real stack position). A track outside
+  // its rail's span contributes nothing (never an identity entry), so the
+  // compositor's absent path stays the common path.
+  const overlayTrackId =
+    liveOverlay != null && excludeTrackIds.size === 1 ? [...excludeTrackIds][0] : null;
+  const motionTrackIds = new Set(participating.map((track) => track.id));
+  if (
+    overlayTrackId !== null
+    && participatingAll.some((track) => track.id === overlayTrackId)
+  ) {
+    motionTrackIds.add(overlayTrackId);
+  }
+  const trackTransforms = new Map<string, EfxPaintTrackMotionTransform>();
+  const trackMotionRevisions = new Map<string, string>();
+  for (const trackId of motionTrackIds) {
+    const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+    if (!structural) continue;
+    const transform = _trackMotionTransformAtFrame(layerId, trackId, frame, structural);
+    if (transform !== null) trackTransforms.set(trackId, transform);
+    const motionRevision = _trackMotionRevision(layerId, trackId);
+    if (motionRevision !== null) trackMotionRevisions.set(trackId, motionRevision);
   }
   // 49-06 (UAT round 9): the clip term MUST cover startFrame + repeat too —
   // `clip.revision` is only bumped by setBackgroundClipSource, so a move or
@@ -3101,6 +3275,7 @@ function _resolveFlattenedFrame(
   const flattenedKey = deriveEfxPaintFlattenedCacheKey({
     document: efxDocument,
     trackContentRevisions,
+    trackMotionRevisions,
     backgroundClipRevisions,
     backgroundSourceRevision: _backgroundSourceRevision(efxDocument),
     frame,
@@ -3207,6 +3382,9 @@ function _resolveFlattenedFrame(
     // keeps RAW resolutions for every non-converting seam.
     trackRasterMemo: convertTransmittanceTracks ? undefined : trackRasterMemo,
     trackContentRevisions,
+    // MOTN-07/MOTN-08: the evaluated rail transforms for THIS frame — the
+    // compositor's only transform application site.
+    trackTransforms,
     backgroundClipRevisions,
     excludeTrackIds,
     soloTrackId,

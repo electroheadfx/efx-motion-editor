@@ -172,6 +172,19 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
   // byte-identical to the 48-01/48-04 derivation.
   const excludedIds = input.excludeTrackIds ? [...input.excludeTrackIds].sort() : [];
 
+  // Phase 59-08 (REL-03): the rail-motion COLLECTION term. Filtered to
+  // participating tracks and sorted by track id, emitted ONLY when at least one
+  // participating track carries motion — a motion-free document keeps its
+  // pre-Phase-59 key byte-for-byte. The value is a revision, NEVER a sampled
+  // translate/rotate/scale/opacity: a sampled value here would turn the content
+  // cache into a value cache and re-composite on every interpolated frame.
+  const motionEntries = [...(input.trackMotionRevisions ?? EMPTY_MOTION_REVISIONS).entries()]
+    .filter(([trackId]) => participatingIds.has(trackId))
+    .sort(([a], [b]) => a.localeCompare(b));
+  const motionTerms = motionEntries
+    .map(([trackId, revision]) => encodeCanonicalString(trackId) + encodeCanonicalString(revision))
+    .join('');
+
   const source = [
     `config:${configTerm}`,
     `tracks:${encodeCanonicalNumber(participatingEntries.length)}:${trackTerms}`,
@@ -206,11 +219,18 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     // 261022-iff: the SESSION solo target — emitted ONLY when armed so the
     // disarmed derivation stays byte-identical.
     ...(soloTrackId !== null ? [`solo:${encodeCanonicalString(soloTrackId)}`] : []),
+    // Phase 59-08 (REL-03): emitted ONLY when a participating track carries
+    // motion, so every pre-59 key stays byte-identical.
+    ...(motionEntries.length > 0
+      ? [`motion:${encodeCanonicalNumber(motionEntries.length)}:${motionTerms}`]
+      : []),
     `frame:${encodeCanonicalNumber(frame)}`,
   ].join('');
 
   return `flattened-${hashCanonicalPhysicalValue(source)}`;
 }
+
+const EMPTY_MOTION_REVISIONS: ReadonlyMap<string, string> = new Map();
 
 /** Minimal keyed memo surface (mirrors the memo semantics at physicPaintStore.ts). */
 export interface EfxPaintKeyedMemo<K, V> {
