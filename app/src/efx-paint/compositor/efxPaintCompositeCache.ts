@@ -106,6 +106,15 @@ export interface EfxPaintFlattenedCacheKeyInput {
    */
   readonly soloTrackId?: string | null;
   /**
+   * Phase 59-08 (REL-03): trackId → the rail-motion COLLECTION revision (never
+   * a sampled translate/rotate/scale/opacity value). Emitted as a `motion:`
+   * term ONLY when at least one participating track carries motion, so a
+   * motion-free document's key stays byte-identical to the pre-59 derivation.
+   * The per-track raster memo key is unaffected — a motion-only edit must not
+   * re-resolve any content raster.
+   */
+  readonly trackMotionRevisions?: ReadonlyMap<string, string>;
+  /**
    * 261027 (studio-strokes-lost-redraw RC-A): the caller suppresses the
    * document Background layer (the Studio's watercolor ABOVE slice — it draws
    * over the active track inside the tracks group, where an opaque background

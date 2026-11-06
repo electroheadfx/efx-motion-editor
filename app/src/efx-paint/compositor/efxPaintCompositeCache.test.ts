@@ -481,3 +481,149 @@ describe('CMP-04 invalidation matrix — key-level rows (48-04 Task 2)', () => {
     ).toBe(keyRegistered);
   });
 });
+
+/**
+ * Phase 59-08 (REL-03 / MOTN-07): the `motion:` term.
+ *
+ * The term carries a rail-motion COLLECTION revision, never a sampled value.
+ * It is emitted ONLY when a participating track carries motion, so every
+ * existing derivation stays byte-identical (the `excl:`/`fond:0`/`bgsrc:`
+ * precedent), and a motion-only edit rotates this term without touching
+ * `tracks:` — the per-track raster memo therefore survives the edit.
+ */
+describe('deriveEfxPaintFlattenedCacheKey — motion term (59-08 / REL-03)', () => {
+  // A pinned background id makes the document (and therefore the key) fully
+  // deterministic — `createEfxPaintDocument` mints random ids otherwise.
+  const FIXED_BACKGROUND = { id: 'background-fixed' };
+  const doc = makeDocument([makeTrack('track-a', { revision: 1 })], FIXED_BACKGROUND);
+  const base = {
+    document: doc,
+    trackContentRevisions: contentRevisions([['track-a', 'rev-a']]),
+    backgroundClipRevisions: [] as string[],
+    frame: 3,
+  };
+
+  it('keeps the pre-Phase-59 key byte-identical for a motion-free document', () => {
+    expect(deriveEfxPaintFlattenedCacheKey(base)).toBe('flattened-137-220a58d8');
+
+    const richDoc = makeDocument([makeTrack('track-a', { revision: 1 })], FIXED_BACKGROUND);
+    expect(
+      deriveEfxPaintFlattenedCacheKey({
+        document: richDoc,
+        trackContentRevisions: contentRevisions([['track-a', 'rev-a']]),
+        backgroundClipRevisions: ['clip-1:0:x1:100:100:2'],
+        backgroundSourceRevision: 'ref-1:10:abc',
+        frame: 7,
+        excludeTrackIds: ['track-z'],
+        includeFond: false,
+        soloTrackId: 'track-a',
+        includeBackground: false,
+      }),
+    ).toBe('flattened-232-7bad3bb5');
+  });
+
+  it('emits no motion term for an empty motion-revision map', () => {
+    const absent = deriveEfxPaintFlattenedCacheKey(base);
+    const empty = deriveEfxPaintFlattenedCacheKey({ ...base, trackMotionRevisions: new Map() });
+    expect(empty).toBe(absent);
+  });
+
+  it('rotates the key on a motion-only edit while the content revisions stay put', () => {
+    const motionA = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackMotionRevisions: new Map([['track-a', 'motion-1']]),
+    });
+    const motionB = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackMotionRevisions: new Map([['track-a', 'motion-2']]),
+    });
+    expect(motionA).not.toBe(base);
+    expect(motionB).not.toBe(motionA);
+  });
+
+  it('rotates the key on a drawing-key edit while the motion revision stays put', () => {
+    const motion = new Map([['track-a', 'motion-1']]);
+    const drawingA = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackMotionRevisions: motion,
+    });
+    const drawingB = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackContentRevisions: contentRevisions([['track-a', 'rev-b']]),
+      trackMotionRevisions: motion,
+    });
+    expect(drawingB).not.toBe(drawingA);
+  });
+
+  it('sorts motion terms by track id so insertion order cannot change the key', () => {
+    const twoTracks = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+    const revisions = contentRevisions([
+      ['track-a', 'rev-a'],
+      ['track-b', 'rev-b'],
+    ]);
+    const ordered = deriveEfxPaintFlattenedCacheKey({
+      document: twoTracks,
+      trackContentRevisions: revisions,
+      backgroundClipRevisions: [],
+      frame: 5,
+      trackMotionRevisions: new Map([
+        ['track-a', 'motion-a'],
+        ['track-b', 'motion-b'],
+      ]),
+    });
+    const reversed = deriveEfxPaintFlattenedCacheKey({
+      document: twoTracks,
+      trackContentRevisions: revisions,
+      backgroundClipRevisions: [],
+      frame: 5,
+      trackMotionRevisions: new Map([
+        ['track-b', 'motion-b'],
+        ['track-a', 'motion-a'],
+      ]),
+    });
+    expect(reversed).toBe(ordered);
+  });
+
+  it('ignores motion revisions for non-participating (hidden) tracks', () => {
+    const hiddenDoc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, visible: false }),
+    ]);
+    const visibleOnly = deriveEfxPaintFlattenedCacheKey({
+      document: hiddenDoc,
+      trackContentRevisions: contentRevisions([['track-a', 'rev-a']]),
+      backgroundClipRevisions: [],
+      frame: 5,
+      trackMotionRevisions: new Map([['track-a', 'motion-a']]),
+    });
+    const withHiddenMotion = deriveEfxPaintFlattenedCacheKey({
+      document: hiddenDoc,
+      trackContentRevisions: contentRevisions([
+        ['track-a', 'rev-a'],
+        ['track-b', 'rev-b'],
+      ]),
+      backgroundClipRevisions: [],
+      frame: 5,
+      trackMotionRevisions: new Map([
+        ['track-a', 'motion-a'],
+        ['track-b', 'motion-b'],
+      ]),
+    });
+    expect(withHiddenMotion).toBe(visibleOnly);
+  });
+
+  it('never mixes a sampled value into the key: the same revision is stable', () => {
+    const key1 = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackMotionRevisions: new Map([['track-a', 'motion-1']]),
+    });
+    const key2 = deriveEfxPaintFlattenedCacheKey({
+      ...base,
+      trackMotionRevisions: new Map([['track-a', 'motion-1']]),
+    });
+    expect(key2).toBe(key1);
+  });
+});
