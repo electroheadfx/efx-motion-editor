@@ -637,6 +637,67 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditApplyResult({ ...settlement, loopClips: payload.loopClips })).toBe(false);
   });
 
+  it('accepts the merge-drop notice only on an ordinary accepted settlement', () => {
+    const payload = groupLifecycleApplyPayload();
+    const settlement = {
+      operationId: payload.operationId,
+      kind: payload.kind,
+      operationKind: payload.operationKind,
+      layerId: payload.layerId,
+      startFrame: payload.startFrame,
+      launchOperationId: payload.launchOperationId,
+      expectedRevision: payload.expectedRevision,
+      stagedRevision: 'revision-2',
+      acceptedRevision: 'revision-2',
+      interpolationMode: payload.interpolationMode,
+      selectedKeyId: payload.selectedKeyId,
+      selectedAppFrame: payload.selectedAppFrame,
+      cursorAppFrame: payload.cursorAppFrame,
+      appliedFrameCount: 1,
+      ok: true,
+      semanticDelta: payload.semanticDelta,
+    };
+    const notice = { railId: 'rail-tail', startFrame: 2, endFrameExclusive: 4 };
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({ ...settlement, railMotionMergeNotice: notice })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+      ...settlement,
+      railMotionMergeNotice: { ...notice, railId: '' },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+      ...settlement,
+      railMotionMergeNotice: { ...notice, startFrame: -1 },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+      ...settlement,
+      railMotionMergeNotice: { ...notice, endFrameExclusive: 2 },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+      ...settlement,
+      railMotionMergeNotice: { ...notice, extra: true },
+    })).toBe(false);
+
+    // A failed settlement carries no drop report.
+    const { semanticDelta: _ignored, ...settlementWithoutDelta } = settlement;
+    const failed = { ...settlementWithoutDelta, ok: false, acceptedRevision: null, appliedFrameCount: 0 };
+    expect(isPhysicPaintRotoPhysicalEditApplyResult(failed)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({ ...failed, railMotionMergeNotice: notice })).toBe(false);
+
+    // Replay carries an explicit collection — reconciliation is bypassed, so
+    // there is nothing to report.
+    const replay = {
+      ...settlementWithoutDelta,
+      operationKind: 'undo',
+      historyProvenance: {
+        historyCommandId: 'command-1',
+        historyDirection: 'undo',
+        sourceRevision: 'revision-2',
+        targetRevision: 'revision-1',
+      },
+    };
+    expect(isPhysicPaintRotoPhysicalEditApplyResult(replay)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({ ...replay, railMotionMergeNotice: notice })).toBe(false);
+  });
+
   it.each([
     ['delete-group-frame', {
       kind: 'delete-group-frame', groupId: 'loop-1', appFrame: 1,

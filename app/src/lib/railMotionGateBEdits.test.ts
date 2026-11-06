@@ -724,6 +724,73 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
     expect(restored.find((motion) => motion.railId === 'rail-tail')?.anchorKeyId).toBe('C');
   });
 
+  it('reports the two-sided merge drop in the accepted settlement and omits it on the restoring undo', async () => {
+    seedBridgeDocument(
+      [record('A', 0), record('B', 1), record('C', 2), record('D', 3)],
+      { breaks: ['C'], railMotions: [railMotion('rail-head', 'A'), railMotion('rail-tail', 'C')] },
+    );
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const forward = canonicalPayload(launch, { kind: 'delete-key', selectedKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditApplyResult(result)) {
+      throw new Error('Expected an accepted physical edit result.');
+    }
+
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const report = reconcileRailMotionsForDocumentEdit({
+      previous: documentSnapshot(beforeDocument),
+      next: documentSnapshot(acceptedDocument),
+      railMotions: beforeMotions,
+    });
+    expect(report.droppedRailId).toBe('rail-tail');
+    expect(report.droppedRailFrames).toEqual({ startFrame: 2, endFrameExclusive: 4 });
+    // The settlement carries the reconciler's report verbatim — three scalars,
+    // no documents and no frame bytes.
+    expect(result.railMotionMergeNotice?.railId).toBe(report.droppedRailId);
+    expect(result.railMotionMergeNotice?.startFrame).toBe(report.droppedRailFrames!.startFrame);
+    expect(result.railMotionMergeNotice?.endFrameExclusive).toBe(report.droppedRailFrames!.endFrameExclusive);
+
+    const undo = await applyBridgePayload(replayPayload(launch, 'undo', beforeDocument, {
+      historyCommandId: forward.operationId,
+      sourceRevision: acceptedDocument.revision,
+      targetRevision: beforeRevision,
+    }));
+    expect(undo.ok, undo.ok ? undefined : undo.error).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditApplyResult(undo)) {
+      throw new Error('Expected an accepted undo replay result.');
+    }
+    // Replay carries the explicit collection, so reconciliation is bypassed
+    // and the restoring undo reports nothing to dismiss.
+    expect(undo.railMotionMergeNotice).toBeUndefined();
+  });
+
+  it('omits the merge-drop notice when the merge is one-sided', async () => {
+    seedBridgeDocument(
+      [record('A', 0), record('B', 1), record('C', 2), record('D', 3)],
+      { breaks: ['C'], railMotions: [railMotion('rail-tail', 'C')] },
+    );
+    const launch = await launchBridge();
+
+    const forward = canonicalPayload(launch, { kind: 'delete-key', selectedKeyId: 'C' });
+    const result = await applyBridgePayload(forward);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditApplyResult(result)) {
+      throw new Error('Expected an accepted physical edit result.');
+    }
+
+    // The adoption still happened — only the drop report is absent.
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-tail');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(result.railMotionMergeNotice).toBeUndefined();
+  });
+
   it('keeps every rail-local frame when the rail start moves', async () => {
     seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
     const launch = await launchBridge();

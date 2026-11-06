@@ -53,6 +53,11 @@ import {
 import { resolvePostAcceptanceRotoStudioSelection } from '../roto/physicsPaintRotoMultiSelection';
 import { createRotoLivePixelCacheTransactions } from '../roto/rotoLivePixelCacheTransactions';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
+import {
+  dismissRailMotionMergeNotice,
+  publishRailMotionMergeNotice,
+  railMotionMergeNotice,
+} from '../roto/railMotionMergeNotice';
 import { buildRotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type {
   RotoPhysicalEditCoordinatorPorts,
@@ -977,6 +982,9 @@ function harness(options: {
 }
 
 beforeEach(() => {
+  // 59-15 Task 4: the merge-drop notice is module-scope session state; every
+  // test starts from the empty slot.
+  dismissRailMotionMergeNotice();
   vi.stubGlobal('window', {
     setTimeout: globalThis.setTimeout.bind(globalThis),
     clearTimeout: globalThis.clearTimeout.bind(globalThis),
@@ -1647,6 +1655,39 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(mismatched.getCurrentFrame()).toBe(0);
     expect(mismatched.reconcileCurrentFrame).not.toHaveBeenCalled();
     expect(mismatched.coordinator.acceptedOutput.value).toBeNull();
+  });
+
+  describe('59-15 (MOTN-10): merge-drop notice settlement', () => {
+    const notice = Object.freeze({ railId: 'rail-tail', startFrame: 2, endFrameExclusive: 4 });
+
+    it('publishes an accepted settlement notice into the one session slot', async () => {
+      const test = harness();
+      expect(await test.executeInsertGap()).toBe(true);
+
+      expect(test.coordinator.consumePhysicalEditResult(
+        test.makeResult({ railMotionMergeNotice: notice }),
+      )).toBe('accepted');
+      expect(railMotionMergeNotice.value).toEqual(notice);
+    });
+
+    it('clears a previously published notice when the accepted result carries none', async () => {
+      publishRailMotionMergeNotice({ railId: 'rail-tail', startFrame: 2, endFrameExclusive: 4 });
+      const test = harness();
+      expect(await test.executeInsertGap()).toBe(true);
+
+      expect(test.accept()).toBe('accepted');
+      expect(railMotionMergeNotice.value).toBeNull();
+    });
+
+    it('leaves the session slot untouched when the settlement fails', async () => {
+      publishRailMotionMergeNotice({ railId: 'rail-tail', startFrame: 2, endFrameExclusive: 4 });
+      const prior = railMotionMergeNotice.value;
+      const test = harness();
+      expect(await test.executeInsertGap()).toBe(true);
+
+      expect(test.reject()).toBe('accepted');
+      expect(railMotionMergeNotice.value).toBe(prior);
+    });
   });
 
   // 260921-c7x leg 1: the H-A identity split, at the settlement layer. The
