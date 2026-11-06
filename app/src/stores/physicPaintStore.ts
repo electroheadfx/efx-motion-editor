@@ -5961,9 +5961,10 @@ function _narrowRailSetCopyPayloadToKeyIds<
   T extends {
     readonly anchorAppFrame: number;
     readonly sourceTrackId: string;
+    readonly railMotions: readonly PhysicPaintRotoRailMotionRecord[];
     readonly members: readonly (
-      | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly firstKeyFrame: number; readonly entries: readonly { readonly sourceKeyId: string; readonly sourceAppFrame: number; readonly payload: PhysicPaintRotoRealKeyPayload; readonly ownsIncomingBreak: boolean }[]; readonly firstKeyOwnsIncomingBreak: boolean }
-      | { readonly kind: 'loop'; readonly placementStart: number }
+      | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly firstKeyFrame: number; readonly entries: readonly { readonly sourceKeyId: string; readonly sourceAppFrame: number; readonly payload: PhysicPaintRotoRealKeyPayload; readonly ownsIncomingBreak: boolean }[]; readonly firstKeyOwnsIncomingBreak: boolean; readonly sourceRailId?: string }
+      | { readonly kind: 'loop'; readonly placementStart: number; readonly loopId: string }
     )[];
   },
 >(payload: T, keyIdSet: ReadonlySet<string>): T {
@@ -5981,6 +5982,9 @@ function _narrowRailSetCopyPayloadToKeyIds<
       firstKeyFrame: entries[0].sourceAppFrame,
       entries: Object.freeze(entries),
       firstKeyOwnsIncomingBreak: entries[0].ownsIncomingBreak,
+      // 59-15 Gate B: the narrowed member keeps its motion binding; the paste
+      // plan anchors the re-keyed record on the narrowed fresh first key.
+      ...(member.sourceRailId !== undefined ? { sourceRailId: member.sourceRailId } : {}),
     }));
   }
   if (members.length === 0) return payload;
@@ -5993,10 +5997,21 @@ function _narrowRailSetCopyPayloadToKeyIds<
       first = false;
     }
   }
+  // 59-15 Gate B: the frozen motion snapshot narrows with the members — a
+  // record whose rail no longer travels must not create motion on paste.
+  const survivingRailIds = new Set<string>();
+  for (const member of members) {
+    if (member.kind === 'loop') survivingRailIds.add(member.loopId);
+    else if (member.sourceRailId !== undefined) survivingRailIds.add(member.sourceRailId);
+  }
+  const railMotions = Object.freeze(
+    payload.railMotions.filter((record) => survivingRailIds.has(record.railId)),
+  );
   return Object.freeze({
     anchorAppFrame,
     members: Object.freeze(members),
     sourceTrackId: payload.sourceTrackId,
+    railMotions,
   }) as T;
 }
 

@@ -185,6 +185,8 @@ describe('rail-set clipboard — copyRailSet variant (quick 260820-bjw)', () => 
     // '' = legacy payload with no track context (46-03: sourceTrackId is
     // recorded by buildRotorRailSetCopyPayload at copy time).
     sourceTrackId: '',
+    // 59-15 Gate B: this fixture's rail carries no motion.
+    railMotions: [],
     members: [{
       kind: 'key-rail' as const,
       firstKeyId: 'k0',

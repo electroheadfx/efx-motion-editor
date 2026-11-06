@@ -330,6 +330,8 @@ describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
     anchorAppFrame: 0,
     // '' = legacy payload with no track context (46-03).
     sourceTrackId: '',
+    // 59-15 Gate B: this fixture's rail carries no motion.
+    railMotions: [],
     members: [{
       kind: 'key-rail' as const,
       firstKeyId: 'k0',

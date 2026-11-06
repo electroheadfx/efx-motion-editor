@@ -4531,6 +4531,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
         anchorAppFrame: 0,
         // '' = legacy payload with no track context (46-03).
         sourceTrackId: '',
+        // 59-15 Gate B: these fixtures carry no rail motion.
+        railMotions: Object.freeze([]),
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });
@@ -4559,6 +4561,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
         anchorAppFrame: 0,
         // '' = legacy payload with no track context (46-03).
         sourceTrackId: '',
+        // 59-15 Gate B: these fixtures carry no rail motion.
+        railMotions: Object.freeze([]),
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });
@@ -4583,6 +4587,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
       anchorAppFrame: 0,
       // '' = legacy payload with no track context (46-03).
       sourceTrackId: '',
+      // 59-15 Gate B: this fixture carries no rail motion.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -4662,6 +4668,8 @@ describe('useRotoTimelineActions rail-set Copy/Paste/Duplicate (quick 260820-bjw
         anchorAppFrame: 0,
         // '' = legacy payload with no track context (46-03).
         sourceTrackId: '',
+        // 59-15 Gate B: these fixtures carry no rail motion.
+        railMotions: Object.freeze([]),
         members: Object.freeze([]),
       }) as RotoRailSetCopyPayload,
     });

@@ -1044,7 +1044,8 @@ describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Ga
       expect(original).toBeDefined();
       expect(copy!.channels).toEqual(original!.channels);
     }
-    expect(document.railMotions).toEqual([railA, railB, loopSource]);
+    // The document parser canonicalizes the collection in railId order.
+    expect(document.railMotions).toEqual([loopSource, railA, railB]);
   });
 
   it('rejects closed when a prescribed allocation omits an animated member railId', () => {

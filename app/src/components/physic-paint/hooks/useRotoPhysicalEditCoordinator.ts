@@ -78,6 +78,7 @@ import {
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   parsePhysicPaintRotoRailMotions,
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
 import { reconcileRailMotionsForDocumentEdit } from '../roto/railMotionDocumentReconciler';
@@ -844,6 +845,7 @@ function railSetCopyPayloadEqual(
   right: RotoRailSetCopyPayload,
 ): boolean {
   if (left.anchorAppFrame !== right.anchorAppFrame) return false;
+  if (!railSetRailMotionsEqual(left.railMotions, right.railMotions)) return false;
   if (left.members.length !== right.members.length) return false;
   return left.members.every((member, index) => {
     const other = right.members[index];
@@ -855,13 +857,41 @@ function railSetCopyPayloadEqual(
   });
 }
 
+/** 59-15 Gate B: canonical rail-motion collection equality (parsed shape). */
+function railSetRailMotionsEqual(
+  left: readonly PhysicPaintRotoRailMotionRecord[],
+  right: readonly PhysicPaintRotoRailMotionRecord[],
+): boolean {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  return left.every((record, index) => {
+    const other = right[index];
+    if (!other || record.railId !== other.railId || record.anchorKeyId !== other.anchorKeyId) return false;
+    if (record.channels.length !== other.channels.length) return false;
+    return record.channels.every((channel, channelIndex) => {
+      const otherChannel = other.channels[channelIndex];
+      if (!otherChannel || channel.id !== otherChannel.id) return false;
+      if (channel.keys.length !== otherChannel.keys.length) return false;
+      return channel.keys.every((key, keyIndex) => {
+        const otherKey = otherChannel.keys[keyIndex];
+        return !!otherKey
+          && key.frame === otherKey.frame
+          && key.value === otherKey.value
+          && key.easing === otherKey.easing
+          && key.wiggle === otherKey.wiggle;
+      });
+    });
+  });
+}
+
 function railSetCopyKeyRailMemberEqual(
   left: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'key-rail' },
   right: RotoRailSetCopyPayload['members'][number] & { readonly kind: 'key-rail' },
 ): boolean {
   if (left.firstKeyId !== right.firstKeyId
     || left.firstKeyFrame !== right.firstKeyFrame
-    || left.firstKeyOwnsIncomingBreak !== right.firstKeyOwnsIncomingBreak) return false;
+    || left.firstKeyOwnsIncomingBreak !== right.firstKeyOwnsIncomingBreak
+    || left.sourceRailId !== right.sourceRailId) return false;
   if (left.entries.length !== right.entries.length) return false;
   return left.entries.every((entry, index) => {
     const other = right.entries[index];
@@ -952,8 +982,14 @@ function railSetFreshIdentityAllocationEqual(
     || leftKeyIds.some((keyId) => left.keyIds[keyId] !== right.keyIds[keyId])) return false;
   const leftLoopIds = Object.keys(left.loopIds);
   const rightLoopIds = Object.keys(right.loopIds);
-  return leftLoopIds.length === rightLoopIds.length
-    && leftLoopIds.every((loopId) => left.loopIds[loopId] === right.loopIds[loopId]);
+  if (leftLoopIds.length !== rightLoopIds.length
+    || leftLoopIds.some((loopId) => left.loopIds[loopId] !== right.loopIds[loopId])) return false;
+  // 59-15 Gate B: the source railId -> destination railId map is part of the
+  // semantic delta the parent replays.
+  const leftRailIds = Object.keys(left.railIds);
+  const rightRailIds = Object.keys(right.railIds);
+  return leftRailIds.length === rightRailIds.length
+    && leftRailIds.every((railId) => left.railIds[railId] === right.railIds[railId]);
 }
 
 function validatePlayScriptInput(
@@ -2436,21 +2472,27 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         // field, letting the bridge reconcile the structural edit and produce
         // the merge-drop report. Computing it here as well keeps the staged
         // revision byte-identical to the parent's accepted revision.
+        // 59-15 Gate B: a rail-set paste re-keys the copied motion onto fresh
+        // identities — the reconciler alone cannot synthesize those copies, so
+        // the proposal's canonical collection is the staging authority. Every
+        // other forward edit reconciles the structural change.
         const stagedRailMotions = isReplay && replayTarget
           ? replayTarget.railMotions
-          : reconcileRailMotionsForDocumentEdit({
-              previous: {
-                realKeyRecords: currentRecords,
-                incomingInterpolationBreakKeyIds: new Set(currentIncomingInterpolationBreakKeyIds),
-                loopClips: currentLoopClips,
-              },
-              next: {
-                realKeyRecords: validatedStagedRecords,
-                incomingInterpolationBreakKeyIds: new Set(stagedIncomingInterpolationBreakKeyIds),
-                loopClips: publicationLoopClips,
-              },
-              railMotions: currentRailMotions,
-            }).railMotions;
+          : railSetPasteProposal
+            ? (railSetPasteProposal.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY)
+            : reconcileRailMotionsForDocumentEdit({
+                previous: {
+                  realKeyRecords: currentRecords,
+                  incomingInterpolationBreakKeyIds: new Set(currentIncomingInterpolationBreakKeyIds),
+                  loopClips: currentLoopClips,
+                },
+                next: {
+                  realKeyRecords: validatedStagedRecords,
+                  incomingInterpolationBreakKeyIds: new Set(stagedIncomingInterpolationBreakKeyIds),
+                  loopClips: publicationLoopClips,
+                },
+                railMotions: currentRailMotions,
+              }).railMotions;
         const stagedRevision = buildPhysicPaintRotoPhysicalRevision(
           validatedStagedRecords,
           stagedInterpolation,
@@ -2534,13 +2576,17 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
           loopClips: cloneLoopClips(publicationLoopClips),
           // Phase 59 (59-15 Gate B): replay ships its target collection
           // explicitly so the exact restoration bypasses reconciliation. A
-          // forward edit OMITS the field: the parent bridge reconciles the
-          // structural edit from records/loops/breaks and writes the result in
-          // the same commit. Shipping the pre-edit collection here would make
-          // the payload authoritative and freeze a stale anchor.
+          // rail-set paste ships its proposal collection for the same reason:
+          // the parent cannot synthesize the fresh-identity copies by
+          // reconciling records alone, and the bridge's paste arm recomputes
+          // and compares this exact collection. Every OTHER forward edit OMITS
+          // the field so the bridge reconciles the structural edit and writes
+          // the result in the same commit.
           ...(isReplay && replayTarget
             ? { railMotions: cloneRailMotions(stagedRailMotions) }
-            : {}),
+            : railSetPasteProposal
+              ? { railMotions: cloneRailMotions(railSetPasteProposal.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY) }
+              : {}),
           incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
             stagedIncomingInterpolationBreakKeyIds,
           ),

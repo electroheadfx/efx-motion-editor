@@ -5739,6 +5739,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
       anchorAppFrame: 0,
       // '' = legacy payload with no track context (46-03).
       sourceTrackId: '',
+      // 59-15 Gate B: no copied rail carries motion in this fixture.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -5895,6 +5897,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
       anchorAppFrame: 0,
       // '' = legacy payload with no track context (46-03).
       sourceTrackId: '',
+      // 59-15 Gate B: no copied rail carries motion in this fixture.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -6035,6 +6039,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
     const copyPayload = (): RotoRailSetCopyPayload => Object.freeze({
       anchorAppFrame: 0,
       sourceTrackId: '',
+      // 59-15 Gate B: no copied rail carries motion in this fixture.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'loop' as const,
@@ -6169,6 +6175,8 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
       anchorAppFrame: 0,
       // '' = same-track payload with no track context (46-03).
       sourceTrackId: '',
+      // 59-15 Gate B: no copied rail carries motion in this fixture.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,

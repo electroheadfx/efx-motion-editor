@@ -3935,6 +3935,8 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
       anchorAppFrame: 0,
       // '' = legacy payload with no track context (46-03).
       sourceTrackId: '',
+      // 59-15 Gate B: this fixture's rails carry no motion.
+      railMotions: Object.freeze([]),
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
@@ -4027,7 +4029,7 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     test.seedGroupDocument(before);
 
     expect(await test.executePasteRails({
-      payload: Object.freeze({ anchorAppFrame: 0, sourceTrackId: '', members: Object.freeze([]) }) as RotoRailSetCopyPayload,
+      payload: Object.freeze({ anchorAppFrame: 0, sourceTrackId: '', railMotions: Object.freeze([]), members: Object.freeze([]) }) as RotoRailSetCopyPayload,
       placementMode: 'paste',
       destinationAppFrame: 10,
     })).toBe(false);

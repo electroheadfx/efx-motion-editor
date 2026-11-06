@@ -34,6 +34,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import {
   parsePhysicPaintRotoRailMotions,
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
 } from '../components/physic-paint/roto/railMotionModel';
 import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
@@ -1604,7 +1605,14 @@ function validateCanonicalGroupLifecycleEdit(input: {
     ...currentDocument,
     selectedKeyId: payload.selectedKeyId,
     cursorAppFrame: payload.cursorAppFrame,
-    railMotions: input.proposedRailMotions,
+    // 59-15 Gate B: a paste recompute must start from the PRE-edit collection.
+    // The child's staged collection already contains the fresh copies, so using
+    // it here would make the parent see them as destination records and reject
+    // its own recomputation. Every other group edit is motion-agnostic and
+    // compares against the staged collection directly.
+    railMotions: isRailSetPaste
+      ? (currentDocument.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY)
+      : input.proposedRailMotions,
   });
 
   let recomputed:
@@ -1683,6 +1691,17 @@ function validateCanonicalGroupLifecycleEdit(input: {
   if (stableSerialize(recomputed.impact, new WeakSet<object>())
       !== stableSerialize(delta as PhysicPaintRotoPhysicalEditSemanticDelta, new WeakSet<object>())) {
     return `${operationLabel} semantic impact does not match parent recomputation.`;
+  }
+  // 59-15 Gate B: the paste recompute is the collection authority. The child's
+  // wire collection must equal what the shared law produces from the selected
+  // payload — a parent that ignored motion would accept a divergent collection.
+  if (isRailSetPaste) {
+    const recomputedRailMotions = (recomputed.proposal as PhysicPaintRotoPhysicalDocument).railMotions
+      ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+    if (stableSerialize(recomputedRailMotions, new WeakSet<object>())
+        !== stableSerialize(input.proposedRailMotions, new WeakSet<object>())) {
+      return `${operationLabel} target document does not match parent recomputation.`;
+    }
   }
   const proposal = recomputed.proposal;
   // Phase 59 (MOTN-12): the proposal modules are motion-agnostic, so the

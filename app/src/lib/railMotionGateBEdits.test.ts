@@ -802,7 +802,7 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
 
     const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
     expect(stored).toHaveLength(2);
-    const impact = paste.semanticDelta as Readonly<{
+    const impact = (paste as { semanticDelta?: unknown }).semanticDelta as Readonly<{
       freshIdentityAllocation: { railIds: Readonly<Record<string, string>> };
     }>;
     const freshRailId = impact.freshIdentityAllocation.railIds['rail-1'];
@@ -830,7 +830,9 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
     const result = await applyBridgePayload(tampered);
 
     expect(result.ok).toBe(false);
-    expect(result.ok ? null : result.error).toBe(
+    // The bridge prefixes physical-edit failures with the generic apply hint;
+    // the settlement detail is the canonical recomputation rejection.
+    expect(result.ok ? null : result.error).toContain(
       'Rail-set paste/duplicate target document does not match parent recomputation.',
     );
     expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);

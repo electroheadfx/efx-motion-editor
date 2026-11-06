@@ -24,6 +24,17 @@ import {
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from './physicsPaintRotoPhysicalModel';
+import {
+  createPhysicPaintRotoRailId,
+  parsePhysicPaintRotoRailMotions,
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  type PhysicPaintRotoRailMotionRecord,
+} from './railMotionModel';
+import {
+  assignRailMotionRailViews,
+  rekeyRailMotionsForCopy,
+  type RailMotionCopyPlanEntry,
+} from './railMotionIdentity';
 
 /** One copied Key Rail entry: frozen payload + relative frame + source identity. */
 export interface RotoRailSetCopyKeyEntry {
@@ -44,6 +55,11 @@ export interface RotoRailSetCopyKeyRailMember {
   readonly entries: readonly RotoRailSetCopyKeyEntry[];
   /** The member's first key owned an incoming break in the source set. */
   readonly firstKeyOwnsIncomingBreak: boolean;
+  /**
+   * 59-15 Gate B: the source rail's durable railId when this member carries
+   * rail motion. Undefined for an un-animated rail (nothing to re-key).
+   */
+  readonly sourceRailId?: string;
 }
 
 /** One copied Motion/Static Rail (Loop Clip placement facts, frozen at copy time). */
@@ -87,6 +103,13 @@ export interface RotoRailSetCopyPayload {
    * cross-track re-pointing.
    */
   readonly sourceTrackId: string;
+  /**
+   * 59-15 Gate B: the frozen motion snapshot of every copied animated member,
+   * keyed by the SOURCE railId. Empty when no copied member carries motion.
+   * Paste re-keys each record onto its fresh destination identity; an
+   * un-animated member contributes nothing.
+   */
+  readonly railMotions: readonly PhysicPaintRotoRailMotionRecord[];
 }
 
 export type RotoRailSetCopyPlacementMode = 'paste' | 'duplicate';
@@ -102,6 +125,13 @@ export type RotoRailSetCopyPlacementMode = 'paste' | 'duplicate';
 export interface RotoRailSetFreshIdentityAllocation {
   readonly keyIds: Readonly<Record<string, string>>;
   readonly loopIds: Readonly<Record<string, string>>;
+  /**
+   * 59-15 Gate B: source railId -> fresh destination railId for every copied
+   * ANIMATED member. The parent recompute replays this map verbatim, so a
+   * prescribed allocation must cover every animated member or the paste fails
+   * closed (`motion-identity-conflict`).
+   */
+  readonly railIds: Readonly<Record<string, string>>;
 }
 
 export interface RotoRailSetPasteInput {
@@ -170,7 +200,14 @@ export type RotoRailSetPasteFailureReason =
    * that is not part of the pasted set cannot re-point — rejected closed
    * rather than producing a dangling or foreign-track reference.
    */
-  | 'loop-source-outside-pasted-set';
+  | 'loop-source-outside-pasted-set'
+  /**
+   * 59-15 Gate B: the copied motion cannot be re-keyed onto unambiguous fresh
+   * identities (a stray payload record, an animated member with no destination
+   * railId, a duplicate destination, or an already-occupied destination).
+   * Rejected closed before any partial collection is built.
+   */
+  | 'motion-identity-conflict';
 
 export type RotoRailSetPasteResult =
   | Readonly<{ ok: true; proposal: PhysicPaintRotoPhysicalDocument; impact: RotoRailSetPasteImpact }>
@@ -212,6 +249,8 @@ export function mapRotoRailSetPasteFailure(
       return `${verb} failed — the copied rail set is no longer available. Select the rails again.`;
     case 'loop-source-outside-pasted-set':
       return `${verb} failed — a linked Hold can't be re-pointed to that destination.`;
+    case 'motion-identity-conflict':
+      return `${verb} failed — the copied rail motion can't be matched to the new rails.`;
   }
 }
 
@@ -220,12 +259,19 @@ function isBoundedKeyId(value: unknown): value is string {
 }
 
 function freezePayload(payload: RotoRailSetCopyPayload): RotoRailSetCopyPayload {
+  // 59-15 Gate B: the motion snapshot rides the frozen payload. Route it
+  // through the 59-02 parser so the clipboard can only ever hold a canonical,
+  // deeply-frozen collection (the parser sorts railIds and canonicalizes keys).
+  const railMotions = parsePhysicPaintRotoRailMotions(
+    payload.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  );
   return Object.freeze({
     anchorAppFrame: payload.anchorAppFrame,
     members: Object.freeze([...payload.members]),
     // '' = a legacy payload with no track context (never emit `undefined` —
     // the bridge's structured-clone-plain-data check rejects undefined values).
     sourceTrackId: payload.sourceTrackId ?? '',
+    railMotions,
   }) as RotoRailSetCopyPayload;
 }
 
@@ -335,6 +381,20 @@ export function buildRotoRailSetCopyPayload(input: {
   const segmentByFirstKeyId = new Map(segments.map((segment) => [segment.firstKeyId, segment]));
   const clipByLoopId = new Map(document.loopClips.map((clip) => [clip.loopId, clip]));
 
+  // 59-15 Gate B: freeze the motion of every COPIED animated member. The
+  // 59-06 view assignment is the one permitted anchor lookup — it binds a bare
+  // Key Rail's segment to its stored record; Loop Clips bind by loopId.
+  const sourceMotion = document.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+  const motionByRailId = new Map(sourceMotion.map((record) => [record.railId, record]));
+  const motionViews = assignRailMotionRailViews(sourceMotion, document.loopClips, segments);
+  const keyRailIdByFirstKeyId = new Map<string, string>();
+  for (const view of motionViews) {
+    if (view.loopId === null && view.railId !== null) {
+      keyRailIdByFirstKeyId.set(view.anchorKeyId, view.railId);
+    }
+  }
+  const copiedMotion: PhysicPaintRotoRailMotionRecord[] = [];
+
   const built: RotoRailSetCopyMember[] = [];
   for (const member of members) {
     if (member.kind === 'key-rail') {
@@ -357,12 +417,16 @@ export function buildRotoRailSetCopyPayload(input: {
           ownsIncomingBreak: breakOwners.has(record.keyId),
         });
       });
+      const sourceRailId = keyRailIdByFirstKeyId.get(segment.firstKeyId);
+      const motion = sourceRailId === undefined ? undefined : motionByRailId.get(sourceRailId);
+      if (motion !== undefined) copiedMotion.push(motion);
       built.push(Object.freeze({
         kind: 'key-rail',
         firstKeyId: segment.firstKeyId,
         firstKeyFrame: segment.firstKeyFrame,
         entries: Object.freeze(entries),
         firstKeyOwnsIncomingBreak: breakOwners.has(segment.keyIds[0]),
+        ...(motion !== undefined && sourceRailId !== undefined ? { sourceRailId } : {}),
       }));
     } else {
       // member.kind === 'loop'
@@ -374,6 +438,10 @@ export function buildRotoRailSetCopyPayload(input: {
         return Object.freeze({ ok: false, reason: 'stale-member' });
       }
       const extent = resolveLoopCopyExtent(document, clip);
+      // A Loop Clip rail binds by loopId — its motion snapshot is the record
+      // whose railId is that same durable id.
+      const loopMotion = motionByRailId.get(clip.loopId);
+      if (loopMotion !== undefined) copiedMotion.push(loopMotion);
       built.push(Object.freeze({
         kind: 'loop',
         loopId: member.loopId,
@@ -393,7 +461,12 @@ export function buildRotoRailSetCopyPayload(input: {
   }
   return Object.freeze({
     ok: true,
-    payload: freezePayload({ anchorAppFrame: anchor, members: ordered, sourceTrackId: trackId ?? '' }),
+    payload: freezePayload({
+      anchorAppFrame: anchor,
+      members: ordered,
+      sourceTrackId: trackId ?? '',
+      railMotions: Object.freeze(copiedMotion),
+    }),
   });
 }
 
@@ -607,25 +680,63 @@ function findDuplicateAnchor(
 interface FreshAllocation {
   readonly keyIds: Record<string, string>;
   readonly loopIds: Record<string, string>;
+  readonly railIds: Record<string, string>;
 }
 
-/** Allocate (or replay) every fresh identity in one pass, in canonical member order. */
+/**
+ * Allocate (or replay) every fresh identity in one pass, in canonical member
+ * order. Returns null when the copy's rail motion cannot be re-keyed
+ * unambiguously: an animated member with no prescribed destination railId, or
+ * a key-rail member that claims a source railId the payload has no record for.
+ */
 function allocateFreshIdentities(
   payload: RotoRailSetCopyPayload,
   prescribed: RotoRailSetFreshIdentityAllocation | undefined,
   crossTrack: boolean,
-): FreshAllocation {
+  motionRailIds: ReadonlySet<string>,
+): FreshAllocation | null {
   const keyIds: Record<string, string> = {};
   const loopIds: Record<string, string> = {};
+  const railIds: Record<string, string> = {};
+  // 59-15 Gate B: a prescribed allocation replays the child's railIds VERBATIM
+  // (fresh UUIDs cannot be recomputed), so a missing animated member is a hard
+  // conflict, never a silent mint that would diverge from the child.
+  const allocateRailId = (sourceRailId: string): boolean => {
+    if (prescribed !== undefined) {
+      const destinationRailId = prescribed.railIds?.[sourceRailId];
+      if (!isBoundedKeyId(destinationRailId)) return false;
+      railIds[sourceRailId] = destinationRailId;
+      return true;
+    }
+    railIds[sourceRailId] = createPhysicPaintRotoRailId();
+    return true;
+  };
   for (const member of payload.members) {
     if (member.kind === 'key-rail') {
       for (const entry of member.entries) {
         if (keyIds[entry.sourceKeyId] !== undefined) continue;
         keyIds[entry.sourceKeyId] = prescribed?.keyIds?.[entry.sourceKeyId] ?? createPhysicPaintRotoKeyId();
       }
+      if (member.sourceRailId !== undefined) {
+        if (!motionRailIds.has(member.sourceRailId)) return null;
+        if (!allocateRailId(member.sourceRailId)) return null;
+      }
     } else {
       if (loopIds[member.loopId] !== undefined) continue;
       loopIds[member.loopId] = prescribed?.loopIds?.[member.loopId] ?? createPhysicPaintRotoKeyId();
+      if (motionRailIds.has(member.loopId)) {
+        // A Loop Clip rail's durable identity IS its loopId: the copy adopts
+        // the fresh loopId. A prescribed map may only replay that same value.
+        if (prescribed !== undefined) {
+          const destinationRailId = prescribed.railIds?.[member.loopId];
+          if (!isBoundedKeyId(destinationRailId) || destinationRailId !== loopIds[member.loopId]) {
+            return null;
+          }
+          railIds[member.loopId] = destinationRailId;
+        } else {
+          railIds[member.loopId] = loopIds[member.loopId];
+        }
+      }
       // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle, so
       // allocate a fresh key for every source key — the parent recompute must
       // replay the SAME fresh keys or the semantic impact mismatches. Cross-track
@@ -639,7 +750,7 @@ function allocateFreshIdentities(
       }
     }
   }
-  return { keyIds, loopIds };
+  return { keyIds, loopIds, railIds };
 }
 
 export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResult {
@@ -663,6 +774,34 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     } else {
       return rejectPaste('unknown-member');
     }
+  }
+
+  // 59-15 Gate B: the frozen motion snapshot must be parseable and must belong
+  // to the copied members only — a record for any other rail is a stray and
+  // would fabricate motion on paste. Rejected closed before any allocation.
+  let payloadRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
+  try {
+    payloadRailMotions = parsePhysicPaintRotoRailMotions(
+      payload.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+    );
+  } catch {
+    return rejectPaste('malformed-payload');
+  }
+  const payloadMotionRailIds = new Set(payloadRailMotions.map((record) => record.railId));
+  const memberSourceRailIds = new Set<string>();
+  for (const member of payload.members) {
+    if (member.kind === 'loop') {
+      memberSourceRailIds.add(member.loopId);
+    } else if (member.sourceRailId !== undefined) {
+      memberSourceRailIds.add(member.sourceRailId);
+      // A member that claims motion must have a frozen record to re-key.
+      if (!payloadMotionRailIds.has(member.sourceRailId)) {
+        return rejectPaste('motion-identity-conflict');
+      }
+    }
+  }
+  for (const railId of payloadMotionRailIds) {
+    if (!memberSourceRailIds.has(railId)) return rejectPaste('motion-identity-conflict');
   }
 
   // Destination anchor.
@@ -696,7 +835,64 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
   const crossTrack = input.targetTrackId !== undefined
     && payload.sourceTrackId !== ''
     && payload.sourceTrackId !== input.targetTrackId;
-  const allocation = allocateFreshIdentities(payload, input.freshIdentityAllocation, crossTrack);
+  const allocation = allocateFreshIdentities(
+    payload,
+    input.freshIdentityAllocation,
+    crossTrack,
+    payloadMotionRailIds,
+  );
+  if (allocation === null) return rejectPaste('motion-identity-conflict');
+
+  // 59-15 Gate B: one re-key authority for the whole copied set. The plan
+  // addresses destination anchors as the fresh first drawing key (key rail) or
+  // the fresh loopId (loop rail); rekeyRailMotionsForCopy validates duplicate
+  // sources/destinations and returns null rather than a partial collection.
+  const payloadMotionByRailId = new Map(payloadRailMotions.map((record) => [record.railId, record]));
+  const copyPlan: RailMotionCopyPlanEntry[] = [];
+  for (const member of payload.members) {
+    if (member.kind === 'key-rail') {
+      if (member.sourceRailId === undefined) continue;
+      const destinationRailId = allocation.railIds[member.sourceRailId];
+      const anchorKeyId = allocation.keyIds[member.firstKeyId];
+      if (destinationRailId === undefined || anchorKeyId === undefined) {
+        return rejectPaste('motion-identity-conflict');
+      }
+      copyPlan.push(Object.freeze({ sourceRailId: member.sourceRailId, destinationRailId, anchorKeyId }));
+    } else {
+      if (!payloadMotionByRailId.has(member.loopId)) continue;
+      const destinationRailId = allocation.railIds[member.loopId];
+      const anchorKeyId = allocation.loopIds[member.loopId];
+      if (destinationRailId === undefined || anchorKeyId === undefined) {
+        return rejectPaste('motion-identity-conflict');
+      }
+      copyPlan.push(Object.freeze({ sourceRailId: member.loopId, destinationRailId, anchorKeyId }));
+    }
+  }
+  const destinationMotionRailIds = new Set(
+    (document.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY).map((record) => record.railId),
+  );
+  for (const entry of copyPlan) {
+    if (destinationMotionRailIds.has(entry.destinationRailId)) {
+      return rejectPaste('motion-identity-conflict');
+    }
+  }
+  // The source records travel as the copy authority (the paste leaves the
+  // source rails intact) — the re-key converts each into its fresh-identity
+  // copy; the destination document's own records are retained alongside.
+  const rekeyedRailMotions = rekeyRailMotionsForCopy(
+    payloadRailMotions,
+    copyPlan,
+    [...payloadMotionRailIds],
+  );
+  if (rekeyedRailMotions === null) return rejectPaste('motion-identity-conflict');
+  const destinationRailMotions = document.railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+  const nextRailMotions: readonly PhysicPaintRotoRailMotionRecord[] = rekeyedRailMotions.length === 0
+    ? destinationRailMotions
+    : Object.freeze(
+      [...destinationRailMotions, ...rekeyedRailMotions].sort(
+        (left, right) => (left.railId < right.railId ? -1 : left.railId > right.railId ? 1 : 0),
+      ),
+    );
 
   // Build fresh records, duplicated loops, breaks.
   const freshRecords: PhysicPaintRotoRealKeyRecord[] = [];
@@ -850,6 +1046,7 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     nextLoopClips,
     orderedBreaks,
     document.groupOverrideRecords,
+    nextRailMotions,
   );
   const proposal = Object.freeze({
     capacity: document.capacity,
@@ -863,6 +1060,9 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     revision,
     loopClips: nextLoopClips,
     incomingInterpolationBreakKeyIds: orderedBreaks,
+    // 59-15 Gate B: motion rides the SAME proposal as records, loops and
+    // breaks — this is the line that closes the silent paste drop.
+    railMotions: nextRailMotions,
   }) as PhysicPaintRotoPhysicalDocument;
 
   // Ordered pasted identities in canonical set order.
@@ -894,6 +1094,7 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
     freshIdentityAllocation: Object.freeze({
       keyIds: Object.freeze({ ...allocation.keyIds }),
       loopIds: Object.freeze({ ...allocation.loopIds }),
+      railIds: Object.freeze({ ...allocation.railIds }),
     }),
     identities: Object.freeze(identities),
     previousRevision: document.revision,

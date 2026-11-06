@@ -1537,10 +1537,12 @@ function isRotoRailSetCopyEntryValue(value: unknown): boolean {
 function isRotoRailSetCopyMemberValue(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.kind === 'key-rail') {
-    if (!hasOnlyKeys(value, ['kind', 'firstKeyId', 'firstKeyFrame', 'entries', 'firstKeyOwnsIncomingBreak'])) return false;
+    if (!hasOnlyKeys(value, ['kind', 'firstKeyId', 'firstKeyFrame', 'entries', 'firstKeyOwnsIncomingBreak', 'sourceRailId'])) return false;
     if (!isBoundedPhysicalKeyId(value.firstKeyId)) return false;
     if (!isNonNegativeInteger(value.firstKeyFrame)) return false;
     if (typeof value.firstKeyOwnsIncomingBreak !== 'boolean') return false;
+    // 59-15 Gate B: present only on a member that carries copied rail motion.
+    if (value.sourceRailId !== undefined && !isBoundedPhysicalKeyId(value.sourceRailId)) return false;
     if (!Array.isArray(value.entries) || value.entries.length === 0) return false;
     return value.entries.every(isRotoRailSetCopyEntryValue);
   }
@@ -1561,25 +1563,31 @@ function isRotoRailSetCopyMemberValue(value: unknown): boolean {
 }
 
 function isRotoRailSetCopyPayloadValue(value: unknown): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['anchorAppFrame', 'members', 'sourceTrackId'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['anchorAppFrame', 'members', 'sourceTrackId', 'railMotions'])) return false;
   // 46-03 D-06: the track the set was copied from ('' = legacy, no track
   // context). Cross-track paste re-pointing keys off this field.
   if (typeof value.sourceTrackId !== 'string') return false;
   if (!isNonNegativeInteger(value.anchorAppFrame)) return false;
+  // 59-15 Gate B: the frozen motion snapshot rides the payload.
+  if (!isPhysicPaintRotoRailMotionCollection(value.railMotions)) return false;
   if (!Array.isArray(value.members) || value.members.length === 0) return false;
   return value.members.every(isRotoRailSetCopyMemberValue);
 }
 
 function isRotoRailSetFreshIdentityAllocationValue(value: unknown): boolean {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['keyIds', 'loopIds'])) return false;
-  if (!isRecord(value.keyIds) || !isRecord(value.loopIds)) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['keyIds', 'loopIds', 'railIds'])) return false;
+  if (!isRecord(value.keyIds) || !isRecord(value.loopIds) || !isRecord(value.railIds)) return false;
   const keysValid = Object.entries(value.keyIds).every(([source, fresh]) => (
     isBoundedPhysicalKeyId(source) && isBoundedPhysicalKeyId(fresh)
   ));
   const loopsValid = Object.entries(value.loopIds).every(([source, fresh]) => (
     isBoundedPhysicalKeyId(source) && isBoundedPhysicalKeyId(fresh)
   ));
-  return keysValid && loopsValid;
+  // 59-15 Gate B: source railId -> destination railId for the animated members.
+  const railsValid = Object.entries(value.railIds).every(([source, fresh]) => (
+    isBoundedPhysicalKeyId(source) && isBoundedPhysicalKeyId(fresh)
+  ));
+  return keysValid && loopsValid && railsValid;
 }
 
 function isRotoRailSetPasteIdentityCollection(value: unknown): boolean {
