@@ -16,7 +16,22 @@ import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRow } from './PhysicsPaintTrackRow';
+import {
+  PhysicsPaintTrackColumnStrip,
+  PhysicsPaintTrackRow,
+  PhysicsPaintTrackRowHeader,
+  railMotionExpandedSelection,
+  resolveMotionBlockExpanded,
+  resolveMotionChevronKind,
+  resolveMotionRecordForRail,
+  resolveRailMotionHasKeys,
+  resolveSelectedRailMotionId,
+  resolveTrackMotionLaneCount,
+  toggleRailMotionExpansion,
+} from './PhysicsPaintTrackRow';
+import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import type { RailMotionRailView } from '../roto/railMotionIdentity';
+import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   clearPhysicsPaintPerformance,
   snapshotPhysicsPaintPerformance,
@@ -818,5 +833,274 @@ describe('PhysicsPaintTrackRow — 261104-so5 painted phase on a generated in-be
     const tree = render();
     expect(cellAt(tree, 5).props['data-cell-kind']).toBe('empty');
     expect(hasClass(cellAt(tree, 5), 'roto-fill-cached')).toBe(true);
+  });
+});
+describe('59-11 rail motion hosting — chevron, session expansion and the expanded block', () => {
+  const LOOP_RAIL_ID = 'loop-motion-59-11';
+  const KEY_RAIL_ID = 'rail-59-11-key';
+  const LOOP_IDENTITY: RailSetIdentity = { kind: 'loop', loopId: LOOP_RAIL_ID };
+  const OTHER_LOOP_IDENTITY: RailSetIdentity = { kind: 'loop', loopId: 'loop-other-59-11' };
+  const KEY_IDENTITY: RailSetIdentity = { kind: 'key-rail', firstKeyId: 'k0' };
+  const ALL_CHANNEL_IDS: readonly PhysicPaintRotoRailMotionChannelId[] = [
+    'position-x', 'position-y', 'scale', 'rotation', 'opacity',
+  ];
+
+  function railView(
+    overrides: Partial<RailMotionRailView> & Pick<RailMotionRailView, 'railId' | 'anchorKeyId'>,
+  ): RailMotionRailView {
+    return {
+      startFrame: 0,
+      endFrameExclusive: 10,
+      keyIds: [],
+      railType: 'motion',
+      loopId: null,
+      ...overrides,
+    };
+  }
+
+  function motionRecord(
+    railId: string,
+    channelIds: readonly PhysicPaintRotoRailMotionChannelId[],
+    frames: readonly number[] = [0, 4],
+  ): PhysicPaintRotoRailMotionRecord {
+    return {
+      railId,
+      anchorKeyId: 'k0',
+      channels: channelIds.map((id) => ({
+        id,
+        keys: frames.map((frame) => ({ frame, value: 1, easing: 'ease' as const, wiggle: 0 })),
+      })),
+    };
+  }
+
+  /** Seed the store with one motion-bearing Loop Clip rail (k0..k1). */
+  function seedMotionRail(): void {
+    seedTrack(TRACK, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 4, 'a@4')]);
+    const loop = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, TRACK, [{
+      loopId: LOOP_RAIL_ID,
+      placementStart: 0,
+      sourceKeyIds: ['k0', 'k1'],
+      repeat: 1,
+      mode: 'progressive',
+      scriptId: 'script-59-11',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+    }]);
+    if (!loop.ok) throw new Error(`motion loop seed failed: ${loop.error}`);
+    const seeded = physicPaintStore.replaceRotoPhysicalRailMotions(
+      LAYER,
+      TRACK,
+      [motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS)],
+    );
+    if (!seeded.ok) throw new Error(`motion record seed failed: ${seeded.error}`);
+  }
+
+  function renderHeader(
+    overrides: Partial<Parameters<typeof PhysicsPaintTrackRowHeader>[0]> = {},
+  ): unknown {
+    return materialize(PhysicsPaintTrackRowHeader({
+      trackId: TRACK,
+      label: 'Track A',
+      activeTrackId: TRACK,
+      layerId: LAYER,
+      ...overrides,
+    }));
+  }
+
+  function motionChevron(tree: unknown): TestVNode {
+    const matches = findAll(tree, (vnode) => vnode.props['data-motion-chevron'] !== undefined);
+    expect(matches).toHaveLength(1);
+    return matches[0];
+  }
+
+  beforeEach(() => {
+    railMotionExpandedSelection.value = null;
+  });
+
+  afterEach(() => {
+    railMotionExpandedSelection.value = null;
+  });
+
+  it('resolves the durable railId from both identity kinds — never the firstKeyId', () => {
+    const views: RailMotionRailView[] = [
+      railView({ railId: LOOP_RAIL_ID, anchorKeyId: 'k0', loopId: LOOP_RAIL_ID, railType: 'motion' }),
+      // A bound bare Key Rail: its durable identity is the assigned railId.
+      railView({ railId: KEY_RAIL_ID, anchorKeyId: 'k7', railType: 'standard' }),
+      // An unbound Key Rail (no motion record): railId null, anchor is a hint only.
+      railView({ railId: null, anchorKeyId: 'k9', railType: 'standard' }),
+    ];
+
+    expect(resolveSelectedRailMotionId(views, { kind: 'loop', loopId: LOOP_RAIL_ID })).toBe(LOOP_RAIL_ID);
+    expect(resolveSelectedRailMotionId(views, { kind: 'key-rail', firstKeyId: 'k7' })).toBe(KEY_RAIL_ID);
+    expect(resolveSelectedRailMotionId(views, { kind: 'key-rail', firstKeyId: 'k9' })).toBeNull();
+    expect(resolveSelectedRailMotionId(views, { kind: 'loop', loopId: 'missing' })).toBeNull();
+    expect(resolveSelectedRailMotionId(views, null)).toBeNull();
+  });
+
+  it('expands only while the recorded session identity still IS the selected rail', () => {
+    const same = {
+      expandedSelection: LOOP_IDENTITY,
+      selectedRail: LOOP_IDENTITY,
+      selectedRailMotionId: LOOP_RAIL_ID,
+    };
+    expect(resolveMotionBlockExpanded(same)).toBe(true);
+    expect(resolveMotionBlockExpanded({ ...same, selectedRail: OTHER_LOOP_IDENTITY })).toBe(false);
+    expect(resolveMotionBlockExpanded({ ...same, expandedSelection: null })).toBe(false);
+    expect(resolveMotionBlockExpanded({ ...same, selectedRailMotionId: null })).toBe(false);
+    expect(resolveMotionBlockExpanded({ ...same, selectedRail: null })).toBe(false);
+  });
+
+  it('renders the three chevron kinds from motion presence and expansion', () => {
+    expect(resolveMotionChevronKind({ hasMotion: false, expanded: false })).toBe('minus');
+    expect(resolveMotionChevronKind({ hasMotion: true, expanded: false })).toBe('chevron-right');
+    expect(resolveMotionChevronKind({ hasMotion: true, expanded: true })).toBe('chevron-down');
+  });
+
+  it('renders the grey minus on a track with no motion — a disabled 14×14 button with its reason', () => {
+    const tree = renderHeader();
+    const chevron = motionChevron(tree);
+    expect(chevron.props['data-motion-chevron']).toBe('minus');
+    expect(hasClass(chevron, 'is-none')).toBe(true);
+    expect(chevron.props['aria-disabled']).toBe('true');
+    expect(chevron.props['aria-expanded']).toBeUndefined();
+    expect(chevron.props.title).toBe('No motion channels');
+    expect(chevron.props['aria-description']).toBe('No motion channels');
+    expect(chevron.props.onClick).toBeUndefined();
+    expect(chevron.props.style).toMatchObject({ width: '14px', height: '14px' });
+  });
+
+  it('clicking the collapsed chevron on the selected motion rail expands it, clicking again collapses it', () => {
+    seedMotionRail();
+    const collapsed = renderHeader({ selectedRail: LOOP_IDENTITY });
+    const right = motionChevron(collapsed);
+    expect(right.props['data-motion-chevron']).toBe('chevron-right');
+    expect(right.props['aria-expanded']).toBe('false');
+    expect(right.props['aria-disabled']).toBeUndefined();
+    expect(right.props['aria-label']).toBe('Expand motion channels');
+    expect(right.props.onClick).toBeTypeOf('function');
+    (right.props.onClick as () => void)();
+    expect(railMotionExpandedSelection.value).toEqual(LOOP_IDENTITY);
+
+    const expanded = renderHeader({ selectedRail: LOOP_IDENTITY });
+    const down = motionChevron(expanded);
+    expect(down.props['data-motion-chevron']).toBe('chevron-down');
+    expect(down.props['aria-expanded']).toBe('true');
+    expect(down.props['aria-label']).toBe('Collapse motion channels');
+    (down.props.onClick as () => void)();
+    expect(railMotionExpandedSelection.value).toBeNull();
+  });
+
+  it('disables the chevron of a motion-bearing track whose rail is not the selected one — with a visible reason', () => {
+    seedMotionRail();
+    const tree = renderHeader({ activeTrackId: 'track-other', selectedRail: LOOP_IDENTITY });
+    const chevron = motionChevron(tree);
+    expect(chevron.props['data-motion-chevron']).toBe('chevron-right');
+    expect(chevron.props['aria-disabled']).toBe('true');
+    expect(chevron.props.title).toBe('Select this track’s rail to open its motion channels');
+    expect(chevron.props.onClick).toBeUndefined();
+  });
+
+  it('Animate leaves the block collapsed: the session signal stays null and the glyph is chevron-right (D-03)', () => {
+    seedMotionRail();
+    // Animate writes motion into the store (the seed) and never touches the
+    // session expansion identity — the block must stay collapsed.
+    expect(railMotionExpandedSelection.value).toBeNull();
+    const tree = renderHeader({ selectedRail: LOOP_IDENTITY });
+    expect(motionChevron(tree).props['data-motion-chevron']).toBe('chevron-right');
+  });
+
+  it('writes the session expansion signal in exactly one place — the chevron toggle — and adds no effect', () => {
+    const body = rowSource();
+    const writes = body.match(/railMotionExpandedSelection\.value\s*=/g) ?? [];
+    expect(writes).toHaveLength(1);
+    expect(body).not.toMatch(/useEffect\s*\(/);
+  });
+
+  it('keeps at most one block open: toggling another rail replaces the recorded identity', () => {
+    toggleRailMotionExpansion(LOOP_IDENTITY, LOOP_RAIL_ID);
+    expect(railMotionExpandedSelection.value).toEqual(LOOP_IDENTITY);
+    toggleRailMotionExpansion(KEY_IDENTITY, KEY_RAIL_ID);
+    expect(railMotionExpandedSelection.value).toEqual(KEY_IDENTITY);
+    toggleRailMotionExpansion(KEY_IDENTITY, KEY_RAIL_ID);
+    expect(railMotionExpandedSelection.value).toBeNull();
+    // A rail with no motion is never recorded.
+    toggleRailMotionExpansion(LOOP_IDENTITY, null);
+    expect(railMotionExpandedSelection.value).toBeNull();
+    toggleRailMotionExpansion(null, null);
+    expect(railMotionExpandedSelection.value).toBeNull();
+  });
+
+  it('resolves the motion record for a rail and treats an all-keyless record as no motion', () => {
+    const withKeys = motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS);
+    const keyless = motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS, []);
+    expect(resolveMotionRecordForRail([withKeys], LOOP_RAIL_ID)).toBe(withKeys);
+    expect(resolveMotionRecordForRail([withKeys], null)).toBeNull();
+    expect(resolveMotionRecordForRail([withKeys], 'missing')).toBeNull();
+    expect(resolveRailMotionHasKeys(withKeys)).toBe(true);
+    expect(resolveRailMotionHasKeys(keyless)).toBe(false);
+    expect(resolveRailMotionHasKeys(null)).toBe(false);
+  });
+
+  it('counts DISPLAY lanes, not model channels: five keyed channels yield four lanes (D-11/D-13)', () => {
+    const record = motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS);
+    const input = {
+      views: [railView({ railId: LOOP_RAIL_ID, anchorKeyId: 'k0', loopId: LOOP_RAIL_ID })],
+      record,
+      expandedSelection: LOOP_IDENTITY,
+      selectedRail: LOOP_IDENTITY,
+      selectedRailMotionId: LOOP_RAIL_ID,
+    };
+    expect(resolveTrackMotionLaneCount(input)).toBe(4);
+    expect(resolveTrackMotionLaneCount({ ...input, expandedSelection: null })).toBe(0);
+    expect(resolveTrackMotionLaneCount({ ...input, selectedRailMotionId: null })).toBe(0);
+    expect(resolveTrackMotionLaneCount({
+      ...input,
+      record: motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS, []),
+    })).toBe(0);
+  });
+
+  it('renders the expanded block only while expanded: four display lanes, the outline and the post-block gap', () => {
+    const record = motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS);
+    const views = [railView({
+      railId: LOOP_RAIL_ID,
+      anchorKeyId: 'k0',
+      loopId: LOOP_RAIL_ID,
+      keyIds: ['k0', 'k1'],
+      endFrameExclusive: 10,
+    })];
+    const base = {
+      rotoSelectedRail: LOOP_IDENTITY,
+      rotoRailMotions: [record],
+      rotoRailViews: views,
+      motionRowHeightPx: 105,
+    };
+
+    railMotionExpandedSelection.value = LOOP_IDENTITY;
+    const expanded = render(base);
+    expect(findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-block-lanes'))).toHaveLength(1);
+    const lanes = findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'));
+    expect(lanes).toHaveLength(4);
+    expect(lanes.map((lane) => String(lane.props['data-motion-display-lane']))).toEqual([
+      'position', 'scale', 'rotation', 'opacity',
+    ]);
+    const outline = findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'));
+    expect(outline).toHaveLength(1);
+    expect(outline[0].props.style).toMatchObject({ height: 31 + 4 * 18 + 2, borderRadius: 4 });
+    const gap = findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-block-gap'));
+    expect(gap).toHaveLength(1);
+    expect(gap[0].props.style).toMatchObject({ height: '2px' });
+    expect((expanded as TestVNode).props.style).toMatchObject({ position: 'relative', height: '105px' });
+
+    // Collapsed: no lane, no outline — the row keeps its rail-cell lane only.
+    railMotionExpandedSelection.value = null;
+    const collapsed = render(base);
+    expect(findAll(collapsed, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(0);
+    expect(findAll(collapsed, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'))).toHaveLength(0);
+    expect((collapsed as TestVNode).props.style).toBeUndefined();
+
+    // A different recorded identity (selection moved) renders no lanes either.
+    railMotionExpandedSelection.value = OTHER_LOOP_IDENTITY;
+    const stale = render(base);
+    expect(findAll(stale, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(0);
   });
 });

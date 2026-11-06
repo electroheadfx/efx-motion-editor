@@ -652,15 +652,18 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
       .filter((entry): entry is string => entry !== null);
     expect(sequence).toEqual(['grip', 'eye', 'blend', 'motion', 'name', 'trash']);
 
-    // v2.0.1 (README §2): the motion slot is an INERT placeholder — aria-hidden,
-    // no role, no tabIndex, no handler, and it never renders a button surface
-    // (motion channels are v2.1.0 scope).
+    // 59-11 (MUI-01/MUI-04): the motion slot is a real 14×14 toggle. These
+    // headers carry no motion record, so it renders the grey `minus` in the
+    // disabled state — aria-disabled plus its reason, never an inert
+    // aria-hidden span and never a silent no-op.
     const motionSlot = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-motion-toggle'));
     expect(hasClass(motionSlot, 'is-none')).toBe(true);
-    expect(String(motionSlot.props['aria-hidden'])).toBe('true');
+    expect(String(motionSlot.props['data-motion-chevron'])).toBe('minus');
+    expect(String(motionSlot.props['aria-disabled'])).toBe('true');
     expect(String(motionSlot.props.title)).toBe('No motion channels');
+    expect(String(motionSlot.props['aria-description'])).toBe('No motion channels');
+    expect(motionSlot.props['aria-expanded']).toBeUndefined();
     expect(motionSlot.props.role).toBeUndefined();
-    expect(motionSlot.props.tabIndex).toBeUndefined();
     expect(motionSlot.props.onClick).toBeUndefined();
     expect(motionSlot.props.onKeyDown).toBeUndefined();
 
