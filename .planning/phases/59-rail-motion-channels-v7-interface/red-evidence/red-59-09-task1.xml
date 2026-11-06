@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="7" failures="6" errors="0" time="0.997">
+    <testsuite name="src/lib/railMotionExportParity.test.ts" timestamp="2026-11-06T16:16:10.683Z" hostname="efx2.home" tests="7" failures="6" errors="0" skipped="0" time="0.015164041">
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; delivers paint on every motion-blur sub-frame (REL-04)" time="0.011398333">
+            <failure message="sub-frame 5.125 delivers a composite: expected null not to be null" type="AssertionError">
+AssertionError: sub-frame 5.125 delivers a composite: expected null not to be null
+ ❯ src/lib/railMotionExportParity.test.ts:233:71
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; resolves content at the integer frame for every sub-frame" time="0.00099025">
+            <failure message="expected a delivery at frame 5.125" type="Error">
+Error: expected a delivery at frame 5.125
+ ❯ deliveryAt src/lib/railMotionExportParity.test.ts:191:32
+ ❯ src/lib/railMotionExportParity.test.ts:248:26
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; evaluates the rail transform at the unfloored frame" time="0.000762083">
+            <failure message="expected a delivery at frame 5.125" type="Error">
+Error: expected a delivery at frame 5.125
+ ❯ deliveryAt src/lib/railMotionExportParity.test.ts:191:32
+ ❯ src/lib/railMotionExportParity.test.ts:262:18
+ ❯ src/lib/railMotionExportParity.test.ts:261:30
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; floors the content frame for the composite: a missing track reports the integer frame" time="0.000352583">
+            <failure message="expected a delivery at frame 6.5" type="Error">
+Error: expected a delivery at frame 6.5
+ ❯ deliveryAt src/lib/railMotionExportParity.test.ts:191:32
+ ❯ src/lib/railMotionExportParity.test.ts:287:24
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; never serves a fractional delivery from the integer flattened memo (T-59-27)" time="0.000378">
+            <failure message="expected a delivery at frame 5.5" type="Error">
+Error: expected a delivery at frame 5.5
+ ❯ deliveryAt src/lib/railMotionExportParity.test.ts:191:32
+ ❯ src/lib/railMotionExportParity.test.ts:297:24
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; does not read the integer memo for a fractional frame" time="0.000539375">
+            <failure message="expected a delivery at frame 5.5" type="Error">
+Error: expected a delivery at frame 5.5
+ ❯ deliveryAt src/lib/railMotionExportParity.test.ts:191:32
+ ❯ src/lib/railMotionExportParity.test.ts:309:24
+            </failure>
+        </testcase>
+        <testcase classname="src/lib/railMotionExportParity.test.ts" name="rail motion export sub-frame parity (59-09 REL-04 / MOTN-08) &gt; still rejects negative and non-finite frames" time="0.000359042">
+        </testcase>
+    </testsuite>
+</testsuites>
