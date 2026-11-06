@@ -75,6 +75,33 @@ const MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
   ],
 };
 
+/**
+ * 59-19 (G2 / CR-04): one infinite Loop Clip over [A@0 .. B@4]. Its loop range
+ * resolves to capacity (600), so the motion view must cover the whole rail —
+ * not the two-frame first occurrence the identity module falls back to.
+ */
+const INFINITY_LOOP_ID = 'loop-inf';
+const INFINITY_MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
+  railId: INFINITY_LOOP_ID,
+  anchorKeyId: 'A',
+  channels: [
+    {
+      id: 'position-x',
+      keys: [
+        { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
+        { frame: 3, value: 30, easing: 'ease', wiggle: 0 },
+      ],
+    },
+    {
+      id: 'position-y',
+      keys: [
+        { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
+        { frame: 3, value: 0, easing: 'hold', wiggle: 0 },
+      ],
+    },
+  ],
+};
+
 type RecordedOp =
   | { readonly type: 'clearRect'; readonly args: readonly number[] }
   | { readonly type: 'fillRect'; readonly args: readonly number[] }
@@ -164,6 +191,50 @@ function installAnimatedTrack(options: { motion?: boolean } = {}): void {
     const applied = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, trackId, [MOTION_RECORD]);
     if (!applied.ok) throw new Error(`rail motion install failed: ${applied.error}`);
   }
+}
+
+/**
+ * 59-19: register one physical track with an INFINITE progressive Loop Clip
+ * over A@0/B@4 plus a rail-motion record on the loop's own identity. The loop
+ * range derives to capacity, so the rail's resolved span is [0, 600).
+ */
+function installInfiniteLoopTrack(): void {
+  const document = createEfxPaintDocument(LAYER);
+  registerDocument(document);
+  const trackId = document.tracks[0].id;
+  activeTrackId = trackId;
+
+  const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+    LAYER,
+    trackId,
+    [record('A', 0, KEY_A_BYTES), record('B', 4, KEY_B_BYTES)],
+    INTERPOLATION,
+    CAPACITY,
+  );
+  expect(seeded.ok).toBe(true);
+
+  trackRasters = { A: rasterCanvas(), B: rasterCanvas() };
+  registerRotoAlphaCanvasFrame(KEY_A_BYTES, trackRasters.A as unknown as HTMLCanvasElement);
+  registerRotoAlphaCanvasFrame(KEY_B_BYTES, trackRasters.B as unknown as HTMLCanvasElement);
+
+  const loops = physicPaintStore.replaceRotoPhysicalLoopClips(LAYER, trackId, [{
+    loopId: INFINITY_LOOP_ID,
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B'],
+    repeat: 'infinity',
+    mode: 'progressive',
+    scriptId: 'script-59-19',
+    motion: { deformation: 0, position: 0 },
+    overrideColor: null,
+  }]);
+  if (!loops.ok) throw new Error(`loop install failed: ${loops.error}`);
+
+  const applied = physicPaintStore.replaceRotoPhysicalRailMotions(
+    LAYER,
+    trackId,
+    [INFINITY_MOTION_RECORD],
+  );
+  if (!applied.ok) throw new Error(`rail motion install failed: ${applied.error}`);
 }
 
 function opsOf(delivery: EfxPaintFlattenedFrameRecord): readonly RecordedOp[] {
@@ -416,6 +487,35 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
       expect(appliedTransform()).toBeDefined();
       physicPaintStore.reset();
       expect(physicPaintStore.getLastAppliedTrackTransforms(LAYER).size).toBe(0);
+    });
+  });
+
+  // 59-19 (G2 / CR-04): an infinite Loop Clip's motion view must reach the
+  // rail's resolved end (the derived loop range, capacity-bounded), not stop
+  // after the first occurrence the resolver-less identity fallback produces.
+  describe('infinite Loop Clip motion span (59-19 G2 / CR-04)', () => {
+    function appliedTransform(): EfxPaintTrackMotionTransform | undefined {
+      return physicPaintStore.getLastAppliedTrackTransforms(LAYER).get(activeTrackId);
+    }
+
+    it('applies the infinite rail transform in a later cycle and at the resolved end minus one', () => {
+      installInfiniteLoopTrack();
+      // A@0/B@4 cycle twice: frame 6 is cycle 2 (frames 5..9) of the loop.
+      const cycleTwo = physicPaintStore.getFlattenedFrame(LAYER, 6);
+      expect(cycleTwo, 'cycle 2 delivers a composite').not.toBeNull();
+      expect(appliedTransform(), 'cycle 2 carries the rail transform').toBeDefined();
+
+      // The last frame before the capacity-bounded resolved end: still inside
+      // the half-open span, so the transform is applied there too.
+      const beforeEnd = physicPaintStore.getFlattenedFrame(LAYER, CAPACITY - 1);
+      expect(beforeEnd, 'the last resolved frame delivers a composite').not.toBeNull();
+      expect(appliedTransform(), 'the last resolved frame carries the rail transform').toBeDefined();
+    });
+
+    it('applies no transform at the resolved end (half-open span)', () => {
+      installInfiniteLoopTrack();
+      physicPaintStore.getFlattenedFrame(LAYER, CAPACITY);
+      expect(appliedTransform(), 'the resolved end frame carries no rail transform').toBeUndefined();
     });
   });
 });
