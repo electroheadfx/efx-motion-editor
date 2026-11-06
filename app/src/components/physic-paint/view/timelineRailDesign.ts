@@ -133,13 +133,13 @@ export const TIMELINE_MOTION = {
   headerClusterWidth: 160,
   laneLabelGap: 6,
   /** Empty row after the expanded block, matching v7's rail-to-rail gap. */
-  postBlockGap: 0,
-  /** The type's lighter key rim (SPECS §2). RED stub: values land in GREEN. */
+  postBlockGap: 2,
+  /** The type's lighter key rim (SPECS §2) — the selected palette tier. */
   keyRim: {
-    standard: '',
-    motion: '',
-    static: '',
-    reveal: '',
+    standard: TIMELINE_RAIL_PALETTES.standard.selected.keyRim,
+    motion: TIMELINE_RAIL_PALETTES.motion.selected.keyRim,
+    static: TIMELINE_RAIL_PALETTES.static.selected.keyRim,
+    reveal: TIMELINE_RAIL_PALETTES.reveal.selected.keyRim,
   },
 } as const;
 
@@ -157,11 +157,29 @@ export interface TimelineMotionBlockOutlineInput {
   readonly laneCount: number;
 }
 
-/** RED stub: the outline arithmetic lands in GREEN. */
+/**
+ * The expanded block's outline: it starts at the rail row top and wraps the
+ * row plus every DISPLAY lane plus the post-block gap (MUI-03). A collapsed
+ * block has no lanes, hence no outline. `laneCount` is always a display-lane
+ * count, never a model-channel count, so grouped Position adds one lane.
+ */
 export function resolveMotionBlockOutlineRect(
-  _input: TimelineMotionBlockOutlineInput,
+  input: TimelineMotionBlockOutlineInput,
 ): TimelineMotionBlockOutlineRect | null {
-  return null;
+  const laneCount = Number.isFinite(input.laneCount)
+    ? Math.max(0, Math.floor(input.laneCount))
+    : 0;
+  if (laneCount === 0) return null;
+  return Object.freeze({
+    top: input.rowTop,
+    height:
+      input.rowHeight +
+      laneCount * TIMELINE_MOTION.laneHeight +
+      TIMELINE_MOTION.postBlockGap,
+    radius: TIMELINE_GEOMETRY.outlineRadius,
+    strokeWidth: TIMELINE_GEOMETRY.outlineWidth,
+    width: '100%',
+  });
 }
 
 /**

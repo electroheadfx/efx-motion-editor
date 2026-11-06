@@ -30,6 +30,7 @@ import type {
 } from '../roto/railMotionModel';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import {
+  resolveMotionBlockOutlineRect,
   resolveTimelineRailPalette,
   TIMELINE_GEOMETRY,
   TIMELINE_MOTION,
@@ -459,16 +460,99 @@ export interface TimelineMotionChannelMenuProps {
   readonly onClose: () => void;
 }
 
-/** RED stub: the block outline lands in GREEN. */
-export function TimelineMotionBlockOutline(
-  _props: TimelineMotionBlockOutlineProps,
-): null {
-  return null;
+/** The grouped Position row adds only `position-x`; the reducer seeds both axes. */
+const DISPLAY_LANE_ADD_CHANNEL_ID: Record<RailMotionDisplayLaneId, PhysicPaintRotoRailMotionChannelId> = {
+  position: 'position-x',
+  scale: 'scale',
+  rotation: 'rotation',
+  opacity: 'opacity',
+};
+
+/**
+ * The expanded block's outline (MUI-03): an absolutely-positioned rounded rect
+ * over the rail row plus its display lanes. Rendered only when the block has
+ * lanes — a collapsed rail shows no outline.
+ */
+export function TimelineMotionBlockOutline({
+  rowTop,
+  rowHeight,
+  laneCount,
+  selected,
+  lineColor,
+}: TimelineMotionBlockOutlineProps) {
+  const rect = resolveMotionBlockOutlineRect({ rowTop, rowHeight, laneCount });
+  if (rect === null) return null;
+  return (
+    <div
+      class="physics-paint-motion-block-outline"
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        borderRadius: rect.radius,
+        border: `${rect.strokeWidth}px solid ${lineColor ?? TIMELINE_SURFACE.accentFallback}`,
+        opacity: selected ? 1 : 0.55,
+        pointerEvents: 'none',
+        boxSizing: 'border-box',
+      }}
+    />
+  );
 }
 
-/** RED stub: the add-channel menu lands in GREEN. */
-export function TimelineMotionChannelMenu(
-  _props: TimelineMotionChannelMenuProps,
-): null {
-  return null;
+/**
+ * The `+` row popover body (D-14): ONLY display lanes that carry no keys yet,
+ * in the fixed display order. Position is one row and adds the grouped pair
+ * through the 59-02 reducer. With nothing keyless the row renders nothing.
+ */
+export function TimelineMotionChannelMenu({
+  channels,
+  onAddChannel,
+  onClose,
+}: TimelineMotionChannelMenuProps) {
+  const keylessLanes = resolveKeylessMotionDisplayLanes(channels);
+  if (keylessLanes.length === 0) return null;
+  return (
+    <div
+      class="physics-paint-motion-channel-menu"
+      role="menu"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        background: TIMELINE_SURFACE.rows,
+      }}
+    >
+      {keylessLanes.map((lane) => (
+        <button
+          key={lane.id}
+          type="button"
+          role="menuitem"
+          class="physics-paint-motion-channel-menu-row"
+          data-motion-channel-menu-row={lane.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: TIMELINE_MOTION.laneLabelGap,
+            height: TIMELINE_MOTION.laneHeight,
+            padding: 0,
+            border: 'none',
+            background: 'transparent',
+            color: TIMELINE_SURFACE.trackName,
+            cursor: 'pointer',
+          }}
+          onClick={() => {
+            onAddChannel(DISPLAY_LANE_ADD_CHANNEL_ID[lane.id]);
+            onClose();
+          }}
+        >
+          <span aria-hidden="true" style={{ display: 'inline-flex' }}>
+            {renderLaneIcon(lane.id)}
+          </span>
+          <span>{RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
