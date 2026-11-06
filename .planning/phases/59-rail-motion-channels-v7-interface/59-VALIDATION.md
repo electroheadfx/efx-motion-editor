@@ -57,7 +57,7 @@ created: "2026-11-06"
 - [ ] `app/src/components/physic-paint/roto/railMotionModel.test.ts` — validation, canonical order, conditional write, round-trip (MOTN-12, REL-02)
 - [ ] `app/src/components/physic-paint/roto/railMotionIdentity.test.ts` — Gate B identity truth table (MOTN-01, MOTN-11)
 - [ ] `app/src/components/physic-paint/roto/railMotionEvaluator.test.ts` — channels, curves, endpoints, unbounded rotation, wiggle determinism (MOTN-03/05/06/09/10)
-- [ ] `app/src/components/physic-paint/roto/railMotionRevision.test.ts` — revision/carrier assertions, no sampled-value cache terms (REL-03)
+- [ ] REL-03 revision/carrier assertions — no separate `railMotionRevision.test.ts`; they live in `railMotionPersistence.test.ts`, `physicPaintStore.rotoRailMotions.test.ts` and `efxPaintCompositeCache.test.ts`
 - [ ] `app/src/efx-paint/compositor/efxPaintCompositorRailMotion.test.ts` — both draw sites, identity fast path, opacity multiply, transform math (MOTN-07/08)
 - [ ] `app/src/lib/railMotionExportParity.test.ts` — sub-frame integer content + fractional transform (REL-04)
 - [ ] `app/src/components/physic-paint/view/TimelineMotionChannels.test.ts` — source-string pins for MUI-01/02/03/04/05

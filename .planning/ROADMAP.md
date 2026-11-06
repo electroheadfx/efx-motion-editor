@@ -113,22 +113,43 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
 **Plans:** 16 plans
 
 Plans:
+**Wave 1**
 - [ ] 59-01-PLAN.md — Gates A–D ratification + TS↔Rust `railKind` canonical parity tracer and golden fixture
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 59-02-PLAN.md — Rail-motion model: types, value domains, fail-closed parser, rail-id mint, pure edit reducer
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 59-03-PLAN.md — Persistence: document allowlist, conditional canonical term, one revision authority, save→reopen pin
-- [ ] 59-04-PLAN.md — Rust `canonical_rail_motions` mirror + fail-closed validation + cross-language motion fixture
 - [ ] 59-05-PLAN.md — Pure evaluator: endpoint hold, Hold/Ease, unbounded rotation, seeded wiggle, lane curve path
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 59-04-PLAN.md — Rust `canonical_rail_motions` mirror + fail-closed validation + cross-language motion fixture
 - [ ] 59-06-PLAN.md — Gate B durable rail identity: bindings, reconciliation, orphans, split/merge/delete transitions
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 59-07-PLAN.md — Store/apply/bridge/undo wiring + canonical-vs-raster revision split (no re-bake on motion drags)
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 59-08-PLAN.md — Compositor `trackTransforms` at both draw sites + motion key term + memoized rail-space pivot
-- [ ] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
 - [ ] 59-10-PLAN.md — v7 lane surface: 18px lanes, header cluster, cells, evaluator curve, 6×6 keys, block outline
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 59-09-PLAN.md — Sub-frame export law: integer content frame, fractional transform, flattened-memo bypass
 - [ ] 59-11-PLAN.md — Timeline integration: chevron toggle over session-only expansion (collapsed after Animate), mirrored headers, measured layout, block-aware reorder
+
+**Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 59-12-PLAN.md — Animate (seed at the rail-local playhead) + motion commands, Hold/Ease/Wiggle, honest availability, three selection scopes
+
+**Wave 9** *(blocked on Wave 8 completion)*
 - [ ] 59-13-PLAN.md — Rail-motion gizmo: session draft, one commit per drag, the D-08 auto-key gate, additive Studio mount
-- [ ] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
+
+**Wave 10** *(blocked on Wave 9 completion)*
 - [ ] 59-15-PLAN.md — Gate B wiring at the real edit operations (reconciler at the bridge commit point) + copy/paste motion-follow law
 - [ ] 59-16-PLAN.md — Inspector numeric fields via one projection: grouped Position with independent values, unbounded rotation, opacity
+
+**Wave 11** *(blocked on Wave 10 completion)*
+- [ ] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
 
 **Build order (research §12)**:
   1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
