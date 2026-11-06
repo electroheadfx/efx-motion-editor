@@ -3,6 +3,7 @@ import {
   RAIL_MOTION_IDENTITY_TRANSFORM,
   evaluateRailMotion,
   evaluateRailMotionChannel,
+  railMotionWiggleAt,
   resolveRailLocalFrame,
 } from './railMotionEvaluator';
 import type {
@@ -166,6 +167,99 @@ describe('rail motion channel evaluation', () => {
 
     expect(evaluateRailMotionChannel(rec, 'opacity', 0)).toBe(1);
     expect(evaluateRailMotionChannel(rec, 'scale', 0)).toBe(0);
+  });
+});
+
+describe('rail motion wiggle', () => {
+  it('seeds differently per rail, channel and key frame', () => {
+    const base = railMotionWiggleAt('rail-a', 'position-x', 0, 17.5);
+
+    expect(railMotionWiggleAt('rail-b', 'position-x', 0, 17.5)).not.toBe(base);
+    expect(railMotionWiggleAt('rail-a', 'scale', 0, 17.5)).not.toBe(base);
+    expect(railMotionWiggleAt('rail-a', 'position-x', 10, 17.5)).not.toBe(base);
+  });
+
+  it('is deterministic across repeated and interleaved calls', () => {
+    const first = railMotionWiggleAt('rail-a', 'position-x', 3, 12.5);
+    // An unrelated evaluation between the two calls must not move any state.
+    railMotionWiggleAt('rail-z', 'opacity', 9, 4.25);
+
+    expect(railMotionWiggleAt('rail-a', 'position-x', 3, 12.5)).toBe(first);
+    expect(first).toBeGreaterThanOrEqual(-1);
+    expect(first).toBeLessThanOrEqual(1);
+  });
+
+  it('interpolates smoothly between integer-frame noise samples', () => {
+    const at10 = railMotionWiggleAt('rail-a', 'position-x', 0, 10);
+    const at11 = railMotionWiggleAt('rail-a', 'position-x', 0, 11);
+    const halfway = railMotionWiggleAt('rail-a', 'position-x', 0, 10.5);
+
+    expect(at10).not.toBe(at11);
+    expect(halfway).toBeCloseTo((at10 + at11) / 2, 12);
+  });
+
+  it('applies the outgoing key amplitude and drops a zero-amplitude outgoing key', () => {
+    const railId = 'rail-wiggle';
+    const wiggled = record(railId, [
+      channel('position-x', [key(0, 0, 'ease', 10), key(10, 100, 'ease', 0)]),
+    ]);
+    const plain = record(railId, [channel('position-x', [key(0, 0), key(10, 100)])]);
+
+    const expectedAtTwo = evaluateRailMotionChannel(plain, 'position-x', 2)
+      + 10 * railMotionWiggleAt(railId, 'position-x', 0, 2);
+    expect(evaluateRailMotionChannel(wiggled, 'position-x', 2)).toBeCloseTo(expectedAtTwo, 12);
+
+    // After the last key the outgoing key is the wiggle-free key at frame 10.
+    expect(evaluateRailMotionChannel(wiggled, 'position-x', 12)).toBe(100);
+  });
+
+  it('wiggles around a hold key step value', () => {
+    const railId = 'rail-hold-wiggle';
+    const rec = record(railId, [
+      channel('position-y', [key(0, 20, 'hold', 5), key(10, 80)]),
+    ]);
+
+    const expectedAtFour = 20 + 5 * railMotionWiggleAt(railId, 'position-y', 0, 4);
+    expect(evaluateRailMotionChannel(rec, 'position-y', 4)).toBeCloseTo(expectedAtFour, 12);
+    expect(evaluateRailMotionChannel(rec, 'position-y', 10)).toBe(80);
+  });
+
+  it('returns exactly the eased value when the amplitude is zero', () => {
+    const plain = record('rail-plain', [channel('rotation', [key(0, 0), key(10, 90, 'ease', 0)])]);
+    const withZeroWiggle = record('rail-plain', [
+      channel('rotation', [key(0, 0, 'ease', 0), key(10, 90, 'ease', 0)]),
+    ]);
+
+    for (let frame = 0; frame <= 12; frame += 0.5) {
+      expect(evaluateRailMotionChannel(withZeroWiggle, 'rotation', frame))
+        .toBe(evaluateRailMotionChannel(plain, 'rotation', frame));
+    }
+  });
+
+  it('clamps opacity to 0..1 and floors scale at 0 after adding wiggle', () => {
+    const railId = 'rail-clamp-wiggle';
+    const rec = record(railId, [
+      channel('opacity', [key(0, 1, 'ease', 1000)]),
+      channel('scale', [key(0, 0.05, 'ease', 1000)]),
+    ]);
+
+    let clampedHigh = false;
+    let clampedLow = false;
+    for (let frame = 0; frame <= 60; frame += 0.25) {
+      const opacityWiggle = railMotionWiggleAt(railId, 'opacity', 0, frame);
+      const scaleWiggle = railMotionWiggleAt(railId, 'scale', 0, frame);
+      const opacity = evaluateRailMotionChannel(rec, 'opacity', frame);
+      const scale = evaluateRailMotionChannel(rec, 'scale', frame);
+
+      expect(opacity).toBeGreaterThanOrEqual(0);
+      expect(opacity).toBeLessThanOrEqual(1);
+      expect(scale).toBeGreaterThanOrEqual(0);
+      if (opacityWiggle > 0.01) clampedHigh = true;
+      if (scaleWiggle < -0.01) clampedLow = true;
+    }
+
+    expect(clampedHigh).toBe(true);
+    expect(clampedLow).toBe(true);
   });
 });
 
