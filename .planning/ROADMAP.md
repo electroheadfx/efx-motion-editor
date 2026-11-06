@@ -110,7 +110,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 21 plans (16 executed, 5 gap-closure plans pending)
+**Plans:** 17/21 plans executed (16 executed, 5 gap-closure plans pending)
 
 Plans:
 **Wave 1**
@@ -152,7 +152,7 @@ Plans:
 - [x] 59-14-PLAN.md — REL-01/REL-02 gates, full-surface gates, 22-row traceability table and live UAT rows
 
 **Gap closure** *(verification gaps G1-G4; starts after Wave 11; the shared-file chain runs serially, and 59-21 runs beside 59-18 because it touches no shared file)*
-- [ ] 59-17-PLAN.md — G1/CR-03: add-channel command with availability, a reachable add-channel row, and an overlay menu that paints over the following rows (wave 1)
+- [x] 59-17-PLAN.md — G1/CR-03: add-channel command with availability, a reachable add-channel row, and an overlay menu that paints over the following rows (wave 1)
 - [ ] 59-18-PLAN.md — G3/CR-01 + MOTN-05: rail-set Copy and Duplicate carry the rails' motion and hash it (wave 2)
 - [ ] 59-21-PLAN.md — G1/IN-02: absent Motion channels render disabled and described, never as fake-editable fields (wave 2, depends on 59-17)
 - [ ] 59-19-PLAN.md — G2/CR-04: an infinite Loop Clip's motion view spans its full resolved duration (wave 3)
@@ -246,7 +246,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 59. Rail Motion Channels & v7 Interface | 16/16 | In Progress | - |
+| 59. Rail Motion Channels & v7 Interface | 17/21 | In Progress | - |
 | 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |

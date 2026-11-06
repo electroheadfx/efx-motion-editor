@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-14-PLAN.md
-last_updated: "2026-11-06T20:31:48.984Z"
+stopped_at: Completed 59-17-PLAN.md
+last_updated: "2026-11-06T20:48:18.352Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 0f65c8c38e0e59763d0a1a43568548a8a196adac
+state_head: 33ee036d7d5c693ea00850ed41571635de8c20f4
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 21
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 ## Current Position
 
-Phase: 59 (Rail Motion Channels & v7 Interface) — READY TO EXECUTE
-Plan: 16 of 16
+Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
+Plan: 18 of 21
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P15 | 37min | 4 tasks | 17 files |
 | Phase 59 P16 | 17 | 2 tasks | 8 files |
 | Phase 59 P14 | 22min | 3 tasks | 6 files |
+| Phase 59 P17 | 30min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: 59-14: Rust acceptance of a motion-bearing revision is proven by the cargo services::script_library gate and the frozen-source parity pin, not by a TS-side bridge mock.
 - [Phase 59]: 59-14: the v7 surface contract asserts both token presence and literal absence because a value-only pin cannot see an inlined copy.
 - [Phase 59]: 59-14: live rows stay pending; MOTN-06, MOTN-07 and MUI-01..MUI-05 remain Pending in REQUIREMENTS.md until human evidence.
+- [Phase 59]: The 59-02 reducer stays the only seed authority: addMotionChannel validates and delegates, and Scale/Opacity seed at 1 (factor/fraction, 1 = 100%) rather than the plan's display-unit 100.
+- [Phase 59]: The keyless menu is session state in one signal with exactly two named writers; the expansion toggle calls dismiss instead of assigning, and the menu paints in an absolute channelMenuZIndex-20 overlay so its open height never enters resolveTrackRowLayout.
 
 ### Pending Todos
 
@@ -206,8 +209,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T18:42:59.680Z
-Stopped at: Completed 59-14-PLAN.md
+Last session: 2026-11-06T20:48:18.324Z
+Stopped at: Completed 59-17-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
