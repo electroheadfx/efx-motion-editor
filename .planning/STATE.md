@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-05-PLAN.md
-last_updated: "2026-11-06T13:23:05.964Z"
+stopped_at: Completed 59-06-PLAN.md
+last_updated: "2026-11-06T13:36:41.135Z"
 last_activity: 2026-11-06
 last_activity_desc: Phase 59 execution started
-state_head: 63758648b79b029689951342c9ee14683d04981e
+state_head: 06dbf00983eaba7b2d8a86eb84348c349c6c935b
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 16
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 5 of 16
+Plan: 6 of 16
 Status: Ready to execute
 Last activity: 2026-11-06 — Phase 59 execution started
 
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P02 | 12min | 3 tasks | 2 files |
 | Phase 59 P03 | 55min | 3 tasks | 9 files |
 | Phase 59 P05 | 8min | 3 tasks | 8 files |
+| Phase 59 P06 | ~10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Carrier tests share ONE EFX_BASE document because createEfxPaintDocument mints random ids per call; the save/reopen pin uses registerDocument + hydrateRuntimeFromDocument
 - [Phase 59]: Rail-motion evaluator is the ONE interpolation authority: every consumer imports evaluateRailMotionChannel and the lane builder samples through it; wiggle is a stateless FNV-1a seeded function of (railId, channel, key frame, evaluated frame).
 - [Phase 59]: The evaluator imports the pure TIMELINE_GEOMETRY design-token data module for the 18px pitch (Task 3 single-source rule) instead of a literal; the plan's 'no view imports' wording is superseded and recorded as a deviation.
+- [Phase 59]: Rail identity is durable railId only: Loop Clips bind by loopId (no mint), bare Key Rails mint a UUID, anchorKeyId is a recovery hint; the single anchor-based first-bind lookup is confined to assignRailMotionRailViews and orphans are retained, never rebound.
+- [Phase 59]: Gate B transitions are pure collection transforms: delete-first-key re-stamps the anchor without rewriting frames, delete-only-key removes the record, split keeps the head railId, merge reports adoptedRailId/droppedRailId, and copy re-key validates the whole plan before cloning and fails closed with null.
 
 ### Pending Todos
 
@@ -153,8 +156,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T13:23:05.939Z
-Stopped at: Completed 59-05-PLAN.md
+Last session: 2026-11-06T13:36:41.114Z
+Stopped at: Completed 59-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
