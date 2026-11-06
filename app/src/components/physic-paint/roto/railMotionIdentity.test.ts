@@ -15,7 +15,9 @@ import {
   type RailMotionCopyPlanEntry,
   type RailMotionLoopClipSource,
   type RailMotionRailView,
+  type RailMotionRailViewSpanResolver,
 } from './railMotionIdentity';
+import * as railMotionIdentityModule from './railMotionIdentity';
 import {
   applyRailMotionEditToCollection,
   parsePhysicPaintRotoRailMotions,
@@ -109,6 +111,34 @@ function animatedRecord(
 function positionFrames(record: PhysicPaintRotoRailMotionRecord): readonly number[] {
   const channel = record.channels.find((entry) => entry.id === 'position-x');
   return channel === undefined ? [] : channel.keys.map((key) => key.frame);
+}
+
+type RailMotionViewSpanResolverFactory = (
+  ranges: readonly { readonly loopId: string; readonly effectiveEnd: number }[],
+) => RailMotionRailViewSpanResolver;
+
+/**
+ * The factory is reached through the module namespace so the RED run reports a
+ * real assertion ("expected 'undefined' to be 'function'") instead of a module
+ * link error while the export does not exist yet.
+ */
+function exportedSpanResolverFactory(): RailMotionViewSpanResolverFactory {
+  const factory = (railMotionIdentityModule as unknown as {
+    createRailMotionViewSpanResolver?: RailMotionViewSpanResolverFactory;
+  }).createRailMotionViewSpanResolver;
+  expect(typeof factory).toBe('function');
+  if (factory === undefined) {
+    throw new Error('railMotionIdentity does not export createRailMotionViewSpanResolver');
+  }
+  return factory;
+}
+
+function spanResolverFrom(
+  endByLoopId: Readonly<Record<string, number>>,
+): RailMotionRailViewSpanResolver {
+  return {
+    resolveLoopEndExclusive: (loopId: string) => endByLoopId[loopId] ?? null,
+  };
 }
 
 describe('rail motion identity bindings', () => {
@@ -290,6 +320,90 @@ describe('rail motion rail views', () => {
 
     const keyView = views.find((view) => view.anchorKeyId === 'A');
     expect(keyView?.railId).toBeNull();
+  });
+});
+
+describe('rail motion rail view span resolver', () => {
+  it('resolves the furthest resolved loop end per loopId', () => {
+    const resolver = exportedSpanResolverFactory()([
+      { loopId: 'loop-a', effectiveEnd: 12 },
+      { loopId: 'loop-a', effectiveEnd: 40 },
+      { loopId: 'loop-b', effectiveEnd: 7 },
+    ]);
+
+    expect(resolver.resolveLoopEndExclusive('loop-a')).toBe(40);
+    expect(resolver.resolveLoopEndExclusive('loop-b')).toBe(7);
+    expect(resolver.resolveLoopEndExclusive('loop-unknown')).toBeNull();
+    expect(exportedSpanResolverFactory()([]).resolveLoopEndExclusive('loop-a')).toBeNull();
+  });
+
+  it('answers only for a finite positive integer end', () => {
+    const resolver = exportedSpanResolverFactory()([
+      { loopId: 'zero', effectiveEnd: 0 },
+      { loopId: 'negative', effectiveEnd: -4 },
+      { loopId: 'fraction', effectiveEnd: 7.5 },
+      { loopId: 'infinite', effectiveEnd: Number.POSITIVE_INFINITY },
+      { loopId: 'nan', effectiveEnd: Number.NaN },
+    ]);
+
+    expect(resolver.resolveLoopEndExclusive('zero')).toBeNull();
+    expect(resolver.resolveLoopEndExclusive('negative')).toBeNull();
+    expect(resolver.resolveLoopEndExclusive('fraction')).toBeNull();
+    expect(resolver.resolveLoopEndExclusive('infinite')).toBeNull();
+    expect(resolver.resolveLoopEndExclusive('nan')).toBeNull();
+  });
+
+  it('extends an infinite clip view to the resolved end supplied by a structural resolver', () => {
+    const clip = loopClip({ loopId: 'loop-inf', repeat: 'infinity' });
+    const resolver = spanResolverFrom({ 'loop-inf': 40 });
+
+    expect(deriveRailMotionRailViews([clip], [])[0].endFrameExclusive).toBe(13);
+
+    const extended = deriveRailMotionRailViews([clip], [], undefined, undefined, resolver);
+    expect(extended[0].endFrameExclusive).toBe(40);
+    expect(extended[0].startFrame).toBe(10);
+  });
+
+  it('never lets a resolver shorten an infinite clip below its single-occurrence end', () => {
+    const resolver = spanResolverFrom({ 'loop-inf': 11 });
+
+    const views = deriveRailMotionRailViews(
+      [loopClip({ loopId: 'loop-inf', repeat: 'infinity' })],
+      [],
+      undefined,
+      undefined,
+      resolver,
+    );
+
+    expect(views[0].endFrameExclusive).toBe(13);
+  });
+
+  it('leaves finite clips and bare Key Rails untouched when a resolver is supplied', () => {
+    const resolver = spanResolverFrom({ 'loop-finite': 40, A: 40 });
+
+    const views = deriveRailMotionRailViews(
+      [loopClip({ loopId: 'loop-finite', repeat: 3 })],
+      [keyRailSegment('A', ['A', 'B'], 4, 9)],
+      undefined,
+      undefined,
+      resolver,
+    );
+
+    expect(views[0].endFrameExclusive).toBe(19);
+    expect(views[1].endFrameExclusive).toBe(10);
+  });
+
+  it('forwards the resolver through assignRailMotionRailViews', () => {
+    const views = assignRailMotionRailViews(
+      [motionRecord('loop-inf', 'k1')],
+      [loopClip({ loopId: 'loop-inf', repeat: 'infinity' })],
+      [],
+      undefined,
+      spanResolverFrom({ 'loop-inf': 40 }),
+    );
+
+    expect(views[0].railId).toBe('loop-inf');
+    expect(views[0].endFrameExclusive).toBe(40);
   });
 });
 
