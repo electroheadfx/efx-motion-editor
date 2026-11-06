@@ -119,16 +119,19 @@ export const TIMELINE_GEOMETRY = {
  * geometry. RED stub: the values land in GREEN.
  */
 export const TIMELINE_MOTION = {
-  cellWidth: 0,
-  cellHeight: 0,
-  cellRadius: 0,
-  keySize: 0,
-  keyRimWidth: 0,
-  keyRadius: 0,
-  curveWidth: 0,
+  /** The motion cell is 16 wide but only 18 tall — the drawing cell is 22. */
+  cellWidth: 16,
+  cellHeight: 18,
+  cellRadius: 3,
+  keySize: 6,
+  keyRimWidth: 1,
+  keyRadius: 1.5,
+  curveWidth: 1.5,
+  /** One lane is exactly the drawing rail's motionLaneHeight. */
   laneHeight: TIMELINE_GEOMETRY.motionLaneHeight,
-  headerClusterWidth: 0,
-  laneLabelGap: 0,
+  /** Header cluster: icon x=10, label x=24, count x=84, nav ends at x≈157. */
+  headerClusterWidth: 160,
+  laneLabelGap: 6,
 } as const;
 
 /**

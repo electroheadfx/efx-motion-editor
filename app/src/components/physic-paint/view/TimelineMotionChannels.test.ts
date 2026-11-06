@@ -99,6 +99,13 @@ function styleOf(vnode: TestVNode): Record<string, unknown> {
   return (vnode.props.style ?? {}) as Record<string, unknown>;
 }
 
+/** Text content of a leaf vnode (Preact hands single-expression children as an array). */
+function textOf(vnode: TestVNode): string {
+  return childrenOf(vnode)
+    .map((child) => (typeof child === 'string' || typeof child === 'number' ? String(child) : ''))
+    .join('');
+}
+
 function clickOf(vnode: TestVNode): () => void {
   const handler = vnode.props.onClick;
   if (typeof handler !== 'function') {
@@ -297,8 +304,8 @@ describe('TimelineMotionChannelLane', () => {
       'diamond',
       'next',
     ]);
-    expect(headerPart(tree, 'label').props.children).toBe('Position');
-    expect(headerPart(tree, 'count').props.children).toBe('3 keys');
+    expect(textOf(headerPart(tree, 'label'))).toBe('Position');
+    expect(textOf(headerPart(tree, 'count'))).toBe('3 keys');
   });
 
   it('draws one 6px key per SHARED Position frame, never one per axis', () => {
