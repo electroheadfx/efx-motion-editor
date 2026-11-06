@@ -168,6 +168,48 @@ export function animateRail(input: AnimateRailInput): RailMotionCommandResult {
   return success(next);
 }
 
+export interface AddMotionChannelInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  /** The rail the channel joins; null when no rail is selected. */
+  readonly railId: string | null;
+  /** The DISPLAY channel the affordance addressed (grouped Position -> `position-x`). */
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+}
+
+/**
+ * Adds one display channel to a rail that already carries motion (59-17, G1).
+ *
+ * The `+` row is the only caller: it lists exactly the display lanes the rail
+ * does NOT carry, so a refusal here means a stale inventory and names itself
+ * instead of silently no-oping (MUI-06). Grouped Position is addressed as
+ * `position-x` and the 59-02 reducer seeds BOTH axes in one edit — this
+ * command seeds nothing itself, so there is one seeding authority.
+ *
+ * A refusal returns the input collection reference untouched, so a refused add
+ * can never mutate the document (T-59-52).
+ */
+export function addMotionChannel(input: AddMotionChannelInput): RailMotionCommandResult {
+  const { records, railId, channelId } = input;
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('Animate this rail before adding a Motion channel.');
+
+  const groupedIds = resolveMotionCommandChannelIds(channelId);
+  if (record.channels.some((entry) => groupedIds.includes(entry.id))) {
+    return failure('This Motion channel is already present.');
+  }
+
+  const next = applyRailMotionEditToCollection(records, {
+    kind: 'add-channel',
+    railId,
+    channel: channelId,
+  });
+  // The reducer returns the SAME reference for an edit it could not apply; a
+  // silent no-op would hide the refusal from the user, so report it verbatim.
+  if (next === records) return failure('This Motion channel is already present.');
+  return success(next);
+}
+
 export interface SetMotionKeyAtCursorInput {
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
   readonly railId: string;
@@ -429,6 +471,7 @@ export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCo
 /** The commands the 59-12 action bar can publish. */
 export type RailMotionCommandId =
   | 'animate'
+  | 'add-motion-channel'
   | 'set-motion-key'
   | 'remove-motion-key'
   | 'previous-motion-key'
@@ -442,6 +485,12 @@ export interface RailMotionCommandAvailabilityInput {
   readonly hasRail: boolean;
   /** The rail carries a motion record. */
   readonly hasMotionRecord?: boolean;
+  /**
+   * At least one display lane still carries no keys, so an add can succeed
+   * (59-17). The add-channel row derives it from the same display projection
+   * the block renders, never from a second inventory walk.
+   */
+  readonly hasKeylessChannel?: boolean;
   /** A Motion channel is selected (or the addressed lane carries one). */
   readonly hasChannel?: boolean;
   /** The playhead sits inside the rail's keyed span. */
@@ -473,6 +522,10 @@ function unavailable(reason: string): RailMotionCommandAvailability {
  * cycle value (MUI-01/MOTN-01), so the only unavailable case is "no rail".
  * Every other command names its exact missing prerequisite, in a fixed order:
  * rail -> channel -> cursor span -> key presence -> adjacency.
+ *
+ * 59-17: `add-motion-channel` answers on the rail and the channel INVENTORY
+ * only. It addresses a lane, not a selected channel or a cursor frame, so its
+ * branch sits between the rail guard and the channel-selection guard.
  */
 export function resolveMotionCommandAvailability(
   input: RailMotionCommandAvailabilityInput,
@@ -481,6 +534,14 @@ export function resolveMotionCommandAvailability(
     return input.hasRail ? available() : unavailable('Select a rail to animate it.');
   }
   if (!input.hasRail) return unavailable('Select a rail first.');
+  if (input.command === 'add-motion-channel') {
+    if (input.hasMotionRecord !== true) {
+      return unavailable('Animate this rail before adding a Motion channel.');
+    }
+    return input.hasKeylessChannel === true
+      ? available()
+      : unavailable('Every Motion channel is already present on this rail.');
+  }
   if (input.command === 'previous-motion-key') {
     return input.hasAdjacentKey === true
       ? available()
