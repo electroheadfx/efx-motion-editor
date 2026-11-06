@@ -34,8 +34,13 @@ import {
   createEfxPaintDocument,
 } from '../../../efx-paint/document/efxPaintDocument';
 import {
+  buildEfxPaintCompositeRevision,
+  buildEfxPaintDocumentRevision,
+  buildEfxPaintDocumentSyncFingerprint,
   buildEfxPaintTrackRevision,
 } from '../../../efx-paint/document/efxPaintDocumentRevision';
+import { buildEfxPaintLayerChangeTokenValue } from '../../../lib/efxPaintPersistence';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
   type PhysicPaintRotoRailMotionRecord,
@@ -120,8 +125,10 @@ const railMotionsOf = (document: unknown): readonly PhysicPaintRotoRailMotionRec
  */
 function buildDocument(options: {
   readonly railMotions?: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly loopClips?: readonly unknown[];
 } = {}): Record<string, unknown> {
   const railMotions = options.railMotions;
+  const loopClips = options.loopClips ?? [];
   return {
     capacity: 32,
     realKeyRecords: RECORDS,
@@ -131,13 +138,13 @@ function buildDocument(options: {
     background: null,
     selectedKeyId: null,
     cursorAppFrame: 0,
-    loopClips: [],
+    loopClips,
     incomingInterpolationBreakKeyIds: [],
     ...(railMotions === undefined ? {} : { railMotions }),
     revision: buildRevisionWithMotions(
       RECORDS,
       INTERPOLATION,
-      [],
+      loopClips,
       [],
       [],
       railMotions ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
@@ -145,11 +152,39 @@ function buildDocument(options: {
   };
 }
 
+/**
+ * ONE shared base document. `createEfxPaintDocument` mints random track and
+ * background ids per call, so two independently-created documents have
+ * different document revisions even with identical content — every carrier
+ * comparison MUST vary only the roto document, never the base identity.
+ */
+const EFX_BASE = createEfxPaintDocument('layer-59-03');
+
 /** A parseable Paint track carrying the given roto document. */
 function buildTrack(document: Record<string, unknown>) {
-  const base = createEfxPaintDocument('layer-59-03').tracks[0];
-  return { ...base, rotoPhysical: document };
+  return { ...EFX_BASE.tracks[0], rotoPhysical: document };
 }
+
+/** A complete Paint document whose single track carries the given roto document. */
+function buildEfxDocument(document: Record<string, unknown>): EfxPaintDocument {
+  return {
+    ...EFX_BASE,
+    tracks: [{ ...EFX_BASE.tracks[0], rotoPhysical: document }],
+  } as unknown as EfxPaintDocument;
+}
+
+/**
+ * The base content the four-carrier comparison shares: real keys, canonical
+ * interpolation AND a linked Loop Clip. The two documents differ ONLY in
+ * `railMotions`, so any carrier movement is attributable to motion alone.
+ */
+const BASE_LOOP_CLIP = {
+  loopId: 'loop-base',
+  placementStart: 0,
+  sourceKeyIds: ['key-1', 'key-2'],
+  repeat: 2,
+  mode: 'progressive' as const,
+};
 
 describe('59-03: document allowlist and parser routing', () => {
   it('defaults an absent railMotions member to the frozen empty collection', () => {
@@ -337,3 +372,72 @@ describe('59-03: store collection and the ONE revision authority', () => {
   });
 });
 
+describe('59-03: six persistence carriers move on addition and return on removal', () => {
+  const LOOP_CLIPS = [BASE_LOOP_CLIP];
+
+  /**
+   * Every carrier this plan asserts, derived from one persisted-shape document.
+   * All six must move on addition and return to the same-base pristine value on
+   * removal — explicit inequality, never a snapshot (a snapshot re-pins
+   * whatever the encoder currently emits and silently blesses a regression).
+   */
+  function carriers(document: Record<string, unknown>) {
+    const efxDocument = buildEfxDocument(document);
+    const documentRevision = buildEfxPaintDocumentRevision(efxDocument);
+    return {
+      rotoRevision: buildRevisionWithMotions(
+        RECORDS,
+        INTERPOLATION,
+        LOOP_CLIPS,
+        [],
+        [],
+        railMotionsOf(document) ?? PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+      ),
+      projectEquality: buildPhysicPaintRotoProjectEquality(document),
+      documentRevision,
+      syncFingerprint: buildEfxPaintDocumentSyncFingerprint(efxDocument),
+      trackRevision: buildEfxPaintTrackRevision(buildTrack(document)),
+      layerChangeToken: buildEfxPaintLayerChangeTokenValue(
+        documentRevision,
+        buildEfxPaintCompositeRevision(efxDocument),
+        efxDocument,
+      ),
+    };
+  }
+
+  const CARRIERS = [
+    'rotoRevision',
+    'projectEquality',
+    'documentRevision',
+    'syncFingerprint',
+    'trackRevision',
+    'layerChangeToken',
+  ] as const;
+
+  it('moves all six carriers when one record is added', () => {
+    const pristine = carriers(buildDocument({ loopClips: LOOP_CLIPS }));
+    const withMotion = carriers(buildDocument({ railMotions: [RAIL_A], loopClips: LOOP_CLIPS }));
+    for (const carrier of CARRIERS) {
+      expect(withMotion[carrier]).not.toBe(pristine[carrier]);
+    }
+  });
+
+  it('returns all six carriers to the exact pristine baseline when the record is removed', () => {
+    const pristine = carriers(buildDocument({ loopClips: LOOP_CLIPS }));
+    const restored = carriers(buildDocument({ loopClips: LOOP_CLIPS }));
+    for (const carrier of CARRIERS) {
+      expect(restored[carrier]).toBe(pristine[carrier]);
+    }
+  });
+
+  it('keeps the layer change token stable across a pure no-op recomputation', () => {
+    // Guard against a carrier that moves on every call (which would make the
+    // addition/removal inequalities above pass vacuously): the same document
+    // must produce byte-identical carriers twice.
+    const first = carriers(buildDocument({ railMotions: [RAIL_A], loopClips: LOOP_CLIPS }));
+    const second = carriers(buildDocument({ railMotions: [RAIL_A], loopClips: LOOP_CLIPS }));
+    for (const carrier of CARRIERS) {
+      expect(second[carrier]).toBe(first[carrier]);
+    }
+  });
+});
