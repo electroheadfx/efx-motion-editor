@@ -447,6 +447,298 @@ export function createPhysicPaintRotoRailId(): string {
   return crypto.randomUUID();
 }
 
+function compareRailMotionRecords(
+  left: PhysicPaintRotoRailMotionRecord,
+  right: PhysicPaintRotoRailMotionRecord,
+): number {
+  return left.railId < right.railId ? -1 : left.railId > right.railId ? 1 : 0;
+}
+
+function canonicalizeRailMotionRecords(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  if (records.length === 0) return PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY;
+
+  const canonical: PhysicPaintRotoRailMotionRecord[] = records.map((entry) => Object.freeze({
+    railId: entry.railId,
+    anchorKeyId: entry.anchorKeyId,
+    channels: canonicalizeRailMotionChannels(entry.channels),
+  }));
+  canonical.sort(compareRailMotionRecords);
+  return Object.freeze(canonical);
+}
+
+function railMotionPositionSibling(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+): PhysicPaintRotoRailMotionChannelId | null {
+  if (channelId === 'position-x') return 'position-y';
+  if (channelId === 'position-y') return 'position-x';
+  return null;
+}
+
+function railMotionIdentityValue(channelId: PhysicPaintRotoRailMotionChannelId): number {
+  switch (channelId) {
+    case 'position-x':
+    case 'position-y':
+    case 'rotation':
+      return 0;
+    case 'scale':
+    case 'opacity':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * The value the channel holds at `frame` without interpolation: the outgoing
+ * key value, else the incoming key value (endpoint hold), else the identity.
+ */
+function railMotionStepValueAt(
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  frame: number,
+): number {
+  let previous: PhysicPaintRotoRailMotionKey | null = null;
+  let next: PhysicPaintRotoRailMotionKey | null = null;
+  for (const key of keys) {
+    if (key.frame <= frame && (previous === null || key.frame > previous.frame)) previous = key;
+    if (key.frame >= frame && (next === null || key.frame < next.frame)) next = key;
+  }
+  return previous?.value ?? next?.value ?? 0;
+}
+
+function upsertRailMotionKey(
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  frame: number,
+  value: number,
+  easing: PhysicPaintRotoRailMotionEasing | undefined,
+  wiggle: number | undefined,
+): readonly PhysicPaintRotoRailMotionKey[] {
+  const existingIndex = keys.findIndex((entry) => entry.frame === frame);
+  if (existingIndex < 0) {
+    return [
+      ...keys,
+      { frame, value, easing: easing ?? 'ease', wiggle: wiggle ?? 0 },
+    ];
+  }
+  return keys.map((entry, index) => (index === existingIndex
+    ? { frame, value, easing: easing ?? entry.easing, wiggle: wiggle ?? entry.wiggle }
+    : entry));
+}
+
+function replaceRailMotionRecord(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  index: number,
+  next: PhysicPaintRotoRailMotionRecord,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const nextRecords = records.map((entry, entryIndex) => (entryIndex === index ? next : entry));
+  return canonicalizeRailMotionRecords(nextRecords);
+}
+
+function assertRailMotionEditChannel(channel: PhysicPaintRotoRailMotionChannelId): void {
+  if (!isRailMotionChannelId(channel)) {
+    throw new Error(`PhysicPaintRotoRailMotions: unknown channel id "${String(channel)}" in edit.`);
+  }
+}
+
+function assertRailMotionEditFrame(frame: number): void {
+  if (!isRailMotionFrame(frame)) {
+    throw new Error(`PhysicPaintRotoRailMotions: invalid frame ${String(frame)} in edit; expected an integer in 0..${RAIL_MOTION_FRAME_LIMIT}.`);
+  }
+}
+
+function assertRailMotionEditValue(
+  channel: PhysicPaintRotoRailMotionChannelId,
+  value: number,
+): void {
+  if (typeof value !== 'number' || !railMotionValueIsValid(channel, value)) {
+    throw new Error(`PhysicPaintRotoRailMotions: value ${String(value)} is outside the channel domain for "${channel}" in edit.`);
+  }
+}
+
+function applyAnimateEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'animate' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  if (!isBoundedRailMotionId(edit.railId)) {
+    throw new Error('PhysicPaintRotoRailMotions: invalid railId in animate edit.');
+  }
+  // D-04: a rail that already carries a record is never re-seeded.
+  if (records.some((entry) => entry.railId === edit.railId)) return records;
+  if (!isBoundedRailMotionId(edit.anchorKeyId)) {
+    throw new Error('PhysicPaintRotoRailMotions: invalid anchorKeyId in animate edit.');
+  }
+  assertRailMotionEditFrame(edit.frame);
+
+  const seedChannel = (
+    id: 'position-x' | 'position-y',
+  ): PhysicPaintRotoRailMotionChannel => ({
+    id,
+    keys: [{ frame: edit.frame, value: 0, easing: 'ease', wiggle: 0 }],
+  });
+
+  return canonicalizeRailMotionRecords([
+    ...records,
+    {
+      railId: edit.railId,
+      anchorKeyId: edit.anchorKeyId,
+      channels: [seedChannel('position-x'), seedChannel('position-y')],
+    },
+  ]);
+}
+
+function applySetKeyEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'set-key' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) return records;
+
+  assertRailMotionEditChannel(edit.channel);
+  assertRailMotionEditFrame(edit.frame);
+  assertRailMotionEditValue(edit.channel, edit.value);
+  if (edit.easing !== undefined && !isRailMotionEasing(edit.easing)) {
+    throw new Error(`PhysicPaintRotoRailMotions: invalid easing "${String(edit.easing)}" in set-key edit.`);
+  }
+  if (edit.wiggle !== undefined && !isRailMotionWiggle(edit.wiggle)) {
+    throw new Error(`PhysicPaintRotoRailMotions: invalid wiggle ${String(edit.wiggle)} in set-key edit.`);
+  }
+
+  const record = records[recordIndex];
+  // D-08: a channel that carries no motion never mutates silently.
+  if (!record.channels.some((entry) => entry.id === edit.channel)) return records;
+
+  const siblingId = railMotionPositionSibling(edit.channel);
+  if (siblingId !== null && edit.pairedValue !== undefined) {
+    assertRailMotionEditValue(siblingId, edit.pairedValue);
+  }
+
+  const channels = record.channels.map((entry) => {
+    if (entry.id === edit.channel) {
+      return {
+        id: entry.id,
+        keys: upsertRailMotionKey(entry.keys, edit.frame, edit.value, edit.easing, edit.wiggle),
+      };
+    }
+    if (siblingId === null || entry.id !== siblingId) return entry;
+
+    const existing = entry.keys.find((key) => key.frame === edit.frame);
+    if (existing !== undefined) {
+      if (edit.pairedValue === undefined) return entry;
+      return {
+        id: entry.id,
+        keys: entry.keys.map((key) => (key.frame === edit.frame
+          ? { ...key, value: edit.pairedValue as number }
+          : key)),
+      };
+    }
+
+    const siblingValue = edit.pairedValue ?? railMotionStepValueAt(entry.keys, edit.frame);
+    return {
+      id: entry.id,
+      keys: [
+        ...entry.keys,
+        { frame: edit.frame, value: siblingValue, easing: edit.easing ?? 'ease', wiggle: 0 },
+      ],
+    };
+  });
+
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
+}
+
+function applyRemoveKeyEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'remove-key' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) return records;
+
+  assertRailMotionEditChannel(edit.channel);
+  assertRailMotionEditFrame(edit.frame);
+
+  const record = records[recordIndex];
+  const addressed = record.channels.find((entry) => entry.id === edit.channel);
+  if (addressed === undefined) return records;
+  if (!addressed.keys.some((key) => key.frame === edit.frame)) return records;
+
+  const siblingId = railMotionPositionSibling(edit.channel);
+  const channels: PhysicPaintRotoRailMotionChannel[] = [];
+  for (const entry of record.channels) {
+    const grouped = entry.id === edit.channel || (siblingId !== null && entry.id === siblingId);
+    if (!grouped) {
+      channels.push(entry);
+      continue;
+    }
+    const keys = entry.keys.filter((key) => key.frame !== edit.frame);
+    if (keys.length > 0) channels.push({ id: entry.id, keys });
+  }
+
+  // D-15: key -> channel when empty -> record when no channels remain.
+  if (channels.length === 0) {
+    return canonicalizeRailMotionRecords(records.filter((_, index) => index !== recordIndex));
+  }
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
+}
+
+function applyAddChannelEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'add-channel' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) return records;
+
+  assertRailMotionEditChannel(edit.channel);
+
+  const record = records[recordIndex];
+  const siblingId = railMotionPositionSibling(edit.channel);
+  const groupedIds: readonly PhysicPaintRotoRailMotionChannelId[] = siblingId === null
+    ? [edit.channel]
+    : ['position-x', 'position-y'];
+  if (record.channels.some((entry) => groupedIds.includes(entry.id))) return records;
+
+  const seedKey = (value: number): PhysicPaintRotoRailMotionKey => ({
+    frame: 0,
+    value,
+    easing: 'hold',
+    wiggle: 0,
+  });
+
+  const seeds: PhysicPaintRotoRailMotionChannel[] = siblingId === null
+    ? [{ id: edit.channel, keys: [seedKey(railMotionIdentityValue(edit.channel))] }]
+    : [
+      { id: 'position-x', keys: [seedKey(0)] },
+      { id: 'position-y', keys: [seedKey(0)] },
+    ];
+
+  return replaceRailMotionRecord(records, recordIndex, {
+    ...record,
+    channels: [...record.channels, ...seeds],
+  });
+}
+
+function applyRemoveChannelEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'remove-channel' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) return records;
+
+  assertRailMotionEditChannel(edit.channel);
+
+  const record = records[recordIndex];
+  const siblingId = railMotionPositionSibling(edit.channel);
+  const groupedIds: readonly PhysicPaintRotoRailMotionChannelId[] = siblingId === null
+    ? [edit.channel]
+    : ['position-x', 'position-y'];
+  if (!record.channels.some((entry) => groupedIds.includes(entry.id))) return records;
+
+  const remaining = record.channels.filter((entry) => !groupedIds.includes(entry.id));
+  if (remaining.length === 0) {
+    return canonicalizeRailMotionRecords(records.filter((_, index) => index !== recordIndex));
+  }
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels: remaining });
+}
+
 /**
  * Applies one pure edit to the rail motion collection.
  *
@@ -457,7 +749,20 @@ export function createPhysicPaintRotoRailId(): string {
  */
 export function applyRailMotionEditToCollection(
   records: readonly PhysicPaintRotoRailMotionRecord[],
-  _edit: PhysicPaintRotoRailMotionEdit,
+  edit: PhysicPaintRotoRailMotionEdit,
 ): readonly PhysicPaintRotoRailMotionRecord[] {
-  return records;
+  switch (edit.kind) {
+    case 'animate':
+      return applyAnimateEdit(records, edit);
+    case 'set-key':
+      return applySetKeyEdit(records, edit);
+    case 'remove-key':
+      return applyRemoveKeyEdit(records, edit);
+    case 'add-channel':
+      return applyAddChannelEdit(records, edit);
+    case 'remove-channel':
+      return applyRemoveChannelEdit(records, edit);
+    default:
+      throw new Error(`PhysicPaintRotoRailMotions: unknown edit kind "${String((edit as { kind?: unknown }).kind)}".`);
+  }
 }
