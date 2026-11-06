@@ -12,7 +12,7 @@ Each maps to exactly one roadmap phase.
 
 - [x] **MOTN-01**: User can add, edit, and remove Motion keys on any rail — Standard, Motion, Static, Reveal, and bare Key Rails — with no conversion step and no cycle value
 - [ ] **MOTN-02**: Motion keys are independent of drawing keys; a rail with no drawing key animates, and adding or removing a Motion key never creates or alters a drawing key
-- [ ] **MOTN-03**: User can animate Position (grouped whole-position, or split X + Y channels), Scale, Rotation, and Opacity
+- [x] **MOTN-03**: User can animate Position (grouped whole-position, or split X + Y channels), Scale, Rotation, and Opacity
 - [x] **MOTN-04**: Channels open on demand, one at a time; no lane appears by default
 - [x] **MOTN-05**: Motion lives in rail-local time — keys are positioned relative to the rail start and survive moving or repeating the rail
 - [ ] **MOTN-06**: Repeat semantics are observable — motion holds at the last key or fits the full occurrence
@@ -107,7 +107,7 @@ Deferred to a later milestone. Not in the current roadmap.
 |-------------|-------|--------|
 | MOTN-01 | Phase 59 | Complete |
 | MOTN-02 | Phase 59 | Pending |
-| MOTN-03 | Phase 59 | Pending |
+| MOTN-03 | Phase 59 | Complete |
 | MOTN-04 | Phase 59 | Complete |
 | MOTN-05 | Phase 59 | Complete |
 | MOTN-06 | Phase 59 | Pending |
