@@ -12,7 +12,9 @@
  */
 
 import type {
+  PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 
@@ -53,26 +55,150 @@ function railMotionIdentityChannelValue(
   }
 }
 
-export function evaluateRailMotion(
-  _record: PhysicPaintRotoRailMotionRecord | null,
-  _railLocalFrame: number,
-): RailMotionTransform {
-  return RAIL_MOTION_IDENTITY_TRANSFORM;
+function assertFiniteRailMotionFrame(frame: number): void {
+  if (!Number.isFinite(frame)) {
+    throw new Error(`PhysicPaintRotoRailMotionEvaluator: rail-local frame ${String(frame)} must be finite.`);
+  }
+}
+
+/** The eased curve: monotone on 0..1, exact at both endpoints, no overshoot. */
+function railMotionSmoothstep(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+interface RailMotionSegment {
+  /** The channel value before wiggle, after endpoint hold / ease. */
+  readonly value: number;
+  /**
+   * The OUTGOING key: the key at or before the evaluated frame. Null before
+   * the first key, which is the one span that carries no wiggle amplitude.
+   */
+  readonly outgoingKey: PhysicPaintRotoRailMotionKey | null;
+}
+
+/**
+ * Resolves the value segment at `frame`. Keys are canonical (strictly frame
+ * ascending, at most 4096 per channel by the parser cap), so the linear scan
+ * with its early exit is bounded and allocation-free.
+ *
+ * Before the first key the first value holds; at or after the last key the
+ * last value holds. Between two keys the OUTGOING key decides: `hold` steps,
+ * `ease` runs the smoothstep.
+ */
+function resolveRailMotionSegment(
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  frame: number,
+): RailMotionSegment | null {
+  if (keys.length === 0) return null;
+  const first = keys[0];
+  if (frame < first.frame) return { value: first.value, outgoingKey: null };
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const current = keys[index];
+    if (current.frame > frame) break;
+    const next = keys[index + 1];
+    if (next === undefined) return { value: current.value, outgoingKey: current };
+    if (frame < next.frame) {
+      if (current.easing === 'hold') return { value: current.value, outgoingKey: current };
+      const span = next.frame - current.frame;
+      const position = span <= 0 ? 1 : (frame - current.frame) / span;
+      return {
+        value: current.value + (next.value - current.value) * railMotionSmoothstep(position),
+        outgoingKey: current,
+      };
+    }
+  }
+
+  // Unreachable for canonical ascending keys; keeps the evaluator total.
+  const last = keys[keys.length - 1];
+  return { value: last.value, outgoingKey: last };
+}
+
+/**
+ * Appearance clamps, documented once here:
+ * - Opacity is clamped to 0..1 after evaluation because the seeded wiggle can
+ *   push a legal 0..1 key past either bound.
+ * - Scale is floored at 0 because a negative scale would mirror the raster,
+ *   which is not a shipped behavior (the parser already rejects negative
+ *   stored keys).
+ * Position and rotation are deliberately unclamped.
+ */
+function clampRailMotionChannelValue(
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  value: number,
+): number {
+  switch (channelId) {
+    case 'opacity':
+      return Math.min(1, Math.max(0, value));
+    case 'scale':
+      return Math.max(0, value);
+    default:
+      return value;
+  }
+}
+
+function railMotionChannelValueAt(
+  railId: string,
+  channel: PhysicPaintRotoRailMotionChannel,
+  frame: number,
+): number {
+  const segment = resolveRailMotionSegment(channel.keys, frame);
+  if (segment === null) return railMotionIdentityChannelValue(channel.id);
+
+  const outgoing = segment.outgoingKey;
+  const value = outgoing === null || outgoing.wiggle === 0
+    ? segment.value
+    : segment.value + outgoing.wiggle * railMotionWiggleAt(railId, channel.id, outgoing.frame, frame);
+
+  return clampRailMotionChannelValue(channel.id, value);
 }
 
 export function evaluateRailMotionChannel(
-  _record: PhysicPaintRotoRailMotionRecord | null,
+  record: PhysicPaintRotoRailMotionRecord | null,
   channelId: PhysicPaintRotoRailMotionChannelId,
-  _railLocalFrame: number,
+  railLocalFrame: number,
 ): number {
-  return railMotionIdentityChannelValue(channelId);
+  assertFiniteRailMotionFrame(railLocalFrame);
+  if (record === null) return railMotionIdentityChannelValue(channelId);
+
+  const channel = record.channels.find((entry) => entry.id === channelId);
+  if (channel === undefined) return railMotionIdentityChannelValue(channelId);
+
+  return railMotionChannelValueAt(record.railId, channel, railLocalFrame);
 }
 
+export function evaluateRailMotion(
+  record: PhysicPaintRotoRailMotionRecord | null,
+  railLocalFrame: number,
+): RailMotionTransform {
+  assertFiniteRailMotionFrame(railLocalFrame);
+  if (record === null || record.channels.length === 0) return RAIL_MOTION_IDENTITY_TRANSFORM;
+
+  return Object.freeze({
+    translateX: evaluateRailMotionChannel(record, 'position-x', railLocalFrame),
+    translateY: evaluateRailMotionChannel(record, 'position-y', railLocalFrame),
+    scale: evaluateRailMotionChannel(record, 'scale', railLocalFrame),
+    // The ONE degrees -> radians conversion on the evaluator surface. The
+    // channel value stays in degrees everywhere else and no consumer converts.
+    rotationRadians: evaluateRailMotionChannel(record, 'rotation', railLocalFrame) * Math.PI / 180,
+    opacity: evaluateRailMotionChannel(record, 'opacity', railLocalFrame),
+  });
+}
+
+/**
+ * The ONLY place the rail-local subtraction lives. Both inputs must be finite;
+ * a malformed time is a programming error, not a frame to guess at.
+ */
 export function resolveRailLocalFrame(
-  _appFrame: number,
-  _railStart: number,
+  appFrame: number,
+  railStart: number,
 ): number {
-  return 0;
+  if (!Number.isFinite(appFrame) || !Number.isFinite(railStart)) {
+    throw new Error(
+      `PhysicPaintRotoRailMotionEvaluator: resolveRailLocalFrame requires finite appFrame and railStart (got ${String(appFrame)} and ${String(railStart)}).`,
+    );
+  }
+  return Math.max(0, appFrame - railStart);
 }
 
 /**
