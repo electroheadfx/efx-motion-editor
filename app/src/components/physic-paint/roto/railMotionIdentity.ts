@@ -70,6 +70,44 @@ export interface RailMotionRailView {
   readonly loopId: string | null;
 }
 
+/**
+ * Resolves a Loop Clip's real half-open end from the caller's loop-resolution
+ * context. Structural on purpose: the identity module stays pure, so the span
+ * arrives as an injected callback instead of a store or document import.
+ */
+export interface RailMotionRailViewSpanResolver {
+  readonly resolveLoopEndExclusive: (loopId: string) => number | null;
+}
+
+/**
+ * Builds a span resolver from the derived loop ranges. Lifecycle Infinity
+ * fragments share one loopId, so the resolver keeps the maximum `effectiveEnd`
+ * per loopId — the single span covering every fragment. An answer is returned
+ * only when it is a finite positive integer; anything else means "unknown" and
+ * the view keeps its single-occurrence fallback.
+ */
+export function createRailMotionViewSpanResolver(
+  ranges: readonly { readonly loopId: string; readonly effectiveEnd: number }[],
+): RailMotionRailViewSpanResolver {
+  const endByLoopId = new Map<string, number>();
+  for (const range of ranges) {
+    const current = endByLoopId.get(range.loopId);
+    if (current === undefined || range.effectiveEnd > current) {
+      endByLoopId.set(range.loopId, range.effectiveEnd);
+    }
+  }
+
+  return Object.freeze({
+    resolveLoopEndExclusive: (loopId: string): number | null => {
+      const end = endByLoopId.get(loopId);
+      if (end === undefined || !Number.isFinite(end) || !Number.isInteger(end) || end <= 0) {
+        return null;
+      }
+      return end;
+    },
+  }) as RailMotionRailViewSpanResolver;
+}
+
 export interface RailMotionReconciliation {
   readonly active: ReadonlyMap<string, PhysicPaintRotoRailMotionRecord>;
   readonly orphaned: readonly PhysicPaintRotoRailMotionRecord[];
@@ -162,8 +200,8 @@ export function describeRailMotionOrphan(record: PhysicPaintRotoRailMotionRecord
 
 /**
  * The Loop Clip occurrence count used for the rail view span. An `infinity`
- * clip is a single visible occurrence here; the boundary scan that freezes its
- * real duration belongs to the resolver, not to identity.
+ * clip is a single visible occurrence here: this is the no-resolver fallback,
+ * and the injected span resolver owns the real infinite duration.
  */
 function railViewOccurrences(repeat: number | 'infinity'): number {
   if (typeof repeat !== 'number' || !Number.isFinite(repeat) || repeat < 1) return 1;
@@ -197,16 +235,21 @@ export function deriveRailMotionRailViews(
   keyRailSegments: readonly KeyRailSegment[],
   railTypeFor?: RailMotionRailTypeResolver,
   boundRailIdByAnchor?: ReadonlyMap<string, string>,
+  viewSpanResolver?: RailMotionRailViewSpanResolver,
 ): readonly RailMotionRailView[] {
   const views: RailMotionRailView[] = [];
 
   for (const clip of loopClips) {
     const sourceKeyIds = clip.sourceKeyIds;
+    const fallbackEnd = clip.placementStart + sourceKeyIds.length * railViewOccurrences(clip.repeat);
+    const endFrameExclusive = clip.repeat === 'infinity'
+      ? Math.max(fallbackEnd, viewSpanResolver?.resolveLoopEndExclusive(clip.loopId) ?? fallbackEnd)
+      : fallbackEnd;
     views.push(freezeRailView({
       railId: clip.loopId,
       anchorKeyId: sourceKeyIds[0] ?? clip.loopId,
       startFrame: clip.placementStart,
-      endFrameExclusive: clip.placementStart + sourceKeyIds.length * railViewOccurrences(clip.repeat),
+      endFrameExclusive,
       keyIds: sourceKeyIds,
       railType: railTypeFor === undefined
         ? resolveTimelineRailType(clip.railKind, clip.mode ?? null)
@@ -246,6 +289,7 @@ export function assignRailMotionRailViews(
   loopClips: readonly RailMotionLoopClipSource[],
   keyRailSegments: readonly KeyRailSegment[],
   railTypeFor?: RailMotionRailTypeResolver,
+  viewSpanResolver?: RailMotionRailViewSpanResolver,
 ): readonly RailMotionRailView[] {
   const liveLoopIds = new Set(loopClips.map((clip) => clip.loopId));
   const boundRailIdByAnchor = new Map<string, string>();
@@ -263,7 +307,13 @@ export function assignRailMotionRailViews(
     if (boundRailId !== null) boundRailIdByAnchor.set(segment.firstKeyId, boundRailId);
   }
 
-  return deriveRailMotionRailViews(loopClips, keyRailSegments, railTypeFor, boundRailIdByAnchor);
+  return deriveRailMotionRailViews(
+    loopClips,
+    keyRailSegments,
+    railTypeFor,
+    boundRailIdByAnchor,
+    viewSpanResolver,
+  );
 }
 
 /**
