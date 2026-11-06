@@ -13,7 +13,7 @@ import {
   projectPhysicsPaintLoopClipPresentation,
 } from './physicsPaintLoopClipPresentation';
 import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
-import { resolveTrackRowLayout } from './PhysicsPaintWorkflowStrip';
+import { resolveReorderInsertionIndex, resolveTrackRowLayout } from './PhysicsPaintWorkflowStrip';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -2935,15 +2935,13 @@ describe('59-11 Task 2: resolveTrackRowLayout — one measured layout for body, 
     // The uniform product is gone — the content height is the layout total.
     expect(code).not.toContain('rowCount * STRIP_ROW_HEIGHT_PX');
     expect(code).toContain('const contentHeightPx = rowLayout.totalHeight;');
-    // The row unit's uses are enumerated: its definition, the ONE use inside
-    // resolveTrackRowLayout, the min-height unit — and, until Task 3 replaces
-    // it, the uniform reorder division (the last remover of this plan).
+    // The row unit appears in exactly three places: its definition, its ONE use
+    // inside resolveTrackRowLayout, and the min-height row unit.
     const rowUnitLines = code.split('\n').filter((line) => line.includes('STRIP_ROW_HEIGHT_PX'));
-    expect(rowUnitLines).toHaveLength(4);
+    expect(rowUnitLines).toHaveLength(3);
     expect(rowUnitLines[0]).toContain('const STRIP_ROW_HEIGHT_PX = 31;');
     expect(rowUnitLines[1]).toContain('const railHeight = STRIP_ROW_HEIGHT_PX;');
     expect(rowUnitLines[2]).toContain('STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX');
-    expect(rowUnitLines[3]).toContain('/ STRIP_ROW_HEIGHT_PX');
     // The lane count is the shared row-side derivation (59-10's display
     // projection), never a second guess, and the strip reads the one session
     // expansion signal narrowly — it never writes it.
@@ -2953,5 +2951,103 @@ describe('59-11 Task 2: resolveTrackRowLayout — one measured layout for body, 
     // The header column consumes the SAME array instance the body uses.
     expect(code).toContain('rowLayout: rowLayout.rows,');
     expect(code).toContain('rowLayout.rows');
+  });
+});
+
+describe('59-11 Task 3: resolveReorderInsertionIndex — measured, block-aware reorder (MUI-05, T-59-31)', () => {
+  /** The pre-59-11 uniform computation, kept here as the equivalence oracle. */
+  function legacyIndex(clientY: number, bandTop: number, scrollTop: number, paintCount: number): number {
+    const raw = Math.floor((clientY - bandTop + scrollTop) / 31);
+    return Math.max(0, Math.min(paintCount - 1, raw));
+  }
+
+  const collapsed = (count: number) => resolveTrackRowLayout(
+    Array.from({ length: count }, (_, index) => ({ trackId: `t${index}`, laneCount: 0 })),
+  );
+
+  it('is byte-identical to the uniform computation for every integer point when no block is open', () => {
+    for (const paintCount of [1, 2, 3, 5]) {
+      const layout = collapsed(paintCount);
+      for (let y = -31; y <= paintCount * 31 + 62; y += 1) {
+        for (const [bandTop, scrollTop] of [[100, 0], [0, 0], [40, 31], [200, 77]] as const) {
+          const expected = legacyIndex(y + bandTop, bandTop, scrollTop, paintCount);
+          const actual = resolveReorderInsertionIndex(y + bandTop, { top: bandTop, scrollTop }, layout.rows);
+          expect(actual, `count=${paintCount} y=${y} top=${bandTop} scroll=${scrollTop}`).toBe(expected);
+        }
+      }
+    }
+  });
+
+  it('resolves three points INSIDE an open block to that block\'s own rail index, never a neighbour', () => {
+    // Row 0: three lanes → height 31 + 54 + 2 = 87. Row 1's rail starts at 87.
+    const layout = resolveTrackRowLayout([
+      { trackId: 't0', laneCount: 3 },
+      { trackId: 't1', laneCount: 0 },
+    ]);
+    expect(layout.rows[0]!.height).toBe(87);
+    const band = { top: 0, scrollTop: 0 };
+    // 31 and 50 would both divide to index 1 under the uniform rule; 86 is the
+    // block's last pixel before the next rail row.
+    for (const y of [31, 50, 86]) {
+      expect(resolveReorderInsertionIndex(y, band, layout.rows), `y=${y}`).toBe(0);
+    }
+    // The next row's rail band begins exactly at 87.
+    expect(resolveReorderInsertionIndex(87, band, layout.rows)).toBe(1);
+    expect(resolveReorderInsertionIndex(86.9, band, layout.rows)).toBe(0);
+
+    // A block on the SECOND row (offset 31, height 87) resolves its interior
+    // to index 1 — the block's own rail — and the row after it to index 2.
+    const middle = resolveTrackRowLayout([
+      { trackId: 't0', laneCount: 0 },
+      { trackId: 't1', laneCount: 3 },
+      { trackId: 't2', laneCount: 0 },
+    ]);
+    expect(middle.rows[1]!.offset).toBe(31);
+    expect(middle.rows[2]!.offset).toBe(118);
+    expect(resolveReorderInsertionIndex(32, band, middle.rows)).toBe(1);
+    expect(resolveReorderInsertionIndex(60, band, middle.rows)).toBe(1);
+    expect(resolveReorderInsertionIndex(117, band, middle.rows)).toBe(1);
+    expect(resolveReorderInsertionIndex(118, band, middle.rows)).toBe(2);
+  });
+
+  it('clamps at both ends and folds the band scroll into the point', () => {
+    const layout = resolveTrackRowLayout([
+      { trackId: 't0', laneCount: 0 },
+      { trackId: 't1', laneCount: 3 },
+      { trackId: 't2', laneCount: 0 },
+    ]);
+    // Above the band → first rail row; below the content → last rail row.
+    expect(resolveReorderInsertionIndex(-500, { top: 0, scrollTop: 0 }, layout.rows)).toBe(0);
+    expect(resolveReorderInsertionIndex(100000, { top: 0, scrollTop: 0 }, layout.rows)).toBe(2);
+    // The same viewport point maps deeper rows as the band scrolls.
+    const point = 50;
+    expect(resolveReorderInsertionIndex(point, { top: 0, scrollTop: 0 }, layout.rows)).toBe(1);
+    expect(resolveReorderInsertionIndex(point, { top: 0, scrollTop: 87 }, layout.rows)).toBe(2);
+    // An empty layout (no tracks) fails closed to 0.
+    expect(resolveReorderInsertionIndex(point, { top: 0, scrollTop: 0 }, [])).toBe(0);
+  });
+
+  it('shares ONE function between the live preview and the release commit, and the indicator rides the layout', () => {
+    const code = source();
+    // The uniform division is gone — the gesture derives from the measured array.
+    expect(code).not.toContain('/ STRIP_ROW_HEIGHT_PX');
+    expect(code).toContain('return resolveReorderInsertionIndex(');
+    expect(code).toContain('reorderLayoutRows');
+    // Preview (pointerdown / pointermove) and commit (pointerup) all route
+    // through the same `computeReorderInsertionIndex` reference.
+    const calls = code.split('computeReorderInsertionIndex(').length - 1;
+    expect(calls).toBe(3);
+    expect(code).toContain('props.onReorderTrack?.(trackId, computeReorderInsertionIndex(upEvent.clientY));');
+    // The header column positions the indicator from the layout array (the
+    // same instance), never from index × 31.
+    const headerSource = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'physicsPaintTrackHeaderColumn.tsx'),
+      'utf8',
+    );
+    expect(headerSource).toContain('rowLayout[reorderDragIndex]!.offset');
+    // The constant only survives as the documented legacy fallback for a
+    // caller that supplies no layout.
+    const legacyUses = headerSource.split('reorderDragIndex * HEADER_ROW_HEIGHT_PX').length - 1;
+    expect(legacyUses).toBe(1);
   });
 });

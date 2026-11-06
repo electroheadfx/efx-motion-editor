@@ -668,6 +668,38 @@ export interface TrackRowLayout {
 /** The display projection can never exceed four rows (59-10). */
 const MAX_MOTION_DISPLAY_LANES = 4;
 
+/** The reorder band's geometry: viewport top + the band's current scroll. */
+export interface ReorderBandMetrics {
+  readonly top: number;
+  readonly scrollTop: number;
+}
+
+/**
+ * 59-11 Task 3 (MUI-05, T-59-31): the measured, block-aware reorder insertion
+ * index. Walks the ONE layout array and returns the index of the row whose
+ * RAIL band contains the point, clamped to `[0, layout.length - 1]`.
+ *
+ * A point inside an expanded channel block resolves to that block's OWN rail
+ * index — never to a neighbouring row and never to a fractional position
+ * between lanes. With no lanes this is exactly the pre-59-11 uniform
+ * computation (`floor(y / rowUnit)`), because every height is one row unit.
+ */
+export function resolveReorderInsertionIndex(
+  clientY: number,
+  band: ReorderBandMetrics,
+  layout: readonly TrackRowLayoutEntry[],
+): number {
+  const lastIndex = layout.length - 1;
+  if (lastIndex < 0) return 0;
+  const contentY = clientY - band.top + band.scrollTop;
+  if (!Number.isFinite(contentY) || contentY <= 0) return 0;
+  for (let index = 0; index <= lastIndex; index += 1) {
+    const entry = layout[index]!;
+    if (contentY < entry.offset + entry.height) return index;
+  }
+  return lastIndex;
+}
+
 export function resolveTrackRowLayout(
   rows: readonly TrackRowLayoutInput[],
 ): TrackRowLayout {
@@ -2682,6 +2714,13 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeRowLayoutEntry = props.activeTrackId
     ? (rowLayoutById.get(props.activeTrackId) ?? null)
     : null;
+  // The reorder gesture only targets Paint rows (the Bg row is locked, D-06),
+  // so its walk stops before the trailing Bg entry — the same clamp the old
+  // `paintCount - 1` applied, now expressed on the measured array.
+  const reorderLayoutRows = useMemo(
+    () => rowLayout.rows.slice(0, Math.max(0, trackCount)),
+    [rowLayout, trackCount],
+  );
   const contentHeightPx = rowLayout.totalHeight;
   const maxStripHeightPx = STRIP_CHROME_HEIGHT_PX + contentHeightPx;
   const minStripHeightPx = STRIP_CHROME_HEIGHT_PX + STRIP_MIN_ROWS * STRIP_ROW_HEIGHT_PX;
@@ -2769,14 +2808,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // never commits). The drag never attaches to a non-grab area and never fires
   // during a content drag.
   const [reorderDrag, setReorderDrag] = useState<{ trackId: string; index: number } | null>(null);
+  // 59-11 Task 3: ONE authority for the insertion index — the live preview and
+  // the release commit both call this exact function, which resolves over the
+  // measured layout so a point inside an open block lands on that block's rail.
   const computeReorderInsertionIndex = useCallback((clientY: number): number => {
     const band = headerRowsRef.current;
-    const paintCount = props.tracks?.length ?? 0;
-    if (!band || paintCount === 0) return 0;
+    if (!band || reorderLayoutRows.length === 0) return 0;
     const rect = band.getBoundingClientRect();
-    const raw = Math.floor((clientY - rect.top + band.scrollTop) / STRIP_ROW_HEIGHT_PX);
-    return Math.max(0, Math.min(paintCount - 1, raw));
-  }, [props.tracks?.length]);
+    return resolveReorderInsertionIndex(
+      clientY,
+      { top: rect.top, scrollTop: band.scrollTop },
+      reorderLayoutRows,
+    );
+  }, [reorderLayoutRows]);
   const handleGripPointerDown = useCallback((event: PointerEvent, trackId: string) => {
     event.preventDefault();
     const target = event.currentTarget as HTMLElement | null;
