@@ -9,6 +9,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
 import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
+import { proposeRails } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { proposePhysicPaintRotoDeleteRails } from '../components/physic-paint/roto/physicsPaintRotoGroupLifecycle';
 import type { RailSetDeleteMember } from '../types/physicPaint';
 import { defaultTransform, type Layer } from '../types/layer';
@@ -196,6 +197,39 @@ function deleteRailsPayload(
     selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
     cursorAppFrame: proposed.proposal.cursorAppFrame,
     semanticDelta: proposed.impact,
+  });
+}
+
+/**
+ * Builds a rail-set paste payload exactly like the child coordinator does:
+ * copy through the real store, propose through the shared pure law, then ship
+ * the proposal's records/loops/breaks + semantic delta + explicit collection.
+ */
+function railSetPastePayload(launchOperationId: string, destinationAppFrame: number) {
+  const document = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+  const copied = physicPaintStore.copyTrackSelection(
+    LAYER,
+    TEST_TRACK_ID,
+    document.realKeyRecords.map((record) => record.keyId),
+  );
+  if (!copied.ok) throw new Error(`Expected a rail-set copy payload: ${copied.reason}`);
+  const proposed = proposeRails({
+    document,
+    payload: copied.payload,
+    placementMode: 'paste',
+    destinationAppFrame,
+  });
+  if (!proposed.ok) throw new Error(`Expected a rail-set paste proposal: ${proposed.reason}`);
+  return bridgePayload(launchOperationId, {
+    operationKind: 'paste',
+    records: bridgeRecordEntries(proposed.proposal.realKeyRecords),
+    loopClips: proposed.proposal.loopClips,
+    incomingInterpolationBreakKeyIds: proposed.proposal.incomingInterpolationBreakKeyIds,
+    selectedKeyId: proposed.proposal.selectedKeyId,
+    selectedAppFrame: proposed.proposal.selectedKeyId === null ? null : proposed.proposal.cursorAppFrame,
+    cursorAppFrame: proposed.proposal.cursorAppFrame,
+    semanticDelta: proposed.impact,
+    railMotions: proposed.proposal.railMotions,
   });
 }
 
@@ -719,6 +753,86 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
     expect(
       physicPaintStore.getRotoRealKeyRecords(LAYER, TEST_TRACK_ID).map((entry) => entry.appFrame),
     ).toEqual([0, 1, 2, 3, 4]);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
+  });
+
+  it('duplicates an animated rail onto a fresh identity through duplicateTrackFrames', () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    const duplicated = physicPaintStore.duplicateTrackFrames(LAYER, TEST_TRACK_ID, [0, 1, 2, 3, 4]);
+    expect(duplicated.ok, duplicated.ok ? undefined : duplicated.reason).toBe(true);
+    if (!duplicated.ok) throw new Error(`Expected a duplicate impact: ${duplicated.reason}`);
+
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(2);
+    // The source rail keeps its record byte-identically.
+    expect(stored.find((motion) => motion.railId === 'rail-1')).toEqual(beforeMotions[0]);
+    // The fresh rail carries the same channels under the allocated railId,
+    // anchored at the fresh first key (the duplicate scan starts at 6).
+    const freshRailId = duplicated.impact.freshIdentityAllocation.railIds['rail-1'];
+    expect(freshRailId).toBeDefined();
+    expect(freshRailId).not.toBe('rail-1');
+    const copy = stored.find((motion) => motion.railId === freshRailId);
+    expect(copy).toBeDefined();
+    const freshFirstKey = physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TEST_TRACK_ID, 6);
+    expect(freshFirstKey).toBeDefined();
+    expect(copy!.anchorKeyId).toBe(freshFirstKey!.keyId);
+    expect(copy!.channels).toEqual(beforeMotions[0].channels);
+
+    // The stored revision includes the collection (6th argument).
+    const document = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    expect(document.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+      document.realKeyRecords,
+      document.interpolation,
+      document.loopClips,
+      document.incomingInterpolationBreakKeyIds,
+      document.groupOverrideRecords ?? [],
+      stored,
+    ));
+  });
+
+  it('accepts a bridge paste whose explicit collection equals the parent recomputation', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const paste = railSetPastePayload(launch, 20);
+
+    const result = await applyBridgePayload(paste);
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(2);
+    const impact = paste.semanticDelta as Readonly<{
+      freshIdentityAllocation: { railIds: Readonly<Record<string, string>> };
+    }>;
+    const freshRailId = impact.freshIdentityAllocation.railIds['rail-1'];
+    expect(freshRailId).toBeDefined();
+    const copy = stored.find((motion) => motion.railId === freshRailId);
+    expect(copy).toBeDefined();
+    const freshFirstKey = physicPaintStore.getRotoRealKeyRecordByAppFrame(LAYER, TEST_TRACK_ID, 20);
+    expect(freshFirstKey).toBeDefined();
+    expect(copy!.anchorKeyId).toBe(freshFirstKey!.keyId);
+    expect(copy!.channels).toEqual(stored.find((motion) => motion.railId === 'rail-1')!.channels);
+  });
+
+  it('rejects a bridge paste whose explicit collection differs from the parent recomputation', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A')] });
+    const launch = await launchBridge();
+    const paste = railSetPastePayload(launch, 20);
+    const beforeMotions = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+
+    // Same records/loops/breaks/delta, ONLY the wire collection changes: the
+    // parent recomputes the canonical re-key and must reject the divergence.
+    const tampered = Object.freeze({
+      ...paste,
+      railMotions: [railMotion('rail-tampered', 'A')],
+    });
+    const result = await applyBridgePayload(tampered);
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? null : result.error).toBe(
+      'Rail-set paste/duplicate target document does not match parent recomputation.',
+    );
     expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
   });
 });

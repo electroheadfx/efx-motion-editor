@@ -10,6 +10,7 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import type { PhysicPaintRotoRailMotionRecord } from './railMotionModel';
 import {
   buildRotoRailSetCopyPayload,
   buildRotoRailSetOperationResult,
@@ -848,5 +849,281 @@ describe('physicsPaintRotoRailSetCopy — 46 UAT R5 (pasted clips are lifecycle-
     expect(duplicated.originalEndExclusive).toBe(16);
     expect(duplicated.visibleRanges).toEqual([{ start: 10, endExclusive: 16 }]);
     expect(duplicated.frameOverrides).toEqual([]);
+  });
+});
+
+/** 59-15 Gate B fixture: a rail-motion record with one scale key at rail-local frame 2. */
+function motionRecord(
+  railId: string,
+  anchorKeyId: string,
+  scaleValue = 0.5,
+): PhysicPaintRotoRailMotionRecord {
+  return Object.freeze({
+    railId,
+    anchorKeyId,
+    channels: Object.freeze([
+      Object.freeze({
+        id: 'scale' as const,
+        keys: Object.freeze([
+          Object.freeze({ frame: 2, value: scaleValue, easing: 'ease' as const, wiggle: 0 }),
+        ]),
+      }),
+    ]),
+  }) as PhysicPaintRotoRailMotionRecord;
+}
+
+function buildMotionDocument(
+  records: readonly PhysicPaintRotoRealKeyRecord[],
+  loopClips: readonly PhysicPaintRotoLoopClip[] = [],
+  breaks: readonly string[] = [],
+  railMotions: readonly PhysicPaintRotoRailMotionRecord[] = [],
+  capacity = 100,
+  cursorAppFrame = 4,
+): PhysicPaintRotoPhysicalDocument {
+  return parsePhysicPaintRotoPhysicalDocument({
+    capacity,
+    realKeyRecords: records,
+    interpolation: INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame,
+    revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, loopClips, breaks, [], railMotions),
+    loopClips,
+    railMotions,
+    incomingInterpolationBreakKeyIds: breaks,
+  });
+}
+
+function loopMotionClip(loopId: string, sourceKeyIds: readonly string[]): PhysicPaintRotoLoopClip {
+  return {
+    loopId,
+    placementStart: 20,
+    sourceKeyIds,
+    repeat: 2,
+    mode: 'static',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: 20,
+    originalEndExclusive: 22,
+    visibleRanges: [{ start: 20, endExclusive: 22 }],
+    frameOverrides: [],
+  };
+}
+
+describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B)', () => {
+  it('freezes only copied animated members into payload.railMotions, keyed by source railId', () => {
+    const railA = motionRecord('rail-a', 'k0', 0.5);
+    const railB = motionRecord('rail-b', 'k6', 0.75);
+    const orphan = motionRecord('rail-z', 'gone', 0.25);
+    const document = buildMotionDocument(
+      [recordKey('k0', 0), recordKey('k2', 2), recordKey('k6', 6), recordKey('k8', 8), recordKey('k10', 10)],
+      [],
+      ['k6', 'k10'],
+      [railA, railB, orphan],
+    );
+
+    const animated = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
+    if (!animated.ok) throw new Error(`Payload must build: ${animated.reason}`);
+    expect(animated.payload.railMotions).toEqual([railA]);
+    const animatedMember = animated.payload.members[0];
+    if (animatedMember.kind !== 'key-rail') throw new Error('expected a key-rail member');
+    expect(animatedMember.sourceRailId).toBe('rail-a');
+    // Deep-frozen snapshot; the source document's collection is untouched.
+    expect(Object.isFrozen(animated.payload.railMotions)).toBe(true);
+    expect(Object.isFrozen(animated.payload.railMotions[0])).toBe(true);
+    expect(document.railMotions).toEqual([railA, railB, orphan]);
+
+    // An un-animated member contributes nothing and carries no source railId.
+    const plain = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k10' }] });
+    if (!plain.ok) throw new Error(`Payload must build: ${plain.reason}`);
+    expect(plain.payload.railMotions).toEqual([]);
+    const plainMember = plain.payload.members[0];
+    if (plainMember.kind !== 'key-rail') throw new Error('expected a key-rail member');
+    expect(plainMember.sourceRailId).toBeUndefined();
+  });
+
+  it('re-keys a copied key-rail record onto the fresh rail with rail-local frames unchanged', () => {
+    const source = motionRecord('rail-a', 'k0', 0.4);
+    const document = buildMotionDocument([recordKey('k0', 0), recordKey('k2', 2)], [], [], [source]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+
+    const freshAnchor = pasted.proposal.realKeyRecords.find((record) => record.appFrame === 10);
+    expect(freshAnchor).toBeDefined();
+    const records = pasted.proposal.railMotions ?? [];
+    expect(records).toHaveLength(2);
+    // The source record is returned untouched: same railId, same anchor, same channels.
+    expect(records.find((record) => record.railId === 'rail-a')).toEqual(source);
+    const copy = records.find((record) => record.railId !== 'rail-a');
+    expect(copy).toBeDefined();
+    expect(copy!.railId.length).toBeGreaterThan(0);
+    expect(copy!.anchorKeyId).toBe(freshAnchor!.keyId);
+    // Rail-local key frames travel verbatim: the paste translates app time only.
+    expect(copy!.channels).toEqual(source.channels);
+    expect(copy!.channels[0].keys[0].frame).toBe(2);
+
+    // The allocation carries the deterministic source -> destination rail mapping.
+    expect(pasted.impact.freshIdentityAllocation.railIds['rail-a']).toBe(copy!.railId);
+    // The semantic delta carries the SAME frozen payload motion snapshot.
+    expect(pasted.impact.payload.railMotions).toEqual([source]);
+    // The revision hashes the collection (6th argument).
+    expect(pasted.proposal.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+      pasted.proposal.realKeyRecords,
+      pasted.proposal.interpolation,
+      pasted.proposal.loopClips,
+      pasted.proposal.incomingInterpolationBreakKeyIds,
+      pasted.proposal.groupOverrideRecords ?? [],
+      pasted.proposal.railMotions,
+    ));
+    // The source document's collection is not mutated.
+    expect(document.railMotions).toEqual([source]);
+  });
+
+  it('re-keys a copied loop member onto the fresh loopId, anchored at the fresh loopId', () => {
+    const source = motionRecord('g1', 'k0', 0.6);
+    const clip = loopMotionClip('g1', ['k0']);
+    const document = buildMotionDocument([recordKey('k0', 0)], [clip], [], [source]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'loop', loopId: 'g1' }] });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    expect(built.payload.railMotions).toEqual([source]);
+
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 40 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+    const freshLoopId = pasted.proposal.loopClips.find((candidate) => candidate.loopId !== 'g1')!.loopId;
+    const records = pasted.proposal.railMotions ?? [];
+    expect(records).toHaveLength(2);
+    expect(records.find((record) => record.railId === 'g1')).toEqual(source);
+    const copy = records.find((record) => record.railId === freshLoopId);
+    expect(copy).toBeDefined();
+    expect(copy!.anchorKeyId).toBe(freshLoopId);
+    expect(copy!.channels).toEqual(source.channels);
+    expect(pasted.impact.freshIdentityAllocation.railIds['g1']).toBe(freshLoopId);
+  });
+
+  it('maps every animated member of a multi-member copy in one re-key call', () => {
+    const railA = motionRecord('rail-a', 'k0', 0.5);
+    const railB = motionRecord('rail-b', 'k6', 0.75);
+    const loopSource = motionRecord('g1', 'k0', 0.6);
+    const clip = loopMotionClip('g1', ['k0']);
+    const document = buildMotionDocument(
+      [recordKey('k0', 0), recordKey('k2', 2), recordKey('k6', 6), recordKey('k8', 8)],
+      [clip],
+      ['k6'],
+      [railA, railB, loopSource],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'key-rail', firstKeyId: 'k6' },
+        { kind: 'loop', loopId: 'g1' },
+      ],
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const pasted = proposeRails({ document, payload: built.payload, placementMode: 'paste', destinationAppFrame: 60 });
+    expect(pasted.ok).toBe(true);
+    if (!pasted.ok) throw new Error(`Paste must resolve: ${pasted.reason}`);
+
+    const records = pasted.proposal.railMotions ?? [];
+    expect(records).toHaveLength(6);
+    const railIds = pasted.impact.freshIdentityAllocation.railIds;
+    expect(Object.keys(railIds).sort()).toEqual(['g1', 'rail-a', 'rail-b']);
+    for (const sourceRailId of ['rail-a', 'rail-b', 'g1']) {
+      const destinationRailId = railIds[sourceRailId];
+      expect(destinationRailId).toBeDefined();
+      expect(destinationRailId).not.toBe(sourceRailId);
+      const copy = records.find((record) => record.railId === destinationRailId);
+      expect(copy).toBeDefined();
+      const original = records.find((record) => record.railId === sourceRailId);
+      expect(original).toBeDefined();
+      expect(copy!.channels).toEqual(original!.channels);
+    }
+    expect(document.railMotions).toEqual([railA, railB, loopSource]);
+  });
+
+  it('rejects closed when a prescribed allocation omits an animated member railId', () => {
+    const document = buildMotionDocument([recordKey('k0', 0), recordKey('k2', 2)], [], [], [motionRecord('rail-a', 'k0')]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const rejected = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      freshIdentityAllocation: { keyIds: {}, loopIds: {}, railIds: {} },
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Paste with an uncoverable animated member must reject');
+    expect(rejected.reason).toBe('motion-identity-conflict');
+    expect((rejected as Readonly<{ proposal?: unknown }>).proposal).toBeUndefined();
+  });
+
+  it('rejects closed when two members map to one destination railId', () => {
+    const document = buildMotionDocument(
+      [recordKey('k0', 0), recordKey('k2', 2), recordKey('k6', 6), recordKey('k8', 8)],
+      [],
+      ['k6'],
+      [motionRecord('rail-a', 'k0'), motionRecord('rail-b', 'k6')],
+    );
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'key-rail', firstKeyId: 'k6' },
+      ],
+    });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const rejected = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      freshIdentityAllocation: { keyIds: {}, loopIds: {}, railIds: { 'rail-a': 'shared-rail', 'rail-b': 'shared-rail' } },
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Duplicate destinations must reject');
+    expect(rejected.reason).toBe('motion-identity-conflict');
+  });
+
+  it('rejects closed when a destination railId already carries a record', () => {
+    const destinationMotion = motionRecord('occupied-rail', 'zz', 0.9);
+    const document = buildMotionDocument(
+      [recordKey('k0', 0), recordKey('k2', 2)],
+      [],
+      [],
+      [motionRecord('rail-a', 'k0'), destinationMotion],
+    );
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const rejected = proposeRails({
+      document,
+      payload: built.payload,
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+      freshIdentityAllocation: { keyIds: {}, loopIds: {}, railIds: { 'rail-a': 'occupied-rail' } },
+    });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Occupied destination railId must reject');
+    expect(rejected.reason).toBe('motion-identity-conflict');
+  });
+
+  it('rejects closed when the frozen payload carries motion for no copied member', () => {
+    const document = buildMotionDocument([recordKey('k0', 0), recordKey('k2', 2)], [], [], [motionRecord('rail-a', 'k0')]);
+    const built = buildRotoRailSetCopyPayload({ document, members: [{ kind: 'key-rail', firstKeyId: 'k0' }] });
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const stray = Object.freeze({
+      ...built.payload,
+      railMotions: Object.freeze([...built.payload.railMotions, motionRecord('rail-stray', 'nowhere')]),
+    }) as RotoRailSetCopyPayload;
+    const rejected = proposeRails({ document, payload: stray, placementMode: 'paste', destinationAppFrame: 10 });
+    expect(rejected.ok).toBe(false);
+    if (rejected.ok) throw new Error('Stray payload motion must reject');
+    expect(rejected.reason).toBe('motion-identity-conflict');
   });
 });
