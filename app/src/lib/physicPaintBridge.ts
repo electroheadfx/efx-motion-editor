@@ -36,6 +36,7 @@ import {
   parsePhysicPaintRotoRailMotions,
   type PhysicPaintRotoRailMotionRecord,
 } from '../components/physic-paint/roto/railMotionModel';
+import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
 import {
   classifyPhysicPaintRotoGroupFrameTarget,
   proposePhysicPaintRotoActionGroupLifecycle,
@@ -535,7 +536,14 @@ async function applyPhysicPaintPayloadWithPublicationLease(
 
   let fingerprint: string;
   try {
-    fingerprint = fingerprintApplyPayload(payload);
+    // 59-15: a physical-map payload that omits the collection is reconciled
+    // against the stored one during the apply, so the stored collection is
+    // part of this payload's identity.
+    const storedRailMotions = payload.kind === 'replace-roto-physical-map'
+      && payload.railMotions === undefined
+      ? physicPaintStore.getRotoPhysicalRailMotions(payload.layerId, payload.trackId)
+      : undefined;
+    fingerprint = fingerprintApplyPayload(payload, storedRailMotions);
   } catch (error) {
     return failureResult(base, `Invalid canonical physics paint payload: ${String(error)}`);
   }
@@ -939,7 +947,16 @@ export function getPhysicPaintRotoAuthorityFromUnknown(payload: unknown): Physic
   };
 }
 
-function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
+function fingerprintApplyPayload(
+  payload: PhysicPaintApplyPayload,
+  /**
+   * Phase 59 (59-15): the collection the mutation resolves against when the
+   * payload carries none — the stored collection, read before the apply. A
+   * fingerprint that omitted motion would let two different documents share
+   * one equality token.
+   */
+  storedRailMotions: readonly PhysicPaintRotoRailMotionRecord[] = [],
+): string {
   if (payload.kind === 'replace-roto-physical-map') {
     const canonicalRecords = payload.records.map((record) => ({
       kind: 'real-key' as const,
@@ -956,7 +973,7 @@ function fingerprintApplyPayload(payload: PhysicPaintApplyPayload): string {
     const content = encodePhysicPaintRotoPhysicalContent(canonicalRecords, {
       enabled: payload.interpolationEnabled,
       mode: payload.interpolationMode,
-    }, payload.loopClips ?? [], payload.incomingInterpolationBreakKeyIds ?? [], canonicalGroupOverrideRecords);
+    }, payload.loopClips ?? [], payload.incomingInterpolationBreakKeyIds ?? [], canonicalGroupOverrideRecords, payload.railMotions ?? storedRailMotions);
     const groupOverridesPresence = payload.groupOverrideRecords === undefined ? 'omitted' : 'present';
     const incomingBreaksPresence = payload.incomingInterpolationBreakKeyIds === undefined ? 'omitted' : 'present';
     const provenance = payload.historyProvenance
@@ -1888,18 +1905,6 @@ async function applyPhysicPaintRotoPhysicalMap(
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical Loop Clips are malformed.');
   }
-  // Rail-motion threading (Phase 59, MOTN-12): a commit carrying railMotions is
-  // validated fail-closed by the 59-02 parser and delivered unchanged; a commit
-  // without the member preserves the target track's current collection. Motion
-  // is a complete document-level collection (59-01 D-05/D-06), never per-frame.
-  let proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
-  try {
-    proposedRailMotions = payload.railMotions === undefined
-      ? physicPaintStore.getRotoPhysicalRailMotions(payload.layerId, payload.trackId)
-      : parsePhysicPaintRotoRailMotions(payload.railMotions);
-  } catch (error) {
-    return reject(error instanceof Error ? error.message : 'Roto physical rail motions are malformed.');
-  }
   let proposedIncomingInterpolationBreakKeyIds: readonly string[];
   try {
     proposedIncomingInterpolationBreakKeyIds = payload.incomingInterpolationBreakKeyIds === undefined
@@ -1910,6 +1915,37 @@ async function applyPhysicPaintRotoPhysicalMap(
         );
   } catch (error) {
     return reject(error instanceof Error ? error.message : 'Roto physical incoming interpolation breaks are malformed.');
+  }
+  // Rail-motion commit-point reconciliation (Phase 59, 59-15; Gate B). A payload
+  // carrying an explicit collection is the replay/paste path: it is validated
+  // fail-closed by the 59-02 parser and stored verbatim, bypassing forward
+  // reconciliation. A forward edit that omits the member derives the collection
+  // from the document delta, using each side's OWN already-staged Loop Clips for
+  // group ownership, BEFORE `stagedRevision` is computed, so the motion
+  // consequence lands in the same document write and the same undo step. The
+  // previous/next snapshots read only values staged in this scope — no new
+  // store reads.
+  let proposedRailMotions: readonly PhysicPaintRotoRailMotionRecord[];
+  if (payload.railMotions !== undefined) {
+    try {
+      proposedRailMotions = parsePhysicPaintRotoRailMotions(payload.railMotions);
+    } catch (error) {
+      return reject(error instanceof Error ? error.message : 'Roto physical rail motions are malformed.');
+    }
+  } else {
+    proposedRailMotions = reconcileRailMotionsForDocumentEdit({
+      previous: {
+        realKeyRecords: currentRecords,
+        incomingInterpolationBreakKeyIds: new Set(currentIncomingInterpolationBreakKeyIds),
+        loopClips: currentLoopClips,
+      },
+      next: {
+        realKeyRecords: proposedRecords,
+        incomingInterpolationBreakKeyIds: new Set(proposedIncomingInterpolationBreakKeyIds),
+        loopClips: proposedLoopClips,
+      },
+      railMotions: currentRailMotions,
+    }).railMotions;
   }
   if ((payload.selectedKeyId === null) !== (payload.selectedAppFrame === null)) {
     return reject('Roto physical selection identity and frame must both be null or both be present.');
