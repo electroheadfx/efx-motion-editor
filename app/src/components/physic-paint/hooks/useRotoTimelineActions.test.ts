@@ -5034,9 +5034,9 @@ describe('59-17 addMotionChannel — the host action behind the keyless menu', (
     expect(records[0]!.channels.map((channel) => channel.id)).toEqual([
       'position-x', 'position-y', 'scale',
     ]);
-    // Model units: scale is a FACTOR (1 = 100%), seeded at frame 0 as a hold.
+    // Model units: scale is a FACTOR (1 = 100%), seeded at frame 0 with ease.
     expect(records[0]!.channels.find((channel) => channel.id === 'scale')!.keys).toEqual([
-      { frame: 0, value: 1, easing: 'hold', wiggle: 0 },
+      { frame: 0, value: 1, easing: 'ease', wiggle: 0 },
     ]);
   });
 
@@ -5073,7 +5073,7 @@ describe('59-17 addMotionChannel — the host action behind the keyless menu', (
     ]);
     for (const id of ['position-x', 'position-y'] as const) {
       expect(channels.find((channel) => channel.id === id)!.keys).toEqual([
-        { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
+        { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
       ]);
     }
   });

@@ -1755,13 +1755,13 @@ function scaleOnlySeedRecord(): PhysicPaintRotoRailMotionRecord {
   }) as PhysicPaintRotoRailMotionRecord;
 }
 
-/** The one seed shape every add writes: frame 0, identity, hold, no wiggle. */
+/** The one seed shape every add writes: frame 0, identity, ease, no wiggle. */
 function identitySeed(value: number) {
-  return { frame: 0, value, easing: 'hold', wiggle: 0 };
+  return { frame: 0, value, easing: 'ease', wiggle: 0 };
 }
 
 describe('59-17 rail motion commands — add a Motion channel (G1)', () => {
-  it('adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 with hold easing', () => {
+  it('adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 seeded with ease', () => {
     const before = positionOnlyRecord();
     const records = [before];
     const result = addMotionChannel({ records, railId: 'rail-1', channelId: 'scale' });
