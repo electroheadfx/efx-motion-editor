@@ -19,6 +19,7 @@ import {
   type PhysicPaintRotoRailMotionKey,
   type PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
+import { evaluateRailMotionChannel } from './railMotionEvaluator';
 
 function key(
   frame: number,
@@ -812,7 +813,7 @@ describe('applyRailMotionEditToCollection', () => {
     })).toBe(records);
   });
 
-  it('add-channel seeds identity keys at frame 0 with hold', () => {
+  it('add-channel seeds identity keys at frame 0 with ease', () => {
     const records = [record('rail-a', [channel('rotation', [key(2, 45)])])];
 
     const next = applyRailMotionEditToCollection(records, {
@@ -822,14 +823,14 @@ describe('applyRailMotionEditToCollection', () => {
     });
 
     expect(next[0].channels.map((entry) => entry.id)).toEqual(['scale', 'rotation']);
-    expect(next[0].channels[0].keys).toEqual([key(0, 1, 'hold', 0)]);
+    expect(next[0].channels[0].keys).toEqual([key(0, 1, 'ease', 0)]);
 
     const opacity = applyRailMotionEditToCollection(next, {
       kind: 'add-channel',
       railId: 'rail-a',
       channel: 'opacity',
     });
-    expect(opacity[0].channels[2].keys).toEqual([key(0, 1, 'hold', 0)]);
+    expect(opacity[0].channels[2].keys).toEqual([key(0, 1, 'ease', 0)]);
 
     const rotation = applyRailMotionEditToCollection(records, {
       kind: 'add-channel',
@@ -849,8 +850,84 @@ describe('applyRailMotionEditToCollection', () => {
     });
 
     expect(next[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
-    expect(next[0].channels[0].keys).toEqual([key(0, 0, 'hold', 0)]);
-    expect(next[0].channels[1].keys).toEqual([key(0, 0, 'hold', 0)]);
+    expect(next[0].channels[0].keys).toEqual([key(0, 0, 'ease', 0)]);
+    expect(next[0].channels[1].keys).toEqual([key(0, 0, 'ease', 0)]);
+  });
+
+  it('a newly added channel eases its FIRST span toward the next written key (261107-ux2)', () => {
+    const seeded = applyRailMotionEditToCollection(
+      [record('rail-a', [channel('rotation', [key(2, 45)])])],
+      { kind: 'add-channel', railId: 'rail-a', channel: 'scale' },
+    );
+    const withFour = applyRailMotionEditToCollection(seeded, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 4,
+      value: 3,
+    });
+    const records = applyRailMotionEditToCollection(withFour, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      frame: 9,
+      value: 5,
+    });
+    const evaluated = records[0];
+
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 0)).toBe(1);
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 4)).toBe(3);
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 9)).toBe(5);
+    // Frame 2 is the exact midpoint of the 1..3 opening span:
+    // 1 + (3 - 1) * smoothstep(0.5) = 2.
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 2)).toBe(2);
+    // Frame 6 sits on the SECOND span (3..5) and must also interpolate.
+    const laterSpan = evaluateRailMotionChannel(evaluated, 'scale', 6);
+    expect(laterSpan).toBeGreaterThan(3);
+    expect(laterSpan).toBeLessThan(5);
+  });
+
+  it('a grouped Position pair eases BOTH axes on the first span from the seeded identity', () => {
+    const seeded = applyRailMotionEditToCollection(
+      [record('rail-a', [channel('scale', [key(0, 1)])])],
+      { kind: 'add-channel', railId: 'rail-a', channel: 'position-x' },
+    );
+    const records = applyRailMotionEditToCollection(seeded, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 100,
+      pairedValue: 40,
+    });
+    const evaluated = records[0];
+
+    expect(evaluateRailMotionChannel(evaluated, 'position-x', 0)).toBe(0);
+    expect(evaluateRailMotionChannel(evaluated, 'position-y', 0)).toBe(0);
+    expect(evaluateRailMotionChannel(evaluated, 'position-x', 4)).toBe(100);
+    expect(evaluateRailMotionChannel(evaluated, 'position-y', 4)).toBe(40);
+    // Frame 2 is the exact midpoint of the 0..100 / 0..40 opening spans.
+    expect(evaluateRailMotionChannel(evaluated, 'position-x', 2)).toBe(50);
+    expect(evaluateRailMotionChannel(evaluated, 'position-y', 2)).toBe(20);
+  });
+
+  it('a channel carrying ONLY the seeded opening key still evaluates to its identity everywhere', () => {
+    const records = applyRailMotionEditToCollection(
+      [record('rail-a', [channel('rotation', [key(2, 45)])])],
+      { kind: 'add-channel', railId: 'rail-a', channel: 'scale' },
+    );
+
+    expect(evaluateRailMotionChannel(records[0], 'scale', 0)).toBe(1);
+    expect(evaluateRailMotionChannel(records[0], 'scale', 5)).toBe(1);
+  });
+
+  it('an explicit per-key Hold still steps the outgoing span', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0, 'hold'), key(10, 100)]),
+    ])];
+
+    expect(evaluateRailMotionChannel(records[0], 'position-x', 5)).toBe(0);
+    expect(evaluateRailMotionChannel(records[0], 'position-x', 10)).toBe(100);
   });
 
   it('add-channel on an existing channel or an unknown rail is a no-op', () => {
