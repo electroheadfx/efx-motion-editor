@@ -3029,10 +3029,14 @@ describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the on
 
   it('feeds the add row from the lane count alone and keeps the menu overlay out of the layout', () => {
     const code = source();
-    // The flag is the SAME predicate the block uses to render the row: the
-    // lane count alone. A second keyless derivation here could disagree.
+    // 261107-mkn: the row's PRESENCE is still the lane count alone; its
+    // enabled/reason answer now comes from the strip's ONE availability call,
+    // whose keyless projection appears exactly once.
     expect(code).toContain('const activeMotionAddChannelRow = activeMotionLaneCount > 0;');
-    expect(code).not.toContain('resolveKeylessMotionDisplayLanes');
+    expect(code.match(/resolveKeylessMotionDisplayLanes\(/g) ?? []).toHaveLength(1);
+    expect(code).toContain(
+      'hasKeylessChannel: resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0,',
+    );
     expect(code).not.toContain('activeMotionHasKeylessChannel');
     expect(code).toContain('addChannelRow: isActive && activeMotionAddChannelRow,');
     // The open menu is a FIXED viewport overlay owned by the row: the strip
@@ -3042,8 +3046,34 @@ describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the on
     // The strip only READS the menu identity — the row owns its two writers.
     // (Not an equality: `.value === x` is a read, `.value = x` is a write.)
     expect(code).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
-    expect(code).toContain('toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor);');
+    // 261107-mkn: the toggle now rides the header bundle's addChannel object.
+    expect(code).toContain(
+      'onToggle: (anchor) => toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor),',
+    );
     expect(code).toContain('dismissRailMotionChannelMenu()');
+  });
+});
+
+describe('261107-mkn: the pinned header hosts the channel bundle and the one add-channel authority', () => {
+  it('hands the header column the bundle built from the same record/view/cursor the body consumes', () => {
+    const code = source();
+    expect(code).toContain('motionHeader: activeMotionHeader,');
+    expect(code).toContain('const activeMotionHeader: TimelineMotionHeaderGroupProps | null');
+    expect(code).toContain('channels: activeMotionRecord.channels,');
+    expect(code).toContain('view: activeMotionView,');
+    expect(code).toContain('cursorFrame: activeMotionLocalCursorFrame,');
+    // The pre-gated open reaches BOTH hosts: the header bundle (the live row)
+    // and the block (the fixed overlay).
+    expect(code).toContain('open: activeMotionAddChannelRowOpen,');
+    expect(code).toContain('disabled: activeMotionAddChannelAvailability?.enabled !== true,');
+    expect(code).toContain('addChannelMenuOpen={activeMotionAddChannelRowOpen}');
+  });
+
+  it('resolves the add-channel availability exactly once', () => {
+    const code = source();
+    expect(code.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
+    expect(code).toContain("command: 'add-motion-channel'");
+    expect(code).toContain('hasKeylessChannel');
   });
 });
 

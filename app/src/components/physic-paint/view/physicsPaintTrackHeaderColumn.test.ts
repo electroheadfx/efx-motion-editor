@@ -1260,6 +1260,18 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
     };
   }
 
+  /** 261107-mkn Task 3: a bundle with exactly N visible display lanes, in the
+   *  fixed Position/Scale/Rotation/Opacity order. */
+  function makeMotionHeaderForLanes(laneCount: 1 | 2 | 3 | 4): TimelineMotionHeaderGroupProps {
+    const channels = [
+      { id: 'position-x' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'scale' as const, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'rotation' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'opacity' as const, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
+    ];
+    return makeMotionHeader({ channels: channels.slice(0, laneCount) });
+  }
+
   function styleHeight(vnode: TestVNode): string {
     return String((vnode.props.style as { height?: string }).height);
   }
@@ -1449,5 +1461,108 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
     // The legacy height (31 + 3 × 18 + 2) is unchanged for entries without it.
     expect(withoutSlot.rows[1]!.height).toBe(31 + 3 * 18 + 2);
     expect(withSlot.rows[1]!.height).toBe(31 + 3 * 18 + 2 + 18);
+  });
+
+  /* 261107-mkn Task 3: the header band and the body must agree for ANY visible
+     lane count, on the real header path and on the blank fallback path. */
+  for (const laneCount of [1, 2, 3, 4] as const) {
+    it(`keeps the real header band in lockstep for ${laneCount} lane(s), add row counted (261107-mkn)`, () => {
+      const fixture = makeTwoTrackFixture();
+      const layout = resolveTrackRowLayout([
+        { trackId: fixture.trackA.id, laneCount, addChannelRow: true },
+        { trackId: fixture.trackB.id, laneCount: 0 },
+        { trackId: fixture.background.id, laneCount: 0 },
+      ]);
+      const root = expandMotionHeaderVnodes(renderColumn({
+        ...fixture,
+        rowLayout: layout.rows,
+        motionHeader: makeMotionHeaderForLanes(laneCount),
+      })) as TestVNode;
+
+      const group = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'));
+      expect(findAll(group, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-header')))
+        .toHaveLength(laneCount);
+      const gap = findOne(group, (vnode) => hasClass(vnode, 'physics-paint-motion-header-gap'));
+      expect(styleHeight(gap)).toBe('2px');
+      const addRow = findOne(
+        group,
+        (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined,
+      );
+      expect(styleHeight(addRow)).toBe('18px');
+
+      // The wrapper declares EXACTLY the layout entry's height: rail cell + N
+      // lanes + the 2px gap + the 18px add row.
+      const wrapper = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'));
+      expect((wrapper.props.style as { height: string }).height).toBe(`${layout.rows[0]!.height}px`);
+      expect(layout.rows[0]!.height).toBe(31 + laneCount * 18 + 2 + 18);
+
+      // The NEXT header cell starts where the body's next rail starts.
+      const sequence = headerOffsetSequence(root);
+      expect(sequence.offsets).toEqual(layout.rows.map((row) => row.offset));
+      expect(sequence.offsets[1]).toBe(layout.rows[0]!.height);
+      // The band's scroll containers are unchanged by the host move.
+      expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-header-rows-wrap'))).toHaveLength(1);
+      expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-header-rows'))).toHaveLength(1);
+    });
+
+    it(`keeps the blank fallback band in lockstep for ${laneCount} lane(s), add slot counted (261107-mkn)`, () => {
+      const fixture = makeTwoTrackFixture();
+      const layout = resolveTrackRowLayout([
+        { trackId: fixture.trackA.id, laneCount: 0 },
+        { trackId: fixture.trackB.id, laneCount, addChannelRow: true },
+        { trackId: fixture.background.id, laneCount: 0 },
+      ]);
+      const root = renderColumn({ ...fixture, rowLayout: layout.rows });
+
+      // Track A is active and collapsed, so track B gets the blank spacers.
+      expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group')))
+        .toHaveLength(0);
+      const groups = findAll(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'));
+      expect(groups).toHaveLength(1);
+      expect((groups[0]!.props.style as { height: string }).height).toBe(`${layout.rows[1]!.height}px`);
+      expect(layout.rows[1]!.height).toBe(31 + laneCount * 18 + 2 + 18);
+      expect(findAll(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane')))
+        .toHaveLength(laneCount);
+      expect(findAll(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane-gap')))
+        .toHaveLength(1);
+      const slot = findOne(
+        groups[0]!,
+        (vnode) => hasClass(vnode, 'physics-paint-track-header-lane-add-slot'),
+      );
+      expect(styleHeight(slot)).toBe('18px');
+
+      const sequence = headerOffsetSequence(root);
+      expect(sequence.offsets).toEqual(layout.rows.map((row) => row.offset));
+      expect(sequence.offsets[2]).toBe(layout.rows[0]!.height + layout.rows[1]!.height);
+    });
+  }
+
+  it('keeps the active track header band while a Bg clip is selected — only the rail accent blanks (261107-mkn)', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 2, addChannelRow: true },
+      { trackId: fixture.trackB.id, laneCount: 0 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = expandMotionHeaderVnodes(renderColumn({
+      ...fixture,
+      backgroundSelected: true,
+      rowLayout: layout.rows,
+      motionHeader: makeMotionHeaderForLanes(2),
+    })) as TestVNode;
+
+    // The band compares against the document's REAL activeTrackId, so the Bg
+    // selection never tears the header rows out of the pinned column.
+    expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-header')))
+      .toHaveLength(2);
+    const cells = findAll(root, (vnode) => vnode.type === PhysicsPaintTrackRowHeader);
+    const trackAHeader = cells.find((cell) => cell.props.trackId === fixture.trackA.id)!;
+    const trackBHeader = cells.find((cell) => cell.props.trackId === fixture.trackB.id)!;
+    const bgHeader = cells.find((cell) => cell.props.trackId === fixture.background.id)!;
+    // Only the ACCENT blanks: both track headers receive the blanked id…
+    expect(trackAHeader.props.activeTrackId).toBe('');
+    expect(trackBHeader.props.activeTrackId).toBe('');
+    // …while the Bg row reads as the one selection.
+    expect(bgHeader.props.selected).toBe(true);
   });
 });
