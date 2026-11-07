@@ -42,8 +42,13 @@ import {
   TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
   type RailMotionDisplayLaneView,
+  type TimelineMotionChannelLaneProps,
   type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
+import {
+  TimelineMotionKeyDragLane,
+  type TimelineMotionKeyDragPorts,
+} from './TimelineMotionKeyDrag';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -589,6 +594,12 @@ export interface TimelineMotionBlockProps {
     readonly channelId: PhysicPaintRotoRailMotionChannelId;
     readonly frame: number;
   } | null;
+  /**
+   * 261107-pd8: supplied only by the ACTIVE track's block. When present, each
+   * lane mounts the thin drag leaf; when absent, the click-only lane renders
+   * exactly as before.
+   */
+  readonly motionKeyDragPorts?: TimelineMotionKeyDragPorts;
 }
 
 /**
@@ -609,6 +620,7 @@ export function TimelineMotionBlock({
   railSelected = true,
   disabledReasons,
   selectedMotionKey = null,
+  motionKeyDragPorts,
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
@@ -642,23 +654,23 @@ export function TimelineMotionBlock({
             && lane.channels.some((channel) => channel.id === selectedMotionKey.channelId)
             ? [selectedMotionKey.frame]
             : undefined;
-          return (
-            <TimelineMotionChannelLane
-              key={lane.id}
-              railId={record.railId}
-              lane={lane}
-              railType={railType}
-              selected={railSelected}
-              railFrameCount={railFrameCount}
-              cursorFrame={cursorFrame}
-              selectedKeyFrames={laneSelectedKeyFrames}
-              disabledReasons={disabledReasons}
-              onSelectKey={onSelectMotionKey === undefined
-                ? undefined
-                : (frame: number) => onSelectMotionKey(frame, laneChannelId)}
-              onSelectRail={onSelectMotionRail === undefined ? undefined : () => onSelectMotionRail()}
-            />
-          );
+          const laneProps: TimelineMotionChannelLaneProps = {
+            railId: record.railId,
+            lane,
+            railType,
+            selected: railSelected,
+            railFrameCount,
+            cursorFrame,
+            selectedKeyFrames: laneSelectedKeyFrames,
+            disabledReasons,
+            onSelectKey: onSelectMotionKey === undefined
+              ? undefined
+              : (frame: number) => onSelectMotionKey(frame, laneChannelId),
+            onSelectRail: onSelectMotionRail === undefined ? undefined : () => onSelectMotionRail(),
+          };
+          return motionKeyDragPorts === undefined
+            ? <TimelineMotionChannelLane key={lane.id} {...laneProps} />
+            : <TimelineMotionKeyDragLane key={lane.id} {...laneProps} dragPorts={motionKeyDragPorts} />;
         })}
         <div
           class="physics-paint-motion-block-gap"

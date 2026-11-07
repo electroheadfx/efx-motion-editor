@@ -60,6 +60,23 @@ export interface RailMotionDisplayLaneView {
 
 export type TimelineMotionLaneControl = 'previous' | 'diamond' | 'next' | 'select-key';
 
+/**
+ * 261107-pd8: presentation-only drag surface. The lane paints the grab cursor
+ * and the ghost and forwards pointerdown; the pointer SESSION itself lives in
+ * the own-key-drag host, never here (this module stays hook-free).
+ */
+export interface TimelineMotionKeyDragPresentation {
+  readonly ghost: Readonly<{
+    active: boolean;
+    left: number;
+    width: number;
+    blockedEdge: 'left' | 'right' | null;
+  }>;
+  readonly onPointerDownKey: (event: PointerEvent, frame: number) => void;
+  /** Returns true exactly once for the click the browser dispatches after a drop. */
+  readonly consumeClickSuppression: () => boolean;
+}
+
 export interface TimelineMotionChannelLaneProps {
   readonly railId: string;
   readonly lane: RailMotionDisplayLaneView;
@@ -71,6 +88,8 @@ export interface TimelineMotionChannelLaneProps {
   readonly onSelectRail?: (railId: string) => void;
   readonly onSelectKey?: (frame: number) => void;
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+  /** Present only when the host supplies drag ports; absent is click-only. */
+  readonly keyDrag?: TimelineMotionKeyDragPresentation;
 }
 
 export interface TimelineMotionChannelHeaderRowProps {
@@ -202,7 +221,7 @@ export function resolveDisplayLaneChannelId(
  * row's adjacency list share it, so navigation never steps onto a frame the
  * lane does not draw.
  */
-function resolveInBandMotionKeys(
+export function resolveInBandMotionKeys(
   keys: readonly PhysicPaintRotoRailMotionKey[],
   frameCount: number,
 ): readonly PhysicPaintRotoRailMotionKey[] {
@@ -273,6 +292,7 @@ export function TimelineMotionChannelLane({
   onSelectRail,
   onSelectKey,
   disabledReasons,
+  keyDrag,
 }: TimelineMotionChannelLaneProps) {
   const palette = resolveTimelineRailPalette(railType, selected ? 'selected' : 'active');
   const laneHeight = TIMELINE_MOTION.laneHeight;
@@ -304,7 +324,7 @@ export function TimelineMotionChannelLane({
     padding: 0,
     background: palette.keyFill,
     boxShadow: `0 0 0 ${TIMELINE_MOTION.keyRimWidth}px ${palette.keyRim}`,
-    cursor: selectKeyState.disabled ? 'not-allowed' : 'pointer',
+    cursor: selectKeyState.disabled ? 'not-allowed' : keyDrag !== undefined ? 'grab' : 'pointer',
   });
 
   const cellStyle = (frame: number): CSSProperties => ({
@@ -375,9 +395,44 @@ export function TimelineMotionChannelLane({
           aria-description={selectKeyState.reason ?? undefined}
           aria-label={`Motion key at frame ${key.frame}`}
           style={keyStyle(key.frame)}
-          onClick={selectKeyState.disabled ? undefined : () => onSelectKey?.(key.frame)}
+          onPointerDown={keyDrag === undefined
+            ? undefined
+            : (event) => keyDrag.onPointerDownKey(event, key.frame)}
+          onClick={selectKeyState.disabled
+            ? undefined
+            : (event) => {
+              // The drop's companion click must not re-select or bubble into
+              // the lane's rail selection.
+              if (keyDrag?.consumeClickSuppression() === true) {
+                event.stopPropagation();
+                return;
+              }
+              onSelectKey?.(key.frame);
+            }}
         />
       ))}
+
+      {keyDrag !== undefined && keyDrag.ghost.active ? (
+        <span
+          class={`physics-paint-motion-lane-key-ghost${keyDrag.ghost.blockedEdge === null
+            ? ''
+            : ` blocked-edge-${keyDrag.ghost.blockedEdge}`}`}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: keyDrag.ghost.left,
+            // Same vertical centring and measures as the key it replaces.
+            top: (laneHeight - TIMELINE_MOTION.keySize) / 2,
+            width: keyDrag.ghost.width,
+            height: TIMELINE_MOTION.keySize,
+            borderRadius: TIMELINE_MOTION.keyRadius,
+            background: palette.keyFill,
+            boxShadow: `0 0 0 ${TIMELINE_MOTION.keyRimWidth}px ${palette.keyRim}`,
+            opacity: 0.5,
+            pointerEvents: 'none',
+          }}
+        />
+      ) : null}
 
     </div>
   );

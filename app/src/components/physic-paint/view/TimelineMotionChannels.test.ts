@@ -28,6 +28,7 @@ import {
   type TimelineMotionChannelHeaderRowProps,
   type TimelineMotionChannelLaneProps,
   type TimelineMotionHeaderGroupProps,
+  type TimelineMotionKeyDragPresentation,
 } from './TimelineMotionChannels';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import type {
@@ -505,6 +506,126 @@ describe('TimelineMotionChannelLane', () => {
 
     clickOf(laneNode(tree))();
     expect(onSelectRail).toHaveBeenCalledWith('rail-a');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-pd8 — the drag presentation the lane exposes                 */
+/* ------------------------------------------------------------------ */
+
+function keyDragPresentation(
+  overrides: Partial<TimelineMotionKeyDragPresentation> = {},
+): TimelineMotionKeyDragPresentation {
+  return {
+    ghost: { active: false, left: 0, width: 0, blockedEdge: null },
+    onPointerDownKey: () => {},
+    consumeClickSuppression: () => false,
+    ...overrides,
+  };
+}
+
+function ghostNodes(tree: unknown): TestVNode[] {
+  return findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-key-ghost'));
+}
+
+describe('TimelineMotionChannelLane keyDrag presentation', () => {
+  it('keeps the pointer cursor, no pointerdown and no ghost without keyDrag', () => {
+    const tree = renderLane();
+
+    expect(ghostNodes(tree)).toHaveLength(0);
+    for (const dot of keyDots(tree)) {
+      expect(styleOf(dot).cursor).toBe('pointer');
+      expect(dot.props.onPointerDown).toBeUndefined();
+    }
+  });
+
+  it('gives every enabled key a grab cursor and forwards pointerdown with its frame', () => {
+    const onPointerDownKey = vi.fn();
+    const tree = renderLane({ keyDrag: keyDragPresentation({ onPointerDownKey }) });
+    const dots = keyDots(tree);
+
+    expect(dots).toHaveLength(3);
+    for (const dot of dots) expect(styleOf(dot).cursor).toBe('grab');
+    const event = { type: 'pointerdown', clientX: 42 };
+    (dots[1]!.props.onPointerDown as (pointerEvent: unknown) => void)(event);
+    expect(onPointerDownKey).toHaveBeenCalledWith(event, 3);
+  });
+
+  it('keeps the not-allowed cursor when key selection is disabled', () => {
+    const tree = renderLane({
+      keyDrag: keyDragPresentation(),
+      disabledReasons: { 'select-key': 'Motion key selection is unavailable' },
+    });
+    const dot = keyDots(tree)[0]!;
+
+    expect(styleOf(dot).cursor).toBe('not-allowed');
+    expect(dot.props.disabled).toBe(true);
+  });
+
+  it('paints the token-derived ghost when active and marks the blocked edge', () => {
+    const tree = renderLane({
+      keyDrag: keyDragPresentation({
+        ghost: {
+          active: true,
+          left: TIMELINE_GEOMETRY.cellPitch * 4,
+          width: TIMELINE_MOTION.keySize,
+          blockedEdge: 'right',
+        },
+      }),
+    });
+    const ghosts = ghostNodes(tree);
+
+    expect(ghosts).toHaveLength(1);
+    expect(hasClass(ghosts[0]!, 'blocked-edge-right')).toBe(true);
+    const style = styleOf(ghosts[0]!);
+    expect(style.left).toBe(TIMELINE_GEOMETRY.cellPitch * 4);
+    expect(style.width).toBe(TIMELINE_MOTION.keySize);
+    expect(style.height).toBe(TIMELINE_MOTION.keySize);
+    expect(style.borderRadius).toBe(TIMELINE_MOTION.keyRadius);
+    expect(style.pointerEvents).toBe('none');
+  });
+
+  it('marks a left blocked edge and renders no ghost while inactive', () => {
+    const blocked = ghostNodes(renderLane({
+      keyDrag: keyDragPresentation({
+        ghost: { active: true, left: 0, width: TIMELINE_MOTION.keySize, blockedEdge: 'left' },
+      }),
+    }));
+    expect(blocked).toHaveLength(1);
+    expect(hasClass(blocked[0]!, 'blocked-edge-left')).toBe(true);
+
+    expect(ghostNodes(renderLane({
+      keyDrag: keyDragPresentation({
+        ghost: { active: false, left: 0, width: TIMELINE_MOTION.keySize, blockedEdge: null },
+      }),
+    }))).toHaveLength(0);
+  });
+
+  it('suppresses the post-drop click and stops propagation', () => {
+    const onSelectKey = vi.fn();
+    const consumeClickSuppression = vi.fn(() => true);
+    const tree = renderLane({
+      onSelectKey,
+      keyDrag: keyDragPresentation({ consumeClickSuppression }),
+    });
+    const stopPropagation = vi.fn();
+
+    (keyDots(tree)[1]!.props.onClick as (clickEvent: { stopPropagation: () => void }) => void)({
+      stopPropagation,
+    });
+    expect(stopPropagation).toHaveBeenCalledTimes(1);
+    expect(onSelectKey).not.toHaveBeenCalled();
+  });
+
+  it('selects the key frame when the click is not suppressed', () => {
+    const onSelectKey = vi.fn();
+    const tree = renderLane({
+      onSelectKey,
+      keyDrag: keyDragPresentation({ consumeClickSuppression: () => false }),
+    });
+
+    clickOf(keyDots(tree)[2]!)();
+    expect(onSelectKey).toHaveBeenCalledWith(6);
   });
 });
 
