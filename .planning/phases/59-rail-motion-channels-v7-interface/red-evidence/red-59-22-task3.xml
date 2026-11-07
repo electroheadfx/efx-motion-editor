@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="32" failures="10" errors="0" time="1.209">
+    <testsuite name="src/stores/trackIsolation.test.ts" timestamp="2026-11-07T10:06:41.206Z" hostname="efx2.home" tests="32" failures="10" errors="0" skipped="0" time="0.039418667">
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track isolation (46-01 TRK-01 base law) &gt; re-key accessors: a real key upserted on track A is invisible on track B" time="0.00121025">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track isolation (46-01 TRK-01 base law) &gt; isolation law: editing track A at frame 5 leaves track B record payload byte-identical" time="0.002434834">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track isolation (46-01 TRK-01 base law) &gt; empty track: removing the last real key leaves an empty-but-present track addressable by trackId" time="0.000464417">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track isolation (46-01 TRK-01 base law) &gt; ordering: records of one track sort appFrame ascending, ties by keyId localeCompare" time="0.005234333">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore per-track revision signals (46-01 TRK-03) &gt; per-track revision isolation: bumpTrackRevision on track A bumps A and the global clock, track B untouched" time="0.000138875">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore per-track revision signals (46-01 TRK-03) &gt; fresh track runtime mounted by mountTrackRuntime reports the baseline revision and not-dirty" time="0.000143542">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore per-track revision signals (46-01 TRK-03) &gt; per-track dirty law: one mutation fires the injected dirty callback exactly once and bumps the global paint version" time="0.000158459">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3) &gt; lease scope: track A and track B each hold an exclusive lease on the same layer, with cross-track validation rejected" time="0.000462459">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3) &gt; track teardown: removeTrackRuntime clears B frames, records, caches, selection, leases, and memo entries while A stays untouched" time="0.000567708">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped operation leases (46-01 TRK-03 Task 3) &gt; empty-keep: removeTrackRuntime on a never-mounted track is a no-op returning false without throwing" time="0.000094792">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; same-track copy/paste: fresh keyIds/loopIds (never S&apos;s ids) and identical payload bytes" time="0.003245125">
+            <failure message="Copy must resolve: stale-member" type="Error">
+Error: Copy must resolve: stale-member
+ ❯ requireCopy src/stores/trackIsolation.test.ts:113:25
+ ❯ src/stores/trackIsolation.test.ts:349:21
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; cross-track paste isolation: pasting A&apos;s selection into B changes B only; A records, caches, and revisions stay byte-identical" time="0.000785667">
+            <failure message="Copy must resolve: stale-member" type="Error">
+Error: Copy must resolve: stale-member
+ ❯ requireCopy src/stores/trackIsolation.test.ts:113:25
+ ❯ src/stores/trackIsolation.test.ts:392:21
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; cross-track Hold re-pointing: pasted Hold references the destination&apos;s copied frames, never A&apos;s key ids" time="0.000473417">
+            <failure message="Copy must resolve: stale-member" type="Error">
+Error: Copy must resolve: stale-member
+ ❯ requireCopy src/stores/trackIsolation.test.ts:113:25
+ ❯ src/stores/trackIsolation.test.ts:412:21
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; WR-06: a clip-following Key Rail copies with only its own keys and its own motion" time="0.002131584">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:451:23
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; WR-06: a fully selected Loop Clip travels as ONE loop member carrying its own sources and record" time="0.000828916">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:481:23
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; reject not dangle: a payload whose Hold source frame is outside the pasted set fails closed with zero mutation" time="0.000978916">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; deep-copy assets: the pasted frames own their bytes; deleting the destination leaves A intact" time="0.000399">
+            <failure message="Copy must resolve: stale-member" type="Error">
+Error: Copy must resolve: stale-member
+ ❯ requireCopy src/stores/trackIsolation.test.ts:113:25
+ ❯ src/stores/trackIsolation.test.ts:535:21
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; clearTrackFrames removes only the target track&apos;s frames + records; the sibling track&apos;s cache paths untouched" time="0.000854">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; cutTrackSelection copies and removes the selection; cut fails closed on partial loop overlap" time="0.000523334">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:566:20
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1) &gt; duplicateTrackFrames duplicates at the derived anchor with fresh identities" time="0.000481542">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:591:27
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09) &gt; RED: move removes the items from the source and adds fresh-identity copies at the same appFrames" time="0.001073542">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09) &gt; RED: move equals cut-then-paste — destination matches the cut payload pasted at its anchor, source matches the cut effect" time="0.000481083">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:678:22
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore moveTrackItems (46-03 Task 2 — D-08/D-09) &gt; RED: a covered Hold re-points onto the destination fresh frames; a colliding move fails closed with the source untouched" time="0.00045675">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/stores/trackIsolation.test.ts:705:22
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02) &gt; adjacency: two tracks holding a Hold Loop Clip at the same appFrame each answer their own loopId/sourceKeyId — the A answer never shows B&apos;s" time="0.000467625">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02) &gt; empty: a track with a Hold clip but zero real keys answers every clip cell linked-unresolved — never a foreign frame, never a fabricated base" time="0.000307959">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02) &gt; ordering: half-open boundaries — the frame at the next clip&apos;s placementStart belongs to the next clip, never both" time="0.000311417">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02) &gt; context provenance: the context the store builds for track A contains no loopId and no keyId owned by track B" time="0.000423125">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintStore track-local Hold resolution context (46-06 Task 1 — TRK-02) &gt; virtual-only: no linked or linked-unresolved resolution is ever persisted — frames, cache, projection, and document stay virtual" time="0.000323875">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintBridge per-track stale-async law (46-04 Task 3) &gt; cross-track stale isolation: a track-B edit between capture and commit leaves the A capture valid and never moves B" time="0.005320458">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintBridge per-track stale-async law (46-04 Task 3) &gt; concurrent captures at a shared appFrame: both commit their own maps, the last never overwrites the first" time="0.003723791">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintBridge per-track stale-async law (46-04 Task 3) &gt; B-dirty does not fail A: the per-track revision, not the global clock, gates A&apos;s commit" time="0.002050167">
+        </testcase>
+        <testcase classname="src/stores/trackIsolation.test.ts" name="physicPaintBridge per-track stale-async law (46-04 Task 3) &gt; authority during a foreign-track edit: a request for A after a B edit returns A&apos;s terms and bytes unchanged" time="0.002202458">
+        </testcase>
+    </testsuite>
+</testsuites>

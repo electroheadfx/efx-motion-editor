@@ -15,7 +15,11 @@ import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { buildRotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
+import {
+  buildRotoRailSetCopyPayload,
+  type RotoRailSetCopyPayload,
+} from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
+import type { PhysicPaintRotoRailMotionRecord } from '../components/physic-paint/roto/railMotionModel';
 import { resolvePhysicPaintRotoLoopFrame } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import { defaultTransform, type Layer } from '../types/layer';
 import { layerStore } from './layerStore';
@@ -74,6 +78,18 @@ const makeLoop = (loopId: string, placementStart: number, sourceKeyIds: readonly
   sourceKeyIds,
   repeat: 1,
   mode: 'static',
+});
+
+/** A rail-motion record for the clip-following / loop-ownership rows. */
+const makeRailMotion = (railId: string, anchorKeyId: string): PhysicPaintRotoRailMotionRecord => ({
+  railId,
+  anchorKeyId,
+  channels: [
+    {
+      id: 'scale',
+      keys: [{ frame: 2, value: 0.5, easing: 'ease', wiggle: 0 }],
+    },
+  ],
 });
 
 /** Seed one track with records + loops + runtime frames (records first — the
@@ -331,8 +347,9 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
   it('same-track copy/paste: fresh keyIds/loopIds (never S\'s ids) and identical payload bytes', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2')], [makeLoop('hold-a', 0, ['k0'])]);
     const payload = requireCopy(LAYER, TRACK_A, ['k0']);
-    // The selection copies its key rail AND the Hold loop fully covered by it.
-    expect(payload.members.map((member) => member.kind)).toEqual(['key-rail', 'loop']);
+    // WR-06: the clip-owned k0 is never a Key Rail member — the fully-covered
+    // Hold travels as its own loop member and carries the fresh source cycle.
+    expect(payload.members.map((member) => member.kind)).toEqual(['loop']);
     expect(payload.sourceTrackId).toBe(TRACK_A);
 
     physicPaintStore.setRotoPhysicalSelection(LAYER, TRACK_A, null, 10);
@@ -342,14 +359,13 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
 
     const records = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A);
     const fresh = records.filter((record) => record.keyId !== 'k0' && record.keyId !== 'k2');
-    expect(fresh).toHaveLength(2);
-    expect(fresh.map((record) => record.appFrame).sort((a, b) => a - b)).toEqual([10, 12]);
+    expect(fresh).toHaveLength(1);
+    expect(fresh.map((record) => record.appFrame)).toEqual([10]);
     // Fresh identities never reuse the source ids.
     expect(fresh.every((record) => !['k0', 'k2'].includes(record.keyId))).toBe(true);
-    // Identical payload bytes, relocated onto the fresh frames.
+    // Identical payload bytes, relocated onto the fresh frame.
     const sourcePayloads = new Map([
       [10, makePayload(0, 'a@0').bytes],
-      [12, makePayload(2, 'a@2').bytes],
     ]);
     for (const record of fresh) expect(record.payload.bytes).toEqual(sourcePayloads.get(record.appFrame));
     // Fresh loop identity; the same-track paste duplicates the source cycle, so
@@ -379,9 +395,10 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(pasted.ok).toBe(true);
     if (!pasted.ok) throw new Error(`Cross-track paste must resolve: ${pasted.reason}`);
 
-    // B changed only: base record untouched, fresh records at 20/22.
+    // B changed only: base record untouched, the loop member's own source
+    // materialized at frame 20 (WR-06: no synthetic key-rail carrier).
     const recordsB = physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_B);
-    expect(recordsB.map((record) => record.appFrame).sort((a, b) => a - b)).toEqual([5, 20, 22]);
+    expect(recordsB.map((record) => record.appFrame).sort((a, b) => a - b)).toEqual([5, 20]);
     expect(recordsB.find((record) => record.appFrame === 5)?.keyId).toBe('b5');
     // A byte-identical: document, content revision, and runtime frames.
     expect(physicPaintStore.getRotoPhysicalDocument(LAYER, TRACK_A)).toEqual(documentABefore);
@@ -414,29 +431,96 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A)).toHaveLength(1);
   });
 
+  it('WR-06: a clip-following Key Rail copies with only its own keys and its own motion', async () => {
+    seedTrack(
+      TRACK_A,
+      [
+        makeRecord('k0', 0, 'a@0'),
+        makeRecord('k2', 2, 'a@2'),
+        makeRecord('k4', 4, 'a@4'),
+        makeRecord('k6', 6, 'a@6'),
+      ],
+      [makeLoop('g1', 0, ['k0', 'k2'])],
+    );
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK_A, [
+      makeRailMotion('rail-bare', 'k4'),
+    ]);
+    if (!motion.ok) throw new Error(`Motion seed failed: ${motion.error}`);
+
+    const copied = physicPaintStore.copyTrackSelection(LAYER, TRACK_A, ['k4']);
+    expect(copied.ok).toBe(true);
+    if (!copied.ok) throw new Error(`Copy must resolve: ${copied.reason}`);
+    const payload = copied.payload;
+
+    // The clip-owned k0/k2 close the segment: only the bare rail travels, and
+    // no synthetic key-rail carrier duplicates the Loop Clip's sources.
+    expect(payload.members.map((member) => member.kind)).toEqual(['key-rail']);
+    const member = payload.members[0];
+    if (member.kind !== 'key-rail') throw new Error('expected a key-rail member');
+    expect(member.firstKeyId).toBe('k4');
+    expect(member.entries.map((entry) => entry.sourceKeyId)).toEqual(['k4', 'k6']);
+    expect(member.entries.some((entry) => entry.sourceKeyId === 'k0' || entry.sourceKeyId === 'k2')).toBe(false);
+    // Motion is frozen on the bare rail only — the Loop Clip's record never
+    // rides along with a Key Rail member.
+    expect(member.sourceRailId).toBe('rail-bare');
+    expect(payload.railMotions.map((record) => record.railId)).toEqual(['rail-bare']);
+  });
+
+  it('WR-06: a fully selected Loop Clip travels as ONE loop member carrying its own sources and record', async () => {
+    seedTrack(
+      TRACK_A,
+      [makeRecord('k0', 0, 'a@0'), makeRecord('k2', 2, 'a@2'), makeRecord('k4', 4, 'a@4')],
+      [makeLoop('g1', 0, ['k0', 'k2'])],
+    );
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK_A, [
+      makeRailMotion('g1', 'k0'),
+    ]);
+    if (!motion.ok) throw new Error(`Motion seed failed: ${motion.error}`);
+
+    const copied = physicPaintStore.copyTrackSelection(LAYER, TRACK_A, ['k0', 'k2']);
+    expect(copied.ok).toBe(true);
+    if (!copied.ok) throw new Error(`Copy must resolve: ${copied.reason}`);
+    const payload = copied.payload;
+
+    expect(payload.members.map((member) => member.kind)).toEqual(['loop']);
+    const member = payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected a loop member');
+    expect(member.loopId).toBe('g1');
+    expect(member.sourceEntries.map((entry) => entry.sourceKeyId)).toEqual(['k0', 'k2']);
+    expect(member.sourceEntries.map((entry) => entry.sourceAppFrame)).toEqual([0, 2]);
+    expect(payload.railMotions.map((record) => record.railId)).toEqual(['g1']);
+  });
+
   it('reject not dangle: a payload whose Hold source frame is outside the pasted set fails closed with zero mutation', async () => {
     seedTrack(TRACK_A, [makeRecord('k0', 0, 'a@0'), makeRecord('k1', 1, 'a@1')], [makeLoop('hold', 0, ['k0', 'k1'])]);
     seedTrack(TRACK_B, [makeRecord('b5', 5, 'b@5')], []);
-    // Split the contiguous rail with a break on k1 so k0's segment carries k0
-    // only: the Hold then references a source (k1) that is NOT part of the
-    // pasted key set.
-    const breaks = physicPaintStore.replaceRotoPhysicalIncomingInterpolationBreakKeyIds(LAYER, TRACK_A, ['k1']);
-    if (!breaks.ok) throw new Error(`Break seed failed: ${breaks.error}`);
-    // Hand-build a payload that carries a Hold whose source key (k1) is NOT
-    // part of the pasted key set — the engine must reject it, never write a
-    // dangling cross-track reference (defensive; the clipboard never produces
-    // one, because the store's copy only carries fully-covered Hold).
+    // WR-06: the Loop Clip member is its own carrier. Build a loop-only payload,
+    // then forge the dangling case by dropping one source entry (k1) while
+    // `clip.sourceKeyIds` still references it — the engine must reject it,
+    // never write a dangling cross-track reference (defensive; the clipboard
+    // never produces one, because the store's copy only carries a
+    // fully-covered Hold).
     const built = buildRotoRailSetCopyPayload({
       document: physicPaintStore.getRotoPhysicalDocument(LAYER, TRACK_A)!,
-      members: [
-        { kind: 'key-rail', firstKeyId: 'k0' },
-        { kind: 'loop', loopId: 'hold' },
-      ],
+      members: [{ kind: 'loop', loopId: 'hold' }],
       trackId: TRACK_A,
     });
     if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const forged: RotoRailSetCopyPayload = Object.freeze({
+      ...built.payload,
+      members: Object.freeze(built.payload.members.map((member) => (
+        member.kind === 'loop'
+          ? Object.freeze({
+              ...member,
+              sourceEntries: Object.freeze(
+                member.sourceEntries.filter((entry) => entry.sourceKeyId !== 'k1'),
+              ),
+            })
+          : member
+      ))),
+    });
     physicPaintStore.setRotoPhysicalSelection(LAYER, TRACK_B, null, 10);
-    const pasted = physicPaintStore.pasteTrackSelection(LAYER, TRACK_B, built.payload);
+    const pasted = physicPaintStore.pasteTrackSelection(LAYER, TRACK_B, forged);
     expect(pasted.ok).toBe(false);
     if (pasted.ok) throw new Error('Un-re-pointable paste must reject');
     expect(pasted.reason).toBe('loop-source-outside-pasted-set');
@@ -481,7 +565,9 @@ describe('physicPaintStore track-scoped copy/paste/duplicate/clear (46-03 Task 1
     const cut = physicPaintStore.cutTrackSelection(LAYER, TRACK_A, ['k0']);
     expect(cut.ok).toBe(true);
     if (!cut.ok) throw new Error(`cut must resolve: ${cut.reason}`);
-    expect(cut.payload.members.map((member) => member.kind)).toEqual(['key-rail', 'loop']);
+    // WR-06: the clip-owned k0 is never a Key Rail member; the Hold is the one
+    // carried member and owns the source cycle.
+    expect(cut.payload.members.map((member) => member.kind)).toEqual(['loop']);
     // The source lost the selected key (and only that key — k2 survives), its
     // frame, and the carried Hold.
     expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK_A).map((record) => record.appFrame)).toEqual([2]);
