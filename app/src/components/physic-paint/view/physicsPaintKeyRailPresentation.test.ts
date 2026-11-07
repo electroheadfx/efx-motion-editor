@@ -494,3 +494,105 @@ describe('projectRailMotionInspector channel presence (59-21: absent channels ar
     ]);
   });
 });
+
+/**
+ * 261107-qgj: the animate-mode (property-selected) projection. It reads at the
+ * playhead's rail-local frame and never requires a key there — opening the
+ * Motion modal is a property selection, not a key selection.
+ */
+describe('projectRailMotionInspectorAtFrame (261107-qgj: property-mode projection)', () => {
+  type ProjectMotionInspectorAtFrame = (input: {
+    readonly record: PhysicPaintRotoRailMotionRecord;
+    readonly railLocalFrame: number;
+  }) => ProjectedMotionInspectorShape;
+
+  function requireProjectMotionInspectorAtFrame(): ProjectMotionInspectorAtFrame {
+    const candidate = (keyRailPresentationModule as unknown as {
+      projectRailMotionInspectorAtFrame?: unknown;
+    }).projectRailMotionInspectorAtFrame;
+    expect(typeof candidate).toBe('function');
+    if (typeof candidate !== 'function') {
+      throw new Error('projectRailMotionInspectorAtFrame is not implemented yet');
+    }
+    return candidate as ProjectMotionInspectorAtFrame;
+  }
+
+  it('projects at an unkeyed rail-local frame — never null and never key-gated', () => {
+    // Frame 7 sits between keys on every channel of the fixture.
+    const projection = requireProjectMotionInspectorAtFrame()({
+      record: motionRecordFixture(),
+      railLocalFrame: 7,
+    });
+
+    expect(projection.railId).toBe('rail-motion');
+    expect(projection.frame).toBe(7);
+    expect(projection.fields.map((field) => [field.channelId, field.present])).toEqual([
+      ['position-x', true],
+      ['position-y', true],
+      ['scale', true],
+      ['rotation', true],
+      ['opacity', false],
+    ]);
+  });
+
+  it('shows stored values at a keyed frame and evaluator values at an unkeyed frame', () => {
+    const atFrame = (frame: number) => requireProjectMotionInspectorAtFrame()({
+      record: motionRecordFixture(),
+      railLocalFrame: frame,
+    });
+
+    // Frame 5 is keyed on the Position pair: stored values, never an
+    // outgoing-wiggle evaluation.
+    expect(atFrame(5).fields.map((field) => [field.channelId, field.value])).toEqual([
+      ['position-x', 120],
+      ['position-y', -12],
+      ['scale', 150],
+      ['rotation', 0],
+      ['opacity', 100],
+    ]);
+
+    // Frame 7 is unkeyed everywhere: smoothstep(0.4) = 0.352.
+    const unkeyed = atFrame(7).fields;
+    expect(unkeyed.find((field) => field.channelId === 'position-x')?.value).toBeCloseTo(112.96, 6);
+    expect(unkeyed.find((field) => field.channelId === 'position-y')?.value).toBeCloseTo(9.824, 6);
+    expect(unkeyed.find((field) => field.channelId === 'scale')?.value).toBeCloseTo(178.4, 6);
+    expect(unkeyed.find((field) => field.channelId === 'rotation')?.value).toBe(0);
+    expect(unkeyed.find((field) => field.channelId === 'opacity')?.value).toBe(100);
+  });
+
+  it('keeps units and the fixed D-13 order at every frame', () => {
+    const projection = requireProjectMotionInspectorAtFrame()({
+      record: motionRecordFixture(),
+      railLocalFrame: 3,
+    });
+    expect(projection.fields.map((field) => [field.channelId, field.unit])).toEqual([
+      ['position-x', 'px'],
+      ['position-y', 'px'],
+      ['scale', '%'],
+      ['rotation', '°'],
+      ['opacity', '%'],
+    ]);
+  });
+
+  it('is frozen at every level', () => {
+    const projection = requireProjectMotionInspectorAtFrame()({
+      record: motionRecordFixture(),
+      railLocalFrame: 3,
+    });
+    expect(Object.isFrozen(projection)).toBe(true);
+    expect(Object.isFrozen(projection.fields)).toBe(true);
+    expect(projection.fields.every((field) => Object.isFrozen(field))).toBe(true);
+  });
+
+  it('normalizes non-finite and negative frames to 0 and floors fractions', () => {
+    const frameAt = (railLocalFrame: number) => requireProjectMotionInspectorAtFrame()({
+      record: motionRecordFixture(),
+      railLocalFrame,
+    }).frame;
+
+    expect(frameAt(-3)).toBe(0);
+    expect(frameAt(Number.NaN)).toBe(0);
+    expect(frameAt(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(frameAt(4.9)).toBe(4);
+  });
+});

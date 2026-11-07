@@ -349,8 +349,9 @@ describe('261027-gh9g floating brush catalog', () => {
   it('seats the catalog one step below the stroke sheet (261029-hy2 WR-01)', () => {
     setAquarelleBrushModalOpen(true);
     const style = (PhysicsPaintBrushModal() as TestVNode).props?.style as Record<string, unknown>;
-    // The cascade is stroke-settings 12px / brushes 28px / settings 44px: a
-    // covered sheet must keep a clickable strip of its 38px header.
+    // The cascade is stroke-settings 12px / brushes 28px / settings 44px /
+    // rail-motion 60px: a covered sheet must keep a clickable strip of its
+    // 38px header.
     expect(style?.top).toBe('28px');
     expect(style?.height, 'the bottom inset stays 12px').toBe('min(560px, calc(100% - 40px))');
   });
@@ -367,7 +368,8 @@ describe('261027-gh9g floating brush catalog', () => {
     ).toBeTypeOf('function');
     bringSheetToFront(SHEET_ID_BRUSHES);
     const after = PhysicsPaintBrushModal() as TestVNode;
-    expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(52);
+    // 261107-qgj: four sheets, so a raise from the bottom reaches 53.
+    expect((after.props?.style as Record<string, unknown>)?.zIndex).toBe(53);
   });
 });
 
@@ -388,7 +390,8 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
   it('opens Settings then Brushes: the newly opened Brushes sheet is on top', () => {
     click(openingFromBrushTab());
     expect(aquarelleSettingsModalOpen.value).toBe(true);
-    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
+    // 261107-qgj: the four-sheet order makes the top level 53.
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(53);
 
     setAquarelleBrushMenuOpen(true);
     const menu = PhysicsPaintBrushMenu() as TestVNode;
@@ -401,7 +404,7 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
 
     const brushStyle = (PhysicsPaintBrushModal() as TestVNode).props?.style as Record<string, unknown>;
     const settingsStyle = (PhysicsPaintSettingsModal() as TestVNode).props?.style as Record<string, unknown>;
-    expect(brushStyle?.zIndex, 'the newly opened catalog takes the top level').toBe(52);
+    expect(brushStyle?.zIndex, 'the newly opened catalog takes the top level').toBe(53);
     expect(
       settingsStyle?.zIndex as number,
       'the covered Settings sheet drops one level',
@@ -417,6 +420,7 @@ describe('261029-hy2 CR-01 raise-on-open', () => {
     // The setter's compare-then-write early-returns on an already-open sheet;
     // the raise happens regardless, so the button is never dead.
     expect(aquarelleSettingsModalOpen.value).toBe(true);
-    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
+    // 261107-qgj: raising Settings from the four-sheet order reaches 53.
+    expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(53);
   });
 });

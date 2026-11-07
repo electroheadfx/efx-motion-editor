@@ -7397,7 +7397,7 @@ export function PhysicsPaintStudio() {
       // projection in, one command-layer write out; the panel never reads the
       // store and never mutates the record.
       selectedRailMotion: railMotionInspector,
-      onCommitRailMotionValue: rotoTimelineActions.physicalActions.commitRailMotionChannelValue,
+      onCommitRailMotionValue: rotoTimelineActions.physicalActions.commitRailMotionInspectorValue,
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
@@ -11174,6 +11174,10 @@ export function PhysicsPaintStudio() {
     referenceDialog,
     scriptPickerDialog,
     strokeSettingsDialog,
+    // 261107-qgj: the floating Motion modal's bundle (signal reference) and its
+    // ONE close path, which clears the property AND the Motion-key selection.
+    railMotionDialog: rotoTimelineActions.railMotionDialog,
+    onCloseRailMotionDialog: rotoTimelineActions.clearRailMotionSelection,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,

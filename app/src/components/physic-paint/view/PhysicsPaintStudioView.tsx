@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentProps, CSSProperties, TargetedPointerEvent } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { Signal } from '@preact/signals';
+import type { ReadonlySignal, Signal } from '@preact/signals';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { PhysicsPaintCanvasMount } from '../engine/PhysicsPaintCanvasMount';
 import { MemoizedPhysicsPaintCanvasMount } from '../engine/MemoizedPhysicsPaintCanvasMount';
@@ -12,6 +12,8 @@ import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlay
 import { PhysicsPaintBrushMenu } from './PhysicsPaintBrushMenu';
 import { PhysicsPaintBrushModal } from './PhysicsPaintBrushModal';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
+import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
+import type { RailMotionDialogBundle } from './physicsPaintKeyRailPresentation';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintRailConversionDialog } from './PhysicsPaintRailConversionDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
@@ -455,6 +457,12 @@ export interface PhysicsPaintStudioViewProps {
   /** quick 261024-p5q: the selection-gated Stroke Settings dialog bundle for
    *  the ACTIVE module (Brush Move / Water color Select). Absent -> closed. */
   strokeSettingsDialog?: StrokeSettingsDialogBundle | null;
+  /** 261107-qgj: the floating Motion modal's bundle signal. Passed by
+   *  reference — the modal is its only reader, so frame ticks never re-render
+   *  this view. */
+  railMotionDialog?: ReadonlySignal<RailMotionDialogBundle | null> | null;
+  /** 261107-qgj: the modal's ONE close path (clears both selections). */
+  onCloseRailMotionDialog?: () => void;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -475,7 +483,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, railConversionDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, railConversionDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, railMotionDialog, onCloseRailMotionDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -554,6 +562,15 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               tab's content) shares the same canvas-region seat and picker
               step-aside. */}
           {!pickerOpen ? <PhysicsPaintSettingsModal /> : null}
+          {/* 261107-qgj: the floating Motion modal — the fourth sheet of the
+              shared stack, riding the same canvas-region seat and picker
+              step-aside. It self-hides on its signal; no `.value` read here. */}
+          {!pickerOpen ? (
+            <PhysicsPaintRailMotionModal
+              dialog={railMotionDialog ?? null}
+              onClose={onCloseRailMotionDialog}
+            />
+          ) : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

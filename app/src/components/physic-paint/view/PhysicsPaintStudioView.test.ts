@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { signal } from '@preact/signals';
 import { PhysicsPaintStudioView, type PhysicsPaintStudioViewProps } from './PhysicsPaintStudioView';
 import { PhysicsPaintSettingsModal } from './PhysicsPaintSettingsModal';
+import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
+import type { RailMotionDialogBundle } from './physicsPaintKeyRailPresentation';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
 import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
@@ -41,6 +44,8 @@ interface ViewFixture {
   backgroundPickerOpen?: boolean;
   /** Reference gallery picker open. */
   referencePickerOpen?: boolean;
+  /** 261107-qgj: the Motion dialog bundle signal (values irrelevant here). */
+  railMotionDialogPresent?: boolean;
 }
 
 function childrenOf(vnode: TestVNode): unknown[] {
@@ -113,6 +118,12 @@ function renderView(fixture: ViewFixture): unknown {
           title: 'Import reference images',
         }
       : null,
+    // 261107-qgj: the Studio passes the hook's signal by reference; the modal
+    // self-hides on its own value. The seam pin is the MOUNT vnode.
+    railMotionDialog: fixture.railMotionDialogPresent
+      ? signal<RailMotionDialogBundle | null>(null)
+      : null,
+    onCloseRailMotionDialog: () => {},
   };
   return PhysicsPaintStudioView(props as unknown as PhysicsPaintStudioViewProps);
 }
@@ -122,6 +133,7 @@ function expectNoParentModals(tree: unknown): void {
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(0);
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(0);
   expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(0);
+  expect(countOfType(tree, PhysicsPaintRailMotionModal)).toBe(0);
 }
 
 function expectAllParentModals(tree: unknown): void {
@@ -129,6 +141,7 @@ function expectAllParentModals(tree: unknown): void {
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(1);
   expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(1);
   expect(countOfType(tree, PhysicsPaintSettingsModal)).toBe(1);
+  expect(countOfType(tree, PhysicsPaintRailMotionModal)).toBe(1);
 }
 
 describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () => {
@@ -177,5 +190,17 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
     });
     expectNoParentModals(tree);
     expect(countOfType(tree, BackgroundAssetPickerView)).toBe(2);
+  });
+
+  it('mounts the Motion modal beside its sibling sheets and steps it aside for a picker (261107-qgj)', () => {
+    const open = renderView({ railMotionDialogPresent: true });
+    const mount = findAll(open, (vnode) => vnode.type === PhysicsPaintRailMotionModal);
+    expect(mount).toHaveLength(1);
+    // The Signal is forwarded by reference — this view never reads its value.
+    expect((mount[0].props as Record<string, unknown>)?.dialog).not.toBeNull();
+    expect((mount[0].props as Record<string, unknown>)?.onClose).toBeTypeOf('function');
+
+    const aside = renderView({ railMotionDialogPresent: true, backgroundPickerOpen: true });
+    expect(countOfType(aside, PhysicsPaintRailMotionModal)).toBe(0);
   });
 });

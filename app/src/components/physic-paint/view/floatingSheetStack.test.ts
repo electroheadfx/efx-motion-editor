@@ -1,10 +1,10 @@
 // ============================================================
 //  261029-hy2 — the shared floating-sheet stack (click-to-front).
 //
-//  One bottom-to-top order owns the three Studio sheets' z-indexes:
-//  the Move-edit sheet, the brush catalog and the Settings sheet.
-//  This suite mutates the module-global order, so every case resets
-//  it on both sides.
+//  One bottom-to-top order owns the four Studio sheets' z-indexes:
+//  the Move-edit sheet, the brush catalog, the Settings sheet and
+//  the 261107-qgj Motion modal. This suite mutates the module-global
+//  order, so every case resets it on both sides.
 // ============================================================
 
 import { readFileSync } from 'node:fs';
@@ -12,6 +12,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   SHEET_ID_BRUSHES,
+  SHEET_ID_RAIL_MOTION,
   SHEET_ID_SETTINGS,
   SHEET_ID_STROKE_SETTINGS,
   bringSheetToFront,
@@ -33,24 +34,36 @@ afterEach(() => {
 });
 
 describe('261029-hy2 floating-sheet stack', () => {
-  it('starts bottom-to-top at 50 / 51 / 52', () => {
-    expect(floatingSheetOrder.value).toEqual(['stroke-settings', 'brushes', 'settings']);
+  it('starts bottom-to-top at 50 / 51 / 52 / 53', () => {
+    expect(floatingSheetOrder.value).toEqual([
+      'stroke-settings',
+      'brushes',
+      'settings',
+      'rail-motion',
+    ]);
     expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(50);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(51);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
+    expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(53);
   });
 
-  it('raising the bottom sheet moves it to 52 and shifts the others down', () => {
+  it('raising the bottom sheet moves it to 53 and shifts the others down', () => {
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
-    expect(floatingSheetOrder.value).toEqual(['brushes', 'settings', 'stroke-settings']);
-    expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(52);
+    expect(floatingSheetOrder.value).toEqual([
+      'brushes',
+      'settings',
+      'rail-motion',
+      'stroke-settings',
+    ]);
+    expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(53);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(50);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(51);
+    expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(52);
   });
 
   it('raising the already-front sheet keeps the same array reference', () => {
     const before = floatingSheetOrder.value;
-    bringSheetToFront(SHEET_ID_SETTINGS);
+    bringSheetToFront(SHEET_ID_RAIL_MOTION);
     expect(floatingSheetOrder.value, 'a front raise writes nothing').toBe(before);
   });
 
@@ -67,14 +80,14 @@ describe('261029-hy2 floating-sheet stack', () => {
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
     releaseSheet(SHEET_ID_BRUSHES);
     expect(floatingSheetOrder.value).not.toContain(SHEET_ID_BRUSHES);
-    expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
   });
 
   it('a released sheet rejoins at the front when it opens again', () => {
     releaseSheet(SHEET_ID_BRUSHES);
     bringSheetToFront(SHEET_ID_BRUSHES);
     expect(floatingSheetOrder.value[floatingSheetOrder.value.length - 1]).toBe(SHEET_ID_BRUSHES);
-    expect(sheetZIndex(SHEET_ID_BRUSHES)).toBeGreaterThan(sheetZIndex(SHEET_ID_SETTINGS));
+    expect(sheetZIndex(SHEET_ID_BRUSHES)).toBeGreaterThan(sheetZIndex(SHEET_ID_RAIL_MOTION));
   });
 
   it('closeSheetIfFront releases the sheet it closed', () => {
@@ -83,16 +96,22 @@ describe('261029-hy2 floating-sheet stack', () => {
     expect(closeSheetIfFront(SHEET_ID_SETTINGS, () => { closed = true; })).toBe(true);
     expect(closed).toBe(true);
     expect(floatingSheetOrder.value).not.toContain(SHEET_ID_SETTINGS);
-    expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
   });
 
   it('reset restores the initial order', () => {
     bringSheetToFront(SHEET_ID_STROKE_SETTINGS);
     resetFloatingSheetStack();
-    expect(floatingSheetOrder.value).toEqual(['stroke-settings', 'brushes', 'settings']);
+    expect(floatingSheetOrder.value).toEqual([
+      'stroke-settings',
+      'brushes',
+      'settings',
+      'rail-motion',
+    ]);
     expect(sheetZIndex(SHEET_ID_STROKE_SETTINGS)).toBe(50);
     expect(sheetZIndex(SHEET_ID_BRUSHES)).toBe(51);
     expect(sheetZIndex(SHEET_ID_SETTINGS)).toBe(52);
+    expect(sheetZIndex(SHEET_ID_RAIL_MOTION)).toBe(53);
   });
 });
 
@@ -102,10 +121,12 @@ describe('261029-hy2 floating-sheet stack', () => {
 // stopImmediatePropagation().
 describe('261029-hy2 WR-03 front-only Escape dismissal', () => {
   it('isFrontSheet answers for the top of the order', () => {
-    expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(false);
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(false);
     bringSheetToFront(SHEET_ID_BRUSHES);
     expect(isFrontSheet(SHEET_ID_BRUSHES)).toBe(true);
+    expect(isFrontSheet(SHEET_ID_RAIL_MOTION)).toBe(false);
     expect(isFrontSheet(SHEET_ID_SETTINGS)).toBe(false);
     expect(isFrontSheet(SHEET_ID_STROKE_SETTINGS)).toBe(false);
   });
@@ -120,11 +141,12 @@ describe('261029-hy2 WR-03 front-only Escape dismissal', () => {
     expect(brushesClosed).toBe(true);
   });
 
-  it('all three sheet handlers gate on the front sheet and stop their siblings', () => {
+  it('all four sheet handlers gate on the front sheet and stop their siblings', () => {
     const handlers = [
       ['PhysicsPaintBrushModal.tsx', 'SHEET_ID_BRUSHES'],
       ['PhysicsPaintSettingsModal.tsx', 'SHEET_ID_SETTINGS'],
       ['PhysicsPaintStrokeSettingsDialog.tsx', 'SHEET_ID_STROKE_SETTINGS'],
+      ['PhysicsPaintRailMotionModal.tsx', 'SHEET_ID_RAIL_MOTION'],
     ] as const;
     for (const [file, id] of handlers) {
       const source = readFileSync(resolve(__dirname, file), 'utf8');

@@ -1,10 +1,11 @@
 // ============================================================
 //  261029-hy2 — the shared floating-sheet stack.
 //
-//  Three Studio sheets overlap inside the canvas region: the
-//  Move-edit (Stroke settings) sheet, the brush catalog and the
-//  Settings sheet. They share ONE bottom-to-top order so pressing
-//  anywhere inside a sheet brings it to the front.
+//  Four Studio sheets overlap inside the canvas region: the
+//  Move-edit (Stroke settings) sheet, the brush catalog, the
+//  Settings sheet and the 261107-qgj Motion modal. They share ONE
+//  bottom-to-top order so pressing anywhere inside a sheet brings
+//  it to the front.
 //
 //  This module is UI layering only — never confuse it with
 //  stackOrder (the paint-layer ordering law).
@@ -12,7 +13,7 @@
 
 import { signal } from '@preact/signals';
 
-export type FloatingSheetId = 'stroke-settings' | 'brushes' | 'settings';
+export type FloatingSheetId = 'stroke-settings' | 'brushes' | 'settings' | 'rail-motion';
 
 /**
  * Per-sheet ids: a sheet imports ITS id and never spells the string inline,
@@ -21,11 +22,13 @@ export type FloatingSheetId = 'stroke-settings' | 'brushes' | 'settings';
 export const SHEET_ID_STROKE_SETTINGS: FloatingSheetId = 'stroke-settings';
 export const SHEET_ID_BRUSHES: FloatingSheetId = 'brushes';
 export const SHEET_ID_SETTINGS: FloatingSheetId = 'settings';
+export const SHEET_ID_RAIL_MOTION: FloatingSheetId = 'rail-motion';
 
 const INITIAL_ORDER: readonly FloatingSheetId[] = [
   SHEET_ID_STROKE_SETTINGS,
   SHEET_ID_BRUSHES,
   SHEET_ID_SETTINGS,
+  SHEET_ID_RAIL_MOTION,
 ];
 
 /** Bottom-to-top. Components read it through sheetZIndex only (narrow read). */
@@ -40,7 +43,7 @@ export function sheetZIndex(id: FloatingSheetId): number {
 }
 
 /**
- * Raise one sheet above the other two. Event handlers only — never call it
+ * Raise one sheet above every other. Event handlers only — never call it
  * from a render body (efx-preact-reactivity rule 6). Compare-then-write: an
  * already-front id keeps the SAME array reference, so nothing re-renders.
  */
@@ -77,7 +80,7 @@ export function isFrontSheet(id: FloatingSheetId): boolean {
 }
 
 /**
- * Front-only dismissal shared by the three sheet Escape handlers. Closes and
+ * Front-only dismissal shared by every sheet's Escape handler. Closes and
  * returns true when this sheet is front; a background sheet returns false and
  * leaves the key to the front one. Event handlers only — never a render body.
  */

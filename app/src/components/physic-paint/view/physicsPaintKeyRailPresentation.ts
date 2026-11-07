@@ -209,6 +209,41 @@ const RAIL_MOTION_INSPECTOR_UNITS: Readonly<Record<PhysicPaintRotoRailMotionChan
 });
 
 /**
+ * The ONE field-mapping authority shared by both Motion projections. Reads
+ * every channel at `readFrame` in the fixed D-13 order: a channel keyed at
+ * that frame shows its STORED value (a key frame must never display an
+ * outgoing-wiggle-perturbed evaluation); an unkeyed channel shows what the
+ * 59-05 evaluator reports, which is the value a create-key edit seeds.
+ */
+function projectRailMotionFields(
+  record: PhysicPaintRotoRailMotionRecord,
+  readFrame: number,
+): RailMotionInspectorPresentation {
+  const fields = PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER.map((channelId) => {
+    const channel = record.channels.find((entry) => entry.id === channelId);
+    const storedKey = channel?.keys.find((key) => key.frame === readFrame) ?? null;
+    const modelValue = storedKey !== null
+      ? storedKey.value
+      : evaluateRailMotionChannel(record, channelId, readFrame);
+    return Object.freeze({
+      channelId,
+      label: RAIL_MOTION_INSPECTOR_LABELS[channelId],
+      unit: RAIL_MOTION_INSPECTOR_UNITS[channelId],
+      value: railMotionValueToUi(channelId, modelValue),
+      // Channel existence only: the same lookup the value read uses, never a
+      // second predicate and never a key-at-frame test.
+      present: channel !== undefined,
+    }) as RailMotionInspectorField;
+  });
+
+  return Object.freeze({
+    railId: record.railId,
+    frame: readFrame,
+    fields: Object.freeze(fields) as readonly RailMotionInspectorField[],
+  }) as RailMotionInspectorPresentation;
+}
+
+/**
  * Projects every channel at the read frame in the fixed D-13 order. A channel
  * keyed at that frame shows its STORED value (a key frame must never display
  * an outgoing-wiggle-perturbed evaluation); an unkeyed channel shows what the
@@ -225,28 +260,42 @@ export function projectRailMotionInspector(
   if (!hasKeyAtSelection) return null;
 
   const readFrame = Number.isFinite(input.railLocalFrame) ? input.railLocalFrame : selectedKeyFrame;
-  const fields = PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER.map((channelId) => {
-    const channel = record.channels.find((entry) => entry.id === channelId);
-    const storedKey = channel?.keys.find((key) => key.frame === readFrame) ?? null;
-    const modelValue = storedKey !== null
-      ? storedKey.value
-      : evaluateRailMotionChannel(record, channelId, readFrame);
-    return Object.freeze({
-      channelId,
-      label: RAIL_MOTION_INSPECTOR_LABELS[channelId],
-      unit: RAIL_MOTION_INSPECTOR_UNITS[channelId],
-      value: railMotionValueToUi(channelId, modelValue),
-      // Channel existence only: the same lookup the value read uses, never a
-      // second predicate and never `hasKeyAtSelection`.
-      present: channel !== undefined,
-    }) as RailMotionInspectorField;
-  });
+  return projectRailMotionFields(record, readFrame);
+}
 
-  return Object.freeze({
-    railId: record.railId,
-    frame: readFrame,
-    fields: Object.freeze(fields) as readonly RailMotionInspectorField[],
-  }) as RailMotionInspectorPresentation;
+export interface ProjectRailMotionInspectorAtFrameInput {
+  /** The active rail's motion record, or null when it carries no motion. */
+  readonly record: PhysicPaintRotoRailMotionRecord;
+  /** Rail-local frame the property-mode dialog reads and writes. */
+  readonly railLocalFrame: number;
+}
+
+/**
+ * 261107-qgj: the animate-mode (property-selected) projection. It reads at the
+ * playhead's rail-local frame and NEVER requires a key there — the property
+ * selection alone is the open condition. Non-finite/negative frames normalize
+ * to 0 so the returned `frame` is always a writable rail-local frame.
+ */
+export function projectRailMotionInspectorAtFrame(
+  input: ProjectRailMotionInspectorAtFrameInput,
+): RailMotionInspectorPresentation {
+  const frame = Number.isFinite(input.railLocalFrame)
+    ? Math.max(0, Math.floor(input.railLocalFrame))
+    : 0;
+  return projectRailMotionFields(input.record, frame);
+}
+
+/**
+ * 261107-qgj: what the floating Motion modal receives. `commit` is BOUND to
+ * `presentation.frame` — the frame the fields displayed — and returns the
+ * command layer's rejection sentence verbatim, or null on success.
+ */
+export interface RailMotionDialogBundle {
+  readonly presentation: RailMotionInspectorPresentation;
+  readonly commit: (
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    uiValue: number,
+  ) => string | null;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {

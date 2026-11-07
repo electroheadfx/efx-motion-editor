@@ -53,10 +53,16 @@ import type {
   RotoPhysicalEditExecuteInput,
   RotoPhysicalKeyUtilityPort,
 } from '../roto/rotoCoordinatorPorts';
-import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import {
+  deriveKeyRailSegments,
+  projectRailMotionInspector,
+  projectRailMotionInspectorAtFrame,
+  type RailMotionDialogBundle,
+  type RailMotionInspectorPresentation,
+} from '../view/physicsPaintKeyRailPresentation';
 import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
 import { resolveMotionChannelPresence } from '../view/TimelineMotionChannels';
-import { railMotionSelectedChannel } from '../view/railMotionEditingMode';
+import { exitRailMotionEditing, railMotionSelectedChannel } from '../view/railMotionEditingMode';
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
@@ -1452,17 +1458,28 @@ export interface RotoPhysicalTimelineActionBundle {
   /** 261107: remove a display channel; the last one removes the motion record. */
   readonly removeMotionChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
   /**
-   * 59-16 (MOTN-03/MOTN-09): commit one display-unit numeric value on the
-   * selected Motion key's channel, at that key's own rail-local frame (a
-   * field edit never moves the playhead). Returns null on success, or the
-   * visible rejection reason — a rejected entry commits nothing. Grouped
-   * Position keeps its two values independent: the sibling axis is written
-   * at the same frame from its own stored/evaluated value.
+   * 59-16 / 261107-qgj: commit one display-unit numeric value on a Motion
+   * channel. `keyFrame` is the rail-local frame the value was read from (the
+   * floating Motion modal always passes the frame it displayed); omitted, the
+   * write targets the selected Motion key's own frame. A field edit never
+   * moves the playhead. Returns null on success, or the visible rejection
+   * reason — a rejected entry commits nothing. Grouped Position keeps its two
+   * values independent: the sibling axis is written at the same frame from its
+   * own stored/evaluated value.
    */
-  readonly commitRailMotionChannelValue: (
+  readonly commitRailMotionInspectorValue: (
     channelId: PhysicPaintRotoRailMotionChannelId,
     uiValue: number,
+    keyFrame?: number,
   ) => string | null;
+  /**
+   * 261107-qgj: the floating Motion modal's props-driven bundle and its ONE
+   * close path. The bundle is null whenever neither a property nor a Motion
+   * key is selected; the modal is its only reader.
+   */
+  readonly railMotionDialog: ReadonlySignal<RailMotionDialogBundle | null>;
+  /** Clears BOTH the animate-mode property and the Motion-key selection. */
+  readonly clearRailMotionSelection: () => void;
   /** 59-12 Task 2: cursor-only stepping to the adjacent Motion key. */
   readonly stepMotionKeyForward: (channelId?: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
   readonly canStepMotionKeyForward: ReadonlySignal<boolean>;
@@ -3020,28 +3037,40 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   /**
-   * 59-16: the numeric inspector's ONE commit path. A Motion-key click never
-   * moves the playhead, so the write targets the SELECTED key's rail-local
-   * frame — the same frame the read projection uses. The pure command keeps
-   * the D-12 grouped-position pair atomic; this action only funnels its result
-   * into the 59-07 setter (one undo step) and publishes a rejection verbatim.
+   * 59-16 / 261107-qgj: the numeric field's ONE commit path. `keyFrame` is the
+   * rail-local frame the field DISPLAYED — the floating Motion modal passes it
+   * explicitly, so a write never follows a playhead that moved after the read.
+   * Omitted, the write targets the SELECTED key's frame (the 59-16 law). The
+   * pure command keeps the D-12 grouped-position pair atomic; this action only
+   * funnels its result into the 59-07 setter (one undo step) and publishes a
+   * rejection verbatim.
    */
-  const commitRailMotionChannelValue = useCallback((
+  const commitRailMotionInspectorValue = useCallback((
     channelId: PhysicPaintRotoRailMotionChannelId,
     uiValue: number,
+    keyFrame?: number,
   ): string | null => {
     const state = readActiveRailMotionState(input);
-    const selection = railMotionSelectedKey.value;
     if (state === null || state.view === null || state.record === null) {
       return 'Select a rail with Motion first.';
     }
-    if (selection === null || selection.railId !== state.record.railId) {
+    const selection = railMotionSelectedKey.value;
+    const frame = keyFrame ?? selection?.frame ?? null;
+    if (frame === null || !Number.isFinite(frame) || frame < 0) {
       return 'Select a Motion key first.';
+    }
+    if (keyFrame === undefined && (selection === null || selection.railId !== state.record.railId)) {
+      return 'Select a Motion key first.';
+    }
+    if (keyFrame !== undefined && selection !== null && selection.railId !== state.record.railId) {
+      // A frame-bound write must never land on a rail the selection no longer
+      // addresses: the live record replaced the one the field read.
+      return 'Select a rail with Motion first.';
     }
     const result = applyWriteRailMotionChannelValue({
       records: state.records,
       railId: state.record.railId,
-      keyFrame: selection.frame,
+      keyFrame: frame,
       channelId,
       uiValue,
     });
@@ -3060,6 +3089,81 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     input.publishStatus?.('Motion value updated.');
     return null;
   }, [input]);
+
+  /**
+   * 261107-qgj: the bundle's frame-BOUND commit. It re-reads the live motion
+   * authority (a stale selection must never write another rail's values) and
+   * requires one of the two open conditions to still hold, then delegates to
+   * the ONE commit path at the presentation's own frame.
+   */
+  const commitRailMotionInspectorValueAtFrame = useCallback((
+    presentation: RailMotionInspectorPresentation,
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    uiValue: number,
+  ): string | null => {
+    const state = readActiveRailMotionState(input);
+    if (
+      state === null
+      || state.view === null
+      || state.record === null
+      || state.record.railId !== presentation.railId
+    ) {
+      return 'Select a rail with Motion first.';
+    }
+    const propertySelected = railMotionSelectedChannel.value !== null;
+    const selection = railMotionSelectedKey.value;
+    if (!propertySelected && selection === null) {
+      return 'Select a Motion key first.';
+    }
+    return commitRailMotionInspectorValue(channelId, uiValue, presentation.frame);
+  }, [commitRailMotionInspectorValue, input]);
+
+  /**
+   * 261107-qgj: the floating Motion modal's props-driven bundle. Open when a
+   * property is selected in the pinned header (animate mode) OR a Motion key
+   * is selected; the property wins when both are set. Property mode projects
+   * at the playhead's rail-local frame — the same frame the canvas gizmo
+   * commits to — while key mode keeps the 59-16 law and projects at the
+   * selected key's frame. Reading the two selection signals here is what
+   * subscribes this computed; the modal is its only consumer.
+   */
+  const railMotionDialog = computed((): RailMotionDialogBundle | null => {
+    const propertySelected = railMotionSelectedChannel.value !== null;
+    const selection = railMotionSelectedKey.value;
+    if (!propertySelected && selection === null) return null;
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null || state.record === null) return null;
+    const presentation = propertySelected
+      ? projectRailMotionInspectorAtFrame({
+        record: state.record,
+        railLocalFrame: state.localCursorFrame,
+      })
+      : (selection !== null && selection.railId === state.record.railId
+        ? projectRailMotionInspector({
+          record: state.record,
+          selectedKeyFrame: selection.frame,
+          railLocalFrame: selection.frame,
+        })
+        : null);
+    if (presentation === null) return null;
+    return Object.freeze({
+      presentation,
+      commit: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): string | null => (
+        commitRailMotionInspectorValueAtFrame(presentation, channelId, uiValue)
+      ),
+    }) as RailMotionDialogBundle;
+  });
+
+  /**
+   * 261107-qgj: the ONE close path shared by the header X and the front-only
+   * Escape. It clears the animate-mode property AND the Motion-key selection,
+   * so the canvas returns to the paint tool that was already active. Nothing
+   * restores a tool: animate mode never changed it.
+   */
+  const clearRailMotionSelection = useCallback((): void => {
+    selectRailMotionKey(null);
+    exitRailMotionEditing();
+  }, []);
 
   const stepMotionKey = useCallback(async (
     direction: -1 | 1,
@@ -4634,7 +4738,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     removeMotionKeyAtCursorDisabledReason,
     addMotionChannel,
     removeMotionChannel,
-    commitRailMotionChannelValue,
+    commitRailMotionInspectorValue,
+    railMotionDialog,
+    clearRailMotionSelection,
     stepMotionKeyForward,
     canStepMotionKeyForward,
     stepMotionKeyForwardDisabledReason,
@@ -4686,7 +4792,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
     setApplyStatus: input.setApplyStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, addMotionChannel, commitRailMotionChannelValue, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareMotionKeyDrag, commitMotionKeyDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, addMotionChannel, commitRailMotionInspectorValue, railMotionDialog, clearRailMotionSelection, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareMotionKeyDrag, commitMotionKeyDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
@@ -4703,6 +4809,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     railConversionDialog,
     // 59-13: the canvas gizmo payload for the selected animated rail.
     railMotionGizmo,
+    // 261107-qgj: the floating Motion modal's bundle (its only reader) and
+    // the ONE close path that clears the property AND the Motion-key selection.
+    railMotionDialog,
+    clearRailMotionSelection,
   };
 }
 
