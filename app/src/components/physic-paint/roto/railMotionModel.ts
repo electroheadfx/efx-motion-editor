@@ -766,10 +766,16 @@ function applyAddChannelEdit(
     return records;
   }
 
+  // 261107-ux2: the opening seed is the OUTGOING key of the first span, so it
+  // must ease toward the user's next written key — otherwise that span holds
+  // and the rail looks unanimated until the second written key. A channel that
+  // carries only this key stays inert because the evaluator holds the last
+  // key's value at and after the end. Hold remains authorable per key through
+  // the Motion sheet Hold/Ease toggle.
   const seedKey = (value: number): PhysicPaintRotoRailMotionKey => ({
     frame: 0,
     value,
-    easing: 'hold',
+    easing: 'ease',
     wiggle: 0,
   });
 
