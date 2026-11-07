@@ -80,10 +80,10 @@ recorded: 2026-11-07T11:38:36.153Z
 | IN-03 | info | open | - |
 | IN-04 | info | open | - |
 | IN-05 | info | open | - |
-| WR-03 | warning | open | - (not in the current review) |
-| WR-04 | warning | open | - (not in the current review) |
-| WR-05 | warning | open | - (not in the current review) |
-| WR-06 | warning | open | - (not in the current review) |
+| WR-03 | warning | fixed | closed by 59-25 (lane curve seeded with the lane railId) |
+| WR-04 | warning | fixed | closed by 59-25 (grouped Position easing/wiggle fan-out) |
+| WR-05 | warning | fixed | closed by 59-24 (code-unit canonical ordering, mixed-case fixture) |
+| WR-06 | warning | fixed | closed by 59-22 (single rail-motion ownership collector; Option B loop sourceEntries) |
 | CR-02 | critical | open | - (not in the current review) |
 | CR-03 | critical | open | - (not in the current review) |
 | CR-04 | critical | open | - (not in the current review) |
