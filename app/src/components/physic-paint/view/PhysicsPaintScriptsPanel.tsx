@@ -1,25 +1,14 @@
 import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
-import { signal } from '@preact/signals';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
 import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
-import type { RailMotionInspectorPresentation, SelectedKeyRailInspectorPresentation } from './physicsPaintKeyRailPresentation';
-import type { PhysicPaintRotoRailMotionChannelId } from '../roto/railMotionModel';
-import { NumericStepper } from '../../shared/NumericStepper';
+import type { SelectedKeyRailInspectorPresentation } from './physicsPaintKeyRailPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
-
-/**
- * 59-21 (IN-02): the sentence the command layer answers an absent channel with.
- * The panel owns this copy — the projection stays copy-free.
- */
-const MOTION_ABSENT_CHANNEL_SENTENCE = 'This Motion channel is not present on the rail.';
-/** One section-level note describes every absent field of the section. */
-const MOTION_ABSENT_CHANNEL_NOTE_ID = 'physics-paint-motion-absent-channel-note';
 
 export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
@@ -28,18 +17,6 @@ export interface PhysicsPaintScriptsPanelProps {
   playButtonRef: RefObject<HTMLButtonElement | null>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
   selectedKeyRail?: SelectedKeyRailInspectorPresentation | null;
-  /**
-   * 59-16 (D-06/D-09): the numeric Motion value inspector projection. Null
-   * when no Motion key is selected — the panel then renders no motion fields
-   * at all. Every displayed value comes from this prop; the panel reads no
-   * store.
-   */
-  selectedRailMotion?: RailMotionInspectorPresentation | null;
-  /**
-   * 59-16: the ONE write path out of a motion field. Receives the display-unit
-   * value and returns the visible rejection reason, or null on success.
-   */
-  onCommitRailMotionValue?: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number) => string | null;
   linkedGroupNavigation?: {
     currentIndex: number;
     total: number;
@@ -64,8 +41,6 @@ export function PhysicsPaintScriptsPanel({
   playButtonRef,
   selectedLoopClip = null,
   selectedKeyRail = null,
-  selectedRailMotion = null,
-  onCommitRailMotionValue,
   linkedGroupNavigation = null,
   onOpenLoopEdit,
   onOpenKeyRailEdit,
@@ -119,24 +94,6 @@ export function PhysicsPaintScriptsPanel({
   const refreshReasonId = useId();
   const scopeSelectId = useId();
   const keyRailEditReasonId = useId();
-  // 59-16: the ONLY transient state the Motion inspector owns. The numeric
-  // draft itself lives inside the shared NumericStepper (EU-comma free entry,
-  // commit on blur/Enter); this signal carries the reason a write was refused
-  // and a rejection sequence that remounts the field so its optimistic text is
-  // reverted to the projected value even when the same sentence repeats. A
-  // signal per the project rule; held in a ref because useSignal is
-  // unavailable to this component harness.
-  const motionCommitState = useRef(
-    signal<{ readonly reason: string | null; readonly rejectionSeq: number }>({ reason: null, rejectionSeq: 0 }),
-  );
-  const motionCommit = motionCommitState.current.value;
-  // A new projection (selection or document change) retires the stale reason.
-  useEffect(() => {
-    const current = motionCommitState.current.value;
-    if (current.reason !== null) {
-      motionCommitState.current.value = { reason: null, rejectionSeq: current.rejectionSeq };
-    }
-  }, [selectedRailMotion]);
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -181,76 +138,6 @@ export function PhysicsPaintScriptsPanel({
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
   };
 
-  // 59-16 (D-06/D-09): the numeric Motion value inspector. Props-driven end to
-  // end — every displayed value arrives through `selectedRailMotion` (the
-  // 59-16 projection) and every write leaves through `onCommitRailMotionValue`;
-  // the panel imports no store and mutates no record. A Motion key can only be
-  // selected while its rail owns the pane, so the section rides whichever
-  // surface is mounted (normal Scripts, Key Rail or Loop Clip inspector).
-  // The fields render in the projection's fixed D-13 order. Grouped Position is
-  // a display grouping over two independent model channels: each field emits
-  // only its OWN channel, so no coupling control links the two axes.
-  const commitMotionValue = (channelId: PhysicPaintRotoRailMotionChannelId, value: number): void => {
-    const reason = onCommitRailMotionValue?.(channelId, value) ?? null;
-    const current = motionCommitState.current.value;
-    if (reason === null) {
-      if (current.reason !== null) {
-        motionCommitState.current.value = { reason: null, rejectionSeq: current.rejectionSeq };
-      }
-      return;
-    }
-    // Never a silent clamp: surface the sentence and bump the sequence so the
-    // rejected field remounts at the projected value.
-    motionCommitState.current.value = { reason, rejectionSeq: current.rejectionSeq + 1 };
-  };
-  const motionValuesSection = selectedRailMotion === null
-    ? null
-    : (
-      <section class="physics-paint-motion-inspector" role="group" aria-label="Motion values">
-        {selectedRailMotion.fields.map((field) => (
-          <div key={field.channelId} class="physics-paint-motion-field">
-            <span class="physics-paint-motion-field-label">
-              {field.label} ({field.unit})
-              {/* 59-21: a channel the record does not carry is marked, never
-                  offered as an editable field the command layer must refuse. */}
-              {field.present ? null : (
-                <span class="physics-paint-motion-field-absent">not added</span>
-              )}
-            </span>
-            <NumericStepper
-              key={`${field.channelId}:${motionCommit.rejectionSeq}`}
-              ariaLabel={field.label}
-              value={field.value}
-              // Free entry, no grid snap: an out-of-domain number must reach
-              // the command layer and be refused with a reason, never silently
-              // clamped or rounded here (the 260924-d6l convention).
-              freeEntry
-              step={1}
-              precision={3}
-              disabled={!field.present}
-              ariaDisabled={!field.present}
-              ariaDescribedBy={field.present ? undefined : MOTION_ABSENT_CHANNEL_NOTE_ID}
-              onChange={(value) => {
-                // The disabled stepper already refuses pointer input; this
-                // guard keeps the zero-commit law even for a direct invocation.
-                if (!field.present) return;
-                commitMotionValue(field.channelId, value);
-              }}
-            />
-          </div>
-        ))}
-        {/* One note per section, never one per absent field. */}
-        {selectedRailMotion.fields.some((field) => !field.present) ? (
-          <p id={MOTION_ABSENT_CHANNEL_NOTE_ID} class="physics-paint-motion-absent-note">
-            {MOTION_ABSENT_CHANNEL_SENTENCE}
-          </p>
-        ) : null}
-        {motionCommit.reason !== null ? (
-          <p class="physics-paint-motion-rejection" role="alert">{motionCommit.reason}</p>
-        ) : null}
-      </section>
-    );
-
   // 58-03 RAIL-01 (D-01): selecting a Key Rail takes over the Scripts pane with
   // exactly three facts (D-04) and one conversion entry. The branch returns
   // before the loop-clip inspector so a plain rail selection can never be
@@ -267,7 +154,6 @@ export function PhysicsPaintScriptsPanel({
           <IconButton label={`Close Rail inspector — ${railLabel}`} title={`Close Rail inspector — ${railLabel}`} onClick={() => { onCloseKeyRail?.(); }} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
         </div>
         <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
-          {motionValuesSection}
           <dl class="physics-paint-loop-clip-inspector">
             <div><dt>Frames</dt><dd>{selectedKeyRail.framesLabel}</dd></div>
             <div><dt>Keys</dt><dd>{selectedKeyRail.keysLabel}</dd></div>
@@ -292,7 +178,6 @@ export function PhysicsPaintScriptsPanel({
           <IconButton label={`Close Rail inspector — ${selectedLoopClip.displayName}`} title={`Close Rail inspector — ${selectedLoopClip.displayName}`} onClick={onCloseLoopClip} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><X size={16} aria-hidden="true" /></IconButton>
         </div>
         <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
-        {motionValuesSection}
         <dl class="physics-paint-loop-clip-inspector">
           <div><dt>Name</dt><dd title={selectedLoopClip.displayName}>{selectedLoopClip.displayName}</dd></div>
           <div><dt>Source Script</dt><dd title={selectedLoopClip.sourceLabel}>{selectedLoopClip.sourceLabel}</dd></div>
@@ -329,7 +214,6 @@ export function PhysicsPaintScriptsPanel({
         <IconButton buttonRef={playButtonRef} label="Run Script…" title={`Run Script… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Run the selected Script to create or update a Motion or Static Rail')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /><span class="physics-paint-roto-key-icon-label">Run Script</span></IconButton>
         <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project Scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
       </div>
-      {motionValuesSection}
       {scopeEntries.length > 1 || linkedGroupNavigation ? (
         // quick-260922-jss amendment: ONE meta row carries both the scope
         // filter and the linked-Rail pager. They are independent — either can
