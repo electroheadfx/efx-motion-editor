@@ -57,26 +57,29 @@ requirements-completed: [QUICK-261107-SG3]
 
 coverage:
   - id: D1
-    description: "The floating zoom pill renders the latched Hand toggle before Fit, aria-pressed bound to the armed signal, no disabled state, no paint-state coupling"
+    description: "The floating zoom pill renders the press-and-hold Hand button before Fit, aria-pressed bound to the armed signal, no disabled state, no paint-state coupling"
     requirement: QUICK-261107-SG3
     verification:
       - kind: unit
-        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#Hand canvas tool in the zoom pill (261107-sg3)"
+        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#Hand press button in the zoom pill (261107-sg3)"
         status: pass
     human_judgment: true
-    rationale: "Source pins prove the markup and wiring; the actual click-to-arm click-to-disarm behavior on the native Studio canvas needs live UAT."
+    rationale: "Source pins prove the markup and wiring; the actual press-move-release behavior on the native Studio canvas needs live UAT."
   - id: D2
-    description: "An armed primary press is consumed in the capture phase and pans through the same physicsPaintCanvasZoom.setPan path as middle-drag; middle-drag unchanged"
+    description: "A held Hand press captures the pointer and pans through the same physicsPaintCanvasZoom.setPan path as middle-drag; the canvas keeps middle-drag only"
     requirement: QUICK-261107-SG3
     verification:
       - kind: unit
-        ref: "app/src/components/physic-paint/view/physicsPaintCanvasZoomWiring.test.ts#routes a middle press always and a primary press only while the Hand is armed"
+        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#pans for as long as the button is held and disarms on release"
         status: pass
       - kind: unit
-        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#pans on a primary drag only while armed, through the middle-drag path"
+        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#leaves the canvas pointer route to middle-drag only"
+        status: pass
+      - kind: unit
+        ref: "app/src/components/physic-paint/view/physicsPaintCanvasZoomWiring.test.ts#routes only a middle press to the canvas pan; the Hand owns its own pointer"
         status: pass
     human_judgment: true
-    rationale: "Routing is pinned structurally; live drag feel and the absence of accidental painting while armed need native UAT."
+    rationale: "Routing is pinned structurally; live press-drag feel and the absence of accidental painting need native UAT."
   - id: D3
     description: "The Studio tool rail renders no Hand control, imports neither the hand store nor the zoom store, and its paint row no longer references handArmed"
     requirement: QUICK-261107-SG3
@@ -92,23 +95,23 @@ coverage:
         status: pass
     human_judgment: false
   - id: D4
-    description: "Cursor law (grab/grabbing/grab/empty) and mid-drag disarm via one narrow disposed signals effect"
+    description: "The pressed Hand ends cleanly: release/cancel/lost-capture all disarm, the button restores its cursor, and a Studio window closing mid-press never leaves the flag armed"
     requirement: QUICK-261107-SG3
     verification:
       - kind: unit
-        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#holds the grab/grabbing cursor law and ends a live hand drag on disarm"
+        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#pans for as long as the button is held and disarms on release"
         status: pass
     human_judgment: true
-    rationale: "Source pins prove the effect shape; the visible cursor states on the native canvas need live UAT."
+    rationale: "Source pins prove the teardown; the visible press/move/release cycle needs live UAT."
   - id: D5
-    description: "Hand store API and compare-then-write/idempotent contract unchanged; contract doc describes the latched canvas tool"
+    description: "Hand store keeps the compare-then-write/idempotent arm-disarm contract; the unused toggle helper is removed and the contract doc describes the momentary press"
     requirement: QUICK-261107-SG3
     verification:
       - kind: unit
         ref: "app/src/components/physic-paint/view/physicsPaintHandTool.test.ts (6 tests)"
         status: pass
       - kind: unit
-        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#keeps the unchanged hand store API and describes the latched canvas tool"
+        ref: "app/src/components/physic-paint/view/physicsPaintHandToolWiring.test.ts#keeps the unchanged hand store API and describes the momentary press"
         status: pass
     human_judgment: false
 
@@ -120,16 +123,14 @@ metrics:
 
 # Quick 261107-sg3: Move the Hand tool to the canvas for zoom/pan Summary
 
-**Hand canvas pan in the floating zoom pill: one click arms a single primary drag that pans through the existing `setPan` path, grab/grabbing cursor, and releasing the drag disarms; the Studio tool rail loses the Hand entirely.**
+**Press-and-hold Hand canvas pan in the floating zoom pill: press the button, move the mouse or pen to pan through the existing `setPan` path, release to stop; the Studio tool rail loses the Hand entirely.**
 
-> **UAT correction (2026-11-07, after delivery):** the first cut kept the Hand
-> armed after the drag release. Live UAT rejected that model — the agreed law
-> is ONE DRAG PER CLICK: the release of the pan drag also disarms, so the next
-> canvas drag paints again. A second click before dragging still cancels. The
-> correction is in `PhysicsPaintCanvasZoomViewport.tsx`
-> (`if (wasHand) disarmHandTool();` in `finishDrag`) plus the pill copy and the
-> wiring pins. Panning itself already worked in the UAT; only the exit law
-> changed.
+> **UAT corrections (2026-11-07, after delivery):** two click models were
+> tried and rejected live. The final law is a PRESS-AND-HOLD button: press the
+> Hand in the zoom pill, move the mouse or pen to pan (pointer capture keeps
+> the pan following the pointer), release to stop and disarm. No canvas click,
+> nothing latched. The canvas keeps its middle-drag route only — the interim
+> viewport hand routing and the one-drag release fix were both removed.
 
 ## Performance
 
@@ -141,11 +142,11 @@ metrics:
 
 ## Accomplishments
 
-- The zoom pill gains a latched `aquarelle-hand-toggle` before Fit, bound to the armed signal with no disabled state and no coupling to paint/Select/picker/motion state.
-- An armed primary press is consumed in the viewport capture phase and pans through `physicsPaintCanvasZoom.setPan` — the same drag state middle-drag uses; middle-drag keeps its overflow gate and capture-phase listener.
-- The rail's Hand button, momentary hold-to-pan session, pointer listeners, unmount cleanup, `Hand` icon, `preact/hooks` import and both store imports are gone; the paint row's active expression is Hand-free.
-- One narrow signals effect owns the cursor law (grab / grabbing / grab / empty), disposes in the mount cleanup, and ends a live hand drag on disarm (pointer capture released).
-- Hand store API and compare-then-write bodies untouched; the contract doc now describes the latched canvas tool while keeping the pinned `HOST tool` phrase.
+- The zoom pill gains a press-and-hold `aquarelle-hand-toggle` before Fit, bound to the armed signal with no disabled state and no coupling to paint/Select/picker/motion state.
+- Pressing that button captures the pointer and pans through `physicsPaintCanvasZoom.setPan` — the same path middle-drag uses — for as long as the press lasts; releasing disarms.
+- The rail's Hand button and its session are gone; the rail keeps its paint and host tools only and imports neither the hand store nor the zoom store.
+- The canvas viewport stays middle-drag only: no primary-press hand route and no cursor subscription survives there.
+- Hand store keeps its compare-then-write/idempotent contract; the unused `toggleHandTool` helper was removed and the contract doc describes the momentary press while keeping the pinned `HOST tool` phrase.
 
 ## Task Commits
 
@@ -172,9 +173,9 @@ _Note: TDD tasks may have multiple commits (test → feat → refactor). Here ea
 
 ## Decisions Made
 
-- Followed the locked D-01..D-04 design exactly: latched, canvas-internal, never disabled at Fit, full rail removal.
-- Kept the middle-drag overflow early return only for the middle route (`!handPan && !hasOverflow`) so the hand route still proceeds at Fit and clamps through `setPan`.
-- The effect's disarm branch finishes any live drag (not only a hand-flagged one) — the plan's specified shape; a mid-drag disarm therefore always releases pointer capture.
+- UAT-final model: the Hand is a press button in the zoom pill (pointer capture + `setPan` on move), momentary — release disarms. It is canvas-internal, never disabled at Fit, and absent from the rail.
+- The canvas viewport was restored to middle-drag only; the momentary button does not touch canvas pointer routing.
+- `toggleHandTool` was removed with the click model; the store exposes arm/disarm and compare-then-write reads only.
 
 ## Deviations from Plan
 
@@ -190,7 +191,7 @@ None - no external service configuration required.
 
 ## Verification
 
-- `pnpm --dir app exec vitest run` on the five targeted suites: green (hand wiring 11, hand store 6, zoom wiring 7, motion-boundary 5, Studio 339).
+- `pnpm --dir app exec vitest run` on the targeted suites: green (hand wiring 10, hand store 6, zoom wiring 7, motion-boundary 5, Studio 339).
 - Full `src/components/physic-paint` tree: 226 files / 5,577 tests passed.
 - `pnpm --dir app run typecheck`: clean.
 - Scope check: `git diff --name-only 0d3658a23 -- app/src` lists exactly the eight `files_modified` paths.
@@ -199,27 +200,28 @@ None - no external service configuration required.
 
 None.
 
-## UAT Correction — one drag per click (2026-11-07)
+## UAT Correction — press-and-hold (final, 2026-11-07)
 
-Live UAT confirmed the pan worked but rejected the stay-armed exit law. Final
-behavior:
+Two click models were tried and rejected live. Final behavior:
 
-- Click the Hand in the zoom pill → one primary-button drag on the canvas pans
-  through the same `setPan` path as middle-drag.
-- Releasing that drag also disarms: the grab cursor clears and the next canvas
-  drag paints again. A second Hand click before dragging cancels.
-- Middle-drag stays untouched (never disarms), and the Hand stays independent
-  of the paint tool / Select / picker / motion mode.
-- Wiring pins updated: `physicsPaintHandToolWiring.test.ts` gains the
-  `finishDrag` one-shot pin; the store/pill/rail pins now describe the
-  one-drag model.
+- Press and HOLD the Hand button in the zoom pill, then move the mouse or pen:
+  the canvas pans through the same `setPan` path as middle-drag. Pointer
+  capture keeps the pan following the pointer after it leaves the button.
+- Releasing the button stops the pan and disarms. Nothing latches, and the
+  canvas is never clicked to pan.
+- The canvas viewport stays middle-drag only; primary canvas presses go to the
+  paint stack untouched. The Hand stays independent of the paint tool /
+  Select / picker / motion mode.
+- Wiring pins updated: the pill pins `onPointerDown` + capture + `setPan` +
+  disarm-on-release; the viewport pins no hand routing; the store's unused
+  `toggleHandTool` was removed.
+
+**Live UAT approved 2026-11-07** — press-and-hold pan in the zoom pill accepted.
 
 ## Next Phase Readiness
 
-- Automated-ready; the remaining live native UAT rows are the one-drag-per-click
-  arm/pan/release cycle, no accidental paint during the drag, and the cursor
-  states.
-- No blockers; no CSS change was needed (the pill's existing `[aria-pressed="true"]` rule styles the button).
+- Closed: live UAT approved the press-and-hold pan cycle.
+- No blockers; no CSS change was needed (the pill's existing `[aria-pressed="true"]` rule styles the pressed button).
 
 ---
 *Quick: 261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p*

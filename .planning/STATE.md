@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - UAT correction on quick task 261107-sg3: Hand in the canvas zoom pill is one drag per click (drag release leaves Hand mode)
+Last activity: 2026-11-07 - UAT approved quick task 261107-sg3: Hand in the canvas zoom pill is press-and-hold (move to pan, release stops)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -236,7 +236,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 3 | Studio: end-justify the Animate channel-menu button on the bottom action row; grey it out (aria-disabled) until a rail is selected | 2026-11-07 | 904743666 | — |
 | 261107-qgj | Move the Motion values out of the sidebar Scripts tab into a floating Motion sheet; present channels only, Stroke settings slider rows, header Reset pins the identity pose, one close path restores the previous paint tool (UAT approved) | 2026-11-07 | 615f38acd | [261107-qgj-move-all-the-motion-values-from-sidebar-](./quick/261107-qgj-move-all-the-motion-values-from-sidebar-/) |
 | 261107-rrp | Cycle + Motion on Studio rails: a cycle conversion preserves the rail's motion; the Motion span auto-fits the resolved rail extent (extends with keys/cycles, shrinks with them); out-of-band keys are preserved-but-inactive (UAT approved) | 2026-11-07 | ff6d6714d | [261107-rrp-cycle-with-motion-in-studio-adding-a-cyc](./quick/261107-rrp-cycle-with-motion-in-studio-adding-a-cyc/) |
-| 261107-sg3 | Move the Hand tool out of the Studio tool rail into the floating canvas zoom pill — one drag per click: click to arm, drag the canvas to pan like middle-mouse drag, releasing stops and leaves Hand mode | 2026-11-07 | 91cc72de4 | [261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p](./quick/261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p/) |
+| 261107-sg3 | Move the Hand tool out of the Studio tool rail into the floating canvas zoom pill — press-and-hold: hold the Hand button and move the mouse or pen to pan like middle-mouse drag, release stops | 2026-11-07 | 5973f30e5 | [261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p](./quick/261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p/) |
 
 ## Roadmap Evolution
 
