@@ -10,7 +10,11 @@ import {
 } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
 import { computeEfxPaintBackgroundBaseDrawSize } from '../../../efx-paint/compositor/efxPaintCompositor';
-import { getBackgroundBounds, getReferenceBounds } from './PhysicsPaintReferenceTransform';
+import {
+  getBackgroundBounds,
+  getRailMotionBounds,
+  getReferenceBounds,
+} from './PhysicsPaintReferenceTransform';
 import {
   getHandlePositions,
   hitTestHandles,
@@ -72,10 +76,31 @@ import { railMotionValueFromUi, railMotionValueToUi } from '../roto/railMotionMo
 export type PhysicsPaintTransformHandleTarget = 'photo-reference' | 'background' | 'rail-motion';
 
 /**
+ * 261107-tfp (D-01): the rail-motion boundary box base. `bounds` is the
+ * DISPLAYED drawing key's alpha ink box NORMALIZED to the project raster
+ * (0..1), already unioned for a generated in-between; `pivotX`/`pivotY` are
+ * normalized like every other rail-motion pivot (the compositor's own). Null
+ * on the payload means "nothing measurable" — the caller keeps the full-raster
+ * `getReferenceBounds` geometry (D-02).
+ */
+export interface PhysicsPaintRailMotionInkBase {
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly pivotX: number;
+  readonly pivotY: number;
+}
+
+/**
  * 59-13: the rail-motion payload. The Studio supplies the mounted 59-06 view
  * (railId non-null — the mount gate), the track's motion records, the app-frame
  * cursor, the evaluated DISPLAY-unit transform at that cursor, the command
  * layer's availability verdict, and the two callbacks that commit / report.
+ * 261107-tfp adds `inkBase`, the displayed key's normalized ink box plus the
+ * compositor pivot; null falls back to the full-raster geometry.
  */
 export interface PhysicsPaintRailMotionGizmoProps {
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
@@ -90,6 +115,11 @@ export interface PhysicsPaintRailMotionGizmoProps {
    * the brush.
    */
   readonly interiorInteractive: boolean;
+  /**
+   * 261107-tfp: the displayed drawing key's normalized ink box + compositor
+   * pivot, or null when nothing is measurable (full-raster fallback, D-02).
+   */
+  readonly inkBase: PhysicsPaintRailMotionInkBase | null;
   readonly commit: (records: readonly PhysicPaintRotoRailMotionRecord[]) => void;
   readonly report: (reason: string) => void;
 }
@@ -289,10 +319,23 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
 
   // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
   // natural source size; background base = contain-fit × clip-scale (already
-  // project-space in imageSize for the background path).
+  // project-space in imageSize for the background path). 261107-tfp: a
+  // rail-motion box with a measured ink base sizes itself on the DISPLAYED
+  // key's ink and pivots on the compositor's own anchor; a null base keeps the
+  // full-raster geometry byte-identical to today (D-02).
   const bounds = target === 'background'
     ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
-    : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
+    : target === 'rail-motion' && railMotion?.inkBase != null
+      ? getRailMotionBounds(
+        transform,
+        railMotion.inkBase.bounds,
+        railMotion.inkBase.pivotX,
+        railMotion.inkBase.pivotY,
+        imageSize.value.w,
+        imageSize.value.h,
+        zoom,
+      )
+      : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
   const handles = getHandlePositions(bounds, zoom);
   // 59-13: the rail-motion gizmo exposes move, CORNER scale and rotate only.
   // A uniform `scale` channel is the whole model, so edge (per-axis) handles

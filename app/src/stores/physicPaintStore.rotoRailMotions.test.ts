@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
+  registerRotoAlphaCanvasFrame,
   resolveContentToken,
   rotoPhysicalRevision,
 } from './physicPaintStore';
+import { __resetRailMotionPivotMemoForTests } from '../components/physic-paint/roto/railMotionPivot';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoLoopClip,
@@ -744,5 +746,173 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     const result = physicPaintStore.cutTrackSelection(LAYER, TEST_TRACK_ID, ['B']);
 
     expect(result).toEqual({ ok: false, reason: 'apply-failed' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261107-tfp: the canvas boundary box sizes itself on the DISPLAYED drawing
+// key's alpha ink (not the whole project raster), served from the SAME memo
+// entry the compositor's union pivot already populates.
+// ---------------------------------------------------------------------------
+
+/** One ink region on the 100x100 fake scan grid, inclusive columns/rows. */
+interface InkRegion {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+}
+
+// 10..29 -> normalized { x: 0.1, width: 0.2 }; 40..59 -> { x: 0.4, width: 0.2 }.
+const INK_REGIONS: Readonly<Record<string, InkRegion>> = {
+  A: { x0: 10, y0: 10, x1: 29, y1: 29 },
+  B: { x0: 40, y0: 40, x1: 59, y1: 59 },
+};
+const INK_SIZE = 100;
+
+describe('261107-tfp: getRotoRailMotionCanvasInk per-key ink', () => {
+  let regionBySource: Map<HTMLCanvasElement, InkRegion>;
+  let activeRegion: InkRegion | null;
+
+  /** The fake-canvas pattern from railMotionInkScan.test.ts (node env). */
+  function installFakeInkDocument(): void {
+    const drawImage = vi.fn((source: HTMLCanvasElement) => {
+      activeRegion = regionBySource.get(source) ?? null;
+    });
+    const context = {
+      clearRect: vi.fn(),
+      drawImage,
+      getImageData: (_x: number, _y: number, width: number, height: number) => {
+        const data = new Uint8ClampedArray(width * height * 4);
+        const region = activeRegion;
+        if (region !== null) {
+          for (let y = region.y0; y <= region.y1; y += 1) {
+            for (let x = region.x0; x <= region.x1; x += 1) {
+              data[(y * width + x) * 4 + 3] = 255;
+            }
+          }
+        }
+        return { data };
+      },
+    };
+    vi.stubGlobal('document', {
+      createElement: () => ({ width: 0, height: 0, getContext: () => context }),
+    });
+  }
+
+  function registerInkCanvases(records: readonly PhysicPaintRotoRealKeyRecord[]): void {
+    for (const entry of records) {
+      const bytes = entry.payload.bytes;
+      if (bytes === undefined) continue;
+      const canvas = { width: INK_SIZE, height: INK_SIZE } as unknown as HTMLCanvasElement;
+      const region = INK_REGIONS[entry.keyId];
+      if (region !== undefined) regionBySource.set(canvas, region);
+      registerRotoAlphaCanvasFrame(bytes, canvas);
+    }
+  }
+
+  function seedInkDocument(
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    interpolation: typeof INTERPOLATION | { readonly enabled: true; readonly mode: 'duplicate' } = INTERPOLATION,
+  ): void {
+    const railMotions = [railMotion('rail-1', 'A')];
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TEST_TRACK_ID, {
+      capacity: 600,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolation, [], [], [], railMotions),
+      loopClips: [],
+      railMotions,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  beforeEach(() => {
+    // The 59-15 describe spies on `replaceRotoPhysicalRailMotions` without a
+    // restore; without this the clearing call below silently runs the leaked
+    // rejection stub (file-level mock hygiene, no test changes there).
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER));
+    __resetRailMotionPivotMemoForTests();
+    regionBySource = new Map();
+    activeRegion = null;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    __resetRailMotionPivotMemoForTests();
+  });
+
+  it('returns the displayed key ink box, the rail union pivot and a null base for an ink-less key', () => {
+    const records = cycleRecords();
+    seedInkDocument(records);
+    registerInkCanvases(records);
+    installFakeInkDocument();
+
+    // Frame 0 displays key A: its own ink box, pivot over the A∪B union.
+    const frameZero = physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 0);
+    expect(frameZero).not.toBeNull();
+    expect(frameZero?.base).toEqual({ x: 0.1, y: 0.1, width: 0.2, height: 0.2 });
+    expect(frameZero?.pivotX).toBeCloseTo(0.35, 12);
+    expect(frameZero?.pivotY).toBeCloseTo(0.35, 12);
+    expect(Object.isFrozen(frameZero)).toBe(true);
+
+    // Memo identity: a repeat call returns the SAME base object (no re-scan).
+    const repeated = physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 0);
+    expect(repeated?.base).toBe(frameZero?.base);
+
+    // Frame 1 displays key B: the box re-fits to B's ink.
+    const frameOne = physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 1);
+    expect(frameOne?.base).toEqual({ x: 0.4, y: 0.4, width: 0.2, height: 0.2 });
+    expect(frameOne?.pivotX).toBeCloseTo(0.35, 12);
+
+    // Frame 2 displays the ink-less key C: null base, unchanged union pivot.
+    const frameTwo = physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 2);
+    expect(frameTwo).not.toBeNull();
+    expect(frameTwo?.base).toBeNull();
+    expect(frameTwo?.pivotX).toBeCloseTo(0.35, 12);
+    expect(frameTwo?.pivotY).toBeCloseTo(0.35, 12);
+
+    // Removing the rail motion retires the whole payload (the full-raster path).
+    expect(physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID, []).ok).toBe(true);
+    expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 0)).toBeNull();
+  });
+
+  it('unions the two flanking source keys for a generated in-between', () => {
+    const records = [record('A', 0), record('B', 4)];
+    seedInkDocument(records, { enabled: true, mode: 'duplicate' });
+    registerInkCanvases(records);
+    installFakeInkDocument();
+
+    const source = physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 2);
+    expect(source?.kind).toBe('generated');
+
+    const generated = physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 2);
+    // A x 0.1..0.3 union B x 0.4..0.6 -> x 0.1..0.6; y likewise. The union
+    // differences carry float noise from the normalized scan bounds.
+    expect(generated?.base?.x).toBeCloseTo(0.1, 12);
+    expect(generated?.base?.y).toBeCloseTo(0.1, 12);
+    expect(generated?.base?.width).toBeCloseTo(0.5, 12);
+    expect(generated?.base?.height).toBeCloseTo(0.5, 12);
+    expect(generated?.pivotX).toBeCloseTo(0.35, 12);
+  });
+
+  it('returns null outside the rail span and for an unusable frame or track', () => {
+    const records = cycleRecords();
+    seedInkDocument(records);
+    registerInkCanvases(records);
+    installFakeInkDocument();
+
+    // A..E span frames 0..4; 5 is outside the view.
+    expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 5)).toBeNull();
+    expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, -1)).toBeNull();
+    expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, 'missing-track', 0)).toBeNull();
   });
 });

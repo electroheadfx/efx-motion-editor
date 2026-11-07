@@ -2608,12 +2608,34 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       rotation: evaluated.rotationRadians * (180 / Math.PI),
     }) as RailMotionTransformValues;
     const revision = physicPaintStore.getRotoPhysicalContentRevision(state.layerId, state.trackId) ?? '';
+    // 261107-tfp (D-01/D-02): the DISPLAYED drawing key's ink box, normalized
+    // to the project raster, plus the compositor pivot. Null keeps the
+    // full-raster geometry in the handles (unmeasurable key, undecoded raster,
+    // no renderable source). Served by 59-08's memo — no per-frame scan.
+    const canvasInk = physicPaintStore.getRotoRailMotionCanvasInk(
+      state.layerId,
+      state.trackId,
+      state.cursorFrame,
+    );
+    const inkBase = canvasInk === null || canvasInk.base === null
+      ? null
+      : Object.freeze({
+        bounds: Object.freeze({
+          x: canvasInk.base.x,
+          y: canvasInk.base.y,
+          width: canvasInk.base.width,
+          height: canvasInk.base.height,
+        }),
+        pivotX: canvasInk.pivotX,
+        pivotY: canvasInk.pivotY,
+      });
     return Object.freeze({
       records: state.records,
       view: state.view,
       cursorFrame: state.cursorFrame,
       evaluated: values,
       availability,
+      inkBase,
       // The box interior moves the rail while EITHER the rail is selected or
       // its motion block is open. An open block is the editing context; close
       // it to give the canvas back to the brush.
@@ -2637,6 +2659,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         revision,
         railSelected ? 'rail' : 'key',
         selectedChannel,
+        // 261107-tfp: primitive ink-base terms so the canvas-stack memo
+        // re-resolves when the displayed key's ink or the pivot changes;
+        // `'full'` is the null-base sentinel (today's full-raster geometry).
+        inkBase === null
+          ? 'full'
+          : `${inkBase.bounds.x},${inkBase.bounds.y},${inkBase.bounds.width},${inkBase.bounds.height},${inkBase.pivotX},${inkBase.pivotY}`,
       ].join('|'),
       commit: (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
         const written = commitRailMotionRecords(state, records, input);

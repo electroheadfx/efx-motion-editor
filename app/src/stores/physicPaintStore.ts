@@ -82,7 +82,11 @@ import {
   resolveRailLocalFrame,
 } from '../components/physic-paint/roto/railMotionEvaluator';
 import {
+  computeRailInkBounds,
+  resolveRailMotionKeyInkBounds,
   resolveRailMotionPivot,
+  unionRailInkBoxes,
+  type RailMotionInkBounds,
   type RailMotionMeasuredInk,
 } from '../components/physic-paint/roto/railMotionPivot';
 import { measureRailMotionRasterInk } from '../components/physic-paint/roto/railMotionInkScan';
@@ -3850,6 +3854,75 @@ export const physicPaintStore = {
     const structural = _resolveRotoPhysicalStructural(layerId, trackId);
     if (structural === null) return null;
     return _trackMotionTransformAtFrame(layerId, trackId, frame, Math.floor(frame), structural);
+  },
+
+  /**
+   * 261107-tfp (D-01/D-02): the rail-motion gizmo's canvas geometry at `frame`
+   * — the DISPLAYED drawing key's alpha ink box (normalized to the project
+   * raster) plus the compositor pivot (normalized to the raster like every
+   * other rail-motion pivot), or null when the track carries no rail motion
+   * reaching this frame.
+   *
+   * Both halves are served by the SAME memo entry the compositor's union pivot
+   * already populates (`resolveRailMotionKeyInkBounds` shares 59-08's cache,
+   * keyed by rail + RASTER revision), so repeated calls — and the compositor's
+   * own pivot resolution — perform at most one bounded 256px alpha scan per
+   * key per revision. No pixel-array API is touched here (P4(c)); the measure
+   * seam stays `_measureRotoDrawingKeyInk`.
+   *
+   * `base` follows D-01: a real/loop-occurrence key sizes the box on its own
+   * ink; a generated in-between unions its two flanking source keys; when
+   * nothing is measurable (blank key, undecoded raster, no renderable source)
+   * it is null and the caller keeps today's full-raster `getReferenceBounds`
+   * geometry (D-02). A single displayed box returns the memoized object
+   * itself, which is what makes the repeated-call identity hold.
+   */
+  getRotoRailMotionCanvasInk(
+    layerId: string,
+    trackId: string,
+    frame: number,
+  ): {
+    readonly base: RailMotionInkBounds | null;
+    readonly pivotX: number;
+    readonly pivotY: number;
+  } | null {
+    const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+    if (structural === null || structural.railMotions.length === 0) return null;
+    if (!Number.isFinite(frame) || frame < 0) return null;
+    const contentFrame = Math.floor(frame);
+    const projection = _resolveRotoRailMotionProjection(layerId, trackId, structural);
+    const view = _railMotionViewAtFrame(projection, contentFrame);
+    if (view === null || view.railId === null) return null;
+
+    const inkBoxes = resolveRailMotionKeyInkBounds({
+      railId: view.railId,
+      contentRevision: structural.rasterRevision,
+      sources: view.keyIds
+        .map((keyId) => structural.recordMap.get(keyId))
+        .filter((source): source is PhysicPaintRotoRealKeyRecord => source !== undefined)
+        .map((record) => ({ keyId: record.keyId, source: record })),
+      measure: _measureRotoDrawingKeyInk,
+    });
+    const pivot = computeRailInkBounds([...inkBoxes.values()]);
+
+    const source = this.getRotoPhysicalRenderSource(layerId, trackId, contentFrame);
+    const displayedKeyIds: readonly string[] =
+      source === null
+        ? []
+        : source.kind === 'real'
+          ? [source.keyId]
+          : source.kind === 'generated'
+            ? [source.leftKeyId, source.rightKeyId]
+            : [];
+    const displayedBoxes = displayedKeyIds
+      .map((keyId) => inkBoxes.get(keyId))
+      .filter((box): box is RailMotionInkBounds => box !== undefined);
+    const base: RailMotionInkBounds | null =
+      displayedBoxes.length === 1
+        ? displayedBoxes[0]
+        : unionRailInkBoxes(displayedBoxes);
+
+    return Object.freeze({ base, pivotX: pivot.x, pivotY: pivot.y });
   },
 
   /**
