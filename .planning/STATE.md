@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T20:48:53.771Z"
+last_updated: "2026-11-07T21:22:26.064Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 9582d2d144093ea6665515534c534c718b8dadb2
+state_head: 3138361adaaae28f423880a40c2a26baca934f7f
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - UAT approved quick task 261107-tfp: Studio rail-motion boundary box fits the displayed key's alpha ink per key
+Last activity: 2026-11-07 - Completed quick task 261107-ux2: rail motion first span never interpolated (add-channel seeded the opening key with hold)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -240,6 +240,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 7 | Allow Studio canvas zoom to go below the Fit value (fit 40% can view 20% or less) | 2026-11-07 | 2ff2692a2 | — |
 | 8 | Set Studio canvas region (.physics-paint-canvas-region) background to #222529 | 2026-11-07 | 093f16f76 | — |
 | 261107-tfp | Size the Studio rail-motion canvas boundary box to the displayed drawing key's alpha ink (per key; generated keys use the flanking union), with the full-raster fallback for empty or unmeasurable keys (UAT approved; ink measured on opaque transmittance sheets) | 2026-11-07 | 68d7d1cc2 | [261107-tfp-ui-boundaries-from-phase-59-rail-motion-](./quick/261107-tfp-ui-boundaries-from-phase-59-rail-motion-/) |
+| 261107-ux2 | Rail motion first span never interpolated: add-channel seeded its opening key with easing hold, so frames between the first two paint keys held while later spans eased; the opening seed now eases (regression tests pin frame 2 = the exact midpoint) | 2026-11-07 | 3138361ad | [261107-ux2-rail-motion-first-span-never-interpolate](./quick/261107-ux2-rail-motion-first-span-never-interpolate/) |
 
 ## Roadmap Evolution
 
