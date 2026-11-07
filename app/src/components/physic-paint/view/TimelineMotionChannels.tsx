@@ -353,7 +353,7 @@ export function TimelineMotionChannelLane({
           {lane.channels.map((channel) => (
             <path
               key={channel.id}
-              d={buildRailMotionCurvePath(channel, frameCount, laneHeight)}
+              d={buildRailMotionCurvePath(channel, frameCount, laneHeight, { railId })}
               fill="none"
               stroke={palette.line}
               strokeWidth={TIMELINE_MOTION.curveWidth}
