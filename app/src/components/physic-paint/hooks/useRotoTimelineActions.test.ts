@@ -51,6 +51,8 @@ import {
   mapRotoPushProductReason,
   mapRotoRailSetMoveProductReason,
   buildKeyRailDragProposalVersion,
+  railMotionSelectedKey,
+  selectRailMotionKey,
   toPhysicPaintRotoInterpolationSettings,
   useRotoTimelineActions,
   type RotoDeleteTarget,
@@ -5288,5 +5290,265 @@ describe('59-19 infinite Loop Clip cursor span', () => {
     expect(canSetMotionKeyAtCursor.value).toBe(false);
     expect(setMotionKeyAtCursorDisabledReason.value)
       .toBe('Move the playhead inside this rail first.');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-pd8 — dragging a Motion key through time on its rail         */
+/* ------------------------------------------------------------------ */
+
+describe('261107-pd8 Motion key drag transaction', () => {
+  const LAYER = 'layer-1';
+  const TRACK = 'track-1';
+  const RAIL_ID = 'rail-pd8';
+
+  function launchContext(): PhysicPaintLaunchContext {
+    return {
+      operationId: 'op-1',
+      layerId: LAYER,
+      document: { activeTrackId: TRACK },
+    } as unknown as PhysicPaintLaunchContext;
+  }
+
+  /**
+   * A real A@0/B@10 key rail owns the band 0..10 (frameCount 11), and the
+   * motion record stores a Scale pair plus the grouped Position pair.
+   */
+  function seedMotionRail(): void {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [realKeyRecord('A', 0), realKeyRecord('B', 10)],
+      { enabled: false, mode: 'duplicate' },
+      24,
+    );
+    if (!seeded.ok) throw new Error(`real key seed failed: ${seeded.error}`);
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId: 'A',
+      channels: [
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
+            { frame: 10, value: 100, easing: 'ease', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
+            { frame: 10, value: 50, easing: 'ease', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'scale',
+          keys: [
+            { frame: 0, value: 1, easing: 'hold', wiggle: 0 },
+            { frame: 10, value: 2, easing: 'hold', wiggle: 4 },
+          ],
+        },
+      ],
+    }]);
+    if (!motion.ok) throw new Error(`motion seed failed: ${motion.error}`);
+  }
+
+  function actionsHarness(options: Partial<HarnessOptions> = {}) {
+    return createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK),
+      launch: launchContext(),
+      selectedKeyRail: { firstKeyId: 'A', keyIds: ['A', 'B'] },
+      capacity: 24,
+      ...options,
+    });
+  }
+
+  function storedChannel(id: 'position-x' | 'position-y' | 'scale') {
+    const record = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)
+      .find((entry) => entry.railId === RAIL_ID);
+    if (record === undefined) throw new Error('missing stored motion record');
+    const channel = record.channels.find((entry) => entry.id === id);
+    if (channel === undefined) throw new Error(`missing stored channel ${id}`);
+    return channel;
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+  });
+
+  it('moves a seeded key through prepare and commit with value, easing and wiggle intact', async () => {
+    seedMotionRail();
+    const markDocumentSyncDirty = vi.fn();
+    const publishMotionDocumentSync = vi.fn();
+    const harness = actionsHarness({ markDocumentSyncDirty, publishMotionDocumentSync });
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    const prepared = harness.actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    });
+    expect(prepared.ok).toBe(true);
+    // Prepare is a pure preview: it never writes the store.
+    expect(replaceSpy).not.toHaveBeenCalled();
+    if (!prepared.ok) return;
+    expect(Object.isFrozen(prepared.publication)).toBe(true);
+    expect(prepared.publication).toEqual({
+      layerId: LAYER,
+      trackId: TRACK,
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    });
+
+    expect(await harness.actions.physicalActions.commitMotionKeyDrag(prepared.publication)).toBe(true);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Motion key moved.');
+    expect(markDocumentSyncDirty).toHaveBeenCalledTimes(1);
+    expect(publishMotionDocumentSync).toHaveBeenCalledTimes(1);
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    expect(storedChannel('scale').keys).toEqual([
+      { frame: 0, value: 1, easing: 'hold', wiggle: 0 },
+      { frame: 5, value: 2, easing: 'hold', wiggle: 4 },
+    ]);
+  });
+
+  it('refuses a rail with no motion, a stale rail, an out-of-band frame and an occupied frame', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const prepare = harness.actions.physicalActions.prepareMotionKeyDrag;
+
+    expect(createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK),
+      launch: launchContext(),
+      selectedKeyRail: null,
+    }).actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    })).toMatchObject({ ok: false, reason: 'Select a rail with Motion first.' });
+
+    expect(prepare({
+      railId: 'rail-other',
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    })).toMatchObject({ ok: false, reason: 'The dragged Motion key is no longer available.' });
+
+    expect(prepare({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 11,
+    })).toMatchObject({ ok: false, reason: 'The Motion key cannot leave this rail.' });
+
+    expect(prepare({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 0,
+    })).toEqual({
+      ok: false,
+      reason: 'The destination frame already carries a Motion key.',
+      detail: 'The destination frame already carries a Motion key.',
+    });
+  });
+
+  it('fails closed and writes nothing when the active track changes between prepare and commit', async () => {
+    seedMotionRail();
+    let activeTrack = TRACK;
+    const harness = actionsHarness({ getActiveTrackId: () => activeTrack });
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    const prepared = harness.actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+
+    activeTrack = 'track-2';
+    expect(await harness.actions.physicalActions.commitMotionKeyDrag(prepared.publication)).toBe(false);
+    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(harness.publishStatus).toHaveBeenCalledWith('The Motion key is no longer available.');
+    expect(storedChannel('scale').keys.map((key) => key.frame)).toEqual([0, 10]);
+  });
+
+  it('moves both grouped Position axes while each axis keeps its own value', async () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+
+    const prepared = harness.actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'position-x',
+      fromFrame: 10,
+      toFrame: 7,
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(await harness.actions.physicalActions.commitMotionKeyDrag(prepared.publication)).toBe(true);
+
+    expect(storedChannel('position-x').keys.map((key) => key.frame)).toEqual([0, 7]);
+    expect(storedChannel('position-y').keys.map((key) => key.frame)).toEqual([0, 7]);
+    expect(storedChannel('position-x').keys.find((key) => key.frame === 7)?.value).toBe(100);
+    expect(storedChannel('position-y').keys.find((key) => key.frame === 7)?.value).toBe(50);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)[0]!.channels.map((channel) => channel.id))
+      .toEqual(['position-x', 'position-y', 'scale']);
+  });
+
+  it('retargets the session Motion-key selection to the moved frame', async () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    // A grouped Position selection keeps its own model channel id.
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'position-y', frame: 10 });
+
+    const prepared = harness.actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'position-x',
+      fromFrame: 10,
+      toFrame: 4,
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(await harness.actions.physicalActions.commitMotionKeyDrag(prepared.publication)).toBe(true);
+
+    expect(railMotionSelectedKey.value).toEqual({
+      railId: RAIL_ID,
+      channelId: 'position-y',
+      frame: 4,
+    });
+  });
+
+  it('leaves a selection that does not address the moved key alone', async () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 0 });
+
+    const prepared = harness.actions.physicalActions.prepareMotionKeyDrag({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 5,
+    });
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(await harness.actions.physicalActions.commitMotionKeyDrag(prepared.publication)).toBe(true);
+
+    expect(railMotionSelectedKey.value).toEqual({
+      railId: RAIL_ID,
+      channelId: 'scale',
+      frame: 0,
+    });
   });
 });

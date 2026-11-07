@@ -12,7 +12,9 @@ import {
   RAIL_MOTION_SELECTION_SCOPES,
   addMotionChannel,
   animateRail,
+  clampRailMotionKeyDragFrame,
   clearSelectionForScope,
+  moveMotionKey,
   railMotionCursorFrame,
   removeMotionKey,
   resolveContextualMotionCommands,
@@ -557,6 +559,294 @@ describe('59-12 rail motion commands — Motion keys', () => {
     expect(resolveMotionKeyAtFrame(record, 'scale', 10)?.value).toBe(2);
     expect(resolveMotionKeyAtFrame(record, 'scale', 4)).toBeNull();
     expect(resolveMotionKeyAtFrame(null, 'scale', 4)).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-pd8 — move a Motion key through the command layer           */
+/* ------------------------------------------------------------------ */
+
+describe('261107-pd8 rail motion commands — move a Motion key', () => {
+  it('moves the addressed key to the destination and keeps its value, easing and wiggle', () => {
+    const record = Object.freeze({
+      railId: 'rail-move',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('scale', [motionKey(0, 1), motionKey(3, 2, 'hold', 4)]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const result = moveMotionKey({
+      records: [record],
+      railId: 'rail-move',
+      channelId: 'scale',
+      fromFrame: 3,
+      toFrame: 5,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recordRemoved).toBe(false);
+    expect(channelOf(recordOf(result.records, 'rail-move'), 'scale').keys).toEqual([
+      motionKey(0, 1),
+      motionKey(5, 2, 'hold', 4),
+    ]);
+  });
+
+  it('moves both grouped Position axes atomically and keeps each axis value', () => {
+    const result = moveMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-y',
+      fromFrame: 10,
+      toFrame: 7,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    const x = channelOf(record, 'position-x');
+    const y = channelOf(record, 'position-y');
+    expect(x.keys.map((key) => key.frame)).toEqual([0, 7]);
+    expect(y.keys.map((key) => key.frame)).toEqual([0, 7]);
+    expect(x.keys.find((key) => key.frame === 7)?.value).toBe(100);
+    expect(y.keys.find((key) => key.frame === 7)?.value).toBe(50);
+    expect(channelOf(record, 'scale').keys.map((key) => key.frame)).toEqual([0, 10]);
+  });
+
+  it('keeps the record and the channel when the moved key was their only key (no D-15 cascade)', () => {
+    const result = moveMotionKey({
+      records: [soleChannelRecord()],
+      railId: 'rail-sole',
+      channelId: 'scale',
+      fromFrame: 3,
+      toFrame: 6,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recordRemoved).toBe(false);
+    expect(result.records).toHaveLength(1);
+    expect(channelOf(recordOf(result.records, 'rail-sole'), 'scale').keys).toEqual([
+      motionKey(6, 1.5),
+    ]);
+  });
+
+  it('refuses an occupied destination on the addressed channel', () => {
+    const result = moveMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      fromFrame: 0,
+      toFrame: 10,
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'The destination frame already carries a Motion key.',
+    });
+  });
+
+  it('refuses an occupied destination on the grouped Position sibling', () => {
+    const asymmetric = Object.freeze({
+      railId: 'rail-pair',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [motionKey(0, 0), motionKey(10, 100)]),
+        motionChannel('position-y', [motionKey(0, 0), motionKey(7, 25), motionKey(10, 50)]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const result = moveMotionKey({
+      records: [asymmetric],
+      railId: 'rail-pair',
+      channelId: 'position-x',
+      fromFrame: 10,
+      toFrame: 7,
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'The destination frame already carries a Motion key.',
+    });
+  });
+
+  it('refuses a no-op, an unknown rail, a missing channel and a missing source key in that order', () => {
+    expect(moveMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 10,
+    })).toEqual({ ok: false, reason: 'The Motion key is already at this frame.' });
+
+    expect(moveMotionKey({
+      records: [],
+      railId: 'rail-missing',
+      channelId: 'scale',
+      fromFrame: 0,
+      toFrame: 2,
+    })).toEqual({ ok: false, reason: 'This rail has no Motion to edit yet.' });
+
+    expect(moveMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'opacity' as PhysicPaintRotoRailMotionChannel['id'],
+      fromFrame: 0,
+      toFrame: 2,
+    })).toEqual({ ok: false, reason: 'This Motion channel is not present on the rail.' });
+
+    expect(moveMotionKey({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      fromFrame: 5,
+      toFrame: 6,
+    })).toEqual({ ok: false, reason: 'There is no Motion key at this frame.' });
+  });
+
+  it('refuses a malformed rail or frame before touching the collection', () => {
+    expect(moveMotionKey({
+      records: [motionRecord()],
+      railId: '',
+      channelId: 'scale',
+      fromFrame: 0,
+      toFrame: 2,
+    })).toEqual({ ok: false, reason: 'Select a rail first.' });
+
+    for (const [fromFrame, toFrame] of [[0.5, 2], [0, -1], [0, Number.NaN]] as const) {
+      expect(moveMotionKey({
+        records: [motionRecord()],
+        railId: 'rail-1',
+        channelId: 'scale',
+        fromFrame,
+        toFrame,
+      })).toEqual({ ok: false, reason: 'The Motion key frame is not valid.' });
+    }
+  });
+
+  it('never mutates the input collection', () => {
+    const records = [motionRecord()];
+    const before = channelOf(recordOf(records), 'scale').keys;
+    const result = moveMotionKey({
+      records,
+      railId: 'rail-1',
+      channelId: 'scale',
+      fromFrame: 10,
+      toFrame: 8,
+    });
+    expect(result.ok).toBe(true);
+    expect(channelOf(recordOf(records), 'scale').keys).toBe(before);
+    expect(channelOf(recordOf(records), 'scale').keys.map((key) => key.frame)).toEqual([0, 10]);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-pd8 — the pure drag clamp shared by the lane hook           */
+/* ------------------------------------------------------------------ */
+
+describe('261107-pd8 rail motion commands — key drag clamp', () => {
+  it('passes a free in-band frame through with no blocked edge', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 10],
+      fromFrame: 0,
+      proposedFrame: 5,
+      frameCount: 11,
+    })).toEqual({ frame: 5, blockedEdge: null });
+  });
+
+  it('stops on the nearest free frame before an occupied key when moving right', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 5, 10],
+      fromFrame: 0,
+      proposedFrame: 8,
+      frameCount: 11,
+    })).toEqual({ frame: 4, blockedEdge: 'right' });
+    // Landing exactly on the occupied frame is blocked too.
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 5, 10],
+      fromFrame: 0,
+      proposedFrame: 5,
+      frameCount: 11,
+    })).toEqual({ frame: 4, blockedEdge: 'right' });
+  });
+
+  it('stops on the nearest free frame after an occupied key when moving left', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 5, 10],
+      fromFrame: 10,
+      proposedFrame: 2,
+      frameCount: 11,
+    })).toEqual({ frame: 6, blockedEdge: 'left' });
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 5, 10],
+      fromFrame: 10,
+      proposedFrame: 5,
+      frameCount: 11,
+    })).toEqual({ frame: 6, blockedEdge: 'left' });
+  });
+
+  it('reports the band edge when the proposal overshoots it', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 2],
+      fromFrame: 2,
+      proposedFrame: 99,
+      frameCount: 11,
+    })).toEqual({ frame: 10, blockedEdge: 'right' });
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [8, 10],
+      fromFrame: 8,
+      proposedFrame: -4,
+      frameCount: 11,
+    })).toEqual({ frame: 0, blockedEdge: 'left' });
+    // A short band clamps to its own last frame.
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0],
+      fromFrame: 0,
+      proposedFrame: 99,
+      frameCount: 8,
+    })).toEqual({ frame: 7, blockedEdge: 'right' });
+  });
+
+  it('ignores the moving key own frame and treats an in-place proposal as unbounded', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 10],
+      fromFrame: 10,
+      proposedFrame: 10,
+      frameCount: 11,
+    })).toEqual({ frame: 10, blockedEdge: null });
+    // The moving key vacates its own frame, so a neighbouring free frame is reachable.
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0, 4],
+      fromFrame: 4,
+      proposedFrame: 6,
+      frameCount: 11,
+    })).toEqual({ frame: 6, blockedEdge: null });
+  });
+
+  it('rounds the proposal and normalizes a non-finite or empty band', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [],
+      fromFrame: 0,
+      proposedFrame: 4.4,
+      frameCount: 11,
+    })).toEqual({ frame: 4, blockedEdge: null });
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [],
+      fromFrame: 0,
+      proposedFrame: 4.6,
+      frameCount: 11,
+    })).toEqual({ frame: 5, blockedEdge: null });
+    for (const frameCount of [0, -3, Number.NaN, -Infinity]) {
+      expect(clampRailMotionKeyDragFrame({
+        keyFrames: [0, 10],
+        fromFrame: 10,
+        proposedFrame: 20,
+        frameCount,
+      })).toEqual({ frame: 0, blockedEdge: null });
+    }
+  });
+
+  it('clamps a from frame outside the band into it', () => {
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [],
+      fromFrame: 99,
+      proposedFrame: 1,
+      frameCount: 5,
+    })).toEqual({ frame: 1, blockedEdge: null });
   });
 });
 

@@ -911,6 +911,89 @@ describe('applyRailMotionEditToCollection', () => {
     })).toBe(records);
   });
 
+  it('move-key moves the addressed key in place and keeps its value, easing and wiggle', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1), key(3, 2, 'hold', 4)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'move-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      fromFrame: 3,
+      toFrame: 5,
+    });
+
+    expect(next[0].channels[0].keys).toEqual([key(0, 1), key(5, 2, 'hold', 4)]);
+  });
+
+  it('move-key moves both grouped Position axes and keeps each axis value', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(4, 8)]),
+      channel('position-y', [key(0, 0), key(4, 9)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'move-key',
+      railId: 'rail-a',
+      channel: 'position-y',
+      fromFrame: 4,
+      toFrame: 7,
+    });
+
+    expect(next[0].channels[0].keys).toEqual([key(0, 0), key(7, 8)]);
+    expect(next[0].channels[1].keys).toEqual([key(0, 0), key(7, 9)]);
+  });
+
+  it('move-key keeps the record when the channel carried only that key (no D-15 cascade)', () => {
+    const records = [record('rail-a', [channel('scale', [key(3, 2)])])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'move-key',
+      railId: 'rail-a',
+      channel: 'scale',
+      fromFrame: 3,
+      toFrame: 6,
+    });
+
+    expect(next).toHaveLength(1);
+    expect(next[0].channels.map((entry) => entry.id)).toEqual(['scale']);
+    expect(next[0].channels[0].keys).toEqual([key(6, 2)]);
+  });
+
+  it('move-key throws on an occupied destination instead of duplicating a frame', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1), key(3, 2)])])];
+
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'move-key', railId: 'rail-a', channel: 'scale', fromFrame: 3, toFrame: 0,
+    })).toThrow(/already carries a key/);
+  });
+
+  it('move-key on a no-op frame or an unknown rail returns the same reference', () => {
+    const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
+
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'move-key', railId: 'rail-a', channel: 'scale', fromFrame: 0, toFrame: 0,
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'move-key', railId: 'rail-missing', channel: 'scale', fromFrame: 0, toFrame: 2,
+    })).toBe(records);
+    expect(applyRailMotionEditToCollection(records, {
+      kind: 'move-key', railId: 'rail-a', channel: 'scale', fromFrame: 9, toFrame: 2,
+    })).toBe(records);
+  });
+
+  it('move-key throws when a grouped Position sibling no longer carries the source frame', () => {
+    // A record the canonical parser would refuse, built by hand to prove the
+    // move never silently desynchronizes the pair.
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(4, 8)]),
+      channel('position-y', [key(0, 0), key(5, 9)]),
+    ])];
+
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'move-key', railId: 'rail-a', channel: 'position-x', fromFrame: 4, toFrame: 6,
+    })).toThrow(/grouped key/);
+  });
+
   it('never mutates a deeply frozen input across every edit kind', () => {
     const original = [record('rail-a', [
       channel('position-x', [key(0, 0), key(4, 8)]),
@@ -925,6 +1008,7 @@ describe('applyRailMotionEditToCollection', () => {
       { kind: 'remove-key', railId: 'rail-a', channel: 'scale', frame: 4 },
       { kind: 'add-channel', railId: 'rail-a', channel: 'opacity' },
       { kind: 'remove-channel', railId: 'rail-a', channel: 'position-x' },
+      { kind: 'move-key', railId: 'rail-a', channel: 'scale', fromFrame: 4, toFrame: 6 },
     ];
 
     for (const edit of edits) {

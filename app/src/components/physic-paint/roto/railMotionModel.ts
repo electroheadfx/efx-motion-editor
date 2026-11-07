@@ -68,6 +68,18 @@ export type PhysicPaintRotoRailMotionEdit =
     readonly frame: number;
   }
   | {
+    /**
+     * 261107-pd8: a MOVE of one key through time, never a remove+set. A
+     * remove+set would trip the D-15 cascade on a single-key channel and drop
+     * the channel (and possibly the record) between the two edits.
+     */
+    readonly kind: 'move-key';
+    readonly railId: string;
+    readonly channel: PhysicPaintRotoRailMotionChannelId;
+    readonly fromFrame: number;
+    readonly toFrame: number;
+  }
+  | {
     readonly kind: 'add-channel';
     readonly railId: string;
     readonly channel: PhysicPaintRotoRailMotionChannelId;
@@ -682,6 +694,62 @@ function applyRemoveKeyEdit(
   return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
 }
 
+/**
+ * 261107-pd8: moves one key from `fromFrame` to `toFrame` in place.
+ *
+ * A move must never run through remove+set: removing the last key of a channel
+ * trips the D-15 cascade (channel, then record) before the set can run. The
+ * grouped Position pair travels in lockstep — every present grouped channel
+ * must already carry the source frame, and none may already carry the
+ * destination frame, so the canonical duplicate-frame invariant is never
+ * reached. Unknown rails, equal frames and stale source frames are quiet
+ * no-ops, matching every other edit kind.
+ */
+function applyMoveKeyEdit(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'move-key' }>,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
+  if (recordIndex < 0) return records;
+
+  assertRailMotionEditChannel(edit.channel);
+  assertRailMotionEditFrame(edit.fromFrame);
+  assertRailMotionEditFrame(edit.toFrame);
+  if (edit.fromFrame === edit.toFrame) return records;
+
+  const record = records[recordIndex];
+  const addressed = record.channels.find((entry) => entry.id === edit.channel);
+  if (addressed === undefined) return records;
+  if (!addressed.keys.some((key) => key.frame === edit.fromFrame)) return records;
+
+  const siblingId = railMotionPositionSibling(edit.channel);
+  const groupedIds: readonly PhysicPaintRotoRailMotionChannelId[] = siblingId === null
+    ? [edit.channel]
+    : ['position-x', 'position-y'];
+  const groupedChannels = record.channels.filter((entry) => groupedIds.includes(entry.id));
+
+  for (const entry of groupedChannels) {
+    if (entry.keys.some((key) => key.frame === edit.toFrame)) {
+      throw new Error(`PhysicPaintRotoRailMotions: the destination frame ${edit.toFrame} already carries a key in channel "${entry.id}"; a moved key would duplicate it.`);
+    }
+    if (entry.id !== edit.channel && !entry.keys.some((key) => key.frame === edit.fromFrame)) {
+      throw new Error(`PhysicPaintRotoRailMotions: grouped key at frame ${edit.fromFrame} is missing from channel "${entry.id}"; the Position pair must move in lockstep.`);
+    }
+  }
+
+  const channels = record.channels.map((entry) => {
+    if (!groupedIds.includes(entry.id)) return entry;
+    return {
+      id: entry.id,
+      keys: entry.keys.map((key) => (key.frame === edit.fromFrame
+        ? { ...key, frame: edit.toFrame }
+        : key)),
+    };
+  });
+
+  return replaceRailMotionRecord(records, recordIndex, { ...record, channels });
+}
+
 function applyAddChannelEdit(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'add-channel' }>,
@@ -774,6 +842,8 @@ export function applyRailMotionEditToCollection(
       return applySetKeyEdit(records, edit);
     case 'remove-key':
       return applyRemoveKeyEdit(records, edit);
+    case 'move-key':
+      return applyMoveKeyEdit(records, edit);
     case 'add-channel':
       return applyAddChannelEdit(records, edit);
     case 'remove-channel':

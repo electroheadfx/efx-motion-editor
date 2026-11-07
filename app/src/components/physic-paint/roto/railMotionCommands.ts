@@ -309,6 +309,15 @@ export interface RemoveMotionKeyInput {
   readonly keyFrame: number;
 }
 
+/** 261107-pd8: move one key through time (a MOVE edit, never remove+set). */
+export interface MoveMotionKeyInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly fromFrame: number;
+  readonly toFrame: number;
+}
+
 export interface StepMotionKeyInput {
   readonly channel: PhysicPaintRotoRailMotionChannel;
   readonly fromFrame: number;
@@ -472,6 +481,129 @@ export function removeMotionKey(input: RemoveMotionKeyInput): RailMotionCommandR
   } catch {
     return failure('The Motion key could not be removed.');
   }
+}
+
+/**
+ * 261107-pd8: moves the addressed Motion key to another rail-local frame.
+ *
+ * A move is one `move-key` edit by design — running remove+set would trip the
+ * D-15 cascade on a channel whose only key is moving. The destination must be
+ * free on the addressed axis AND on its grouped Position sibling, so the
+ * reducer's duplicate-frame invariant is never reached from a stale UI.
+ */
+export function moveMotionKey(input: MoveMotionKeyInput): RailMotionCommandResult {
+  const { records, railId, channelId, fromFrame, toFrame } = input;
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  if (!isRailMotionFrameValue(fromFrame) || !isRailMotionFrameValue(toFrame)) {
+    return failure('The Motion key frame is not valid.');
+  }
+  const record = findRailMotionRecord(records, railId);
+  if (record === null) return failure('This rail has no Motion to edit yet.');
+  if (!record.channels.some((entry) => entry.id === channelId)) {
+    return failure('This Motion channel is not present on the rail.');
+  }
+  if (resolveMotionKeyAtFrame(record, channelId, fromFrame) === null) {
+    return failure('There is no Motion key at this frame.');
+  }
+  if (fromFrame === toFrame) return failure('The Motion key is already at this frame.');
+  for (const axisId of resolveMotionCommandChannelIds(channelId)) {
+    if (resolveMotionKeyAtFrame(record, axisId, toFrame) !== null) {
+      return failure('The destination frame already carries a Motion key.');
+    }
+  }
+
+  try {
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'move-key',
+      railId,
+      channel: channelId,
+      fromFrame,
+      toFrame,
+    });
+    return success(next);
+  } catch {
+    return failure('The Motion key could not be moved.');
+  }
+}
+
+export interface RailMotionKeyDragClampInput {
+  /** In-band key frames of the displayed lane, including the moving key's own. */
+  readonly keyFrames: readonly number[];
+  /** The rail-local frame the dragged key currently occupies. */
+  readonly fromFrame: number;
+  /** The rail-local frame the pointer proposal resolved to. */
+  readonly proposedFrame: number;
+  /** The rendered band width in frames (`endFrameExclusive - startFrame`). */
+  readonly frameCount: number;
+}
+
+export interface RailMotionKeyDragClamp {
+  readonly frame: number;
+  readonly blockedEdge: 'left' | 'right' | null;
+}
+
+/**
+ * 261107-pd8: the pure clamp behind a Motion-key drag.
+ *
+ * Keeps the target inside the rendered band, stops on the nearest free frame
+ * in the travel direction (keys are never silently overlapped) and reports the
+ * blocked edge so the ghost can show which way the drag stopped. The moving
+ * key's own frame is not an obstacle. It is a pure helper in the same spirit
+ * as `railMotionCursorFrame` and never reads the DOM or the store.
+ */
+export function clampRailMotionKeyDragFrame(
+  input: RailMotionKeyDragClampInput,
+): RailMotionKeyDragClamp {
+  const { keyFrames, fromFrame, proposedFrame } = input;
+  const frameCount = Number.isFinite(input.frameCount)
+    ? Math.max(0, Math.floor(input.frameCount))
+    : 0;
+  if (frameCount === 0) {
+    return Object.freeze({ frame: 0, blockedEdge: null }) as RailMotionKeyDragClamp;
+  }
+
+  const lastFrame = frameCount - 1;
+  const fromSource = Number.isFinite(fromFrame) ? Math.round(fromFrame) : 0;
+  const from = Math.min(lastFrame, Math.max(0, fromSource));
+  const rawTarget = Number.isFinite(proposedFrame) ? Math.round(proposedFrame) : from;
+  const target = Math.min(lastFrame, Math.max(0, rawTarget));
+  if (target === from) {
+    return Object.freeze({ frame: from, blockedEdge: null }) as RailMotionKeyDragClamp;
+  }
+
+  // Nearest in-band key frame on each side of the moving key, own frame excluded.
+  let nearestAbove: number | null = null;
+  let nearestBelow: number | null = null;
+  for (const keyFrame of keyFrames) {
+    if (!Number.isInteger(keyFrame) || keyFrame < 0 || keyFrame > lastFrame) continue;
+    if (keyFrame === from) continue;
+    if (keyFrame > from && (nearestAbove === null || keyFrame < nearestAbove)) {
+      nearestAbove = keyFrame;
+    }
+    if (keyFrame < from && (nearestBelow === null || keyFrame > nearestBelow)) {
+      nearestBelow = keyFrame;
+    }
+  }
+
+  if (target > from) {
+    const limit = nearestAbove === null ? lastFrame : nearestAbove - 1;
+    if (target > limit) {
+      return Object.freeze({ frame: limit, blockedEdge: 'right' }) as RailMotionKeyDragClamp;
+    }
+    return Object.freeze({
+      frame: target,
+      blockedEdge: rawTarget > lastFrame ? 'right' : null,
+    }) as RailMotionKeyDragClamp;
+  }
+
+  const limit = nearestBelow === null ? 0 : nearestBelow + 1;
+  if (target < limit) {
+    return Object.freeze({ frame: limit, blockedEdge: 'left' }) as RailMotionKeyDragClamp;
+  }
+  return Object.freeze({
+    frame: target,
+    blockedEdge: rawTarget < 0 ? 'left' : null,
+  }) as RailMotionKeyDragClamp;
 }
 
 /** The adjacent Motion key frame in one direction; never wraps (null at the end). */

@@ -60,6 +60,7 @@ import { railMotionSelectedChannel } from '../view/railMotionEditingMode';
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
+  moveMotionKey as applyMoveMotionKey,
   removeMotionChannel as applyRemoveMotionChannel,
   removeMotionKey as applyRemoveMotionKey,
   resolveMotionCommandAvailability,
@@ -1373,6 +1374,32 @@ export type RotoKeyRailDragPreparationResult =
   | { readonly ok: true; readonly publication: RotoKeyRailDragPublication }
   | { readonly ok: false; readonly reason: string; readonly detail?: string };
 
+/**
+ * 261107-pd8: immutable Motion-key drag publication. It captures the identity
+ * of exactly ONE Motion key plus its source and destination rail-local frames;
+ * commit re-reads live state and fails closed on any layer/track/rail drift.
+ */
+export interface RotoMotionKeyDragPublication {
+  readonly layerId: string;
+  readonly trackId: string;
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly fromFrame: number;
+  readonly toFrame: number;
+}
+
+export type RotoMotionKeyDragPreparationResult =
+  | { readonly ok: true; readonly publication: RotoMotionKeyDragPublication }
+  | { readonly ok: false; readonly reason: string; readonly detail?: string };
+
+/** The lane's request: one key, one destination rail-local frame. */
+export interface PrepareMotionKeyDragRequest {
+  readonly railId: string;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+  readonly fromFrame: number;
+  readonly toFrame: number;
+}
+
 export interface RotoPhysicalTimelineActionBundle {
   /** Insert one empty physical slot before the selected real key (D-05). */
   readonly insertRotoFrame: () => Promise<boolean>;
@@ -1528,6 +1555,19 @@ export interface RotoPhysicalTimelineActionBundle {
   ) => RotoKeyRailDragPreparationResult;
   /** Commit the exact retained Key Rail publication after coherence and staleness checks. */
   readonly commitKeyRailDrag: (publication: RotoKeyRailDragPublication) => Promise<boolean>;
+  /**
+   * 261107-pd8: prepare a Motion-key time move. Reads the live rail state and
+   * runs the pure command as a validation preview — it never writes the store.
+   */
+  readonly prepareMotionKeyDrag: (
+    request: PrepareMotionKeyDragRequest,
+  ) => RotoMotionKeyDragPreparationResult;
+  /**
+   * 261107-pd8: commit the retained Motion-key publication against LIVE state.
+   * Any layer/track/rail drift, an out-of-band destination or a stale source
+   * key fails closed with zero mutation.
+   */
+  readonly commitMotionKeyDrag: (publication: RotoMotionKeyDragPublication) => Promise<boolean>;
   /**
    * Prepare one versioned directional Push publication (43.5-03). Mirrors the
    * Group-drag guard order (launch → ports → in-flight → well-formed identity),
@@ -3983,6 +4023,107 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
+  /**
+   * 261107-pd8: preview one Motion-key time move against live state.
+   *
+   * This is a pure validation pass — it runs the same `moveMotionKey` command
+   * the commit will run, so the lane never offers a drop the writer would
+   * refuse. Nothing is written here.
+   */
+  const prepareMotionKeyDrag = useCallback((
+    request: PrepareMotionKeyDragRequest,
+  ): RotoMotionKeyDragPreparationResult => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null) {
+      return { ok: false, reason: 'Select a rail with Motion first.' };
+    }
+    if (state.view.railId !== request.railId) {
+      return { ok: false, reason: 'The dragged Motion key is no longer available.' };
+    }
+    const frameCount = state.view.endFrameExclusive - state.view.startFrame;
+    if (
+      !Number.isSafeInteger(request.toFrame)
+      || request.toFrame < 0
+      || request.toFrame >= frameCount
+    ) {
+      return { ok: false, reason: 'The Motion key cannot leave this rail.' };
+    }
+    const result = applyMoveMotionKey({
+      records: state.records,
+      railId: request.railId,
+      channelId: request.channelId,
+      fromFrame: request.fromFrame,
+      toFrame: request.toFrame,
+    });
+    if (!result.ok) {
+      return { ok: false, reason: result.reason, detail: result.reason };
+    }
+    return {
+      ok: true,
+      publication: Object.freeze({
+        layerId: state.layerId,
+        trackId: state.trackId,
+        railId: request.railId,
+        channelId: request.channelId,
+        fromFrame: request.fromFrame,
+        toFrame: request.toFrame,
+      }) as RotoMotionKeyDragPublication,
+    };
+  }, [input]);
+
+  /**
+   * 261107-pd8: commit a prepared Motion-key move against LIVE state.
+   *
+   * Every re-read fact the publication captured must still agree (layer, live
+   * track, rail, band); the command then runs on the live records so a stale
+   * prepare can never write a frame the rail no longer owns.
+   */
+  const commitMotionKeyDrag = useCallback(async (
+    publication: RotoMotionKeyDragPublication,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    if (
+      state === null
+      || state.layerId !== publication.layerId
+      || state.trackId !== publication.trackId
+    ) {
+      return publishMotionFailure(input, 'The Motion key is no longer available.');
+    }
+    if (state.view === null || state.view.railId !== publication.railId) {
+      return publishMotionFailure(input, 'The Motion key is no longer available.');
+    }
+    const frameCount = state.view.endFrameExclusive - state.view.startFrame;
+    if (publication.toFrame < 0 || publication.toFrame >= frameCount) {
+      return publishMotionFailure(input, 'The Motion key cannot leave this rail.');
+    }
+
+    const result = applyMoveMotionKey({
+      records: state.records,
+      railId: publication.railId,
+      channelId: publication.channelId,
+      fromFrame: publication.fromFrame,
+      toFrame: publication.toFrame,
+    });
+    const moved = commitMotionCommandResult(input, state, result, 'Motion key moved.');
+    // A stale source key is a quiet no-op in the reducer; never retarget the
+    // session selection when the collection did not actually change.
+    if (!moved || !result.ok || result.records === state.records) return moved;
+
+    const selection = railMotionSelectedKey.value;
+    if (
+      selection !== null
+      && selection.railId === publication.railId
+      && selection.frame === publication.fromFrame
+    ) {
+      selectRailMotionKey({
+        railId: publication.railId,
+        channelId: selection.channelId,
+        frame: publication.toFrame,
+      });
+    }
+    return true;
+  }, [input]);
+
   const prepareRotoPush = useCallback((descriptor: RotoPushIntentDescriptor): RotoPushPreparationResult => {
     const launch = input.getLaunchContext?.() ?? null;
     if (!launch) {
@@ -4517,6 +4658,8 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     commitRotoGroupDrag,
     prepareKeyRailDrag,
     commitKeyRailDrag,
+    prepareMotionKeyDrag,
+    commitMotionKeyDrag,
     prepareRotoPush,
     commitRotoPush,
     prepareRailSetMove,
@@ -4543,7 +4686,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     duplicateRailSetDisabledReason,
     publishStatus: input.publishStatus,
     setApplyStatus: input.setApplyStatus,
-  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, addMotionChannel, commitRailMotionChannelValue, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
+  }), [insertRotoFrame, canInsertFrame, insertDisabledReason, insertTooltipDescription, deleteRotoFrame, canDeleteFrame, deleteDisabledReason, deleteScopeLabel, scissorKeyRail, canScissor, scissorDisabledReason, scissorTooltipDescription, animateSelectedRail, canAnimateSelectedRail, animateSelectedRailDisabledReason, setMotionKeyAtCursor, canSetMotionKeyAtCursor, setMotionKeyAtCursorDisabledReason, removeMotionKeyAtCursor, canRemoveMotionKeyAtCursor, removeMotionKeyAtCursorDisabledReason, addMotionChannel, commitRailMotionChannelValue, stepMotionKeyForward, canStepMotionKeyForward, stepMotionKeyForwardDisabledReason, stepMotionKeyBackward, canStepMotionKeyBackward, stepMotionKeyBackwardDisabledReason, selectedMotionKey, selectMotionKey, setSelectedMotionKeyEasing, canSetSelectedMotionKeyEasing, setSelectedMotionKeyEasingDisabledReason, setSelectedMotionKeyWiggle, canSetSelectedMotionKeyWiggle, setSelectedMotionKeyWiggleDisabledReason, pendingOperationIdSignal, prepareRotoKeyDrag, commitRotoKeyDrag, prepareRotoKeyGroupDrag, commitRotoKeyGroupDrag, prepareRotoGroupDrag, commitRotoGroupDrag, prepareKeyRailDrag, commitKeyRailDrag, prepareMotionKeyDrag, commitMotionKeyDrag, prepareRotoPush, commitRotoPush, prepareRailSetMove, commitRailSetMove, canDragKey, dragDisabledReason, forceSpacingInput, setForceSpacingInput, applyForceSpacing, canApplyForceSpacing, forceSpacingDisabledReason, canAddEmptyKey, addEmptyKeyDisabledReason, canSelectAllKeys, selectAllKeysDisabledReason, copyRailSet, canCopyRailSet, copyRailSetDisabledReason, pasteRailSet, canPasteRailSet, pasteRailSetDisabledReason, duplicateRailSet, canDuplicateRailSet, duplicateRailSetDisabledReason, input.publishStatus, input.setApplyStatus]);
 
   const physicalKeyUtilities: RotoPhysicalKeyUtilityPort = useMemo(() => ({
     duplicateKey,
