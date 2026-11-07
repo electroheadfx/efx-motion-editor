@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import * as railMotionCommandModule from './railMotionCommands';
+import * as railMotionIdentityModule from './railMotionIdentity';
 import type { RailMotionRailView } from './railMotionIdentity';
 import type {
   PhysicPaintRotoRailMotionChannel,
@@ -57,6 +58,25 @@ function loopView(overrides: Partial<RailMotionRailView> = {}): RailMotionRailVi
     loopId: 'loop-1',
     ...overrides,
   });
+}
+
+type RailMotionViewFrameCountHelper = (
+  view: Pick<RailMotionRailView, 'startFrame' | 'endFrameExclusive'> | null,
+) => number;
+
+/**
+ * 261107-rrp: reached through the module namespace so the RED run reports a
+ * real assertion instead of a module link error while the export is absent.
+ */
+function viewFrameCount(): RailMotionViewFrameCountHelper {
+  const helper = (railMotionIdentityModule as unknown as {
+    railMotionViewFrameCount?: RailMotionViewFrameCountHelper;
+  }).railMotionViewFrameCount;
+  expect(typeof helper).toBe('function');
+  if (helper === undefined) {
+    throw new Error('railMotionIdentity does not export railMotionViewFrameCount');
+  }
+  return helper;
 }
 
 function animate(
@@ -847,6 +867,67 @@ describe('261107-pd8 rail motion commands — key drag clamp', () => {
       proposedFrame: 1,
       frameCount: 5,
     })).toEqual({ frame: 1, blockedEdge: null });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-rrp — the motion span auto-fits the resolved rail extent    */
+/* ------------------------------------------------------------------ */
+
+describe('261107-rrp motion span auto-fit policy', () => {
+  it('clamps cursor writes into the resolved band at both ends', () => {
+    // A resolved 10-frame band: frames 10..19 in app time.
+    const view = railView({ startFrame: 10, endFrameExclusive: 20 });
+
+    expect(railMotionCursorFrame(view, 3)).toBe(0);
+    expect(railMotionCursorFrame(view, 13)).toBe(3);
+    expect(railMotionCursorFrame(view, 50)).toBe(9);
+  });
+
+  it('preserves an out-of-band key byte-identically when writing inside the band', () => {
+    // Frame 20 is outside the 10-frame band derived for this view. It must
+    // survive the write untouched (preserved-but-inactive), never clamped.
+    // Rotation is used because Position is paired (D-12) and would need an
+    // unrelated position-y frame set just to satisfy the model.
+    const outOfBand = motionKey(20, 42);
+    const record = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({
+          id: 'rotation' as const,
+          keys: Object.freeze([motionKey(0, 0), outOfBand]),
+        }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+
+    const result = setMotionKeyAtCursor({
+      records: [record],
+      railId: 'rail-1',
+      channelId: 'rotation',
+      keyFrame: 4,
+      value: 50,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const keys = channelOf(recordOf(result.records), 'rotation').keys;
+    expect(keys.map((key) => key.frame)).toEqual([0, 4, 20]);
+    expect(keys.find((key) => key.frame === 20)).toEqual(outOfBand);
+    expect(keys.find((key) => key.frame === 4)?.value).toBe(50);
+  });
+
+  it('clamps a drag whose band comes from the shared helper', () => {
+    const view = railView({ startFrame: 10, endFrameExclusive: 20 });
+    const frameCount = viewFrameCount()(view);
+    expect(frameCount).toBe(10);
+
+    expect(clampRailMotionKeyDragFrame({
+      keyFrames: [0],
+      fromFrame: 0,
+      proposedFrame: 99,
+      frameCount,
+    })).toEqual({ frame: 9, blockedEdge: 'right' });
   });
 });
 

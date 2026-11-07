@@ -242,9 +242,13 @@ export function deriveRailMotionRailViews(
   for (const clip of loopClips) {
     const sourceKeyIds = clip.sourceKeyIds;
     const fallbackEnd = clip.placementStart + sourceKeyIds.length * railViewOccurrences(clip.repeat);
+    // The resolved Loop Clip range is the rail/compositor authority: it already
+    // accounts for the cycle's real extent after every shorten/re-extend. The
+    // key-count product is only the no-answer fallback (261107-rrp).
+    const resolvedEnd = viewSpanResolver?.resolveLoopEndExclusive(clip.loopId) ?? null;
     const endFrameExclusive = clip.repeat === 'infinity'
-      ? Math.max(fallbackEnd, viewSpanResolver?.resolveLoopEndExclusive(clip.loopId) ?? fallbackEnd)
-      : fallbackEnd;
+      ? Math.max(fallbackEnd, resolvedEnd ?? fallbackEnd)
+      : resolvedEnd ?? fallbackEnd;
     views.push(freezeRailView({
       railId: clip.loopId,
       anchorKeyId: sourceKeyIds[0] ?? clip.loopId,
@@ -271,6 +275,21 @@ export function deriveRailMotionRailViews(
   }
 
   return Object.freeze(views) as readonly RailMotionRailView[];
+}
+
+/**
+ * The ONE band-width derivation for the Motion lane (261107-rrp).
+ *
+ * Every band consumer — lane width, header stack, curve sampling, drag clamp
+ * and cursor writes — reads the width from here so they can never disagree
+ * about how many frames the resolved rail span covers. A missing view has no
+ * band (0, fail closed) and a degenerate span never goes negative.
+ */
+export function railMotionViewFrameCount(
+  view: Pick<RailMotionRailView, 'startFrame' | 'endFrameExclusive'> | null,
+): number {
+  if (view === null) return 0;
+  return Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
 }
 
 /**

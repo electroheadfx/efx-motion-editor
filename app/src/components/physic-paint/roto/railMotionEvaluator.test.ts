@@ -415,6 +415,21 @@ describe('rail motion lane curve', () => {
     expect(points[points.length - 1].x).toBe(4 * 12);
   });
 
+  it('261107-rrp: keeps every shared frame point identical when the rail shrinks', () => {
+    // The curve samples the evaluator, so a shorter rail band must not change
+    // any frame that is still visible: only the tail beyond the band drops.
+    const positionChannel = channel('position-x', [key(0, 0), key(20, 100)]);
+    const longPath = parseCurvePath(buildRailMotionCurvePath(positionChannel, 20));
+    const shortPath = parseCurvePath(buildRailMotionCurvePath(positionChannel, 10));
+
+    expect(shortPath.length).toBeGreaterThan(0);
+    expect(shortPath.length).toBeLessThan(longPath.length);
+    for (let index = 0; index < shortPath.length; index += 1) {
+      expect(shortPath[index]).toEqual(longPath[index]);
+    }
+    expect(shortPath[shortPath.length - 1].x).toBe(9 * TIMELINE_GEOMETRY.cellPitch);
+  });
+
   it('uses the design-token pitch by default', () => {
     const path = buildRailMotionCurvePath(channel('opacity', [key(0, 1)]), 4);
     const points = parseCurvePath(path);

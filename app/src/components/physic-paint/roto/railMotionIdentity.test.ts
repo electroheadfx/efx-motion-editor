@@ -141,6 +141,26 @@ function spanResolverFrom(
   };
 }
 
+type RailMotionViewFrameCountHelper = (
+  view: Pick<RailMotionRailView, 'startFrame' | 'endFrameExclusive'> | null,
+) => number;
+
+/**
+ * 261107-rrp: the shared band derivation is reached through the module
+ * namespace so the RED run reports a real assertion instead of a module link
+ * error while the export does not exist yet.
+ */
+function exportedViewFrameCount(): RailMotionViewFrameCountHelper {
+  const helper = (railMotionIdentityModule as unknown as {
+    railMotionViewFrameCount?: RailMotionViewFrameCountHelper;
+  }).railMotionViewFrameCount;
+  expect(typeof helper).toBe('function');
+  if (helper === undefined) {
+    throw new Error('railMotionIdentity does not export railMotionViewFrameCount');
+  }
+  return helper;
+}
+
 type RailMotionConvertToLoopTransition = (
   records: readonly PhysicPaintRotoRailMotionRecord[],
   railId: string,
@@ -401,7 +421,7 @@ describe('rail motion rail view span resolver', () => {
     expect(views[0].endFrameExclusive).toBe(13);
   });
 
-  it('leaves finite clips and bare Key Rails untouched when a resolver is supplied', () => {
+  it('ends a finite clip view at the resolved rail extent, not the key-count product', () => {
     const resolver = spanResolverFrom({ 'loop-finite': 40, A: 40 });
 
     const views = deriveRailMotionRailViews(
@@ -412,8 +432,45 @@ describe('rail motion rail view span resolver', () => {
       resolver,
     );
 
-    expect(views[0].endFrameExclusive).toBe(19);
+    // The resolved `effectiveEnd` is the extent the rail and compositor draw;
+    // the key-count product here would be 10 + 3 × 3 = 19.
+    expect(views[0].endFrameExclusive).toBe(40);
+    // Key Rail views never consult the resolver: their end is the last key
+    // frame + 1, and the same-call fixture stays untouched.
     expect(views[1].endFrameExclusive).toBe(10);
+  });
+
+  it('keeps the single-occurrence fallback when the resolver has no answer for the loop', () => {
+    const views = deriveRailMotionRailViews(
+      [loopClip({ loopId: 'loop-finite', repeat: 3 })],
+      [],
+      undefined,
+      undefined,
+      spanResolverFrom({ 'loop-other': 40 }),
+    );
+
+    expect(views[0].endFrameExclusive).toBe(19);
+  });
+
+  it('tracks the resolved span when the cycle shrinks and re-extends, freezing every view', () => {
+    const clip = loopClip({ loopId: 'loop-finite', repeat: 3 });
+
+    const shrunk = deriveRailMotionRailViews(
+      [clip], [], undefined, undefined, spanResolverFrom({ 'loop-finite': 12 }),
+    );
+    const extended = deriveRailMotionRailViews(
+      [clip], [], undefined, undefined, spanResolverFrom({ 'loop-finite': 40 }),
+    );
+
+    expect(shrunk[0].endFrameExclusive).toBe(12);
+    expect(extended[0].endFrameExclusive).toBe(40);
+    expect(shrunk[0].startFrame).toBe(10);
+    expect(extended[0].startFrame).toBe(10);
+    expect(Object.isFrozen(shrunk[0])).toBe(true);
+    expect(Object.isFrozen(extended[0])).toBe(true);
+    // Nothing stored is involved: the same frozen clip drives both derivations.
+    expect(clip.repeat).toBe(3);
+    expect(clip.placementStart).toBe(10);
   });
 
   it('forwards the resolver through assignRailMotionRailViews', () => {
@@ -427,6 +484,18 @@ describe('rail motion rail view span resolver', () => {
 
     expect(views[0].railId).toBe('loop-inf');
     expect(views[0].endFrameExclusive).toBe(40);
+  });
+});
+
+describe('261107-rrp rail motion identity — the one band derivation', () => {
+  it('returns the non-negative floored band for a view and 0 for null', () => {
+    const frameCount = exportedViewFrameCount();
+
+    expect(frameCount({ startFrame: 10, endFrameExclusive: 46 })).toBe(36);
+    expect(frameCount({ startFrame: 10, endFrameExclusive: 21 })).toBe(11);
+    expect(frameCount({ startFrame: 10, endFrameExclusive: 10 })).toBe(0);
+    expect(frameCount({ startFrame: 10, endFrameExclusive: 4 })).toBe(0);
+    expect(frameCount(null)).toBe(0);
   });
 });
 
