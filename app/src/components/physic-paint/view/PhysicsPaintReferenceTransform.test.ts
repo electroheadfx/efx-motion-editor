@@ -181,7 +181,17 @@ describe('getRailMotionBounds (261107 live UAT)', () => {
 
   it('reproduces getReferenceBounds corner-for-corner for a full-frame base (fallback equality)', () => {
     const transform = { x: 50, y: -25, scaleX: 1.5, scaleY: 0.5, rotation: 37 };
-    const reference = getReferenceBounds(transform, PROJECT_W, PROJECT_H, 2, PROJECT_W, PROJECT_H);
+    // The legacy helper takes the PROJECT-space base plus the WORKING canvas
+    // size — exactly the pair the handles already pass (width, height) and the
+    // project size recovered as width/zoom.
+    const reference = getReferenceBounds(
+      transform,
+      PROJECT_W,
+      PROJECT_H,
+      2,
+      PROJECT_W * 2,
+      PROJECT_H * 2,
+    );
     const rail = getRailMotionBounds(
       transform,
       { x: 0, y: 0, width: 1, height: 1 },

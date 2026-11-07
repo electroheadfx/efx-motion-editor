@@ -1351,7 +1351,8 @@ function _trackMotionTransformAtFrame(
     contentRevision: structural.rasterRevision,
     sources: view.keyIds
       .map((keyId) => structural.recordMap.get(keyId))
-      .filter((source): source is PhysicPaintRotoRealKeyRecord => source !== undefined),
+      .filter((source): source is PhysicPaintRotoRealKeyRecord => source !== undefined)
+      .map((record) => ({ keyId: record.keyId, source: record })),
     measure: _measureRotoDrawingKeyInk,
   });
   return {

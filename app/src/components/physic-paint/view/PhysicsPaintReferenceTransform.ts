@@ -98,6 +98,70 @@ export function getBackgroundBounds(
 }
 
 /**
+ * 261107-tfp: the rail-motion boundary-box geometry. It mirrors the
+ * compositor's op order exactly — `translate(pivot + offset)`, `rotate`,
+ * `scale`, `translate(-pivot)` — the same chain
+ * {@link buildRailMotionEditCss} expresses and `applyEfxPaintTrackMotion`
+ * applies, so the box tracks the composited paint under Position/Scale/Rotation.
+ *
+ * `baseRect` is the DISPLAYED drawing key's ink box NORMALIZED to the project
+ * raster (0..1), and `pivotX`/`pivotY` are the rail's normalized pivot. The
+ * working-space result is project→working scaled by `zoom`, like every other
+ * bounds helper here. `center` is the TRANSFORMED PIVOT — deliberately not the
+ * box centroid — so the scale/rotation gestures reference the exact anchor the
+ * compositor uses. `drawW`/`drawH` are the unscaled base draw size (the same
+ * convention `transformBoundsCore` documents).
+ */
+export function getRailMotionBounds(
+  transform: PhotoReferenceTransform,
+  baseRect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+  pivotX: number,
+  pivotY: number,
+  projectWidth: number,
+  projectHeight: number,
+  zoom: number,
+): LayerBounds {
+  const pivotPxX = pivotX * projectWidth;
+  const pivotPxY = pivotY * projectHeight;
+  const left = baseRect.x * projectWidth;
+  const top = baseRect.y * projectHeight;
+  const right = (baseRect.x + baseRect.width) * projectWidth;
+  const bottom = (baseRect.y + baseRect.height) * projectHeight;
+
+  const rad = (transform.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners = [
+    { x: left, y: top }, // TL
+    { x: right, y: top }, // TR
+    { x: right, y: bottom }, // BR
+    { x: left, y: bottom }, // BL
+  ].map((corner) => {
+    const dx = (corner.x - pivotPxX) * transform.scaleX;
+    const dy = (corner.y - pivotPxY) * transform.scaleY;
+    return {
+      x: zoom * (pivotPxX + transform.x + dx * cos - dy * sin),
+      y: zoom * (pivotPxY + transform.y + dx * sin + dy * cos),
+    };
+  });
+
+  return {
+    corners,
+    center: {
+      x: zoom * (pivotPxX + transform.x),
+      y: zoom * (pivotPxY + transform.y),
+    },
+    drawW: baseRect.width * projectWidth * zoom,
+    drawH: baseRect.height * projectHeight * zoom,
+  };
+}
+
+/**
  * 59-12 UAT fix: the CSS mirror of the compositor's rail transform, applied to
  * the ACTIVE track's live engine shell (which bypasses the compositor). The
  * op order is the compositor's, byte for byte: translate(pivot + offset),
