@@ -6,14 +6,13 @@ import { describe, expect, it } from 'vitest';
 /**
  * 261105-cgl / 261107-sg3: read-only wiring pins for the Hand host tool.
  *
- * UAT correction (261107-sg3): the Hand is a ONE-DRAG-PER-CLICK canvas tool
- * living in the floating canvas zoom pill. A fresh Studio open starts
- * disarmed; one click on the pill icon arms a single pan gesture, a
- * primary-button drag anywhere on the canvas pans through the zoom store (the
- * same path middle-drag uses), and releasing that drag also disarms so the
- * next canvas drag paints again. A second click before dragging cancels.
- * Nothing couples it to the paint tool, Select, the picker or motion mode, and
- * no keyboard binding exists.
+ * UAT final (261107-sg3): the Hand is a PRESS-AND-HOLD canvas tool living in
+ * the floating canvas zoom pill. Pressing the pill button captures the pointer
+ * and arms pan mode; moving the pointer (mouse or pen) pans through the zoom
+ * store (the same path middle-drag uses) for as long as the press lasts; the
+ * release stops the pan and disarms. Nothing latches. The canvas keeps its
+ * middle-drag route only, and nothing couples the Hand to the paint tool,
+ * Select, the picker or motion mode.
  */
 
 const rail = readFileSync(fileURLToPath(new URL('./PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
@@ -29,8 +28,8 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
     expect(rail).not.toContain('<Hand');
     expect(rail).not.toContain('physicsPaintHandTool');
     expect(rail).not.toContain('physicsPaintCanvasZoom');
-    // The Hand lives in the floating zoom pill; the rail keeps its
-    // paint tools and host tools only.
+    // The Hand lives in the floating zoom pill; the rail keeps its paint tools
+    // and host tools only.
     expect(rail).toContain(
       "import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';",
     );
@@ -39,7 +38,7 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
     expect(rail).not.toContain("from 'preact/hooks'");
   });
 
-  it('retires the momentary hold-to-pan session machinery', () => {
+  it('retires the momentary hold-to-pan session machinery from the rail', () => {
     expect(rail).not.toContain('HandPanSession');
     expect(rail).not.toContain('beginHandSession');
     expect(rail).not.toContain('endHandSession');
@@ -67,10 +66,12 @@ describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
   });
 });
 
-describe('Hand canvas tool in the zoom pill (261107-sg3)', () => {
-  it('renders one Hand toggle before Fit, bound to the armed signal', () => {
+describe('Hand press button in the zoom pill (261107-sg3)', () => {
+  it('renders one press-and-hold Hand button before Fit, bound to the armed signal', () => {
     expect(zoomBar).toContain("import { Hand, Minus, Plus } from 'lucide-preact';");
-    expect(zoomBar).toContain("import { isHandToolArmed, toggleHandTool } from './physicsPaintHandTool';");
+    expect(zoomBar).toContain(
+      "import { disarmHandTool, isHandToolArmed, setHandToolArmed } from './physicsPaintHandTool';",
+    );
     expect(zoomBar).toContain('const handArmed = isHandToolArmed();');
     // Exactly one control, seated immediately before Fit so the numeric zoom
     // controls stay grouped.
@@ -79,15 +80,17 @@ describe('Hand canvas tool in the zoom pill (261107-sg3)', () => {
     const fitIndex = zoomBar.indexOf('onClick={() => physicsPaintCanvasZoom.fitToWindow()}');
     expect(toggleIndex).toBeGreaterThanOrEqual(0);
     expect(fitIndex).toBeGreaterThan(toggleIndex);
-    // aria-pressed mirrors the armed signal; one click arms, a second cancels.
     const buttonStart = zoomBar.lastIndexOf('<button', toggleIndex);
     const buttonEnd = zoomBar.indexOf('</button>', toggleIndex);
     expect(buttonStart).toBeGreaterThanOrEqual(0);
     expect(buttonEnd).toBeGreaterThan(toggleIndex);
     const button = zoomBar.slice(buttonStart, buttonEnd);
     expect(button).toContain('aria-label="Hand"');
+    // aria-pressed mirrors the live press so the pill shows its active state.
     expect(button).toContain('aria-pressed={handArmed}');
-    expect(button).toContain('onClick={() => toggleHandTool()}');
+    // A PRESS button: pointerdown starts the pan, there is no click toggle.
+    expect(button).toContain('onPointerDown={beginHandSession}');
+    expect(button).not.toContain('toggleHandTool');
     expect(button).toContain('<Hand size={14} aria-hidden="true" />');
     // D-03: never disabled — at Fit the pan simply clamps to zero.
     expect(button).not.toContain('disabled');
@@ -105,93 +108,83 @@ describe('Hand canvas tool in the zoom pill (261107-sg3)', () => {
     expect(zoomBar).not.toContain('aquarelleActiveTool');
     expect(zoomBar).not.toContain('setAquarelleSelectMode');
     expect(zoomBar).not.toContain('aquarellePickerLatched');
-    // The Hand icon is the ONLY arm/disarm entry point (D-02).
-    expect(zoomBar).not.toContain('setHandToolArmed');
-    expect(zoomBar).not.toContain('disarmHandTool');
+    // The Hand press is the ONLY arm/disarm entry point (D-02).
+    expect(zoomBar).not.toContain('toggleHandTool');
   });
 
-  it('pans on a primary drag only while armed, through the middle-drag path', () => {
-    expect(viewport).toMatch(/import \{ disarmHandTool,[^}]*isHandToolArmedPeek[^}]*\} from '\.\/physicsPaintHandTool';/);
-    expect(viewport).toContain('const handPan = event.button === 0 && isHandToolArmedPeek();');
-    expect(viewport).toContain('if (event.button !== 1 && !handPan) return;');
-    // D-03: the hand route proceeds at Fit — setPan clamps the pan to zero.
-    expect(viewport).toContain('if (!handPan && !physicsPaintCanvasZoom.hasOverflow.peek()) return;');
-    expect(viewport).toContain('hand: handPan,');
+  it('pans for as long as the button is held and disarms on release', () => {
+    const beginStart = zoomBar.indexOf('const beginHandSession = (event: PointerEvent) => {');
+    expect(beginStart).toBeGreaterThanOrEqual(0);
+    const beginEnd = zoomBar.indexOf('return (', beginStart);
+    expect(beginEnd).toBeGreaterThan(beginStart);
+    const beginBlock = zoomBar.slice(beginStart, beginEnd);
+    // Primary press only; the pan follows the pointer via capture.
+    expect(beginBlock).toContain('if (event.button !== 0) return;');
+    expect(beginBlock).toContain('setHandToolArmed(true);');
+    expect(beginBlock).toContain('target.setPointerCapture(pointerId);');
+    expect(beginBlock).toContain("target.addEventListener('pointermove', session.onMove, { passive: false });");
+    expect(beginBlock).toContain("target.addEventListener('pointerup', session.onEnd);");
+    expect(beginBlock).toContain("target.addEventListener('pointercancel', session.onEnd);");
     // The pan is the SAME zoom-store path as middle-drag.
-    expect(viewport).toContain('physicsPaintCanvasZoom.setPan(');
-    expect(viewport).toContain('viewport.setPointerCapture(event.pointerId)');
+    expect(beginBlock).toContain('physicsPaintCanvasZoom.setPan(');
+    // Never disabled at Fit: no overflow gate on the press.
+    expect(beginBlock).not.toContain('hasOverflow');
+
+    const endStart = zoomBar.indexOf('const endHandSession = (pointerId?: number) => {');
+    expect(endStart).toBeGreaterThanOrEqual(0);
+    const endEnd = zoomBar.indexOf('// A Studio window closing', endStart);
+    expect(endEnd).toBeGreaterThan(endStart);
+    const endBlock = zoomBar.slice(endStart, endEnd);
+    expect(endBlock).toContain('disarmHandTool();');
+    expect(endBlock).toContain('releasePointerCapture(session.pointerId)');
+    // Releasing the press (or losing the pointer) ends the pan.
+    expect(endBlock).toContain("session.target.removeEventListener('pointerup', session.onEnd);");
+    // A Studio window closing mid-press never leaves the flag armed.
+    expect(zoomBar).toContain('useEffect(() => () => {');
   });
 
-  it('disarms when a hand pan drag is released — one drag per click', () => {
-    const finishStart = viewport.indexOf('const finishDrag = (pointerId: number) => {');
-    expect(finishStart).toBeGreaterThanOrEqual(0);
-    const finishEnd = viewport.indexOf('const endDrag', finishStart);
-    expect(finishEnd).toBeGreaterThan(finishStart);
-    const finishBlock = viewport.slice(finishStart, finishEnd);
-    // The drag remembers it was a hand pan BEFORE the drag state is cleared.
-    expect(finishBlock).toContain('const wasHand = drag.hand;');
-    expect(finishBlock.indexOf('drag = null;')).toBeGreaterThan(finishBlock.indexOf('const wasHand = drag.hand;'));
-    // Releasing a hand drag leaves the mode; a middle drag never does.
-    expect(finishBlock).toContain('if (wasHand) disarmHandTool();');
-    // Middle-drag release is untouched by the one-shot law.
-    expect(finishBlock).not.toMatch(/if \(!wasHand\)\s*disarmHandTool/);
-  });
-
-  it('keeps middle-button routing, the capture-phase listener and the mount reset', () => {
-    expect(viewport).toContain('if (event.button !== 1 && !handPan) return;');
-    expect(viewport).toContain("viewport.addEventListener('pointerdown', onPointerDown, true);");
-    expect(viewport).toContain('disarmHandTool();');
+  it('leaves the canvas pointer route to middle-drag only', () => {
+    // The Hand no longer consumes primary presses on the canvas.
+    expect(viewport).not.toContain('isHandToolArmedPeek');
+    expect(viewport).not.toContain('isHandToolArmed');
+    expect(viewport).not.toContain('handPan');
+    expect(viewport).not.toContain('wasHand');
     expect(viewport).not.toContain("source: 'hand'");
     expect(viewport).not.toContain('physics-paint-canvas-hand-armed');
+    expect(viewport).not.toContain('disposeHandMode');
+    expect(viewport).not.toContain("from '@preact/signals'");
+    // Middle-drag is untouched, including its capture-phase listener.
+    expect(viewport).toContain('if (event.button !== 1) return;');
+    expect(viewport).toContain('viewport.setPointerCapture(event.pointerId)');
+    expect(viewport).toContain("viewport.addEventListener('pointerdown', onPointerDown, true);");
+    // A fresh Studio open always starts disarmed.
+    expect(viewport).toContain('disarmHandTool();');
   });
 
-  it('holds the grab/grabbing cursor law and ends a live hand drag on disarm', () => {
-    // A middle-drag release while the Hand is armed restores grab; the hand
-    // drag release and any disarm clear the cursor.
-    expect(viewport).toContain("viewport.style.cursor = isHandToolArmedPeek() ? 'grab' : '';");
-    // ONE narrow signals effect inside the existing mount effect.
-    const effectStart = viewport.indexOf('const disposeHandMode = effect(() => {');
-    expect(effectStart).toBeGreaterThanOrEqual(0);
-    const effectEnd = viewport.indexOf('});', effectStart);
-    const effectBlock = viewport.slice(effectStart, effectEnd);
-    expect(effectBlock).toContain('const armed = isHandToolArmed();');
-    // A disarm is a hard exit: finish the live hand drag (release capture).
-    expect(effectBlock).toContain('if (!armed && drag !== null) finishDrag(drag.pointerId);');
-    expect(effectBlock).toContain("viewport.style.cursor = armed ? 'grab' : '';");
-    // DOM-style write only — never a signal write (no loop, no re-render).
-    expect(effectBlock).not.toContain('.value =');
-    expect(effectBlock).not.toContain('.value=');
-    // The subscription is disposed in the mount cleanup.
-    const cleanupBlock = viewport.slice(viewport.indexOf('return () => {'));
-    expect(cleanupBlock).toContain('disposeHandMode();');
-  });
-
-  it('keeps the unchanged hand store API and describes the one-drag canvas tool', () => {
+  it('keeps the unchanged hand store API and describes the momentary press', () => {
     for (const exported of [
       'export function isHandToolArmed(): boolean {',
       'export function isHandToolArmedPeek(): boolean {',
       'export function setHandToolArmed(next: boolean): boolean {',
-      'export function toggleHandTool(): boolean {',
       'export function disarmHandTool(): boolean {',
     ]) {
       expect(handStore).toContain(exported);
     }
-    // The literal phrase stays (pinned by physicsPaintHandTool.test.ts); the
-    // contract now describes a one-drag-per-click canvas tool.
+    // No toggle concept survives — the button is pressed, not latched.
+    expect(handStore).not.toContain('toggleHandTool');
     expect(handStore).toContain('HOST tool');
-    expect(handStore).toContain('ONE-DRAG-PER-CLICK canvas tool');
+    expect(handStore).toContain('MOMENTARY press');
     expect(handStore).toContain('floating canvas zoom pill');
-    expect(handStore).not.toContain('MOMENTARY');
   });
 
   it('drops the retired armed-cursor CSS', () => {
     expect(css).not.toContain('physics-paint-canvas-hand-armed');
-    // The Hand rides the pill's existing aria-pressed styling.
+    // The press rides the pill's existing aria-pressed styling.
     expect(css).toContain('.physics-paint-canvas-zoom-button[aria-pressed="true"],');
   });
 
   it('adds no keyboard hand/pan binding', () => {
-    expect(keyboard).not.toContain('toggleHandTool');
+    expect(keyboard).not.toContain('setHandToolArmed');
     expect(keyboard).not.toContain('physicsPaintHandTool');
     expect(keyboard).not.toContain('disarmHandTool');
     expect(keyboard).not.toMatch(/key === 'h'/);

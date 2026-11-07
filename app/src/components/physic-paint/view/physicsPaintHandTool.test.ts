@@ -8,7 +8,6 @@ import {
   isHandToolArmed,
   isHandToolArmedPeek,
   setHandToolArmed,
-  toggleHandTool,
 } from './physicsPaintHandTool';
 import { aquarelleActiveTool, setAquarelleTool } from './aquarelleRecordState';
 import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
@@ -22,7 +21,8 @@ import {
  *
  * The hand is a HOST tool — it never enters the `AquarelleTool` union and never
  * writes the paint tool, Select mode, or the picker, so disarming is literally
- * "back to the previous tool".
+ * "back to the previous tool". 261107-sg3: it is a PRESS-AND-HOLD control —
+ * the zoom pill arms it on pointerdown and disarms it on release.
  */
 
 beforeEach(() => {
@@ -37,11 +37,11 @@ afterEach(() => {
 });
 
 describe('arm/disarm law', () => {
-  it('starts disarmed and toggles on/off', () => {
+  it('starts disarmed and arms/disarms through the compare-then-write setter', () => {
     expect(isHandToolArmed()).toBe(false);
-    expect(toggleHandTool()).toBe(true);
+    expect(setHandToolArmed(true)).toBe(true);
     expect(isHandToolArmed()).toBe(true);
-    expect(toggleHandTool()).toBe(true);
+    expect(setHandToolArmed(false)).toBe(true);
     expect(isHandToolArmed()).toBe(false);
   });
 
@@ -104,7 +104,7 @@ describe('host-tool isolation', () => {
     setAquarelleSelectMode(true);
     setAquarellePickerLatched(true);
 
-    toggleHandTool();
+    setHandToolArmed(true);
     expect(isHandToolArmed()).toBe(true);
     expect(aquarelleActiveTool.value).toBe('pen');
     expect(aquarelleSelectMode.value).toBe(true);

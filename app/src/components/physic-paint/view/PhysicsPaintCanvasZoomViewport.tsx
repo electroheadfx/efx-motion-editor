@@ -1,8 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
-import { effect } from '@preact/signals';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
-import { disarmHandTool, isHandToolArmed, isHandToolArmedPeek } from './physicsPaintHandTool';
+import { disarmHandTool } from './physicsPaintHandTool';
 
 /**
  * 261104-uyv: the Studio canvas zoom viewport.
@@ -123,28 +122,24 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       startY: number;
       startPanX: number;
       startPanY: number;
-      hand: boolean;
     } | null = null;
 
-    // CAPTURE phase: both pan gestures are consumed before the stack's
-    // picker/block gates and the engine's own listeners, so neither can start
-    // a stroke or a pick. Button 1 is always a pan; button 0 is one only while
-    // the Hand is armed (one drag per click). The hand route proceeds at Fit
-    // too — setPan simply clamps the pan to zero, so the control is never
-    // disabled (D-03).
+    // CAPTURE phase: the middle-button press is consumed before the stack's
+    // picker/block gates and the engine's own listeners. Button 1 already
+    // cannot start a stroke or a pick — this keeps it out of every gate too.
+    // 261107-sg3: the Hand no longer routes through the canvas — it is a
+    // press-and-hold button in the zoom pill that captures its own pointer.
     const onPointerDown = (event: PointerEvent) => {
-      const handPan = event.button === 0 && isHandToolArmedPeek();
-      if (event.button !== 1 && !handPan) return;
+      if (event.button !== 1) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!handPan && !physicsPaintCanvasZoom.hasOverflow.peek()) return;
+      if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;
       drag = {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         startPanX: physicsPaintCanvasZoom.panX.peek(),
         startPanY: physicsPaintCanvasZoom.panY.peek(),
-        hand: handPan,
       };
       try {
         viewport.setPointerCapture(event.pointerId);
@@ -164,33 +159,17 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       );
     };
 
-    const finishDrag = (pointerId: number) => {
-      if (!drag || drag.pointerId !== pointerId) return;
-      const wasHand = drag.hand;
+    const endDrag = (event: PointerEvent) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const pointerId = drag.pointerId;
       drag = null;
       try {
         viewport.releasePointerCapture(pointerId);
       } catch {
         // Already released by the platform.
       }
-      // One drag per Hand click: releasing the pan also leaves the mode, so
-      // the next canvas drag paints again without a second pill click.
-      if (wasHand) disarmHandTool();
-      viewport.style.cursor = isHandToolArmedPeek() ? 'grab' : '';
+      viewport.style.cursor = '';
     };
-
-    const endDrag = (event: PointerEvent) => finishDrag(event.pointerId);
-
-    // ONE narrow signals effect for the cursor law: it subscribes to the armed
-    // signal only and writes DOM style only — no signal write and no
-    // render-body write, so it cannot loop. A disarm is a hard exit: a live
-    // hand drag is finished (pointer capture released) before the cursor
-    // clears, so no grabbing cursor or captured pointer survives the mode.
-    const disposeHandMode = effect(() => {
-      const armed = isHandToolArmed();
-      if (!armed && drag !== null) finishDrag(drag.pointerId);
-      viewport.style.cursor = armed ? 'grab' : '';
-    });
 
     const onAuxClick = (event: MouseEvent) => {
       if (event.button === 1) event.preventDefault();
@@ -209,7 +188,6 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       rafId = 0;
       pending = null;
-      disposeHandMode();
       viewport.style.cursor = '';
       // Options matter only for `capture` on removal; passive defaults alike.
       viewport.removeEventListener('wheel', onWheel);
