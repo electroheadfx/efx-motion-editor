@@ -337,12 +337,49 @@ describe('TimelineMotionChannelLane', () => {
   it('renders exactly the evaluator curve path for each model channel', () => {
     const paths = findAll(renderLane(), (vnode) => vnode.type === 'path');
     const expected = POSITION_CHANNELS.map((channel) =>
-      buildRailMotionCurvePath(channel, RAIL_FRAME_COUNT, TIMELINE_GEOMETRY.motionLaneHeight),
+      buildRailMotionCurvePath(channel, RAIL_FRAME_COUNT, TIMELINE_GEOMETRY.motionLaneHeight, {
+        railId: 'rail-a',
+      }),
     );
 
     expect(paths).toHaveLength(2);
     expect(paths.map((path) => path.props.d)).toEqual(expected);
     expect(paths[0].props.strokeWidth).toBe(TIMELINE_MOTION.curveWidth);
+  });
+
+  it('seeds a wiggle-bearing curve with the lane railId, never the preview seed (WR-03)', () => {
+    const wiggleChannel: PhysicPaintRotoRailMotionChannel = {
+      id: 'position-x',
+      keys: [
+        { frame: 0, value: 0, easing: 'ease', wiggle: 500 },
+        { frame: 6, value: 40, easing: 'ease', wiggle: 0 },
+      ],
+    };
+    const lane: RailMotionDisplayLaneView = {
+      id: 'position',
+      channels: [wiggleChannel],
+      keys: wiggleChannel.keys,
+      keyCount: wiggleChannel.keys.length,
+    };
+
+    const paths = findAll(renderLane({ lane }), (vnode) => vnode.type === 'path');
+    expect(paths).toHaveLength(1);
+    const rendered = String(paths[0].props.d);
+    const railSeeded = buildRailMotionCurvePath(
+      wiggleChannel,
+      RAIL_FRAME_COUNT,
+      TIMELINE_GEOMETRY.motionLaneHeight,
+      { railId: 'rail-a' },
+    );
+    const previewSeeded = buildRailMotionCurvePath(
+      wiggleChannel,
+      RAIL_FRAME_COUNT,
+      TIMELINE_GEOMETRY.motionLaneHeight,
+    );
+
+    expect(railSeeded === previewSeeded, 'the fixtures must diverge by seed').toBe(false);
+    expect(rendered === railSeeded, 'the lane curve must use the rail seed').toBe(true);
+    expect(rendered === previewSeeded, 'the lane curve must not use the preview seed').toBe(false);
   });
 
   it('draws the 16 x 18 motion cells at the 18px pitch', () => {
