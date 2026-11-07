@@ -71,6 +71,8 @@ export type PhysicPaintRotoRailMotionEdit =
     readonly kind: 'add-channel';
     readonly railId: string;
     readonly channel: PhysicPaintRotoRailMotionChannelId;
+    /** Required only when the rail carries no record yet — creates it. */
+    readonly anchorKeyId?: string;
   }
   | {
     readonly kind: 'remove-channel';
@@ -685,16 +687,16 @@ function applyAddChannelEdit(
   edit: Extract<PhysicPaintRotoRailMotionEdit, { kind: 'add-channel' }>,
 ): readonly PhysicPaintRotoRailMotionRecord[] {
   const recordIndex = records.findIndex((entry) => entry.railId === edit.railId);
-  if (recordIndex < 0) return records;
 
   assertRailMotionEditChannel(edit.channel);
 
-  const record = records[recordIndex];
   const siblingId = railMotionPositionSibling(edit.channel);
   const groupedIds: readonly PhysicPaintRotoRailMotionChannelId[] = siblingId === null
     ? [edit.channel]
     : ['position-x', 'position-y'];
-  if (record.channels.some((entry) => groupedIds.includes(entry.id))) return records;
+  if (recordIndex >= 0 && records[recordIndex].channels.some((entry) => groupedIds.includes(entry.id))) {
+    return records;
+  }
 
   const seedKey = (value: number): PhysicPaintRotoRailMotionKey => ({
     frame: 0,
@@ -710,6 +712,20 @@ function applyAddChannelEdit(
       { id: 'position-y', keys: [seedKey(0)] },
     ];
 
+  // 261107: adding a channel is what makes a rail animatable, so an unknown
+  // rail CREATES its record here (no separate Animate step, no default
+  // Position channel). The anchor is required only for that creation.
+  if (recordIndex < 0) {
+    if (edit.anchorKeyId === undefined || !isBoundedRailMotionId(edit.anchorKeyId)) {
+      return records;
+    }
+    return canonicalizeRailMotionRecords([
+      ...records,
+      { railId: edit.railId, anchorKeyId: edit.anchorKeyId, channels: seeds },
+    ]);
+  }
+
+  const record = records[recordIndex];
   return replaceRailMotionRecord(records, recordIndex, {
     ...record,
     channels: [...record.channels, ...seeds],

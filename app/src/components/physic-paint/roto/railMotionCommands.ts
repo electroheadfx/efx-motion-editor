@@ -170,32 +170,73 @@ export function animateRail(input: AnimateRailInput): RailMotionCommandResult {
 
 export interface AddMotionChannelInput {
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
-  /** The rail the channel joins; null when no rail is selected. */
+  /** The rail the channel joins; null when the view carries no record yet. */
   readonly railId: string | null;
+  /** Every live rail view — used to bind an un-animated rail by anchor. */
+  readonly views?: readonly RailMotionRailView[];
+  /** The selected rail view; required when the rail has no record yet. */
+  readonly view?: RailMotionRailView | null;
   /** The DISPLAY channel the affordance addressed (grouped Position -> `position-x`). */
   readonly channelId: PhysicPaintRotoRailMotionChannelId;
 }
 
 /**
- * Adds one display channel to a rail that already carries motion (59-17, G1).
+ * Adds one display channel to the selected rail (59-17, G1; 261107).
  *
- * The `+` row is the only caller: it lists exactly the display lanes the rail
- * does NOT carry, so a refusal here means a stale inventory and names itself
- * instead of silently no-oping (MUI-06). Grouped Position is addressed as
- * `position-x` and the 59-02 reducer seeds BOTH axes in one edit — this
- * command seeds nothing itself, so there is one seeding authority.
+ * Picking a channel is what makes a rail animatable: when the rail carries no
+ * record yet, this command binds a rail id from the selected view and the
+ * reducer CREATES the record for that channel alone. There is no default
+ * Position channel and no separate Animate step.
  *
- * A refusal returns the input collection reference untouched, so a refused add
- * can never mutate the document (T-59-52).
+ * Grouped Position is addressed as `position-x` and the 59-02 reducer seeds
+ * BOTH axes in one edit — this command seeds nothing itself, so there is one
+ * seeding authority. A refusal returns the input collection reference
+ * untouched, so a refused add can never mutate the document (T-59-52).
  */
 export function addMotionChannel(input: AddMotionChannelInput): RailMotionCommandResult {
-  const { records, railId, channelId } = input;
+  const { records, channelId } = input;
+  let railId = input.railId;
+  let anchorKeyId: string | undefined;
+  let record = isBoundedId(railId) ? findRailMotionRecord(records, railId) : null;
+
+  if (record === null) {
+    const view = input.view ?? null;
+    if (view === null || !isBoundedId(view.anchorKeyId)) {
+      return failure('Select a rail first.');
+    }
+    if (view.loopId !== null) {
+      const binding = bindLoopRail(view.loopId, view.anchorKeyId);
+      railId = binding.railId;
+      anchorKeyId = binding.anchorKeyId;
+    } else if (view.railId !== null) {
+      railId = view.railId;
+      anchorKeyId = view.anchorKeyId;
+    } else {
+      const liveLoopIds = new Set<string>();
+      for (const candidate of input.views ?? []) {
+        if (candidate.loopId !== null) liveLoopIds.add(candidate.loopId);
+      }
+      const bound = records.find(
+        (entry) => entry.anchorKeyId === view.anchorKeyId && !liveLoopIds.has(entry.railId),
+      );
+      if (bound !== undefined) {
+        railId = bound.railId;
+        anchorKeyId = view.anchorKeyId;
+      } else {
+        const binding = bindKeyRail(view.anchorKeyId);
+        railId = binding.railId;
+        anchorKeyId = binding.anchorKeyId;
+      }
+    }
+    record = isBoundedId(railId) ? findRailMotionRecord(records, railId) : null;
+  } else {
+    anchorKeyId = record.anchorKeyId;
+  }
+
   if (!isBoundedId(railId)) return failure('Select a rail first.');
-  const record = findRailMotionRecord(records, railId);
-  if (record === null) return failure('Animate this rail before adding a Motion channel.');
 
   const groupedIds = resolveMotionCommandChannelIds(channelId);
-  if (record.channels.some((entry) => groupedIds.includes(entry.id))) {
+  if (record !== null && record.channels.some((entry) => groupedIds.includes(entry.id))) {
     return failure('This Motion channel is already present.');
   }
 
@@ -203,10 +244,43 @@ export function addMotionChannel(input: AddMotionChannelInput): RailMotionComman
     kind: 'add-channel',
     railId,
     channel: channelId,
+    ...(anchorKeyId === undefined ? {} : { anchorKeyId }),
   });
   // The reducer returns the SAME reference for an edit it could not apply; a
   // silent no-op would hide the refusal from the user, so report it verbatim.
   if (next === records) return failure('This Motion channel is already present.');
+  return success(next);
+}
+
+export interface RemoveMotionChannelInput {
+  readonly records: readonly PhysicPaintRotoRailMotionRecord[];
+  readonly railId: string | null;
+  readonly view?: RailMotionRailView | null;
+  readonly channelId: PhysicPaintRotoRailMotionChannelId;
+}
+
+/**
+ * Removes one display channel (grouped Position removes both axes). Removing
+ * the last channel removes the record, so a rail with no channels is no longer
+ * animated — the inverse of {@link addMotionChannel}.
+ */
+export function removeMotionChannel(input: RemoveMotionChannelInput): RailMotionCommandResult {
+  const railId = input.railId ?? input.view?.railId ?? null;
+  if (!isBoundedId(railId)) return failure('Select a rail first.');
+  const record = findRailMotionRecord(input.records, railId);
+  if (record === null) return failure('This rail has no Motion channels.');
+
+  const groupedIds = resolveMotionCommandChannelIds(input.channelId);
+  if (!record.channels.some((entry) => groupedIds.includes(entry.id))) {
+    return failure('This Motion channel is not present on the rail.');
+  }
+
+  const next = applyRailMotionEditToCollection(input.records, {
+    kind: 'remove-channel',
+    railId,
+    channel: input.channelId,
+  });
+  if (next === input.records) return failure('This Motion channel is not present on the rail.');
   return success(next);
 }
 

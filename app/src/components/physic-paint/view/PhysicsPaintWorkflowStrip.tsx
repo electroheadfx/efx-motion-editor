@@ -200,6 +200,7 @@ import {
   EMPTY_RAIL_MOTION_HOST_FACTS,
   PhysicsPaintTrackRow,
   TimelineMotionBlock,
+  railMotionChannelMenuAnchor,
   railMotionChannelMenuRailId,
   railMotionExpandedSelection,
   readTrackRailMotionFacts,
@@ -207,6 +208,7 @@ import {
   resolveSelectedRailMotionId,
   resolveTrackMotionLaneCount,
   toggleRailMotionChannelMenu,
+  toggleRailMotionExpansion,
   type RailMotionHostFacts,
   type TrackRowRailSelection,
 } from './PhysicsPaintTrackRow';
@@ -214,8 +216,8 @@ import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveContextualMotionCommands,
-  resolveMotionCommandAvailability,
   resolveMotionKeyAtFrame,
+  resolveSelectedRailView,
   resolveSelectionScope,
   type RailMotionSelectionScope,
 } from '../roto/railMotionCommands';
@@ -228,10 +230,10 @@ import {
   railMotionMergeNoticeUndoable,
 } from '../roto/railMotionMergeNotice';
 import {
-  resolveKeylessMotionDisplayLanes,
   type TimelineMotionHeaderGroupProps,
   type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
+import { TimelineMotionChannelMenuOverlay } from './TimelineMotionChannelMenuOverlay';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -669,10 +671,6 @@ export interface TrackRowLayoutInput {
   /** Visible DISPLAY-lane count for this row (0 for every row whose block is
    *  closed, which is every row except the expanded one). */
   readonly laneCount: number;
-  /** 59-17/59-23: the expanded block renders the 18px `+` add-channel row —
-   *  enabled or disabled, it renders whenever the block does. It is part of the
-   *  measured height. */
-  readonly addChannelRow?: boolean;
 }
 
 export interface TrackRowLayoutEntry {
@@ -683,10 +681,7 @@ export interface TrackRowLayoutEntry {
   readonly railHeight: number;
   /** Clamped visible display-lane count. */
   readonly laneCount: number;
-  /** Whether the measured height includes the 59-17 add-channel row. */
-  readonly addChannelRow: boolean;
-  /** railHeight + lanes × laneHeight + (lanes > 0 ? postBlockGap : 0)
-   *  + (addChannelRow ? laneHeight : 0). */
+  /** railHeight + lanes × laneHeight + (lanes > 0 ? postBlockGap : 0). */
   readonly height: number;
 }
 
@@ -742,14 +737,10 @@ export function resolveTrackRowLayout(
     const laneCount = Number.isFinite(row.laneCount)
       ? Math.max(0, Math.min(MAX_MOTION_DISPLAY_LANES, Math.floor(row.laneCount)))
       : 0;
-    // 59-17: the add-channel row only exists inside an OPEN block, so a zero
-    // lane count swallows the flag instead of reserving dead height.
-    const addChannelRow = row.addChannelRow === true && laneCount > 0;
     const height = railHeight
       + laneCount * TIMELINE_MOTION.laneHeight
-      + (laneCount > 0 ? TIMELINE_MOTION.postBlockGap : 0)
-      + (addChannelRow ? TIMELINE_MOTION.laneHeight : 0);
-    entries.push({ trackId: row.trackId, offset, railHeight, laneCount, addChannelRow, height });
+      + (laneCount > 0 ? TIMELINE_MOTION.postBlockGap : 0);
+    entries.push({ trackId: row.trackId, offset, railHeight, laneCount, height });
     offset += height;
   }
   return { rows: entries, totalHeight: offset };
@@ -2899,31 +2890,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionView = activeMotionRecord === null
     ? null
     : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
-  // 59-17/59-23: the expanded block's `+` row/overlay. The strip only READS the
-  // session menu identity (the row owns its two writers); it adds the 18px row
-  // to the measured layout because that height lives in this one array. The row
-  // renders whenever the block renders (enabled or disabled), so the flag is the
-  // LANE COUNT alone — never a second keyless derivation (WR-01).
-  const activeMotionAddChannelRow = activeMotionLaneCount > 0;
-  const activeMotionChannelMenuOpen = activeMotionRecord !== null
-    && railMotionChannelMenuRailId.value === activeMotionRecord.railId;
-  // 261107-mkn: the add-channel control moved into the pinned header column, so
-  // the strip is the ONE host that answers its availability. The header bundle
-  // and the block's fixed overlay both consume THIS answer — the block never
-  // re-derives a gate or a reason (T-59-35, WR-01).
-  const activeMotionAddChannelAvailability = activeMotionRecord === null
+  // 261107: the Animate button opens the channel menu. Its session identity is
+  // the SELECTED rail view, so a rail that carries no motion record yet can
+  // still open it — picking a channel there creates the record.
+  const activeSelectedRailView = resolveSelectedRailView(activeMotionFacts.views, motionRailIdentity);
+  const activeMotionMenuKey = activeSelectedRailView === null
     ? null
-    : resolveMotionCommandAvailability({
-      command: 'add-motion-channel',
-      hasRail: true,
-      hasMotionRecord: true,
-      hasKeylessChannel: resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0,
-    });
-  // A stale session identity can never open a now-disabled row's menu.
-  const activeMotionAddChannelRowOpen = activeMotionRecord !== null
-    && activeMotionAddChannelAvailability !== null
-    && activeMotionAddChannelAvailability.enabled
-    && activeMotionChannelMenuOpen;
+    : activeSelectedRailView.railId ?? activeSelectedRailView.anchorKeyId;
+  const activeMotionChannelMenuOpen = activeMotionMenuKey !== null
+    && railMotionChannelMenuRailId.value === activeMotionMenuKey;
   // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
   // the hosting boundary keeps the lane's adjacency/span checks honest.
   const activeMotionLocalCursorFrame = activeMotionView === null
@@ -2943,7 +2918,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         inputs.push({
           trackId: track.id,
           laneCount: isActive ? activeMotionLaneCount : 0,
-          addChannelRow: isActive && activeMotionAddChannelRow,
         });
       }
       if (props.background) inputs.push({ trackId: props.background.id, laneCount: 0 });
@@ -2954,7 +2928,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     props.background,
     props.activeTrackId,
     activeMotionLaneCount,
-    activeMotionAddChannelRow,
     trackCount,
   ]);
   const rowLayoutById = useMemo(() => {
@@ -3342,8 +3315,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const physicalDeleteDisabledReason = physicalActions?.deleteDisabledReason.value ?? null;
   const deleteRotoScopeLabel = physicalActions?.deleteScopeLabel.value ?? 'Delete Frame';
   const physicalScissorDisabledReason = physicalActions?.scissorDisabledReason.value ?? null;
-  const canAnimateSelectedRail = physicalActions?.canAnimateSelectedRail.value ?? false;
-  const animateSelectedRailDisabledReason = physicalActions?.animateSelectedRailDisabledReason.value ?? null;
   // 59-12 Task 2: the session Motion-key selection and the ONE scope resolver.
   // The strip never decides the scope inline; the command layer answers it.
   const selectedMotionKey = physicalActions?.selectedMotionKey.value ?? null;
@@ -3408,15 +3379,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         void (key === null
           ? physicalActions?.setMotionKeyAtCursor?.(channelId)
           : physicalActions?.removeMotionKeyAtCursor?.(channelId));
-      },
-      // The record narrows non-null here, so the one availability answer is
-      // present; the optional-chain guards keep the types honest without a
-      // second derivation. `open` is already gated by the enabled answer.
-      addChannel: {
-        open: activeMotionAddChannelRowOpen,
-        disabled: activeMotionAddChannelAvailability?.enabled !== true,
-        reason: activeMotionAddChannelAvailability?.reason ?? null,
-        onToggle: (anchor) => toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor),
       },
     }
     : null;
@@ -3591,7 +3553,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [pushArmedNow, keyRailSegments]);
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
-  const animateRailTooltip = useStyledTooltip();
   const railCreateTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
@@ -6392,7 +6353,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 railSelected={activeRailSetIdentity !== null}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
-                                addChannelMenuOpen={activeMotionAddChannelRowOpen}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
                                 onSelectMotionKey={(frame, channelId) => {
@@ -6406,9 +6366,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                     channelId,
                                     frame,
                                   });
-                                }}
-                                onAddMotionChannel={(channelId) => {
-                                  void physicalActions?.addMotionChannel?.(channelId);
                                 }}
                                 onSelectMotionRail={() => {
                                   if (motionRailIdentity === null) return;
@@ -6426,7 +6383,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                     });
                                   }
                                 }}
-                                onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
                               />
                             ) : null}
                           </div>
@@ -6461,12 +6417,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           onSelectTrackFrame={props.onSelectTrackFrame}
                           onSelectTrackRail={props.onSelectTrackRail}
                           consumeCrossTrackClickSuppression={crossTrackDrag.consumeClickSuppression}
-                          // 59-17: the row path stays honest — the same action
-                          // the active host uses, so a rail selected on any row
-                          // reaches the one commit door.
-                          onAddMotionChannel={(channelId) => {
-                            void physicalActions?.addMotionChannel?.(channelId);
-                          }}
                         />
                       ),
                   )}
@@ -6522,40 +6472,59 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
-                {/* 59-12 (D-01): the ONE Animate command. Visible while a rail
-                    is selected OR while a drawing key inside a rail is selected
-                    (the Motion context survives the key scope). No conversion
-                    step and no cycle value: every rail type can be animated
-                    (MUI-01/MOTN-01). */}
-                {motionRailIdentity !== null ? (
-                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={animateRailTooltip.onPointerEnter} onPointerLeave={animateRailTooltip.onPointerLeave}>
+                {/* 261107 (user decision): Animate is the channel menu. Picking
+                    a channel makes the rail animatable on it — there is no
+                    default Position channel and no separate animate step. A
+                    present channel toggles off. Visible while a rail is
+                    selected, or while a drawing key inside a rail is selected
+                    (the Motion context survives the key scope). */}
+                {motionRailIdentity !== null && activeMotionMenuKey !== null ? (
+                  <span class="physics-paint-roto-key-icon-action">
                     <button
                       type="button"
                       class="physics-paint-roto-key-icon-button"
-                      aria-label="Animate rail"
-                      aria-disabled={!canAnimateSelectedRail ? 'true' : undefined}
-                      aria-describedby={!canAnimateSelectedRail && animateSelectedRailDisabledReason ? 'roto-key-action-reason-animate' : undefined}
-                      onFocus={animateRailTooltip.onFocus}
-                      onBlur={animateRailTooltip.onBlur}
-                      onClick={() => {
-                        animateRailTooltip.hide();
-                        if (!canAnimateSelectedRail) return;
-                        void physicalActions?.animateSelectedRail?.();
-                      }}
-                      onKeyDown={(event) => {
-                        if ((event.key === 'Enter' || event.key === ' ') && !canAnimateSelectedRail) event.preventDefault();
+                      aria-label="Animate — motion channels"
+                      aria-haspopup="menu"
+                      aria-expanded={activeMotionChannelMenuOpen ? 'true' : 'false'}
+                      onClick={(event) => {
+                        const rect = event?.currentTarget?.getBoundingClientRect?.();
+                        toggleRailMotionChannelMenu(
+                          activeMotionMenuKey,
+                          rect === undefined ? { x: 0, y: 0 } : { x: rect.left, y: rect.bottom },
+                        );
                       }}
                     >
                       <Play size={18} aria-hidden="true" />
                       <span class="physics-paint-roto-key-icon-label">Animate</span>
                     </button>
-                    {!canAnimateSelectedRail && animateSelectedRailDisabledReason ? (
-                      <span id="roto-key-action-reason-animate" class="physics-paint-sr-only">{animateSelectedRailDisabledReason}</span>
-                    ) : null}
-                    <PhysicsPaintStyledTooltip visible={animateRailTooltip.visible} region="bottom">
-                      {buildGuardedActionTooltipCopy('Animate the selected rail', animateSelectedRailDisabledReason)}
-                    </PhysicsPaintStyledTooltip>
                   </span>
+                ) : null}
+                {activeMotionChannelMenuOpen ? (
+                  <TimelineMotionChannelMenuOverlay
+                    anchor={railMotionChannelMenuAnchor.value}
+                    channels={activeMotionRecord?.channels ?? []}
+                    onToggleChannel={(channelId, present) => {
+                      if (present) {
+                        void physicalActions?.removeMotionChannel?.(channelId);
+                        return;
+                      }
+                      // Adding a channel is what opens the editing context:
+                      // expand a collapsed block so the new lane and its canvas
+                      // box are visible immediately. The id argument only gates
+                      // the "has motion" branch; the add we just started is
+                      // what gives this rail its motion.
+                      if (motionRailIdentity !== null
+                        && railMotionExpandedSelection.peek() === null
+                        && activeSelectedRailView !== null) {
+                        toggleRailMotionExpansion(
+                          motionRailIdentity,
+                          activeSelectedRailView.railId ?? activeSelectedRailView.anchorKeyId,
+                        );
+                      }
+                      void physicalActions?.addMotionChannel?.(channelId);
+                    }}
+                    onClose={() => dismissRailMotionChannelMenu()}
+                  />
                 ) : null}
                 {/* 59-12 (MOTN-05/MOTN-11): Hold/Ease and Wiggle exist ONLY in
                     the motion-key scope, as reported by the ONE command table.

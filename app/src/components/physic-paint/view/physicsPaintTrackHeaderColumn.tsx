@@ -58,8 +58,6 @@ export interface PhysicsPaintTrackHeaderRowLayoutEntry {
   readonly offset: number;
   readonly railHeight: number;
   readonly laneCount: number;
-  /** 59-17: the layout counts the 18px add-channel row inside an open block. */
-  readonly addChannelRow?: boolean;
   readonly height: number;
 }
 
@@ -290,12 +288,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
                       class="physics-paint-track-header-lane-gap"
                       style={{ height: `${HEADER_POST_BLOCK_GAP_PX}px` }}
                     />
-                    {layoutEntry!.addChannelRow === true ? (
-                      <div
-                        class="physics-paint-track-header-lane-add-slot"
-                        style={{ height: `${HEADER_LANE_HEIGHT_PX}px`, flexShrink: 0 }}
-                      />
-                    ) : null}
                   </div>
                 )}
               </div>

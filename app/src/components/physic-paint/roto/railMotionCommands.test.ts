@@ -1493,7 +1493,34 @@ describe('59-17 rail motion commands — add a Motion channel (G1)', () => {
     }
   });
 
-  it('refuses a rail that carries no Motion record yet', () => {
+  it('creates the rail record when a view is supplied — choosing a channel is what animates (261107)', () => {
+    const records = [positionOnlyRecord()];
+    const view = {
+      railId: null,
+      anchorKeyId: 'k9',
+      startFrame: 0,
+      endFrameExclusive: 12,
+      keyIds: ['k9'],
+      railType: 'standard' as const,
+      loopId: null,
+    };
+    const result = addMotionChannel({
+      records,
+      railId: null,
+      view,
+      views: [view],
+      channelId: 'scale',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.records).toHaveLength(2);
+    const created = result.records.find((record) => record.anchorKeyId === 'k9')!;
+    expect(created.channels.map((channel) => channel.id)).toEqual(['scale']);
+    // The input collection is never mutated.
+    expect(records).toHaveLength(1);
+  });
+
+  it('refuses an unknown rail when no view can bind it', () => {
     const records = [positionOnlyRecord()];
     const result = addMotionChannel({
       records,
@@ -1502,10 +1529,8 @@ describe('59-17 rail motion commands — add a Motion channel (G1)', () => {
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.reason).toBe('Animate this rail before adding a Motion channel.');
-    // No record was created by a refused add.
+    expect(result.reason).toBe('Select a rail first.');
     expect(records).toHaveLength(1);
-    expect(records[0]!.railId).toBe('rail-1');
   });
 });
 

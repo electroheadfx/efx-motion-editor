@@ -58,6 +58,7 @@ import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPain
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
+  removeMotionChannel as applyRemoveMotionChannel,
   removeMotionKey as applyRemoveMotionKey,
   resolveMotionCommandAvailability,
   resolveMotionGizmoAvailability,
@@ -1419,6 +1420,8 @@ export interface RotoPhysicalTimelineActionBundle {
    * Opacity reachable. Commits through the same single motion commit door.
    */
   readonly addMotionChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
+  /** 261107: remove a display channel; the last one removes the motion record. */
+  readonly removeMotionChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => Promise<boolean>;
   /**
    * 59-16 (MOTN-03/MOTN-09): commit one display-unit numeric value on the
    * selected Motion key's channel, at that key's own rail-local frame (a
@@ -2501,6 +2504,13 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     const blockIdentity = input.getMotionBlockRailIdentity?.() ?? null;
     const state = readActiveRailMotionState(input);
     if (state === null || state.view === null || state.view.railId === null) return null;
+    // 261107: the canvas box IS the open block's editing context. Collapsing
+    // the block retires it, so the canvas goes back to the brush instead of
+    // keeping a boundary around a rail the user just closed.
+    const blockOpen = blockIdentity !== null && (blockIdentity.kind === 'loop'
+      ? state.view.loopId === blockIdentity.loopId
+      : state.view.loopId === null && state.view.anchorKeyId === blockIdentity.firstKeyId);
+    if (!blockOpen) return null;
     const animatedChannelIds = state.record === null
       ? []
       : state.record.channels.map((channel) => channel.id);
@@ -2920,9 +2930,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   /**
-   * 59-17 (G1): seed a channel the selected rail does not carry yet. The
-   * command owns every refusal; this action only forwards to the ONE motion
-   * commit door, so a menu pick is one undo step like every other motion edit.
+   * 59-17 (G1) / 261107: add a display channel to the selected rail. Picking a
+   * channel on a rail that carries no record CREATES it (no separate Animate
+   * step, no default Position). The command owns every refusal; this action
+   * only forwards to the ONE motion commit door, so a menu pick is one undo
+   * step like every other motion edit.
    */
   const addMotionChannel = useCallback(async (
     channelId: PhysicPaintRotoRailMotionChannelId,
@@ -2931,15 +2943,31 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (state === null || state.view === null) {
       return publishMotionFailure(input, 'Select a rail first.');
     }
-    if (state.record === null) {
-      return publishMotionFailure(input, 'Animate this rail before adding a Motion channel.');
-    }
     const result = applyAddMotionChannel({
       records: state.records,
-      railId: state.record.railId,
+      railId: state.record?.railId ?? state.view.railId,
+      views: state.views,
+      view: state.view,
       channelId,
     });
     return commitMotionCommandResult(input, state, result, 'Motion channel added.');
+  }, [input]);
+
+  /** The inverse of `addMotionChannel`; removing the last channel drops the record. */
+  const removeMotionChannel = useCallback(async (
+    channelId: PhysicPaintRotoRailMotionChannelId,
+  ): Promise<boolean> => {
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.view === null) {
+      return publishMotionFailure(input, 'Select a rail first.');
+    }
+    const result = applyRemoveMotionChannel({
+      records: state.records,
+      railId: state.record?.railId ?? state.view.railId,
+      view: state.view,
+      channelId,
+    });
+    return commitMotionCommandResult(input, state, result, 'Motion channel removed.');
   }, [input]);
 
   /**
@@ -4455,6 +4483,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     canRemoveMotionKeyAtCursor,
     removeMotionKeyAtCursorDisabledReason,
     addMotionChannel,
+    removeMotionChannel,
     commitRailMotionChannelValue,
     stepMotionKeyForward,
     canStepMotionKeyForward,

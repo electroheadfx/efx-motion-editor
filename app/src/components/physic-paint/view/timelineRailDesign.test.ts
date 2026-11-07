@@ -410,24 +410,57 @@ describe('TIMELINE_MOTION pins', () => {
 describe('resolveMotionBlockOutlineRect', () => {
   it('returns null for a collapsed block (MUI-03: no outline without lanes)', () => {
     expect(
-      resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 0 }),
+      resolveMotionBlockOutlineRect({
+        rowTop: 100,
+        rowHeight: 30,
+        laneCount: 0,
+        railStartFrame: 0,
+        railFrameCount: 10,
+      }),
     ).toBeNull();
   });
 
-  it('wraps the rail row plus its lanes and the post-block gap', () => {
-    const oneLane = resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 1 });
+  it('wraps the rail row plus its lanes and the post-block gap, at the rail extent', () => {
+    const oneLane = resolveMotionBlockOutlineRect({
+      rowTop: 100,
+      rowHeight: 30,
+      laneCount: 1,
+      railStartFrame: 0,
+      railFrameCount: 10,
+    });
     expect(oneLane).toEqual({
+      left: TIMELINE_GEOMETRY.outlineWidth / 2,
       top: 100,
       height: 30 + TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap,
       radius: TIMELINE_GEOMETRY.outlineRadius,
       strokeWidth: TIMELINE_GEOMETRY.outlineWidth,
-      width: '100%',
+      width: 10 * TIMELINE_GEOMETRY.cellPitch - TIMELINE_GEOMETRY.cellGap - TIMELINE_GEOMETRY.outlineWidth,
     });
     expect(oneLane?.height).toBe(50);
 
-    const threeLanes = resolveMotionBlockOutlineRect({ rowTop: 40, rowHeight: 30, laneCount: 3 });
+    const threeLanes = resolveMotionBlockOutlineRect({
+      rowTop: 40,
+      rowHeight: 30,
+      laneCount: 3,
+      railStartFrame: 0,
+      railFrameCount: 10,
+    });
     expect(threeLanes?.top).toBe(40);
     expect(threeLanes?.height).toBe(86);
+  });
+
+  it('starts at the rail start frame, never at x = 0 (261107)', () => {
+    const shifted = resolveMotionBlockOutlineRect({
+      rowTop: 0,
+      rowHeight: 30,
+      laneCount: 2,
+      railStartFrame: 20,
+      railFrameCount: 5,
+    });
+    expect(shifted?.left).toBe(20 * TIMELINE_GEOMETRY.cellPitch + TIMELINE_GEOMETRY.outlineWidth / 2);
+    expect(shifted?.width).toBe(
+      5 * TIMELINE_GEOMETRY.cellPitch - TIMELINE_GEOMETRY.cellGap - TIMELINE_GEOMETRY.outlineWidth,
+    );
   });
 });
 

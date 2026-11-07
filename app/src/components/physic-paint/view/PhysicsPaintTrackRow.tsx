@@ -34,15 +34,13 @@ import {
   createRailMotionViewSpanResolver,
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
-import type { PhysicPaintRotoRailMotionChannel, PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveDisplayLaneChannelId,
-  resolveKeylessMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
   TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
-  TimelineMotionChannelMenu,
   type RailMotionDisplayLaneView,
   type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
@@ -66,6 +64,7 @@ import {
   resolveTimelineRailType,
   resolveTrackAccentColor,
   timelineRailCellStyle,
+  TIMELINE_GEOMETRY,
   TIMELINE_MOTION,
   TIMELINE_SURFACE,
   type TimelineRailType,
@@ -213,8 +212,6 @@ export interface PhysicsPaintTrackRowProps {
   readonly rotoRailViews?: readonly RailMotionRailView[];
   /** Motion-key selection intent — the motion key clicked in a lane. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** The expanded block's add-channel menu intent. */
-  readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** The measured row height from the strip's one layout (rail row + lanes + gap). */
   readonly motionRowHeightPx?: number | null;
   /** The playhead in the selected rail's local frame space (59-12 wires it). */
@@ -555,13 +552,8 @@ export interface TimelineMotionBlockProps {
   readonly laneCount: number;
   /** The playhead in the rail's LOCAL frame space. */
   readonly cursorFrame: number;
-  /** 261107-mkn: the strip's PRE-GATED open state for this rail's add-channel
-   *  menu. The `+` row now lives in the pinned header column; the block keeps
-   *  only the fixed overlay, so this is the sole menu gate it receives. */
-  readonly addChannelMenuOpen?: boolean;
   /** 59-12: the lane identity rides along so the host knows which channel was clicked. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /**
    * 59-12 UAT fix: clicking the motion lane selects its rail. Selecting the
    * rail is what makes the canvas box INTERIOR draggable (move) instead of
@@ -575,8 +567,6 @@ export interface TimelineMotionBlockProps {
    * fallback — the canvas box interior is then paint-transparent.
    */
   readonly railSelected?: boolean;
-  /** 59-17: a picked menu row (or an outside close) dismisses the menu. */
-  readonly onCloseChannelMenu?: () => void;
   /** 59-12: host-owned availability reasons, rendered by the lane verbatim. */
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
   /** 59-12 Task 3: the session Motion-key selection, highlighted in its lane. */
@@ -588,100 +578,27 @@ export interface TimelineMotionBlockProps {
 
 /**
  * The expanded motion block, shared by the presentational row and the strip's
- * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap, a
- * blank 18px slot where the `+` row used to sit (261107-mkn moved the control
- * into the pinned header column), the fixed channel-menu overlay and the
- * rounded outline over the row. Both hosts pass the SAME lane count into the
- * outline, so the outline and the rendered lane rows can never disagree.
+ * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap and the
+ * rounded outline over the rail's own frame extent. Both hosts pass the SAME
+ * lane count into the outline, so the outline and the rendered lane rows can
+ * never disagree. Channel management lives on the Animate menu now, so the
+ * block owns no control row.
  */
-/**
- * 59-17 fix: the channel menu is a FIXED overlay, because the rows region owns
- * `overflow: auto/hidden` and clipped every in-flow overlay below the band.
- * Fixed escapes that clip (no ancestor on the timeline chain establishes a
- * containing block); the menu is clamped to the viewport and flips above the
- * `+` row when there is no room underneath. A transparent backdrop closes it.
- */
-function renderChannelMenuOverlay(input: {
-  readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
-  readonly keylessCount: number;
-  readonly anchor: Readonly<{ x: number; y: number }> | null;
-  readonly onAddChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  readonly onClose: () => void;
-}) {
-  const menuWidth = 168;
-  const menuHeight = Math.max(1, input.keylessCount) * TIMELINE_MOTION.laneHeight + 8;
-  const viewportWidth = typeof window === 'undefined' ? 1200 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
-  const anchor = input.anchor ?? {
-    x: Math.max(8, viewportWidth / 2 - menuWidth / 2),
-    y: Math.round(viewportHeight / 2),
-  };
-  const left = Math.max(4, Math.min(anchor.x, viewportWidth - menuWidth - 4));
-  const below = anchor.y + 2;
-  const top = below + menuHeight > viewportHeight - 4
-    ? Math.max(4, anchor.y - menuHeight - TIMELINE_MOTION.laneHeight - 4)
-    : below;
-  return (
-    <>
-      <div
-        class="physics-paint-motion-channel-menu-backdrop"
-        style={{ position: 'fixed', inset: 0, zIndex: TIMELINE_MOTION.channelMenuZIndex - 1 }}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          input.onClose();
-        }}
-      />
-      <div
-        class="physics-paint-motion-channel-menu-overlay"
-        style={{
-          position: 'fixed',
-          left,
-          top,
-          width: menuWidth,
-          zIndex: TIMELINE_MOTION.channelMenuZIndex,
-          background: TIMELINE_SURFACE.rows,
-          border: '1px solid rgba(255, 255, 255, 0.14)',
-          borderRadius: 4,
-          overflow: 'hidden',
-          boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5)',
-        }}
-      >
-        <TimelineMotionChannelMenu
-          channels={input.channels}
-          onAddChannel={input.onAddChannel}
-          onClose={input.onClose}
-        />
-      </div>
-    </>
-  );
-}
-
 export function TimelineMotionBlock({
   record,
   view,
   laneCount,
   cursorFrame,
-  addChannelMenuOpen = false,
   onSelectMotionKey,
-  onAddMotionChannel,
   onSelectMotionRail,
   railSelected = true,
-  onCloseChannelMenu,
   disabledReasons,
   selectedMotionKey = null,
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
-  // 261107-mkn: the `+` row moved into the pinned header column, so the block
-  // reserves a blank 18px slot where the row used to paint over frame cells.
-  // The outline and the measured row height BOTH still include it, so they
-  // never drift. The strip pre-gates `addChannelMenuOpen` through the ONE
-  // availability authority (T-59-35); the block keeps only the fixed overlay,
-  // and a stale identity with no keyless lane renders no overlay at all.
-  const keylessLanes = resolveKeylessMotionDisplayLanes(record.channels);
-  const addChannelRowOpen = addChannelMenuOpen && keylessLanes.length > 0;
   const railType: TimelineRailType = view?.railType ?? 'standard';
+  const railStartFrame = view === null ? 0 : Math.max(0, Math.floor(view.startFrame));
   const railFrameCount = view === null
     ? 0
     : Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
@@ -690,7 +607,13 @@ export function TimelineMotionBlock({
       <div
         class="physics-paint-motion-block-lanes"
         data-motion-block-rail-id={record.railId}
-        style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}
+        style={{
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          // Lanes live at the rail's own extent (SPECS §2), never at x = 0.
+          marginLeft: railStartFrame * TIMELINE_GEOMETRY.cellPitch,
+        }}
       >
         {lanes.map((lane) => {
           // 59-12: the lane identity rides along with every intent, so the
@@ -727,24 +650,13 @@ export function TimelineMotionBlock({
           style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
           aria-hidden="true"
         />
-        <div
-          class="physics-paint-motion-block-add-slot"
-          aria-hidden="true"
-          style={{ height: `${TIMELINE_MOTION.laneHeight}px`, flexShrink: 0 }}
-        />
-        {addChannelRowOpen ? renderChannelMenuOverlay({
-          channels: record.channels,
-          keylessCount: keylessLanes.length,
-          anchor: railMotionChannelMenuAnchor.value,
-          onAddChannel: (channelId) => onAddMotionChannel?.(channelId),
-          onClose: () => onCloseChannelMenu?.(),
-        }) : null}
       </div>
       <TimelineMotionBlockOutline
         rowTop={0}
         rowHeight={TRACK_ROW_RAIL_HEIGHT_PX}
         laneCount={laneCount}
-        addChannelRow
+        railStartFrame={railStartFrame}
+        railFrameCount={railFrameCount}
         selected
         lineColor={resolveTimelineRailPalette(railType, 'selected').line}
       />
@@ -1061,7 +973,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     rotoRailMotions,
     rotoRailViews,
     onSelectMotionKey,
-    onAddMotionChannel,
     motionRowHeightPx = null,
     motionCursorFrame = 0,
   } = props;
@@ -1120,10 +1031,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     ? null
     : (motionFacts.views.find((view) => view.railId === motionRecord.railId) ?? null);
   const motionExpanded = motionRecord !== null && motionLanes.length > 0;
-  // 59-17: the add-channel menu is ONE session identity keyed by railId — the
-  // row only READS it; the toggle/dismiss helpers are its sole writers.
-  const motionChannelMenuOpen = motionRecord !== null
-    && railMotionChannelMenuRailId.value === motionRecord.railId;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
   // of the ownership inputs of the cell matrix. Loop coverage comes from the
@@ -1419,10 +1326,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           view={motionView}
           laneCount={motionLaneCount}
           cursorFrame={motionCursorFrame}
-          addChannelMenuOpen={motionChannelMenuOpen}
           onSelectMotionKey={onSelectMotionKey}
-          onAddMotionChannel={onAddMotionChannel}
-          onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
         />
       ) : null}
     </div>

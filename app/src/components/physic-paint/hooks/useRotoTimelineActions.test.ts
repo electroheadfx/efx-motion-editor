@@ -5066,16 +5066,17 @@ describe('59-17 addMotionChannel — the host action behind the keyless menu', (
     }
   });
 
-  it('refuses a rail with no motion record — Animate first, never a silent seed', async () => {
+  it('creates the record when a channel is picked on an un-animated rail (261107)', async () => {
     const anchorKeyId = seedRealKeyTrack();
     const harness = actionsHarness(anchorKeyId);
     const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
 
-    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(false);
-    expect(harness.publishStatus).toHaveBeenCalledWith(
-      'Animate this rail before adding a Motion channel.',
-    );
-    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(true);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Motion channel added.');
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    const replacement = replaceSpy.mock.calls[0]![2] as readonly { channels: readonly { id: string }[] }[];
+    expect(replacement).toHaveLength(1);
+    expect(replacement[0]!.channels.map((channel) => channel.id)).toEqual(['scale']);
   });
 
   it('refuses with no selected rail at all — Select a rail first.', async () => {

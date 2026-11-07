@@ -16,6 +16,7 @@
 import type { CSSProperties } from 'preact';
 import {
   Blend,
+  Check,
   ChevronLeft,
   ChevronRight,
   Diamond,
@@ -94,10 +95,6 @@ export interface TimelineMotionHeaderGroupProps {
     channelId: PhysicPaintRotoRailMotionChannelId,
   ) => void;
   readonly onToggleMotionKeyAtCursor: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** 261107-mkn: the `+` row's open/disabled/reason/toggle bundle, resolved by
-   *  the strip from the ONE availability authority and rendered verbatim here
-   *  as the group's last row. */
-  readonly addChannel: TimelineMotionAddChannelRowProps;
 }
 
 const RAIL_MOTION_DISPLAY_LANE_LABELS: Record<RailMotionDisplayLaneId, string> = {
@@ -241,23 +238,24 @@ function resolveAdjacentKeyFrame(
   return best;
 }
 
-function renderLaneIcon(id: RailMotionDisplayLaneId) {
+function renderLaneIcon(id: RailMotionDisplayLaneId, size = 12) {
   switch (id) {
     case 'position':
-      return <Move size={8} />;
+      return <Move size={size} />;
     case 'scale':
-      return <Scaling size={8} />;
+      return <Scaling size={size} />;
     case 'rotation':
-      return <RotateCw size={8} />;
+      return <RotateCw size={size} />;
     case 'opacity':
-      return <Blend size={8} />;
+      return <Blend size={size} />;
   }
 }
 
 /**
  * One lane per DISPLAY lane. `lane.keys` is already the shared key set for the
- * grouped Position lane, so exactly one dot renders per shared frame while the
- * lane receives one evaluator curve path PER MODEL CHANNEL.
+ * grouped Position lane, so exactly one dot renders per shared frame. The lane
+ * draws ONE curve: the grouped Position lane's axes share their key frames
+ * (D-12), so a second axis path would only paint a crossing duplicate.
  */
 export function TimelineMotionChannelLane({
   railId,
@@ -347,16 +345,15 @@ export function TimelineMotionChannelLane({
           style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
           aria-hidden="true"
         >
-          {lane.channels.map((channel) => (
+          {lane.channels[0] !== undefined ? (
             <path
-              key={channel.id}
-              d={buildRailMotionCurvePath(channel, frameCount, laneHeight, { railId })}
+              d={buildRailMotionCurvePath(lane.channels[0], frameCount, laneHeight, { railId })}
               fill="none"
               stroke={palette.line}
               strokeWidth={TIMELINE_MOTION.curveWidth}
               strokeLinecap="round"
             />
-          ))}
+          ) : null}
         </svg>
       )}
 
@@ -433,8 +430,11 @@ export function TimelineMotionChannelHeaderRow({
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
+      width: TIMELINE_MOTION.cellWidth,
+      height: TIMELINE_MOTION.cellWidth,
       padding: 0,
       border: 'none',
+      borderRadius: 3,
       background: 'transparent',
       color: palette.line,
       opacity: disabled ? 0.4 : 1,
@@ -458,10 +458,12 @@ export function TimelineMotionChannelHeaderRow({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: TIMELINE_MOTION.laneLabelGap,
+        gap: TIMELINE_MOTION.laneLabelGap + 2,
         width: '100%',
         minWidth: TIMELINE_MOTION.headerClusterWidth,
         height: TIMELINE_MOTION.laneHeight,
+        padding: '0 10px',
+        boxSizing: 'border-box',
         flexShrink: 0,
         background: TIMELINE_SURFACE.motionLane,
         opacity: selected ? 1 : 0.55,
@@ -473,17 +475,29 @@ export function TimelineMotionChannelHeaderRow({
         aria-hidden="true"
         style={{ display: 'inline-flex', color: palette.line }}
       >
-        {renderLaneIcon(lane.id)}
+        {renderLaneIcon(lane.id, 12)}
       </span>
       <span
         data-motion-header-part="label"
-        style={{ fontSize: 9, fontWeight: 600, color: palette.line }}
+        style={{
+          flex: '1 1 auto',
+          minWidth: 0,
+          fontSize: 11,
+          fontWeight: 600,
+          color: palette.line,
+          whiteSpace: 'nowrap',
+        }}
       >
         {RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}
       </span>
       <span
         data-motion-header-part="count"
-        style={{ fontSize: 8, color: palette.keyRim }}
+        style={{
+          fontSize: 10,
+          color: palette.keyRim,
+          whiteSpace: 'nowrap',
+          marginRight: 4,
+        }}
       >
         {`${lane.keyCount} keys`}
       </span>
@@ -493,7 +507,7 @@ export function TimelineMotionChannelHeaderRow({
         {...navButtonProps(previousState)}
         onClick={previousState.disabled ? undefined : () => onMoveCursorToKey(previousFrame as number)}
       >
-        <ChevronLeft size={10} aria-hidden="true" />
+        <ChevronLeft size={14} aria-hidden="true" />
       </button>
       <button
         data-motion-header-part="diamond"
@@ -501,7 +515,7 @@ export function TimelineMotionChannelHeaderRow({
         {...navButtonProps(diamondState)}
         onClick={diamondState.disabled ? undefined : () => onToggleKeyAtCursor()}
       >
-        <Diamond size={8} aria-hidden="true" />
+        <Diamond size={11} aria-hidden="true" />
       </button>
       <button
         data-motion-header-part="next"
@@ -509,7 +523,7 @@ export function TimelineMotionChannelHeaderRow({
         {...navButtonProps(nextState)}
         onClick={nextState.disabled ? undefined : () => onMoveCursorToKey(nextFrame as number)}
       >
-        <ChevronRight size={10} aria-hidden="true" />
+        <ChevronRight size={14} aria-hidden="true" />
       </button>
     </div>
   );
@@ -517,10 +531,9 @@ export function TimelineMotionChannelHeaderRow({
 
 /**
  * The header-side stack of an expanded motion block: one header row per visible
- * display lane in fixed order, then the 2px post-block gap and the live 18px
- * add-channel row — the SAME rhythm the body renders (a blank 18px slot), so
- * both panes stay in lockstep without this group ever declaring its own total
- * height.
+ * display lane in fixed order plus the 2px post-block gap — the SAME rhythm the
+ * body renders, so both panes stay in lockstep without this group ever
+ * declaring its own total height.
  */
 export function TimelineMotionHeaderGroup({
   channels,
@@ -530,7 +543,6 @@ export function TimelineMotionHeaderGroup({
   disabledReasons,
   onMotionCursorStep,
   onToggleMotionKeyAtCursor,
-  addChannel,
 }: TimelineMotionHeaderGroupProps) {
   const railType = view?.railType ?? 'standard';
   const railFrameCount = view === null
@@ -562,9 +574,6 @@ export function TimelineMotionHeaderGroup({
         aria-hidden="true"
         style={{ height: TIMELINE_MOTION.postBlockGap, flexShrink: 0 }}
       />
-      {/* 261107-mkn: the live `+` row is the group's last row, so its height
-          and rhythm match the body's blank 18px slot exactly. */}
-      <TimelineMotionAddChannelRow {...addChannel} />
     </div>
   );
 }
@@ -573,16 +582,25 @@ export interface TimelineMotionBlockOutlineProps {
   readonly rowTop: number;
   readonly rowHeight: number;
   readonly laneCount: number;
+  /** App frame where the rail starts — the outline hugs the rail's extent. */
+  readonly railStartFrame: number;
+  readonly railFrameCount: number;
   readonly selected: boolean;
   /** The rail's bright line; the host resolves it from the rail type. */
   readonly lineColor?: string;
-  /** 59-17: the block renders one extra add-channel row after the gap. */
-  readonly addChannelRow?: boolean;
 }
 
 export interface TimelineMotionChannelMenuProps {
   readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
-  readonly onAddChannel: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  /**
+   * Add (`present = false`) or remove (`present = true`) one display channel.
+   * Grouped Position is addressed as `position-x`; the reducer keeps both axes
+   * atomic, so the menu never exposes a lone axis.
+   */
+  readonly onToggleChannel: (
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    present: boolean,
+  ) => void;
   readonly onClose: () => void;
 }
 
@@ -594,6 +612,34 @@ const DISPLAY_LANE_ADD_CHANNEL_ID: Record<RailMotionDisplayLaneId, PhysicPaintRo
   opacity: 'opacity',
 };
 
+/** Menu labels: the grouped Position lane names both axes. */
+const RAIL_MOTION_DISPLAY_LANE_MENU_LABELS: Record<RailMotionDisplayLaneId, string> = {
+  position: 'Position (X/Y)',
+  scale: 'Scale',
+  rotation: 'Rotation',
+  opacity: 'Opacity',
+};
+
+/**
+ * Which display channels the rail already carries. Presence is read from the
+ * raw channel ids, never drawn from the display projection: a present channel
+ * is always key-bearing (the reducer drops an emptied channel), so the two
+ * agree today, but the menu must answer "is this channel on the rail", not
+ * "does it have keys".
+ */
+export function resolveMotionChannelPresence(
+  channels: readonly PhysicPaintRotoRailMotionChannel[],
+): Readonly<Record<RailMotionDisplayLaneId, boolean>> {
+  const ids = new Set<PhysicPaintRotoRailMotionChannelId>();
+  for (const channel of channels) ids.add(channel.id);
+  return Object.freeze({
+    position: ids.has('position-x') || ids.has('position-y'),
+    scale: ids.has('scale'),
+    rotation: ids.has('rotation'),
+    opacity: ids.has('opacity'),
+  });
+}
+
 /**
  * The expanded block's outline (MUI-03): an absolutely-positioned rounded rect
  * over the rail row plus its display lanes. Rendered only when the block has
@@ -603,11 +649,18 @@ export function TimelineMotionBlockOutline({
   rowTop,
   rowHeight,
   laneCount,
+  railStartFrame,
+  railFrameCount,
   selected,
   lineColor,
-  addChannelRow = false,
 }: TimelineMotionBlockOutlineProps) {
-  const rect = resolveMotionBlockOutlineRect({ rowTop, rowHeight, laneCount, addChannelRow });
+  const rect = resolveMotionBlockOutlineRect({
+    rowTop,
+    rowHeight,
+    laneCount,
+    railStartFrame,
+    railFrameCount,
+  });
   if (rect === null) return null;
   return (
     <div
@@ -615,7 +668,7 @@ export function TimelineMotionBlockOutline({
       aria-hidden="true"
       style={{
         position: 'absolute',
-        left: 0,
+        left: rect.left,
         top: rect.top,
         width: rect.width,
         height: rect.height,
@@ -629,125 +682,72 @@ export function TimelineMotionBlockOutline({
   );
 }
 
-export interface TimelineMotionAddChannelRowProps {
-  readonly open: boolean;
-  /** 59-23 (WR-01): the ONE availability authority's answer — never local. */
-  readonly disabled: boolean;
-  /** The authority's reason, rendered verbatim; null while enabled. */
-  readonly reason: string | null;
-  /** 59-17 fix: the button's screen anchor, so the menu can escape clipping. */
-  readonly onToggle: (anchor: Readonly<{ x: number; y: number }>) => void;
-}
-
 /**
- * 59-17/59-23: the 18px `+` row under the expanded block. Props only — the
- * host owns the open/closed session state, the channel inventory and the
- * availability authority (T-59-35), so this row neither reads a signal nor
- * derives which channels are missing or why an add is refused. It renders
- * whenever the block does: on a fully-keyed rail it stays visible, disabled,
- * carrying the authority's reason (MUI-06). It is the only way Scale,
- * Rotation and Opacity become reachable (G1/CR-03).
- */
-export function TimelineMotionAddChannelRow({
-  open,
-  disabled,
-  reason,
-  onToggle,
-}: TimelineMotionAddChannelRowProps) {
-  return (
-    <button
-      type="button"
-      class="physics-paint-motion-add-channel-row"
-      data-motion-add-channel-row
-      aria-label="Add Motion channel"
-      aria-expanded={open && !disabled}
-      aria-haspopup="menu"
-      disabled={disabled}
-      title={reason ?? undefined}
-      aria-description={reason ?? undefined}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: TIMELINE_MOTION.laneLabelGap,
-        width: '100%',
-        height: TIMELINE_MOTION.laneHeight,
-        padding: 0,
-        border: 'none',
-        background: 'transparent',
-        color: TIMELINE_SURFACE.motionToggleInactive,
-        fontSize: 9,
-        fontWeight: 600,
-        opacity: disabled ? 0.4 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-      onClick={disabled ? undefined : (event) => {
-        const rect = event?.currentTarget?.getBoundingClientRect?.();
-        onToggle(rect === undefined ? { x: 0, y: 0 } : { x: rect.left, y: rect.bottom });
-      }}
-    >
-      <span aria-hidden="true" style={{ display: 'inline-flex' }}>
-        <Plus size={8} />
-      </span>
-      <span>Add channel</span>
-    </button>
-  );
-}
-
-/**
- * The `+` row popover body (D-14): ONLY display lanes that carry no keys yet,
- * in the fixed display order. Position is one row and adds the grouped pair
- * through the 59-02 reducer. With nothing keyless the row renders nothing.
+ * The Animate-anchored channel menu: every display channel in fixed order,
+ * each row adding the absent ones or removing the present ones. It is the only
+ * channel affordance — there is no sidebar `+` row and no default Position
+ * channel, so a rail becomes animatable one chosen channel at a time.
  */
 export function TimelineMotionChannelMenu({
   channels,
-  onAddChannel,
+  onToggleChannel,
   onClose,
 }: TimelineMotionChannelMenuProps) {
-  const keylessLanes = resolveKeylessMotionDisplayLanes(channels);
-  if (keylessLanes.length === 0) return null;
+  const presence = resolveMotionChannelPresence(channels);
   return (
     <div
       class="physics-paint-motion-channel-menu"
       role="menu"
+      aria-label="Motion channels"
       style={{
         display: 'flex',
         flexDirection: 'column',
         background: TIMELINE_SURFACE.rows,
       }}
     >
-      {keylessLanes.map((lane) => (
-        <button
-          key={lane.id}
-          type="button"
-          role="menuitem"
-          class="physics-paint-motion-channel-menu-row"
-          data-motion-channel-menu-row={lane.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: TIMELINE_MOTION.laneLabelGap,
-            height: TIMELINE_MOTION.laneHeight,
-            padding: '0 10px',
-            border: 'none',
-            background: 'transparent',
-            color: TIMELINE_SURFACE.trackName,
-            font: 'inherit',
-            fontSize: 10,
-            fontWeight: 600,
-            textAlign: 'left',
-            cursor: 'pointer',
-          }}
-          onClick={() => {
-            onAddChannel(DISPLAY_LANE_ADD_CHANNEL_ID[lane.id]);
-            onClose();
-          }}
-        >
-          <span aria-hidden="true" style={{ display: 'inline-flex' }}>
-            {renderLaneIcon(lane.id)}
-          </span>
-          <span>{RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}</span>
-        </button>
-      ))}
+      {RAIL_MOTION_DISPLAY_LANE_ORDER.map((laneId) => {
+        const present = presence[laneId];
+        return (
+          <button
+            key={laneId}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={present}
+            class="physics-paint-motion-channel-menu-row"
+            data-motion-channel-menu-row={laneId}
+            data-motion-channel-present={present ? 'true' : 'false'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 28,
+              padding: '0 10px',
+              border: 'none',
+              background: 'transparent',
+              color: TIMELINE_SURFACE.trackName,
+              font: 'inherit',
+              fontSize: 11,
+              fontWeight: 600,
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              onToggleChannel(DISPLAY_LANE_ADD_CHANNEL_ID[laneId], present);
+              onClose();
+            }}
+          >
+            <span aria-hidden="true" style={{ display: 'inline-flex', width: 12 }}>
+              {renderLaneIcon(laneId, 12)}
+            </span>
+            <span style={{ flex: '1 1 auto' }}>
+              {RAIL_MOTION_DISPLAY_LANE_MENU_LABELS[laneId]}
+            </span>
+            <span aria-hidden="true" style={{ display: 'inline-flex', opacity: present ? 1 : 0.5 }}>
+              {present ? <Check size={13} /> : <Plus size={13} />}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

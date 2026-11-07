@@ -19,7 +19,6 @@ import {
   resolveReorderInsertionIndex,
   resolveTrackRowLayout,
 } from './PhysicsPaintWorkflowStrip';
-import { TIMELINE_MOTION } from './timelineRailDesign';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -1131,7 +1130,10 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     const code = source();
     // The obsolete top-bar Tools dropdown is gone. (260911-s1j also retired
     // the 47-01 track-row ⋯ tools state — no toolsOpen machinery remains.)
-    for (const removed of ['toolsMenuRef', 'aria-haspopup="menu"', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Tools"']) {
+    // 261107: aria-haspopup is no longer a Tools-only marker — the Animate
+    // channel menu legitimately carries it — so the retired identifiers alone
+    // prove the machinery is gone.
+    for (const removed of ['toolsMenuRef', 'physics-paint-tools-menu', 'physics-paint-tools-trigger', 'physics-paint-tools-dropdown', 'aria-label="Tools"']) {
       expect(code).not.toContain(removed);
     }
     expect(code).not.toContain('toolsOpenTrackId');
@@ -2960,101 +2962,49 @@ describe('59-11 Task 2: resolveTrackRowLayout — one measured layout for body, 
   });
 });
 
-describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the one measured layout', () => {
-  function heightOf(laneCount: number, addChannelRow: boolean): number {
-    return resolveTrackRowLayout([{ trackId: 'a', laneCount, addChannelRow }]).rows[0]!.height;
+describe('261107: resolveTrackRowLayout — rail row + lanes + post-block gap only', () => {
+  function heightOf(laneCount: number): number {
+    return resolveTrackRowLayout([{ trackId: 'a', laneCount }]).rows[0]!.height;
   }
 
-  it('keeps every pre-59-17 height byte-identical when addChannelRow is absent', () => {
-    expect(heightOf(0, false)).toBe(31);
-    expect(heightOf(1, false)).toBe(51);
-    expect(heightOf(2, false)).toBe(69);
-    expect(heightOf(3, false)).toBe(87);
-    expect(heightOf(4, false)).toBe(105);
-    // The optional input is genuinely optional.
+  it('measures 31 + lanes × 18 + the 2px gap', () => {
+    expect(heightOf(0)).toBe(31);
+    expect(heightOf(1)).toBe(51);
+    expect(heightOf(2)).toBe(69);
+    expect(heightOf(3)).toBe(87);
+    expect(heightOf(4)).toBe(105);
     expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: 3 }]).rows[0]!.height).toBe(87);
-    expect(resolveTrackRowLayout([{ trackId: 'a', laneCount: 3 }]).rows[0]!.addChannelRow).toBe(false);
   });
 
-  it('adds exactly ONE 18px row on top of the post-block gap', () => {
-    expect(heightOf(0, true)).toBe(31);
-    expect(heightOf(1, true)).toBe(69);
-    expect(heightOf(2, true)).toBe(87);
-    expect(heightOf(3, true)).toBe(105);
-    // Four lanes leave no keyless display lane, yet the row still renders
-    // (disabled) and is measured: 31 + 4×18 + 2 + 18.
-    expect(heightOf(4, true)).toBe(123);
-    // Every additive case is the matching absent case + one lane height.
-    for (const laneCount of [1, 2, 3, 4]) {
-      expect(heightOf(laneCount, true) - heightOf(laneCount, false)).toBe(
-        TIMELINE_MOTION.laneHeight,
-      );
-    }
-  });
-
-  it('spends the add row on a fully-keyed four-lane block — the row is disabled, not absent', () => {
-    // The retired invariant assumed four lanes leave no keyless display lane,
-    // so the add row vanished. It now renders disabled on every expanded
-    // block, so the measured height must reserve it at four lanes too.
-    expect(heightOf(4, true)).toBe(123);
-    expect(heightOf(4, false)).toBe(105);
-    expect(heightOf(4, true) - heightOf(4, false)).toBe(TIMELINE_MOTION.laneHeight);
-  });
-
-  it('swallows the flag on a collapsed block and carries it on the entry', () => {
-    const collapsed = resolveTrackRowLayout([{ trackId: 'a', laneCount: 0, addChannelRow: true }]);
-    expect(collapsed.rows[0]!.addChannelRow).toBe(false);
-    expect(collapsed.rows[0]!.height).toBe(31);
-    // A non-finite lane count fails closed to a collapsed row, add row included.
-    const nan = resolveTrackRowLayout([{ trackId: 'a', laneCount: Number.NaN, addChannelRow: true }]);
+  it('fails a non-finite lane count closed to a collapsed row', () => {
+    const nan = resolveTrackRowLayout([{ trackId: 'a', laneCount: Number.NaN }]);
     expect(nan.rows[0]!.height).toBe(31);
-
-    const open = resolveTrackRowLayout([{ trackId: 'a', laneCount: 2, addChannelRow: true }]);
-    expect(open.rows[0]!.addChannelRow).toBe(true);
-    expect(open.rows[0]!.railHeight).toBe(31);
-    expect(open.totalHeight).toBe(open.rows[0]!.height);
   });
 
   it('keeps the following row offsets measured from the taller block', () => {
     const layout = resolveTrackRowLayout([
-      { trackId: 'a', laneCount: 2, addChannelRow: true },
+      { trackId: 'a', laneCount: 2 },
       { trackId: 'b', laneCount: 0 },
     ]);
-    expect(layout.rows.map((row) => row.height)).toEqual([87, 31]);
-    expect(layout.rows.map((row) => row.offset)).toEqual([0, 87]);
-    expect(layout.totalHeight).toBe(118);
-    expect(resolveReorderInsertionIndex(86, { top: 0, scrollTop: 0 }, layout.rows)).toBe(0);
-    expect(resolveReorderInsertionIndex(87, { top: 0, scrollTop: 0 }, layout.rows)).toBe(1);
+    expect(layout.rows.map((row) => row.height)).toEqual([69, 31]);
+    expect(layout.rows.map((row) => row.offset)).toEqual([0, 69]);
+    expect(layout.totalHeight).toBe(100);
+    expect(resolveReorderInsertionIndex(68, { top: 0, scrollTop: 0 }, layout.rows)).toBe(0);
+    expect(resolveReorderInsertionIndex(69, { top: 0, scrollTop: 0 }, layout.rows)).toBe(1);
   });
 
-  it('feeds the add row from the lane count alone and keeps the menu overlay out of the layout', () => {
+  it('keeps the retired Add channel row and its menu out of the layout', () => {
     const code = source();
-    // 261107-mkn: the row's PRESENCE is still the lane count alone; its
-    // enabled/reason answer now comes from the strip's ONE availability call,
-    // whose keyless projection appears exactly once.
-    expect(code).toContain('const activeMotionAddChannelRow = activeMotionLaneCount > 0;');
-    expect(code.match(/resolveKeylessMotionDisplayLanes\(/g) ?? []).toHaveLength(1);
-    expect(code).toContain(
-      'hasKeylessChannel: resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0,',
-    );
-    expect(code).not.toContain('activeMotionHasKeylessChannel');
-    expect(code).toContain('addChannelRow: isActive && activeMotionAddChannelRow,');
-    // The open menu is a FIXED viewport overlay owned by the row: the strip
-    // never renders it, so its open height can never reach this layout.
-    expect(code).not.toContain('physics-paint-motion-channel-menu-overlay');
-    expect(code).toContain('railMotionChannelMenuRailId.value === activeMotionRecord.railId');
-    // The strip only READS the menu identity — the row owns its two writers.
-    // (Not an equality: `.value === x` is a read, `.value = x` is a write.)
+    expect(code).not.toContain('addChannelRow');
+    expect(code).not.toContain('activeMotionAddChannelRow');
+    expect(code).not.toContain('resolveMotionCommandAvailability(');
+    expect(code).not.toContain('resolveKeylessMotionDisplayLanes(');
+    // The menu identity is still read-only here.
     expect(code).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
-    // 261107-mkn: the toggle now rides the header bundle's addChannel object.
-    expect(code).toContain(
-      'onToggle: (anchor) => toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor),',
-    );
-    expect(code).toContain('dismissRailMotionChannelMenu()');
   });
 });
 
-describe('261107-mkn: the pinned header hosts the channel bundle and the one add-channel authority', () => {
+describe('261107: the Animate button hosts the channel menu', () => {
   it('hands the header column the bundle built from the same record/view/cursor the body consumes', () => {
     const code = source();
     expect(code).toContain('motionHeader: activeMotionHeader,');
@@ -3062,18 +3012,26 @@ describe('261107-mkn: the pinned header hosts the channel bundle and the one add
     expect(code).toContain('channels: activeMotionRecord.channels,');
     expect(code).toContain('view: activeMotionView,');
     expect(code).toContain('cursorFrame: activeMotionLocalCursorFrame,');
-    // The pre-gated open reaches BOTH hosts: the header bundle (the live row)
-    // and the block (the fixed overlay).
-    expect(code).toContain('open: activeMotionAddChannelRowOpen,');
-    expect(code).toContain('disabled: activeMotionAddChannelAvailability?.enabled !== true,');
-    expect(code).toContain('addChannelMenuOpen={activeMotionAddChannelRowOpen}');
+    expect(code).not.toContain('addChannel:');
   });
 
-  it('resolves the add-channel availability exactly once', () => {
+  it('opens the menu from the Animate button and renders ONE fixed overlay', () => {
     const code = source();
-    expect(code.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
-    expect(code).toContain("command: 'add-motion-channel'");
-    expect(code).toContain('hasKeylessChannel');
+    expect(code).toContain('aria-label="Animate — motion channels"');
+    expect(code).toContain('aria-haspopup="menu"');
+    expect(code).toContain('toggleRailMotionChannelMenu(');
+    expect(code).toContain('<TimelineMotionChannelMenuOverlay');
+    expect(code.match(/<TimelineMotionChannelMenuOverlay/g) ?? []).toHaveLength(1);
+    expect(code).toContain('onToggleChannel={(channelId, present) => {');
+    expect(code).toContain('physicalActions?.removeMotionChannel?.(channelId)');
+    expect(code).toContain('physicalActions?.addMotionChannel?.(channelId)');
+  });
+
+  it('no longer renders the removed sidebar add row or the block slot', () => {
+    const code = source();
+    expect(code).not.toContain('TimelineMotionAddChannelRow');
+    expect(code).not.toContain('physics-paint-motion-block-add-slot');
+    expect(code).not.toContain('addChannelMenuOpen=');
   });
 });
 
@@ -3316,10 +3274,9 @@ describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11
   it('clears the drawing-key selection when a motion key is selected, keeping the rail scope', () => {
     const code = source();
     const handlerStart = code.indexOf('onSelectMotionKey={(frame, channelId) => {');
-    // 261107-mkn: the nav handlers no longer follow the selection handler on
-    // the block (they live earlier in the header bundle), so the slice ends at
-    // the next block prop instead.
-    const handler = code.slice(handlerStart, code.indexOf('onAddMotionChannel=', handlerStart));
+    // 261107: the next block prop is the rail-select handler; the slice must
+    // stop before it so its loop-clip call never leaks into this assertion.
+    const handler = code.slice(handlerStart, code.indexOf('onSelectMotionRail=', handlerStart));
     expect(handler).toContain('props.onClearRotoKeySelection?.();');
     expect(handler).toContain('props.onClearRotoSpacingSelection?.();');
     expect(handler).toContain('physicalActions?.selectMotionKey?.({');
@@ -3413,6 +3370,8 @@ describe('59-12 UAT: the selected drawing key supplies the motion rail context',
     expect(code).toContain('resolveRailIdentityForSelectedKey(');
     expect(code).toContain('resolveSelectedRailMotionId(activeMotionFacts.views, motionRailIdentity)');
     expect(code).toContain('selectedRail: motionRailIdentity,');
-    expect(code).toContain('{motionRailIdentity !== null ? (');
+    // 261107: the Animate button (now the channel menu) additionally needs a
+    // resolvable menu key, so an un-animated rail can still open it.
+    expect(code).toContain('{motionRailIdentity !== null && activeMotionMenuKey !== null ? (');
   });
 });

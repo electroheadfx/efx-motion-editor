@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 
 import {
   RAIL_MOTION_DISPLAY_LANE_ORDER,
-  TimelineMotionAddChannelRow,
   TimelineMotionBlockOutline,
   TimelineMotionChannelHeaderRow,
   TimelineMotionChannelLane,
@@ -31,7 +30,6 @@ import {
   type TimelineMotionHeaderGroupProps,
 } from './TimelineMotionChannels';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
-import { resolveMotionCommandAvailability } from '../roto/railMotionCommands';
 import type {
   PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
@@ -218,12 +216,6 @@ function headerGroupProps(
     cursorFrame: 3,
     onMotionCursorStep: () => {},
     onToggleMotionKeyAtCursor: () => {},
-    addChannel: {
-      open: false,
-      disabled: false,
-      reason: null,
-      onToggle: () => {},
-    },
     ...overrides,
   };
 }
@@ -380,7 +372,7 @@ describe('TimelineMotionChannelLane', () => {
     // The body itself is intact: cells, the evaluator curve and the key dots.
     expect(findAll(tree, (vnode) => vnode.props['data-motion-cell-frame'] !== undefined).length)
       .toBe(RAIL_FRAME_COUNT);
-    expect(findAll(tree, (vnode) => vnode.type === 'path')).toHaveLength(2);
+    expect(findAll(tree, (vnode) => vnode.type === 'path')).toHaveLength(1);
     expect(keyDots(tree)).toHaveLength(3);
   });
 
@@ -402,17 +394,18 @@ describe('TimelineMotionChannelLane', () => {
     );
   });
 
-  it('renders exactly the evaluator curve path for each model channel', () => {
+  it('draws ONE curve for the grouped Position lane, never one per axis (261107)', () => {
     const paths = findAll(renderLane(), (vnode) => vnode.type === 'path');
-    const expected = POSITION_CHANNELS.map((channel) =>
-      buildRailMotionCurvePath(channel, RAIL_FRAME_COUNT, TIMELINE_GEOMETRY.motionLaneHeight, {
-        railId: 'rail-a',
-      }),
+    const expected = buildRailMotionCurvePath(
+      POSITION_CHANNELS[0]!,
+      RAIL_FRAME_COUNT,
+      TIMELINE_GEOMETRY.motionLaneHeight,
+      { railId: 'rail-a' },
     );
 
-    expect(paths).toHaveLength(2);
-    expect(paths.map((path) => path.props.d)).toEqual(expected);
-    expect(paths[0].props.strokeWidth).toBe(TIMELINE_MOTION.curveWidth);
+    expect(paths).toHaveLength(1);
+    expect(paths[0]!.props.d).toBe(expected);
+    expect(paths[0]!.props.strokeWidth).toBe(TIMELINE_MOTION.curveWidth);
   });
 
   it('seeds a wiggle-bearing curve with the lane railId, never the preview seed (WR-03)', () => {
@@ -629,7 +622,7 @@ describe('TimelineMotionHeaderGroup', () => {
     ]);
   });
 
-  it('ends with the 2px post-block gap and the live 18px add row in the same rhythm as the body', () => {
+  it('ends with the 2px post-block gap and no control row', () => {
     const tree = renderHeaderGroup();
     const group = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
     const children = childrenOf(group);
@@ -638,50 +631,9 @@ describe('TimelineMotionHeaderGroup', () => {
     expect(styleOf(gap).height).toBe(TIMELINE_MOTION.postBlockGap);
     expect(styleOf(gap).height).toBe(2);
     expect(gap.props['aria-hidden']).toBe('true');
-    // 261107-mkn: the `+` row is the group's LAST child — exactly where the
-    // body reserves its blank 18px slot.
-    const addRow = children[children.length - 1] as TestVNode;
-    expect(addRow.props['data-motion-add-channel-row']).toBe(true);
-    expect(styleOf(addRow).height).toBe(TIMELINE_MOTION.laneHeight);
-    expect(styleOf(addRow).height).toBe(18);
-    expect(children.indexOf(gap)).toBe(children.length - 2);
-  });
-
-  it('passes the add row open/disabled/reason through and relays the captured anchor', () => {
-    const onToggle = vi.fn();
-    const tree = renderHeaderGroup({
-      addChannel: { open: true, disabled: false, reason: null, onToggle },
-    });
-    const group = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
-    const addRow = childrenOf(group)[childrenOf(group).length - 1] as TestVNode;
-    expect(addRow.props['aria-expanded']).toBe(true);
-    expect(addRow.props.disabled).toBe(false);
-    expect(addRow.props.title).toBeUndefined();
-
-    const handler = addRow.props.onClick as (event: unknown) => void;
-    handler({ currentTarget: { getBoundingClientRect: () => ({ left: 12, bottom: 34 }) } });
-    expect(onToggle).toHaveBeenCalledWith({ x: 12, y: 34 });
-
-    // A disabled row carries the host's reason verbatim and never fires. The
-    // reason is the ONE authority's own value — never re-authored here.
-    const reason = resolveMotionCommandAvailability({
-      command: 'add-motion-channel',
-      hasRail: true,
-      hasMotionRecord: true,
-      hasKeylessChannel: false,
-    }).reason;
-    expect(reason).toBeTruthy();
-    const disabled = renderHeaderGroup({
-      addChannel: { open: true, disabled: true, reason, onToggle },
-    });
-    const disabledGroup = findAll(disabled, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
-    const disabledRow = childrenOf(disabledGroup)[childrenOf(disabledGroup).length - 1] as TestVNode;
-    expect(disabledRow.props.disabled).toBe(true);
-    expect(disabledRow.props.title).toBe(reason);
-    expect(disabledRow.props['aria-description']).toBe(reason);
-    expect(disabledRow.props['aria-expanded']).toBe(false);
-    expect(disabledRow.props.onClick).toBeUndefined();
-    expect(onToggle).toHaveBeenCalledTimes(1);
+    // 261107: the Add channel row moved into the Animate menu, so the header
+    // band ends at the post-block gap and the body reserves no slot.
+    expect(children.indexOf(gap)).toBe(children.length - 1);
   });
 
   it('maps a row step to the lane model channel id and the direction from the cursor', () => {
@@ -759,6 +711,8 @@ describe('TimelineMotionBlockOutline', () => {
       rowTop: 100,
       rowHeight: 30,
       laneCount: 0,
+      railStartFrame: 0,
+      railFrameCount: 12,
       selected: true,
     });
 
@@ -766,11 +720,24 @@ describe('TimelineMotionBlockOutline', () => {
   });
 
   it('wraps the rail row plus its lanes in a rounded 1.5px rect', () => {
-    const rect = resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 3 });
+    const rect = resolveMotionBlockOutlineRect({
+      rowTop: 100,
+      rowHeight: 30,
+      laneCount: 3,
+      railStartFrame: 0,
+      railFrameCount: 12,
+    });
     expect(rect).not.toBeNull();
 
     const tree = materialize(
-      TimelineMotionBlockOutline({ rowTop: 100, rowHeight: 30, laneCount: 3, selected: true }),
+      TimelineMotionBlockOutline({
+        rowTop: 100,
+        rowHeight: 30,
+        laneCount: 3,
+        railStartFrame: 0,
+        railFrameCount: 12,
+        selected: true,
+      }),
     );
     const nodes = findAll(
       tree,
@@ -787,20 +754,17 @@ describe('TimelineMotionBlockOutline', () => {
     expect(style.pointerEvents).toBe('none');
   });
 
-  it('wraps the extra 18px add-channel row when the block renders one (59-17)', () => {
-    const without = resolveMotionBlockOutlineRect({ rowTop: 0, rowHeight: 30, laneCount: 2 });
-    const withRow = resolveMotionBlockOutlineRect({
+  it('hugs the rail frame extent instead of the whole timeline (261107)', () => {
+    const rect = resolveMotionBlockOutlineRect({
       rowTop: 0,
       rowHeight: 30,
       laneCount: 2,
-      addChannelRow: true,
+      railStartFrame: 6,
+      railFrameCount: 9,
     });
-
-    expect(without).not.toBeNull();
-    expect(withRow).not.toBeNull();
-    expect(withRow!.height - without!.height).toBe(TIMELINE_MOTION.laneHeight);
-    expect(without!.height).toBe(
-      30 + 2 * TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap,
+    expect(rect?.left).toBe(6 * TIMELINE_GEOMETRY.cellPitch + TIMELINE_GEOMETRY.outlineWidth / 2);
+    expect(rect?.width).toBe(
+      9 * TIMELINE_GEOMETRY.cellPitch - TIMELINE_GEOMETRY.cellGap - TIMELINE_GEOMETRY.outlineWidth,
     );
 
     const tree = materialize(
@@ -808,26 +772,19 @@ describe('TimelineMotionBlockOutline', () => {
         rowTop: 0,
         rowHeight: 30,
         laneCount: 2,
-        addChannelRow: true,
+        railStartFrame: 6,
+        railFrameCount: 9,
         selected: true,
       }),
     );
     const node = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'))[0]!;
-    expect(styleOf(node).height).toBe(withRow!.height);
-  });
-
-  it('adds no add-channel term to a collapsed block (laneCount 0 stays null)', () => {
-    expect(resolveMotionBlockOutlineRect({
-      rowTop: 0,
-      rowHeight: 30,
-      laneCount: 0,
-      addChannelRow: true,
-    })).toBeNull();
+    expect(styleOf(node).left).toBe(rect?.left);
+    expect(styleOf(node).width).toBe(rect?.width);
   });
 });
 
 /* ------------------------------------------------------------------ */
-/* add-channel menu                                                    */
+/* channel menu                                                        */
 /* ------------------------------------------------------------------ */
 
 describe('TimelineMotionChannelMenu', () => {
@@ -835,171 +792,76 @@ describe('TimelineMotionChannelMenu', () => {
     return findAll(tree, (vnode) => vnode.props['data-motion-channel-menu-row'] !== undefined);
   }
 
-  it('lists only the keyless display lanes in fixed order at the 18px rhythm', () => {
+  it('lists all four display channels in fixed order', () => {
     const tree = materialize(
       TimelineMotionChannelMenu({
         channels: POSITION_CHANNELS,
-        onAddChannel: () => {},
+        onToggleChannel: () => {},
         onClose: () => {},
       }),
     );
     const rows = menuRows(tree);
 
     expect(rows.map((row) => row.props['data-motion-channel-menu-row'])).toEqual([
+      'position',
       'scale',
       'rotation',
       'opacity',
     ]);
-    expect(rows.every((row) => styleOf(row).height === TIMELINE_MOTION.laneHeight)).toBe(true);
+    expect(rows.map((row) => row.props['data-motion-channel-present'])).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ]);
   });
 
-  it('offers Position exactly once and adds position-x (the reducer seeds both axes)', () => {
-    const onAddChannel = vi.fn();
+  it('toggles a PRESENT channel off', () => {
+    const onToggleChannel = vi.fn();
     const onClose = vi.fn();
     const tree = materialize(
       TimelineMotionChannelMenu({
-        channels: [motionChannel('scale', [0])],
-        onAddChannel,
-        onClose,
-      }),
-    );
-    const rows = menuRows(tree);
-
-    expect(rows.map((row) => row.props['data-motion-channel-menu-row'])).toEqual([
-      'position',
-      'rotation',
-      'opacity',
-    ]);
-    expect(textOf(rows[0])).toBe('Position');
-
-    clickOf(rows[0])();
-    expect(onAddChannel).toHaveBeenCalledTimes(1);
-    expect(onAddChannel).toHaveBeenCalledWith('position-x');
-    expect(onAddChannel).not.toHaveBeenCalledWith('position-y');
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders nothing when every display lane carries keys (D-15 complement)', () => {
-    const tree = TimelineMotionChannelMenu({
-      channels: [
-        motionChannel('position-x', [0]),
-        motionChannel('position-y', [0]),
-        motionChannel('scale', [0]),
-        motionChannel('rotation', [0]),
-        motionChannel('opacity', [0]),
-      ],
-      onAddChannel: () => {},
-      onClose: () => {},
-    });
-
-    expect(tree).toBeNull();
-  });
-
-  it('calls onAddChannel BEFORE onClose so the seed lands before the menu retires', () => {
-    const order: string[] = [];
-    const tree = materialize(
-      TimelineMotionChannelMenu({
         channels: POSITION_CHANNELS,
-        onAddChannel: () => order.push('add'),
-        onClose: () => order.push('close'),
+        onToggleChannel,
+        onClose,
       }),
     );
 
     clickOf(menuRows(tree)[0]!)();
-    expect(order).toEqual(['add', 'close']);
+    expect(onToggleChannel).toHaveBeenCalledWith('position-x', true);
+    expect(onToggleChannel).not.toHaveBeenCalledWith('position-y', true);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
-});
 
-/* ------------------------------------------------------------------ */
-/* add-channel row (59-17, G1/CR-03)                                   */
-/* ------------------------------------------------------------------ */
-
-describe('TimelineMotionAddChannelRow', () => {
-  const ENABLED = { disabled: false, reason: null } as const;
-  const ALL_KEYED_REASON = 'Every Motion channel is already present on this rail.';
-
-  function rowOf(node: unknown): TestVNode {
-    return findAll(node, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!;
-  }
-
-  it('renders the 18px add-channel row with the lane rhythm', () => {
+  it('adds an ABSENT channel and closes', () => {
+    const onToggleChannel = vi.fn();
+    const onClose = vi.fn();
     const tree = materialize(
-      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
-    );
-    const rows = findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined);
-
-    expect(rows).toHaveLength(1);
-    const row = rows[0]!;
-    expect(row.type).toBe('button');
-    expect(row.props.type).toBe('button');
-    expect(row.props['aria-label']).toBe('Add Motion channel');
-    expect(row.props['aria-haspopup']).toBe('menu');
-    const style = styleOf(row);
-    expect(style.height).toBe(TIMELINE_MOTION.laneHeight);
-    expect(style.height).toBe(18);
-    expect(style.width).toBe('100%');
-    expect(style.gap).toBe(TIMELINE_MOTION.laneLabelGap);
-    expect(style.color).toBe(TIMELINE_SURFACE.motionToggleInactive);
-    expect(style.cursor).toBe('pointer');
-  });
-
-  it('mirrors the open state on aria-expanded', () => {
-    const closed = materialize(
-      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
-    );
-    const open = materialize(
-      TimelineMotionAddChannelRow({ open: true, ...ENABLED, onToggle: () => {} }),
+      TimelineMotionChannelMenu({
+        channels: [motionChannel('scale', [0])],
+        onToggleChannel,
+        onClose,
+      }),
     );
 
-    expect(
-      findAll(closed, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!.props['aria-expanded'],
-    ).toBe(false);
-    expect(
-      findAll(open, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!.props['aria-expanded'],
-    ).toBe(true);
+    clickOf(menuRows(tree)[0]!)();
+    expect(onToggleChannel).toHaveBeenCalledWith('position-x', false);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('routes the click to onToggle (the host owns the session state)', () => {
-    const onToggle = vi.fn();
-    const tree = materialize(TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle }));
-
-    clickOf(findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!)();
-    expect(onToggle).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders an enabled row with no reason: no title, pointer cursor and a live aria-expanded', () => {
-    const row = rowOf(materialize(
-      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
-    ));
-
-    expect(row.props.disabled).toBe(false);
-    expect(row.props.title).toBeUndefined();
-    expect(row.props['aria-description']).toBeUndefined();
-    expect(row.props['aria-expanded']).toBe(false);
-    expect(styleOf(row).cursor).toBe('pointer');
-    expect(styleOf(row).opacity).toBe(1);
-    expect(row.props.onClick).toBeTypeOf('function');
-  });
-
-  it('renders a disabled row with the reason verbatim, no click handler and aria-expanded forced false', () => {
-    const onToggle = vi.fn();
-    const row = rowOf(materialize(TimelineMotionAddChannelRow({
-      open: true,
-      disabled: true,
-      reason: ALL_KEYED_REASON,
-      onToggle,
-    })));
-
-    expect(row.props.disabled).toBe(true);
-    expect(row.props.title).toBe(ALL_KEYED_REASON);
-    expect(row.props['aria-description']).toBe(ALL_KEYED_REASON);
-    // An open session signal cannot make a disabled row claim an open menu.
-    expect(row.props['aria-expanded']).toBe(false);
-    expect(styleOf(row).cursor).toBe('not-allowed');
-    expect(styleOf(row).opacity).toBe(0.4);
-    // No handler at all — not a guarded no-op.
-    expect(row.props.onClick).toBeUndefined();
-    expect(onToggle).not.toHaveBeenCalled();
+  it('reports presence from the channel inventory, not from the key count (261107)', () => {
+    const tree = materialize(
+      TimelineMotionChannelMenu({
+        channels: [motionChannel('opacity', [])],
+        onToggleChannel: () => {},
+        onClose: () => {},
+      }),
+    );
+    const rows = menuRows(tree);
+    const opacityRow = rows.find((row) => row.props['data-motion-channel-menu-row'] === 'opacity')!;
+    expect(opacityRow.props['data-motion-channel-present']).toBe('true');
+    expect(rows.find((row) => row.props['data-motion-channel-menu-row'] === 'scale')!
+      .props['data-motion-channel-present']).toBe('false');
   });
 });
 

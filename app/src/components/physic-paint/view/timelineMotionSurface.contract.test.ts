@@ -76,15 +76,29 @@ describe('the v7 motion surface values', () => {
     expect(TIMELINE_SURFACE.motionToggleInactive).toBe('#58616B');
   });
 
-  it('wraps the rail row plus its lanes plus the post-block gap, never collapsed', () => {
-    expect(resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 0 })).toBeNull();
-    expect(resolveMotionBlockOutlineRect({ rowTop: 100, rowHeight: 30, laneCount: 4 })).toEqual({
+  it('wraps the rail row plus its lanes plus the post-block gap at the rail extent, never collapsed', () => {
+    expect(resolveMotionBlockOutlineRect({
+      rowTop: 100,
+      rowHeight: 30,
+      laneCount: 0,
+      railStartFrame: 0,
+      railFrameCount: 12,
+    })).toBeNull();
+    expect(resolveMotionBlockOutlineRect({
+      rowTop: 100,
+      rowHeight: 30,
+      laneCount: 4,
+      railStartFrame: 0,
+      railFrameCount: 12,
+    })).toEqual({
+      left: 0.75,
       top: 100,
       // 30 row + 4 × 18 lanes + 2 post-block gap
       height: 104,
       radius: 4,
       strokeWidth: 1.5,
-      width: '100%',
+      // 12 × 18 cells − 2 gap − 1.5 stroke (SPECS §2)
+      width: 216 - 2 - 1.5,
     });
   });
 });
@@ -156,21 +170,24 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(source).not.toMatch(/HEADER_LANE_HEIGHT_PX\s*=\s*18\b/);
   });
 
-  it('261107-mkn: the header hosts the add row, the block keeps the slot, the strip owns the authority', () => {
+  it('261107: the header hosts the channel rows, the block keeps only lanes, the Animate menu owns channels', () => {
     const lanes = componentSource(LANE_COMPONENT);
-    expect(lanes).toContain('TimelineMotionAddChannelRow');
     expect(lanes).toContain('physics-paint-motion-header-group');
+    expect(lanes).toContain('TimelineMotionChannelMenu');
+    expect(lanes).not.toContain('TimelineMotionAddChannelRow');
     const header = componentSource(HEADER_COMPONENT);
     expect(header).toContain('TimelineMotionHeaderGroup');
-    // The lane body keeps no add control nor header parts of its own.
+    // The lane body keeps no add control, no slot and no availability call.
     const row = componentSource(ROW_COMPONENT);
-    expect(row).toContain('physics-paint-motion-block-add-slot');
+    expect(row).not.toContain('physics-paint-motion-block-add-slot');
     expect(row).not.toContain('data-motion-add-channel-row');
-    // Exactly ONE availability call site, and it lives in the strip.
-    const strip = componentSource(STRIP_COMPONENT);
-    expect(strip.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
     expect(row).not.toContain('resolveMotionCommandAvailability');
     expect(lanes).not.toContain('resolveMotionCommandAvailability');
     expect(header).not.toContain('resolveMotionCommandAvailability');
+    // The strip opens the menu from Animate and owns its single overlay.
+    const strip = componentSource(STRIP_COMPONENT);
+    expect(strip).toContain('aria-label="Animate — motion channels"');
+    expect(strip).toContain('TimelineMotionChannelMenuOverlay');
+    expect(strip.match(/<TimelineMotionChannelMenuOverlay/g) ?? []).toHaveLength(1);
   });
 });

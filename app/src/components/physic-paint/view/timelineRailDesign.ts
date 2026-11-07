@@ -151,32 +151,31 @@ export const TIMELINE_MOTION = {
 } as const;
 
 export interface TimelineMotionBlockOutlineRect {
+  readonly left: number;
   readonly top: number;
+  readonly width: number;
   readonly height: number;
   readonly radius: number;
   readonly strokeWidth: number;
-  readonly width: string;
 }
 
 export interface TimelineMotionBlockOutlineInput {
   readonly rowTop: number;
   readonly rowHeight: number;
   readonly laneCount: number;
-  /**
-   * 59-17/59-23: the block ALWAYS renders ONE extra 18px add-channel row after
-   * the gap whenever it renders (lane count > 0) — enabled or disabled, the row
-   * is part of the block. The outline wraps it like any lane, so the outline
-   * and the measured row height must agree.
-   */
-  readonly addChannelRow?: boolean;
+  /** App frame where the rail starts — the lanes and the outline start there. */
+  readonly railStartFrame: number;
+  /** Occurrence length in frames. */
+  readonly railFrameCount: number;
 }
 
 /**
- * The expanded block's outline: it starts at the rail row top and wraps the
- * row plus every DISPLAY lane plus the post-block gap (MUI-03), plus the
- * 18px add-channel row when the block renders one (59-17). A collapsed block
- * has no lanes, hence no outline. `laneCount` is always a display-lane count,
- * never a model-channel count, so grouped Position adds one lane.
+ * The expanded block's outline: it wraps the rail row plus every DISPLAY lane
+ * plus the post-block gap (MUI-03), and it hugs the rail's own frame extent
+ * (SPECS §2: `left = railStart + 0.75`, `width = frameCount × 18 − 2 − 1.5`).
+ * A collapsed block has no lanes, hence no outline. `laneCount` is always a
+ * display-lane count, never a model-channel count, so grouped Position adds
+ * one lane.
  */
 export function resolveMotionBlockOutlineRect(
   input: TimelineMotionBlockOutlineInput,
@@ -184,17 +183,27 @@ export function resolveMotionBlockOutlineRect(
   const laneCount = Number.isFinite(input.laneCount)
     ? Math.max(0, Math.floor(input.laneCount))
     : 0;
-  if (laneCount === 0) return null;
+  const startFrame = Number.isFinite(input.railStartFrame)
+    ? Math.max(0, Math.floor(input.railStartFrame))
+    : 0;
+  const frameCount = Number.isFinite(input.railFrameCount)
+    ? Math.max(0, Math.floor(input.railFrameCount))
+    : 0;
+  if (laneCount === 0 || frameCount === 0) return null;
+  const half = TIMELINE_GEOMETRY.outlineWidth / 2;
   return Object.freeze({
+    left: startFrame * TIMELINE_GEOMETRY.cellPitch + half,
     top: input.rowTop,
+    width:
+      frameCount * TIMELINE_GEOMETRY.cellPitch -
+      TIMELINE_GEOMETRY.cellGap -
+      TIMELINE_GEOMETRY.outlineWidth,
     height:
       input.rowHeight +
       laneCount * TIMELINE_MOTION.laneHeight +
-      TIMELINE_MOTION.postBlockGap +
-      (input.addChannelRow === true ? TIMELINE_MOTION.laneHeight : 0),
+      TIMELINE_MOTION.postBlockGap,
     radius: TIMELINE_GEOMETRY.outlineRadius,
     strokeWidth: TIMELINE_GEOMETRY.outlineWidth,
-    width: '100%',
   });
 }
 
