@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildRailMotionEditCss, getReferenceBounds } from './PhysicsPaintReferenceTransform';
+import {
+  buildRailMotionEditCss,
+  getRailMotionBounds,
+  getReferenceBounds,
+} from './PhysicsPaintReferenceTransform';
 import type { PhotoReferenceTransform } from '../../../efx-paint/document/efxPaintDocument';
 
 /**
@@ -53,6 +57,148 @@ describe('getReferenceBounds (50-05, S4 geometry)', () => {
   it('keeps the center fixed under rotation (rotation is around the center)', () => {
     const bounds = getReferenceBounds({ ...IDENTITY, rotation: 37 }, 200, 100, 2, 800, 600);
     expect(bounds.center).toEqual({ x: 400, y: 300 });
+  });
+});
+
+/**
+ * 261107-tfp: the rail-motion boundary box geometry. It mirrors the
+ * compositor's op order (`translate(pivot + offset) → rotate → scale →
+ * translate(-pivot)`, the same chain `buildRailMotionEditCss` expresses) so the
+ * box tracks the composited paint under Position/Scale/Rotation. The base rect
+ * is the DISPLAYED drawing key's normalized ink box; the center is the
+ * TRANSFORMED PIVOT (the gesture anchor), deliberately not the box centroid.
+ */
+const PROJECT_W = 1000;
+const PROJECT_H = 800;
+const INK_BASE = { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+
+describe('getRailMotionBounds (261107 live UAT)', () => {
+  it('places the displayed ink box with the identity transform', () => {
+    const bounds = getRailMotionBounds(IDENTITY, INK_BASE, 0.5, 0.5, PROJECT_W, PROJECT_H, 1);
+    // Ink box in project px: x 250..750, y 200..600; pivot = the raster centre.
+    expect(bounds.corners).toEqual([
+      { x: 250, y: 200 },
+      { x: 750, y: 200 },
+      { x: 750, y: 600 },
+      { x: 250, y: 600 },
+    ]);
+    expect(bounds.center).toEqual({ x: 500, y: 400 });
+    expect(bounds.drawW).toBe(500);
+    expect(bounds.drawH).toBe(400);
+  });
+
+  it('shifts every corner and the center by the position offset', () => {
+    const bounds = getRailMotionBounds(
+      { ...IDENTITY, x: 100, y: -50 },
+      INK_BASE,
+      0.5,
+      0.5,
+      PROJECT_W,
+      PROJECT_H,
+      1,
+    );
+    expect(bounds.corners).toEqual([
+      { x: 350, y: 150 },
+      { x: 850, y: 150 },
+      { x: 850, y: 550 },
+      { x: 350, y: 550 },
+    ]);
+    expect(bounds.center).toEqual({ x: 600, y: 350 });
+  });
+
+  it('scales about the compositor pivot', () => {
+    const bounds = getRailMotionBounds(
+      { ...IDENTITY, scaleX: 2, scaleY: 2 },
+      INK_BASE,
+      0.5,
+      0.5,
+      PROJECT_W,
+      PROJECT_H,
+      1,
+    );
+    expect(bounds.corners).toEqual([
+      { x: 0, y: 0 },
+      { x: 1000, y: 0 },
+      { x: 1000, y: 800 },
+      { x: 0, y: 800 },
+    ]);
+    // The pivot is the fixed point of the scale gesture.
+    expect(bounds.center).toEqual({ x: 500, y: 400 });
+    // drawW/drawH are the UNSCALED base draw size (transformBoundsCore law).
+    expect(bounds.drawW).toBe(500);
+    expect(bounds.drawH).toBe(400);
+  });
+
+  it('rotates the corners around the compositor pivot', () => {
+    const bounds = getRailMotionBounds(
+      { ...IDENTITY, rotation: 90 },
+      INK_BASE,
+      0.5,
+      0.5,
+      PROJECT_W,
+      PROJECT_H,
+      1,
+    );
+    // TL (250,200): dx -250, dy -200 -> pivot + (200, -250).
+    expect(bounds.corners[0].x).toBeCloseTo(700, 9);
+    expect(bounds.corners[0].y).toBeCloseTo(150, 9);
+    expect(bounds.corners[2].x).toBeCloseTo(300, 9);
+    expect(bounds.corners[2].y).toBeCloseTo(650, 9);
+    expect(bounds.center).toEqual({ x: 500, y: 400 });
+  });
+
+  it('keeps a corner that sits on the pivot fixed under rotation', () => {
+    const bounds = getRailMotionBounds(
+      { ...IDENTITY, rotation: 90 },
+      INK_BASE,
+      0.25,
+      0.25,
+      PROJECT_W,
+      PROJECT_H,
+      1,
+    );
+    // TL is exactly the pivot (250,200) and must not move.
+    expect(bounds.corners[0].x).toBeCloseTo(250, 9);
+    expect(bounds.corners[0].y).toBeCloseTo(200, 9);
+    // BR (750,600): dx 500, dy 400 -> pivot + (-dy, dx) = (-150, 700).
+    expect(bounds.corners[2].x).toBeCloseTo(-150, 9);
+    expect(bounds.corners[2].y).toBeCloseTo(700, 9);
+    expect(bounds.center).toEqual({ x: 250, y: 200 });
+  });
+
+  it('applies the project-to-working zoom to every coordinate', () => {
+    const bounds = getRailMotionBounds(IDENTITY, INK_BASE, 0.5, 0.5, PROJECT_W, PROJECT_H, 0.5);
+    expect(bounds.corners).toEqual([
+      { x: 125, y: 100 },
+      { x: 375, y: 100 },
+      { x: 375, y: 300 },
+      { x: 125, y: 300 },
+    ]);
+    expect(bounds.center).toEqual({ x: 250, y: 200 });
+    expect(bounds.drawW).toBe(250);
+    expect(bounds.drawH).toBe(200);
+  });
+
+  it('reproduces getReferenceBounds corner-for-corner for a full-frame base (fallback equality)', () => {
+    const transform = { x: 50, y: -25, scaleX: 1.5, scaleY: 0.5, rotation: 37 };
+    const reference = getReferenceBounds(transform, PROJECT_W, PROJECT_H, 2, PROJECT_W, PROJECT_H);
+    const rail = getRailMotionBounds(
+      transform,
+      { x: 0, y: 0, width: 1, height: 1 },
+      0.5,
+      0.5,
+      PROJECT_W,
+      PROJECT_H,
+      2,
+    );
+    expect(rail.drawW).toBe(reference.drawW);
+    expect(rail.drawH).toBe(reference.drawH);
+    expect(rail.center.x).toBeCloseTo(reference.center.x, 9);
+    expect(rail.center.y).toBeCloseTo(reference.center.y, 9);
+    for (let index = 0; index < 4; index += 1) {
+      expect(rail.corners[index].x).toBeCloseTo(reference.corners[index].x, 9);
+      expect(rail.corners[index].y).toBeCloseTo(reference.corners[index].y, 9);
+    }
   });
 });
 

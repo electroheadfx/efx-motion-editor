@@ -14,9 +14,11 @@ import {
   __resetRailMotionPivotMemoForTests,
   computeRailInkBounds,
   RAIL_MOTION_PIVOT_FALLBACK,
+  resolveRailMotionKeyInkBounds,
   resolveRailMotionPivot,
+  unionRailInkBoxes,
 } from './railMotionPivot';
-import type { RailMotionMeasuredInk } from './railMotionPivot';
+import type { RailMotionInkSource, RailMotionMeasuredInk } from './railMotionPivot';
 
 const root = resolve(__dirname, '../../../../');
 
@@ -28,6 +30,11 @@ function inkBox(
   alphaInk = true,
 ): RailMotionMeasuredInk {
   return { x, y, width, height, alphaInk };
+}
+
+/** 261107-tfp: a rail source now carries the key identity beside the raster. */
+function keyed(keyId: string, source = keyId): RailMotionInkSource<string> {
+  return { keyId, source };
 }
 
 beforeEach(() => {
@@ -72,7 +79,7 @@ describe('resolveRailMotionPivot', () => {
     const input = {
       railId: 'rail-1',
       contentRevision: 'rev-1',
-      sources: ['key-a', 'key-b', 'key-c'],
+      sources: [keyed('key-a'), keyed('key-b'), keyed('key-c')],
       measure,
     };
 
@@ -92,7 +99,7 @@ describe('resolveRailMotionPivot', () => {
     const pivot = resolveRailMotionPivot({
       railId: 'rail-ink',
       contentRevision: 'rev-1',
-      sources: ['blank', 'inked'],
+      sources: [keyed('blank'), keyed('inked')],
       measure,
     });
     // A full-frame box from the ink-less key would have pulled the centre to
@@ -102,7 +109,7 @@ describe('resolveRailMotionPivot', () => {
     const blankOnly = resolveRailMotionPivot({
       railId: 'rail-blank',
       contentRevision: 'rev-1',
-      sources: ['blank'],
+      sources: [keyed('blank')],
       measure,
     });
     expect(blankOnly).toEqual({ pivotX: 0.5, pivotY: 0.5, measured: false });
@@ -120,7 +127,7 @@ describe('resolveRailMotionPivot', () => {
     const undecodable = resolveRailMotionPivot({
       railId: 'rail-null',
       contentRevision: 'rev-1',
-      sources: ['key-a'],
+      sources: [keyed('key-a')],
       measure: () => null,
     });
     expect(undecodable).toEqual({ pivotX: 0.5, pivotY: 0.5, measured: false });
@@ -130,7 +137,7 @@ describe('resolveRailMotionPivot', () => {
     const measure = vi.fn((_source: string) => inkBox(0.2, 0.2, 0.2, 0.2));
     const base = {
       railId: 'rail-rev',
-      sources: ['key-a', 'key-b'],
+      sources: [keyed('key-a'), keyed('key-b')],
       measure,
     };
     resolveRailMotionPivot({ ...base, contentRevision: 'rev-1' });
@@ -144,7 +151,7 @@ describe('resolveRailMotionPivot', () => {
     const base = {
       railId: 'rail-frame',
       contentRevision: 'rev-1',
-      sources: ['key-a'],
+      sources: [keyed('key-a')],
       measure,
     };
     // The pivot API carries no frame at all: resolving "for frame 0" and again
@@ -159,7 +166,7 @@ describe('resolveRailMotionPivot', () => {
     const base = {
       railId: 'rail-transform',
       contentRevision: 'rev-1',
-      sources: ['key-a'],
+      sources: [keyed('key-a')],
       measure,
     };
     const pivot = resolveRailMotionPivot(base);
@@ -179,6 +186,90 @@ describe('resolveRailMotionPivot', () => {
     expect(source).not.toContain('document.createElement');
     expect(source).not.toContain('evaluateRailMotion');
     expect(source).not.toContain('getImageData');
+  });
+});
+
+/**
+ * 261107-tfp: the per-key ink boxes the canvas boundary box consumes. The
+ * union helper only shrinks (never clamps to 0..1 — the pivot helper keeps its
+ * own clamp), and the boxes map is served from the SAME memo entry as the
+ * pivot, so sizing the gizmo adds no second alpha scan.
+ */
+describe('unionRailInkBoxes', () => {
+  it('returns null for an empty list', () => {
+    expect(unionRailInkBoxes([])).toBeNull();
+  });
+
+  it('unions two boxes and never clamps the result to 0..1', () => {
+    const union = unionRailInkBoxes([
+      { x: -0.25, y: 0.125, width: 0.5, height: 0.25 },
+      { x: 0.75, y: 0.5, width: 0.5, height: 0.25 },
+    ]);
+    // x -0.25..1.25, y 0.125..0.75 — both bounds deliberately cross 0/1.
+    expect(union).toEqual({ x: -0.25, y: 0.125, width: 1.5, height: 0.625 });
+    expect(Object.isFrozen(union)).toBe(true);
+  });
+
+  it('ignores non-finite and degenerate boxes', () => {
+    expect(unionRailInkBoxes([
+      { x: Number.NaN, y: 0.1, width: 0.2, height: 0.2 },
+      { x: 0.1, y: 0.1, width: 0, height: 0.3 },
+      { x: 0.2, y: 0.3, width: -0.1, height: 0.1 },
+      { x: 0.4, y: 0.5, width: 0.125, height: 0.125 },
+    ])).toEqual({ x: 0.4, y: 0.5, width: 0.125, height: 0.125 });
+  });
+
+  it('returns null when every box is unusable', () => {
+    expect(unionRailInkBoxes([
+      { x: 0, y: 0, width: 0, height: 0 },
+      { x: Number.POSITIVE_INFINITY, y: 0, width: 0.2, height: 0.2 },
+    ])).toBeNull();
+  });
+});
+
+describe('resolveRailMotionKeyInkBounds', () => {
+  it('returns only the keys whose scan found ink', () => {
+    const measure = vi.fn((source: string) => {
+      if (source === 'blank') return inkBox(0, 0, 1, 1, false);
+      if (source === 'undecoded') return null;
+      return inkBox(0.1, 0.2, 0.3, 0.4);
+    });
+    const boxes = resolveRailMotionKeyInkBounds({
+      railId: 'rail-boxes',
+      contentRevision: 'rev-1',
+      sources: [keyed('inked'), keyed('blank'), keyed('undecoded')],
+      measure,
+    });
+
+    expect([...boxes.keys()]).toEqual(['inked']);
+    expect(boxes.get('inked')).toEqual({ x: 0.1, y: 0.2, width: 0.3, height: 0.4 });
+    expect(boxes.has('blank')).toBe(false);
+    expect(boxes.has('undecoded')).toBe(false);
+    expect(Object.isFrozen(boxes.get('inked'))).toBe(true);
+  });
+
+  it('shares ONE memo entry with the pivot: the second view measures nothing extra', () => {
+    const measure = vi.fn((_source: string) => inkBox(0.1, 0.1, 0.2, 0.2));
+    const input = {
+      railId: 'rail-shared-memo',
+      contentRevision: 'rev-1',
+      sources: [keyed('key-a'), keyed('key-b')],
+      measure,
+    };
+
+    const pivot = resolveRailMotionPivot(input);
+    expect(measure).toHaveBeenCalledTimes(2);
+
+    const boxes = resolveRailMotionKeyInkBounds(input);
+    expect(measure).toHaveBeenCalledTimes(2);
+    expect([...boxes.keys()].sort()).toEqual(['key-a', 'key-b']);
+
+    // Memo identity holds for both views of the cache entry.
+    expect(resolveRailMotionPivot(input)).toBe(pivot);
+    expect(resolveRailMotionKeyInkBounds(input)).toBe(boxes);
+
+    resolveRailMotionPivot({ ...input, contentRevision: 'rev-2' });
+    expect(measure).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -232,7 +323,7 @@ describe('Gate D — pivot resolution cost (24 keys, 1920px long edge)', () => {
   }
 
   it('records the first-resolution and memo-hit timings', () => {
-    const sources = Array.from({ length: KEY_COUNT }, (_, index) => index);
+    const sources = Array.from({ length: KEY_COUNT }, (_, index) => keyed(String(index)));
     const input = {
       railId: 'gate-d-rail',
       contentRevision: 'gate-d-rev',
