@@ -1,4 +1,6 @@
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
@@ -18,8 +20,16 @@ import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  railMotionValueToUi,
+  type PhysicPaintRotoRailMotionChannelId,
   type PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
+import { evaluateRailMotionChannel } from '../roto/railMotionEvaluator';
+import {
+  exitRailMotionEditing,
+  railMotionSelectedChannel,
+  selectRailMotionChannel,
+} from '../view/railMotionEditingMode';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -5550,5 +5560,277 @@ describe('261107-pd8 Motion key drag transaction', () => {
       channelId: 'scale',
       frame: 0,
     });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261107-qgj — the floating Motion dialog projection and write        */
+/* ------------------------------------------------------------------ */
+
+describe('261107-qgj floating Motion modal projection and write', () => {
+  const LAYER = 'layer-1';
+  const TRACK = 'track-1';
+  const RAIL_ID = 'rail-qgj';
+
+  const HOOK_SOURCE = readFileSync(
+    fileURLToPath(new URL('./useRotoTimelineActions.ts', import.meta.url)),
+    'utf8',
+  );
+
+  /** The shape the dialog bundle exposes to the modal (props-driven). */
+  interface RailMotionDialogBundleShape {
+    readonly presentation: {
+      readonly railId: string;
+      readonly frame: number;
+      readonly fields: readonly {
+        readonly channelId: string;
+        readonly label: string;
+        readonly unit: string;
+        readonly value: number;
+        readonly present: boolean;
+      }[];
+    };
+    readonly commit: (channelId: string, uiValue: number) => string | null;
+  }
+
+  interface RailMotionDialogPort {
+    readonly railMotionDialog: { readonly value: RailMotionDialogBundleShape | null };
+    readonly clearRailMotionSelection: () => void;
+  }
+
+  /**
+   * The hook port is read through a cast so RED fails on the planned
+   * `toBeDefined` assertion instead of a module-load error while the
+   * computed/close action do not exist yet.
+   */
+  function requireRailMotionDialogPort(actions: unknown): RailMotionDialogPort {
+    const port = actions as Partial<RailMotionDialogPort>;
+    expect(port.railMotionDialog, 'railMotionDialog is exposed by the hook').toBeDefined();
+    expect(typeof port.clearRailMotionSelection, 'clearRailMotionSelection is exposed by the hook')
+      .toBe('function');
+    if (port.railMotionDialog === undefined || typeof port.clearRailMotionSelection !== 'function') {
+      throw new Error('the floating Motion dialog port is not implemented yet');
+    }
+    return port as RailMotionDialogPort;
+  }
+
+  function launchContext(): PhysicPaintLaunchContext {
+    return {
+      operationId: 'op-1',
+      layerId: LAYER,
+      document: { activeTrackId: TRACK },
+    } as unknown as PhysicPaintLaunchContext;
+  }
+
+  /**
+   * The 59-19 motion rail: real keys A@0/B@10 (rail-local frames 0..10),
+   * the grouped Position pair and Scale keyed at 0 and 10. Rotation and
+   * Opacity are absent, so the dialog must hide them.
+   */
+  function seedMotionRail(): void {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [realKeyRecord('A', 0), realKeyRecord('B', 10)],
+      { enabled: false, mode: 'duplicate' },
+      24,
+    );
+    if (!seeded.ok) throw new Error(`real key seed failed: ${seeded.error}`);
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId: 'A',
+      channels: [
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
+            { frame: 10, value: 100, easing: 'ease', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
+            { frame: 10, value: 50, easing: 'ease', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'scale',
+          keys: [
+            { frame: 0, value: 1, easing: 'hold', wiggle: 0 },
+            { frame: 10, value: 2, easing: 'hold', wiggle: 0 },
+          ],
+        },
+      ],
+    }]);
+    if (!motion.ok) throw new Error(`motion seed failed: ${motion.error}`);
+  }
+
+  function actionsHarness(options: Partial<HarnessOptions> = {}) {
+    return createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK),
+      launch: launchContext(),
+      selectedKeyRail: { firstKeyId: 'A', keyIds: ['A', 'B'] },
+      capacity: 24,
+      currentAppFrame: 3,
+      ...options,
+    });
+  }
+
+  function liveRecord() {
+    const record = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)
+      .find((entry) => entry.railId === RAIL_ID);
+    if (record === undefined) throw new Error('missing stored motion record');
+    return record;
+  }
+
+  function storedChannel(id: 'position-x' | 'position-y' | 'scale') {
+    const record = liveRecord();
+    const channel = record.channels.find((entry) => entry.id === id);
+    if (channel === undefined) throw new Error(`missing stored channel ${id}`);
+    return channel;
+  }
+
+  function evaluatorUiValue(channelId: PhysicPaintRotoRailMotionChannelId, frame: number): number {
+    return railMotionValueToUi(channelId, evaluateRailMotionChannel(liveRecord(), channelId, frame));
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+    exitRailMotionEditing();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+    exitRailMotionEditing();
+  });
+
+  it('opens a Motion dialog at the playhead frame for a selected property and commits the displayed channel there', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    // Neither a property nor a Motion key is selected: the dialog is closed.
+    expect(port.railMotionDialog.value).toBeNull();
+
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    expect(bundle, 'a selected property opens the dialog').not.toBeNull();
+    if (bundle === null) return;
+
+    // Property mode reads at the playhead's rail-local frame, never a key frame.
+    expect(bundle.presentation.railId).toBe(RAIL_ID);
+    expect(bundle.presentation.frame).toBe(3);
+    // Only the channels the rail carries are present (rotation/opacity absent).
+    expect(bundle.presentation.fields.filter((field) => field.present).map((field) => field.channelId))
+      .toEqual(['position-x', 'position-y', 'scale']);
+    // Values are the evaluator's at frame 3 — not the stored key values at 0.
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'position-x')?.value)
+      .toBeCloseTo(21.6, 6);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'position-y')?.value)
+      .toBeCloseTo(10.8, 6);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'scale')?.value).toBe(100);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'position-x')?.value)
+      .toBeCloseTo(evaluatorUiValue('position-x', 3), 6);
+
+    // One committed write: a Scale key at frame 3, model value 1.5.
+    expect(bundle.commit('scale', 150)).toBeNull();
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    expect(storedChannel('scale').keys.find((key) => key.frame === 3)?.value).toBe(1.5);
+  });
+
+  it('keeps the Motion-key law — a key selection reads and writes at the key frame, not the playhead', () => {
+    seedMotionRail();
+    const cursor = signal(3);
+    const harness = actionsHarness({ getCurrentAppFrame: () => cursor.value });
+    const port = requireRailMotionDialogPort(harness.actions);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    const bundle = port.railMotionDialog.value;
+    expect(bundle).not.toBeNull();
+    if (bundle === null) return;
+
+    // Key mode reads at the SELECTED key's frame (10), not the playhead (3).
+    expect(bundle.presentation.frame).toBe(10);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'position-x')?.value)
+      .toBe(100);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'position-y')?.value)
+      .toBe(50);
+    expect(bundle.presentation.fields.find((field) => field.channelId === 'scale')?.value).toBe(200);
+
+    expect(bundle.commit('scale', 250)).toBeNull();
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    const scaleKeys = storedChannel('scale').keys;
+    expect(scaleKeys.find((key) => key.frame === 10)?.value).toBe(2.5);
+    expect(scaleKeys.some((key) => key.frame === 3)).toBe(false);
+    expect(cursor.value, 'a field edit never moves the playhead').toBe(3);
+  });
+
+  it('binds the bundle to the frame it displayed even when the playhead moves later', () => {
+    seedMotionRail();
+    const cursor = signal(3);
+    const harness = actionsHarness({ getCurrentAppFrame: () => cursor.value });
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+    expect(bundle.presentation.frame).toBe(3);
+
+    // The live projection follows the playhead; the captured bundle does not.
+    cursor.value = 6;
+    expect(port.railMotionDialog.value?.presentation.frame).toBe(6);
+    expect(bundle.presentation.frame).toBe(3);
+
+    expect(bundle.commit('scale', 150)).toBeNull();
+    expect(storedChannel('scale').keys.find((key) => key.frame === 3)?.value).toBe(1.5);
+    expect(storedChannel('scale').keys.some((key) => key.frame === 6)).toBe(false);
+  });
+
+  it('refuses a bundle whose rail record has gone and writes nothing', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+
+    const removed = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, []);
+    expect(removed.ok).toBe(true);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    expect(bundle.commit('scale', 150)).toBe('Select a rail with Motion first.');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('clears both selections through the one close path without touching the paint tool', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    selectRailMotionChannel('scale');
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    expect(railMotionSelectedChannel.value).toBe('scale');
+    expect(railMotionSelectedKey.value).not.toBeNull();
+
+    port.clearRailMotionSelection();
+
+    expect(railMotionSelectedChannel.value).toBeNull();
+    expect(railMotionSelectedKey.value).toBeNull();
+    // No tool restore: animate mode never changed the paint tool, so the close
+    // path must not write one. The source pin keeps that law visible even if a
+    // later refactor reaches for `setAquarelleTool`.
+    const closeAt = HOOK_SOURCE.indexOf('const clearRailMotionSelection = useCallback');
+    expect(closeAt, 'the one close path exists').toBeGreaterThan(-1);
+    const closeBody = HOOK_SOURCE.slice(closeAt, HOOK_SOURCE.indexOf('}, [])', closeAt));
+    expect(closeBody).toContain('selectRailMotionKey(null);');
+    expect(closeBody).toContain('exitRailMotionEditing();');
+    expect(closeBody).not.toContain('setAquarelleTool');
   });
 });
