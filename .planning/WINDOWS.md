@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 2
 waived_count: 18
 fixed_count: 91
-total_count: 109
-last_updated: 2026-11-06T13:48:11.828Z
+total_count: 111
+last_updated: 2026-11-07T18:34:20.061Z
 ---
 
 # Broken Windows Ledger
@@ -124,6 +124,8 @@ last_updated: 2026-11-06T13:48:11.828Z
 | 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | fixed |  | 2026-10-24T15:04:35.585Z | 2026-11-02T10:02:25.642Z |
 | 108 | 261030-v1t | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Rule 2: paintSeedVariation also written on the Link-to-existing-cycle branch so a later Regenerate/Source Edit cannot re-bake OFF pixels | fixed |  | 2026-10-30T21:55:02.464Z | 2026-11-02T10:02:25.752Z |
 | 109 | 59 | deviation | app/src-tauri/src/services/script_library.rs |  | Rule 2: a present non-array railMotions fails closed instead of taking the plan snippet's silent-skip path | fixed |  | 2026-11-06T13:47:57.981Z | 2026-11-06T13:48:11.828Z |
+| 110 | 261107-qgj | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 1: retargeted the Motion-inspector NumericStepper exception allow-list from the retired Scripts panel to PhysicsPaintRailMotionModal.tsx | open |  | 2026-11-07T18:34:19.857Z |  |
+| 111 | 261107-qgj | deviation | app/src/components/physic-paint/view/railMotionBoundaryTool.test.ts |  | Rule 1: updated the railMotionEditingMode import pin to the combined exitRailMotionEditing + railMotionSelectedChannel import | open |  | 2026-11-07T18:34:20.061Z |  |
 
 ````json
 [
@@ -1470,6 +1472,32 @@ last_updated: 2026-11-06T13:48:11.828Z
     "reason": "",
     "recorded_at": "2026-11-06T13:47:57.981Z",
     "resolved_at": "2026-11-06T13:48:11.828Z",
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 110,
+    "kind": "deviation",
+    "phase": "261107-qgj",
+    "file": "app/src/components/shared/NumericStepper.test.tsx",
+    "line": null,
+    "description": "Rule 1: retargeted the Motion-inspector NumericStepper exception allow-list from the retired Scripts panel to PhysicsPaintRailMotionModal.tsx",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T18:34:19.857Z",
+    "resolved_at": null,
+    "milestone": "v2.1.0"
+  },
+  {
+    "id": 111,
+    "kind": "deviation",
+    "phase": "261107-qgj",
+    "file": "app/src/components/physic-paint/view/railMotionBoundaryTool.test.ts",
+    "line": null,
+    "description": "Rule 1: updated the railMotionEditingMode import pin to the combined exitRailMotionEditing + railMotionSelectedChannel import",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-11-07T18:34:20.061Z",
+    "resolved_at": null,
     "milestone": "v2.1.0"
   }
 ]
