@@ -226,10 +226,7 @@ import {
   railMotionMergeNotice,
   railMotionMergeNoticeUndoable,
 } from '../roto/railMotionMergeNotice';
-import {
-  resolveKeylessMotionDisplayLanes,
-  type TimelineMotionLaneControl,
-} from './TimelineMotionChannels';
+import type { TimelineMotionLaneControl } from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -667,8 +664,9 @@ export interface TrackRowLayoutInput {
   /** Visible DISPLAY-lane count for this row (0 for every row whose block is
    *  closed, which is every row except the expanded one). */
   readonly laneCount: number;
-  /** 59-17: the expanded block renders the 18px `+` add-channel row while a
-   *  display lane is still keyless. It is part of the measured height. */
+  /** 59-17/59-23: the expanded block renders the 18px `+` add-channel row —
+   *  enabled or disabled, it renders whenever the block does. It is part of the
+   *  measured height. */
   readonly addChannelRow?: boolean;
 }
 
@@ -2842,12 +2840,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionView = activeMotionRecord === null
     ? null
     : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
-  // 59-17: the expanded block's `+` row/overlay. The strip only READS the
+  // 59-17/59-23: the expanded block's `+` row/overlay. The strip only READS the
   // session menu identity (the row owns its two writers); it adds the 18px row
-  // to the measured layout because that height lives in this one array.
-  const activeMotionHasKeylessChannel = activeMotionRecord !== null
-    && resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0;
-  const activeMotionAddChannelRow = activeMotionLaneCount > 0 && activeMotionHasKeylessChannel;
+  // to the measured layout because that height lives in this one array. The row
+  // renders whenever the block renders (enabled or disabled), so the flag is the
+  // LANE COUNT alone — never a second keyless derivation (WR-01).
+  const activeMotionAddChannelRow = activeMotionLaneCount > 0;
   const activeMotionChannelMenuOpen = activeMotionRecord !== null
     && railMotionChannelMenuRailId.value === activeMotionRecord.railId;
   // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
