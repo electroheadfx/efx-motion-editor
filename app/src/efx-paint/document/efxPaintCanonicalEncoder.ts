@@ -26,10 +26,16 @@ export function encodeCanonicalString(value: string): string {
  * other). Any of them forks the document revision between TypeScript and Rust
  * and makes every prepare fail the Rust hash gate. The bit pattern is exact,
  * total, and identical in both languages by construction.
+ *
+ * Negative zero is normalized to positive zero BEFORE encoding: the Tauri IPC
+ * boundary is JSON, and `JSON.stringify(-0)` is `'0'`, so the Rust side always
+ * receives `+0`. Hashing the raw bit pattern would make an in-memory document
+ * hash differently from the same document after a transport round trip.
  */
 export function encodeCanonicalNumber(value: number): string {
   const view = new DataView(new ArrayBuffer(8));
-  view.setFloat64(0, value, false);
+  // `-0 === 0`, so this normalizes only the sign bit.
+  view.setFloat64(0, value === 0 ? 0 : value, false);
   let hex = '';
   for (let index = 0; index < 8; index += 1) {
     hex += view.getUint8(index).toString(16).padStart(2, '0');

@@ -15,7 +15,7 @@ import {
 describe('encodeCanonicalNumber — IEEE-754 bit pattern', () => {
   it.each([
     [0, '0000000000000000'],
-    [-0, '8000000000000000'],
+    [-0, '0000000000000000'],
     [1, '3ff0000000000000'],
     [-8, 'c020000000000000'],
     [12.5, '4029000000000000'],
@@ -36,8 +36,38 @@ describe('encodeCanonicalNumber — IEEE-754 bit pattern', () => {
     expect(encodeCanonicalNumber(5e-324)).toBe('n0000000000000001;');
   });
 
-  it('distinguishes negative zero from zero', () => {
-    expect(encodeCanonicalNumber(-0)).not.toBe(encodeCanonicalNumber(0));
+  // The Tauri IPC boundary is JSON, and `JSON.stringify(-0)` is `'0'`, so Rust
+  // only ever sees `+0`. Encoding the raw sign bit would make an in-memory
+  // document hash differently from the same document after a transport round
+  // trip, and every prepare would be rejected.
+  it('normalizes negative zero so it survives the JSON transport', () => {
+    expect(encodeCanonicalNumber(-0)).toBe(encodeCanonicalNumber(0));
+    expect(JSON.stringify(-0)).toBe('0');
+  });
+
+  it('is invariant under a JSON transport round trip', () => {
+    const values = [
+      0,
+      -0,
+      1,
+      -8,
+      12.5,
+      0.25,
+      1e-6,
+      1e20,
+      1e21,
+      1e-7,
+      -890236549097760.25,
+      4.1629419827416937e-53,
+      0.30000000000000004,
+      5e-324,
+    ];
+    for (const value of values) {
+      const transported = JSON.parse(JSON.stringify(value)) as number;
+      expect(encodeCanonicalNumber(transported), `value ${value}`).toBe(
+        encodeCanonicalNumber(value),
+      );
+    }
   });
 
   // Rust rounds this tie away from zero and ECMAScript to even, so any decimal

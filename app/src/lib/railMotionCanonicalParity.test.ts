@@ -141,6 +141,17 @@ describe('rail motion canonical parity (TS half)', () => {
     },
   );
 
+  // The Tauri IPC boundary is JSON. A document whose hash changes when it is
+  // serialized and re-parsed can never pass the Rust prepare gate — that is
+  // exactly how negative zero regressed. Every frozen document must be stable
+  // across the transport.
+  it('hashes every frozen document identically after a JSON transport round trip', () => {
+    for (const entry of FIXTURE.documents) {
+      const transported = JSON.parse(JSON.stringify(entry.document)) as unknown;
+      expect(buildPhysicPaintRotoProjectEquality(transported), entry.name).toBe(entry.expectedProject);
+    }
+  });
+
   // 59-04 (MOTN-12): the rail-motion term occupies the ordinal reserved by
   // 59-01 and is emitted exactly once. Both languages assert this against the
   // same frozen literals; the Rust half additionally checks the ordinal on its
