@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-20-PLAN.md
-last_updated: "2026-11-07T08:50:13.784Z"
-last_activity: 2026-11-06
+stopped_at: Completed 59-22-PLAN.md
+last_updated: "2026-11-07T10:08:53.592Z"
+last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 2f7efc5a976ff4114b3f770918f7855809b5c8c0
+state_head: 8af7d1fc2ae634672ba23dc1a0acf8f8996b904d
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 25
-  completed_plans: 21
+  completed_plans: 22
   percent: 0
 ---
 
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 ## Current Position
 
-Phase: 59 (Rail Motion Channels & v7 Interface) — READY TO EXECUTE
-Plan: 21 of 21
+Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
+Plan: 23 of 25
 Status: Ready to execute
-Last activity: 2026-11-06 — Phase 59 execution started
+Last activity: 2026-11-07 — Phase 59 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -77,6 +77,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P21 | 3min | 2 tasks | 4 files |
 | Phase 59 P19 | 6min | 3 tasks | 8 files |
 | Phase 59 P20 | 13min | 3 tasks | 11 files |
+| Phase 59 P22 | 58 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -157,6 +158,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: Undoability is a session companion signal (railMotionMergeNoticeUndoable), not a fourth notice member: PhysicPaintRailMotionMergeNotice is bridge-validated with a closed key set.
 - [Phase 59]: A resize that prunes every clip-owned key omits the emptied clip so its loop-bound motion record is dropped in the same transaction.
 - [Phase 59]: The reveal bake substitutes the post-replay clip ownership (old span key -> baked key at the same frame) into its next snapshot so adjacent Key Rail motion is never merged away.
+- [Phase 59]: Option B: Loop Clip copy members carry their own sourceEntries (cross-track allocation + same-track frame law) instead of a synthetic key-rail carrier; preserves cross-track paste/duplicate/cut/move.
+- [Phase 59]: collectRailMotionGroupOwnedKeyIds is the single group-ownership authority consumed by the reconciler, the copy payload builder, copyTrackSelection and the resolver projection.
 
 ### Pending Todos
 
@@ -228,8 +231,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-06T21:22:55.019Z
-Stopped at: Completed 59-20-PLAN.md
+Last session: 2026-11-07T10:08:53.561Z
+Stopped at: Completed 59-22-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
