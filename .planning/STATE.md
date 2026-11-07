@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T10:30:18.189Z"
+last_updated: "2026-11-07T15:44:58.528Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 043b07b38326e4127e8c0b5774610175360f3967
+state_head: 6100f1b86ce0c3d0dd24ede025d138edf37bdf74
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 — Phase 59 execution started
+Last activity: 2026-11-07 - Completed quick task 261107-mkn: Fix Phase 59 UI channel headers + Add channel control into the pinned header column
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -231,6 +231,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 261107-mkn | Fix Phase 59 UI: channel header rows and Add channel control render in the pinned left header column, lanes carry only cells/curves/keys | 2026-11-07 | 6100f1b86 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
 
 ## Roadmap Evolution
 
