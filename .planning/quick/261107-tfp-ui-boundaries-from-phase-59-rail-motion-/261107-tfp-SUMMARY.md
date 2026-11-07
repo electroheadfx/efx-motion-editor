@@ -223,7 +223,20 @@ None — no new network endpoint, auth path, file access pattern or schema chang
 ## Self-Check: PASSED
 
 - Files exist: all eight modified paths verified in `git diff --name-only 902690280..HEAD`.
-- Commits exist: `71ee7d504`, `dc4592a9c`, `9582d2d14` are ancestors of HEAD.
+- Commits exist: `71ee7d504`, `dc4592a9c`, `9582d2d14`, `68d7d1cc2` are ancestors of HEAD.
+
+## UAT — APPROVED (2026-11-07)
+
+- Live UAT found the first pass still drew the full-frame box: key rasters are
+  OPAQUE aquarelle transmittance sheets, so the alpha-only scan measured the
+  whole raster as ink. `68d7d1cc2` fixes the scanner: a fully opaque raster is
+  measured by transmittance (`255 − min(r,g,b)`, white = no pigment); a
+  real-alpha raster keeps the alpha law.
+- The same measurement feeds the D-17 pivot, so rotation/scale now anchors on
+  the paint's centre instead of the accidental raster-centre fallback;
+  translation-only motion is unchanged.
+- User approved the live behavior: the box hugs the displayed key's paint and
+  re-fits per key.
 
 ---
 *Phase: 261107-tfp-ui-boundaries-from-phase-59-rail-motion-*
