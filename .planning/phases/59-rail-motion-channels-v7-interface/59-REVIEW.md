@@ -1,22 +1,16 @@
 ---
 phase: 59-rail-motion-channels-v7-interface
-reviewed: 2026-11-06T21:39:55Z
+reviewed: 2026-11-07T11:36:22Z
 depth: deep
-files_reviewed: 25
+files_reviewed: 23
 files_reviewed_list:
-  - app/src/components/physic-paint/hooks/useRotoTimelineActions.test.ts
-  - app/src/components/physic-paint/hooks/useRotoTimelineActions.ts
-  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src-tauri/src/services/script_library.rs
+  - app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts
   - app/src/components/physic-paint/roto/railMotionCommands.test.ts
   - app/src/components/physic-paint/roto/railMotionCommands.ts
-  - app/src/components/physic-paint/roto/railMotionIdentity.test.ts
-  - app/src/components/physic-paint/roto/railMotionIdentity.ts
-  - app/src/components/physic-paint/roto/railMotionMergeNotice.test.ts
-  - app/src/components/physic-paint/roto/railMotionMergeNotice.ts
-  - app/src/components/physic-paint/view/physicsPaintKeyRailPresentation.test.ts
-  - app/src/components/physic-paint/view/physicsPaintKeyRailPresentation.ts
-  - app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts
-  - app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx
+  - app/src/components/physic-paint/roto/railMotionDocumentReconciler.ts
   - app/src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx
   - app/src/components/physic-paint/view/PhysicsPaintTrackRow.tsx
   - app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts
@@ -24,203 +18,165 @@ files_reviewed_list:
   - app/src/components/physic-paint/view/TimelineMotionChannels.test.ts
   - app/src/components/physic-paint/view/TimelineMotionChannels.tsx
   - app/src/components/physic-paint/view/timelineRailDesign.ts
-  - app/src/lib/railMotionExportParity.test.ts
+  - app/src/lib/__fixtures__/railMotionCanonical.golden.json
+  - app/src/lib/physicPaintBridge.test.ts
+  - app/src/lib/railMotionCanonicalParity.test.ts
   - app/src/stores/efxPaintStore.reveal.test.ts
   - app/src/stores/efxPaintStore.ts
   - app/src/stores/physicPaintStore.rotoRailMotions.test.ts
   - app/src/stores/physicPaintStore.ts
+  - app/src/stores/trackIsolation.test.ts
+  - app/src/types/physicPaint.ts
 findings:
   critical: 1
-  warning: 6
-  info: 3
-  total: 10
-  necessity: 2
+  warning: 2
+  info: 5
+  total: 8
+  necessity: 1
 status: issues_found
 ---
 
 # Phase 59: Code Review Report
 
-**Reviewed:** 2026-11-06T21:39:55Z
+**Reviewed:** 2026-11-07T11:36:22Z
 **Depth:** deep
-**Files Reviewed:** 25
+**Files Reviewed:** 23
 **Status:** issues_found
 
 ## Summary
 
-Deep re-review of the five Phase 59 gap-closure plans (59-17 add-channel row + menu, 59-18 rail-set copy carries motion, 59-19 infinite Loop Clip motion span, 59-20 reconciler merge-drop reporting + reveal doors, 59-21 motion inspector honesty). The earlier full-phase review artifact (reviewed 19:02:45Z, 50 files) is superseded by this gap-closure re-review; its CR-01..CR-04 blockers and WR-04/IN-02 findings are verified addressed in the current tree (copy document carries `railMotions` into both the revision and the parser, `moveTrackItems` reports and the strip publishes the merge drop, the `+` affordance and menu are wired end to end, and the span resolver is injected at all three production projection sites). Its still-present warnings and infos that were not addressed by the gap-closure plans are carried forward below with explicit provenance.
+Deep review of the four Phase 59 gap-closure plans (59-22..59-25) executed after base `64aed4368`, spanning the rail-motion command/model layer, the rail-set copy/paste planner, the reveal-bake store transactions, the timeline row/layout surface, the golden-fixture parity suite, and the Rust canonical encoder.
 
-One BLOCKER remains in the 59-20 family: reveal creation reconciles rail motion against a loop-clip snapshot that cannot contain the reveal clip, because the clip is appended after the bake returns. A neighbouring Key Rail continuing past the bake span is classified as a merge, adopted onto a baked key, and immediately orphaned when the new clip takes ownership of that key — its authored motion silently stops applying and cannot be recovered after a later reveal delete.
+All four targeted fixes are verified sound in their intended paths:
 
-The two necessity warnings cover dead API surface introduced by these plans (the `add-motion-channel` availability branch/`hasKeylessChannel` input and the `mergedDrop` reporting on `cutTrackSelection`/`clearTrackFrames`), and one new Info covers the missing reducer `try/catch` guard in `addMotionChannel`.
+- **59-22 (CR-01/WR-06):** `commitRevealBake` reads `currentLoopClips` once, refuses a duplicate pending template before any render side effect, and reconciles the baked records against the pre-creation snapshot; the copy planner's loop member now carries required `sourceEntries`, materializes cross-track sources with the same `destinationStart + offset` law as the same-track path, and fails closed on any unresolvable source id (`loop-source-outside-pasted-set`).
+- **59-23 (WR-01):** the add-channel `+` row renders while the Motion block renders and is gated by `resolveMotionCommandAvailability`; the disabled state is reachable (all four display lanes keyed) and the measured layout height and outline rect agree (123 px).
+- **59-24 (WR-02/WR-05):** `mergedDrop` is gone from cut/clear results while move retains its production consumer, and the code-unit comparator matches Rust `str::cmp` for the accepted ASCII id charset; the sixth golden document (`rail-motion-ordering`) pins mixed-case ordering in both languages.
+- **59-25 (WR-03/WR-04):** easing/wiggle fan out per axis with each axis' own resolved value and no `pairedValue`, and the lane curve sampler receives the real `railId`.
 
-Verified sound in the changed code: the three-view span-resolver injection, the 59-18 copy/revision/parser agreement and paste re-keying, 59-21's `present`/disabled/aria/note wiring, the 59-17 two-writer menu signal and layout/outline parity, the session-only merge-notice signals (no store write, no revision, no undo entry), the reveal delete/resize/replay read-before-write reconciliation order, and the reactivity rules in the touched components (no `useState`, no unguarded render-body signal writes; the `railSetSelection` render-phase echo in `PhysicsPaintStudio.tsx:1786-1787` is the sanctioned guarded compare-then-write).
+Gates run during this review: 10 touched vitest suites → 650 passed, 1 skipped; `cargo test --lib rail_motion` → 8 passed including `rail_motion_canonical_parity`; `cargo test --lib canonical_physical` → 5 passed; `pnpm exec tsc --noEmit` → clean.
+
+One BLOCKER remains outside the gap-closure diffs but inside the reviewed files: the canonical number encoder diverges between TypeScript and Rust for exponent-notation magnitudes, and Phase 59 made an unbounded domain (scale/rotation) reachable from the shipped Motion inspector. Two WARNINGs cover a non-ASCII id assumption in the canonical law and a cross-track paste extent gap introduced by 59-22.
 
 ## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: Reveal creation reconciles motion against a loop-clip snapshot that omits the clip appended after the bake — a neighbouring Key Rail's motion is silently orphaned
+### CR-01: Canonical number encoding diverges for exponent-notation magnitudes; an in-domain scale/rotation value can never settle
 
-**Severity:** BLOCKER
-**File:** `app/src/stores/physicPaintStore.ts:2457-2513` and `app/src/stores/efxPaintStore.ts:1598-1669`
+**File:** `app/src/efx-paint/document/efxPaintCanonicalEncoder.ts:16-18`, `app/src-tauri/src/services/script_library.rs:1282-1284` (reachability: `app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx:220-239`, `app/src/components/shared/NumericStepper.tsx:216-222`, `app/src/components/physic-paint/roto/railMotionCommands.ts:956-959`, `app/src/components/physic-paint/roto/railMotionModel.ts:168-187`)
 
-**Issue:** `commitRevealBake` builds its `next` snapshot from `currentLoopClips` (with in-span source keys substituted for baked keys) and reconciles rail motion from that snapshot before writing — but on the creation path the reveal clip does not exist yet. `createRevealRail` calls the bake at `efxPaintStore.ts:1598`, builds the clip from `bakeResult.records` (`1636-1666`), and appends it in a second store write (`1667-1669`). During reconciliation the freshly baked keys are therefore UNOWNED, so `deriveKeyRailSegments` merges them with any neighbour Key Rail that continues past the bake span.
+**Issue:** The two canonical encoders format numbers differently at the edges of the double range:
 
-Provable trace (a Key Rail with motion, its first key inside the bake span):
+- TypeScript: `encodeCanonicalNumber` emits `` `n${String(value)};` ``. ECMAScript `String(number)` switches to exponent notation for `|value| >= 1e21` and `|value| < 1e-6` (`String(1e21) === '1e+21'`, `String(1e-7) === '1e-7'`).
+- Rust: `canonical_number` emits `format!("n{value};")`. `f64`'s `Display` never uses exponent notation (`1e21` → `1000000000000000000000`, `1e-7` → `0.0000001`).
 
-1. Existing Key Rail keys `A@10` (motion record `{railId: R, anchorKeyId: A}`) and `B@14`, no break at `B`. Create a reveal over frames `[10, 12)`.
-2. The bake produces fresh keys `A'@10`, `B'@11`; `merged` keeps `B@14`; `finalBreaks` seeds a break on `A'` (`physicPaintStore.ts:2453-2456`). The reveal clip does not exist in `nextLoopClips` (`2457-2471`).
-3. The next Key Rail segment is `[A'@10, B'@11, B@14]` (group ownership is empty; the seeded break starts the segment). The reconciler's merge row fires: the segment contains the surviving prior key `B`, is strictly larger than the prior segment, and starts on a non-prior key (`railMotionDocumentReconciler.ts:234-254`).
-4. `onMergeRails` takes the tail-only adoption path and re-anchors the record to `A'` (`railMotionIdentity.ts:424-436`), since no record is anchored at the merged head.
-5. The clip is appended owning `A'`/`B'`. The live Key Rail segment is now `[B@14]`; assignment binds views by `railId` plus the anchor-only first bind (`railMotionIdentity.ts:287-317`), and the record (`railId: R`, `anchorKeyId: A'`) matches no view — it is orphaned and never evaluated (`railMotionIdentity.ts:156-191`). The Motion lanes disappear and the authored transform stops applying. Deleting the reveal later cannot revive it: the clip delete prunes `A'` and its break, leaving the record anchored to a key that no longer exists.
-6. A loop-aware snapshot would have classified the same edit as `delete-first-key` — the successor `[B]` is a suffix of the prior `[A, B]` (`railMotionDocumentReconciler.ts:204-215`) — re-anchoring to `B` and keeping the motion live.
+The hashes then differ twice over: different source text, and different length/hash inputs (TS `source.length` UTF-16 units vs Rust `source.len()` bytes — equal only for ASCII, which exponent notation produces here, so the text divergence alone is decisive).
 
-The code's own comment at `physicPaintStore.ts:2446-2452` names exactly this hazard ("Skipping it would leave the new baked keys unowned in the snapshot, merge a neighbouring Key Rail segment into them and silently drop that rail's motion"), but only the replay path is covered: `replayRevealRail` rewrites an already-existing clip, so the substitution in `nextLoopClips` supplies the ownership, while creation supplies none. The existing reveal-motion test (`efxPaintStore.reveal.test.ts:1472-1519`) only exercises replay with a neighbour anchored OUTSIDE the span, so this creation case is untested and the reconciliation's own guard comment is not honoured on the path that needs it most.
+This used to be theoretical because the comment at `script_library.rs:1251-1257` asserts the document only carries "bounded integers plus the [0,1] grain strength float". Phase 59's D-09 domains break that premise: scale is any finite `> 0` and rotation is any finite number (no upper bound), and `railMotionValueIsValid` (`railMotionModel.ts:168-187`) / `rail_motion_value_is_valid` (`script_library.rs:1567-1578`) both accept them. The shipped Motion inspector is a free-entry `NumericStepper` with no `min`/`max` (`PhysicsPaintScriptsPanel.tsx:220-239`); `commitStepperInput` only clamps when bounds exist and returns `Number(next.toFixed(3))` (`NumericStepper.tsx:216-222`). `(1e23).toFixed(3)` is `'1e+23'`, so typing `1e23` into the Scale field (percent unit) yields model value `1e21`, which passes `railMotionValueIsValid('scale', 1e21)` and is written by `writeRailMotionChannelValueAtCursor` (`railMotionCommands.ts:956-967`). Rotation has the same path with the raw model value. The command reports success (the UI shows no rejection), then every prepare fails at the Rust hash gate (`script_library.rs:1244-1247`) with "Target physical hash does not match the canonical physical document". Because the offending value stays in the in-memory document, later prepares keep failing — the document is wedged unsavable with a generic error. The six golden fixture documents only carry small values, so `rail_motion_canonical_parity` stays green and cannot catch this.
 
-**Fix:** Make the bake reconcile against the clip it is about to create. Add an optional pending-clip template to `RevealBakeInput` (everything except `sourceKeyIds`: loopId, placementStart, repeat, mode, railKind and provenance fields) and, after `bakedRecords` are minted, append `{ ...input.pendingLoopClip, sourceKeyIds: bakedRecords.map((record) => record.keyId) }` to `nextLoopClips` before `reconcileRailMotionsForDocumentEdit` (`physicPaintStore.ts:2472`). `createRevealRail` already knows all of those fields — generate the `loopId` before the bake and pass the same clip it later appends at `efxPaintStore.ts:1636-1669`; `replayRevealRail` keeps its current substitution. Add a regression test: seed a Key Rail with keys at frames 10 and 14 plus a motion record anchored at the frame-10 key, create a reveal over `[10, 12)`, and assert the record survives with the same `railId`, an anchor at the frame-14 key, and a live view binding.
+**Fix:** Make the TypeScript encoder print plain decimal notation unconditionally, expanding `String(value)`'s exponent form by string surgery (no float arithmetic, preserving the shortest-roundtrip digits), and pin both sides with fixture entries:
+
+```ts
+function plainDecimal(value: number): string {
+  const text = String(value);
+  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(text);
+  if (match === null) return text;
+  const [, sign, intPart, fracPart = '', exponentText] = match;
+  const digits = intPart + fracPart;
+  const pointIndex = intPart.length + Number(exponentText);
+  const plain = pointIndex <= 0
+    ? `0.${'0'.repeat(-pointIndex)}${digits}`
+    : pointIndex >= digits.length
+      ? `${digits}${'0'.repeat(pointIndex - digits.length)}`
+      : `${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`;
+  return `${sign}${plain}`;
+}
+
+export function encodeCanonicalNumber(value: number): string {
+  return `n${plainDecimal(Object.is(value, -0) ? 0 : value)};`;
+}
+```
+
+Then add fixture documents carrying `1e21` and `1e-7` (e.g. a rail-motion scale/rotation key) so the parity test fails today and passes after the fix, and update the stale comment at `script_library.rs:1251-1257`. If expanding exponent form is rejected, the alternative is bounding scale/rotation, but that contradicts D-09's unbounded rotation.
 
 ## Warnings
 
-### WR-01: The `add-motion-channel` availability branch and `hasKeylessChannel` input are dead code
+### WR-01: The canonical ordering/encoding law assumes ASCII ids but no boundary enforces it
 
-**Severity:** WARNING
-**Category:** necessity
-**File:** `app/src/components/physic-paint/roto/railMotionCommands.ts:472-502,526-544` (with `useRotoTimelineActions.ts:2240-2252`)
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1591-1603`, `app/src/efx-paint/document/efxPaintCanonicalEncoder.ts:12-14,28-35`, `app/src-tauri/src/services/script_library.rs:1260-1262,1580-1589,1600-1604`
 
-**Issue:** `RailMotionCommandId` gained `'add-motion-channel'`, `RailMotionCommandAvailabilityInput` gained `hasKeylessChannel`, and `resolveMotionCommandAvailability` grew a branch for it — but no production caller ever exercises that branch. The doc block at `railMotionCommands.ts:526-528` claims "the add-channel row derives it from the same display projection the block renders"; in fact the row computes its own gate with `resolveKeylessMotionDisplayLanes` (`PhysicsPaintTrackRow.tsx:593`) and renders/outlines from that boolean (`643-648`, `649-671`, `677`). `motionAvailability` never passes `hasKeylessChannel` (`useRotoTimelineActions.ts:2240-2252`), no computed availability requests the command (`2391-2413`), and `CONTEXTUAL_COMMANDS_BY_SCOPE.rail` excludes it (`railMotionCommands.ts:598`), so the action bar can never surface it either. The "Every Motion channel is already present on this rail." refusal and the input field are reachable only from unit tests.
+**Issue:** `compareCanonicalIds` documents "the accepted rail/key ids are ASCII, and for ASCII UTF-16 code-unit order is identical to UTF-8 byte order". Nothing verifies that premise. For a non-ASCII id the two encoders disagree on every axis at once:
 
-**Fix:** Either delete the union member, the input field and the branch, or route the `+` row through the one availability authority (T-59-35): pass `hasKeylessChannel` from the host into `resolveMotionCommandAvailability({ command: 'add-motion-channel', ... })` and use its answer/reason for the row's disabled state. Do not keep a doc claim that names a caller which does not call it.
+- ordering: UTF-16 code-unit order is not UTF-8 byte order (e.g. `'é'` U+00E9 sorts after `'z'` in UTF-8 bytes but before it in UTF-16 units; astral characters compare as surrogate pairs);
+- length prefixes: `s${value.length}:` counts UTF-16 units while `canonical_string` uses `value.len()` bytes;
+- hashing: FNV over `charCodeAt` vs over `bytes()`, and `source.length` vs `source.len()` in the `length-hash` token;
+- id limits: `RAIL_MOTION_ID_MAX_LENGTH = 128` counts UTF-16 units (`railMotionModel.ts:115,132`) while `rail_motion_bounded_id` uses `chars().count() <= 128` (`script_library.rs:1580-1589`), and the paste payload path accepts up to 256 units (`railMotionCommands.ts:62-64`, `types/physicPaint.ts:1553-1584`).
 
-### WR-02: `mergedDrop` on `cutTrackSelection`/`clearTrackFrames` has no production consumer
+App-minted ids are `crypto.randomUUID()` values, so this is reachable only from foreign/doctored documents or crafted paste payloads — but the "ASCII" doc comment is the only defense. The failure mode is fail-closed at the prepare hash gate (no silent corruption), which is why this is a WARNING rather than a BLOCKER.
 
-**Severity:** WARNING
-**Category:** necessity
-**File:** `app/src/stores/physicPaintStore.ts:3265-3274,5846-5854,5935-5940,6114-6167`
+**Fix:** Enforce the declared charset at both trust boundaries — the TS parsers/payload validators and `rail_motion_bounded_id` — with an explicit ASCII check (e.g. `/^[\x20-\x7E]+$/`, or stricter `[A-Za-z0-9_-]`), and update the `compareCanonicalIds` comment to state the enforced condition rather than an assumption. Add a rejection test for a non-ASCII `railId`/`keyId` in both the payload validator and the Rust parser.
 
-**Issue:** 59-20 adds `mergedDrop?: RotoTrackMergedDrop` to `RotoTrackCopyResult`/`RotoTrackClearResult` and spreads it from `_applyRotoTrackSelectionRemoval` in `cutTrackSelection` and `clearTrackFrames` — but the only production reader of a `mergedDrop` result is `PhysicsPaintWorkflowStrip.tsx:3921-3932`, and that reads the `moveTrackItems` result (`physicPaintStore.ts:6022-6029`). A repository-wide search shows `cutTrackSelection` and `clearTrackFrames` have no production call sites at all (only `trackIsolation.test.ts` and `physicPaintStore.rotoRailMotions.test.ts:669-745`), so those two new report fields can never reach the settlement/notice row: no UI path consumes them, and a real merge drop produced through these methods would still be silent. Note the `moveTrackItems` half of the same plan is correctly wired.
+### WR-02: Cross-track Loop Clip materialized source frames are outside the paste extent/occupancy model
 
-**Fix:** Remove the `mergedDrop` members from `RotoTrackCopyResult` and `RotoTrackClearResult` (and the conditional spreads at `5853`/`5939`), keeping the helper's report for `moveTrackItems`. If cut/clear are intended to gain a UI surface, wire the consumer in the same change and publish through `publishRailMotionMergeNotice` exactly like the move wrapper.
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts:650-671,693-709,859-869,965-999`
 
-### WR-03: The motion-lane curve ignores `railId`, so its wiggle seed differs from the applied transform
+**Issue:** `computePastedExtent` enumerates only key-rail entry destinations and loop end-exclusives. For `crossTrack`, the 59-22 materialization creates fresh real-key records at `destinationStart + (entry.sourceAppFrame - firstSourceFrame)` (lines 980-988), and those frames never enter `PastedExtent.keyDestinations`. Consequences:
 
-**Severity:** WARNING
-**Provenance:** carried forward from the earlier full-phase review; still present, outside the gap-closure diff.
-**File:** `app/src/components/physic-paint/view/TimelineMotionChannels.tsx:356`
+- `findDuplicateAnchor` (`:693-709`) can accept an anchor whose loop-materialized frames collide with occupied frames, because its occupancy test only sees key-rail destinations. A later anchor that would fit is never considered once a colliding early anchor passes the key-rail test.
+- `proposeRails`' conflict/capacity checks (`:859-869`) likewise miss the loop-materialized frames, so the plan is accepted and the collision surfaces only when the store validates the records (`replaceRotoPhysicalRecords` → duplicate `appFrame` / capacity / negative frame), reported through the generic `'apply-failed'` status instead of a specific rejection.
+- Lower bound: `extent.loopEndExclusives.some((end) => end > document.capacity)` has no `>= 0` counterpart for loop placements. With `placementMode: 'paste'`, an anchor that sits after the loop's `placementStart` produces `destinationStart < 0` while the end stays positive, and the loop-materialized keys land on negative frames — again caught only by the records port.
 
-**Issue:** The lane draws each channel with `buildRailMotionCurvePath(channel, frameCount, laneHeight)` and omits the `railId` option, even though `railId` is a prop of the lane component (`TimelineMotionChannels.tsx:212`, `330`). The evaluator seeds deterministic wiggle from `options.railId ?? RAIL_MOTION_CURVE_PREVIEW_RAIL_ID` (`railMotionEvaluator.ts:210-220`), and the applied transform uses the record's real `railId`. Any key with `wiggle !== 0` therefore renders a preview curve computed with a different seed than the transform actually applied to the content, contradicting the option's own contract ("the record's railId so the curve samples the exact applied wiggle seed").
+No corruption results (the transaction validates before mutating), but the paste/duplicate can fail with a misleading reason or skip a fitting destination. The same-shape bug existed for same-track loops; 59-22 extends it cross-track and shares the materialization law, so this gap-closure did not close it.
 
-**Fix:**
-
-```tsx
-d={buildRailMotionCurvePath(channel, frameCount, laneHeight, { railId })}
-```
-
-### WR-04: The grouped Position lane only edits `position-x`; `position-y` easing and wiggle are unreachable
-
-**Severity:** WARNING
-**Provenance:** carried forward from the earlier full-phase review; still present, outside the gap-closure diff.
-**File:** `app/src/components/physic-paint/view/PhysicsPaintTrackRow.tsx:608` (with `useRotoTimelineActions.ts:2941-2981`)
-
-**Issue:** Each display lane forwards `laneChannelId = lane.channels[0]?.id ?? 'position-x'`. For the grouped Position lane the first channel is always `position-x` (the display projection keeps the fixed `position-x`, `position-y` order, `TimelineMotionChannels.tsx:119-141`), so a selected Position key always stores `channelId: 'position-x'`. `setSelectedMotionKeyEasing` and `setSelectedMotionKeyWiggle` pass only `selection.channelId` (`useRotoTimelineActions.ts:2952-2980`), and the command layer/reducer update only the addressed channel for easing/wiggle (`railMotionCommands.ts:420-468`, `railMotionModel.ts:616-646`). There is no UI path that selects `position-y`, so its Hold/Ease and Wiggle can never be changed even though the lane visually represents both axes and the model stores them independently — setting Hold on the Position lane makes X hold while Y keeps easing.
-
-**Fix:** Treat the grouped lane as a two-channel selection: when the selected channel is `position-x` or `position-y`, apply the easing/wiggle edit to both axes in one commit (the command layer already has `resolveMotionCommandChannelIds` and the reducer already supports `pairedValue` for values; extend the same single-commit fan-out to easing/wiggle), or store the display-lane id in `RailMotionKeySelection` and fan out in the command layer. Add a test asserting both axes change from one grouped-lane action.
-
-### WR-05: Canonical rail-motion ordering diverges between TypeScript and Rust
-
-**Severity:** WARNING
-**Provenance:** carried forward from the earlier full-phase review; still present, outside the gap-closure diff.
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts:1722` (and `1742`)
-
-**Issue:** `encodeCanonicalRailMotions` sorts records with `left.railId.localeCompare(right.railId)` (and loop clips with `a.loopId.localeCompare(b.loopId)` at `1742`). Rust's `canonical_rail_motions` sorts with `str::cmp` (byte order) at `app/src-tauri/src/services/script_library.rs:1596-1601`. Even within TypeScript the orders disagree: the parser canonicalizes records with `<`/`>` byte comparison (`railMotionModel.ts:433-435`) and `railMotionIdentity.ts:116-118` does the same. Rail ids are accepted as any non-empty string up to 128 characters with no charset restriction (`railMotionModel.ts:131-133`), so ids that differ in case or punctuation (for example `Z-rail` vs `a-rail`) sort differently under ICU collation and byte order. The parity fixtures only cover lowercase hex UUIDs (`app/src/lib/__fixtures__/railMotionCanonical.golden.json`), so the divergence is untested. A document whose motion collection is canonicalized on both sides can produce different `rail-motions:` terms and therefore different revisions for the same document. Today's minted ids are lowercase hex, so this is reachable mainly through imported/crafted packages, but the cross-language contract does not hold.
-
-**Fix:** Use the byte-order comparator in the encoder, matching the parser and Rust:
-
-```ts
-const ordered = [...records].sort(
-  (left, right) => (left.railId < right.railId ? -1 : left.railId > right.railId ? 1 : 0),
-);
-```
-
-Apply the same comparator to the loop-clip sort at line 1742 and add a parity fixture entry with mixed-case/punctuation rail ids.
-
-### WR-06: The rail-set copy payload derives Key Rail segments with an empty group-owned set
-
-**Severity:** WARNING
-**Provenance:** carried forward from the earlier full-phase review; still present, and directly undermines the 59-18 motion freeze.
-**File:** `app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts:363-407`
-
-**Issue:** `buildRotoRailSetCopyPayload` calls `deriveKeyRailSegments({ ..., groupOwnedKeyIds: new Set() })` (`376-380`), while the display projection that produced the copy members excludes every Loop Clip-owned key (`clip.sourceKeyIds` plus `frameOverrides[].keyId`) — `physicsPaintKeyRailPresentation.ts:39-80`, `useRotoTimelineActions.ts:2125-2138`, and the member authority `PhysicsPaintStudio.tsx:1777-1800,3180`. With an empty ownership set, a Key Rail that begins after a Loop Clip's owned keys and does not itself own an incoming break is folded into the clip's segment (the clip's leading break starts the segment, and nothing flushes it at the Key Rail's first key). `segmentByFirstKeyId.get(member.firstKeyId)` then misses (`404-407`) and Copy/Duplicate fails closed with the generic `'stale-member'` refusal. The same wrong segmentation feeds `assignRailMotionRailViews` (`389-395`), so even when the lookup succeeds the 59-18 motion freeze can fail to bind the member's record. This state is produced by the CR-01 scenario itself (a Loop Clip inserted mid-Key-Rail leaves a trailing Key Rail with no break), and by any clip whose following Key Rail is not break-marked.
-
-**Fix:** Derive the ownership set exactly like the store and the reconciler before segmenting:
-
-```ts
-const groupOwnedKeyIds = new Set<string>();
-for (const clip of document.loopClips) {
-  for (const keyId of clip.sourceKeyIds) groupOwnedKeyIds.add(keyId);
-  for (const override of clip.frameOverrides ?? []) groupOwnedKeyIds.add(override.keyId);
-}
-const segments = deriveKeyRailSegments({
-  orderedRealKeys: document.realKeyRecords,
-  incomingInterpolationBreakKeyIds: breakOwners,
-  groupOwnedKeyIds,
-});
-```
-
-Add a copy test where the selected Key Rail directly follows a Loop Clip's owned keys with no break on its first key, and assert both the member lookup and the frozen motion.
+**Fix:** Extend `PastedExtent` to include every materialized loop key frame — for both branches, map `member.sourceEntries` (cross-track) or resolved source records (same-track) through the same offset law — and use the union in `findDuplicateAnchor` and in the `proposeRails` conflict/lower-bound/capacity checks. Add a cross-track duplicate test where an occupied destination key lies between the loop placement start and its first materialized source frame, plus a negative-`destinationStart` paste test.
 
 ## Info
 
-### IN-01: `addMotionChannel` is the only motion command that does not guard the reducer call
+### IN-01: Impossible-state guard in the grouped easing/wiggle fan-out (necessity)
 
-**Severity:** INFO
+**Category:** necessity
+
+**File:** `app/src/components/physic-paint/roto/railMotionCommands.ts:464-466`
+
+**Issue:** `if (axisKey === null) continue;` guards "the record carries no channel entry for that axis at all". That state cannot occur for store-originated records: D-12 is enforced by the parser (`railMotionModel.ts:267-279`), `applyAnimateEdit` seeds both axes together (`:580-587`), `applyAddChannelEdit` adds both together (`:706-716`), and `applySetKeyEdit` only mutates a channel that already exists (`:607-609`), so a position record carrying the addressed axis necessarily carries the sibling. The guard's silent-skip behavior is also the wrong failure mode if the invariant ever broke: the command would report success after editing one axis, violating the "grouped edit is symmetric" law the function exists to uphold. Kept at Info rather than Warning because the helper is a pure function in an exported command module that can be called with externally constructed records, so the defensive branch is defensible; the proof rests on every producer enforcing D-12.
+
+**Fix:** Either delete the branch (the invariant is producer-enforced) or make the impossible state loud — `if (axisKey === null) return failure(failureReason);` — so a violated invariant cannot masquerade as a successful single-axis edit.
+
+### IN-02: `localeCompare` survives in two non-canonical ordering sites
+
+**File:** `app/src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.ts:309,1104`
+
+**Issue:** 59-24 replaced collation ordering with code-unit ordering in the canonical encoder, but `orderMembers` (`:303-311`) and `orderedBreaks` (`:1104`) still call `localeCompare`. Neither currently changes a revision — fresh identities are random UUIDs, so member order is not persisted, and `buildPhysicPaintRotoPhysicalRevision` re-sorts incoming breaks internally with `compareCanonicalIds` (`physicsPaintRotoPhysicalModel.ts:1718-1721`) — but both are the same hazard the 59-24 fix removed, one refactor away from producing a two-revision document again.
+
+**Fix:** Route both through the shared code-unit comparator (export `compareCanonicalIds`, or add a small `compareCodeUnits` helper next to it) and pin them with a mixed-case id test.
+
+### IN-03: Narrowing payload type erases the new required `sourceEntries` field
+
+**File:** `app/src/stores/physicPaintStore.ts:6099-6155` (loop arm at `:6106`, loop passthrough at `:6112-6114`, cast at `:6149-6154`)
+
+**Issue:** `_narrowRailSetCopyPayloadToKeyIds` now operates on payloads whose loop members carry required `sourceEntries` (59-22), but its local generic's loop arm is still `{ kind: 'loop'; placementStart: number; loopId: string }`. Loop members are pushed through unchanged (correct today — a loop must keep its full source set), and the final `as T` hides the drift, so a future narrowing implementation could construct a loop member without `sourceEntries` and still typecheck.
+
+**Fix:** Reference `RotoRailSetCopyMember` (or add `sourceEntries` to the local loop arm) and drop the `as T` where the generic can be satisfied structurally.
+
+### IN-04: `addMotionChannel` still lacks a try/catch around the throwing reducer (carried forward)
+
 **File:** `app/src/components/physic-paint/roto/railMotionCommands.ts:191-211`
 
-**Issue:** Every sibling command wraps `applyRailMotionEditToCollection` in `try/catch` and converts a throw into a refusal string — `setMotionKeyAtCursor` (`356-370`), `removeMotionKey` (`390-400`), `setMotionKeyEasing` (`430-441`), `setMotionKeyWiggle` (`457-468`) — because the reducer contract is "invalid values throw; the store action catches and refuses them" (`railMotionModel.ts:742-748`). `addMotionChannel` calls the reducer directly. `applyAddChannelEdit` can throw through `assertRailMotionEditChannel` (`railMotionModel.ts:690`), and the hook action (`useRotoTimelineActions.ts:2846-2851`) does not catch either, so a throw would escape the menu click handler. Today the channel id comes from the typed menu inventory, so the path is not reachable, which is why this is Info rather than a warning — but the guard belongs with the other four for the same contract.
+**Issue:** Unchanged from the previous review. `applyRailMotionEditToCollection` throws on invalid canonical input (`railMotionModel.ts:210-277`), and `addMotionChannel` calls it outside any try/catch. Today the duplicate check at `:197-200` plus the reducer's grouped-axis no-op at `railMotionModel.ts:697` keep the throw unreachable from valid state, so this is defensive, not an active bug.
 
-**Fix:**
+**Fix:** Wrap the call in `try/catch` returning `failure('This Motion channel could not be added.')`, mirroring `applyAxisMotionKeyEdits` (`:456-479`), so a malformed record surfaces a sentence instead of an uncaught exception in the event handler.
 
-```ts
-try {
-  const next = applyRailMotionEditToCollection(records, {
-    kind: 'add-channel',
-    railId,
-    channel: channelId,
-  });
-  if (next === records) return failure('This Motion channel is already present.');
-  return success(next);
-} catch {
-  return failure('The Motion channel could not be added.');
-}
-```
+### IN-05: Dead exports `resolveRecordChannels` and `describeRailMotionOrphan` (carried forward)
 
-### IN-02: Motion key set/remove bypass the command layer's rail-frame clamp
+**File:** `app/src/components/physic-paint/roto/railMotionCommands.ts:686`, `app/src/components/physic-paint/roto/railMotionIdentity.ts:197`
 
-**Severity:** INFO
-**Provenance:** carried forward from the earlier full-phase review; still present, outside the gap-closure diff.
-**File:** `app/src/components/physic-paint/hooks/useRotoTimelineActions.ts:2154-2157,2796,2818`
+**Issue:** Unchanged from the previous review. `resolveRecordChannels` has no caller anywhere in `app/src`; `describeRailMotionOrphan` is referenced only by `railMotionIdentity.test.ts`. Both are production exports with no production consumer.
 
-**Issue:** `readActiveRailMotionState` computes `localCursorFrame = Math.max(0, floor(cursorFrame - view.startFrame))` with no upper bound. `setMotionKeyAtCursor` and `removeMotionKeyAtCursor` pass that value directly, while the command layer's single conversion, `railMotionCursorFrame` (`railMotionCommands.ts:74-83`), clamps into the rail's keyed span and is used by `animateRail` and the gizmo. The UI disables the diamond outside the lane span, so this is currently latent, but any automation or future caller can write a motion key beyond the rail's visible span.
-
-**Fix:** Clamp with the shared helper before calling the command:
-
-```ts
-const keyFrame = state.view === null ? 0 : railMotionCursorFrame(state.view, state.cursorFrame);
-```
-
-or clamp `localCursorFrame` at its definition site.
-
-### IN-03: Production-dead exports remain
-
-**Severity:** INFO
-**Provenance:** carried forward from the earlier full-phase review; still present, outside the gap-closure diff.
-**File:** `app/src/components/physic-paint/roto/railMotionIdentity.ts:197` and `app/src/components/physic-paint/roto/railMotionCommands.ts:633`
-
-**Issue:** `describeRailMotionOrphan` (`railMotionIdentity.ts:197`) and `resolveRecordChannels` (`railMotionCommands.ts:633`) have no non-test consumers; `resolveMotionCommandChannelIds` is now used by `addMotionChannel`, so only these two remain dead. They are reachable code with no production instantiation — a maintainability cost, not a necessity finding.
-
-**Fix:** Remove them, or wire them to the surface they were intended for (`resolveRecordChannels` is a natural availability/inventory source for the channel menu; `describeRailMotionOrphan` is the session-warning copy described in its doc block). Do not leave exports whose documentation claims a live role.
+**Fix:** Delete them, or wire them into the surface that was meant to use them; if they are intentionally test-only API, document that ownership.
 
 ---
 
-_Reviewed: 2026-11-06T21:39:55Z_
+_Reviewed: 2026-11-07T11:36:22Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
