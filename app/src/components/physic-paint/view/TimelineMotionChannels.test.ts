@@ -608,8 +608,17 @@ describe('TimelineMotionChannelMenu', () => {
 /* ------------------------------------------------------------------ */
 
 describe('TimelineMotionAddChannelRow', () => {
+  const ENABLED = { disabled: false, reason: null } as const;
+  const ALL_KEYED_REASON = 'Every Motion channel is already present on this rail.';
+
+  function rowOf(node: unknown): TestVNode {
+    return findAll(node, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!;
+  }
+
   it('renders the 18px add-channel row with the lane rhythm', () => {
-    const tree = materialize(TimelineMotionAddChannelRow({ open: false, onToggle: () => {} }));
+    const tree = materialize(
+      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
+    );
     const rows = findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined);
 
     expect(rows).toHaveLength(1);
@@ -628,8 +637,12 @@ describe('TimelineMotionAddChannelRow', () => {
   });
 
   it('mirrors the open state on aria-expanded', () => {
-    const closed = materialize(TimelineMotionAddChannelRow({ open: false, onToggle: () => {} }));
-    const open = materialize(TimelineMotionAddChannelRow({ open: true, onToggle: () => {} }));
+    const closed = materialize(
+      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
+    );
+    const open = materialize(
+      TimelineMotionAddChannelRow({ open: true, ...ENABLED, onToggle: () => {} }),
+    );
 
     expect(
       findAll(closed, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!.props['aria-expanded'],
@@ -641,10 +654,45 @@ describe('TimelineMotionAddChannelRow', () => {
 
   it('routes the click to onToggle (the host owns the session state)', () => {
     const onToggle = vi.fn();
-    const tree = materialize(TimelineMotionAddChannelRow({ open: false, onToggle }));
+    const tree = materialize(TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle }));
 
     clickOf(findAll(tree, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined)[0]!)();
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders an enabled row with no reason: no title, pointer cursor and a live aria-expanded', () => {
+    const row = rowOf(materialize(
+      TimelineMotionAddChannelRow({ open: false, ...ENABLED, onToggle: () => {} }),
+    ));
+
+    expect(row.props.disabled).toBe(false);
+    expect(row.props.title).toBeUndefined();
+    expect(row.props['aria-description']).toBeUndefined();
+    expect(row.props['aria-expanded']).toBe(false);
+    expect(styleOf(row).cursor).toBe('pointer');
+    expect(styleOf(row).opacity).toBe(1);
+    expect(row.props.onClick).toBeTypeOf('function');
+  });
+
+  it('renders a disabled row with the reason verbatim, no click handler and aria-expanded forced false', () => {
+    const onToggle = vi.fn();
+    const row = rowOf(materialize(TimelineMotionAddChannelRow({
+      open: true,
+      disabled: true,
+      reason: ALL_KEYED_REASON,
+      onToggle,
+    })));
+
+    expect(row.props.disabled).toBe(true);
+    expect(row.props.title).toBe(ALL_KEYED_REASON);
+    expect(row.props['aria-description']).toBe(ALL_KEYED_REASON);
+    // An open session signal cannot make a disabled row claim an open menu.
+    expect(row.props['aria-expanded']).toBe(false);
+    expect(styleOf(row).cursor).toBe('not-allowed');
+    expect(styleOf(row).opacity).toBe(0.4);
+    // No handler at all — not a guarded no-op.
+    expect(row.props.onClick).toBeUndefined();
+    expect(onToggle).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="77" failures="7" errors="0" time="1.136">
+    <testsuite name="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" timestamp="2026-11-07T10:12:37.637Z" hostname="efx2.home" tests="46" failures="5" errors="0" skipped="0" time="0.0497525">
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; subscribes to ITS OWN track revision signal (the ghost-key fix seam)" time="0.0007505">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; renders always-on read-only rails from THIS track records with the active lane shared classes" time="0.008793417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; re-renders fresh store state per render: removing the moved rail drops the line and empties the cells" time="0.001125167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; renders motion and static Loop Clip rails with the shared family colors (UAT round 3)" time="0.003221833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; renders a merged Standard Rail gray and labelled Standard on a non-active row (261031-vbo)" time="0.0013705">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; renders no in-line lifecycle status dot on non-active rows (AM-2: the status lives in the tooltip)" time="0.000522584">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; 49-06 UAT round 4: the Bg cells carry vertical separators, the rail line is the move handle, and the markers signal ew-resize" time="0.004172459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; keeps the rails one-click selectable and the background row rail-free" time="0.001017958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; fires the one-click frame selection intent with the clicked frame (UAT round 5)" time="0.000732833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; 49-06 UAT round 2: clicking an EMPTY Background row cell is the placement gesture (selects the target frame)" time="0.00021625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; 49-06 UAT round 2: the selected Bg clip rail paints the orange selection class and the placement cell carries the marker" time="0.000707583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; 49-06 UAT round 8: the whole rail is interactive — cells route pointerdown to the move hook and the anchor onClick selects (track-rail pattern)" time="0.000397416">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; 49-06 UAT round 3: every Bg cell is a whole-rail move handle and the first/last carry resize sub-handles" time="0.000389875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 47 close-out cross-track UAT &gt; fires the one-click rail selection intents with the rail identity (UAT round 5)" time="0.000933041">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackColumnStrip — 50-UAT photo/reference camera icon (S1, modal redesign) &gt; renders the camera icon between the title group and the + button (50-UAT)" time="0.000439417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackColumnStrip — 50-UAT photo/reference camera icon (S1, modal redesign) &gt; shows the active state when a source exists — still no X badge (50-UAT)" time="0.0001665">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackColumnStrip — 50-UAT photo/reference camera icon (S1, modal redesign) &gt; routes the camera click to the open-dialog intent (50-UAT)" time="0.000133084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 52.2-12 render counters (D-18) &gt; counts real row renders through render.tracksStrip only while profiling is enabled" time="0.000485625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 261023-bji solo focus dimming &gt; carries the solo-dimmed class only when soloDimmed is set" time="0.000134625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 261023-bji solo focus dimming &gt; shares the exact hidden-track fade: opacity 0.4 + grayscale 0.9" time="0.000375292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 261104-so5 painted phase on a generated in-between &gt; paints the interp dash for a lifecycle override on a generated in-between (the reported regression)" time="0.001371">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 261104-so5 painted phase on a generated in-between &gt; keeps a group-gap frame empty even though its projection reports generated (guard)" time="0.00054975">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="PhysicsPaintTrackRow — 261104-so5 painted phase on a generated in-between &gt; keeps a stale cached frame with no record empty (guard)" time="0.000298958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; resolves the durable railId from both identity kinds — never the firstKeyId" time="0.000109">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; expands only while the recorded session identity still IS the selected rail" time="0.000087167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; renders the three chevron kinds from motion presence and expansion" time="0.000059458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; renders the grey minus on a track with no motion — a disabled 14×14 button with its reason" time="0.000444709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; clicking the collapsed chevron on the selected motion rail expands it, clicking again collapses it" time="0.00124825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; disables the chevron of a motion-bearing track whose rail is not the selected one — with a visible reason" time="0.000506417">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; Animate leaves the block collapsed: the session signal stays null and the glyph is chevron-right (D-03)" time="0.000448083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; writes the session expansion signal in exactly one place — the chevron toggle — and adds no effect" time="0.001617667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; keeps at most one block open: toggling another rail replaces the recorded identity" time="0.000077125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; resolves the motion record for a rail and treats an all-keyless record as no motion" time="0.000088458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; counts DISPLAY lanes, not model channels: five keyed channels yield four lanes (D-11/D-13)" time="0.000142875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; renders the expanded block only while expanded: four display lanes, the disabled add row, the outline and the post-block gap" time="0.004518541">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx:1151:21
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; spans an infinite rail lane to the store-resolved end (59-19 G2/CR-04)" time="0.005030291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-11 rail motion hosting — chevron, session expansion and the expanded block &gt; keeps a finite rail lane at its prior first-cycle width (59-19)" time="0.001014334">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; renders the add row DISABLED with the authority reason when every display lane carries keys" time="0.000729625">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx:1294:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; a stale session menu identity cannot open the disabled row’s menu" time="0.000482416">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx:1318:18
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; renders the add row ENABLED once a display lane is keyless — Position-only is the CR-03 case" time="0.000532333">
+            <failure message="expected undefined to be false // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be false // Object.is equality
+
+- Expected: 
+false
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx:1333:36
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; resolves the add-channel availability exactly once and never re-authors the authority reason" time="0.00041625">
+            <failure message="expected [] to have a length of 1 but got +0" type="AssertionError">
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx:1347:69
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; renders the menu as an ABSOLUTE overlay under the add row, above the rail chrome" time="0.000515375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; opens on the add row click and dismisses on a menu pick, routing the channel intent" time="0.000483083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; collapse and rail-switch close the open menu (expansion toggle calls the dismiss writer)" time="0.000072459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; writes the menu identity in exactly TWO named writers — the strip only reads it" time="0.001371125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/PhysicsPaintTrackRow.test.tsx.test.ts" name="59-17 add-channel row and keyless menu (G1/CR-03) &gt; keeps the menu identity session-local — never persisted" time="0.000685292">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/physic-paint/view/TimelineMotionChannels.test.ts" timestamp="2026-11-07T10:12:37.643Z" hostname="efx2.home" tests="31" failures="2" errors="0" skipped="0" time="0.011218125">
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; folds the five model channels into four fixed-order display lanes" time="0.000926708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; yields exactly one visible Position lane for a record holding only X and Y" time="0.000446916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; keeps a single Position lane when only one axis carries keys" time="0.000138459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; never exceeds four display lanes for a record on all five model channels" time="0.000167209">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="resolveMotionDisplayLanes &gt; reports four keyless display lanes when nothing carries keys" time="0.000131666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders one motionLane surface of the 18px lane height" time="0.001131958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders the header cluster as icon, label, key count, previous, diamond, next" time="0.000313083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; draws one 6px key per SHARED Position frame, never one per axis" time="0.000318459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; renders exactly the evaluator curve path for each model channel" time="0.000234834">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; draws the 16 x 18 motion cells at the 18px pitch" time="0.000721917">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; marks the key at the cursor frame as the current tier" time="0.000154292">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; does not render keys outside the rail band" time="0.0001645">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; routes key and nav clicks to the frame handlers" time="0.000756042">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; selects the rail from the lane surface" time="0.000186708">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; disables an inert nav control WITH a visible reason, never a silent no-op" time="0.000203125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelLane &gt; lets the host override a disabled reason" time="0.000146125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionBlockOutline &gt; renders nothing while the block is collapsed (MUI-03)" time="0.000086167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionBlockOutline &gt; wraps the rail row plus its lanes in a rounded 1.5px rect" time="0.000139291">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionBlockOutline &gt; wraps the extra 18px add-channel row when the block renders one (59-17)" time="0.000086875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionBlockOutline &gt; adds no add-channel term to a collapsed block (laneCount 0 stays null)" time="0.000030375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelMenu &gt; lists only the keyless display lanes in fixed order at the 18px rhythm" time="0.000190833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelMenu &gt; offers Position exactly once and adds position-x (the reducer seeds both axes)" time="0.000199709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelMenu &gt; renders nothing when every display lane carries keys (D-15 complement)" time="0.000042875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannelMenu &gt; calls onAddChannel BEFORE onClose so the seed lands before the menu retires" time="0.000107">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionAddChannelRow &gt; renders the 18px add-channel row with the lane rhythm" time="0.000177833">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionAddChannelRow &gt; mirrors the open state on aria-expanded" time="0.000081083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionAddChannelRow &gt; routes the click to onToggle (the host owns the session state)" time="0.000076666">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionAddChannelRow &gt; renders an enabled row with no reason: no title, pointer cursor and a live aria-expanded" time="0.002501667">
+            <failure message="expected undefined to be false // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be false // Object.is equality
+
+- Expected: 
+false
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:668:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionAddChannelRow &gt; renders a disabled row with the reason verbatim, no click handler and aria-expanded forced false" time="0.000332542">
+            <failure message="expected undefined to be true // Object.is equality" type="AssertionError">
+AssertionError: expected undefined to be true // Object.is equality
+
+- Expected: 
+true
+
++ Received: 
+undefined
+
+ ❯ src/components/physic-paint/view/TimelineMotionChannels.test.ts:686:32
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannels source contract &gt; reads no store, hook, signal or DOM state" time="0.000224125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/view/TimelineMotionChannels.test.ts" name="TimelineMotionChannels source contract &gt; derives every geometry value from a design token" time="0.000185542">
+        </testcase>
+    </testsuite>
+</testsuites>
