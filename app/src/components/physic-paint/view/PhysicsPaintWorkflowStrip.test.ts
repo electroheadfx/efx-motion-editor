@@ -3296,7 +3296,9 @@ describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11
       'utf8',
     );
     expect(trackRow).toContain('readonly selectedMotionKey?: {');
-    expect(trackRow).toContain('selectedKeyFrames={laneSelectedKeyFrames}');
+    // 261107-pd8: the block builds ONE laneProps object before branching to the
+    // pure lane or the drag leaf; the selection still reaches the lane here.
+    expect(trackRow).toContain('selectedKeyFrames: laneSelectedKeyFrames,');
     expect(trackRow).toContain('lane.channels.some((channel) => channel.id === selectedMotionKey.channelId)');
   });
 });
@@ -3373,5 +3375,33 @@ describe('59-12 UAT: the selected drawing key supplies the motion rail context',
     // 261107: the Animate button (now the channel menu) additionally needs a
     // resolvable menu key, so an un-animated rail can still open it.
     expect(code).toContain('{motionRailIdentity !== null && activeMotionMenuKey !== null ? (');
+  });
+});
+
+describe('261107-pd8 motion-key drag ports wiring', () => {
+  it('builds exactly ONE ports bundle from the physical action bundle', () => {
+    const code = source();
+    expect(code.match(/const motionKeyDragPorts = useMemo<TimelineMotionKeyDragPorts \| null>/g) ?? [])
+      .toHaveLength(1);
+    expect(code).toContain('prepare: (request) => physicalActions.prepareMotionKeyDrag(request),');
+    expect(code).toContain('commit: (publication) => physicalActions.commitMotionKeyDrag(publication),');
+    // One consumer only: the ACTIVE track's block.
+    expect(code.match(/motionKeyDragPorts=\{/g) ?? []).toHaveLength(1);
+  });
+
+  it('gates the ports on readiness and the mutation lock', () => {
+    const code = source();
+    expect(code).toContain(
+      'if (physicalActions === undefined || props.ready === false || props.mutationLocked) return null;',
+    );
+    expect(code).toContain('}, [physicalActions, props.ready, props.mutationLocked]);');
+  });
+
+  it('forwards the command refusal sentence verbatim instead of authoring one', () => {
+    const code = source();
+    expect(code).toContain('physicalActions.setApplyStatus?.(\'error\');');
+    expect(code).toContain('physicalActions.publishStatus?.(reason);');
+    // No Motion-key refusal sentence is written in this host.
+    expect(code).not.toMatch(/publishStatus(?:\?)?\.?\(\s*[`'"][^`'"]*Motion key/);
   });
 });

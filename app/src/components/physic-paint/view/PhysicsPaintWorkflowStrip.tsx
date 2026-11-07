@@ -239,6 +239,7 @@ import {
   type TimelineMotionHeaderGroupProps,
   type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
+import type { TimelineMotionKeyDragPorts } from './TimelineMotionKeyDrag';
 import { TimelineMotionChannelMenuOverlay } from './TimelineMotionChannelMenuOverlay';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -3358,6 +3359,21 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     setMotionKeyAtCursorDisabledReason,
     removeMotionKeyAtCursorDisabledReason,
   ]);
+  // 261107-pd8: the ACTIVE block's drag ports — ONE construction, gated on the
+  // same readiness/mutation lock as every other edit surface. A rejected drop
+  // publishes the COMMAND layer's sentence verbatim; this host authors none.
+  const motionKeyDragPorts = useMemo<TimelineMotionKeyDragPorts | null>(() => {
+    if (physicalActions === undefined || props.ready === false || props.mutationLocked) return null;
+    return {
+      prepare: (request) => physicalActions.prepareMotionKeyDrag(request),
+      commit: (publication) => physicalActions.commitMotionKeyDrag(publication),
+      onRejected: (reason) => {
+        if (reason === undefined || reason === null) return;
+        physicalActions.setApplyStatus?.('error');
+        physicalActions.publishStatus?.(reason);
+      },
+    };
+  }, [physicalActions, props.ready, props.mutationLocked]);
   // 261107-mkn: the ACTIVE rail's channel header bundle. It is built from the
   // SAME record/view/local-cursor the lane body consumes, so the header rows
   // and the visible lanes cannot disagree. The two nav intents move here
@@ -6373,6 +6389,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 cursorFrame={activeMotionLocalCursorFrame}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
+                                motionKeyDragPorts={motionKeyDragPorts ?? undefined}
                                 onSelectMotionKey={(frame, channelId) => {
                                   // MOTN-11: the two key scopes never coexist —
                                   // selecting a Motion key clears the drawing-key

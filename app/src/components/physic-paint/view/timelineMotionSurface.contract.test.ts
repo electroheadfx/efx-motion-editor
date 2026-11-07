@@ -36,6 +36,7 @@ const LANE_COMPONENT = 'TimelineMotionChannels.tsx';
 const ROW_COMPONENT = 'PhysicsPaintTrackRow.tsx';
 const STRIP_COMPONENT = 'PhysicsPaintWorkflowStrip.tsx';
 const HEADER_COMPONENT = 'physicsPaintTrackHeaderColumn.tsx';
+const KEY_DRAG_COMPONENT = 'TimelineMotionKeyDrag.tsx';
 
 const RAIL_TYPES: readonly TimelineRailType[] = ['standard', 'motion', 'static', 'reveal'];
 
@@ -168,6 +169,30 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(source).toContain('TIMELINE_GEOMETRY.motionLaneHeight');
     expect(source).toContain('TIMELINE_MOTION.postBlockGap');
     expect(source).not.toMatch(/HEADER_LANE_HEIGHT_PX\s*=\s*18\b/);
+  });
+
+  it('261107-pd8: the motion-key drag reuses the shared pointer session, never a second one', () => {
+    const drag = componentSource(KEY_DRAG_COMPONENT);
+    expect(drag).toContain("from '../hooks/usePhysicsPaintKeyRailDrag'");
+    expect(drag).toContain('usePhysicsPaintKeyRailDrag');
+    expect(drag).toContain('clampRailMotionKeyDragFrame');
+    expect(drag).toContain('TIMELINE_GEOMETRY.cellPitch');
+    expect(drag).toContain('keyDrag={{');
+    // The leaf owns NO listener, capture or move handler of its own.
+    expect(drag).not.toContain('addEventListener');
+    expect(drag).not.toContain('setPointerCapture');
+    expect(drag).not.toContain('pointermove');
+
+    // The pure lane module stays hook-free: drag state enters as props only.
+    const lanes = componentSource(LANE_COMPONENT);
+    expect(lanes).not.toContain('usePhysicsPaintKeyRailDrag');
+    expect(lanes).not.toContain("from '../hooks/usePhysicsPaintKeyRailDrag'");
+
+    // The row chooses the leaf only through the ports branch, so a non-active
+    // row (no ports) keeps the click-only lane.
+    const row = componentSource(ROW_COMPONENT);
+    expect(row).toContain('TimelineMotionKeyDragLane');
+    expect(row).toContain('motionKeyDragPorts');
   });
 
   it('261107: the header hosts the channel rows, the block keeps only lanes, the Animate menu owns channels', () => {
