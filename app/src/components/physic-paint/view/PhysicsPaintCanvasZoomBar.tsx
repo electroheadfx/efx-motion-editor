@@ -6,11 +6,11 @@ import { isHandToolArmed, toggleHandTool } from './physicsPaintHandTool';
  * 261104-uyv: the floating canvas zoom pill.
  *
  * 261107-sg3: the pill is the numeric zoom controls (out / level / in / Fit /
- * 1:1) plus the LATCHED Hand canvas tool. One click on the Hand icon arms pan
- * mode; a primary-button drag on the canvas pans through the zoom store (the
- * same path middle-drag uses) and stays armed on release; a second click on
- * the same icon disarms. The Hand is never disabled — at Fit the pan clamps to
- * zero.
+ * 1:1) plus the Hand canvas tool. One click arms a SINGLE pan drag: dragging
+ * the canvas with the primary button pans through the zoom store (the same
+ * path middle-drag uses), and releasing the drag also leaves the Hand mode so
+ * the next canvas drag paints again. A second click before dragging cancels.
+ * The Hand is never disabled — at Fit the pan clamps to zero.
  *
  * Narrow subscriber: it reads only the display values plus the armed flag and
  * drives only store actions. No keyboard binding and no shortcut hint — wheel,
@@ -49,9 +49,10 @@ export function PhysicsPaintCanvasZoomBar() {
       >
         <Plus size={14} aria-hidden="true" />
       </button>
-      {/* 261107-sg3: the LATCHED Hand canvas tool. Only this icon toggles it —
-          no paint-tool, Select, picker or motion-mode coupling. Lives before
-          Fit so the numeric zoom controls stay grouped. */}
+      {/* 261107-sg3: the Hand canvas tool. Only this icon arms it — no
+          paint-tool, Select, picker or motion-mode coupling. The next canvas
+          drag pans once, and its release leaves the mode. Lives before Fit so
+          the numeric zoom controls stay grouped. */}
       <button
         type="button"
         class="physics-paint-canvas-zoom-button"
@@ -59,8 +60,8 @@ export function PhysicsPaintCanvasZoomBar() {
         aria-label="Hand"
         aria-pressed={handArmed}
         title={handArmed
-          ? 'Hand — click again to leave pan mode'
-          : 'Hand — click to arm pan, then drag the canvas'}
+          ? 'Hand armed — drag the canvas to pan; releasing leaves Hand mode'
+          : 'Hand — click, then drag the canvas to pan once'}
         onClick={() => toggleHandTool()}
       >
         <Hand size={14} aria-hidden="true" />

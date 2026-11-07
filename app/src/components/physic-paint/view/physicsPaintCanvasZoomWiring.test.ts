@@ -110,7 +110,7 @@ describe('Studio canvas zoom wiring (261104-uyv)', () => {
   });
 
   it('routes a middle press always and a primary press only while the Hand is armed', () => {
-    // 261107-sg3: the latched Hand adds a PRIMARY route to the same drag state
+    // 261107-sg3: the Hand adds a PRIMARY route to the same drag state
     // middle-drag uses; both pan through physicsPaintCanvasZoom.setPan and
     // both are consumed by the ONE capture-phase pointerdown listener.
     expect(viewport).toContain('const handPan = event.button === 0 && isHandToolArmedPeek();');

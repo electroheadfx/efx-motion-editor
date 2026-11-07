@@ -1,7 +1,7 @@
 import { signal } from '@preact/signals';
 
 /**
- * 261105-cgl / 261107-sg3: session-only LATCHED Hand canvas tool.
+ * 261105-cgl / 261107-sg3: session-only ONE-SHOT Hand canvas tool.
  *
  * The Hand is a HOST tool — deliberately outside the `AquarelleTool` union,
  * exactly like the latched color picker (`aquarelleColorPicker.ts`). It never
@@ -9,13 +9,13 @@ import { signal } from '@preact/signals';
  * changes no paint surface: the previous paint tool stays installed,
  * untouched.
  *
- * 261107-sg3: it is a LATCHED canvas tool, not a momentary press. The ONLY
- * control is the Hand button in the floating canvas zoom pill — one click arms
- * pan mode, a primary-button drag on the canvas pans through the EXISTING
- * zoom-store pan path (the same one middle-drag uses) and the tool STAYS
- * ARMED on release, and a second click on the same icon disarms. There is no
- * keyboard binding, no Escape handling, and no coupling to the paint tool,
- * Select, the picker or motion mode.
+ * 261107-sg3 UAT: it is a ONE-DRAG-PER-CLICK canvas tool. The ONLY control is
+ * the Hand button in the floating canvas zoom pill — one click arms a single
+ * pan gesture, a primary-button drag on the canvas pans through the EXISTING
+ * zoom-store pan path (the same one middle-drag uses), and the RELEASE of that
+ * drag also disarms, so the next canvas drag paints again. A second click
+ * before dragging cancels. There is no keyboard binding, no Escape handling,
+ * and no coupling to the paint tool, Select, the picker or motion mode.
  *
  * The armed flag lives in this focused sibling module so it never enters
  * PhysicsPaintStudio.tsx logic and is NEVER persisted, serialized, or part of
@@ -24,7 +24,7 @@ import { signal } from '@preact/signals';
 const armed = signal(false);
 
 /** Subscribing read: the pill button and the viewport cursor effect re-render
- *  on arm/disarm changes. */
+ *  on arm/disarm changes (the drag release disarms). */
 export function isHandToolArmed(): boolean {
   return armed.value;
 }

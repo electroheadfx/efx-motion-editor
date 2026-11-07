@@ -129,8 +129,9 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
     // CAPTURE phase: both pan gestures are consumed before the stack's
     // picker/block gates and the engine's own listeners, so neither can start
     // a stroke or a pick. Button 1 is always a pan; button 0 is one only while
-    // the latched Hand is armed. The hand route proceeds at Fit too — setPan
-    // simply clamps the pan to zero, so the control is never disabled (D-03).
+    // the Hand is armed (one drag per click). The hand route proceeds at Fit
+    // too — setPan simply clamps the pan to zero, so the control is never
+    // disabled (D-03).
     const onPointerDown = (event: PointerEvent) => {
       const handPan = event.button === 0 && isHandToolArmedPeek();
       if (event.button !== 1 && !handPan) return;
@@ -165,13 +166,16 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
 
     const finishDrag = (pointerId: number) => {
       if (!drag || drag.pointerId !== pointerId) return;
+      const wasHand = drag.hand;
       drag = null;
       try {
         viewport.releasePointerCapture(pointerId);
       } catch {
         // Already released by the platform.
       }
-      // A release while still armed returns to grab; disarm clears it.
+      // One drag per Hand click: releasing the pan also leaves the mode, so
+      // the next canvas drag paints again without a second pill click.
+      if (wasHand) disarmHandTool();
       viewport.style.cursor = isHandToolArmedPeek() ? 'grab' : '';
     };
 
