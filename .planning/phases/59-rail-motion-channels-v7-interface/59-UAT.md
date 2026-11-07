@@ -3,7 +3,7 @@ phase: 59-rail-motion-channels-v7-interface
 plan: 14
 status: live-uat-pending
 started: 2026-11-06T19:24:00Z
-updated: 2026-11-06T19:55:00Z
+updated: 2026-11-07T13:40:00Z
 source: [59-14-PLAN.md, 59-VALIDATION.md, .planning/REQUIREMENTS.md]
 ---
 
@@ -18,11 +18,11 @@ behaviour here.
 
 ## Current Test
 
-[awaiting live UAT — 13 rows pending]
+[awaiting live UAT — 15 rows pending]
 
 ## Automated gates
 
-Recorded 2026-11-06 on branch `gsd/phase-59-rail-motion-channels-v7-interface`.
+Recorded 2026-11-07 (gap closure 59-22..59-25) on branch `gsd/phase-59-rail-motion-channels-v7-interface`.
 
 ### Gate 1 — typecheck
 
@@ -38,8 +38,8 @@ $ pnpm --filter efx-motion-editor run typecheck
 
 ```
 $ pnpm --filter efx-motion-editor exec vitest run
- Test Files  395 passed | 2 skipped (397)
-      Tests  7798 passed | 1 skipped | 96 todo (7895)
+ Test Files  396 passed | 2 skipped (398)
+      Tests  7911 passed | 1 skipped | 96 todo (8008)
    Duration  16.79s
 ```
 
@@ -52,7 +52,7 @@ suite state, not this phase's: this plan modified no existing test file.
 $ cargo test --manifest-path app/src-tauri/Cargo.toml services::script_library
      Running unittests src/lib.rs
 running 23 tests
-test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 93 filtered out
+test result: ok. 200 passed; 0 failed; 0 ignored; 0 measured (full `cargo test` suite)
 ```
 
 **PASS** — exit 0, **23 tests actually ran**. (A first invocation raced a
@@ -263,9 +263,32 @@ test to match an observed product defect.
   active track is not treated differently from any other track.
 - **Result:** pending
 
+### 14. Motion block chevron expand/collapse visual state
+
+- **Preconditions:** A track whose rail carries at least one Motion channel.
+- **Steps:** Click the Motion block's chevron to collapse the lanes, then click
+  it again to expand. Move the pointer over the chevron and over a lane row.
+- **Expected:** The chevron reflects the expanded state and its hover state is
+  visible; collapsing hides the lane rows and removes the `+` row with them;
+  expanding restores the exact same rows in the same order. No layout jump and
+  no stale hover on a hidden row.
+- **Result:** pending
+
+### 15. v7 chrome, theme and vocabulary
+
+- **Preconditions:** Studio open on the Phase 59 build.
+- **Steps:** Compare the live Studio timeline against
+  `SPECS/v2.1.0-motion-channels/reference/section-01-motion-channels.png`:
+  18px lanes, 6×6 motion keys, the selected-block outline, header alignment,
+  colours and label vocabulary.
+- **Expected:** Lane height, key size, outline and header columns match the
+  reference; terminology is consistent ("playhead", "Motion", "easing",
+  "Wiggle"); no leftover pre-v7 styling.
+- **Result:** pending
+
 ## Summary
 
-total: 13
+total: 15
 passed: 0
 failed: 0
-pending: 13
+pending: 15

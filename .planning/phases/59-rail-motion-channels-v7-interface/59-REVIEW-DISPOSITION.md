@@ -72,7 +72,7 @@ recorded: 2026-11-07T11:38:36.153Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-01 | critical | open | - |
+| CR-01 | critical | fixed | closed by 797929fd9 + ab9093c79 + 9817da784: numbers now encode as IEEE-754 bits in both languages, serde_json uses float_roundtrip, and -0 is normalized at the encoder so it survives the JSON transport |
 | WR-01 | warning | open | - |
 | WR-02 | warning | open | - |
 | IN-01 | info | open | - |
