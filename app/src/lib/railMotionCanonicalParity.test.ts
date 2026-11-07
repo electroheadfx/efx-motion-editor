@@ -34,16 +34,102 @@ const FIXTURE = JSON.parse(
   readFileSync(new URL('./__fixtures__/railMotionCanonical.golden.json', import.meta.url), 'utf8'),
 ) as GoldenFixture;
 
+/**
+ * 59-24 (WR-05): the ordering document's raw shape. Every canonical collection
+ * carries two mixed-case ids, so a code-unit encoder and an ICU-collation
+ * encoder disagree about all four sorts. The bytes payloads are the two the
+ * `rail-motion-empty` entry already freezes.
+ */
+const ORDERING_RECORDS = [
+  { kind: 'real-key', keyId: 'B', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: 'UklGRhgAAABXRUJQVlA4TC8AAAAAAAAA', width: 2, height: 2 } },
+  { kind: 'real-key', keyId: 'a', appFrame: 8, payload: { frameIndex: 8, appFrame: 8, bytes: 'UklGRhwAAABXRUJQVlA4TC8BAAAAAAAAAKo=', width: 2, height: 2 } },
+] as const;
+
+const ORDERING_INTERPOLATION = { enabled: false, mode: 'duplicate' } as const;
+
+/** The two clips, lifecycle-less (TS resolves it) or in the persisted shape. */
+function orderingLoopClips(explicitLifecycle: boolean): unknown[] {
+  const base = [
+    { loopId: 'Rail_B', placementStart: 0, sourceKeyIds: ['B'], repeat: 1, mode: 'progressive' },
+    { loopId: 'rail-a', placementStart: 8, sourceKeyIds: ['a'], repeat: 1, mode: 'progressive' },
+  ];
+  return base.map((clip) => (explicitLifecycle
+    ? {
+        ...clip,
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: clip.placementStart,
+        originalEndExclusive: clip.placementStart + clip.sourceKeyIds.length * clip.repeat,
+        visibleRanges: [{
+          start: clip.placementStart,
+          endExclusive: clip.placementStart + clip.sourceKeyIds.length * clip.repeat,
+        }],
+        frameOverrides: [],
+      }
+    : clip));
+}
+
+// `position-x` and `position-y` are a paired axis in the motion model (a lone
+// `position-x` is refused), so `Rail_B` carries the pair at one shared frame.
+const ORDERING_RAIL_MOTIONS = [
+  {
+    railId: 'Rail_B',
+    anchorKeyId: 'B',
+    channels: [
+      { id: 'position-x', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+      { id: 'position-y', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+    ],
+  },
+  { railId: 'rail-a', anchorKeyId: 'a', channels: [{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }] },
+] as const;
+
+function orderingDocument(explicitLifecycle: boolean): unknown {
+  const loopClips = orderingLoopClips(explicitLifecycle);
+  const incomingInterpolationBreakKeyIds = ['B', 'a'];
+  return {
+    capacity: 24,
+    realKeyRecords: ORDERING_RECORDS,
+    interpolation: ORDERING_INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame: 0,
+    revision: buildPhysicPaintRotoPhysicalRevision(
+      ORDERING_RECORDS,
+      ORDERING_INTERPOLATION,
+      loopClips,
+      incomingInterpolationBreakKeyIds,
+      [],
+      ORDERING_RAIL_MOTIONS,
+    ),
+    loopClips,
+    railMotions: ORDERING_RAIL_MOTIONS,
+    incomingInterpolationBreakKeyIds,
+  };
+}
+
+/** Slice one canonical term out of the project-equality source. */
+function canonicalTerm(source: string, name: string, nextName: string | null): string {
+  const start = source.indexOf(`${name}:`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = nextName === null ? source.length : source.indexOf(`${nextName}:`, start);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
 describe('rail motion canonical parity (TS half)', () => {
   it('carries the frozen cross-language documents', () => {
     expect(FIXTURE.version).toBe(1);
-    expect(FIXTURE.documents.map((entry) => entry.name)).toEqual([
+    // Joined on purpose: a missing/extra document then reports as one
+    // single-line diff instead of a truncated array dump.
+    expect(FIXTURE.documents.map((entry) => entry.name).join('|')).toBe([
       'rail-kind',
       'untouched',
       'rail-kind-script',
       'rail-motion',
       'rail-motion-empty',
-    ]);
+      'rail-motion-ordering',
+    ].join('|'));
   });
 
   it.each(FIXTURE.documents.map((entry) => [entry.name, entry] as const))(
@@ -130,5 +216,104 @@ describe('rail motion canonical parity (TS half)', () => {
     expect(buildPhysicPaintRotoProjectEquality(documentWith([lifecycleless]))).toBe(
       buildPhysicPaintRotoProjectEquality(documentWith([explicit])),
     );
+  });
+
+  // 59-24 (WR-05): every canonical collection orders ids by UTF-16 code unit,
+  // matching Rust's `str::cmp` over UTF-8 bytes for the accepted id charset.
+  // ICU collation reverses both pairs here ('a' before 'B', 'rail-a' before
+  // 'Rail_B'), which made two revisions for one document. The in-memory
+  // document keeps lifecycle-less clips on purpose: it never reaches Rust.
+  it('orders every canonical collection by code unit for mixed-case ids', () => {
+    const source = buildPhysicPaintRotoProjectEqualitySource(orderingDocument(false));
+
+    const recordsTerm = canonicalTerm(source, 'records', 'interpolation');
+    const recordsB = recordsTerm.indexOf('s1:B');
+    const recordsA = recordsTerm.indexOf('s1:a');
+    expect(recordsB).toBeGreaterThanOrEqual(0);
+    expect(recordsA).toBeGreaterThanOrEqual(0);
+    expect(recordsB).toBeLessThan(recordsA);
+
+    const loopsTerm = canonicalTerm(source, 'loops', 'rail-motions');
+    const loopsUpper = loopsTerm.indexOf('s6:Rail_B');
+    const loopsLower = loopsTerm.indexOf('s6:rail-a');
+    expect(loopsUpper).toBeGreaterThanOrEqual(0);
+    expect(loopsLower).toBeGreaterThanOrEqual(0);
+    expect(loopsUpper).toBeLessThan(loopsLower);
+
+    const motionsTerm = canonicalTerm(source, 'rail-motions', 'incoming-breaks');
+    const motionsUpper = motionsTerm.indexOf('s6:Rail_B');
+    const motionsLower = motionsTerm.indexOf('s6:rail-a');
+    expect(motionsUpper).toBeGreaterThanOrEqual(0);
+    expect(motionsLower).toBeGreaterThanOrEqual(0);
+    expect(motionsUpper).toBeLessThan(motionsLower);
+
+    const breaksTerm = canonicalTerm(source, 'incoming-breaks', 'capacity');
+    const breaksB = breaksTerm.indexOf('s1:B');
+    const breaksA = breaksTerm.indexOf('s1:a');
+    expect(breaksB).toBeGreaterThanOrEqual(0);
+    expect(breaksA).toBeGreaterThanOrEqual(0);
+    expect(breaksB).toBeLessThan(breaksA);
+  });
+
+  // 260921-c7x / 59-24 (T-59-68): the TS encoder resolves the lifecycle
+  // block unconditionally, while the Rust encoder emits it only when
+  // `syncState` is present. A shared fixture entry must therefore carry the
+  // explicit persisted block on EVERY Loop Clip — this guard pins that shape
+  // for every current and future entry, not only the ordering one.
+  it('freezes the explicit persisted lifecycle block on every fixture Loop Clip', () => {
+    const lifecycleMembers = [
+      'syncState',
+      'provenanceState',
+      'phaseOrigin',
+      'originalEndExclusive',
+      'visibleRanges',
+      'frameOverrides',
+    ] as const;
+    let inspected = 0;
+    for (const entry of FIXTURE.documents) {
+      const clips = (entry.document as { loopClips?: readonly Record<string, unknown>[] }).loopClips ?? [];
+      for (const clip of clips) {
+        inspected += 1;
+        for (const member of lifecycleMembers) {
+          expect(
+            Object.prototype.hasOwnProperty.call(clip, member),
+            `${entry.name}/${String(clip.loopId ?? clip.id ?? '?')} must carry ${member}`,
+          ).toBe(true);
+        }
+      }
+    }
+    expect(inspected).toBe(5);
+
+    const ordering = FIXTURE.documents.find((entry) => entry.name === 'rail-motion-ordering');
+    expect(ordering).toBeDefined();
+    const orderingClips = (ordering!.document as { loopClips: readonly Record<string, unknown>[] }).loopClips;
+    expect(orderingClips).toEqual([
+      {
+        loopId: 'Rail_B',
+        placementStart: 0,
+        sourceKeyIds: ['B'],
+        repeat: 1,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 0,
+        originalEndExclusive: 1,
+        visibleRanges: [{ start: 0, endExclusive: 1 }],
+        frameOverrides: [],
+      },
+      {
+        loopId: 'rail-a',
+        placementStart: 8,
+        sourceKeyIds: ['a'],
+        repeat: 1,
+        mode: 'progressive',
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 8,
+        originalEndExclusive: 9,
+        visibleRanges: [{ start: 8, endExclusive: 9 }],
+        frameOverrides: [],
+      },
+    ]);
   });
 });
