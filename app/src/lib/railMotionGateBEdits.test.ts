@@ -80,12 +80,19 @@ function cycleRecords(): PhysicPaintRotoRealKeyRecord[] {
   return [record('A', 0), record('B', 1), record('C', 2), record('D', 3), record('E', 4)];
 }
 
-function railMotion(railId = 'rail-1', anchorKeyId = 'A'): PhysicPaintRotoRailMotionRecord {
+function railMotion(
+  railId = 'rail-1',
+  anchorKeyId = 'A',
+  frames: readonly number[] = [0],
+): PhysicPaintRotoRailMotionRecord {
   return {
     railId,
     anchorKeyId,
     channels: [
-      { id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
+      {
+        id: 'opacity',
+        keys: frames.map((frame) => ({ frame, value: 0.5, easing: 'ease' as const, wiggle: 0 })),
+      },
     ],
   };
 }
@@ -310,6 +317,52 @@ function canonicalPayload(
       ?? physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)?.cursorAppFrame
       ?? 0,
     ...(options.railMotions === undefined ? {} : { railMotions: options.railMotions }),
+  });
+}
+
+/**
+ * 261107-rrp: the exact loop-only shape `confirmKeyRailCycle` publishes through
+ * `buildLoopOnlyPublication` — every physical record byte-identical, the new
+ * Standard clip, the empty affected range anchored at the placement start, and
+ * NO `railMotions` member so the bridge reconciles the conversion.
+ */
+function keyRailCyclePayload(launchOperationId: string) {
+  const document = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(LAYER, TEST_TRACK_ID);
+  const records = bridgeRecordEntries(document.realKeyRecords);
+  const anchor = 0;
+  const clip: PhysicPaintRotoLoopClip = {
+    loopId: 'loop-new',
+    placementStart: anchor,
+    sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+    repeat: 3,
+    mode: 'progressive',
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: anchor,
+    originalEndExclusive: 15,
+    visibleRanges: [{ start: anchor, endExclusive: 15 }],
+    frameOverrides: [],
+  };
+  return bridgePayload(launchOperationId, {
+    operationKind: 'play-script',
+    startFrame: anchor,
+    records,
+    loopClips: [clip],
+    selectedKeyId: document.selectedKeyId,
+    selectedAppFrame: document.selectedKeyId === null ? null : document.cursorAppFrame,
+    cursorAppFrame: document.cursorAppFrame,
+    rotoBackground: { background: 'transparent', grainStrength: 0 },
+    semanticDelta: {
+      kind: 'play-script',
+      affectedStartAppFrame: anchor,
+      affectedEndAppFrame: anchor - 1,
+      expectedLayerCapacity: capacity,
+      expectedLayerEndExclusive: capacity,
+      proposedRecords: records,
+      freshKeyIds: [],
+      loopOnly: true,
+    },
   });
 }
 
@@ -903,5 +956,54 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
       'Rail-set paste/duplicate target document does not match parent recomputation.',
     );
     expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toEqual(beforeMotions);
+  });
+
+  // 261107-rrp: adding a Rail cycle to an animated Key Rail used to delete its
+  // motion — the fresh loopId made every source key group-owned, the next side
+  // derived zero Key Rail segments, and the record fell through to
+  // delete-only-key. Through the REAL bridge this must be ONE commit that
+  // re-keys the record onto the new loopId with every channel intact, reports
+  // no drop, and undoes in one step.
+  it('261107-rrp: a Key Rail cycle conversion keeps every motion key, and one undo restores it', async () => {
+    seedBridgeDocument(cycleRecords(), { railMotions: [railMotion('rail-1', 'A', [0, 4])] });
+    // A play-script payload requires a saved project and a bound script-library
+    // authority; `closeProject()` in afterEach resets both.
+    projectStore.filePath.value = '/tmp/gate-b-cycle.mce';
+    projectStore.scriptLibraryAuthority.value = 'gate-b-script-authority';
+    const launch = await launchBridge();
+    const beforeDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    const beforeRevision = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+    const seedChannels = beforeDocument.railMotions![0].channels;
+
+    const forward = keyRailCyclePayload(launch);
+    const result = await applyBridgePayload(forward);
+
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditApplyResult(result)) {
+      throw new Error('Expected an accepted physical edit result.');
+    }
+    expect(result.railMotionMergeNotice).toBeUndefined();
+
+    // One record, re-keyed onto the new cycle rail, channels and rail-local
+    // frames byte-identical to the seed.
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('loop-new');
+    expect(stored[0].anchorKeyId).toBe('A');
+    expect(stored[0].channels).toEqual(seedChannels);
+
+    const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
+    expect(acceptedDocument.loopClips).toHaveLength(1);
+    expect(acceptedDocument.loopClips[0].loopId).toBe('loop-new');
+    expect(acceptedDocument.revision).not.toBe(beforeRevision);
+    expect(result.acceptedRevision).toBe(acceptedDocument.revision);
+
+    await undoAcceptedEdit(launch, forward.operationId, beforeDocument, beforeRevision);
+    const restored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(restored).toHaveLength(1);
+    expect(restored[0].railId).toBe('rail-1');
+    expect(restored[0].anchorKeyId).toBe('A');
+    expect(restored[0].channels).toEqual(seedChannels);
+    expect(physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!.revision).toBe(beforeRevision);
   });
 });

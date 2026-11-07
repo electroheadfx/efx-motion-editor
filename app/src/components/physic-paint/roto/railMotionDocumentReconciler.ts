@@ -18,6 +18,7 @@
  */
 
 import {
+  onConvertRailToLoopClip,
   onDeleteFirstKey,
   onDeleteOnlyKey,
   onMergeRails,
@@ -46,10 +47,12 @@ export interface RailMotionDocumentKeyRecord {
  * The Loop Clip facts that define group ownership. `sourceKeyIds` and
  * `frameOverrides[].keyId` are the production ownership projection; the extra
  * structural members are accepted so the document's clip collection can be
- * passed without copying.
+ * passed without copying. `placementStart` is the conversion guard: a new clip
+ * converts a Key Rail only when it starts on that rail's first key frame.
  */
 export interface RailMotionDocumentLoopClipFact {
   readonly loopId: string;
+  readonly placementStart?: number;
   readonly sourceKeyIds: readonly string[];
   readonly frameOverrides?: readonly { readonly keyId: string }[];
 }
@@ -175,7 +178,12 @@ type RailMotionEditClassification =
       readonly mergedAnchorKeyId: string;
       readonly priorSegment: KeyRailSegment;
     }
-  | { readonly kind: 'rail-start-moved' };
+  | { readonly kind: 'rail-start-moved' }
+  | {
+      readonly kind: 'convert-rail-to-loop';
+      readonly loopId: string;
+      readonly anchorKeyId: string;
+    };
 
 interface ClassifyInput {
   readonly record: PhysicPaintRotoRailMotionRecord;
@@ -184,6 +192,48 @@ interface ClassifyInput {
   readonly nextSegmentKeyIds: ReadonlySet<string>;
   readonly previousLoopIds: ReadonlySet<string>;
   readonly nextLoopIds: ReadonlySet<string>;
+  readonly nextLoopClips: readonly RailMotionDocumentLoopClipFact[];
+}
+
+/**
+ * Detects the Key Rail -> cycle conversion. The conversion mints a FRESH loopId
+ * and makes every source key group-owned, so the next side derives no Key Rail
+ * segment at all and the record would fall through to delete-only-key. It is a
+ * conversion only when ALL of these hold, otherwise the caller keeps the
+ * existing non-conversion classification:
+ *
+ * - the clip id is NEW (absent from the previous side — an existing loop that
+ *   suddenly owns these keys is not an identity change we can prove);
+ * - the clip carries a `placementStart` (absent fails closed) equal to the
+ *   prior Key Rail's first key frame (a different placement is not the rail);
+ * - the clip owns every prior segment key through the ONE group-ownership
+ *   projection (`sourceKeyIds` + `frameOverrides[].keyId`).
+ *
+ * The transition is anchored on the clip's first source key, falling back to
+ * the prior recovery hint when ownership arrives only through overrides.
+ */
+function findConversionLoopClip(input: {
+  readonly record: PhysicPaintRotoRailMotionRecord;
+  readonly priorSegment: KeyRailSegment;
+  readonly previousLoopIds: ReadonlySet<string>;
+  readonly nextLoopClips: readonly RailMotionDocumentLoopClipFact[];
+}): {
+  readonly loopId: string;
+  readonly anchorKeyId: string;
+} | null {
+  const { record, priorSegment, previousLoopIds, nextLoopClips } = input;
+  for (const clip of nextLoopClips) {
+    if (previousLoopIds.has(clip.loopId)) continue;
+    if (clip.placementStart === undefined) continue;
+    if (clip.placementStart !== priorSegment.firstKeyFrame) continue;
+    const ownedKeyIds = collectRailMotionGroupOwnedKeyIds([clip]);
+    if (!priorSegment.keyIds.every((keyId) => ownedKeyIds.has(keyId))) continue;
+    return {
+      loopId: clip.loopId,
+      anchorKeyId: clip.sourceKeyIds[0] ?? record.anchorKeyId,
+    };
+  }
+  return null;
 }
 
 /**
@@ -210,6 +260,27 @@ function classifyRailMotionEdit(input: ClassifyInput): RailMotionEditClassificat
   const successorSegments = nextSegments.filter((segment) => (
     sharesAnyKey(segment.keyIds, new Set(priorKeyIds))
   ));
+
+  // Cycle conversion (261107-rrp): adding a Rail/Key Rail cycle to an animated
+  // Key Rail mints a fresh loopId and makes every source key group-owned, so no
+  // Key Rail segment survives. This is an identity change that must RE-KEY the
+  // record onto the new loopId — it is checked BEFORE the delete rows so the
+  // conversion can never be classified as a deletion.
+  if (successorSegments.length === 0) {
+    const conversion = findConversionLoopClip({
+      record,
+      priorSegment,
+      previousLoopIds: input.previousLoopIds,
+      nextLoopClips: input.nextLoopClips,
+    });
+    if (conversion !== null) {
+      return {
+        kind: 'convert-rail-to-loop',
+        loopId: conversion.loopId,
+        anchorKeyId: conversion.anchorKeyId,
+      };
+    }
+  }
 
   // Delete-first-key: the successor starts exactly on the prior second key and
   // is a suffix of the prior segment. Identity and rail-local frames survive;
@@ -315,6 +386,7 @@ export function reconcileRailMotionsForDocumentEdit(
       nextSegmentKeyIds,
       previousLoopIds,
       nextLoopIds,
+      nextLoopClips: next.loopClips,
     });
 
     switch (classification.kind) {
@@ -375,6 +447,17 @@ export function reconcileRailMotionsForDocumentEdit(
             candidate === current ? moved : candidate
           ));
         }
+        break;
+      }
+      case 'convert-rail-to-loop': {
+        const nextCollection = onConvertRailToLoopClip(
+          working,
+          record.railId,
+          classification.loopId,
+          classification.anchorKeyId,
+        );
+        if (nextCollection !== working) changed = true;
+        working = nextCollection;
         break;
       }
     }

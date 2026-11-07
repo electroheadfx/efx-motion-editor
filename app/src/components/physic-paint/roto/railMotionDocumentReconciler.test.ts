@@ -321,3 +321,179 @@ describe('59-15 rail motion document reconciler — group ownership is load-bear
     expect(result.adoptedRailId).toBe('rail-c');
   });
 });
+
+// 261107-rrp: converting an animated Key Rail into a Rail cycle mints a fresh
+// loopId and turns every source key GROUP-OWNED in the same edit. The next side
+// therefore derives zero Key Rail segments; before this fix the record fell
+// through to delete-only-key and the conversion silently destroyed the user's
+// motion. A NEW clip that owns the whole prior segment at the same placement is
+// the conversion row: the record is re-keyed onto the loop identity, keeping
+// every channel and rail-local frame.
+describe('261107-rrp rail motion document reconciler — Key Rail to cycle conversion', () => {
+  const cycleKeys: readonly KeyTuple[] = [['A', 0], ['B', 1], ['C', 2], ['D', 3], ['E', 4]];
+  const conversionClip: RailMotionDocumentLoopClipFact = {
+    loopId: 'loop-new',
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+  };
+
+  it('re-keys the record to the new loop instead of deleting it', () => {
+    const record = motion('rail-1', 'A');
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, { loopClips: [conversionClip] }),
+      railMotions: [record],
+    });
+
+    expect(result.railMotions).toHaveLength(1);
+    expect(result.railMotions[0]).not.toBe(record);
+    expect(result.railMotions[0].railId).toBe('loop-new');
+    expect(result.railMotions[0].anchorKeyId).toBe('A');
+    expect(result.railMotions[0].channels).toEqual(record.channels);
+    expect(result.railMotions[0].channels[0].keys).toEqual(record.channels[0].keys);
+    expect(result.adoptedRailId).toBeNull();
+    expect(result.droppedRailId).toBeNull();
+    expect(result.droppedRailFrames).toBeNull();
+  });
+
+  it('anchors the converted record on the loop first source key', () => {
+    const record = motion('rail-1', 'B');
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, { loopClips: [conversionClip] }),
+      railMotions: [record],
+    });
+
+    expect(result.railMotions).toHaveLength(1);
+    expect(result.railMotions[0].railId).toBe('loop-new');
+    expect(result.railMotions[0].anchorKeyId).toBe('A');
+  });
+
+  it('detects a conversion whose ownership arrives through frameOverrides', () => {
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, {
+        loopClips: [{
+          loopId: 'loop-overrides',
+          placementStart: 0,
+          sourceKeyIds: [],
+          frameOverrides: ['A', 'B', 'C', 'D', 'E'].map((keyId) => ({ keyId })),
+        }],
+      }),
+      railMotions: [motion('rail-1', 'A')],
+    });
+
+    expect(result.railMotions).toHaveLength(1);
+    expect(result.railMotions[0].railId).toBe('loop-overrides');
+    // No source key to anchor on: the prior recovery hint is kept.
+    expect(result.railMotions[0].anchorKeyId).toBe('A');
+  });
+
+  it('returns the same collection when the post-conversion snapshot is reconciled again', () => {
+    const record = motion('loop-new', 'A');
+    const input = [record];
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys, { loopClips: [conversionClip] }),
+      next: snapshot(cycleKeys, { loopClips: [conversionClip] }),
+      railMotions: input,
+    });
+
+    expect(result.railMotions).toBe(input);
+    expect(result.railMotions[0]).toBe(record);
+  });
+
+  it('leaves the collection unchanged when the destination loop already carries a record', () => {
+    const source = motion('rail-1', 'A');
+    const collision = motion('loop-new', 'C');
+    const input = [source, collision];
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, { loopClips: [conversionClip] }),
+      railMotions: input,
+    });
+
+    expect(result.railMotions).toBe(input);
+    expect(result.railMotions.map((record) => record.railId)).toEqual(['rail-1', 'loop-new']);
+    expect(result.railMotions[0]).toBe(source);
+    expect(result.adoptedRailId).toBeNull();
+    expect(result.droppedRailId).toBeNull();
+    expect(result.droppedRailFrames).toBeNull();
+  });
+
+  it('does not re-key when the next clip owns only some prior keys', () => {
+    const record = motion('rail-1', 'A');
+    const input = [record];
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, {
+        loopClips: [{ loopId: 'loop-partial', placementStart: 0, sourceKeyIds: ['A', 'B'] }],
+      }),
+      railMotions: input,
+    });
+
+    expect(result.railMotions).toBe(input);
+    expect(result.railMotions[0].railId).toBe('rail-1');
+  });
+
+  it('does not re-key when the clip placement start differs from the prior rail start', () => {
+    const record = motion('rail-1', 'A');
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, {
+        loopClips: [{ ...conversionClip, placementStart: 1 }],
+      }),
+      railMotions: [record],
+    });
+
+    // Fail closed to the existing delete-only-key row: never re-based.
+    expect(result.railMotions).toEqual([]);
+  });
+
+  it('does not re-key when the clip facts omit placementStart', () => {
+    const record = motion('rail-1', 'A');
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, {
+        loopClips: [{ loopId: 'loop-new', sourceKeyIds: conversionClip.sourceKeyIds }],
+      }),
+      railMotions: [record],
+    });
+
+    expect(result.railMotions).toEqual([]);
+  });
+
+  it('does not re-key when a next Key Rail segment still shares a prior key', () => {
+    const record = motion('rail-1', 'A');
+    const input = [record];
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(cycleKeys),
+      next: snapshot(cycleKeys, {
+        loopClips: [{ loopId: 'loop-b', placementStart: 1, sourceKeyIds: ['B'] }],
+      }),
+      railMotions: input,
+    });
+
+    expect(result.railMotions).toBe(input);
+    expect(result.railMotions[0].railId).toBe('rail-1');
+    expect(result.railMotions[0].anchorKeyId).toBe('A');
+  });
+
+  it('never re-keys to a loop id that already existed before the edit', () => {
+    const keys: readonly KeyTuple[] = [...cycleKeys, ['X', 10]];
+    const result = reconcileRailMotionsForDocumentEdit({
+      previous: snapshot(keys, {
+        loopClips: [{ loopId: 'loop-existing', placementStart: 10, sourceKeyIds: ['X'] }],
+      }),
+      next: snapshot(keys, {
+        loopClips: [{
+          loopId: 'loop-existing',
+          placementStart: 0,
+          sourceKeyIds: ['A', 'B', 'C', 'D', 'E'],
+        }],
+      }),
+      railMotions: [motion('rail-1', 'A')],
+    });
+
+    expect(result.railMotions.some((record) => record.railId === 'loop-existing')).toBe(false);
+  });
+});

@@ -317,6 +317,40 @@ export function assignRailMotionRailViews(
 }
 
 /**
+ * Converting a Key Rail into a Rail/Key Rail cycle changes identity from the
+ * minted rail id to the Loop Clip's durable `loopId`. The edit mints a fresh
+ * loop id, so the stored record must be RE-KEYED in the same commit or the
+ * cycle rail would start unanimated and the motion would be lost.
+ *
+ * Every channel, key, value, easing and rail-local frame crosses verbatim;
+ * only the identity pair changes. The loop's first source key becomes the
+ * recovery hint. The transition fails closed (returns the input) when the rail
+ * already carries the loop identity, when the source record is absent, or when
+ * the destination loop id already carries a record — it never duplicates a
+ * railId and never deletes the only copy.
+ */
+export function onConvertRailToLoopClip(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+  loopId: string,
+  anchorKeyId: string,
+): readonly PhysicPaintRotoRailMotionRecord[] {
+  if (railId === loopId) return records;
+  const sourceIndex = records.findIndex((record) => record.railId === railId);
+  if (sourceIndex < 0) return records;
+  if (records.some((record) => record.railId === loopId)) return records;
+  const source = records[sourceIndex];
+  const converted = Object.freeze({
+    railId: loopId,
+    anchorKeyId,
+    channels: source.channels,
+  }) as PhysicPaintRotoRailMotionRecord;
+  return Object.freeze(
+    records.map((record, index) => (index === sourceIndex ? converted : record)),
+  ) as readonly PhysicPaintRotoRailMotionRecord[];
+}
+
+/**
  * Deleting a rail's first drawing key re-stamps the recovery hint. Identity
  * (`railId`) and every rail-local key frame are unchanged: motion does not
  * ripple when a drawing key disappears.

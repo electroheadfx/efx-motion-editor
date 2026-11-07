@@ -141,6 +141,29 @@ function spanResolverFrom(
   };
 }
 
+type RailMotionConvertToLoopTransition = (
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+  loopId: string,
+  anchorKeyId: string,
+) => readonly PhysicPaintRotoRailMotionRecord[];
+
+/**
+ * 261107-rrp: reached through the module namespace for the same reason as the
+ * span-resolver factory — the RED run reports a real assertion instead of a
+ * module link error while the export does not exist yet.
+ */
+function exportedConvertToLoopTransition(): RailMotionConvertToLoopTransition {
+  const transition = (railMotionIdentityModule as unknown as {
+    onConvertRailToLoopClip?: RailMotionConvertToLoopTransition;
+  }).onConvertRailToLoopClip;
+  expect(typeof transition).toBe('function');
+  if (transition === undefined) {
+    throw new Error('railMotionIdentity does not export onConvertRailToLoopClip');
+  }
+  return transition;
+}
+
 describe('rail motion identity bindings', () => {
   it('binds a loop rail to its loopId without minting an id', () => {
     const binding = bindLoopRail('loop-rail-a', 'source-key-1');
@@ -544,6 +567,62 @@ describe('rail motion gate B transitions', () => {
     expect(rekeyRailMotionsForCopy(records, [
       { sourceRailId: 'rail-other', destinationRailId: 'rail-new', anchorKeyId: 'Z' },
     ], ['rail-src'])).toBeNull();
+  });
+});
+
+// 261107-rrp: a Key Rail converted into a cycle changes identity from the
+// minted rail id to the Loop Clip's loopId. Every channel and rail-local key
+// frame crosses the conversion verbatim; only the identity pair changes.
+describe('261107-rrp rail motion identity — Key Rail to cycle conversion', () => {
+  it('re-keys to the loop id and keeps every channel and rail-local frame', () => {
+    const record = animatedRecord('rail-k', 'A', [0, 4]);
+    const bystander = animatedRecord('rail-other', 'Z');
+    const records = Object.freeze([record, bystander]);
+
+    const next = exportedConvertToLoopTransition()(records, 'rail-k', 'loop-new', 'A');
+
+    expect(next).not.toBe(records);
+    expect(next).toHaveLength(2);
+    expect(next[0]).not.toBe(record);
+    expect(next[0].railId).toBe('loop-new');
+    expect(next[0].anchorKeyId).toBe('A');
+    expect(next[0].channels).toEqual(record.channels);
+    expect(positionFrames(next[0])).toEqual([0, 4]);
+    expect(Object.isFrozen(next[0])).toBe(true);
+    expect(Object.isFrozen(next)).toBe(true);
+    expect(next[1]).toBe(bystander);
+    // The source collection is never mutated.
+    expect(records[0]).toBe(record);
+    expect(record.railId).toBe('rail-k');
+  });
+
+  it('re-stamps the recovery hint to the loop first source key', () => {
+    const record = animatedRecord('rail-k', 'A', [0, 4]);
+    const next = exportedConvertToLoopTransition()([record], 'rail-k', 'loop-new', 'B');
+
+    expect(next[0].anchorKeyId).toBe('B');
+    expect(next[0].railId).toBe('loop-new');
+    expect(positionFrames(next[0])).toEqual([0, 4]);
+  });
+
+  it('returns the same collection when the rail already carries the loop identity', () => {
+    const records = Object.freeze([animatedRecord('loop-new', 'A')]);
+
+    expect(exportedConvertToLoopTransition()(records, 'loop-new', 'loop-new', 'A')).toBe(records);
+  });
+
+  it('returns the input when the source record is absent', () => {
+    const records = Object.freeze([animatedRecord('rail-other', 'Z')]);
+
+    expect(exportedConvertToLoopTransition()(records, 'rail-missing', 'loop-new', 'A')).toBe(records);
+  });
+
+  it('fails closed when the destination loop id already carries a record', () => {
+    const source = animatedRecord('rail-k', 'A', [0, 4]);
+    const collision = animatedRecord('loop-new', 'C', [0, 2]);
+    const records = Object.freeze([source, collision]);
+
+    expect(exportedConvertToLoopTransition()(records, 'rail-k', 'loop-new', 'A')).toBe(records);
   });
 });
 
