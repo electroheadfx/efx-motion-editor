@@ -349,10 +349,6 @@ export function TimelineMotionChannelLane({
         height: laneHeight,
         background: TIMELINE_SURFACE.motionLane,
         overflow: 'hidden',
-        // 59-12 UAT: the selected rail's lanes carry a visible inset line; a
-        // lane shown only through the drawing-key fallback is dimmed, so the
-        // user can see that clicking it is what arms the canvas move.
-        boxShadow: selected ? `inset 0 0 0 1px ${palette.line}` : undefined,
       }}
       data-motion-rail-selected={selected ? 'true' : 'false'}
       onClick={() => onSelectRail?.(railId)}
