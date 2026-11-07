@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - Completed quick task 261107-qgj: Motion values moved to a floating Motion sheet (615f38acd); live UAT pending
+Last activity: 2026-11-07 - UAT approved quick task 261107-qgj: Motion values in a floating Motion sheet (615f38acd + slider treatment 8091328ea, header Reset 3ddaf068f)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -234,7 +234,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-mkn | Fix Phase 59 UI: channel header rows in the pinned left header column, Animate channel menu, Motion boundaries tool and animate mode (UAT approved) | 2026-11-07 | b5cb501e1 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
 | 261107-pd8 | Motion channel keys draggable through time on the Phase 59 rail (reuses the shared key-rail drag session); selected-rail lane inset line removed (UAT approved) | 2026-11-07 | bc92429ef | [261107-pd8-draggable-motion-key-from-phase-59-rail-](./quick/261107-pd8-draggable-motion-key-from-phase-59-rail-/) |
 | 3 | Studio: end-justify the Animate channel-menu button on the bottom action row; grey it out (aria-disabled) until a rail is selected | 2026-11-07 | 904743666 | — |
-| 261107-qgj | Move the Motion values out of the sidebar Scripts tab into a floating Motion sheet; present channels only, opened by the animate-mode property selection, one close path restores the previous paint tool | 2026-11-07 | 615f38acd | [261107-qgj-move-all-the-motion-values-from-sidebar-](./quick/261107-qgj-move-all-the-motion-values-from-sidebar-/) |
+| 261107-qgj | Move the Motion values out of the sidebar Scripts tab into a floating Motion sheet; present channels only, Stroke settings slider rows, header Reset pins the identity pose, one close path restores the previous paint tool (UAT approved) | 2026-11-07 | 615f38acd | [261107-qgj-move-all-the-motion-values-from-sidebar-](./quick/261107-qgj-move-all-the-motion-values-from-sidebar-/) |
 
 ## Roadmap Evolution
 
