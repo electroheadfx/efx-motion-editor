@@ -2294,6 +2294,18 @@ export function selectRailMotionKey(selection: RailMotionKeySelection | null): v
     }) as RailMotionKeySelection;
 }
 
+/**
+ * 261107-qgj UAT: the identity pose the floating Motion modal's Reset pins at
+ * the displayed frame, in DISPLAY units (px / percent / degrees).
+ */
+const RAIL_MOTION_RESET_UI_VALUE: Readonly<Record<PhysicPaintRotoRailMotionChannelId, number>> = Object.freeze({
+  'position-x': 0,
+  'position-y': 0,
+  scale: 100,
+  rotation: 0,
+  opacity: 100,
+});
+
 interface ActiveMotionCommandFacts {
   readonly state: ActiveRailMotionState | null;
   readonly record: PhysicPaintRotoRailMotionRecord | null;
@@ -3119,6 +3131,55 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [commitRailMotionInspectorValue, input]);
 
   /**
+   * 261107-qgj UAT: the modal's Reset. It pins the identity pose for every
+   * PRESENT channel at the presentation's frame — the numbers the fields
+   * displayed — by chaining the pure channel writes in memory and committing
+   * the resulting collection ONCE, so a reset is a single undo step.
+   */
+  const resetRailMotionInspectorValues = useCallback((
+    presentation: RailMotionInspectorPresentation,
+  ): string | null => {
+    const state = readActiveRailMotionState(input);
+    if (
+      state === null
+      || state.view === null
+      || state.record === null
+      || state.record.railId !== presentation.railId
+    ) {
+      return 'Select a rail with Motion first.';
+    }
+    if (railMotionSelectedChannel.value === null && railMotionSelectedKey.value === null) {
+      return 'Select a Motion key first.';
+    }
+    let records = state.records;
+    for (const field of presentation.fields) {
+      if (!field.present) continue;
+      const result = applyWriteRailMotionChannelValue({
+        records,
+        railId: state.record.railId,
+        keyFrame: presentation.frame,
+        channelId: field.channelId,
+        uiValue: RAIL_MOTION_RESET_UI_VALUE[field.channelId],
+      });
+      if (!result.ok) {
+        input.setApplyStatus?.('error');
+        input.publishStatus?.(result.reason);
+        return result.reason;
+      }
+      records = result.records;
+    }
+    if (records === state.records) return null;
+    const written = commitRailMotionRecords(state, records, input);
+    if (!written.ok) {
+      input.setApplyStatus?.('error');
+      input.publishStatus?.(written.error);
+      return written.error;
+    }
+    input.publishStatus?.('Motion values reset.');
+    return null;
+  }, [input]);
+
+  /**
    * 261107-qgj: the floating Motion modal's props-driven bundle. Open when a
    * property is selected in the pinned header (animate mode) OR a Motion key
    * is selected; the property wins when both are set. Property mode projects
@@ -3151,6 +3212,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       commit: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): string | null => (
         commitRailMotionInspectorValueAtFrame(presentation, channelId, uiValue)
       ),
+      reset: (): string | null => resetRailMotionInspectorValues(presentation),
     }) as RailMotionDialogBundle;
   });
 

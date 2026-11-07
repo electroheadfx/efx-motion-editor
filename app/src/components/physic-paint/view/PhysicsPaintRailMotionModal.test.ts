@@ -158,6 +158,7 @@ function field(
 /** A rail carrying the Position pair and Scale; Rotation/Opacity absent. */
 function partialBundle(
   commit: RailMotionDialogBundle['commit'] = () => null,
+  reset: RailMotionDialogBundle['reset'] = () => null,
 ): RailMotionDialogBundle {
   return {
     presentation: {
@@ -172,6 +173,7 @@ function partialBundle(
       ],
     },
     commit,
+    reset,
   };
 }
 
@@ -190,6 +192,7 @@ function positionOnlyBundle(): RailMotionDialogBundle {
       ],
     },
     commit: () => null,
+    reset: () => null,
   };
 }
 
@@ -283,6 +286,29 @@ describe('261107-qgj floating Motion modal', () => {
       ['position-y', -999],
       ['scale', 250],
     ]);
+  });
+
+  it('the header reset pins the identity pose through the bundle and surfaces its rejection', () => {
+    const reset = vi.fn((): string | null => null);
+    const dialog = signal<RailMotionDialogBundle | null>(partialBundle(() => null, reset));
+    const first = renderModal({ dialog });
+    const findReset = (tree: TestVNode) => collect(tree).find(
+      (node) => node.props?.['data-testid'] === 'physics-rail-motion-modal-reset',
+    )!;
+    const resetButton = findReset(first);
+    expect(resetButton.props?.['aria-label']).toBe('Reset Motion values');
+    const stopPropagation = vi.fn();
+    (resetButton.props?.onPointerDown as (event: unknown) => void)({ stopPropagation });
+    expect(stopPropagation, 'the press never starts a header drag').toHaveBeenCalledTimes(1);
+    click(resetButton);
+    expect(reset).toHaveBeenCalledTimes(1);
+
+    // A refusal reaches the same single alert channel as a field commit.
+    reset.mockReturnValue('This value is outside the Motion channel range.');
+    click(findReset(renderModal({ dialog })));
+    const alerts = collect(renderModal({ dialog })).filter((node) => node.props?.role === 'alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].props?.children).toBe('This value is outside the Motion channel range.');
   });
 
   it('shows a returned rejection verbatim in ONE role="alert"', () => {

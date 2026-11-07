@@ -5591,6 +5591,7 @@ describe('261107-qgj floating Motion modal projection and write', () => {
       }[];
     };
     readonly commit: (channelId: string, uiValue: number) => string | null;
+    readonly reset: () => string | null;
   }
 
   interface RailMotionDialogPort {
@@ -5807,6 +5808,26 @@ describe('261107-qgj floating Motion modal projection and write', () => {
 
     expect(bundle.commit('scale', 150)).toBe('Select a rail with Motion first.');
     expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('resets every present channel to the identity pose at the displayed frame in ONE commit', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+
+    selectRailMotionChannel('scale');
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+    expect(bundle.presentation.frame).toBe(3);
+
+    expect(bundle.reset()).toBeNull();
+    // Position 0 / 0, Scale 100 % (model 1) — the absent channels stay absent.
+    expect(storedChannel('position-x').keys.find((key) => key.frame === 3)?.value).toBe(0);
+    expect(storedChannel('position-y').keys.find((key) => key.frame === 3)?.value).toBe(0);
+    expect(storedChannel('scale').keys.find((key) => key.frame === 3)?.value).toBe(1);
+    expect(liveRecord().channels.some((channel) => channel.id === 'rotation')).toBe(false);
+    expect(replaceSpy, 'one reset is one store commit').toHaveBeenCalledTimes(1);
   });
 
   it('clears both selections through the one close path without touching the paint tool', () => {

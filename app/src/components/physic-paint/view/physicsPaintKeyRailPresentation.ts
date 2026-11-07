@@ -296,6 +296,12 @@ export interface RailMotionDialogBundle {
     channelId: PhysicPaintRotoRailMotionChannelId,
     uiValue: number,
   ) => string | null;
+  /**
+   * Pins the identity pose (Position 0, Scale 100 %, Rotation 0, Opacity 100 %)
+   * for every channel the rail carries at the presentation's frame, in ONE
+   * store commit. Returns the visible rejection, or null on success.
+   */
+  readonly reset: () => string | null;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {

@@ -15,7 +15,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { signal, type ReadonlySignal } from '@preact/signals';
-import { Move, X } from 'lucide-preact';
+import { Move, RotateCcw, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
   SHEET_ID_RAIL_MOTION,
@@ -262,10 +262,9 @@ export function PhysicsPaintRailMotionModal({
   const applied = railMotionModalDragOffset.value;
   const resizedHeight = railMotionModalResizeHeight.value;
 
-  const commitValue = (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): void => {
-    const reason = bundle.commit(channelId, uiValue);
+  const reportReason = (nextReason: string | null): void => {
     const current = commitState.value;
-    if (reason === null) {
+    if (nextReason === null) {
       if (current.reason !== null) {
         commitState.value = { reason: null, rejectionSeq: current.rejectionSeq };
       }
@@ -273,7 +272,15 @@ export function PhysicsPaintRailMotionModal({
     }
     // Never a silent clamp: surface the command layer's sentence verbatim and
     // bump the sequence so the rejected field remounts at the projected value.
-    commitState.value = { reason, rejectionSeq: current.rejectionSeq + 1 };
+    commitState.value = { reason: nextReason, rejectionSeq: current.rejectionSeq + 1 };
+  };
+
+  const commitValue = (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): void => {
+    reportReason(bundle.commit(channelId, uiValue));
+  };
+
+  const resetValues = (): void => {
+    reportReason(bundle.reset());
   };
 
   const { reason, rejectionSeq } = commitState.value;
@@ -308,6 +315,18 @@ export function PhysicsPaintRailMotionModal({
         />
         <strong>Motion</strong>
         <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
+        <button
+          type="button"
+          class="physics-paint-stroke-settings-header-button"
+          data-testid="physics-rail-motion-modal-reset"
+          aria-label="Reset Motion values"
+          title="Reset to default — Position 0, Scale 100%, Rotation 0°, Opacity 100% at this frame"
+          // The header is the drag handle: stop the press so the click lands.
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={resetValues}
+        >
+          <RotateCcw size={12} aria-hidden="true" />
+        </button>
         <button
           type="button"
           class="physics-paint-photo-reference-close"
