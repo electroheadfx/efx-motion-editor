@@ -3,9 +3,16 @@
  * production pivot measurer.
  *
  * Draws one ALREADY-DECODED raster into a bounded offscreen canvas (long edge
- * <= 256px), reads the alpha channel once, and returns the ink bounds
- * normalized to the raster frame. Synchronous by construction (the composite
- * path is synchronous); it never triggers a decode.
+ * <= 256px), reads the pixels once, and returns the ink bounds normalized to
+ * the raster frame. Synchronous by construction (the composite path is
+ * synchronous); it never triggers a decode.
+ *
+ * 261107-tfp follow-up: aquarelle key rasters are OPAQUE transmittance sheets
+ * (`MODE.transparent`, white = no pigment) — every pixel is alpha 255, so an
+ * alpha-only scan reports the whole raster as ink. A fully opaque raster is
+ * therefore measured the way the composite seam converts it
+ * (`transmittanceToAlpha`): pigment = `255 - min(r, g, b)`, white = no ink. A
+ * real-alpha raster (engine-1 paint) keeps the alpha law.
  *
  * This lives OUTSIDE the store deliberately: `paperPass.frameGuard.test.ts`
  * P4(c) bans pixel-array canvas APIs anywhere in `physicPaintStore.ts` (the
@@ -48,6 +55,17 @@ export function measureRailMotionRasterInk(
     ctx.drawImage(source, 0, 0, scanWidth, scanHeight);
     const data = ctx.getImageData(0, 0, scanWidth, scanHeight).data;
 
+    // Fully opaque ⇒ an aquarelle transmittance sheet (the same law
+    // `isFullyOpaqueRaster` applies at the composite seam): white is the sheet,
+    // not paint. Otherwise the raster carries real pigment alpha.
+    let transmittanceSheet = true;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] !== 255) {
+        transmittanceSheet = false;
+        break;
+      }
+    }
+
     let minX = scanWidth;
     let minY = scanHeight;
     let maxX = -1;
@@ -55,8 +73,11 @@ export function measureRailMotionRasterInk(
     for (let y = 0; y < scanHeight; y += 1) {
       const rowOffset = y * scanWidth * 4;
       for (let x = 0; x < scanWidth; x += 1) {
-        // Alpha only: the rail's ink is whatever the alpha channel covers.
-        if (data[rowOffset + x * 4 + 3] === 0) continue;
+        const index = rowOffset + x * 4;
+        if (transmittanceSheet) {
+          const min = Math.min(data[index], data[index + 1], data[index + 2]);
+          if (min === 255) continue;
+        } else if (data[index + 3] === 0) continue;
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;

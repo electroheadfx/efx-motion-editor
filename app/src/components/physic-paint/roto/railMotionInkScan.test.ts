@@ -27,7 +27,7 @@ interface FakeCanvasSetup {
 
 function installFakeDocument(
   alpha: AlphaFn,
-  options: { nullContext?: boolean; throwOnDraw?: boolean } = {},
+  options: { nullContext?: boolean; throwOnDraw?: boolean; pigment?: AlphaFn } = {},
 ): FakeCanvasSetup {
   const drawImage = vi.fn(() => {
     if (options.throwOnDraw) throw new Error('raster released');
@@ -40,7 +40,13 @@ function installFakeDocument(
       const data = new Uint8ClampedArray(width * height * 4);
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
-          data[(y * width + x) * 4 + 3] = alpha(x, y, width, height);
+          const index = (y * width + x) * 4;
+          // Equal RGB channels: `min` is the pixel's transmittance.
+          const min = options.pigment ? options.pigment(x, y, width, height) : 0;
+          data[index] = min;
+          data[index + 1] = min;
+          data[index + 2] = min;
+          data[index + 3] = alpha(x, y, width, height);
         }
       }
       return { data };
@@ -93,6 +99,40 @@ describe('measureRailMotionRasterInk', () => {
     expect(ink!.y).toBeCloseTo(36 / 144, 12);
     expect(ink!.width).toBeCloseTo(128 / 256, 12);
     expect(ink!.height).toBeCloseTo(72 / 144, 12);
+  });
+
+  it('measures pigment on an opaque transmittance sheet (white = no ink)', () => {
+    // 261107-tfp: aquarelle frames are opaque sheets — alpha 255 everywhere,
+    // so the box must come from transmittance, not the alpha channel.
+    // 1920x1080 -> 256x144; pigment covers x 64..191, y 36..107.
+    const setup = installFakeDocument(() => 255, {
+      pigment: (x, y) => (x >= 64 && x <= 191 && y >= 36 && y <= 107 ? 128 : 255),
+    });
+
+    const ink = measureRailMotionRasterInk(SOURCE, 1920, 1080);
+
+    expect(setup.drawImage).toHaveBeenCalledWith(SOURCE, 0, 0, 256, 144);
+    expect(ink).not.toBeNull();
+    expect(ink!.alphaInk).toBe(true);
+    expect(ink!.x).toBeCloseTo(64 / 256, 12);
+    expect(ink!.y).toBeCloseTo(36 / 144, 12);
+    expect(ink!.width).toBeCloseTo(128 / 256, 12);
+    expect(ink!.height).toBeCloseTo(72 / 144, 12);
+  });
+
+  it('finds no ink on a blank opaque sheet, yet keeps the faintest pigment', () => {
+    installFakeDocument(() => 255, { pigment: () => 255 });
+    expect(measureRailMotionRasterInk(SOURCE, 400, 300)!.alphaInk).toBe(false);
+
+    vi.unstubAllGlobals();
+    installFakeDocument(() => 255, {
+      pigment: (x, y) => (x === 10 && y === 10 ? 254 : 255),
+    });
+    // 400x300 -> 256x192 scan grid.
+    const faint = measureRailMotionRasterInk(SOURCE, 400, 300);
+    expect(faint!.alphaInk).toBe(true);
+    expect(faint!.x).toBeCloseTo(10 / 256, 12);
+    expect(faint!.y).toBeCloseTo(10 / 192, 12);
   });
 
   it('never upscales a raster smaller than the scan grid', () => {
