@@ -10,6 +10,7 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import { getPhysicsPaintRotoSourceCycleId } from './physicsPaintRotoSpacingSelection';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
+import { collectRailMotionGroupOwnedKeyIds } from './railMotionDocumentReconciler';
 import type { PhysicPaintRotoRailMotionRecord } from './railMotionModel';
 import {
   buildRotoRailSetCopyPayload,
@@ -553,12 +554,11 @@ describe('physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cros
       [recordKey('k0', 0)],
       [{ loopId: 'hold1', placementStart: 0, sourceKeyIds: ['k0'], repeat: 1, mode: 'static' }],
     );
+    // Production member shape (WR-06): a clip-owned source key is never a
+    // Key Rail member — the Loop Clip carries its own source entries.
     const built = buildRotoRailSetCopyPayload({
       document: sourceDocument,
-      members: [
-        { kind: 'key-rail', firstKeyId: 'k0' },
-        { kind: 'loop', loopId: 'hold1' },
-      ],
+      members: [{ kind: 'loop', loopId: 'hold1' }],
       trackId: 'track-a',
     });
     if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
@@ -625,10 +625,7 @@ describe('physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cros
     );
     const built = buildRotoRailSetCopyPayload({
       document,
-      members: [
-        { kind: 'key-rail', firstKeyId: 'k0' },
-        { kind: 'loop', loopId: 'hold1' },
-      ],
+      members: [{ kind: 'loop', loopId: 'hold1' }],
       trackId: 'track-a',
     });
     if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
@@ -911,6 +908,19 @@ function loopMotionClip(loopId: string, sourceKeyIds: readonly string[]): Physic
   };
 }
 
+/**
+ * WR-06 fixture: Loop Clip `g1` owns `k0@0`/`k2@2`; the bare Key Rail
+ * `k4@4`/`k6@6` follows it with no break and carries motion anchored on `k4`.
+ */
+function clipFollowingDocument(): PhysicPaintRotoPhysicalDocument {
+  return buildMotionDocument(
+    [recordKey('k0', 0), recordKey('k2', 2), recordKey('k4', 4), recordKey('k6', 6)],
+    [loopMotionClip('g1', ['k0', 'k2'])],
+    [],
+    [motionRecord('rail-bare', 'k4', 0.5), motionRecord('g1', 'k0', 0.6)],
+  );
+}
+
 describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B)', () => {
   it('freezes only copied animated members into payload.railMotions, keyed by source railId', () => {
     const railA = motionRecord('rail-a', 'k0', 0.5);
@@ -1006,21 +1016,100 @@ describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Ga
     expect(pasted.impact.freshIdentityAllocation.railIds['g1']).toBe(freshLoopId);
   });
 
+  // WR-06: the copy payload segments with the document's REAL group ownership
+  // (the display projection), so a bare Key Rail that follows a Loop Clip is a
+  // member of its own and a clip-owned key is never a Key Rail member.
+  it('WR-06: a clip-following Key Rail copies with only its own keys and frozen motion', () => {
+    const document = clipFollowingDocument();
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'key-rail', firstKeyId: 'k4' }],
+    });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'key-rail') throw new Error('expected a key-rail member');
+    expect(member.firstKeyId).toBe('k4');
+    // Exactly the bare rail — the clip-owned k0/k2 close the segment and are
+    // never carried by a Key Rail member.
+    expect(member.entries.map((entry) => entry.sourceKeyId)).toEqual(['k4', 'k6']);
+    expect(member.entries.map((entry) => entry.sourceAppFrame)).toEqual([4, 6]);
+    expect(member.entries.some((entry) => entry.sourceKeyId === 'k0' || entry.sourceKeyId === 'k2')).toBe(false);
+    // The member's frozen motion is the bare rail's own record.
+    expect(member.sourceRailId).toBe('rail-bare');
+    expect(built.payload.railMotions.map((record) => record.railId)).toEqual(['rail-bare']);
+  });
+
+  it('WR-06 control: a member naming a clip-owned first key still fails closed with stale-member', () => {
+    const built = buildRotoRailSetCopyPayload({
+      document: clipFollowingDocument(),
+      members: [{ kind: 'key-rail', firstKeyId: 'k0' }],
+    });
+    expect(built.ok).toBe(false);
+    if (built.ok) throw new Error('A clip-owned key is not a Key Rail member');
+    expect(built.reason).toBe('stale-member');
+  });
+
+  it('WR-06: a Loop Clip member carries its own source entries and binds by loopId', () => {
+    const document = clipFollowingDocument();
+    const built = buildRotoRailSetCopyPayload({
+      document,
+      members: [{ kind: 'loop', loopId: 'g1' }],
+    });
+    expect(built.ok).toBe(true);
+    if (!built.ok) throw new Error(`Payload must build: ${built.reason}`);
+    const member = built.payload.members[0];
+    if (member.kind !== 'loop') throw new Error('expected a loop member');
+    // One fully-selected Loop Clip yields ONE loop member that carries its own
+    // source records — no synthetic key-rail carrier.
+    expect(built.payload.members).toHaveLength(1);
+    expect(member.loopId).toBe('g1');
+    expect(member.sourceEntries.map((entry) => entry.sourceKeyId)).toEqual(['k0', 'k2']);
+    expect(member.sourceEntries.map((entry) => entry.sourceAppFrame)).toEqual([0, 2]);
+    expect(built.payload.railMotions.map((record) => record.railId)).toEqual(['g1']);
+    // The opposite control: the two motions never cross.
+    const both = buildRotoRailSetCopyPayload({
+      document,
+      members: [
+        { kind: 'key-rail', firstKeyId: 'k4' },
+        { kind: 'loop', loopId: 'g1' },
+      ],
+    });
+    if (!both.ok) throw new Error(`Payload must build: ${both.reason}`);
+    const keyMember = both.payload.members.find((candidate) => candidate.kind === 'key-rail');
+    const loopMember = both.payload.members.find((candidate) => candidate.kind === 'loop');
+    if (keyMember === undefined || keyMember.kind !== 'key-rail') throw new Error('expected the key-rail member');
+    if (loopMember === undefined || loopMember.kind !== 'loop') throw new Error('expected the loop member');
+    expect(keyMember.sourceRailId).toBe('rail-bare');
+    expect(loopMember.loopId).toBe('g1');
+    expect(both.payload.railMotions.map((record) => record.railId)).toEqual(['g1', 'rail-bare']);
+  });
+
+  it('WR-06: collectRailMotionGroupOwnedKeyIds projects sourceKeyIds plus frameOverrides keyIds', () => {
+    const owned = collectRailMotionGroupOwnedKeyIds([
+      { loopId: 'g1', sourceKeyIds: ['k0', 'k2'], frameOverrides: [{ keyId: 'k2' }, { keyId: 'k5' }] },
+    ]);
+    expect([...owned].sort()).toEqual(['k0', 'k2', 'k5']);
+    expect(collectRailMotionGroupOwnedKeyIds([]).size).toBe(0);
+  });
+
   it('maps every animated member of a multi-member copy in one re-key call', () => {
-    const railA = motionRecord('rail-a', 'k0', 0.5);
-    const railB = motionRecord('rail-b', 'k6', 0.75);
+    // Production member shape (WR-06): the clip owns k0, so the copied Key
+    // Rails are the bare segments k2 and k6/k8 — never a clip-owned carrier.
+    const railB = motionRecord('rail-b', 'k2', 0.5);
+    const railC = motionRecord('rail-c', 'k6', 0.75);
     const loopSource = motionRecord('g1', 'k0', 0.6);
     const clip = loopMotionClip('g1', ['k0']);
     const document = buildMotionDocument(
       [recordKey('k0', 0), recordKey('k2', 2), recordKey('k6', 6), recordKey('k8', 8)],
       [clip],
       ['k6'],
-      [railA, railB, loopSource],
+      [railB, railC, loopSource],
     );
     const built = buildRotoRailSetCopyPayload({
       document,
       members: [
-        { kind: 'key-rail', firstKeyId: 'k0' },
+        { kind: 'key-rail', firstKeyId: 'k2' },
         { kind: 'key-rail', firstKeyId: 'k6' },
         { kind: 'loop', loopId: 'g1' },
       ],
@@ -1033,8 +1122,8 @@ describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Ga
     const records = pasted.proposal.railMotions ?? [];
     expect(records).toHaveLength(6);
     const railIds = pasted.impact.freshIdentityAllocation.railIds;
-    expect(Object.keys(railIds).sort()).toEqual(['g1', 'rail-a', 'rail-b']);
-    for (const sourceRailId of ['rail-a', 'rail-b', 'g1']) {
+    expect(Object.keys(railIds).sort()).toEqual(['g1', 'rail-b', 'rail-c']);
+    for (const sourceRailId of ['rail-b', 'rail-c', 'g1']) {
       const destinationRailId = railIds[sourceRailId];
       expect(destinationRailId).toBeDefined();
       expect(destinationRailId).not.toBe(sourceRailId);
@@ -1045,7 +1134,7 @@ describe('physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Ga
       expect(copy!.channels).toEqual(original!.channels);
     }
     // The document parser canonicalizes the collection in railId order.
-    expect(document.railMotions).toEqual([loopSource, railA, railB]);
+    expect(document.railMotions).toEqual([loopSource, railB, railC]);
   });
 
   it('rejects closed when a prescribed allocation omits an animated member railId', () => {

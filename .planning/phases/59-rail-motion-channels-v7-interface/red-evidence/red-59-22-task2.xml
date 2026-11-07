@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="38" failures="6" errors="0" time="0.539">
+    <testsuite name="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" timestamp="2026-11-07T10:00:46.176Z" hostname="efx2.home" tests="38" failures="6" errors="0" skipped="0" time="0.026455084">
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — operation-result capsule copy (UAT-3) &gt; builds the persisted operation-result line from member intervals" time="0.000589916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rejection capsule copy &gt; maps each failure class to a placement-aware user message" time="0.000175084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820-bjw) &gt; RED 1: builds a frozen payload with relative entries and first-key break flags" time="0.007857583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — set copy payload builder (quick 260820-bjw) &gt; RED 2: builds a Motion Rail payload from loop placement facts" time="0.000534625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 1: pastes two Key Rails at the cursor preserving relative offsets and the internal gap" time="0.001346084">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 1m: pasting a rail set BEFORE an existing rail stays isolated (right-mirror boundary law)" time="0.000366125">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 2: pasting a Motion Rail duplicates the shared-source placement with relocated phase fields" time="0.000721">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 2reveal: pasting a reveal rail keeps railKind — the duplicate stays a reveal rail (G-52-4)" time="0.000395167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; 261030-v1t: a pasted paint-seed-varied reveal keeps its flag verbatim" time="0.000322167">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; 261030-ig0: a pasted opted-in reveal keeps its per-key script option verbatim" time="0.000993375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 2dup: duplicating a Motion Rail also starts the fresh source key on a new segment (no interpolation before the duplicated rail)" time="0.00031825">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 2b: paste uses the frozen payload bytes even if the source record changes after copy" time="0.000272">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 3: a partially occupied destination rejects the WHOLE paste with zero mutation" time="0.00063225">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails paste (quick 260820-bjw) &gt; RED 3b: destinations beyond capacity reject through the not-enough-room family" time="0.000179083">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails duplicate (quick 260820-bjw) &gt; RED 4: duplicate places the set immediately after the last rail end" time="0.000297459">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — proposeRails duplicate (quick 260820-bjw) &gt; RED 4b: duplicate scans forward past occupied frames to the first fitting anchor" time="0.000237958">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06) &gt; payload builder records the source track identity when the copy supplies one" time="0.000109458">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06) &gt; cross-track paste re-points a Hold Loop Clip source onto the destination track&apos;s copied frames (D-06: fresh loopId, never a foreign key id)" time="0.003672584">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:573:23
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06) &gt; rejects a cross-track paste whose Hold source frames are NOT part of the pasted set (ok:false, zero mutation)" time="0.00025075">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46-03 track-scoped copy payload + cross-track re-pointing (D-06) &gt; same-track paste keeps the loop source references verbatim (shared-source placement, D-07)" time="0.000256375">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infinity → finite freeze) &gt; freezes an infinity-repeat source to the finite repeat it effectively had (same visible extent, no re-expansion)" time="0.000453709">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infinity → finite freeze) &gt; rounds a non-whole-cycle infinity span UP so the G-01 source extent cannot trim the tail" time="0.000334625">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT paste-repeat regression (infinity → finite freeze) &gt; captures a truly-unbounded infinity source at the parent end and freezes it finite" time="0.000201875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT R1 (finite/static extent must not regress) &gt; keeps the v0.9 sourceKeyIds.length extent for a finite motion clip (no positions-span inflation)" time="0.000201333">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT R1 (finite/static extent must not regress) &gt; freezes an infinity clip but leaves a finite static hold untouched (repeat preserved verbatim)" time="0.000152667">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — 46 UAT R5 (pasted clips are lifecycle-complete) &gt; synthesizes a complete lifecycle for a finite-repeat source with syncState undefined (no lifecycle)" time="0.000243583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; freezes only copied animated members into payload.railMotions, keyed by source railId" time="0.000781">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; re-keys a copied key-rail record onto the fresh rail with rail-local frames unchanged" time="0.000488792">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; re-keys a copied loop member onto the fresh loopId, anchored at the fresh loopId" time="0.000324583">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; WR-06: a clip-following Key Rail copies with only its own keys and frozen motion" time="0.000383084">
+            <failure message="expected false to be true // Object.is equality" type="AssertionError">
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:1028:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; WR-06 control: a member naming a clip-owned first key still fails closed with stale-member" time="0.000315625">
+            <failure message="expected true to be false // Object.is equality" type="AssertionError">
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:1048:22
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; WR-06: a Loop Clip member carries its own source entries and binds by loopId" time="0.001260375">
+            <failure message="Cannot read properties of undefined (reading &apos;map&apos;)" type="TypeError">
+TypeError: Cannot read properties of undefined (reading &apos;map&apos;)
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:1067:33
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; WR-06: collectRailMotionGroupOwnedKeyIds projects sourceKeyIds plus frameOverrides keyIds" time="0.000131959">
+            <failure message="collectRailMotionGroupOwnedKeyIds is not a function" type="TypeError">
+TypeError: collectRailMotionGroupOwnedKeyIds is not a function
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:1089:19
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; maps every animated member of a multi-member copy in one re-key call" time="0.00031825">
+            <failure message="Payload must build: stale-member" type="Error">
+Error: Payload must build: stale-member
+ ❯ src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts:1117:26
+            </failure>
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; rejects closed when a prescribed allocation omits an animated member railId" time="0.000146875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; rejects closed when two members map to one destination railId" time="0.000192875">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; rejects closed when a destination railId already carries a record" time="0.000120916">
+        </testcase>
+        <testcase classname="src/components/physic-paint/roto/physicsPaintRotoRailSetCopy.test.ts" name="physicsPaintRotoRailSetCopy — rail motion follows the copy (59-15 Gate B) &gt; rejects closed when the frozen payload carries motion for no copied member" time="0.0001205">
+        </testcase>
+    </testsuite>
+</testsuites>
