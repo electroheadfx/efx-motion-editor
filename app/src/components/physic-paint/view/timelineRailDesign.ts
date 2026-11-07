@@ -163,9 +163,10 @@ export interface TimelineMotionBlockOutlineInput {
   readonly rowHeight: number;
   readonly laneCount: number;
   /**
-   * 59-17: the block renders ONE extra 18px add-channel row after the gap
-   * while a keyless display lane remains. The outline wraps it like any lane —
-   * the outline and the measured row height must agree.
+   * 59-17/59-23: the block ALWAYS renders ONE extra 18px add-channel row after
+   * the gap whenever it renders (lane count > 0) — enabled or disabled, the row
+   * is part of the block. The outline wraps it like any lane, so the outline
+   * and the measured row height must agree.
    */
   readonly addChannelRow?: boolean;
 }

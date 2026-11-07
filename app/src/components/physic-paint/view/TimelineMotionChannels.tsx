@@ -508,24 +508,39 @@ export function TimelineMotionBlockOutline({
 
 export interface TimelineMotionAddChannelRowProps {
   readonly open: boolean;
+  /** 59-23 (WR-01): the ONE availability authority's answer — never local. */
+  readonly disabled: boolean;
+  /** The authority's reason, rendered verbatim; null while enabled. */
+  readonly reason: string | null;
   readonly onToggle: () => void;
 }
 
 /**
- * 59-17: the 18px `+` row under the expanded block. Props only — the host
- * owns the open/closed session state and the channel inventory, so this row
- * neither reads a signal nor derives which channels are missing. It is the
- * only way Scale, Rotation and Opacity become reachable (G1/CR-03).
+ * 59-17/59-23: the 18px `+` row under the expanded block. Props only — the
+ * host owns the open/closed session state, the channel inventory and the
+ * availability authority (T-59-35), so this row neither reads a signal nor
+ * derives which channels are missing or why an add is refused. It renders
+ * whenever the block does: on a fully-keyed rail it stays visible, disabled,
+ * carrying the authority's reason (MUI-06). It is the only way Scale,
+ * Rotation and Opacity become reachable (G1/CR-03).
  */
-export function TimelineMotionAddChannelRow({ open, onToggle }: TimelineMotionAddChannelRowProps) {
+export function TimelineMotionAddChannelRow({
+  open,
+  disabled,
+  reason,
+  onToggle,
+}: TimelineMotionAddChannelRowProps) {
   return (
     <button
       type="button"
       class="physics-paint-motion-add-channel-row"
       data-motion-add-channel-row
       aria-label="Add Motion channel"
-      aria-expanded={open}
+      aria-expanded={open && !disabled}
       aria-haspopup="menu"
+      disabled={disabled}
+      title={reason ?? undefined}
+      aria-description={reason ?? undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -538,9 +553,10 @@ export function TimelineMotionAddChannelRow({ open, onToggle }: TimelineMotionAd
         color: TIMELINE_SURFACE.motionToggleInactive,
         fontSize: 9,
         fontWeight: 600,
-        cursor: 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      onClick={onToggle}
+      onClick={disabled ? undefined : onToggle}
     >
       <span aria-hidden="true" style={{ display: 'inline-flex' }}>
         <Plus size={8} />

@@ -35,6 +35,7 @@ import {
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import { resolveMotionCommandAvailability } from '../roto/railMotionCommands';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveKeylessMotionDisplayLanes,
@@ -567,9 +568,9 @@ export interface TimelineMotionBlockProps {
 /**
  * The expanded motion block, shared by the presentational row and the strip's
  * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap, the
- * optional keyless-channel menu and the rounded outline over the row. Both
- * hosts pass the SAME lane count into the outline, so the outline and the
- * rendered lane rows can never disagree (one derivation).
+ * always-rendered authority-gated `+` row, its menu and the rounded outline
+ * over the row. Both hosts pass the SAME lane count into the outline, so the
+ * outline and the rendered lane rows can never disagree (one derivation).
  */
 export function TimelineMotionBlock({
   record,
@@ -588,9 +589,19 @@ export function TimelineMotionBlock({
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
-  // 59-17: the `+` row exists while the rail still misses a display lane. The
-  // outline and the measured row height BOTH include it, so they never drift.
+  // 59-23 (WR-01): the `+` row renders whenever the block renders. Its gate and
+  // reason come from the ONE availability authority (T-59-35) — the view never
+  // derives a local disabled condition nor re-authors the message. The outline
+  // and the measured row height BOTH include it, so they never drift.
   const hasKeylessChannel = resolveKeylessMotionDisplayLanes(record.channels).length > 0;
+  const addChannelAvailability = resolveMotionCommandAvailability({
+    command: 'add-motion-channel',
+    hasRail: true,
+    hasMotionRecord: true,
+    hasKeylessChannel,
+  });
+  // A stale session identity can never open a now-disabled row's menu.
+  const addChannelRowOpen = addChannelAvailability.enabled && channelMenuOpen;
   const railType: TimelineRailType = view?.railType ?? 'standard';
   const railFrameCount = view === null
     ? 0
@@ -640,13 +651,13 @@ export function TimelineMotionBlock({
           style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
           aria-hidden="true"
         />
-        {hasKeylessChannel ? (
-          <TimelineMotionAddChannelRow
-            open={channelMenuOpen}
-            onToggle={() => onToggleChannelMenu?.()}
-          />
-        ) : null}
-        {hasKeylessChannel && channelMenuOpen ? (
+        <TimelineMotionAddChannelRow
+          open={addChannelRowOpen}
+          disabled={!addChannelAvailability.enabled}
+          reason={addChannelAvailability.reason}
+          onToggle={() => onToggleChannelMenu?.()}
+        />
+        {addChannelRowOpen ? (
           // 59-17: an absolute overlay, not a flow row — opening the menu must
           // not push the rows below it down. It sits above rail chrome (7-9)
           // and below the playhead (30); see TIMELINE_MOTION.channelMenuZIndex.
@@ -674,7 +685,7 @@ export function TimelineMotionBlock({
         rowTop={0}
         rowHeight={TRACK_ROW_RAIL_HEIGHT_PX}
         laneCount={laneCount}
-        addChannelRow={hasKeylessChannel}
+        addChannelRow
         selected
         lineColor={resolveTimelineRailPalette(railType, 'selected').line}
       />
