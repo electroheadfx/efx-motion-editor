@@ -10,9 +10,11 @@ import { getContainedCanvasDisplaySize } from '../engine/physicsPaintCanvasSizin
  * transform would double-scale every client-rect-derived mapping (canvasBounds,
  * pointer ratios, the picker, the brush ring), so it is forbidden here.
  *
- * FIT stays the opening view and the minimum: it follows container resizes.
- * 1:1 maps one engine working pixel to one CSS pixel and is pannable because a
- * 1080x1920 sheet overflows a typical Studio window.
+ * FIT stays the opening view and follows container resizes. It is not the
+ * floor: the zoom-out floor is the ladder bottom (10%), so a sheet fitted at
+ * 36% can still be viewed smaller. 1:1 maps one engine working pixel to one
+ * CSS pixel and is pannable because a 1080x1920 sheet overflows a typical
+ * Studio window.
  */
 
 /** The same preset ladder as the main editor's canvasStore. */
@@ -87,10 +89,15 @@ export function resolveMaxScale(
   return Math.max(1, Math.min(PHYSICS_PAINT_ZOOM_MAX, raw));
 }
 
-/** Fit is the floor; a sheet smaller than its container never zooms below 1:1. */
+/**
+ * The floor is the ladder bottom, so the view can zoom out BELOW Fit (a 36%
+ * fit reaches 10%). Fit itself is never below the floor when a tiny sheet in a
+ * huge container fits at under 10% — there the fit value is the floor so Fit
+ * stays exact.
+ */
 export function resolveMinScale(fitScale: number): number {
   if (!Number.isFinite(fitScale) || fitScale <= 0) return 0;
-  return Math.min(fitScale, 1);
+  return Math.min(fitScale, PHYSICS_PAINT_ZOOM_PRESETS[0]);
 }
 
 export function clampZoomScale(scale: number, minScale: number, maxScale: number): number {

@@ -73,10 +73,13 @@ describe('physicsPaintCanvasZoom — fit / max / min resolution', () => {
     expect(resolveMaxScale(0, 0)).toBe(PHYSICS_PAINT_ZOOM_MAX);
   });
 
-  it('never lets the minimum scale exceed 1:1', () => {
-    expect(resolveMinScale(0.3646)).toBeCloseTo(0.3646, 9);
-    expect(resolveMinScale(1)).toBe(1);
-    expect(resolveMinScale(1.4)).toBe(1);
+  it('floors the minimum at the ladder bottom so Fit is never the floor', () => {
+    // A 36% fit zooms out to the 10% ladder bottom.
+    expect(resolveMinScale(0.3646)).toBeCloseTo(0.1, 9);
+    expect(resolveMinScale(1)).toBeCloseTo(0.1, 9);
+    expect(resolveMinScale(1.4)).toBeCloseTo(0.1, 9);
+    // A fit below the ladder bottom keeps Fit reachable as the floor.
+    expect(resolveMinScale(0.05)).toBeCloseTo(0.05, 9);
     // unmeasured fit resolves to 0
     expect(resolveMinScale(0)).toBe(0);
   });
@@ -119,12 +122,16 @@ describe('physicsPaintCanvasZoom — preset stepping', () => {
     expect(physicsPaintCanvasZoom.effectiveScale.value).toBe(0.5);
     expect(physicsPaintCanvasZoom.zoomPercent.value).toBe(50);
 
-    // 0.5 -> 0.25 clamps to the fit min: effective scale returns to fit.
+    // Fit is not the floor: 0.5 -> 0.25 -> 0.1 (the ladder bottom).
     physicsPaintCanvasZoom.zoomOut();
-    expect(physicsPaintCanvasZoom.effectiveScale.value).toBeCloseTo(0.3646, 3);
-    // At the min, another step is a no-op.
+    expect(physicsPaintCanvasZoom.effectiveScale.value).toBe(0.25);
+    expect(physicsPaintCanvasZoom.isAtMin.value).toBe(false);
     physicsPaintCanvasZoom.zoomOut();
-    expect(physicsPaintCanvasZoom.effectiveScale.value).toBeCloseTo(0.3646, 3);
+    expect(physicsPaintCanvasZoom.effectiveScale.value).toBe(0.1);
+    expect(physicsPaintCanvasZoom.isAtMin.value).toBe(true);
+    // At the floor, another step is a no-op.
+    physicsPaintCanvasZoom.zoomOut();
+    expect(physicsPaintCanvasZoom.effectiveScale.value).toBe(0.1);
 
     // A small sheet reaches the whole ladder (max 4), unlike 1080x1920 whose
     // backing budget caps the max at ~1.389.
