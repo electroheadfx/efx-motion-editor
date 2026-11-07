@@ -73,7 +73,10 @@ import {
   type RailMotionLoopClipSource,
   type RailMotionRailView,
 } from '../components/physic-paint/roto/railMotionIdentity';
-import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
+import {
+  collectRailMotionGroupOwnedKeyIds,
+  reconcileRailMotionsForDocumentEdit,
+} from '../components/physic-paint/roto/railMotionDocumentReconciler';
 import {
   evaluateRailMotion,
   resolveRailLocalFrame,
@@ -1234,11 +1237,9 @@ function _resolveRotoRailMotionProjection(
     mode: clip.mode,
     railKind: clip.railKind,
   }));
-  const groupOwnedKeyIds = new Set<string>();
-  for (const clip of structural.loopClips) {
-    for (const keyId of clip.sourceKeyIds) groupOwnedKeyIds.add(keyId);
-    for (const override of clip.frameOverrides ?? []) groupOwnedKeyIds.add(override.keyId);
-  }
+  // One ownership authority (WR-06): the resolver projection and the rail-set
+  // copy payload derive the exact same group-owned set.
+  const groupOwnedKeyIds = collectRailMotionGroupOwnedKeyIds(structural.loopClips);
   const orderedRealKeys = [...structural.recordMap.values()]
     .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId));
   // 59-19 (G2 / CR-04): the span resolver comes from the SAME structural entry
@@ -5844,10 +5845,14 @@ export const physicPaintStore = {
     // source frames are fully covered by the selection (Loop clips travel with
     // their frames; a copy is non-destructive so partially-covered loops are
     // simply not carried).
+    // WR-06: segment with the document's REAL group ownership — the same
+    // authority the resolver projection and the copy payload use. A clip-owned
+    // key is never addressed as a Key Rail member; the Loop Clip travels as its
+    // own member and carries its source entries.
     const segments = deriveKeyRailSegments({
       orderedRealKeys: document.realKeyRecords,
       incomingInterpolationBreakKeyIds: new Set(document.incomingInterpolationBreakKeyIds),
-      groupOwnedKeyIds: new Set(),
+      groupOwnedKeyIds: collectRailMotionGroupOwnedKeyIds(document.loopClips),
     });
     const members: RailSetIdentity[] = segments
       .filter((segment) => segment.keyIds.some((keyId) => keyIdSet.has(keyId)))
