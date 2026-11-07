@@ -3312,8 +3312,14 @@ export interface RotoTrackMergedDrop {
   readonly endFrameExclusive: number;
 }
 
+/**
+ * WR-02: cut/clear report no merge drop — their results carry exactly the
+ * members a caller reads. `RotoTrackPasteResult` keeps `mergedDrop` because
+ * `moveTrackItems` is its only production consumer (the strip's non-undoable
+ * merge notice); the shared removal helper still computes the transition.
+ */
 export type RotoTrackCopyResult =
-  | { ok: true; payload: RotoRailSetCopyPayload; mergedDrop?: RotoTrackMergedDrop }
+  | { ok: true; payload: RotoRailSetCopyPayload }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 export type RotoTrackPasteResult =
@@ -3321,7 +3327,7 @@ export type RotoTrackPasteResult =
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 export type RotoTrackClearResult =
-  | { ok: true; mergedDrop?: RotoTrackMergedDrop }
+  | { ok: true }
   | { ok: false; reason: RotoTrackSelectionFailureReason };
 
 /** 48-05: the empty exclusion set — the including path (byte-identical to 48-03). */
@@ -5899,13 +5905,11 @@ export const physicPaintStore = {
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, carriedLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    // 59-20 (CR-02): a conditional spread keeps a no-drop result byte-identical
-    // to today's `{ ok: true, payload }` shape (no `mergedDrop` key at all).
-    return {
-      ok: true,
-      payload: exactPayload,
-      ...(removed.mergedDrop !== null ? { mergedDrop: removed.mergedDrop } : {}),
-    };
+    // WR-02: no `mergedDrop` member here. The removal helper still computes the
+    // transition and still drops the merged tail record from the stored
+    // collection; only `moveTrackItems` reports it, because it is the one path
+    // with a production consumer (the strip's non-undoable merge notice).
+    return { ok: true, payload: exactPayload };
   },
 
   /**
@@ -5988,10 +5992,9 @@ export const physicPaintStore = {
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, coveredLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    return {
-      ok: true,
-      ...(removed.mergedDrop !== null ? { mergedDrop: removed.mergedDrop } : {}),
-    };
+    // WR-02: clear reports no merge drop — a two-sided merge still collapses
+    // the stored collection, but this result carries only `ok`.
+    return { ok: true };
   },
 
   /**
