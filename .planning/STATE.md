@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T17:44:27.016Z"
+last_updated: "2026-11-07T17:58:31.783Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: bc92429ef2ca8ff271b31fd54151d96e7a586e67
+state_head: 90474366633f455ed76dbd42343c864ce9e4a367
 progress:
   total_phases: 4
   completed_phases: 0
@@ -233,6 +233,7 @@ Items acknowledged and carried forward from previous milestone close:
 |---|-------------|------|--------|-----------|
 | 261107-mkn | Fix Phase 59 UI: channel header rows in the pinned left header column, Animate channel menu, Motion boundaries tool and animate mode (UAT approved) | 2026-11-07 | b5cb501e1 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
 | 261107-pd8 | Motion channel keys draggable through time on the Phase 59 rail (reuses the shared key-rail drag session); selected-rail lane inset line removed (UAT approved) | 2026-11-07 | bc92429ef | [261107-pd8-draggable-motion-key-from-phase-59-rail-](./quick/261107-pd8-draggable-motion-key-from-phase-59-rail-/) |
+| 3 | Studio: end-justify the Animate channel-menu button on the bottom action row; grey it out (aria-disabled) until a rail is selected | 2026-11-07 | 904743666 | — |
 
 ## Roadmap Evolution
 
