@@ -4,15 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * 261105-cgl: read-only wiring pins for the Hand host tool.
+ * 261105-cgl / 261107-sg3: read-only wiring pins for the Hand host tool.
  *
- * UAT correction: the Hand is MOMENTARY. Pressing the rail button captures the
- * pointer and pans for as long as the press lasts; releasing disarms back to
- * the untouched previous tool. Nothing is latched, so the canvas must never
- * consume a primary-button press and no keyboard binding exists.
+ * UAT correction (261107-sg3): the Hand is a LATCHED canvas tool living in the
+ * floating canvas zoom pill. A fresh Studio open starts disarmed; one click on
+ * the pill icon arms pan mode, a primary-button drag anywhere on the canvas
+ * pans through the zoom store (the same path middle-drag uses) and stays armed
+ * on release, and a second click on the same icon disarms. Nothing couples it
+ * to the paint tool, Select, the picker or motion mode, and no keyboard
+ * binding exists.
  */
 
 const rail = readFileSync(fileURLToPath(new URL('./PhysicsPaintToolRail.tsx', import.meta.url)), 'utf8');
+const zoomBar = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomBar.tsx', import.meta.url)), 'utf8');
 const viewport = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomViewport.tsx', import.meta.url)), 'utf8');
 const keyboard = readFileSync(fileURLToPath(new URL('./physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
@@ -65,19 +69,73 @@ describe('Hand rail button (261105-cgl)', () => {
   });
 });
 
-describe('Hand viewport routing (261105-cgl)', () => {
-  it('leaves the primary button entirely to the paint stack', () => {
-    expect(viewport).not.toContain('isHandToolArmedPeek');
-    expect(viewport).not.toContain('isHandToolArmed');
+describe('Hand canvas tool in the zoom pill (261107-sg3)', () => {
+  it('renders one latched Hand toggle before Fit, bound to the armed signal', () => {
+    expect(zoomBar).toContain("import { Hand, Minus, Plus } from 'lucide-preact';");
+    expect(zoomBar).toContain("import { isHandToolArmed, toggleHandTool } from './physicsPaintHandTool';");
+    expect(zoomBar).toContain('const handArmed = isHandToolArmed();');
+    // Exactly one control, seated immediately before Fit so the numeric zoom
+    // controls stay grouped.
+    expect(zoomBar.split('data-testid="aquarelle-hand-toggle"').length - 1).toBe(1);
+    const toggleIndex = zoomBar.indexOf('data-testid="aquarelle-hand-toggle"');
+    const fitIndex = zoomBar.indexOf('onClick={() => physicsPaintCanvasZoom.fitToWindow()}');
+    expect(toggleIndex).toBeGreaterThanOrEqual(0);
+    expect(fitIndex).toBeGreaterThan(toggleIndex);
+    // The LATCH: aria-pressed mirrors the armed signal; one click toggles.
+    const buttonStart = zoomBar.lastIndexOf('<button', toggleIndex);
+    const buttonEnd = zoomBar.indexOf('</button>', toggleIndex);
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    expect(buttonEnd).toBeGreaterThan(toggleIndex);
+    const button = zoomBar.slice(buttonStart, buttonEnd);
+    expect(button).toContain('aria-label="Hand"');
+    expect(button).toContain('aria-pressed={handArmed}');
+    expect(button).toContain('onClick={() => toggleHandTool()}');
+    expect(button).toContain('<Hand size={14} aria-hidden="true" />');
+    // D-03: never disabled — at Fit the pan simply clamps to zero.
+    expect(button).not.toContain('disabled');
+  });
+
+  it('is an internal canvas tool — the pill imports no paint, select, picker or motion state', () => {
+    for (const moduleName of [
+      'aquarelleRecordState',
+      'aquarelleStrokeSelection',
+      'aquarelleColorPicker',
+      'railMotionEditingMode',
+    ]) {
+      expect(zoomBar).not.toContain(moduleName);
+    }
+    expect(zoomBar).not.toContain('aquarelleActiveTool');
+    expect(zoomBar).not.toContain('setAquarelleSelectMode');
+    expect(zoomBar).not.toContain('aquarellePickerLatched');
+    // The Hand icon is the ONLY arm/disarm entry point (D-02).
+    expect(zoomBar).not.toContain('setHandToolArmed');
+    expect(zoomBar).not.toContain('disarmHandTool');
+  });
+
+  it('pans on a primary drag only while armed, through the middle-drag path', () => {
+    expect(viewport).toMatch(/import \{ disarmHandTool,[^}]*isHandToolArmedPeek[^}]*\} from '\.\/physicsPaintHandTool';/);
+    expect(viewport).toContain('const handPan = event.button === 0 && isHandToolArmedPeek();');
+    expect(viewport).toContain('if (event.button !== 1 && !handPan) return;');
+    // D-03: the hand route proceeds at Fit — setPan clamps the pan to zero.
+    expect(viewport).toContain('if (!handPan && !physicsPaintCanvasZoom.hasOverflow.peek()) return;');
+    expect(viewport).toContain('hand: handPan,');
+    // The pan is the SAME zoom-store path as middle-drag.
+    expect(viewport).toContain('physicsPaintCanvasZoom.setPan(');
+    expect(viewport).toContain('viewport.setPointerCapture(event.pointerId)');
+  });
+
+  it('keeps middle-button routing, the capture-phase listener and the mount reset', () => {
+    expect(viewport).toContain('if (event.button !== 1 && !handPan) return;');
+    expect(viewport).toContain("viewport.addEventListener('pointerdown', onPointerDown, true);");
+    expect(viewport).toContain('disarmHandTool();');
     expect(viewport).not.toContain("source: 'hand'");
     expect(viewport).not.toContain('physics-paint-canvas-hand-armed');
-    // Middle-drag is untouched.
-    expect(viewport).toContain('if (event.button !== 1) return;');
-    expect(viewport).toContain('viewport.setPointerCapture(event.pointerId)');
   });
 
   it('drops the retired armed-cursor CSS', () => {
     expect(css).not.toContain('physics-paint-canvas-hand-armed');
+    // The latched Hand rides the pill's existing aria-pressed styling.
+    expect(css).toContain('.physics-paint-canvas-zoom-button[aria-pressed="true"],');
   });
 
   it('adds no keyboard hand/pan binding', () => {

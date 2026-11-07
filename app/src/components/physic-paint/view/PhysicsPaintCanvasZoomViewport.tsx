@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
-import { disarmHandTool } from './physicsPaintHandTool';
+import { disarmHandTool, isHandToolArmedPeek } from './physicsPaintHandTool';
 
 /**
  * 261104-uyv: the Studio canvas zoom viewport.
@@ -122,22 +122,27 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       startY: number;
       startPanX: number;
       startPanY: number;
+      hand: boolean;
     } | null = null;
 
-    // CAPTURE phase: the middle-button press is consumed before the stack's
-    // picker/block gates and the engine's own listeners. Button 1 already
-    // cannot start a stroke or a pick — this keeps it out of every gate too.
+    // CAPTURE phase: both pan gestures are consumed before the stack's
+    // picker/block gates and the engine's own listeners, so neither can start
+    // a stroke or a pick. Button 1 is always a pan; button 0 is one only while
+    // the latched Hand is armed. The hand route proceeds at Fit too — setPan
+    // simply clamps the pan to zero, so the control is never disabled (D-03).
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 1) return;
+      const handPan = event.button === 0 && isHandToolArmedPeek();
+      if (event.button !== 1 && !handPan) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;
+      if (!handPan && !physicsPaintCanvasZoom.hasOverflow.peek()) return;
       drag = {
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
         startPanX: physicsPaintCanvasZoom.panX.peek(),
         startPanY: physicsPaintCanvasZoom.panY.peek(),
+        hand: handPan,
       };
       try {
         viewport.setPointerCapture(event.pointerId);
