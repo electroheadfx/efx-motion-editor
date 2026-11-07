@@ -130,6 +130,8 @@ coverage:
 duration: 13min
 completed: 2026-11-07
 status: complete
+uat_approved: 2026-11-07
+uat_followup_commits: [2c8dde1d8, b5cb501e1]
 ---
 
 # Phase 261107-mkn: Pinned-column motion channel headers Summary
@@ -267,3 +269,27 @@ None.
 - All nine modified files exist.
 - All three task commits are ancestors of HEAD (`46a71b91d`, `1170d1b2e`, `6100f1b86`).
 - Commits measured from the persisted ledger: 3.
+
+## UAT Follow-up Rounds (approved 2026-11-07)
+
+The live UAT pass superseded two plan deliverables and added the animate-mode
+model. Both rounds are part of this quick and are UAT-approved.
+
+**Round 1 — `2c8dde1d8`**
+
+- Lanes and the block outline hug the rail extent instead of the whole timeline.
+- The grouped Position lane draws ONE curve (the shared key frame set made a second axis path a crossing duplicate).
+- Channel rows/buttons enlarged to the reference.
+- The plan's Add-channel row is retired: channel add/remove lives in the Animate dropdown; picking a channel creates the motion record (no default Position, no separate Animate step).
+- The canvas rail boundary is gated on the expanded block.
+
+**Round 2 — `b5cb501e1`**
+
+- Pinned channel headers are always the bright rail colour (no unselected 0.55 dim); labels are title case (`textTransform: none` opts out of the global uppercase button rule); the visible "N keys" meta moved into the property tooltip (singular/plural).
+- The per-lane diamond is hollow when no key sits at the cursor (add) and filled when one does (remove).
+- New Motion boundaries host tool in the left rail: deploys the lane and re-selects the last animated property.
+- Animate mode is ONE selected property — clicking a header row highlights it white and is the only trigger for the canvas gizmo; an open lane alone no longer arms the move boundary, so painting works with the lanes deployed.
+- The left rail is exclusive: paint/select/picker picks leave animate mode, and the paint row renders deselected while a property animates.
+
+**Verification:** full suite 398 files / 7953 tests passed; `tsc --noEmit` clean.
+**UAT:** approved by the user 2026-11-07.

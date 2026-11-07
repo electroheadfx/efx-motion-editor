@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - Completed quick task 261107-mkn: Fix Phase 59 UI channel headers + Add channel control into the pinned header column
+Last activity: 2026-11-07 - UAT approved quick task 261107-mkn: Fix Phase 59 UI channel headers + Animate channel menu, motion boundaries tool and animate mode (final b5cb501e1)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -231,7 +231,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 261107-mkn | Fix Phase 59 UI: channel header rows and Add channel control render in the pinned left header column, lanes carry only cells/curves/keys | 2026-11-07 | 6100f1b86 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
+| 261107-mkn | Fix Phase 59 UI: channel header rows in the pinned left header column, Animate channel menu, Motion boundaries tool and animate mode (UAT approved) | 2026-11-07 | b5cb501e1 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
 
 ## Roadmap Evolution
 
