@@ -1252,9 +1252,13 @@ fn validate_prepare_request(
 // WR-01 canonical physical hash. The encoding mirrors
 // `buildPhysicPaintRotoProjectEquality` in physicsPaintRotoPhysicalModel.ts
 // byte-for-byte; the parity contract tests pin the two implementations
-// together. Numbers format via Rust's shortest f64 Display, which matches
-// JavaScript's `String(number)` for every value the canonical document can
-// carry (bounded integers plus the [0,1] grain strength float).
+// together. Numbers format via Rust's shortest f64 Display, which NEVER uses
+// exponent notation. JavaScript's `String(number)` does at `|v| >= 1e21` or
+// `< 1e-6`, so the TypeScript encoder expands those back to positional form
+// (`expandExponent`); do not "simplify" it back to `String(value)`. Motion
+// values are unbounded (any finite rotation, any finite positive scale), so
+// those magnitudes are reachable from the shipped inspector. `-0` is the other
+// divergence: Rust prints `-0`, `String(-0)` is `'0'`.
 // ---------------------------------------------------------------------------
 
 fn canonical_string(value: &str) -> String {
@@ -3317,8 +3321,9 @@ mod tests {
                 "rail-motion",
                 "rail-motion-empty",
                 "rail-motion-ordering",
+                "rail-motion-exponent",
             ],
-            "golden fixture must carry the six frozen cross-language documents"
+            "golden fixture must carry the seven frozen cross-language documents"
         );
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");

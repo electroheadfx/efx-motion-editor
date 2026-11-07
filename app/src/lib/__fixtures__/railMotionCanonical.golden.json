@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "provenance": "Generated ONCE from the TypeScript buildPhysicPaintRotoProjectEqualitySource at 2026-11-06 (Phase 59-01). Frozen literals: any change must name which language moved and why. Never regenerate to make a failing parity test pass. 59-04 appended rail-motion and rail-motion-empty from the TypeScript authority (through parsePhysicPaintRotoPhysicalDocument) after the Rust encoder landed; the three 59-01 entries were not regenerated and their expected values did not move. 59-24 appended rail-motion-ordering, moved the TypeScript canonical ordering from ICU collation to code-unit order to match Rust's str::cmp, froze both new clips in the explicit persisted lifecycle shape (the shape both encoders read), and did not regenerate the five prior entries.",
+  "provenance": "Generated ONCE from the TypeScript buildPhysicPaintRotoProjectEqualitySource at 2026-11-06 (Phase 59-01). Frozen literals: any change must name which language moved and why. Never regenerate to make a failing parity test pass. 59-04 appended rail-motion and rail-motion-empty from the TypeScript authority (through parsePhysicPaintRotoPhysicalDocument) after the Rust encoder landed; the three 59-01 entries were not regenerated and their expected values did not move. 59-24 appended rail-motion-ordering, moved the TypeScript canonical ordering from ICU collation to code-unit order to match Rust's str::cmp, froze both new clips in the explicit persisted lifecycle shape (the shape both encoders read), and did not regenerate the five prior entries. 2026-11-07 (gap closure): appended rail-motion-exponent, a rail-motion clone whose scale key is 1e-7 and rotation key is 1e21. The TypeScript encoder moved to plain-decimal expansion (String(value) exponent form disagreed with Rust f64 Display); the six prior entries were not regenerated and their expected values did not move.",
   "documents": [
     {
       "name": "rail-kind",
@@ -547,6 +547,172 @@
       },
       "expectedSource": "records:2:s1:B;n0;n0;n0;d24:5249464618000000574542505650384c2f00000000000000:5249464618000000574542505650384c2f00000000000000;n2;n2;s1:a;n8;n8;n8;d26:524946461c000000574542505650384c2f0100000000000000aa:524946461c000000574542505650384c2f0100000000000000aa;n2;n2;interpolation:0;mode:s9:duplicate;loops:2:s6:Rail_B;n0;ids:1:s1:B;n1;s11:progressive;s12:synchronized;s8:attached;n0;n1;ranges:1:n0;n1;overrides:0:s6:rail-a;n8;ids:1:s1:a;n1;s11:progressive;s12:synchronized;s8:attached;n8;n9;ranges:1:n8;n9;overrides:0:rail-motions:2:s6:Rail_B;s1:B;2:s10:position-x;1:n0;n0;s4:ease;n0;s10:position-y;1:n0;n0;s4:ease;n0;s6:rail-a;s1:a;1:s7:opacity;1:n0;n0.5;s4:ease;n0;incoming-breaks:2:s1:B;s1:a;capacity:n24;motion:n0;n0;background:null;selection:null;cursor:n0;",
       "expectedProject": "project-758-56904b0c"
+    },
+    {
+      "name": "rail-motion-exponent",
+      "document": {
+        "capacity": 24,
+        "realKeyRecords": [
+          {
+            "kind": "real-key",
+            "keyId": "k1",
+            "appFrame": 0,
+            "payload": {
+              "frameIndex": 0,
+              "appFrame": 0,
+              "bytes": "UklGRhgAAABXRUJQVlA4TC8AAAAAAAAA",
+              "width": 2,
+              "height": 2
+            }
+          },
+          {
+            "kind": "real-key",
+            "keyId": "k2",
+            "appFrame": 1,
+            "payload": {
+              "frameIndex": 1,
+              "appFrame": 1,
+              "bytes": "UklGRhwAAABXRUJQVlA4TC8BAAAAAAAAAKo=",
+              "width": 2,
+              "height": 2
+            }
+          }
+        ],
+        "interpolation": {
+          "enabled": false,
+          "mode": "duplicate"
+        },
+        "scriptMotion": {
+          "deformation": 0,
+          "position": 0
+        },
+        "background": null,
+        "selectedKeyId": null,
+        "cursorAppFrame": 0,
+        "revision": "physical-811-e1da237b",
+        "loopClips": [
+          {
+            "loopId": "loop-motion",
+            "placementStart": 0,
+            "sourceKeyIds": [
+              "k1",
+              "k2"
+            ],
+            "repeat": 1,
+            "mode": "progressive",
+            "railKind": "reveal",
+            "syncState": "synchronized",
+            "provenanceState": "attached",
+            "phaseOrigin": 0,
+            "originalEndExclusive": 2,
+            "visibleRanges": [
+              {
+                "start": 0,
+                "endExclusive": 2
+              }
+            ],
+            "frameOverrides": []
+          }
+        ],
+        "railMotions": [
+          {
+            "railId": "7d3a1c2e-0b4f-4a6d-9e21-5c8b0f4a2d31",
+            "anchorKeyId": "k1",
+            "channels": [
+              {
+                "id": "position-x",
+                "keys": [
+                  {
+                    "frame": 0,
+                    "value": 12.5,
+                    "easing": "ease",
+                    "wiggle": 0
+                  },
+                  {
+                    "frame": 4,
+                    "value": -8,
+                    "easing": "hold",
+                    "wiggle": 0.5
+                  }
+                ]
+              },
+              {
+                "id": "position-y",
+                "keys": [
+                  {
+                    "frame": 0,
+                    "value": -3.25,
+                    "easing": "ease",
+                    "wiggle": 0
+                  },
+                  {
+                    "frame": 4,
+                    "value": 6,
+                    "easing": "hold",
+                    "wiggle": 0.25
+                  }
+                ]
+              },
+              {
+                "id": "scale",
+                "keys": [
+                  {
+                    "frame": 0,
+                    "value": 1,
+                    "easing": "ease",
+                    "wiggle": 0
+                  },
+                  {
+                    "frame": 8,
+                    "value": 1e-7,
+                    "easing": "ease",
+                    "wiggle": 0.1
+                  }
+                ]
+              },
+              {
+                "id": "rotation",
+                "keys": [
+                  {
+                    "frame": 0,
+                    "value": 0,
+                    "easing": "hold",
+                    "wiggle": 0
+                  },
+                  {
+                    "frame": 8,
+                    "value": 1e+21,
+                    "easing": "ease",
+                    "wiggle": 0
+                  }
+                ]
+              },
+              {
+                "id": "opacity",
+                "keys": [
+                  {
+                    "frame": 0,
+                    "value": 0.25,
+                    "easing": "ease",
+                    "wiggle": 0
+                  },
+                  {
+                    "frame": 8,
+                    "value": 1,
+                    "easing": "ease",
+                    "wiggle": 0
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "incomingInterpolationBreakKeyIds": [
+          "k2"
+        ]
+      },
+      "expectedSource": "records:2:s2:k1;n0;n0;n0;d24:5249464618000000574542505650384c2f00000000000000:5249464618000000574542505650384c2f00000000000000;n2;n2;s2:k2;n1;n1;n1;d26:524946461c000000574542505650384c2f0100000000000000aa:524946461c000000574542505650384c2f0100000000000000aa;n2;n2;interpolation:0;mode:s9:duplicate;loops:1:s11:loop-motion;n0;ids:2:s2:k1;s2:k2;n1;s11:progressive;s6:reveal;s12:synchronized;s8:attached;n0;n2;ranges:1:n0;n2;overrides:0:rail-motions:1:s36:7d3a1c2e-0b4f-4a6d-9e21-5c8b0f4a2d31;s2:k1;5:s10:position-x;2:n0;n12.5;s4:ease;n0;n4;n-8;s4:hold;n0.5;s10:position-y;2:n0;n-3.25;s4:ease;n0;n4;n6;s4:hold;n0.25;s5:scale;2:n0;n1;s4:ease;n0;n8;n0.0000001;s4:ease;n0.1;s8:rotation;2:n0;n0;s4:hold;n0;n8;n1000000000000000000000;s4:ease;n0;s7:opacity;2:n0;n0.25;s4:ease;n0;n8;n1;s4:ease;n0;incoming-breaks:1:s2:k2;capacity:n24;motion:n0;n0;background:null;selection:null;cursor:n0;",
+      "expectedProject": "project-878-5d216d99"
     }
   ]
 }

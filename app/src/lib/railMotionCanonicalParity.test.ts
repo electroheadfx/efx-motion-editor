@@ -129,6 +129,7 @@ describe('rail motion canonical parity (TS half)', () => {
       'rail-motion',
       'rail-motion-empty',
       'rail-motion-ordering',
+      'rail-motion-exponent',
     ].join('|'));
   });
 
@@ -282,7 +283,7 @@ describe('rail motion canonical parity (TS half)', () => {
         }
       }
     }
-    expect(inspected).toBe(5);
+    expect(inspected).toBe(6);
 
     const ordering = FIXTURE.documents.find((entry) => entry.name === 'rail-motion-ordering');
     expect(ordering).toBeDefined();
