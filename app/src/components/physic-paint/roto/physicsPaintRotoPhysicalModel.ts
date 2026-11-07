@@ -1588,11 +1588,25 @@ function encodeCanonicalRecordPayloadTerm(
   return bytes === undefined ? 'u;' : encodePayloadBytes(bytes);
 }
 
+/**
+ * 59-24 (WR-05): the ONE canonical ordering law for every sorted collection.
+ *
+ * UTF-16 code-unit order. The accepted rail/key ids are ASCII, and for ASCII
+ * UTF-16 code-unit order is identical to UTF-8 byte order — exactly the
+ * comparison Rust's `str::cmp` performs in
+ * `app/src-tauri/src/services/script_library.rs`. A collation-based order
+ * (case folding, punctuation weighting) would give the same document two
+ * revisions and therefore two persistence identities.
+ */
+function compareCanonicalIds(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function encodeCanonicalRealKeyRecordsTerm(
   source: readonly PhysicPaintRotoRealKeyRecord[],
   encodePayloadBytes: (bytes: Uint8Array) => string,
 ): string {
-  const ordered = [...source].sort((a, b) => a.keyId.localeCompare(b.keyId));
+  const ordered = [...source].sort((a, b) => compareCanonicalIds(a.keyId, b.keyId));
   const encoded = ordered.map((record) => [
     encodeCanonicalString(record.keyId),
     encodeCanonicalNumber(record.appFrame),
@@ -1702,7 +1716,7 @@ export function buildPhysicPaintRotoProjectEquality(value: unknown): string {
  * cycle definition, not a sort key).
  */
 function encodeCanonicalIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): string {
-  const ordered = [...keyIds].sort((a, b) => a.localeCompare(b));
+  const ordered = [...keyIds].sort(compareCanonicalIds);
   return `${ordered.length}:${ordered.map(encodeCanonicalString).join('')}`;
 }
 
@@ -1719,7 +1733,7 @@ function encodeCanonicalIncomingInterpolationBreakKeyIds(keyIds: readonly string
  * idiom), so a pre-Phase-59 document keeps its exact revision.
  */
 function encodeCanonicalRailMotions(records: readonly PhysicPaintRotoRailMotionRecord[]): string {
-  const ordered = [...records].sort((left, right) => left.railId.localeCompare(right.railId));
+  const ordered = [...records].sort((left, right) => compareCanonicalIds(left.railId, right.railId));
   const encoded = ordered.map((record) => [
     encodeCanonicalString(record.railId),
     encodeCanonicalString(record.anchorKeyId),
@@ -1739,7 +1753,7 @@ function encodeCanonicalRailMotions(records: readonly PhysicPaintRotoRailMotionR
 }
 
 function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): string {
-  const ordered = [...loopClips].sort((a, b) => a.loopId.localeCompare(b.loopId));
+  const ordered = [...loopClips].sort((a, b) => compareCanonicalIds(a.loopId, b.loopId));
   const encoded = ordered.map((clip) => {
     // 260921-c7x: the lifecycle block is emitted UNCONDITIONALLY, resolved
     // through the single lifecycle authority. Emitting it only when the stored

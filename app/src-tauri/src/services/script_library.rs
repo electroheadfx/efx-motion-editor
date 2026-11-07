@@ -3316,8 +3316,9 @@ mod tests {
                 "rail-kind-script",
                 "rail-motion",
                 "rail-motion-empty",
+                "rail-motion-ordering",
             ],
-            "golden fixture must carry the five frozen cross-language documents"
+            "golden fixture must carry the six frozen cross-language documents"
         );
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");
