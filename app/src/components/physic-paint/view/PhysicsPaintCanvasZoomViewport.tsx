@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef } from 'preact/hooks';
+import { effect } from '@preact/signals';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
-import { disarmHandTool, isHandToolArmedPeek } from './physicsPaintHandTool';
+import { disarmHandTool, isHandToolArmed, isHandToolArmedPeek } from './physicsPaintHandTool';
 
 /**
  * 261104-uyv: the Studio canvas zoom viewport.
@@ -162,17 +163,30 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       );
     };
 
-    const endDrag = (event: PointerEvent) => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const pointerId = drag.pointerId;
+    const finishDrag = (pointerId: number) => {
+      if (!drag || drag.pointerId !== pointerId) return;
       drag = null;
       try {
         viewport.releasePointerCapture(pointerId);
       } catch {
         // Already released by the platform.
       }
-      viewport.style.cursor = '';
+      // A release while still armed returns to grab; disarm clears it.
+      viewport.style.cursor = isHandToolArmedPeek() ? 'grab' : '';
     };
+
+    const endDrag = (event: PointerEvent) => finishDrag(event.pointerId);
+
+    // ONE narrow signals effect for the cursor law: it subscribes to the armed
+    // signal only and writes DOM style only — no signal write and no
+    // render-body write, so it cannot loop. A disarm is a hard exit: a live
+    // hand drag is finished (pointer capture released) before the cursor
+    // clears, so no grabbing cursor or captured pointer survives the mode.
+    const disposeHandMode = effect(() => {
+      const armed = isHandToolArmed();
+      if (!armed && drag !== null) finishDrag(drag.pointerId);
+      viewport.style.cursor = armed ? 'grab' : '';
+    });
 
     const onAuxClick = (event: MouseEvent) => {
       if (event.button === 1) event.preventDefault();
@@ -191,6 +205,7 @@ export function PhysicsPaintCanvasZoomViewport({ children }: { children: Compone
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       rafId = 0;
       pending = null;
+      disposeHandMode();
       viewport.style.cursor = '';
       // Options matter only for `capture` on removal; passive defaults alike.
       viewport.removeEventListener('wheel', onWheel);

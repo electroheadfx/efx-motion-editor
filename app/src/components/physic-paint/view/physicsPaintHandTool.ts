@@ -1,26 +1,30 @@
 import { signal } from '@preact/signals';
 
 /**
- * 261105-cgl Task 3: session-only armed Hand host tool.
+ * 261105-cgl / 261107-sg3: session-only LATCHED Hand canvas tool.
  *
  * The Hand is a HOST tool — deliberately outside the `AquarelleTool` union,
  * exactly like the latched color picker (`aquarelleColorPicker.ts`). It never
  * writes `aquarelleActiveTool`, Select mode, or the picker state, so arming it
- * changes no paint surface and DISARMING is literally "back to the previous
- * tool": the previous paint tool is still installed, untouched.
+ * changes no paint surface: the previous paint tool stays installed,
+ * untouched.
+ *
+ * 261107-sg3: it is a LATCHED canvas tool, not a momentary press. The ONLY
+ * control is the Hand button in the floating canvas zoom pill — one click arms
+ * pan mode, a primary-button drag on the canvas pans through the EXISTING
+ * zoom-store pan path (the same one middle-drag uses) and the tool STAYS
+ * ARMED on release, and a second click on the same icon disarms. There is no
+ * keyboard binding, no Escape handling, and no coupling to the paint tool,
+ * Select, the picker or motion mode.
  *
  * The armed flag lives in this focused sibling module so it never enters
  * PhysicsPaintStudio.tsx logic and is NEVER persisted, serialized, or part of
- * any document/history snapshot — save/reopen always starts disarmed.
- *
- * The viewport consumes it for one purpose only: while armed, a primary-button
- * drag pans the canvas through the EXISTING zoom-store pan path (the same one
- * middle-drag uses) and the release disarms.
+ * any document/history snapshot — a fresh Studio open always starts disarmed.
  */
 const armed = signal(false);
 
-/** Subscribing read: components that render armed state (rail button, cursor
- *  class) re-render on arm/disarm changes. */
+/** Subscribing read: the pill button and the viewport cursor effect re-render
+ *  on arm/disarm changes. */
 export function isHandToolArmed(): boolean {
   return armed.value;
 }

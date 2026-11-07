@@ -20,6 +20,7 @@ const zoomBar = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomBar.
 const viewport = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomViewport.tsx', import.meta.url)), 'utf8');
 const keyboard = readFileSync(fileURLToPath(new URL('./physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+const handStore = readFileSync(fileURLToPath(new URL('./physicsPaintHandTool.ts', import.meta.url)), 'utf8');
 
 describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
   it('renders no Hand control and imports neither the hand store nor the zoom store', () => {
@@ -126,6 +127,44 @@ describe('Hand canvas tool in the zoom pill (261107-sg3)', () => {
     expect(viewport).toContain('disarmHandTool();');
     expect(viewport).not.toContain("source: 'hand'");
     expect(viewport).not.toContain('physics-paint-canvas-hand-armed');
+  });
+
+  it('holds the grab/grabbing cursor law and ends a live hand drag on disarm', () => {
+    // Release while still armed restores grab; a disarm clears the cursor.
+    expect(viewport).toContain("viewport.style.cursor = isHandToolArmedPeek() ? 'grab' : '';");
+    // ONE narrow signals effect inside the existing mount effect.
+    const effectStart = viewport.indexOf('const disposeHandMode = effect(() => {');
+    expect(effectStart).toBeGreaterThanOrEqual(0);
+    const effectEnd = viewport.indexOf('});', effectStart);
+    const effectBlock = viewport.slice(effectStart, effectEnd);
+    expect(effectBlock).toContain('const armed = isHandToolArmed();');
+    // A disarm is a hard exit: finish the live hand drag (release capture).
+    expect(effectBlock).toContain('if (!armed && drag !== null) finishDrag(drag.pointerId);');
+    expect(effectBlock).toContain("viewport.style.cursor = armed ? 'grab' : '';");
+    // DOM-style write only — never a signal write (no loop, no re-render).
+    expect(effectBlock).not.toContain('.value =');
+    expect(effectBlock).not.toContain('.value=');
+    // The subscription is disposed in the mount cleanup.
+    const cleanupBlock = viewport.slice(viewport.indexOf('return () => {'));
+    expect(cleanupBlock).toContain('disposeHandMode();');
+  });
+
+  it('keeps the unchanged hand store API and describes the latched canvas tool', () => {
+    for (const exported of [
+      'export function isHandToolArmed(): boolean {',
+      'export function isHandToolArmedPeek(): boolean {',
+      'export function setHandToolArmed(next: boolean): boolean {',
+      'export function toggleHandTool(): boolean {',
+      'export function disarmHandTool(): boolean {',
+    ]) {
+      expect(handStore).toContain(exported);
+    }
+    // The literal phrase stays (pinned by physicsPaintHandTool.test.ts); the
+    // contract now describes a latched canvas tool, not a momentary press.
+    expect(handStore).toContain('HOST tool');
+    expect(handStore).toContain('LATCHED canvas tool');
+    expect(handStore).toContain('floating canvas zoom pill');
+    expect(handStore).not.toContain('MOMENTARY');
   });
 
   it('drops the retired armed-cursor CSS', () => {
