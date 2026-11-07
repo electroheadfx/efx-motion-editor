@@ -1567,12 +1567,17 @@ function isRotoRailSetCopyMemberValue(value: unknown): boolean {
     // an optional frozen finite repeat (infinity sources). Both must be
     // accepted by the semantic-delta validator or every paste payload rejects
     // at bad-semanticDelta.
-    if (!hasOnlyKeys(value, ['kind', 'loopId', 'placementStart', 'clip', 'effectiveEndExclusive', 'repeat'])) return false;
+    // WR-06: a loop member also carries its own source entries (the clip-owned
+    // keys it materializes on cross-track paste) — without this key in the
+    // whitelist every Option B paste payload rejects at bad-semanticDelta.
+    if (!hasOnlyKeys(value, ['kind', 'loopId', 'placementStart', 'clip', 'effectiveEndExclusive', 'repeat', 'sourceEntries'])) return false;
     if (!isBoundedPhysicalKeyId(value.loopId)) return false;
     if (!isNonNegativeInteger(value.placementStart)) return false;
     if (!isNonNegativeInteger(value.effectiveEndExclusive)) return false;
     if (value.repeat !== undefined
       && (typeof value.repeat !== 'number' || !Number.isSafeInteger(value.repeat) || value.repeat < 1)) return false;
+    if (!Array.isArray(value.sourceEntries)
+      || !value.sourceEntries.every(isRotoRailSetCopyEntryValue)) return false;
     return isPhysicPaintRotoLoopClip(value.clip);
   }
   return false;

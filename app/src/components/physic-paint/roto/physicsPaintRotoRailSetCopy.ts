@@ -35,6 +35,7 @@ import {
   rekeyRailMotionsForCopy,
   type RailMotionCopyPlanEntry,
 } from './railMotionIdentity';
+import { collectRailMotionGroupOwnedKeyIds } from './railMotionDocumentReconciler';
 
 /** One copied Key Rail entry: frozen payload + relative frame + source identity. */
 export interface RotoRailSetCopyKeyEntry {
@@ -87,6 +88,17 @@ export interface RotoRailSetCopyLoopMember {
    * `clip.repeat` is reused verbatim).
    */
   readonly repeat?: number;
+  /**
+   * WR-06: the Loop Clip's own source keys, one entry per `clip.sourceKeyIds`
+   * id that resolves to a real-key record at copy time (key-rail entry shape).
+   * A clip-owned key is never carried by a synthetic key-rail member, so the
+   * loop member IS its sources on cross-track paste: the destination
+   * materializes them at the same `destinationStart + source offset` law the
+   * same-track path uses. Unresolvable source ids are omitted here — they
+   * still travel on `clip.sourceKeyIds`, so the cross-track re-pointing fails
+   * the paste closed (`loop-source-outside-pasted-set`) instead of dangling.
+   */
+  readonly sourceEntries: readonly RotoRailSetCopyKeyEntry[];
 }
 
 export type RotoRailSetCopyMember = RotoRailSetCopyKeyRailMember | RotoRailSetCopyLoopMember;
@@ -373,10 +385,13 @@ export function buildRotoRailSetCopyPayload(input: {
 
   const breakOwners = new Set(document.incomingInterpolationBreakKeyIds);
   const recordByKeyId = new Map(document.realKeyRecords.map((record) => [record.keyId, record]));
+  // WR-06: segment with the document's REAL group ownership (the display
+  // projection) so a bare Key Rail that follows a Loop Clip is a member of its
+  // own and a clip-owned key is never folded into a Key Rail member.
   const segments = deriveKeyRailSegments({
     orderedRealKeys: document.realKeyRecords,
     incomingInterpolationBreakKeyIds: breakOwners,
-    groupOwnedKeyIds: new Set(),
+    groupOwnedKeyIds: collectRailMotionGroupOwnedKeyIds(document.loopClips),
   });
   const segmentByFirstKeyId = new Map(segments.map((segment) => [segment.firstKeyId, segment]));
   const clipByLoopId = new Map(document.loopClips.map((clip) => [clip.loopId, clip]));
@@ -438,6 +453,21 @@ export function buildRotoRailSetCopyPayload(input: {
         return Object.freeze({ ok: false, reason: 'stale-member' });
       }
       const extent = resolveLoopCopyExtent(document, clip);
+      // WR-06: freeze the clip's own source keys as copy entries (key-rail
+      // entry shape). A source id with no real-key record is omitted here but
+      // stays on `clip.sourceKeyIds`, so a cross-track paste still fails closed
+      // instead of silently dropping the referenced key.
+      const sourceEntries: RotoRailSetCopyKeyEntry[] = [];
+      for (const sourceKeyId of clip.sourceKeyIds) {
+        const record = recordByKeyId.get(sourceKeyId);
+        if (record === undefined) continue;
+        sourceEntries.push(Object.freeze({
+          sourceKeyId: record.keyId,
+          sourceAppFrame: record.appFrame,
+          payload: record.payload,
+          ownsIncomingBreak: breakOwners.has(record.keyId),
+        }));
+      }
       // A Loop Clip rail binds by loopId — its motion snapshot is the record
       // whose railId is that same durable id.
       const loopMotion = motionByRailId.get(clip.loopId);
@@ -449,6 +479,7 @@ export function buildRotoRailSetCopyPayload(input: {
         clip: Object.freeze(clip),
         effectiveEndExclusive: extent.effectiveEndExclusive,
         ...(extent.repeat !== undefined ? { repeat: extent.repeat } : {}),
+        sourceEntries: Object.freeze(sourceEntries),
       }));
     }
   }
@@ -737,16 +768,20 @@ function allocateFreshIdentities(
           railIds[member.loopId] = loopIds[member.loopId];
         }
       }
-      // 46 UAT: a same-track pasted Loop Clip duplicates its source cycle, so
-      // allocate a fresh key for every source key — the parent recompute must
-      // replay the SAME fresh keys or the semantic impact mismatches. Cross-track
-      // pastes re-point onto the key-rail members' fresh keys instead (and fail
-      // closed when a source key is not covered), so no loop-source allocation.
-      if (!crossTrack) {
-        for (const sourceKeyId of member.clip.sourceKeyIds) {
-          if (keyIds[sourceKeyId] !== undefined) continue;
-          keyIds[sourceKeyId] = prescribed?.keyIds?.[sourceKeyId] ?? createPhysicPaintRotoKeyId();
-        }
+      // 46 UAT: a pasted Loop Clip duplicates its source cycle, so allocate a
+      // fresh key for every source key — the parent recompute must replay the
+      // SAME fresh keys or the semantic impact mismatches. WR-06: a cross-track
+      // paste now materializes the clip's OWN source entries (the loop member is
+      // its own carrier), so it allocates those entries too; a key already
+      // allocated by a key-rail member keeps that fresh id. An unresolvable
+      // source key is absent from `sourceEntries`, so it gets no allocation and
+      // the later re-point still rejects `loop-source-outside-pasted-set`.
+      const loopSourceKeyIds = crossTrack
+        ? member.sourceEntries.map((entry) => entry.sourceKeyId)
+        : member.clip.sourceKeyIds;
+      for (const sourceKeyId of loopSourceKeyIds) {
+        if (keyIds[sourceKeyId] !== undefined) continue;
+        keyIds[sourceKeyId] = prescribed?.keyIds?.[sourceKeyId] ?? createPhysicPaintRotoKeyId();
       }
     }
   }
@@ -770,7 +805,9 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
         return rejectPaste('unknown-member');
       }
     } else if (member.kind === 'loop') {
-      if (!isBoundedKeyId(member.loopId) || !member.clip) return rejectPaste('unknown-member');
+      if (!isBoundedKeyId(member.loopId) || !member.clip || !Array.isArray(member.sourceEntries)) {
+        return rejectPaste('unknown-member');
+      }
     } else {
       return rejectPaste('unknown-member');
     }
@@ -929,9 +966,34 @@ export function proposeRails(input: RotoRailSetPasteInput): RotoRailSetPasteResu
       const freshLoopId = allocation.loopIds[member.loopId] ?? createPhysicPaintRotoKeyId();
       const destinationStart = member.placementStart + delta;
       if (crossTrack) {
-        // 46-03 D-06: re-point every track-local source reference onto the
-        // destination's freshly allocated frames (created by the key-rail
-        // members of the set); impossible re-pointing fails the paste closed.
+        // 46-03 D-06 + WR-06: the Loop Clip member carries its OWN source
+        // entries, so a cross-track paste materializes them exactly like the
+        // same-track path (destinationStart + offset from the clip's first
+        // source frame) before re-pointing. A key-rail member of the set may
+        // already own a source key — never duplicate that fresh record. Any
+        // source id with no fresh identity (including an unresolvable source
+        // omitted from `sourceEntries`) still fails the paste closed at the
+        // re-point step below.
+        if (member.sourceEntries.length !== member.clip.sourceKeyIds.length) {
+          return rejectPaste('loop-source-outside-pasted-set');
+        }
+        const firstSourceFrame = member.sourceEntries[0]?.sourceAppFrame;
+        if (firstSourceFrame !== undefined) {
+          for (const entry of member.sourceEntries) {
+            if (keyRailCoveredSourceKeys.has(entry.sourceKeyId)) continue;
+            const freshKeyId = allocation.keyIds[entry.sourceKeyId] ?? createPhysicPaintRotoKeyId();
+            allocation.keyIds[entry.sourceKeyId] = freshKeyId;
+            const freshFrame = destinationStart + (entry.sourceAppFrame - firstSourceFrame);
+            freshRecords.push(buildFreshKeyRecord(entry.payload, freshKeyId, freshFrame));
+          }
+        }
+        const firstSourceEntry = member.sourceEntries[0];
+        if (firstSourceEntry !== undefined && !keyRailCoveredSourceKeys.has(firstSourceEntry.sourceKeyId)) {
+          const firstFreshKeyId = allocation.keyIds[firstSourceEntry.sourceKeyId];
+          if (firstFreshKeyId !== undefined) {
+            memberFirstFrames.push({ freshFirstFrame: destinationStart, freshFirstKeyId: firstFreshKeyId });
+          }
+        }
         const repoint = repointLoopClipSources(member.clip, allocation.keyIds);
         if (repoint === null) return rejectPaste('loop-source-outside-pasted-set');
         duplicatedLoopClips.push(buildDuplicatedLoopClip(member.clip, freshLoopId, destinationStart, delta, member.repeat, member.effectiveEndExclusive, repoint));

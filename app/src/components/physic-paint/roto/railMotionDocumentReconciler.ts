@@ -96,15 +96,25 @@ function compareKeyRecords(
 
 /**
  * The production group-owned projection (resolver :2899-2902): every
- * `clip.sourceKeyIds` id plus every `clip.frameOverrides[].keyId`.
+ * `clip.sourceKeyIds` id plus every `clip.frameOverrides[].keyId`. Exported as
+ * the ONE ownership authority for every rail-motion consumer — the resolver
+ * projection, the rail-set copy payload and the store copy builder all derive
+ * their segmentation from this set, never a second projection.
  */
-function groupOwnedKeyIdsFor(snapshot: RailMotionDocumentSnapshot): ReadonlySet<string> {
+export function collectRailMotionGroupOwnedKeyIds(
+  loopClips: readonly RailMotionDocumentLoopClipFact[],
+): ReadonlySet<string> {
   const groupOwnedKeyIds = new Set<string>();
-  for (const clip of snapshot.loopClips) {
+  for (const clip of loopClips) {
     clip.sourceKeyIds.forEach((keyId) => groupOwnedKeyIds.add(keyId));
     (clip.frameOverrides ?? []).forEach((override) => groupOwnedKeyIds.add(override.keyId));
   }
   return groupOwnedKeyIds;
+}
+
+/** The snapshot's group-owned projection, via the shared authority. */
+function groupOwnedKeyIdsFor(snapshot: RailMotionDocumentSnapshot): ReadonlySet<string> {
+  return collectRailMotionGroupOwnedKeyIds(snapshot.loopClips);
 }
 
 /**

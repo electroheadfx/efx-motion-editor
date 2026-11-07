@@ -6049,6 +6049,15 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
           clip: loopClip,
           effectiveEndExclusive: 4,
           repeat: 2,
+          // WR-06: the loop member carries its own source keys.
+          sourceEntries: Object.freeze([
+            Object.freeze({
+              sourceKeyId: 'k0',
+              sourceAppFrame: 0,
+              ownsIncomingBreak: false,
+              payload: sourceRecord.payload,
+            }),
+          ]),
         }),
       ]),
     });
