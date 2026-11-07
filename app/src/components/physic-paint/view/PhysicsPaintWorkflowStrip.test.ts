@@ -3373,8 +3373,10 @@ describe('59-12 UAT: the selected drawing key supplies the motion rail context',
     expect(code).toContain('resolveSelectedRailMotionId(activeMotionFacts.views, motionRailIdentity)');
     expect(code).toContain('selectedRail: motionRailIdentity,');
     // 261107: the Animate button (now the channel menu) additionally needs a
-    // resolvable menu key, so an un-animated rail can still open it.
-    expect(code).toContain('{motionRailIdentity !== null && activeMotionMenuKey !== null ? (');
+    // resolvable menu key, so an un-animated rail can still open it. The
+    // button is always mounted and greys out through this ONE gate.
+    expect(code).toContain('const canAnimateRail = motionRailIdentity !== null && activeMotionMenuKey !== null;');
+    expect(code).toContain("aria-disabled={canAnimateRail ? undefined : 'true'}");
   });
 });
 

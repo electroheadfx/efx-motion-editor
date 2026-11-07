@@ -7692,6 +7692,14 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   display: none;
 }
 
+/* 261107 (user decision): Animate is the rail-context action and lives at the
+   END of the bottom action row — the auto margin pins it right when the row
+   has spare width and lets it ride the scroll otherwise. It stays mounted and
+   greys out (aria-disabled) until a rail is selected. */
+.physics-paint-roto-animate-action {
+  margin-left: auto;
+}
+
 /* Group 1 of the bottom action row: the Layer name + Key {n} identity chip is
    its OWN tonal group, not fused with the tool icons (36.15-10, UAT Gap F-4).
    Same tonal language as the tools group pill. */

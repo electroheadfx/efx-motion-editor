@@ -2906,6 +2906,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : activeSelectedRailView.railId ?? activeSelectedRailView.anchorKeyId;
   const activeMotionChannelMenuOpen = activeMotionMenuKey !== null
     && railMotionChannelMenuRailId.value === activeMotionMenuKey;
+  // 261107 (user decision): ONE gate for the Animate button. With no rail
+  // context the button still renders (end-justified on the bottom action row)
+  // but stays greyed out; any rail selection — or a drawing key inside one —
+  // lights it up.
+  const canAnimateRail = motionRailIdentity !== null && activeMotionMenuKey !== null;
   // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
   // the hosting boundary keeps the lane's adjacency/span checks honest.
   const activeMotionLocalCursorFrame = activeMotionView === null
@@ -6507,60 +6512,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
-                {/* 261107 (user decision): Animate is the channel menu. Picking
-                    a channel makes the rail animatable on it — there is no
-                    default Position channel and no separate animate step. A
-                    present channel toggles off. Visible while a rail is
-                    selected, or while a drawing key inside a rail is selected
-                    (the Motion context survives the key scope). */}
-                {motionRailIdentity !== null && activeMotionMenuKey !== null ? (
-                  <span class="physics-paint-roto-key-icon-action">
-                    <button
-                      type="button"
-                      class="physics-paint-roto-key-icon-button"
-                      aria-label="Animate — motion channels"
-                      aria-haspopup="menu"
-                      aria-expanded={activeMotionChannelMenuOpen ? 'true' : 'false'}
-                      onClick={(event) => {
-                        const rect = event?.currentTarget?.getBoundingClientRect?.();
-                        toggleRailMotionChannelMenu(
-                          activeMotionMenuKey,
-                          rect === undefined ? { x: 0, y: 0 } : { x: rect.left, y: rect.bottom },
-                        );
-                      }}
-                    >
-                      <Play size={18} aria-hidden="true" />
-                      <span class="physics-paint-roto-key-icon-label">Animate</span>
-                    </button>
-                  </span>
-                ) : null}
-                {activeMotionChannelMenuOpen ? (
-                  <TimelineMotionChannelMenuOverlay
-                    anchor={railMotionChannelMenuAnchor.value}
-                    channels={activeMotionRecord?.channels ?? []}
-                    onToggleChannel={(channelId, present) => {
-                      if (present) {
-                        void physicalActions?.removeMotionChannel?.(channelId);
-                        return;
-                      }
-                      // Adding a channel is what opens the editing context:
-                      // expand a collapsed block so the new lane and its canvas
-                      // box are visible immediately. The id argument only gates
-                      // the "has motion" branch; the add we just started is
-                      // what gives this rail its motion.
-                      if (motionRailIdentity !== null
-                        && railMotionExpandedSelection.peek() === null
-                        && activeSelectedRailView !== null) {
-                        toggleRailMotionExpansion(
-                          motionRailIdentity,
-                          activeSelectedRailView.railId ?? activeSelectedRailView.anchorKeyId,
-                        );
-                      }
-                      void physicalActions?.addMotionChannel?.(channelId);
-                    }}
-                    onClose={() => dismissRailMotionChannelMenu()}
-                  />
-                ) : null}
                 {/* 59-12 (MOTN-05/MOTN-11): Hold/Ease and Wiggle exist ONLY in
                     the motion-key scope, as reported by the ONE command table.
                     The component gates again on the resolved scope, so no
@@ -6868,6 +6819,61 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>
+              {/* 261107 (user decision): Animate is the channel menu,
+                  end-justified on the bottom action row. It stays mounted and
+                  greys out until a rail is selected (a rail, a drawing key
+                  inside one, or an open motion block). Picking a channel makes
+                  the rail animatable on it — there is no default Position
+                  channel and no separate animate step. A present channel
+                  toggles off. */}
+              <span class="physics-paint-roto-key-icon-action physics-paint-roto-animate-action">
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Animate — motion channels"
+                  aria-haspopup="menu"
+                  aria-expanded={activeMotionChannelMenuOpen ? 'true' : 'false'}
+                  aria-disabled={canAnimateRail ? undefined : 'true'}
+                  onClick={(event) => {
+                    if (!canAnimateRail || activeMotionMenuKey === null) return;
+                    const rect = event?.currentTarget?.getBoundingClientRect?.();
+                    toggleRailMotionChannelMenu(
+                      activeMotionMenuKey,
+                      rect === undefined ? { x: 0, y: 0 } : { x: rect.left, y: rect.bottom },
+                    );
+                  }}
+                >
+                  <Play size={18} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Animate</span>
+                </button>
+              </span>
+              {activeMotionChannelMenuOpen ? (
+                <TimelineMotionChannelMenuOverlay
+                  anchor={railMotionChannelMenuAnchor.value}
+                  channels={activeMotionRecord?.channels ?? []}
+                  onToggleChannel={(channelId, present) => {
+                    if (present) {
+                      void physicalActions?.removeMotionChannel?.(channelId);
+                      return;
+                    }
+                    // Adding a channel is what opens the editing context:
+                    // expand a collapsed block so the new lane and its canvas
+                    // box are visible immediately. The id argument only gates
+                    // the "has motion" branch; the add we just started is
+                    // what gives this rail its motion.
+                    if (motionRailIdentity !== null
+                      && railMotionExpandedSelection.peek() === null
+                      && activeSelectedRailView !== null) {
+                      toggleRailMotionExpansion(
+                        motionRailIdentity,
+                        activeSelectedRailView.railId ?? activeSelectedRailView.anchorKeyId,
+                      );
+                    }
+                    void physicalActions?.addMotionChannel?.(channelId);
+                  }}
+                  onClose={() => dismissRailMotionChannelMenu()}
+                />
+              ) : null}
             </div>
         <div class="physics-paint-timeline-scrollbar" onPointerDown={(event) => handleTimelineScrollbarPointerDown(event as unknown as PointerEvent)}>
           {scrollbar.visible ? (
