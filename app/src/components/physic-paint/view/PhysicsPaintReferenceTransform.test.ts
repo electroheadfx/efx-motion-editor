@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getReferenceBounds } from './PhysicsPaintReferenceTransform';
+import { buildRailMotionEditCss, getReferenceBounds } from './PhysicsPaintReferenceTransform';
 import type { PhotoReferenceTransform } from '../../../efx-paint/document/efxPaintDocument';
 
 /**
@@ -53,5 +53,27 @@ describe('getReferenceBounds (50-05, S4 geometry)', () => {
   it('keeps the center fixed under rotation (rotation is around the center)', () => {
     const bounds = getReferenceBounds({ ...IDENTITY, rotation: 37 }, 200, 100, 2, 800, 600);
     expect(bounds.center).toEqual({ x: 400, y: 300 });
+  });
+});
+
+describe('buildRailMotionEditCss (59-12 edit-view mirror)', () => {
+  it('uses the compositor op order and the project→working zoom on offsets only', () => {
+    const css = buildRailMotionEditCss(
+      { translateX: 100, translateY: -50, scale: 2, rotationRadians: Math.PI / 4, pivotX: 0.5, pivotY: 0.25 },
+      1000,
+      800,
+      0.5,
+    );
+    // pivot = (500, 200); offset scaled by zoom → (50, -25).
+    expect(css).toBe('translate(550px, 175px) rotate(0.7853981633974483rad) scale(2) translate(-500px, -200px)');
+  });
+
+  it('is the plain identity chain at zero values', () => {
+    expect(buildRailMotionEditCss(
+      { translateX: 0, translateY: 0, scale: 1, rotationRadians: 0, pivotX: 0.5, pivotY: 0.5 },
+      1000,
+      1000,
+      1,
+    )).toBe('translate(500px, 500px) rotate(0rad) scale(1) translate(-500px, -500px)');
   });
 });

@@ -3835,6 +3835,23 @@ export const physicPaintStore = {
   },
 
   /**
+   * 59-12 UAT fix: the ONE track's rail transform at `frame`, resolved through
+   * the same 59-05 evaluator + 59-09 content/integer split the compositor uses.
+   * The Studio reads it to mirror the transform on the ACTIVE track's live
+   * engine surface — that surface bypasses the compositor, so without this
+   * mirror the edit view never shows rail motion.
+   */
+  getRotoPhysicalTrackMotionTransform(
+    layerId: string,
+    trackId: string,
+    frame: number,
+  ): EfxPaintTrackMotionTransform | null {
+    const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+    if (structural === null) return null;
+    return _trackMotionTransformAtFrame(layerId, trackId, frame, Math.floor(frame), structural);
+  },
+
+  /**
    * 59-09 (REL-04, DIAGNOSTIC ONLY — test seam): the rail transforms applied
    * in the most recent flattened build for `layerId`, keyed by track id. The
    * parity test asserts the store's applied transform against the 59-05

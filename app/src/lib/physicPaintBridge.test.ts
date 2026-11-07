@@ -545,6 +545,36 @@ describe('physicPaintBridge', async () => {
 
       expect(preserved).toBe(projected);
     });
+
+    it('keeps the rail-motion term when preserving inline bytes (59 UAT)', async () => {
+      const record = makePhysicalRecord('A', 1);
+      seedPhysicalDocument('phys-layer-1', [record]);
+      const projected = projectRecords([record]);
+      const railMotions = [{
+        railId: 'rail-1',
+        anchorKeyId: 'A',
+        channels: [{ id: 'opacity' as const, keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }] }],
+      }];
+      const motionProjected = parsePhysicPaintRotoPhysicalDocument({
+        ...projected,
+        railMotions,
+        revision: buildPhysicPaintRotoPhysicalRevision(
+          projected.realKeyRecords,
+          INTERPOLATION,
+          [],
+          PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+          [],
+          railMotions,
+        ),
+      });
+
+      const preserved = await preserveMirroredInlineBytes('phys-layer-1', TEST_TRACK_ID, motionProjected);
+
+      expect(preserved.railMotions).toEqual(railMotions);
+      // The recomputed revision must include the motion term the mirrored
+      // document still carries, or the install's canonical parse rejects it.
+      expect(() => parsePhysicPaintRotoPhysicalDocument(preserved)).not.toThrow();
+    });
   });
 
   it('creates launch context with layer, frame, operation, and canvas dimensions', async () => {

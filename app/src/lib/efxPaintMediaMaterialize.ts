@@ -160,6 +160,9 @@ export async function materializePackageRotoMediaBytes(
           physical.loopClips,
           physical.incomingInterpolationBreakKeyIds,
           groupOverrideRecords,
+          // Phase 59 (MOTN-12): the spread document keeps its motion
+          // collection — the revision must cover it too.
+          physical.railMotions,
         ),
       });
       tracks.push({ ...track, rotoPhysical: materializedPhysical });

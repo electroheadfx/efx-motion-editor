@@ -334,7 +334,12 @@ export function TimelineMotionChannelLane({
         height: laneHeight,
         background: TIMELINE_SURFACE.motionLane,
         overflow: 'hidden',
+        // 59-12 UAT: the selected rail's lanes carry a visible inset line; a
+        // lane shown only through the drawing-key fallback is dimmed, so the
+        // user can see that clicking it is what arms the canvas move.
+        boxShadow: selected ? `inset 0 0 0 1px ${palette.line}` : undefined,
       }}
+      data-motion-rail-selected={selected ? 'true' : 'false'}
       onClick={() => onSelectRail?.(railId)}
     >
       {Array.from({ length: frameCount }, (_, frame) => (
@@ -392,7 +397,9 @@ export function TimelineMotionChannelLane({
           width: TIMELINE_MOTION.headerClusterWidth,
           height: laneHeight,
           background: TIMELINE_SURFACE.motionLane,
+          opacity: selected ? 1 : 0.55,
         }}
+        title={selected ? undefined : 'Click this lane to select the rail for canvas transforms'}
       >
         <span
           data-motion-header-part="icon"
@@ -512,7 +519,8 @@ export interface TimelineMotionAddChannelRowProps {
   readonly disabled: boolean;
   /** The authority's reason, rendered verbatim; null while enabled. */
   readonly reason: string | null;
-  readonly onToggle: () => void;
+  /** 59-17 fix: the button's screen anchor, so the menu can escape clipping. */
+  readonly onToggle: (anchor: Readonly<{ x: number; y: number }>) => void;
 }
 
 /**
@@ -556,7 +564,10 @@ export function TimelineMotionAddChannelRow({
         opacity: disabled ? 0.4 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
-      onClick={disabled ? undefined : onToggle}
+      onClick={disabled ? undefined : (event) => {
+        const rect = event?.currentTarget?.getBoundingClientRect?.();
+        onToggle(rect === undefined ? { x: 0, y: 0 } : { x: rect.left, y: rect.bottom });
+      }}
     >
       <span aria-hidden="true" style={{ display: 'inline-flex' }}>
         <Plus size={8} />
@@ -600,10 +611,14 @@ export function TimelineMotionChannelMenu({
             alignItems: 'center',
             gap: TIMELINE_MOTION.laneLabelGap,
             height: TIMELINE_MOTION.laneHeight,
-            padding: 0,
+            padding: '0 10px',
             border: 'none',
             background: 'transparent',
             color: TIMELINE_SURFACE.trackName,
+            font: 'inherit',
+            fontSize: 10,
+            fontWeight: 600,
+            textAlign: 'left',
             cursor: 'pointer',
           }}
           onClick={() => {

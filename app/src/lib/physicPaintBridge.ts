@@ -1553,6 +1553,9 @@ function recomputeCanonicalGroupRegenerate(input: {
         currentDocument.loopClips,
         currentDocument.incomingInterpolationBreakKeyIds,
         currentDocument.groupOverrideRecords,
+        // Phase 59 (MOTN-12): the spread document below carries its motion
+        // collection; the parser recomputes the revision WITH it.
+        currentDocument.railMotions,
       ),
     });
   } catch {
@@ -3774,6 +3777,8 @@ export async function preserveMirroredInlineBytes(
       document.loopClips,
       document.incomingInterpolationBreakKeyIds,
       overrides ?? [],
+      // Phase 59 (MOTN-12): the mirrored document keeps its motion collection.
+      document.railMotions,
     ),
   };
 }

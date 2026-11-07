@@ -903,7 +903,7 @@ describe('59-13 rail motion commands — gizmo transform write', () => {
     expect(channelOf(record, 'position-x').keys.some((key) => key.frame === 490)).toBe(false);
   });
 
-  it('rejects a drag on a channel with no keys, leaving the collection byte-identical (D-08)', () => {
+  it('auto-adds a channel on an explicit handle drag instead of snapping back (D-08, UAT revision)', () => {
     const scaleFree = Object.freeze({
       railId: 'rail-1',
       anchorKeyId: 'key-a',
@@ -913,16 +913,21 @@ describe('59-13 rail motion commands — gizmo transform write', () => {
       ]),
     }) as PhysicPaintRotoRailMotionRecord;
     const records = [scaleFree];
-    const before = JSON.stringify(records);
     const result = gizmoCommands.writeMotionTransformAtCursor({
       records,
       view: gizmoView(),
       cursorFrame: 14,
       values: { scale: 120 },
     });
-    expect(result).toEqual({ ok: false, reason: 'This Motion channel has no keys yet.' });
-    expect(JSON.stringify(records)).toBe(before);
+    if (!result.ok) throw new Error(result.reason);
+    // The gesture both ADDS Scale and writes its key at the cursor frame.
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'scale')).toBeDefined();
+    // Rail-local frame: cursor 14 - rail start 10 = 4.
+    expect(keyAt(record, 'scale', 4)?.value).toBeCloseTo(1.2, 6);
+    // The input collection is never mutated.
     expect(records[0]).toBe(scaleFree);
+    expect(scaleFree.channels.some((channel) => channel.id === 'scale')).toBe(false);
   });
 
   it('rejects a Position drag when only one axis is animated (D-08 grouped pair)', () => {

@@ -928,6 +928,49 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
     expect(applied.tracks.find((track) => track.id === TRACK1)?.rotoPhysical?.realKeyRecords.map((entry) => entry.keyId))
       .toEqual(['k1']);
   });
+
+  it('a motion-bearing document survives the projection and the receiver door (59 UAT)', async () => {
+    const base = baseDocument();
+    const keyBytes = testWebpBytes('motion-key');
+    const record = {
+      kind: 'real-key' as const,
+      keyId: 'k1',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, bytes: keyBytes, width: 8, height: 6 },
+    };
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const railMotions = [{
+      railId: 'rail-1',
+      anchorKeyId: 'k1',
+      channels: [{ id: 'opacity' as const, keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }] }],
+    }];
+    // The projection recomputes the physical revision. Rail motion is a
+    // canonical revision term, so omitting it here made the receiver's
+    // fail-closed parse throw 'canonical revision mismatch' — the whole sync
+    // (motion keys included) was rejected and the keys vanished on reopen.
+    const physical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 600,
+      realKeyRecords: [record],
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([record], interpolation, [], [], [], railMotions),
+      loopClips: [],
+      railMotions,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    await sendEfxPaintDocumentSync(
+      { ...base, tracks: [{ ...base.tracks[0], rotoPhysical: physical }] },
+      'Tauri',
+    );
+    const payload = emitTo.mock.calls[emitTo.mock.calls.length - 1][2] as { document: unknown };
+
+    const received = parseEfxPaintDocument(fromTransportPayload(payload.document));
+    expect(received.tracks[0].rotoPhysical?.railMotions).toEqual(railMotions);
+  });
 });
 
 /**

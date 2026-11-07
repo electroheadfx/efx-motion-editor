@@ -316,6 +316,12 @@ async function projectEfxPaintDocumentForSync(
           roto.loopClips,
           roto.incomingInterpolationBreakKeyIds,
           projectedGroupOverrideRecords,
+          // Phase 59 (MOTN-12): rail motion is a canonical revision term. The
+          // receiver recomputes the revision WITH it and fails the whole sync
+          // closed on a mismatch — omitting it here dead-lettered every
+          // motion-bearing document push (the keys vanished when Studio
+          // closed).
+          roto.railMotions,
         ),
       },
     });

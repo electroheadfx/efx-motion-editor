@@ -15,6 +15,7 @@ import {
 import { buildRotoDeleteScopeLabel, type RotoDeleteTarget } from '../hooks/useRotoTimelineActions';
 import {
   PhysicsPaintRotoMotionKeyControls,
+  resolveRailIdentityForSelectedKey,
   resolveReorderInsertionIndex,
   resolveTrackRowLayout,
 } from './PhysicsPaintWorkflowStrip';
@@ -3034,14 +3035,14 @@ describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the on
     expect(code).not.toContain('resolveKeylessMotionDisplayLanes');
     expect(code).not.toContain('activeMotionHasKeylessChannel');
     expect(code).toContain('addChannelRow: isActive && activeMotionAddChannelRow,');
-    // The open menu is an absolute overlay inside the row: the strip never
-    // renders it, so its open height can never reach this layout.
+    // The open menu is a FIXED viewport overlay owned by the row: the strip
+    // never renders it, so its open height can never reach this layout.
     expect(code).not.toContain('physics-paint-motion-channel-menu-overlay');
     expect(code).toContain('railMotionChannelMenuRailId.value === activeMotionRecord.railId');
     // The strip only READS the menu identity — the row owns its two writers.
     // (Not an equality: `.value === x` is a read, `.value = x` is a write.)
     expect(code).not.toMatch(/railMotionChannelMenuRailId\.value\s*=(?!=)/);
-    expect(code).toContain('toggleRailMotionChannelMenu(activeMotionRecord.railId)');
+    expect(code).toContain('toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor);');
     expect(code).toContain('dismissRailMotionChannelMenu()');
   });
 });
@@ -3354,5 +3355,29 @@ describe('59-20: the move wrapper publishes a non-undoable drop notice (CR-02)',
       .toBeLessThan(port.indexOf('props.onSelectTrack?.(toTrackId);'));
     // The pre-existing ship assertion stays inside the same slice.
     expect(port).toContain('await props.publishDocumentSync?.()');
+  });
+});
+
+describe('59-12 UAT: the selected drawing key supplies the motion rail context', () => {
+  it('resolves a Key Rail key to its segment and a Loop Clip key to its clip', () => {
+    const segments = [{ firstKeyId: 'k0', keyIds: ['k0', 'k2', 'k6'] }] as never;
+    const clips = [{ loopId: 'loop-a', sourceKeyIds: ['s1'], frameOverrides: [{ keyId: 'ov1' }] }] as never;
+    expect(resolveRailIdentityForSelectedKey('k2', clips, segments))
+      .toEqual({ kind: 'key-rail', firstKeyId: 'k0' });
+    expect(resolveRailIdentityForSelectedKey('s1', clips, segments))
+      .toEqual({ kind: 'loop', loopId: 'loop-a' });
+    expect(resolveRailIdentityForSelectedKey('ov1', clips, segments))
+      .toEqual({ kind: 'loop', loopId: 'loop-a' });
+    expect(resolveRailIdentityForSelectedKey('nope', clips, segments)).toBeNull();
+    expect(resolveRailIdentityForSelectedKey(null, clips, segments)).toBeNull();
+  });
+
+  it('feeds the Animate gate and the block identity from the fallback', () => {
+    const code = source();
+    expect(code).toContain('const motionRailIdentity: RailSetIdentity | null = activeRailSetIdentity');
+    expect(code).toContain('resolveRailIdentityForSelectedKey(');
+    expect(code).toContain('resolveSelectedRailMotionId(activeMotionFacts.views, motionRailIdentity)');
+    expect(code).toContain('selectedRail: motionRailIdentity,');
+    expect(code).toContain('{motionRailIdentity !== null ? (');
   });
 });

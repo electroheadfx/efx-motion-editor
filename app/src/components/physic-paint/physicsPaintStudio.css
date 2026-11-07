@@ -9328,3 +9328,17 @@ input[type="range"].physics-paint-photo-reference-slider-input {
   border-top: 1px solid var(--ps-divider);
 }
 
+
+/* 59-12 UAT fix: the live engine shell mirrors the active track's rail
+   transform in edit view. The compositor remains the ONE export/monitor
+   application site; this rule only makes the active track's own surface agree
+   with it while editing (the shell bypasses the compositor by design). */
+.physics-paint-tracks-group[data-rail-edit='1'] > .demo-canvas-shell {
+  transform: var(--rail-edit-transform);
+  transform-origin: 0 0;
+  opacity: var(--rail-edit-opacity);
+  /* The sheet's drop shadow moves with the transform and reads as a cloned
+     paper card sliding over the background. The rail's PAINT is the only
+     thing that should move — never a rectangle or its shadow. */
+  box-shadow: none;
+}

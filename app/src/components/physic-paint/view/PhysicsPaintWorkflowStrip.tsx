@@ -2747,6 +2747,30 @@ export function getTimelineViewportFrames(): TimelineViewportFrames | null {
   return timelineViewportGetter?.() ?? null;
 }
 
+/**
+ * 59-12 UAT fix: the rail that OWNS a selected drawing key. A Loop Clip key
+ * resolves to its clip (`loopId`); a Key Rail key resolves to its segment
+ * (`firstKeyId`). Null when the key belongs to no rail. This is the motion
+ * context only — the key/rail selection model itself is unchanged.
+ */
+export function resolveRailIdentityForSelectedKey(
+  keyId: string | null,
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+  segments: readonly KeyRailSegment[],
+): RailSetIdentity | null {
+  if (keyId === null) return null;
+  for (const clip of loopClips) {
+    if (clip.sourceKeyIds.includes(keyId)
+      || (clip.frameOverrides ?? []).some((override) => override.keyId === keyId)) {
+      return Object.freeze({ kind: 'loop', loopId: clip.loopId }) as RailSetIdentity;
+    }
+  }
+  const segment = segments.find((candidate) => candidate.keyIds.includes(keyId));
+  return segment === undefined
+    ? null
+    : Object.freeze({ kind: 'key-rail', firstKeyId: segment.firstKeyId }) as RailSetIdentity;
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -2810,6 +2834,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const [stripHeightOverride, setStripHeightOverride] = useState<number | null>(null);
   const stripResizeStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const trackCount = props.tracks?.length ?? 0;
+  // 59-12 UAT fix: the Key Rail segments and the Loop Clip inventory are
+  // derived HERE, before the motion identity, so a selected drawing key can
+  // supply the rail context when no rail itself is selected.
+  const rotoKeyRecords = props.rotoKeyRecords ?? [];
+  const keyRailGroupOwnedKeyIds = useMemo(() => {
+    const owned = new Set<string>();
+    for (const clip of props.rotoLoopClips ?? []) {
+      clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));
+      (clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));
+    }
+    return owned;
+  }, [props.rotoLoopClips]);
+  const keyRailSegments = useMemo(() => deriveKeyRailSegments({
+    orderedRealKeys: [...rotoKeyRecords]
+      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
+    incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? []),
+    groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
+  }), [rotoKeyRecords, props.rotoIncomingInterpolationBreakKeyIds, keyRailGroupOwnedKeyIds]);
   // 59-11 (MUI-04): ONE session identity, read narrowly here so a chevron
   // toggle re-renders the strip's measured layout. The strip mirrors the
   // Studio's single-rail precedence (key rail first, then a lone loop clip) —
@@ -2819,22 +2861,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : (props.selectedRotoLoopClipIds !== undefined && props.selectedRotoLoopClipIds.length === 1
       ? { kind: 'loop', loopId: props.selectedRotoLoopClipIds[0]! }
       : null);
+  // 59-12 UAT fix: a drawing-key selection clears the rail selection by design,
+  // but it must NOT close the rail's motion block or hide Animate. Precedence:
+  // explicit rail → the rail that owns the selected drawing key → the rail
+  // whose motion block is OPEN (an open block is its own context, so no click
+  // can tear the block, Animate or the canvas gizmo down).
+  const expandedRailSelection = railMotionExpandedSelection.value;
+  const motionRailIdentity: RailSetIdentity | null = activeRailSetIdentity
+    ?? resolveRailIdentityForSelectedKey(
+      props.rotoPrimarySelectedKeyId ?? null,
+      props.rotoLoopClips ?? [],
+      keyRailSegments,
+    )
+    ?? expandedRailSelection;
   // The active track's motion facts: the ONLY track whose rail can be selected
   // (only the active lane's rails are interactive), so it is the only row that
   // can carry a non-zero lane count. The revision read below subscribes the
   // strip to motion edits so a changed lane count re-measures immediately.
   if (props.layerId && props.activeTrackId) getTrackRotorRevision(props.layerId, props.activeTrackId).value;
-  const expandedRailSelection = railMotionExpandedSelection.value;
   const activeMotionFacts: RailMotionHostFacts = props.layerId && props.activeTrackId
     ? readTrackRailMotionFacts(props.layerId, props.activeTrackId)
     : EMPTY_RAIL_MOTION_HOST_FACTS;
-  const activeSelectedRailMotionId = resolveSelectedRailMotionId(activeMotionFacts.views, activeRailSetIdentity);
+  const activeSelectedRailMotionId = resolveSelectedRailMotionId(activeMotionFacts.views, motionRailIdentity);
   const activeMotionRecord = resolveMotionRecordForRail(activeMotionFacts.records, activeSelectedRailMotionId);
   const activeMotionLaneCount = resolveTrackMotionLaneCount({
     views: activeMotionFacts.views,
     record: activeMotionRecord,
     expandedSelection: expandedRailSelection,
-    selectedRail: activeRailSetIdentity,
+    selectedRail: motionRailIdentity,
     selectedRailMotionId: activeSelectedRailMotionId,
   });
   const activeMotionView = activeMotionRecord === null
@@ -3031,7 +3085,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const interpolationEnabled = props.rotoInterpolationEnabled === true;
   const interpolationMode = props.rotoInterpolationMode ?? 'duplicate';
   const currentPhysicalCells = props.rotoPhysicalCells;
-  const rotoKeyRecords = props.rotoKeyRecords ?? [];
   const realKeyOrderById = useMemo(
     () => new Map([...rotoKeyRecords]
       .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId))
@@ -3090,14 +3143,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // query per capacity-bounded frame, never proportional to any loop's effective range. Null
   // when no loop context is supplied (pre-43 byte-identical path).
   const loopResolutionContext = props.rotoLoopResolutionContext ?? null;
-  const keyRailGroupOwnedKeyIds = useMemo(() => {
-    const owned = new Set<string>();
-    for (const clip of props.rotoLoopClips ?? []) {
-      clip.sourceKeyIds.forEach((keyId) => owned.add(keyId));
-      (clip.frameOverrides ?? []).forEach((override) => owned.add(override.keyId));
-    }
-    return owned;
-  }, [props.rotoLoopClips]);
   // v2.0.1 UAT (ghost-key fix): a clip source key whose physical frame is
   // outside EVERY visible range of EVERY clip referencing it is internal source
   // payload, not a timeline key. A linked clip placed away from its source
@@ -3126,12 +3171,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
     return ghosts.size === 0 ? EMPTY_KEY_ID_SET : ghosts;
   }, [props.rotoLoopClips, props.rotoKeyRecords]);
-  const keyRailSegments = useMemo(() => deriveKeyRailSegments({
-    orderedRealKeys: [...rotoKeyRecords]
-      .sort((left, right) => left.appFrame - right.appFrame || left.keyId.localeCompare(right.keyId)),
-    incomingInterpolationBreakKeyIds: new Set(props.rotoIncomingInterpolationBreakKeyIds ?? []),
-    groupOwnedKeyIds: keyRailGroupOwnedKeyIds,
-  }), [rotoKeyRecords, props.rotoIncomingInterpolationBreakKeyIds, keyRailGroupOwnedKeyIds]);
   // 43.6-03: the explicit set members in Plan 01 canonical order, passed
   // through from the Studio's set authority (D-17 — membership is never
   // re-derived in the view). The ref keeps the session ports reading the
@@ -6161,8 +6200,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // 59-11 (MUI-04): the header consumes the ONE measured layout and
             // the same rail identity the rows use, so a block's lane spacers
             // and its body lanes share an offset and its chevron agrees with
-            // the row's.
-            selectedRail: activeRailSetIdentity,
+            // the row's. 59-12 UAT fix: the selected drawing key supplies the
+            // same identity, so the chevron stays live while a key is selected.
+            selectedRail: motionRailIdentity,
             rowLayout: rowLayout.rows,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
@@ -6284,6 +6324,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                               <TimelineMotionBlock
                                 record={activeMotionRecord}
                                 view={activeMotionView}
+                                railSelected={activeRailSetIdentity !== null}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
                                 channelMenuOpen={activeMotionChannelMenuOpen}
@@ -6319,9 +6360,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 onAddMotionChannel={(channelId) => {
                                   void physicalActions?.addMotionChannel?.(channelId);
                                 }}
-                                onToggleChannelMenu={() => {
+                                onToggleChannelMenu={(anchor) => {
                                   if (activeMotionRecord !== null) {
-                                    toggleRailMotionChannelMenu(activeMotionRecord.railId);
+                                    toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor);
+                                  }
+                                }}
+                                onSelectMotionRail={() => {
+                                  if (motionRailIdentity === null) return;
+                                  if (motionRailIdentity.kind === 'loop') {
+                                    props.onSelectRotoLoopClip?.(motionRailIdentity.loopId, 'plain');
+                                    return;
+                                  }
+                                  const segment = keyRailSegments.find(
+                                    (candidate) => candidate.firstKeyId === motionRailIdentity.firstKeyId,
+                                  );
+                                  if (segment !== undefined) {
+                                    props.onSelectRotoKeyRail?.({
+                                      firstKeyId: segment.firstKeyId,
+                                      keyIds: segment.keyIds,
+                                    });
                                   }
                                 }}
                                 onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
@@ -6420,11 +6477,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 <span class="physics-paint-roto-key-context" aria-hidden="true">Key {props.currentFrame}</span>
               </div>
               <div class="physics-paint-roto-key-utilities" role="group" aria-label={`Roto key tools for frame ${props.currentFrame}`}>
-                {/* 59-12 (D-01): the ONE Animate command. Rail scope only —
-                    selecting a drawing key or a Motion key hides it. No
-                    conversion step and no cycle value: every rail type can be
-                    animated (MUI-01/MOTN-01). */}
-                {activeRailSetIdentity !== null ? (
+                {/* 59-12 (D-01): the ONE Animate command. Visible while a rail
+                    is selected OR while a drawing key inside a rail is selected
+                    (the Motion context survives the key scope). No conversion
+                    step and no cycle value: every rail type can be animated
+                    (MUI-01/MOTN-01). */}
+                {motionRailIdentity !== null ? (
                   <span class="physics-paint-roto-key-icon-action" onPointerEnter={animateRailTooltip.onPointerEnter} onPointerLeave={animateRailTooltip.onPointerLeave}>
                     <button
                       type="button"

@@ -96,3 +96,32 @@ export function getBackgroundBounds(
 ): LayerBounds {
   return transformBoundsCore(transform, baseDrawW, baseDrawH, zoom, canvasWidth, canvasHeight);
 }
+
+/**
+ * 59-12 UAT fix: the CSS mirror of the compositor's rail transform, applied to
+ * the ACTIVE track's live engine shell (which bypasses the compositor). The
+ * op order is the compositor's, byte for byte: translate(pivot + offset),
+ * rotate, scale, translate(-pivot). Positions are PROJECT pixels; `zoom` is
+ * the project→working ratio the shell's CSS space already uses, so offsets are
+ * multiplied by it while the normalized pivot is multiplied by the working
+ * canvas size.
+ */
+export function buildRailMotionEditCss(
+  transform: {
+    readonly translateX: number;
+    readonly translateY: number;
+    readonly scale: number;
+    readonly rotationRadians: number;
+    readonly pivotX: number;
+    readonly pivotY: number;
+  },
+  canvasWidth: number,
+  canvasHeight: number,
+  zoom: number,
+): string {
+  const pivotX = transform.pivotX * canvasWidth;
+  const pivotY = transform.pivotY * canvasHeight;
+  const x = pivotX + transform.translateX * zoom;
+  const y = pivotY + transform.translateY * zoom;
+  return `translate(${x}px, ${y}px) rotate(${transform.rotationRadians}rad) scale(${transform.scale}) translate(${-pivotX}px, ${-pivotY}px)`;
+}

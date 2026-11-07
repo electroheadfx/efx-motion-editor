@@ -45,6 +45,7 @@ import {
 import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY } from './roto/railMotionModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
+import { isEfxPaintTrackMotionIdentity } from '../../efx-paint/compositor/efxPaintCompositor';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
 import {
@@ -79,7 +80,7 @@ import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts'
 import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
-import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
+import { railMotionExpandedSelection, type TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
 import {
@@ -950,14 +951,23 @@ export function PhysicsPaintStudio() {
         // studio-realm-divergence probe: startFrame landed (propagation made
         // it through) — record where the document cursor stood BEFORE this
         // reseed closes the gap.
-        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
-        physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
-        const spacingSelection = rotoSpacingSelection.peek();
-        selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
-          ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
-        selectionAnchorKeyId.value = spacingSelection
-          ? spacingSelection.sourceKeyIds[spacingSelection.anchorSourceIndex] ?? null
-          : selectedKeyId.value;
+        // 59-12 UAT fix (instant deselect): a navigation while a RAIL is
+        // selected must not auto-select the frame's drawing key. Doing so made
+        // the render-body scope guard clear the rail selection — collapsing the
+        // motion block and unmounting the canvas gizmo on the very press that
+        // started the drag.
+        if (selectedRotoKeyRail.peek() === null) {
+          selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
+          physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
+          const spacingSelection = rotoSpacingSelection.peek();
+          selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
+            ?? (selectedKeyId.value === null ? [] : [selectedKeyId.value]);
+          selectionAnchorKeyId.value = spacingSelection
+            ? spacingSelection.sourceKeyIds[spacingSelection.anchorSourceIndex] ?? null
+            : selectedKeyId.value;
+        } else {
+          physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, null, next.startFrame);
+        }
       }
       return next;
     });
@@ -1087,6 +1097,12 @@ export function PhysicsPaintStudio() {
   // other document-sync state further down) so the coordinator's bridge ports
   // can flush the pending sync before every physical-edit send.
   const flushDocumentSyncRef = useRef<() => Promise<void>>(async () => {});
+  // 59-12 UAT fix (data loss): the same forward-ref pattern — the Motion
+  // commands are created ABOVE the document-sync state, and a Motion commit
+  // must arm it or the keys never reach the main document.
+  const motionDocumentSyncArmRef = useRef<() => void>(() => {});
+  // 59-12 UAT fix (data loss): immediate push on every Motion commit.
+  const motionDocumentSyncPublishRef = useRef<() => void>(() => {});
   // 41-04 (D-05): the audio ownership guard sends its claim/release events
   // through the dual-transport sender with the live bridge mode. The guard
   // module is transport-agnostic (session state only); this effect is the
@@ -3199,6 +3215,16 @@ export function PhysicsPaintStudio() {
     getCurrentAppFrame: () => currentFrame,
     navigateToAppFrame: (frame) => navigateToAppFrameRef.current(frame),
     getLaunchContext: () => launchContextRef.current,
+    // 59-12: Motion commands address the LIVE active track, exactly like every
+    // other store read in this hook. The carried launch snapshot's
+    // activeTrackId is frozen at open time and names a stale track after a
+    // track switch — which made Animate write where the timeline never reads.
+    getActiveTrackId: (layerId) => getEfxPaintDocument(layerId)?.activeTrackId ?? '',
+    // 59-12 UAT fix: arm the document sync on every Motion commit.
+    markDocumentSyncDirty: () => motionDocumentSyncArmRef.current(),
+    publishMotionDocumentSync: () => motionDocumentSyncPublishRef.current(),
+    // An OPEN motion block is a rail context independent of the selection.
+    getMotionBlockRailIdentity: () => railMotionExpandedSelection.value,
     getCapacity: () => launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 1,
     getParentEndExclusive: () => launchContext
       ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId())
@@ -5058,7 +5084,7 @@ export function PhysicsPaintStudio() {
       const target = event.target;
       if (typeof Element !== 'undefined'
         && target instanceof Element
-        && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform')) return;
+        && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform, .physics-paint-rail-motion-transform')) return;
       if (activeModule.value === 'watercolor') {
         // lift is erase-like and Dry is a separate action — neither may create
         // a key on a non-real cell.
@@ -5143,7 +5169,7 @@ export function PhysicsPaintStudio() {
     const target = event.target;
     if (typeof Element !== 'undefined'
       && target instanceof Element
-      && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform')) return false;
+      && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform, .physics-paint-rail-motion-transform')) return false;
     const paintToolActive = activeModule.value === 'watercolor'
       ? (aquarelleActiveTool.value === 'brush'
         || aquarelleActiveTool.value === 'water'
@@ -9904,6 +9930,23 @@ export function PhysicsPaintStudio() {
       cachedRotoReferenceUrl,
       cachedRotoPlaybackTick: rotoCachedPlayback.playbackTick,
       cachedRotoPlaybackActive: rotoCachedPlayback.isActive,
+      // 59-12 UAT fix: the ACTIVE track's rail transform at this frame. The
+      // live engine shell bypasses the compositor, so the view mirrors this
+      // transform on it — otherwise the edit view can never show rail motion.
+      railMotionEditTransform: (() => {
+        const layerId = launchContext?.layerId;
+        if (!layerId) return null;
+        // 59-12 UAT fix: playback frames are composited by the compositor
+        // (cached playback raster / program monitor) — the live shell must not
+        // apply the transform a second time, or the canvas reads off-center.
+        if (isPlaying || rotoCachedPlayback.isActive) return null;
+        const transform = physicPaintStore.getRotoPhysicalTrackMotionTransform(
+          layerId,
+          studioActiveTrackId(),
+          currentFrame,
+        );
+        return transform !== null && !isEfxPaintTrackMotionIdentity(transform) ? transform : null;
+      })(),
       cachedRotoPlaybackComposition,
       inputDisabled: rotoInputDisabled,
       inputDisabledMessage: rotoInputDisabledMessage,
@@ -10304,6 +10347,7 @@ export function PhysicsPaintStudio() {
   // edits are excluded (see Part 1 above) — they ship via applyPayload.
   const documentSyncDirtyRef = useRef(signal(false));
   const documentSyncDirty = documentSyncDirtyRef.current;
+  motionDocumentSyncArmRef.current = () => { documentSyncDirty.value = true; };
   useEffect(() => {
     documentSyncDirty.value = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -10329,6 +10373,10 @@ export function PhysicsPaintStudio() {
       documentSyncDirty.value = false;
       await pushLiveProjection(layerId, mode);
     }
+  };
+  motionDocumentSyncPublishRef.current = () => {
+    documentSyncDirty.value = true;
+    void flushDocumentSyncRef.current();
   };
   // Non-gesture path: a mutation while already idle flushes on a 2s debounce.
   // 52.1: also require 1s of real quiet at fire time — a 2s timer can still

@@ -818,17 +818,34 @@ export function writeMotionTransformAtCursor(
     return failure('The drag did not change a Motion channel.');
   }
 
-  // D-08: a drag may only create keys inside channels that already animate.
-  // A grouped Position drag needs BOTH axes animated — writing one axis would
-  // invent motion on the other.
-  const gatedChannels: PhysicPaintRotoRailMotionChannelId[] = [];
-  if (hasPosition) gatedChannels.push('position-x', 'position-y');
-  if (hasScale) gatedChannels.push('scale');
-  if (hasRotation) gatedChannels.push('rotation');
-  for (const channelId of gatedChannels) {
-    if (!record.channels.some((entry) => entry.id === channelId)) {
-      return failure('This Motion channel has no keys yet.');
+  // D-08 as revised at UAT: a grouped Position drag still needs BOTH axes
+  // animated (writing one axis would invent motion on the other), but an
+  // explicit Scale/Rotation handle drag now AUTO-ADDS that channel in the same
+  // gesture. The old refusal made those handles lie: they previewed during the
+  // drag and snapped back on release whenever the channel had not been added
+  // first through the lane's `+` row.
+  if (hasPosition) {
+    for (const channelId of ['position-x', 'position-y'] as const) {
+      if (!record.channels.some((entry) => entry.id === channelId)) {
+        return failure('This Motion channel has no keys yet.');
+      }
     }
+  }
+  let seeded: readonly PhysicPaintRotoRailMotionRecord[] = records;
+  for (const channelId of [
+    ...(hasScale ? ['scale'] as const : []),
+    ...(hasRotation ? ['rotation'] as const : []),
+  ]) {
+    const currentRecord = findRailMotionRecord(seeded, railId);
+    if (currentRecord === null) return failure('This rail has no Motion to edit yet.');
+    if (currentRecord.channels.some((entry) => entry.id === channelId)) continue;
+    const added = applyRailMotionEditToCollection(seeded, {
+      kind: 'add-channel',
+      railId,
+      channel: channelId,
+    });
+    if (added === seeded) return failure('This Motion channel could not be added.');
+    seeded = added;
   }
 
   const keyFrame = railMotionCursorFrame(view, cursorFrame);
@@ -861,7 +878,7 @@ export function writeMotionTransformAtCursor(
     return failure('This value is outside the Motion channel range.');
   }
 
-  let current: readonly PhysicPaintRotoRailMotionRecord[] = records;
+  let current: readonly PhysicPaintRotoRailMotionRecord[] = seeded;
   if (position !== null) {
     const written = setMotionKeyAtCursor({
       records: current,

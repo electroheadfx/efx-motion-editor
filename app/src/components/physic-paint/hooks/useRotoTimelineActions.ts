@@ -1687,6 +1687,31 @@ export interface RotoTimelineActionsInput {
   navigateToAppFrame?: (frame: number) => void;
   /** Launch context identity at action time (D-09). */
   getLaunchContext?: () => PhysicPaintLaunchContext | null;
+  /**
+   * 59-12: the LIVE active track for a layer. The launch snapshot's
+   * `document.activeTrackId` is frozen at open time, so after any track switch
+   * it names a stale track; every Motion command must address the same track
+   * the timeline and canvas read. Falls back to the launch snapshot when the
+   * port is absent (legacy harnesses).
+   */
+  getActiveTrackId?: (layerId: string) => string;
+  /**
+   * 59-12 UAT fix: the rail whose Motion block is OPEN (session expansion).
+   * An open block is its own rail context: a click that changes the drawing-key
+   * selection must not tear the block, Animate or the canvas gizmo down.
+   */
+  getMotionBlockRailIdentity?: () => RailSetIdentity | null;
+  /**
+   * 59-12 UAT fix: a Motion commit must arm the Studio's document sync, or a
+   * Motion-only edit never reaches the main document and is lost on close.
+   */
+  markDocumentSyncDirty?: () => void;
+  /**
+   * 59-12 UAT fix (data loss): push the document NOW on a Motion commit.
+   * Waiting for the window-close flush loses the keys when the Studio realm is
+   * destroyed without that path (app quit, crash, force close).
+   */
+  publishMotionDocumentSync?: () => void;
   /** Bounded physical frame capacity (D-01/D-02). */
   getCapacity?: () => number;
   /** Required authoritative current parent/layer end, independent from physical capacity. */
@@ -2114,7 +2139,11 @@ export interface RailMotionGizmoBundle extends PhysicsPaintRailMotionGizmoProps 
 function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailMotionState | null {
   const launch = input.getLaunchContext?.() ?? null;
   const layerId = launch?.layerId;
-  const trackId = launch?.document?.activeTrackId;
+  // 59-12: live track first — the launch snapshot is frozen at open time and
+  // goes stale on the first track switch (the Studio's other store reads all
+  // resolve the live document's activeTrackId).
+  const trackId = (layerId ? input.getActiveTrackId?.(layerId) : '')
+    || launch?.document?.activeTrackId;
   if (!layerId || !trackId) return null;
 
   // Subscribe the calling computed/render to motion edits on this track.
@@ -2147,7 +2176,33 @@ function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailM
     undefined,
     createRailMotionViewSpanResolver(loopRanges),
   );
-  const view = resolveSelectedRailView(views, readSelectedRailIdentity(input));
+  // 59-12 UAT fix: a drawing-key selection clears the rail selection by design,
+  // but selecting a key INSIDE a rail must not destroy the rail's motion
+  // context. Fall back to the rail (or Loop Clip) that owns the selected key,
+  // so Animate and every Motion command keep addressing the same rail the
+  // timeline shows.
+  let identity = readSelectedRailIdentity(input);
+  if (identity === null) {
+    const selectedKeyId = input.getSelectedKeyId?.() ?? null;
+    if (selectedKeyId !== null) {
+      const ownedClip = loopClips.find((clip) => clip.sourceKeyIds.includes(selectedKeyId)
+        || (clip.frameOverrides ?? []).some((override) => override.keyId === selectedKeyId));
+      if (ownedClip !== undefined) {
+        identity = Object.freeze({ kind: 'loop', loopId: ownedClip.loopId }) as RailSetIdentity;
+      } else {
+        const segment = keyRailSegments.find((candidate) => candidate.keyIds.includes(selectedKeyId));
+        if (segment !== undefined) {
+          identity = Object.freeze({ kind: 'key-rail', firstKeyId: segment.firstKeyId }) as RailSetIdentity;
+        }
+      }
+    }
+  }
+  if (identity === null) {
+    // An OPEN motion block is a rail context in its own right (session state):
+    // a drawing-key click must not collapse the block or unmount the gizmo.
+    identity = input.getMotionBlockRailIdentity?.() ?? null;
+  }
+  const view = resolveSelectedRailView(views, identity);
   const record = view === null || view.railId === null
     ? null
     : (records.find((entry) => entry.railId === view.railId) ?? null);
@@ -2269,8 +2324,21 @@ function selectedMotionKeyAvailability(
 function commitRailMotionRecords(
   state: ActiveRailMotionState,
   records: readonly PhysicPaintRotoRailMotionRecord[],
+  input: RotoTimelineActionsInput,
 ): { ok: true } | { ok: false; error: string } {
-  return physicPaintStore.replaceRotoPhysicalRailMotions(state.layerId, state.trackId, records);
+  const written = physicPaintStore.replaceRotoPhysicalRailMotions(state.layerId, state.trackId, records);
+  // 59-12 UAT fix (data loss): a Motion-only edit bumps only the physic-paint
+  // revisions, never `efxPaintVersion`, so the Studio's document-sync dirty
+  // effect never fired and closing Studio dropped every Motion key. Mark the
+  // sync dirty on the ONE commit path shared by Animate, the lane commands and
+  // the canvas gizmo.
+  if (written.ok) {
+    input.markDocumentSyncDirty?.();
+    // Push immediately: the close-time flush is not guaranteed when the realm
+    // is torn down by an app quit, a crash or a force close.
+    input.publishMotionDocumentSync?.();
+  }
+  return written;
 }
 
 function publishMotionFailure(input: RotoTimelineActionsInput, reason: string): false {
@@ -2291,7 +2359,7 @@ function commitMotionCommandResult(
     input.publishStatus?.('The Motion collection did not change.');
     return true;
   }
-  const written = commitRailMotionRecords(state, result.records);
+  const written = commitRailMotionRecords(state, result.records, input);
   if (!written.ok) return publishMotionFailure(input, written.error);
   input.publishStatus?.(successMessage);
   return true;
@@ -2388,9 +2456,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const canScissor = computed(() => mapRotoScissorProductReason(scissorTarget.value) === null);
   const scissorDisabledReason = computed(() => mapRotoScissorProductReason(scissorTarget.value));
   const scissorTooltipDescription = computed(() => mapRotoScissorTooltip(scissorTarget.value));
+  // A rail OR a drawing key that belongs to one: the key fallback keeps
+  // Animate reachable while the key scope is active (see readActiveRailMotionState).
   const animateAvailability = computed(() => resolveMotionCommandAvailability({
     command: 'animate',
-    hasRail: readSelectedRailIdentity(input) !== null,
+    hasRail: readActiveRailMotionState(input)?.view !== null,
   }));
   const canAnimateSelectedRail = computed(() => animateAvailability.value.enabled);
   const animateSelectedRailDisabledReason = computed(() => animateAvailability.value.reason);
@@ -2423,6 +2493,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
    * through the same 59-07 setter as every other Motion action.
    */
   const railMotionGizmo = computed((): RailMotionGizmoBundle | null => {
+    // The handles appear whenever a motion context resolves — an explicit rail
+    // selection OR a selected drawing key that belongs to an animated rail.
+    // `interiorInteractive` keeps the box interior paint-transparent for the
+    // key-selected case, so the brush is never blocked.
+    const railSelected = readSelectedRailIdentity(input) !== null;
+    const blockIdentity = input.getMotionBlockRailIdentity?.() ?? null;
     const state = readActiveRailMotionState(input);
     if (state === null || state.view === null || state.view.railId === null) return null;
     const animatedChannelIds = state.record === null
@@ -2450,6 +2526,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       cursorFrame: state.cursorFrame,
       evaluated: values,
       availability,
+      // The box interior moves the rail while EITHER the rail is selected or
+      // its motion block is open. An open block is the editing context; close
+      // it to give the canvas back to the brush.
+      interiorInteractive: railSelected || (blockIdentity !== null && (
+        blockIdentity.kind === 'loop'
+          ? state.view.loopId === blockIdentity.loopId
+          : state.view.loopId === null && state.view.anchorKeyId === blockIdentity.firstKeyId
+      )),
       signature: [
         state.layerId,
         state.trackId,
@@ -2463,9 +2547,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         String(values.scale ?? 100),
         String(values.rotation ?? 0),
         revision,
+        railSelected ? 'rail' : 'key',
       ].join('|'),
       commit: (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
-        const written = commitRailMotionRecords(state, records);
+        const written = commitRailMotionRecords(state, records, input);
         if (!written.ok) publishMotionFailure(input, written.error);
         else input.publishStatus?.('Motion key updated.');
       },
@@ -2761,13 +2846,19 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       input.publishStatus?.('This rail already has motion.');
       return true;
     }
-    const written = commitRailMotionRecords(state, result.records);
+    const written = commitRailMotionRecords(state, result.records, input);
     if (!written.ok) {
       input.setApplyStatus?.('error');
       input.publishStatus?.(written.error);
       return false;
     }
-    input.publishStatus?.('Animated the selected rail.');
+    // The canvas handles mount only while the playhead sits inside the rail:
+    // say so instead of leaving the click with no visible follow-up.
+    const outsideSpan = state.cursorFrame < state.view.startFrame
+      || state.cursorFrame >= state.view.endFrameExclusive;
+    input.publishStatus?.(outsideSpan
+      ? 'Animated the selected rail. Move the playhead inside the rail to drag its transform.'
+      : 'Animated the selected rail.');
     return true;
   }, [input]);
 
@@ -2883,7 +2974,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       return result.reason;
     }
     if (result.records === state.records) return null;
-    const written = commitRailMotionRecords(state, result.records);
+    const written = commitRailMotionRecords(state, result.records, input);
     if (!written.ok) {
       input.setApplyStatus?.('error');
       input.publishStatus?.(written.error);

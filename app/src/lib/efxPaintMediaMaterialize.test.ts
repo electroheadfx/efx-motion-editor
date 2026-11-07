@@ -136,6 +136,39 @@ describe('quick-260913-52r (G): package roto media materialization at open', () 
     expect(document.tracks[0]!.rotoPhysical!.realKeyRecords[0]!.payload.media).toBeDefined();
   });
 
+  it('a motion-bearing track materializes with its rail-motion revision term (59 UAT)', async () => {
+    const realBytes = testWebpBytes('motion-real');
+    readFrameMediaMock.mockResolvedValue({ ok: true, data: { bytes: realBytes, digest: digestOf(realBytes) } });
+    const railMotions = [{
+      railId: 'rail-1',
+      anchorKeyId: 'key-real',
+      channels: [{ id: 'opacity' as const, keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }] }],
+    }];
+    const records = [record('key-real', 0, digestOf(realBytes))];
+    const document = documentOf([track('track-a', {
+      rotoPhysical: {
+        ...physical(records),
+        railMotions,
+        revision: buildPhysicPaintRotoPhysicalRevision(records as never, INTERPOLATION, [], [], [], railMotions),
+      } as never,
+    })]);
+
+    const result = await materializePackageRotoMediaBytes(loadedOf(document), PACKAGE_DIR);
+
+    const runtimePhysical = result.runtimeDocuments.get(LAYER)!.tracks[0]!.rotoPhysical!;
+    expect(runtimePhysical.railMotions).toEqual(railMotions);
+    // The recomputed revision must cover the motion term the spread document
+    // still carries — the on-disk parser recomputes it WITH the collection.
+    expect(runtimePhysical.revision).toBe(buildPhysicPaintRotoPhysicalRevision(
+      runtimePhysical.realKeyRecords,
+      INTERPOLATION,
+      [],
+      [],
+      runtimePhysical.groupOverrideRecords ?? [],
+      railMotions,
+    ));
+  });
+
   it('a missing file is reported per key and keeps the record reference-only', async () => {
     readFrameMediaMock.mockResolvedValue({ ok: false, error: { kind: 'missing' } });
     const digest = digestOf(testWebpBytes('gone'));

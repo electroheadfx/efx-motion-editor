@@ -98,6 +98,12 @@ interface HarnessOptions {
   currentAppFrame?: number;
   getCurrentAppFrame?: () => number;
   launch?: PhysicPaintLaunchContext | null;
+  /** 59-12: the LIVE active track (launch snapshot is only the fallback). */
+  getActiveTrackId?: () => string;
+  /** 59-12: a Motion commit must arm the Studio's document sync. */
+  markDocumentSyncDirty?: () => void;
+  /** 59-12: and push it immediately, not only on close. */
+  publishMotionDocumentSync?: () => void;
   pendingOperationId?: string | null;
   selectedKeyId?: string | null;
   selectedKeyIds?: readonly string[];
@@ -163,6 +169,11 @@ function createHarness(options: HarnessOptions = {}) {
     getRailSetMembers: () => options.railSetMembers ?? [],
     getCurrentAppFrame: options.getCurrentAppFrame ?? (() => options.currentAppFrame ?? 3),
     getLaunchContext: () => launch,
+    ...(options.getActiveTrackId ? { getActiveTrackId: options.getActiveTrackId } : {}),
+    ...(options.markDocumentSyncDirty ? { markDocumentSyncDirty: options.markDocumentSyncDirty } : {}),
+    ...(options.publishMotionDocumentSync
+      ? { publishMotionDocumentSync: options.publishMotionDocumentSync }
+      : {}),
     getIncomingInterpolationBreakKeyIds: options.getIncomingInterpolationBreakKeyIds
       ?? (() => options.incomingInterpolationBreakKeyIds ?? []),
     // Kept on the harness object (outside the typed input) so a test can prove
@@ -5072,6 +5083,114 @@ describe('59-17 addMotionChannel — the host action behind the keyless menu', (
 
     expect(await harness.actions.physicalActions.addMotionChannel('scale')).toBe(false);
     expect(harness.publishStatus).toHaveBeenCalledWith('Select a rail first.');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 59-12 — Motion commands address the LIVE active track               */
+/* ------------------------------------------------------------------ */
+
+describe('59-12 Animate — the live active track is the motion authority', () => {
+  const LAYER = 'layer-1';
+  const LIVE_TRACK = 'track-live';
+  const STALE_TRACK = 'track-stale';
+
+  function seedTrack(trackId: string, keyId: string): string {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      trackId,
+      [realKeyRecord(keyId, 0)],
+      { enabled: false, mode: 'duplicate' },
+      10,
+    );
+    if (!seeded.ok) throw new Error(`real key seed failed: ${seeded.error}`);
+    return physicPaintStore.getRotoRealKeyRecords(LAYER, trackId)[0]!.keyId;
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+  });
+
+  it('animates the LIVE track when the frozen launch snapshot names another one', async () => {
+    const liveKeyId = seedTrack(LIVE_TRACK, 'key-live');
+    seedTrack(STALE_TRACK, 'key-stale');
+    const markDirty = vi.fn();
+    const publishSync = vi.fn();
+    const harness = createHarness({
+      markDocumentSyncDirty: markDirty,
+      publishMotionDocumentSync: publishSync,
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, LIVE_TRACK),
+      // The launch snapshot still points at the track that was active when the
+      // Studio opened; the user switched since. Every other store read in this
+      // hook resolves the live document, so Motion must too.
+      launch: {
+        operationId: 'op-1',
+        layerId: LAYER,
+        document: { activeTrackId: STALE_TRACK },
+      } as unknown as PhysicPaintLaunchContext,
+      getActiveTrackId: () => LIVE_TRACK,
+      selectedKeyRail: { firstKeyId: liveKeyId, keyIds: [liveKeyId] },
+      currentAppFrame: 0,
+    });
+
+    expect(await harness.actions.physicalActions.animateSelectedRail()).toBe(true);
+    expect(harness.publishStatus).toHaveBeenCalledWith('Animated the selected rail.');
+    // The Motion commit arms the document sync — without this the keys never
+    // reach the main document and are lost when Studio closes.
+    expect(markDirty).toHaveBeenCalledTimes(1);
+    // Pushed immediately, so an app quit or a force close cannot drop the keys.
+    expect(publishSync).toHaveBeenCalledTimes(1);
+    const live = physicPaintStore.getRotoPhysicalRailMotions(LAYER, LIVE_TRACK);
+    expect(live).toHaveLength(1);
+    expect(live[0]!.anchorKeyId).toBe(liveKeyId);
+    // The stale snapshot's track is never written.
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, STALE_TRACK)).toHaveLength(0);
+  });
+
+  it('animates the rail that OWNS the selected drawing key when no rail is selected', async () => {
+    const anchorKeyId = seedTrack(LIVE_TRACK, 'key-live');
+    const harness = createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, LIVE_TRACK),
+      launch: {
+        operationId: 'op-1',
+        layerId: LAYER,
+        document: { activeTrackId: LIVE_TRACK },
+      } as unknown as PhysicPaintLaunchContext,
+      getActiveTrackId: () => LIVE_TRACK,
+      // A drawing-key selection clears the rail selection by design; the
+      // Motion context must survive it.
+      selectedKeyId: anchorKeyId,
+      selectedKeyRail: null,
+      currentAppFrame: 0,
+    });
+
+    expect(harness.actions.physicalActions.canAnimateSelectedRail.value).toBe(true);
+    expect(await harness.actions.physicalActions.animateSelectedRail()).toBe(true);
+    const live = physicPaintStore.getRotoPhysicalRailMotions(LAYER, LIVE_TRACK);
+    expect(live).toHaveLength(1);
+    expect(live[0]!.anchorKeyId).toBe(anchorKeyId);
+  });
+
+  it('falls back to the launch snapshot only when the live-track port is absent', async () => {
+    const staleKeyId = seedTrack(STALE_TRACK, 'key-stale');
+    const harness = createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, STALE_TRACK),
+      launch: {
+        operationId: 'op-1',
+        layerId: LAYER,
+        document: { activeTrackId: STALE_TRACK },
+      } as unknown as PhysicPaintLaunchContext,
+      selectedKeyRail: { firstKeyId: staleKeyId, keyIds: [staleKeyId] },
+      currentAppFrame: 0,
+    });
+
+    expect(await harness.actions.physicalActions.animateSelectedRail()).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, STALE_TRACK)).toHaveLength(1);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   PhysicsPaintTrackColumnStrip,
   PhysicsPaintTrackRow,
   PhysicsPaintTrackRowHeader,
+  railMotionChannelMenuAnchor,
   railMotionChannelMenuRailId,
   railMotionExpandedSelection,
   resolveMotionBlockExpanded,
@@ -1350,25 +1351,29 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
     expect(body).not.toContain('Every Motion channel is already present on this rail.');
   });
 
-  it('renders the menu as an ABSOLUTE overlay under the add row, above the rail chrome', () => {
+  it('renders the menu as a FIXED viewport overlay, so the rows clip cannot hide it', () => {
     railMotionChannelMenuRailId.value = LOOP_RAIL_ID;
+    railMotionChannelMenuAnchor.value = { x: 120, y: 600 };
     const tree = renderExpanded(POSITION_ONLY_IDS);
 
     const overlays = menuOverlays(tree);
     expect(overlays).toHaveLength(1);
     const style = styleOf(overlays[0]);
-    expect(style.position).toBe('absolute');
-    expect(style.left).toBe(0);
-    expect(style.right).toBe(0);
-    // One visible lane (Position) + the 2px gap + the 18px add row.
-    expect(style.top).toBe(
-      1 * TIMELINE_MOTION.laneHeight + TIMELINE_MOTION.postBlockGap + TIMELINE_MOTION.laneHeight,
-    );
-    expect(style.top).toBe(38);
+    // The rows region owns overflow:auto/hidden; an absolute child was clipped
+    // below the band. Fixed escapes that clip and is clamped to the viewport.
+    expect(style.position).toBe('fixed');
+    expect(typeof style.left).toBe('number');
+    expect(typeof style.top).toBe('number');
+    expect(Number(style.left)).toBeGreaterThanOrEqual(4);
     expect(style.zIndex).toBe(TIMELINE_MOTION.channelMenuZIndex);
     expect(style.zIndex).toBeGreaterThan(9);
     expect(style.zIndex).toBeLessThan(30);
-    // The overlay is INSIDE the block's position:relative lane container.
+    // A full-viewport backdrop closes the menu on an outside press.
+    const backdrop = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-channel-menu-backdrop'));
+    expect(backdrop).toHaveLength(1);
+    expect(styleOf(backdrop[0]).position).toBe('fixed');
+    railMotionChannelMenuAnchor.value = null;
+    // The lanes container still anchors the block itself.
     const container = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-lanes'));
     expect(container).toHaveLength(1);
     expect(styleOf(container[0]).position).toBe('relative');
@@ -1424,8 +1429,13 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
       .split('\n')
       .filter((line) => /railMotionChannelMenuRailId\.value\s*=(?!=)/.test(line));
     expect(writeLines).toHaveLength(2);
-    expect(writeLines[0]).toContain('railMotionChannelMenuRailId.value === railId ? null : railId');
+    expect(writeLines[0]).toContain('railMotionChannelMenuRailId.value = open ? null : railId;');
     expect(writeLines[1]).toContain('railMotionChannelMenuRailId.value = null;');
+    // The anchor signal rides along in the same two writers — never a third.
+    const anchorWriteLines = body
+      .split('\n')
+      .filter((line) => /railMotionChannelMenuAnchor\.value\s*=(?!=)/.test(line));
+    expect(anchorWriteLines).toHaveLength(2);
 
     // Each writer owns exactly one site, inside its own named function.
     function functionBody(marker: string): string {

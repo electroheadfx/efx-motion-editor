@@ -1,4 +1,4 @@
-import type { ComponentChildren, ComponentProps, TargetedPointerEvent } from 'preact';
+import type { ComponentChildren, ComponentProps, CSSProperties, TargetedPointerEvent } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
@@ -38,6 +38,7 @@ import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
 import type { RotoRailConversionDialogBundle } from '../hooks/useRotoTimelineActions';
 import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
 import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
+import { buildRailMotionEditCss } from './PhysicsPaintReferenceTransform';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -49,6 +50,21 @@ interface PhysicsPaintCanvasStackViewProps {
     width: number;
     height: number;
     background: PhysicPaintRotoBackgroundMetadata;
+  } | null;
+  /**
+   * 59-12 UAT fix: the active track's rail transform at this frame, mirrored
+   * onto the live engine shell (which bypasses the compositor). Values are the
+   * store's project-space transform; the view converts them into the shell's
+   * CSS pixel space with the measured display scale.
+   */
+  railMotionEditTransform?: {
+    readonly translateX: number;
+    readonly translateY: number;
+    readonly scale: number;
+    readonly rotationRadians: number;
+    readonly opacity: number;
+    readonly pivotX: number;
+    readonly pivotY: number;
   } | null;
   inputDisabled?: boolean;
   inputDisabledMessage?: string;
@@ -200,13 +216,21 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
         resizeObserver.observe(shell);
       }
       const stackRect = stack.getBoundingClientRect();
-      const shellRect = shell.getBoundingClientRect();
-      if (shellRect.width <= 0 || shellRect.height <= 0) return;
+      // 59-12 UAT fix: LAYOUT metrics, never the transformed rect. The rail
+      // edit mirror applies a CSS transform to this same shell, and
+      // getBoundingClientRect() reports the TRANSFORMED box — feeding it back
+      // here moved the fond layer, the program monitor and every
+      // bounds-anchored overlay along with the rail.
+      const shellWidth = shell.offsetWidth;
+      const shellHeight = shell.offsetHeight;
+      if (shellWidth <= 0 || shellHeight <= 0) return;
+      const offsetParent = shell.offsetParent as HTMLElement | null;
+      const parentRect = offsetParent?.getBoundingClientRect() ?? stackRect;
       setCanvasBounds({
-        left: shellRect.left - stackRect.left,
-        top: shellRect.top - stackRect.top,
-        width: shellRect.width,
-        height: shellRect.height,
+        left: parentRect.left - stackRect.left + shell.offsetLeft,
+        top: parentRect.top - stackRect.top + shell.offsetTop,
+        width: shellWidth,
+        height: shellHeight,
       });
     };
     const resizeObserver = new ResizeObserver(updateCanvasBounds);
@@ -226,6 +250,22 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   }, []);
 
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
+  // 59-12 UAT fix: mirror the active track's rail transform on the live engine
+  // shell. The shell's CSS box is the WORKING size scaled by the display zoom,
+  // so the store's project-space translation converts through
+  // paperTextureScale × (displayed / working), while the normalized pivot
+  // multiplies the displayed box directly.
+  const railEditTransform = props.railMotionEditTransform ?? null;
+  const workingWidth = Number(props.mount.width) || 0;
+  const displayScale = canvasBounds && workingWidth > 0 ? canvasBounds.width / workingWidth : 1;
+  const railEditCss = railEditTransform !== null && canvasBounds
+    ? buildRailMotionEditCss(
+        railEditTransform,
+        canvasBounds.width,
+        canvasBounds.height,
+        (Number(props.mount.paperTextureScale) || 1) * displayScale,
+      )
+    : null;
 
   return (
     <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => {
@@ -272,7 +312,14 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
       {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
         <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
-      <div class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}`}>
+      <div
+        class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}`}
+        data-rail-edit={railEditCss === null ? undefined : '1'}
+        style={railEditCss === null ? undefined : {
+          '--rail-edit-transform': railEditCss,
+          '--rail-edit-opacity': String(railEditTransform?.opacity ?? 1),
+        } as CSSProperties}
+      >
         <MemoizedPhysicsPaintCanvasMount
           key={props.canvasKey}
           {...props.mount}

@@ -2814,6 +2814,9 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(block).toContain('add a key (+Key) before painting');
     expect(block).toContain('physics-paint-reference-transform');
     expect(block).toContain('physics-paint-background-transform');
+    // 59-13 fix: the rail-motion gizmo is a transform overlay too — a press on
+    // it must never be consumed as a paint gesture.
+    expect(block).toContain('physics-paint-rail-motion-transform');
     expect(studio).toContain('blockPaintPointerDown: blockGeneratedFramePaintPointerDown,');
     expect(studioView).toContain('if (props.blockPaintPointerDown?.(event)) {');
     const captureStart = studioView.indexOf('if (props.blockPaintPointerDown?.(event)) {');
@@ -2830,6 +2833,9 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(beginBlock).toContain("aquarelleActiveTool.value === 'pen'");
     expect(beginBlock).toContain('physics-paint-reference-transform');
     expect(beginBlock).toContain('physics-paint-background-transform');
+    // 59-13 fix: pressing the rail-motion gizmo must not start an auto-key
+    // paint promotion (it cleared the rail selection and the whole block).
+    expect(beginBlock).toContain('physics-paint-rail-motion-transform');
     expect(beginBlock).toContain('event.button !== 0');
     expect(beginBlock).toContain('isPlaying');
     // One promotion per launch/frame while it is in flight.

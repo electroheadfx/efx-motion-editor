@@ -83,6 +83,13 @@ export interface PhysicsPaintRailMotionGizmoProps {
   readonly cursorFrame: number;
   readonly evaluated: RailMotionTransformValues;
   readonly availability: { readonly enabled: boolean; readonly reason: string | null };
+  /**
+   * True only when the RAIL itself is selected. When the context comes from a
+   * selected drawing key, the box interior stays paint-transparent (only the
+   * outline and the handles are hit targets), so a key selection never blocks
+   * the brush.
+   */
+  readonly interiorInteractive: boolean;
   readonly commit: (records: readonly PhysicPaintRotoRailMotionRecord[]) => void;
   readonly report: (reason: string) => void;
 }
@@ -587,7 +594,16 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
           stroke="#4A90D9"
           stroke-width={strokeWidth}
           vector-effect="non-scaling-stroke"
-          style={{ pointerEvents: 'all', cursor: 'move' }}
+          style={{
+            // A key-selected fallback keeps the interior free for painting:
+            // only the outline can start a move drag.
+            pointerEvents: railMotion !== null && railMotion.interiorInteractive === false
+              ? 'visibleStroke'
+              : 'all',
+            cursor: railMotion !== null && railMotion.interiorInteractive === false
+              ? 'default'
+              : 'move',
+          }}
         />
         {/* 50-UAT (D-13 spec): the VISIBLE rotation handle — a decorative stem
             (pointer-events none, pass-through) plus an interactive knob that
