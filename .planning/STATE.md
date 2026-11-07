@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T19:55:09.267Z"
+last_updated: "2026-11-07T19:58:30.809Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 2ff2692a2ebaba6d160b71ebf79c0d6dcdf28c23
+state_head: 093f16f76bff12691a9d4498a070091c528eb8dc
 progress:
   total_phases: 4
   completed_phases: 0
@@ -238,6 +238,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-rrp | Cycle + Motion on Studio rails: a cycle conversion preserves the rail's motion; the Motion span auto-fits the resolved rail extent (extends with keys/cycles, shrinks with them); out-of-band keys are preserved-but-inactive (UAT approved) | 2026-11-07 | ff6d6714d | [261107-rrp-cycle-with-motion-in-studio-adding-a-cyc](./quick/261107-rrp-cycle-with-motion-in-studio-adding-a-cyc/) |
 | 261107-sg3 | Move the Hand tool out of the Studio tool rail into the floating canvas zoom pill — press-and-hold: hold the Hand button and move the mouse or pen to pan like middle-mouse drag, release stops | 2026-11-07 | 5973f30e5 | [261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p](./quick/261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p/) |
 | 7 | Allow Studio canvas zoom to go below the Fit value (fit 40% can view 20% or less) | 2026-11-07 | 2ff2692a2 | — |
+| 8 | Set Studio canvas region (.physics-paint-canvas-region) background to #222529 | 2026-11-07 | 093f16f76 | — |
 
 ## Roadmap Evolution
 
