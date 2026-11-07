@@ -514,12 +514,14 @@ function stepperElements(source: string): string[] {
  *  Phase 59-16: the Motion value inspector types absolute channel targets
  *  (Position px, Scale %, Rotation degrees) and must forward out-of-domain
  *  entry to the command layer so it can be refused with a reason — a stepper
- *  that silently clamped would hide the rejection. Third explicit call site. */
+ *  that silently clamped would hide the rejection. Third explicit call site.
+ *  Quick 261107-qgj: that inspector moved out of the Scripts panel into the
+ *  floating Motion modal, so the allowance follows it there. */
 const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PaperPicker.tsx';
 const STROKE_SETTINGS_CALL_SITE_REL =
   'src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx';
 const MOTION_INSPECTOR_CALL_SITE_REL =
-  'src/components/physic-paint/view/PhysicsPaintScriptsPanel.tsx';
+  'src/components/physic-paint/view/PhysicsPaintRailMotionModal.tsx';
 const EXCEPTION_CALL_SITE_RELS = new Set([
   GRAIN_CALL_SITE_REL,
   STROKE_SETTINGS_CALL_SITE_REL,

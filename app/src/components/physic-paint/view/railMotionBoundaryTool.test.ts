@@ -48,7 +48,10 @@ describe('Motion boundaries tool (261107 UAT)', () => {
   });
 
   it('the canvas gizmo needs ONE present draggable channel — an open block alone is not enough', () => {
-    expect(hook).toContain("import { railMotionSelectedChannel } from '../view/railMotionEditingMode';");
+    // 261107-qgj added the ONE close-path symbol to the same import.
+    expect(hook).toContain(
+      "import { exitRailMotionEditing, railMotionSelectedChannel } from '../view/railMotionEditingMode';",
+    );
     expect(hook).toMatch(/const selectedChannel = railMotionSelectedChannel\.value;/);
     expect(hook).toMatch(/if \(selectedChannel === null \|\| selectedChannel === 'opacity'\) return null;/);
     expect(hook).toContain('if (!resolveMotionChannelPresence(state.record.channels)[selectedChannel]) return null;');

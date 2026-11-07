@@ -13,7 +13,7 @@
 // ============================================================
 
 import { useEffect, useRef } from 'preact/hooks';
-import type { CSSProperties } from 'preact';
+import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { signal, type ReadonlySignal } from '@preact/signals';
 import { Move, X } from 'lucide-preact';
 import { NumericStepper } from '../../shared/NumericStepper';
@@ -64,6 +64,44 @@ const BODY_STYLE: CSSProperties = {
   padding: '10px 12px 12px',
 };
 
+const RESIZE_HANDLE_STYLE: CSSProperties = {
+  flex: '0 0 12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'ns-resize',
+  touchAction: 'none',
+};
+
+const RESIZE_GRIP_STYLE: CSSProperties = {
+  width: '34px',
+  height: '3px',
+  borderRadius: '2px',
+  background: 'rgba(255, 255, 255, 0.22)',
+};
+
+interface DragOffset {
+  readonly dxPx: number;
+  readonly dyPx: number;
+}
+
+interface DragStart {
+  readonly pointerX: number;
+  readonly pointerY: number;
+  readonly baseX: number;
+  readonly baseY: number;
+  readonly rect: { left: number; top: number; width: number } | null;
+}
+
+/** Survives close/reopen for the Studio session, like the sibling sheets. */
+const railMotionModalDragOffset = signal<DragOffset | null>(null);
+const railMotionModalResizeHeight = signal<number | null>(null);
+
+export function resetRailMotionModalLayout(): void {
+  railMotionModalDragOffset.value = null;
+  railMotionModalResizeHeight.value = null;
+}
+
 interface MotionCommitState {
   readonly reason: string | null;
   readonly rejectionSeq: number;
@@ -84,6 +122,9 @@ export function PhysicsPaintRailMotionModal({
   // ticks re-render the small modal and never the Studio view.
   const bundle = dialog?.value ?? null;
   const open = bundle !== null;
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<DragStart | null>(null);
+  const resizeStartRef = useRef<{ pointerY: number; height: number; max: number } | null>(null);
   const commitStateRef = useRef(signal<MotionCommitState>({ reason: null, rejectionSeq: 0 }));
   const commitState = commitStateRef.current;
 
@@ -131,6 +172,76 @@ export function PhysicsPaintRailMotionModal({
 
   if (bundle === null) return null;
 
+  const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const rect = surfaceRef.current?.getBoundingClientRect?.() ?? null;
+    const base = railMotionModalDragOffset.value;
+    dragStartRef.current = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      baseX: base?.dxPx ?? 0,
+      baseY: base?.dyPx ?? 0,
+      rect: rect ? { left: rect.left, top: rect.top, width: rect.width } : null,
+    };
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const onHeaderPointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const start = dragStartRef.current;
+    if (!start) return;
+    let nextX = start.baseX + (event.clientX - start.pointerX);
+    let nextY = start.baseY + (event.clientY - start.pointerY);
+    // Keep at least 80px visible horizontally and the header reachable.
+    if (start.rect && typeof window !== 'undefined') {
+      nextX = start.baseX + Math.min(
+        Math.max(nextX - start.baseX, 80 - start.rect.width - start.rect.left),
+        window.innerWidth - 80 - start.rect.left,
+      );
+      nextY = start.baseY + Math.min(
+        Math.max(nextY - start.baseY, -start.rect.top),
+        window.innerHeight - 48 - start.rect.top,
+      );
+    }
+    const next = { dxPx: nextX, dyPx: nextY };
+    const current = railMotionModalDragOffset.value;
+    if (current !== null && current.dxPx === next.dxPx && current.dyPx === next.dyPx) return;
+    railMotionModalDragOffset.value = next;
+  };
+
+  const endHeaderDrag = () => {
+    dragStartRef.current = null;
+  };
+
+  const onResizePointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const rect = surfaceRef.current?.getBoundingClientRect?.();
+    if (!rect) return;
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : rect.top + rect.height;
+    resizeStartRef.current = {
+      pointerY: event.clientY,
+      height: rect.height,
+      max: Math.max(240, viewportHeight - rect.top - SURFACE_INSET_PX),
+    };
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const onResizePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const start = resizeStartRef.current;
+    if (!start) return;
+    const next = Math.min(start.max, Math.max(240, start.height + (event.clientY - start.pointerY)));
+    if (railMotionModalResizeHeight.value === next) return;
+    railMotionModalResizeHeight.value = next;
+  };
+
+  const endResize = () => {
+    resizeStartRef.current = null;
+  };
+
+  const applied = railMotionModalDragOffset.value;
+  const resizedHeight = railMotionModalResizeHeight.value;
+
   const commitValue = (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): void => {
     const reason = bundle.commit(channelId, uiValue);
     const current = commitState.value;
@@ -149,16 +260,26 @@ export function PhysicsPaintRailMotionModal({
 
   return (
     <div
+      ref={surfaceRef}
       class="physics-paint-brush-modal"
       data-testid={MODAL_TESTID}
       role="dialog"
       aria-label="Motion"
       onPointerDownCapture={() => bringSheetToFront(SHEET_ID_RAIL_MOTION)}
-      style={{ ...SURFACE_STYLE, zIndex: sheetZIndex(SHEET_ID_RAIL_MOTION) }}
+      style={{
+        ...SURFACE_STYLE,
+        zIndex: sheetZIndex(SHEET_ID_RAIL_MOTION),
+        height: resizedHeight === null ? SURFACE_STYLE.height : `${resizedHeight}px`,
+        transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,
+      }}
     >
       <div
         class="physics-paint-photo-reference-header"
         data-testid="physics-rail-motion-modal-header"
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={endHeaderDrag}
+        onPointerCancel={endHeaderDrag}
       >
         <Move
           size={15}
@@ -202,6 +323,18 @@ export function PhysicsPaintRailMotionModal({
         {reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{reason}</p>
         ) : null}
+      </div>
+
+      <div
+        data-testid="physics-rail-motion-modal-resize"
+        aria-hidden="true"
+        style={RESIZE_HANDLE_STYLE}
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+      >
+        <span style={RESIZE_GRIP_STYLE} />
       </div>
     </div>
   );

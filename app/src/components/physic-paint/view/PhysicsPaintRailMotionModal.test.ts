@@ -9,6 +9,9 @@
 //    a rejection renders one role="alert" with the exact sentence
 //    the close button calls the ONE close path
 //    the fourth sheet takes its z from the shared stack
+//    the header drag moves the surface and never closes it
+//    the bottom resize sets the session height (240 floor, viewport max)
+//    the session layout survives close/reopen and reset clears it
 //
 //  No DOM environment: same vnode-walk idiom as the sibling
 //  sheet suites. The cursor-based hooks mock keeps refs across
@@ -39,7 +42,10 @@ vi.mock('preact/hooks', () => ({
 }));
 
 import { signal } from '@preact/signals';
-import { PhysicsPaintRailMotionModal } from './PhysicsPaintRailMotionModal';
+import {
+  PhysicsPaintRailMotionModal,
+  resetRailMotionModalLayout,
+} from './PhysicsPaintRailMotionModal';
 import { NumericStepper } from '../../shared/NumericStepper';
 import {
   SHEET_ID_RAIL_MOTION,
@@ -96,6 +102,49 @@ const MODAL_SOURCE = readFileSync(
   'utf8',
 );
 
+const STUDIO_SOURCE = readFileSync(
+  fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url)),
+  'utf8',
+);
+
+/**
+ * The hooks mock keys refs by call order: surfaceRef is index 0. Install a
+ * fake surface rect so the drag clamp and the resize math have geometry to
+ * work with (the node harness never lays anything out).
+ */
+function installSurfaceRect(rect: { left: number; top: number; width: number; height: number }) {
+  const ref = hooks.refs.get(0) as { current: unknown } | undefined;
+  expect(ref, 'surfaceRef is the first hook in the modal').toBeDefined();
+  ref!.current = { getBoundingClientRect: () => rect };
+}
+
+function headerOf(tree: TestVNode): TestVNode {
+  return collect(tree).find(
+    (node) => node.props?.['data-testid'] === 'physics-rail-motion-modal-header',
+  )!;
+}
+
+function resizeOf(tree: TestVNode): TestVNode {
+  return collect(tree).find(
+    (node) => node.props?.['data-testid'] === 'physics-rail-motion-modal-resize',
+  )!;
+}
+
+function rootStyle(tree: TestVNode): Record<string, unknown> {
+  return tree.props?.style as Record<string, unknown>;
+}
+
+function pointerDownEvent(clientX: number, clientY: number) {
+  return {
+    button: 0,
+    clientX,
+    clientY,
+    pointerId: 1,
+    preventDefault: vi.fn(),
+    currentTarget: { setPointerCapture: vi.fn() },
+  };
+}
+
 function field(
   channelId: PhysicPaintRotoRailMotionChannelId,
   label: string,
@@ -147,11 +196,14 @@ function positionOnlyBundle(): RailMotionDialogBundle {
 beforeEach(() => {
   hooks.reset();
   resetFloatingSheetStack();
+  resetRailMotionModalLayout();
 });
 
 afterEach(() => {
   hooks.reset();
   resetFloatingSheetStack();
+  resetRailMotionModalLayout();
+  vi.unstubAllGlobals();
 });
 
 describe('261107-qgj floating Motion modal', () => {
@@ -306,5 +358,126 @@ describe('261107-qgj floating Motion modal', () => {
     expect(MODAL_SOURCE).not.toContain('useState');
     // The store-free projection module is the only data source.
     expect(MODAL_SOURCE).toContain('RailMotionDialogBundle');
+  });
+
+  it('the header drag moves the surface by the pointer delta and never closes it', () => {
+    const onClose = vi.fn();
+    const dialog = signal(partialBundle());
+    const header = headerOf(renderModal({ dialog, onClose }));
+    (header.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 100));
+    (header.props?.onPointerMove as (event: unknown) => void)({ clientX: 130, clientY: 120 });
+
+    const moved = renderModal({ dialog, onClose });
+    expect(rootStyle(moved)?.transform).toBe('translate(30px, 20px)');
+    expect(onClose, 'a drag never closes the modal').not.toHaveBeenCalled();
+
+    // Release stops the drag: a later move without a press is a no-op.
+    (headerOf(moved).props?.onPointerUp as () => void)();
+    (headerOf(moved).props?.onPointerMove as (event: unknown) => void)({ clientX: 900, clientY: 900 });
+    expect(rootStyle(renderModal({ dialog }))?.transform).toBe('translate(30px, 20px)');
+  });
+
+  it('clamps the drag to keep 80px visible horizontally and the header on screen', () => {
+    vi.stubGlobal('window', { innerWidth: 1200, innerHeight: 800 });
+    const dialog = signal(partialBundle());
+    const first = renderModal({ dialog });
+    installSurfaceRect({ left: 700, top: 60, width: 300, height: 260 });
+    const header = headerOf(first);
+    (header.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 100));
+    const move = headerOf(renderModal({ dialog })).props?.onPointerMove as (event: unknown) => void;
+
+    // Far past the left edge: 80px of the 300px surface stays visible.
+    move({ clientX: -5000, clientY: -5000 });
+    expect(rootStyle(renderModal({ dialog }))?.transform).toBe('translate(-920px, -60px)');
+    // Far past the right/bottom edges: the header stays reachable.
+    move({ clientX: 5000, clientY: 5000 });
+    expect(rootStyle(renderModal({ dialog }))?.transform).toBe('translate(420px, 692px)');
+  });
+
+  it('the bottom resize sets the height with a 240px floor and a viewport-derived max', () => {
+    vi.stubGlobal('window', { innerWidth: 1200, innerHeight: 800 });
+    const dialog = signal(partialBundle());
+    const first = renderModal({ dialog });
+    installSurfaceRect({ left: 700, top: 100, width: 300, height: 260 });
+    const handle = resizeOf(first);
+    expect(handle.props?.['aria-hidden']).toBe('true');
+    (handle.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 200));
+    const move = resizeOf(renderModal({ dialog })).props?.onPointerMove as (event: unknown) => void;
+
+    move({ clientY: 300 });
+    expect(rootStyle(renderModal({ dialog }))?.height).toBe('360px');
+    move({ clientY: -1000 });
+    expect(rootStyle(renderModal({ dialog }))?.height).toBe('240px');
+    // max = max(240, 800 - 100 - 12)
+    move({ clientY: 10000 });
+    expect(rootStyle(renderModal({ dialog }))?.height).toBe('688px');
+
+    const grip = collect(renderModal({ dialog })).find(
+      (node) => node.type === 'span'
+        && (node.props?.style as Record<string, unknown> | undefined)?.width === '34px',
+    );
+    expect(grip, 'the handle carries the sibling sheet 34x3 grip').toBeDefined();
+    expect((grip!.props?.style as Record<string, unknown>).height).toBe('3px');
+  });
+
+  it('the layout is session-scoped: close/reopen keeps it, reset clears it', () => {
+    const dialog = signal(partialBundle());
+    const header = headerOf(renderModal({ dialog }));
+    (header.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 100));
+    (headerOf(renderModal({ dialog })).props?.onPointerMove as (event: unknown) => void)(
+      { clientX: 140, clientY: 130 },
+    );
+
+    vi.stubGlobal('window', { innerWidth: 1200, innerHeight: 800 });
+    installSurfaceRect({ left: 700, top: 100, width: 300, height: 260 });
+    const handle = resizeOf(renderModal({ dialog }));
+    (handle.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 200));
+    (resizeOf(renderModal({ dialog })).props?.onPointerMove as (event: unknown) => void)({ clientY: 260 });
+
+    const placed = renderModal({ dialog });
+    expect(rootStyle(placed)?.transform).toBe('translate(40px, 30px)');
+    expect(rootStyle(placed)?.height).toBe('320px');
+
+    // A closed sheet renders nothing; the session layout outlives it.
+    expect(renderModal({ dialog: signal<RailMotionDialogBundle | null>(null) })).toBeNull();
+    const reopened = renderModal({ dialog });
+    expect(rootStyle(reopened)?.transform, 'the session keeps the placed surface')
+      .toBe('translate(40px, 30px)');
+    expect(rootStyle(reopened)?.height).toBe('320px');
+
+    resetRailMotionModalLayout();
+    const cleared = renderModal({ dialog });
+    expect(rootStyle(cleared)?.transform).toBe('translate(0px, 0px)');
+    expect(rootStyle(cleared)?.height).toBe('min(260px, calc(100% - 72px))');
+  });
+
+  it('pins the Studio close path and the removed sidebar in source (261107-qgj)', () => {
+    expect(STUDIO_SOURCE).toContain('railMotionDialog: rotoTimelineActions.railMotionDialog,');
+    expect(STUDIO_SOURCE).toContain(
+      'onCloseRailMotionDialog: rotoTimelineActions.clearRailMotionSelection,',
+    );
+    expect(STUDIO_SOURCE).not.toContain('commitRailMotionChannelValue');
+    expect(STUDIO_SOURCE).not.toContain('projectRailMotionInspector');
+    expect(STUDIO_SOURCE).not.toContain('selectedRailMotion');
+    // The Escape path is the shared front gate, never a private listener.
+    expect(MODAL_SOURCE).toContain('if (!closeSheetIfFront(SHEET_ID_RAIL_MOTION, close)) return;');
+  });
+
+  it('pins the sheet mechanics in source (261107-qgj)', () => {
+    expect(MODAL_SOURCE).toContain(
+      'const railMotionModalDragOffset = signal<DragOffset | null>(null);',
+    );
+    expect(MODAL_SOURCE).toContain(
+      'const railMotionModalResizeHeight = signal<number | null>(null);',
+    );
+    expect(MODAL_SOURCE).toContain('export function resetRailMotionModalLayout(): void {');
+    expect(MODAL_SOURCE).toContain('onPointerDown={onHeaderPointerDown}');
+    expect(MODAL_SOURCE).toContain('data-testid="physics-rail-motion-modal-resize"');
+    expect(MODAL_SOURCE).toContain('80 - start.rect.width - start.rect.left');
+    expect(MODAL_SOURCE).toContain('window.innerHeight - 48 - start.rect.top');
+    expect(MODAL_SOURCE).toContain('Math.max(240, viewportHeight - rect.top - SURFACE_INSET_PX)');
+    expect(MODAL_SOURCE).toContain(
+      'transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,',
+    );
   });
 });
