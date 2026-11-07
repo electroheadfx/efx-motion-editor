@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T15:44:58.528Z"
+last_updated: "2026-11-07T17:44:27.016Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 6100f1b86ce0c3d0dd24ede025d138edf37bdf74
+state_head: bc92429ef2ca8ff271b31fd54151d96e7a586e67
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - UAT approved quick task 261107-mkn: Fix Phase 59 UI channel headers + Animate channel menu, motion boundaries tool and animate mode (final b5cb501e1)
+Last activity: 2026-11-07 - Completed quick task 261107-pd8: Motion channel keys draggable through time on the Phase 59 rail (bc92429ef)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -232,6 +232,7 @@ Items acknowledged and carried forward from previous milestone close:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 261107-mkn | Fix Phase 59 UI: channel header rows in the pinned left header column, Animate channel menu, Motion boundaries tool and animate mode (UAT approved) | 2026-11-07 | b5cb501e1 | [261107-mkn-fix-ui-from-phase-59-rail-motion-channel](./quick/261107-mkn-fix-ui-from-phase-59-rail-motion-channel/) |
+| 261107-pd8 | Motion channel keys draggable through time on the Phase 59 rail (reuses the shared key-rail drag session) | 2026-11-07 | bc92429ef | [261107-pd8-draggable-motion-key-from-phase-59-rail-](./quick/261107-pd8-draggable-motion-key-from-phase-59-rail-/) |
 
 ## Roadmap Evolution
 
