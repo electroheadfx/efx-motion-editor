@@ -29,6 +29,7 @@ import type {
   PhysicPaintRotoRailMotionChannelId,
   PhysicPaintRotoRailMotionKey,
 } from '../roto/railMotionModel';
+import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import {
   resolveMotionBlockOutlineRect,
@@ -68,9 +69,31 @@ export interface TimelineMotionChannelLaneProps {
   readonly selectedKeyFrames?: readonly number[];
   readonly onSelectRail?: (railId: string) => void;
   readonly onSelectKey?: (frame: number) => void;
-  readonly onMoveCursorToKey?: (frame: number) => void;
-  readonly onToggleKeyAtCursor?: () => void;
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+}
+
+export interface TimelineMotionChannelHeaderRowProps {
+  readonly lane: RailMotionDisplayLaneView;
+  readonly railType: TimelineRailType;
+  readonly selected: boolean;
+  readonly railFrameCount: number;
+  readonly cursorFrame: number;
+  readonly onMoveCursorToKey: (frame: number) => void;
+  readonly onToggleKeyAtCursor: () => void;
+  readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+}
+
+export interface TimelineMotionHeaderGroupProps {
+  readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
+  readonly view: RailMotionRailView | null;
+  readonly selected: boolean;
+  readonly cursorFrame: number;
+  readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+  readonly onMotionCursorStep: (
+    direction: -1 | 1,
+    channelId: PhysicPaintRotoRailMotionChannelId,
+  ) => void;
+  readonly onToggleMotionKeyAtCursor: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
 }
 
 const RAIL_MOTION_DISPLAY_LANE_LABELS: Record<RailMotionDisplayLaneId, string> = {
@@ -158,6 +181,30 @@ export function resolveKeylessMotionDisplayLanes(
   );
 }
 
+/** The model channel a display lane addresses for its nav intents: the grouped
+ *  Position lane answers with its FIRST axis (`position-x`), which is also the
+ *  channel the `+` menu seeds. One resolver, so header and body cannot drift. */
+export function resolveDisplayLaneChannelId(
+  lane: RailMotionDisplayLaneView,
+): PhysicPaintRotoRailMotionChannelId {
+  return lane.channels[0]?.id ?? 'position-x';
+}
+
+/**
+ * The ONE rail-band predicate: a key belongs to the lane's drawn band only when
+ * its frame is finite and sits in `[0, frameCount)`. The key dots and the header
+ * row's adjacency list share it, so navigation never steps onto a frame the
+ * lane does not draw.
+ */
+function resolveInBandMotionKeys(
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  frameCount: number,
+): readonly PhysicPaintRotoRailMotionKey[] {
+  return keys.filter(
+    (key) => Number.isFinite(key.frame) && key.frame >= 0 && key.frame < frameCount,
+  );
+}
+
 interface MotionLaneControlState {
   readonly disabled: boolean;
   readonly reason: string | null;
@@ -218,8 +265,6 @@ export function TimelineMotionChannelLane({
   selectedKeyFrames,
   onSelectRail,
   onSelectKey,
-  onMoveCursorToKey,
-  onToggleKeyAtCursor,
   disabledReasons,
 }: TimelineMotionChannelLaneProps) {
   const palette = resolveTimelineRailPalette(railType, selected ? 'selected' : 'active');
@@ -229,71 +274,14 @@ export function TimelineMotionChannelLane({
     : 0;
   const laneWidth = frameCount * TIMELINE_GEOMETRY.cellPitch;
 
-  const inBandKeys = lane.keys.filter(
-    (key) => Number.isFinite(key.frame) && key.frame >= 0 && key.frame < frameCount,
-  );
-  const sortedInBandFrames = inBandKeys
-    .map((key) => key.frame)
-    .sort((left, right) => left - right);
+  const inBandKeys = resolveInBandMotionKeys(lane.keys, frameCount);
 
-  const cursorInsideRail = cursorFrame >= 0 && cursorFrame < frameCount;
-  const previousFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, -1);
-  const nextFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, 1);
-
-  const previousState = resolveControlState(
-    'previous',
-    onMoveCursorToKey !== undefined && previousFrame !== null,
-    onMoveCursorToKey === undefined
-      ? 'Motion key navigation is unavailable'
-      : 'No earlier motion key in this rail',
-    disabledReasons,
-  );
-  const nextState = resolveControlState(
-    'next',
-    onMoveCursorToKey !== undefined && nextFrame !== null,
-    onMoveCursorToKey === undefined
-      ? 'Motion key navigation is unavailable'
-      : 'No later motion key in this rail',
-    disabledReasons,
-  );
-  const diamondState = resolveControlState(
-    'diamond',
-    onToggleKeyAtCursor !== undefined && cursorInsideRail,
-    onToggleKeyAtCursor === undefined
-      ? 'Motion key editing is unavailable'
-      : 'Cursor is outside this rail',
-    disabledReasons,
-  );
   const selectKeyState = resolveControlState(
     'select-key',
     onSelectKey !== undefined,
     'Motion key selection is unavailable',
     disabledReasons,
   );
-
-  function navButtonStyle(disabled: boolean): CSSProperties {
-    return {
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 0,
-      border: 'none',
-      background: 'transparent',
-      color: palette.line,
-      opacity: disabled ? 0.4 : 1,
-      cursor: disabled ? 'not-allowed' : 'pointer',
-    };
-  }
-
-  function navButtonProps(state: MotionLaneControlState) {
-    return {
-      type: 'button' as const,
-      disabled: state.disabled,
-      title: state.reason ?? undefined,
-      'aria-description': state.reason ?? undefined,
-      style: navButtonStyle(state.disabled),
-    };
-  }
 
   const keyStyle = (frame: number): CSSProperties => ({
     position: 'absolute',
@@ -385,70 +373,194 @@ export function TimelineMotionChannelLane({
         />
       ))}
 
-      <div
-        class="physics-paint-motion-lane-header"
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          display: 'flex',
-          alignItems: 'center',
-          gap: TIMELINE_MOTION.laneLabelGap,
-          width: TIMELINE_MOTION.headerClusterWidth,
-          height: laneHeight,
-          background: TIMELINE_SURFACE.motionLane,
-          opacity: selected ? 1 : 0.55,
-        }}
-        title={selected ? undefined : 'Click this lane to select the rail for canvas transforms'}
+    </div>
+  );
+}
+
+/**
+ * One channel header row (MUI-04 split): the icon, label, key count and the
+ * previous/diamond/next cluster that belongs to a lane's HEADER. It renders in
+ * the pinned left column — never over the lane's cells — with the same 18px
+ * lane rhythm, labels, reasons and intents as the former in-lane cluster.
+ */
+export function TimelineMotionChannelHeaderRow({
+  lane,
+  railType,
+  selected,
+  railFrameCount,
+  cursorFrame,
+  onMoveCursorToKey,
+  onToggleKeyAtCursor,
+  disabledReasons,
+}: TimelineMotionChannelHeaderRowProps) {
+  const palette = resolveTimelineRailPalette(railType, selected ? 'selected' : 'active');
+  const frameCount = Number.isFinite(railFrameCount)
+    ? Math.max(0, Math.floor(railFrameCount))
+    : 0;
+  const sortedInBandFrames = resolveInBandMotionKeys(lane.keys, frameCount)
+    .map((key) => key.frame)
+    .sort((left, right) => left - right);
+
+  const cursorInsideRail = cursorFrame >= 0 && cursorFrame < frameCount;
+  const previousFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, -1);
+  const nextFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, 1);
+
+  const previousState = resolveControlState(
+    'previous',
+    previousFrame !== null,
+    'No earlier motion key in this rail',
+    disabledReasons,
+  );
+  const nextState = resolveControlState(
+    'next',
+    nextFrame !== null,
+    'No later motion key in this rail',
+    disabledReasons,
+  );
+  const diamondState = resolveControlState(
+    'diamond',
+    cursorInsideRail,
+    'Cursor is outside this rail',
+    disabledReasons,
+  );
+
+  function navButtonStyle(disabled: boolean): CSSProperties {
+    return {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 0,
+      border: 'none',
+      background: 'transparent',
+      color: palette.line,
+      opacity: disabled ? 0.4 : 1,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+    };
+  }
+
+  function navButtonProps(state: MotionLaneControlState) {
+    return {
+      type: 'button' as const,
+      disabled: state.disabled,
+      title: state.reason ?? undefined,
+      'aria-description': state.reason ?? undefined,
+      style: navButtonStyle(state.disabled),
+    };
+  }
+
+  return (
+    <div
+      class="physics-paint-motion-lane-header"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: TIMELINE_MOTION.laneLabelGap,
+        width: '100%',
+        minWidth: TIMELINE_MOTION.headerClusterWidth,
+        height: TIMELINE_MOTION.laneHeight,
+        flexShrink: 0,
+        background: TIMELINE_SURFACE.motionLane,
+        opacity: selected ? 1 : 0.55,
+      }}
+      title={selected ? undefined : 'Click this lane to select the rail for canvas transforms'}
+    >
+      <span
+        data-motion-header-part="icon"
+        aria-hidden="true"
+        style={{ display: 'inline-flex', color: palette.line }}
       >
-        <span
-          data-motion-header-part="icon"
-          aria-hidden="true"
-          style={{ display: 'inline-flex', color: palette.line }}
-        >
-          {renderLaneIcon(lane.id)}
-        </span>
-        <span
-          data-motion-header-part="label"
-          style={{ fontSize: 9, fontWeight: 600, color: palette.line }}
-        >
-          {RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}
-        </span>
-        <span
-          data-motion-header-part="count"
-          style={{ fontSize: 8, color: palette.keyRim }}
-        >
-          {`${lane.keyCount} keys`}
-        </span>
-        <button
-          data-motion-header-part="previous"
-          aria-label="Previous motion key"
-          {...navButtonProps(previousState)}
-          onClick={
-            previousState.disabled ? undefined : () => onMoveCursorToKey?.(previousFrame as number)
-          }
-        >
-          <ChevronLeft size={10} aria-hidden="true" />
-        </button>
-        <button
-          data-motion-header-part="diamond"
-          aria-label="Toggle motion key at cursor"
-          {...navButtonProps(diamondState)}
-          onClick={diamondState.disabled ? undefined : () => onToggleKeyAtCursor?.()}
-        >
-          <Diamond size={8} aria-hidden="true" />
-        </button>
-        <button
-          data-motion-header-part="next"
-          aria-label="Next motion key"
-          {...navButtonProps(nextState)}
-          onClick={
-            nextState.disabled ? undefined : () => onMoveCursorToKey?.(nextFrame as number)
-          }
-        >
-          <ChevronRight size={10} aria-hidden="true" />
-        </button>
-      </div>
+        {renderLaneIcon(lane.id)}
+      </span>
+      <span
+        data-motion-header-part="label"
+        style={{ fontSize: 9, fontWeight: 600, color: palette.line }}
+      >
+        {RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}
+      </span>
+      <span
+        data-motion-header-part="count"
+        style={{ fontSize: 8, color: palette.keyRim }}
+      >
+        {`${lane.keyCount} keys`}
+      </span>
+      <button
+        data-motion-header-part="previous"
+        aria-label="Previous motion key"
+        {...navButtonProps(previousState)}
+        onClick={previousState.disabled ? undefined : () => onMoveCursorToKey(previousFrame as number)}
+      >
+        <ChevronLeft size={10} aria-hidden="true" />
+      </button>
+      <button
+        data-motion-header-part="diamond"
+        aria-label="Toggle motion key at cursor"
+        {...navButtonProps(diamondState)}
+        onClick={diamondState.disabled ? undefined : () => onToggleKeyAtCursor()}
+      >
+        <Diamond size={8} aria-hidden="true" />
+      </button>
+      <button
+        data-motion-header-part="next"
+        aria-label="Next motion key"
+        {...navButtonProps(nextState)}
+        onClick={nextState.disabled ? undefined : () => onMoveCursorToKey(nextFrame as number)}
+      >
+        <ChevronRight size={10} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The header-side stack of an expanded motion block: one header row per visible
+ * display lane in fixed order, then the 2px post-block gap and the 18px
+ * add-channel slot — the SAME rhythm the body renders, so both panes stay in
+ * lockstep without this group ever declaring its own total height.
+ */
+export function TimelineMotionHeaderGroup({
+  channels,
+  view,
+  selected,
+  cursorFrame,
+  disabledReasons,
+  onMotionCursorStep,
+  onToggleMotionKeyAtCursor,
+}: TimelineMotionHeaderGroupProps) {
+  const railType = view?.railType ?? 'standard';
+  const railFrameCount = view === null
+    ? 0
+    : Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
+  return (
+    <div
+      class="physics-paint-motion-header-group"
+      style={{ display: 'flex', flexDirection: 'column', width: '100%' }}
+    >
+      {resolveVisibleMotionDisplayLanes(channels).map((lane) => {
+        const channelId = resolveDisplayLaneChannelId(lane);
+        return (
+          <TimelineMotionChannelHeaderRow
+            key={lane.id}
+            lane={lane}
+            railType={railType}
+            selected={selected}
+            railFrameCount={railFrameCount}
+            cursorFrame={cursorFrame}
+            disabledReasons={disabledReasons}
+            onMoveCursorToKey={(frame) => onMotionCursorStep(frame < cursorFrame ? -1 : 1, channelId)}
+            onToggleKeyAtCursor={() => onToggleMotionKeyAtCursor(channelId)}
+          />
+        );
+      })}
+      <div
+        class="physics-paint-motion-header-gap"
+        aria-hidden="true"
+        style={{ height: TIMELINE_MOTION.postBlockGap, flexShrink: 0 }}
+      />
+      <div
+        class="physics-paint-motion-header-add-slot"
+        aria-hidden="true"
+        style={{ height: TIMELINE_MOTION.laneHeight, flexShrink: 0 }}
+      />
     </div>
   );
 }

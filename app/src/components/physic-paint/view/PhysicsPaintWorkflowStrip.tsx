@@ -226,7 +226,10 @@ import {
   railMotionMergeNotice,
   railMotionMergeNoticeUndoable,
 } from '../roto/railMotionMergeNotice';
-import type { TimelineMotionLaneControl } from './TimelineMotionChannels';
+import type {
+  TimelineMotionHeaderGroupProps,
+  TimelineMotionLaneControl,
+} from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
 const GENERATED_ROTO_TITLE_TEMPLATE = 'Generated frame {frame} — render-only.';
@@ -3359,6 +3362,36 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     setMotionKeyAtCursorDisabledReason,
     removeMotionKeyAtCursorDisabledReason,
   ]);
+  // 261107-mkn: the ACTIVE rail's channel header bundle. It is built from the
+  // SAME record/view/local-cursor the lane body consumes, so the header rows
+  // and the visible lanes cannot disagree. The two nav intents move here
+  // verbatim from the block invocation — the header column becomes their one
+  // host while the lane body keeps only cells, curves and keys.
+  const activeMotionHeader: TimelineMotionHeaderGroupProps | null = activeMotionRecord !== null
+    && activeMotionLaneCount > 0
+    ? {
+      channels: activeMotionRecord.channels,
+      view: activeMotionView,
+      selected: activeRailSetIdentity !== null,
+      cursorFrame: activeMotionLocalCursorFrame,
+      disabledReasons: motionLaneDisabledReasons,
+      onMotionCursorStep: (direction, channelId) => {
+        void (direction < 0
+          ? physicalActions?.stepMotionKeyBackward?.(channelId)
+          : physicalActions?.stepMotionKeyForward?.(channelId));
+      },
+      onToggleMotionKeyAtCursor: (channelId) => {
+        const key = resolveMotionKeyAtFrame(
+          activeMotionRecord,
+          channelId,
+          activeMotionLocalCursorFrame,
+        );
+        void (key === null
+          ? physicalActions?.setMotionKeyAtCursor?.(channelId)
+          : physicalActions?.removeMotionKeyAtCursor?.(channelId));
+      },
+    }
+    : null;
   const forceSpacingInput = physicalActions?.forceSpacingInput.value ?? '1';
   const forceSpacingAvailable = physicalActions?.canApplyForceSpacing.value ?? false;
   const forceSpacingDisabledReason = physicalActions?.forceSpacingDisabledReason.value ?? null;
@@ -6204,6 +6237,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // same identity, so the chevron stays live while a key is selected.
             selectedRail: motionRailIdentity,
             rowLayout: rowLayout.rows,
+            // 261107-mkn: the channel header rows + the add-channel control
+            // render in the pinned column, fed by the same motion bundle the
+            // body consumes.
+            motionHeader: activeMotionHeader,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
@@ -6341,21 +6378,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                     channelId,
                                     frame,
                                   });
-                                }}
-                                onMotionCursorStep={(direction, channelId) => {
-                                  void (direction < 0
-                                    ? physicalActions?.stepMotionKeyBackward?.(channelId)
-                                    : physicalActions?.stepMotionKeyForward?.(channelId));
-                                }}
-                                onToggleMotionKeyAtCursor={(channelId) => {
-                                  const key = resolveMotionKeyAtFrame(
-                                    activeMotionRecord,
-                                    channelId,
-                                    activeMotionLocalCursorFrame,
-                                  );
-                                  void (key === null
-                                    ? physicalActions?.setMotionKeyAtCursor?.(channelId)
-                                    : physicalActions?.removeMotionKeyAtCursor?.(channelId));
                                 }}
                                 onAddMotionChannel={(channelId) => {
                                   void physicalActions?.addMotionChannel?.(channelId);

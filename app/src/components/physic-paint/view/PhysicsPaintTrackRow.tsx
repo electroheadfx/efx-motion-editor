@@ -38,6 +38,7 @@ import type { PhysicPaintRotoRailMotionChannel, PhysicPaintRotoRailMotionChannel
 import { resolveMotionCommandAvailability } from '../roto/railMotionCommands';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
+  resolveDisplayLaneChannelId,
   resolveKeylessMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
   TimelineMotionAddChannelRow,
@@ -214,10 +215,6 @@ export interface PhysicsPaintTrackRowProps {
   readonly rotoRailViews?: readonly RailMotionRailView[];
   /** Motion-key selection intent — the motion key clicked in a lane. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** Previous/next Motion key intent (direction resolved from the lane click). */
-  readonly onMotionCursorStep?: (direction: -1 | 1, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** Diamond intent — add/remove a Motion key at the cursor frame. */
-  readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** The expanded block's add-channel menu intent. */
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** The measured row height from the strip's one layout (rail row + lanes + gap). */
@@ -563,8 +560,6 @@ export interface TimelineMotionBlockProps {
   readonly channelMenuOpen?: boolean;
   /** 59-12: the lane identity rides along so the host knows which channel was clicked. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  readonly onMotionCursorStep?: (direction: -1 | 1, channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  readonly onToggleMotionKeyAtCursor?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /** 59-17: the `+` row asks the host to toggle this rail's session menu. */
   readonly onToggleChannelMenu?: (anchor: Readonly<{ x: number; y: number }>) => void;
@@ -669,8 +664,6 @@ export function TimelineMotionBlock({
   cursorFrame,
   channelMenuOpen = false,
   onSelectMotionKey,
-  onMotionCursorStep,
-  onToggleMotionKeyAtCursor,
   onAddMotionChannel,
   onToggleChannelMenu,
   onSelectMotionRail,
@@ -708,8 +701,10 @@ export function TimelineMotionBlock({
       >
         {lanes.map((lane) => {
           // 59-12: the lane identity rides along with every intent, so the
-          // host never guesses which model channel a click addressed.
-          const laneChannelId = lane.channels[0]?.id ?? 'position-x';
+          // host never guesses which model channel a click addressed. One
+          // resolver shared with the header group, so both panes address the
+          // same model channel.
+          const laneChannelId = resolveDisplayLaneChannelId(lane);
           // 59-12 Task 3: a selected Motion key highlights in the lane that owns
           // its model channel (a grouped Position lane owns both axis channels).
           const laneSelectedKeyFrames = selectedMotionKey !== null
@@ -730,12 +725,6 @@ export function TimelineMotionBlock({
               onSelectKey={onSelectMotionKey === undefined
                 ? undefined
                 : (frame: number) => onSelectMotionKey(frame, laneChannelId)}
-              onMoveCursorToKey={onMotionCursorStep === undefined
-                ? undefined
-                : (frame: number) => onMotionCursorStep(frame < cursorFrame ? -1 : 1, laneChannelId)}
-              onToggleKeyAtCursor={onToggleMotionKeyAtCursor === undefined
-                ? undefined
-                : () => onToggleMotionKeyAtCursor(laneChannelId)}
               onSelectRail={onSelectMotionRail === undefined ? undefined : () => onSelectMotionRail()}
             />
           );
@@ -1080,8 +1069,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     rotoRailMotions,
     rotoRailViews,
     onSelectMotionKey,
-    onMotionCursorStep,
-    onToggleMotionKeyAtCursor,
     onAddMotionChannel,
     motionRowHeightPx = null,
     motionCursorFrame = 0,
@@ -1442,8 +1429,6 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           cursorFrame={motionCursorFrame}
           channelMenuOpen={motionChannelMenuOpen}
           onSelectMotionKey={onSelectMotionKey}
-          onMotionCursorStep={onMotionCursorStep}
-          onToggleMotionKeyAtCursor={onToggleMotionKeyAtCursor}
           onAddMotionChannel={onAddMotionChannel}
           onToggleChannelMenu={motionRecord === null
             ? undefined

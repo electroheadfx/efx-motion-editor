@@ -29,6 +29,10 @@ import type { Ref } from 'preact';
 import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import {
+  TimelineMotionHeaderGroup,
+  type TimelineMotionHeaderGroupProps,
+} from './TimelineMotionChannels';
 import { TIMELINE_GEOMETRY, TIMELINE_MOTION, type TimelineRailType } from './timelineRailDesign';
 
 /** Row pitch of a collapsed header cell (mirrors the strip's
@@ -54,6 +58,8 @@ export interface PhysicsPaintTrackHeaderRowLayoutEntry {
   readonly offset: number;
   readonly railHeight: number;
   readonly laneCount: number;
+  /** 59-17: the layout counts the 18px add-channel row inside an open block. */
+  readonly addChannelRow?: boolean;
   readonly height: number;
 }
 
@@ -152,6 +158,11 @@ export interface PhysicsPaintTrackHeaderColumnProps {
    *  lane body consumes. Header cell heights, lane spacer rows and the
    *  insertion indicator's offset all derive from it. */
   readonly rowLayout?: readonly PhysicsPaintTrackHeaderRowLayoutEntry[] | null;
+  /** 261107-mkn: the ACTIVE track's channel header bundle — one header row per
+   *  visible display lane, the 2px gap and the add-channel row, built by the
+   *  strip from the same record/view/cursor the lane body consumes. Null (or a
+   *  non-active track) renders the blank spacer fallback. */
+  readonly motionHeader?: TimelineMotionHeaderGroupProps | null;
 }
 
 /**
@@ -195,6 +206,7 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     selectedRailType,
     selectedRail = null,
     rowLayout = null,
+    motionHeader = null,
   } = props;
   const deletable = tracks.length > 1;
   const layoutById = new Map<string, PhysicsPaintTrackHeaderRowLayoutEntry>();
@@ -258,19 +270,34 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
                 style={{ display: 'flex', flexDirection: 'column', height: `${layoutEntry!.height}px` }}
               >
                 {headerCell}
-                <div class="physics-paint-track-header-lanes" aria-hidden="true" style={{ display: 'flex', flexDirection: 'column' }}>
-                  {Array.from({ length: laneCount }, (_, index) => (
+                {/* 261107-mkn: the active track's channel headers render INSIDE
+                    the pinned column, lane-for-lane with the body. Comparing
+                    against the document's `activeTrackId` (never the
+                    background-blanked id) keeps the band alive while a Bg clip
+                    is selected — only the rail accent blanks. */}
+                {motionHeader !== null && track.id === activeTrackId ? (
+                  <TimelineMotionHeaderGroup {...motionHeader} />
+                ) : (
+                  <div class="physics-paint-track-header-lanes" aria-hidden="true" style={{ display: 'flex', flexDirection: 'column' }}>
+                    {Array.from({ length: laneCount }, (_, index) => (
+                      <div
+                        key={index}
+                        class="physics-paint-track-header-lane"
+                        style={{ height: `${HEADER_LANE_HEIGHT_PX}px` }}
+                      />
+                    ))}
                     <div
-                      key={index}
-                      class="physics-paint-track-header-lane"
-                      style={{ height: `${HEADER_LANE_HEIGHT_PX}px` }}
+                      class="physics-paint-track-header-lane-gap"
+                      style={{ height: `${HEADER_POST_BLOCK_GAP_PX}px` }}
                     />
-                  ))}
-                  <div
-                    class="physics-paint-track-header-lane-gap"
-                    style={{ height: `${HEADER_POST_BLOCK_GAP_PX}px` }}
-                  />
-                </div>
+                    {layoutEntry!.addChannelRow === true ? (
+                      <div
+                        class="physics-paint-track-header-lane-add-slot"
+                        style={{ height: `${HEADER_LANE_HEIGHT_PX}px`, flexShrink: 0 }}
+                      />
+                    ) : null}
+                  </div>
+                )}
               </div>
             );
           })}

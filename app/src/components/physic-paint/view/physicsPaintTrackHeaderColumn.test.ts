@@ -22,6 +22,12 @@ import type { RotoPhysicalTimelineActionBundle } from '../hooks/useRotoTimelineA
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+import {
+  TimelineMotionChannelHeaderRow,
+  TimelineMotionHeaderGroup,
+  type TimelineMotionHeaderGroupProps,
+} from './TimelineMotionChannels';
+import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 
 const runtimeHolder = vi.hoisted(() => ({ current: null as PreactHookRuntime | null }));
@@ -105,10 +111,30 @@ function hasClass(vnode: TestVNode, className: string): boolean {
  *  those vnodes by calling the component function directly. The delete dialog
  *  is hook-free too, so a dialog vnode expands the same way. */
 function expandComponent(vnode: TestVNode): TestVNode {
-  if (vnode.type === PhysicsPaintTrackRowHeader || vnode.type === PhysicsPaintTrackColumnStrip || vnode.type === PhysicsPaintDeleteTrackDialog) {
+  if (
+    vnode.type === PhysicsPaintTrackRowHeader
+    || vnode.type === PhysicsPaintTrackColumnStrip
+    || vnode.type === PhysicsPaintDeleteTrackDialog
+    || vnode.type === TimelineMotionHeaderGroup
+  ) {
     return (vnode.type as (props: TestVNode['props']) => TestVNode)(vnode.props);
   }
   return vnode;
+}
+
+/** 261107-mkn: the motion header band is a two-level component stack (group ->
+ *  one row per lane). Materialize both levels so the rendered 18px rhythm is
+ *  walkable like plain DOM. */
+function expandMotionHeaderVnodes(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(expandMotionHeaderVnodes);
+  if (!isVnode(node)) return node;
+  if (node.type === TimelineMotionHeaderGroup || node.type === TimelineMotionChannelHeaderRow) {
+    return expandMotionHeaderVnodes(
+      (node.type as (props: TestVNode['props']) => unknown)(node.props),
+    );
+  }
+  const children = childrenOf(node).map(expandMotionHeaderVnodes);
+  return { ...node, props: { ...node.props, children } };
 }
 
 /** A minimal DOM event stub for the component's stopPropagation-preventDefault handlers. */
@@ -168,6 +194,7 @@ interface ColumnRenderOptions {
   readonly onRequestDeleteTrack?: (trackId: string) => void;
   readonly selectedRail?: RailSetIdentity | null;
   readonly rowLayout?: ReturnType<typeof resolveTrackRowLayout>['rows'] | null;
+  readonly motionHeader?: TimelineMotionHeaderGroupProps | null;
   readonly reorderDragTrackId?: string | null;
   readonly reorderDragIndex?: number | null;
 }
@@ -187,6 +214,7 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
     onRequestDeleteTrack: options.onRequestDeleteTrack ?? vi.fn(),
     selectedRail: options.selectedRail,
     rowLayout: options.rowLayout,
+    motionHeader: options.motionHeader ?? null,
     reorderDragTrackId: options.reorderDragTrackId ?? null,
     reorderDragIndex: options.reorderDragIndex ?? null,
   });
@@ -1191,6 +1219,40 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
     return { offsets, total: offset };
   }
 
+  const MOTION_HEADER_VIEW: RailMotionRailView = {
+    railId: 'rail-motion',
+    anchorKeyId: 'k0',
+    startFrame: 0,
+    endFrameExclusive: 12,
+    keyIds: ['k0'],
+    railType: 'motion',
+    loopId: null,
+  };
+
+  /** The active rail's channel header bundle: three visible display lanes
+   *  (Position, Scale, Rotation) — the same shape the strip builds. */
+  function makeMotionHeader(
+    overrides: Partial<TimelineMotionHeaderGroupProps> = {},
+  ): TimelineMotionHeaderGroupProps {
+    return {
+      channels: [
+        { id: 'position-x', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+        { id: 'scale', keys: [{ frame: 0, value: 1, easing: 'ease', wiggle: 0 }] },
+        { id: 'rotation', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+      ],
+      view: MOTION_HEADER_VIEW,
+      selected: true,
+      cursorFrame: 0,
+      onMotionCursorStep: () => {},
+      onToggleMotionKeyAtCursor: () => {},
+      ...overrides,
+    };
+  }
+
+  function styleHeight(vnode: TestVNode): string {
+    return String((vnode.props.style as { height?: string }).height);
+  }
+
   it('renders one blank 18px lane spacer per visible display lane plus ONE 2px gap, sized from the layout entry', () => {
     const fixture = makeTwoTrackFixture();
     const layout = resolveTrackRowLayout([
@@ -1285,5 +1347,93 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
     expect(headerA.props.selectedRail).toEqual(selectedRail);
     expect(headerB.props.selectedRail).toBeNull();
     expect(headerBg.props.selectedRail).toBeUndefined();
+  });
+
+  it('renders the ACTIVE track\'s channel header rows inside the pinned band — 3 rows, the 2px gap, the 18px add slot (261107-mkn)', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 3, addChannelRow: true },
+      { trackId: fixture.trackB.id, laneCount: 0 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = expandMotionHeaderVnodes(renderColumn({
+      ...fixture,
+      rowLayout: layout.rows,
+      motionHeader: makeMotionHeader(),
+    })) as TestVNode;
+
+    const group = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'));
+    const rows = findAll(group, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-header'));
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => String(
+      findAll(row, (vnode) => vnode.props['data-motion-header-part'] === 'label')[0]!.props.children,
+    ))).toEqual(['Position', 'Scale', 'Rotation']);
+
+    const gap = findOne(group, (vnode) => hasClass(vnode, 'physics-paint-motion-header-gap'));
+    expect(styleHeight(gap)).toBe('2px');
+    const slot = findOne(group, (vnode) => hasClass(vnode, 'physics-paint-motion-header-add-slot'));
+    expect(styleHeight(slot)).toBe('18px');
+
+    // The real path is NOT aria-hidden (only the blank fallback is), and the
+    // wrapper keeps the layout entry's declared height.
+    const laneHost = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'));
+    expect(laneHost.props['aria-hidden']).toBeUndefined();
+    const wrapper = findOne(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'));
+    expect((wrapper.props.style as { height: string }).height).toBe(`${layout.rows[0]!.height}px`);
+    // The Bg header starts exactly where the layout says the block ends: the
+    // NEXT row's rail offset is the open block's height (rail + 3 lanes + gap
+    // + add row).
+    const sequence = headerOffsetSequence(root);
+    expect(sequence.offsets).toEqual(layout.rows.map((row) => row.offset));
+    expect(layout.rows[1]!.offset).toBe(31 + 3 * 18 + 2 + 18);
+  });
+
+  it('renders the blank fallback, not the header bundle, when the bundle belongs to a NON-active track', () => {
+    const fixture = makeTwoTrackFixture();
+    const layout = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 3, addChannelRow: true },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const root = expandMotionHeaderVnodes(renderColumn({
+      ...fixture,
+      rowLayout: layout.rows,
+      motionHeader: makeMotionHeader(),
+    })) as TestVNode;
+
+    // Track A is active and has no lanes; track B's entry gets the blank
+    // spacers even though a bundle was supplied — the bundle is the ACTIVE
+    // track's only.
+    expect(findAll(root, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))).toHaveLength(0);
+    const groups = findAll(root, (vnode) => hasClass(vnode, 'physics-paint-track-header-group'));
+    expect(groups).toHaveLength(1);
+    expect(findAll(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lanes'))).toHaveLength(1);
+    expect(findAll(groups[0]!, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane'))).toHaveLength(3);
+  });
+
+  it('reserves a blank 18px add slot in the fallback only when the layout entry counts it', () => {
+    const fixture = makeTwoTrackFixture();
+    const withSlot = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 3, addChannelRow: true },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    const withSlotRoot = renderColumn({ ...fixture, rowLayout: withSlot.rows });
+    const slots = findAll(withSlotRoot, (vnode) => hasClass(vnode, 'physics-paint-track-header-lane-add-slot'));
+    expect(slots).toHaveLength(1);
+    expect(styleHeight(slots[0]!)).toBe('18px');
+
+    const withoutSlot = resolveTrackRowLayout([
+      { trackId: fixture.trackA.id, laneCount: 0 },
+      { trackId: fixture.trackB.id, laneCount: 3 },
+      { trackId: fixture.background.id, laneCount: 0 },
+    ]);
+    expect(findAll(
+      renderColumn({ ...fixture, rowLayout: withoutSlot.rows }),
+      (vnode) => hasClass(vnode, 'physics-paint-track-header-lane-add-slot'),
+    )).toHaveLength(0);
+    // The legacy height (31 + 3 × 18 + 2) is unchanged for entries without it.
+    expect(withoutSlot.rows[1]!.height).toBe(31 + 3 * 18 + 2);
+    expect(withSlot.rows[1]!.height).toBe(31 + 3 * 18 + 2 + 18);
   });
 });

@@ -18,13 +18,17 @@ import {
   RAIL_MOTION_DISPLAY_LANE_ORDER,
   TimelineMotionAddChannelRow,
   TimelineMotionBlockOutline,
+  TimelineMotionChannelHeaderRow,
   TimelineMotionChannelLane,
   TimelineMotionChannelMenu,
+  TimelineMotionHeaderGroup,
   resolveKeylessMotionDisplayLanes,
   resolveMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
   type RailMotionDisplayLaneView,
+  type TimelineMotionChannelHeaderRowProps,
   type TimelineMotionChannelLaneProps,
+  type TimelineMotionHeaderGroupProps,
 } from './TimelineMotionChannels';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import type {
@@ -32,6 +36,7 @@ import type {
   PhysicPaintRotoRailMotionChannelId,
   PhysicPaintRotoRailMotionKey,
 } from '../roto/railMotionModel';
+import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import {
   resolveMotionBlockOutlineRect,
   TIMELINE_GEOMETRY,
@@ -167,10 +172,69 @@ function laneProps(
     selectedKeyFrames: [],
     onSelectRail: () => {},
     onSelectKey: () => {},
+    ...overrides,
+  };
+}
+
+function headerRowProps(
+  overrides: Partial<TimelineMotionChannelHeaderRowProps> = {},
+): TimelineMotionChannelHeaderRowProps {
+  return {
+    lane: POSITION_LANE,
+    railType: 'standard',
+    selected: true,
+    railFrameCount: RAIL_FRAME_COUNT,
+    cursorFrame: 3,
     onMoveCursorToKey: () => {},
     onToggleKeyAtCursor: () => {},
     ...overrides,
   };
+}
+
+function renderHeaderRow(
+  overrides: Partial<TimelineMotionChannelHeaderRowProps> = {},
+): unknown {
+  return materialize(TimelineMotionChannelHeaderRow(headerRowProps(overrides)));
+}
+
+const HEADER_RAIL_VIEW: RailMotionRailView = {
+  railId: 'rail-a',
+  anchorKeyId: 'k0',
+  startFrame: 0,
+  endFrameExclusive: RAIL_FRAME_COUNT,
+  keyIds: ['k0'],
+  railType: 'standard',
+  loopId: null,
+};
+
+function headerGroupProps(
+  overrides: Partial<TimelineMotionHeaderGroupProps> = {},
+): TimelineMotionHeaderGroupProps {
+  return {
+    channels: POSITION_CHANNELS,
+    view: HEADER_RAIL_VIEW,
+    selected: true,
+    cursorFrame: 3,
+    onMotionCursorStep: () => {},
+    onToggleMotionKeyAtCursor: () => {},
+    ...overrides,
+  };
+}
+
+function renderHeaderGroup(
+  overrides: Partial<TimelineMotionHeaderGroupProps> = {},
+): unknown {
+  return materialize(TimelineMotionHeaderGroup(headerGroupProps(overrides)));
+}
+
+function headerRows(tree: unknown): TestVNode[] {
+  return findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-header'));
+}
+
+/** A `childrenOf` entry is `unknown`; narrow it to a vnode before class checks. */
+function childHasClass(child: unknown, name: string): child is TestVNode {
+  if (child === null || typeof child !== 'object' || Array.isArray(child)) return false;
+  return hasClass(child as TestVNode, name);
 }
 
 function renderLane(overrides: Partial<TimelineMotionChannelLaneProps> = {}): unknown {
@@ -301,19 +365,16 @@ describe('TimelineMotionChannelLane', () => {
     expect(styleOf(lane).background).toBe(TIMELINE_SURFACE.motionLane);
   });
 
-  it('renders the header cluster as icon, label, key count, previous, diamond, next', () => {
+  it('renders NO header content — the lane body is cells, curves and keys only (261107-mkn)', () => {
     const tree = renderLane();
 
-    expect(headerParts(tree).map((vnode) => vnode.props['data-motion-header-part'])).toEqual([
-      'icon',
-      'label',
-      'count',
-      'previous',
-      'diamond',
-      'next',
-    ]);
-    expect(textOf(headerPart(tree, 'label'))).toBe('Position');
-    expect(textOf(headerPart(tree, 'count'))).toBe('3 keys');
+    expect(headerParts(tree)).toHaveLength(0);
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane-header'))).toHaveLength(0);
+    // The body itself is intact: cells, the evaluator curve and the key dots.
+    expect(findAll(tree, (vnode) => vnode.props['data-motion-cell-frame'] !== undefined).length)
+      .toBe(RAIL_FRAME_COUNT);
+    expect(findAll(tree, (vnode) => vnode.type === 'path')).toHaveLength(2);
+    expect(keyDots(tree)).toHaveLength(3);
   });
 
   it('draws one 6px key per SHARED Position frame, never one per axis', () => {
@@ -426,23 +487,12 @@ describe('TimelineMotionChannelLane', () => {
     expect(dots[0].props['data-motion-key-frame']).toBe(0);
   });
 
-  it('routes key and nav clicks to the frame handlers', () => {
+  it('routes a key click to the frame handler', () => {
     const onSelectKey = vi.fn();
-    const onMoveCursorToKey = vi.fn();
-    const onToggleKeyAtCursor = vi.fn();
-    const tree = renderLane({ cursorFrame: 3, onSelectKey, onMoveCursorToKey, onToggleKeyAtCursor });
+    const tree = renderLane({ cursorFrame: 3, onSelectKey });
 
     clickOf(keyDots(tree)[1])();
     expect(onSelectKey).toHaveBeenCalledWith(3);
-
-    clickOf(headerPart(tree, 'previous'))();
-    expect(onMoveCursorToKey).toHaveBeenCalledWith(0);
-
-    clickOf(headerPart(tree, 'next'))();
-    expect(onMoveCursorToKey).toHaveBeenLastCalledWith(6);
-
-    clickOf(headerPart(tree, 'diamond'))();
-    expect(onToggleKeyAtCursor).toHaveBeenCalledTimes(1);
   });
 
   it('selects the rail from the lane surface', () => {
@@ -452,9 +502,73 @@ describe('TimelineMotionChannelLane', () => {
     clickOf(laneNode(tree))();
     expect(onSelectRail).toHaveBeenCalledWith('rail-a');
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* channel header row (261107-mkn: the moved in-lane cluster)          */
+/* ------------------------------------------------------------------ */
+
+describe('TimelineMotionChannelHeaderRow', () => {
+  it('renders the six parts in order: icon, label, key count, previous, diamond, next', () => {
+    const tree = renderHeaderRow();
+
+    expect(headerParts(tree).map((vnode) => vnode.props['data-motion-header-part'])).toEqual([
+      'icon',
+      'label',
+      'count',
+      'previous',
+      'diamond',
+      'next',
+    ]);
+    expect(textOf(headerPart(tree, 'label'))).toBe('Position');
+    expect(textOf(headerPart(tree, 'count'))).toBe('3 keys');
+  });
+
+  it('is a flow row at the 18px lane rhythm — never an absolute overlay', () => {
+    const tree = renderHeaderRow();
+    const header = headerRows(tree)[0]!;
+    const style = styleOf(header);
+
+    expect(style.position).toBeUndefined();
+    expect(style.height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(style.width).toBe('100%');
+    expect(style.minWidth).toBe(TIMELINE_MOTION.headerClusterWidth);
+    expect(style.flexShrink).toBe(0);
+    expect(style.background).toBe(TIMELINE_SURFACE.motionLane);
+  });
+
+  it('dims an unselected lane and keeps the rail-select hint', () => {
+    const selectedRow = headerRows(renderHeaderRow({ selected: true }))[0]!;
+    const idleRow = headerRows(renderHeaderRow({ selected: false }))[0]!;
+
+    expect(styleOf(selectedRow).opacity).toBe(1);
+    expect(styleOf(idleRow).opacity).toBe(0.55);
+    expect(idleRow.props.title)
+      .toBe('Click this lane to select the rail for canvas transforms');
+    expect(selectedRow.props.title).toBeUndefined();
+  });
+
+  it('routes previous to the earlier key and next to the later key', () => {
+    const onMoveCursorToKey = vi.fn();
+    const tree = renderHeaderRow({ cursorFrame: 3, onMoveCursorToKey });
+
+    clickOf(headerPart(tree, 'previous'))();
+    expect(onMoveCursorToKey).toHaveBeenCalledWith(0);
+
+    clickOf(headerPart(tree, 'next'))();
+    expect(onMoveCursorToKey).toHaveBeenLastCalledWith(6);
+  });
+
+  it('routes the diamond to the at-cursor toggle', () => {
+    const onToggleKeyAtCursor = vi.fn();
+    const tree = renderHeaderRow({ cursorFrame: 3, onToggleKeyAtCursor });
+
+    clickOf(headerPart(tree, 'diamond'))();
+    expect(onToggleKeyAtCursor).toHaveBeenCalledTimes(1);
+  });
 
   it('disables an inert nav control WITH a visible reason, never a silent no-op', () => {
-    const tree = renderLane({ cursorFrame: 0 });
+    const tree = renderHeaderRow({ cursorFrame: 0 });
 
     const previous = headerPart(tree, 'previous');
     expect(previous.props.disabled).toBe(true);
@@ -467,7 +581,7 @@ describe('TimelineMotionChannelLane', () => {
   });
 
   it('lets the host override a disabled reason', () => {
-    const tree = renderLane({
+    const tree = renderHeaderRow({
       cursorFrame: 0,
       disabledReasons: { next: 'Rail recording is locked' },
     });
@@ -476,6 +590,117 @@ describe('TimelineMotionChannelLane', () => {
     expect(next.props.disabled).toBe(true);
     expect(next.props.title).toBe('Rail recording is locked');
     expect(next.props['aria-description']).toBe('Rail recording is locked');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* channel header group (261107-mkn: the pinned-column stack)          */
+/* ------------------------------------------------------------------ */
+
+describe('TimelineMotionHeaderGroup', () => {
+  it('renders one header row per VISIBLE display lane in fixed order', () => {
+    const tree = renderHeaderGroup();
+
+    const rows = headerRows(tree);
+    expect(rows).toHaveLength(1);
+    expect(textOf(headerPart(rows[0]!, 'label'))).toBe('Position');
+
+    const allKeyed = renderHeaderGroup({
+      channels: [
+        motionChannel('position-x', SHARED_POSITION_FRAMES),
+        motionChannel('position-y', SHARED_POSITION_FRAMES),
+        motionChannel('scale', [0]),
+        motionChannel('rotation', [1]),
+        motionChannel('opacity', [2]),
+      ],
+    });
+    expect(headerRows(allKeyed).map((row) => textOf(headerPart(row, 'label')))).toEqual([
+      'Position',
+      'Scale',
+      'Rotation',
+      'Opacity',
+    ]);
+  });
+
+  it('ends with the 2px post-block gap and the 18px add slot in the same rhythm as the body', () => {
+    const tree = renderHeaderGroup();
+    const group = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
+    const children = childrenOf(group);
+
+    const gap = children.find((child) => childHasClass(child, 'physics-paint-motion-header-gap'))!;
+    const slot = children.find((child) => childHasClass(child, 'physics-paint-motion-header-add-slot'))!;
+    expect(styleOf(gap).height).toBe(TIMELINE_MOTION.postBlockGap);
+    expect(styleOf(gap).height).toBe(2);
+    expect(styleOf(slot).height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(styleOf(slot).height).toBe(18);
+    expect(gap.props['aria-hidden']).toBe('true');
+    expect(slot.props['aria-hidden']).toBe('true');
+    // Tokens only — the slot/gap never duplicate the measures.
+    expect(styleOf(slot).flexShrink).toBe(0);
+  });
+
+  it('maps a row step to the lane model channel id and the direction from the cursor', () => {
+    const onMotionCursorStep = vi.fn();
+    const tree = renderHeaderGroup({
+      cursorFrame: 3,
+      onMotionCursorStep,
+      channels: [
+        motionChannel('position-x', SHARED_POSITION_FRAMES),
+        motionChannel('position-y', SHARED_POSITION_FRAMES),
+        motionChannel('scale', [3, 8]),
+      ],
+    });
+    const rows = headerRows(tree);
+    expect(rows).toHaveLength(2);
+
+    // Position is the grouped lane: its intents address `position-x`.
+    clickOf(headerPart(rows[0]!, 'previous'))();
+    expect(onMotionCursorStep).toHaveBeenCalledWith(-1, 'position-x');
+    clickOf(headerPart(rows[0]!, 'next'))();
+    expect(onMotionCursorStep).toHaveBeenLastCalledWith(1, 'position-x');
+
+    // Scale is a single-channel lane: its intents address `scale`.
+    clickOf(headerPart(rows[1]!, 'next'))();
+    expect(onMotionCursorStep).toHaveBeenLastCalledWith(1, 'scale');
+  });
+
+  it('maps the diamond toggle to the lane model channel id', () => {
+    const onToggleMotionKeyAtCursor = vi.fn();
+    const tree = renderHeaderGroup({
+      cursorFrame: 3,
+      onToggleMotionKeyAtCursor,
+      channels: [
+        motionChannel('position-x', SHARED_POSITION_FRAMES),
+        motionChannel('position-y', SHARED_POSITION_FRAMES),
+        motionChannel('opacity', [1]),
+      ],
+    });
+    const rows = headerRows(tree);
+
+    clickOf(headerPart(rows[0]!, 'diamond'))();
+    expect(onToggleMotionKeyAtCursor).toHaveBeenCalledWith('position-x');
+    clickOf(headerPart(rows[1]!, 'diamond'))();
+    expect(onToggleMotionKeyAtCursor).toHaveBeenLastCalledWith('opacity');
+  });
+
+  it('derives the rail band from the view span and fails closed without a view', () => {
+    const spanTree = renderHeaderGroup({
+      view: { ...HEADER_RAIL_VIEW, startFrame: 2, endFrameExclusive: 8 },
+      cursorFrame: 0,
+      channels: [motionChannel('scale', [0, 2, 4])],
+    });
+    const spanRow = headerRows(spanTree)[0]!;
+    // The local band is [0, 6) — cursor 0 has a later key and no earlier one.
+    expect(headerPart(spanRow, 'previous').props.disabled).toBe(true);
+    expect(headerPart(spanRow, 'next').props.disabled).toBe(false);
+
+    const nullView = renderHeaderGroup({
+      view: null,
+      channels: [motionChannel('scale', [0])],
+    });
+    expect(headerRows(nullView)).toHaveLength(1);
+    expect(headerPart(headerRows(nullView)[0]!, 'previous').props.disabled).toBe(true);
+    expect(headerPart(headerRows(nullView)[0]!, 'next').props.disabled).toBe(true);
   });
 });
 

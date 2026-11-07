@@ -3256,8 +3256,10 @@ describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (
     // The lane addresses the host with the channel the click hit, and the
     // cursor it reads is the rail-LOCAL frame the lane contract expects.
     expect(code).toContain('onSelectMotionKey={(frame, channelId) => {');
-    expect(code).toContain('onMotionCursorStep={(direction, channelId) => {');
-    expect(code).toContain('onToggleMotionKeyAtCursor={(channelId) => {');
+    // 261107-mkn: the two nav intents moved into the header bundle (an object
+    // literal hosted by the pinned header column), not the lane block.
+    expect(code).toContain('onMotionCursorStep: (direction, channelId) => {');
+    expect(code).toContain('onToggleMotionKeyAtCursor: (channelId) => {');
     expect(code).toContain('cursorFrame={activeMotionLocalCursorFrame}');
     expect(code).toContain('disabledReasons={motionLaneDisabledReasons}');
     // The diamond reason is a command-layer projection of the add OR remove
@@ -3284,7 +3286,10 @@ describe('59-12 Task 3: the action bar derives from the one scope table (MOTN-11
   it('clears the drawing-key selection when a motion key is selected, keeping the rail scope', () => {
     const code = source();
     const handlerStart = code.indexOf('onSelectMotionKey={(frame, channelId) => {');
-    const handler = code.slice(handlerStart, code.indexOf('onMotionCursorStep=', handlerStart));
+    // 261107-mkn: the nav handlers no longer follow the selection handler on
+    // the block (they live earlier in the header bundle), so the slice ends at
+    // the next block prop instead.
+    const handler = code.slice(handlerStart, code.indexOf('onAddMotionChannel=', handlerStart));
     expect(handler).toContain('props.onClearRotoKeySelection?.();');
     expect(handler).toContain('props.onClearRotoSpacingSelection?.();');
     expect(handler).toContain('physicalActions?.selectMotionKey?.({');
