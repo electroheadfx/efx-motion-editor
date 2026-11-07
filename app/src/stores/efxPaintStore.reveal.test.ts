@@ -177,8 +177,14 @@ function stubFlattenedDecodeSurface(): void {
   class FlatCanvas {
     width = 0;
     height = 0;
-    getContext(): { drawImage(): void; clearRect(): void; save(): void; restore(): void; globalAlpha: number; globalCompositeOperation: string } | null {
-      return { drawImage() {}, clearRect() {}, save() {}, restore() {}, globalAlpha: 1, globalCompositeOperation: 'source-over' };
+    getContext(): { drawImage(): void; clearRect(): void; save(): void; restore(): void; translate(): void; rotate(): void; scale(): void; globalAlpha: number; globalCompositeOperation: string } | null {
+      // A rail-motion transform (59-22 CR-01) drives translate/rotate/scale —
+      // the identity path never does, so the pre-motion rows are unaffected.
+      return {
+        drawImage() {}, clearRect() {}, save() {}, restore() {},
+        translate() {}, rotate() {}, scale() {},
+        globalAlpha: 1, globalCompositeOperation: 'source-over',
+      };
     }
     toDataURL(): string { return PNG_1X1; }
   }

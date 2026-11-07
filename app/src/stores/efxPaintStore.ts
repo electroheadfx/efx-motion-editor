@@ -38,7 +38,7 @@ import { sliceRailKeyScripts, type RailKeyScriptResult } from '../components/phy
 // OWN transaction. The reconciler is pure (no store/bridge/signal import) and
 // the store pair is already mutually imported, so this adds no cycle.
 import { reconcileRailMotionsForDocumentEdit } from '../components/physic-paint/roto/railMotionDocumentReconciler';
-import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences } from './physicPaintStore';
+import { bumpTrackRevision, commitRevealBake, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, mountTrackRuntime, physicPaintStore, removeTrackRuntime, severTrackHoldReferences, type RevealLoopClipTemplate } from './physicPaintStore';
 
 let _markProjectDirty: (() => void) | null = null;
 
@@ -1593,6 +1593,44 @@ export async function createRevealRail(
   // 261030-np9 (D-05): the per-key opt-in resolves ONCE. The bake's PIXELS are
   // identical either way; only the recording (below) is gated on it.
   const revealKeyScriptEdits = input.keyScriptEdits === true;
+  // 59-22 (CR-01): the reveal clip's durable identity and every non-record
+  // field are known BEFORE the bake. Minting the loopId here and sharing ONE
+  // base object means the bake can reconcile motion against the clip it is
+  // about to create, and the appended clip can never disagree with it.
+  const revealLoopId = createPhysicPaintRotoKeyId();
+  const revealRepeat = input.repeat ?? 1;
+  const revealClipBase: Omit<RevealLoopClipTemplate, 'loopId'> = {
+    // The baked cycle is the source; placement/repeat/lifecycle are durable
+    // facts, not bake output.
+    placementStart: input.startFrame,
+    repeat: revealRepeat,
+    mode: input.variant,
+    railKind: 'reveal',
+    scriptId: input.scriptId,
+    // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
+    // 261030-ey9: persistence compaction — a zero rotation/scale never lands on
+    // the record; the bake still sees plain numbers.
+    motion: compactPhysicPaintRotoMotion(bakeMotion),
+    overrideColor: null,
+    // 261029-vbp: written only when enabled, both keys together, so a
+    // non-colorized reveal rail stays byte-identical to a pre-quick rail.
+    ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
+    // 261030-ey9: written only when enabled (colorize precedent).
+    ...(revealPhotoWiggle ? { photoWiggle: true } : {}),
+    // 261030-v1t: written only when enabled — an untouched reveal rail stays
+    // byte-identical to a pre-quick rail.
+    ...(revealPaintSeedVariation ? { paintSeedVariation: true } : {}),
+    // 261030-ig0 (D-03): written only when enabled — an untouched reveal rail
+    // stays byte-identical to a pre-quick rail.
+    ...(revealKeyScriptEdits ? { keyScriptEdits: true } : {}),
+    // G-52-4: stamp the full 43-06 lifecycle at creation so the clip is a
+    // first-class Group for every consumer (classifier, paint-COW, drag,
+    // spacing) from birth — never the lifecycle-less split-brain shape.
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: input.startFrame,
+    frameOverrides: [],
+  };
   // The bake reports the output frame it actually started each stroke on (D-01).
   let revealAnchors: readonly AquarelleStrokeFrameAnchor[] = [];
   const bakeResult = await commitRevealBake({
@@ -1610,6 +1648,7 @@ export async function createRevealRail(
     projectSize: input.projectSize,
     aquarellePaper: input.aquarellePaper,
     onStrokeFrameAnchors: (next) => { revealAnchors = next; },
+    pendingLoopClip: { ...revealClipBase, loopId: revealLoopId },
     signal: input.signal ?? new AbortController().signal,
     onProgress: input.onProgress,
   });
@@ -1619,13 +1658,10 @@ export async function createRevealRail(
   // family, discriminated by `railKind: 'reveal'` (D-03). The baked keys are the
   // source cycle; repeat/endless rides the same mutation law as the Paint Rail
   // (D-08, G-52-3) and the motion wiggle is frozen as provenance (D-09).
-  // G-52-4: stamp the full 43-06 lifecycle at creation so the clip is a
-  // first-class Group for every consumer (classifier, paint-COW, drag, spacing)
-  // from birth — never the lifecycle-less split-brain shape. Infinity pins one
-  // cycle as the original end; the resolver extends it to capacity (the same
-  // render-neutral shape the payload normalizer synthesizes).
+  // Infinity pins one cycle as the original end; the resolver extends it to
+  // capacity (the same render-neutral shape the payload normalizer
+  // synthesizes). CR-01: the SAME base and loopId the bake reconciled against.
   const revealCycleLength = bakeResult.records.length;
-  const revealRepeat = input.repeat ?? 1;
   // A Repeat may run past the timeline end — the resolver shortens the visible
   // range — so the persisted Group extent is clamped to capacity; an unclamped
   // extent makes the physical-document validator refuse the whole rail.
@@ -1634,35 +1670,11 @@ export async function createRevealRail(
     physicPaintStore.getRotoPhysicalCapacity(layerId, input.trackId),
   );
   const loopClip: PhysicPaintRotoLoopClip = {
-    loopId: createPhysicPaintRotoKeyId(),
-    placementStart: input.startFrame,
+    ...revealClipBase,
+    loopId: revealLoopId,
     sourceKeyIds: bakeResult.records.map((record) => record.keyId),
-    repeat: revealRepeat,
-    mode: input.variant,
-    railKind: 'reveal',
-    scriptId: input.scriptId,
-    // 43-06 provenance is all-or-nothing: scriptId requires motion + overrideColor.
-    // 261030-ey9: persistence compaction — a zero rotation/scale never lands on
-    // the record; the BAKE above still saw plain numbers.
-    motion: compactPhysicPaintRotoMotion(bakeMotion),
-    overrideColor: null,
-    // 261029-vbp: written only when enabled, both keys together, so a
-    // non-colorized reveal rail stays byte-identical to a pre-quick rail.
-    ...(revealColorize ? { colorize: true, colorizeMix: revealColorizeMix } : {}),
-    // 261030-ey9: written only when enabled (colorize precedent).
-    ...(revealPhotoWiggle ? { photoWiggle: true } : {}),
-    // 261030-v1t: written only when enabled — an untouched reveal rail stays
-    // byte-identical to a pre-quick rail.
-    ...(revealPaintSeedVariation ? { paintSeedVariation: true } : {}),
-    // 261030-ig0 (D-03): written only when enabled — an untouched reveal rail
-    // stays byte-identical to a pre-quick rail.
-    ...(revealKeyScriptEdits ? { keyScriptEdits: true } : {}),
-    syncState: 'synchronized',
-    provenanceState: 'attached',
-    phaseOrigin: input.startFrame,
     originalEndExclusive: revealOriginalEnd,
     visibleRanges: [{ start: input.startFrame, endExclusive: revealOriginalEnd }],
-    frameOverrides: [],
   };
   const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(layerId, input.trackId);
   const loopResult = physicPaintStore.replaceRotoPhysicalLoopClips(layerId, input.trackId, [...currentLoopClips, loopClip]);

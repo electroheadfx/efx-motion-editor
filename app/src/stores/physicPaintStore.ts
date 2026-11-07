@@ -2308,6 +2308,20 @@ function _resolveReferenceSourceImage(document: EfxPaintDocument, frame: number)
 // preserved. An interrupted or aborted bake writes no keys (D-11).
 // ---------------------------------------------------------------------------
 
+/**
+ * The reveal Loop Clip as it is known BEFORE the bake renders (59-22 / CR-01).
+ *
+ * Every durable member except the ones the bake itself produces: the baked
+ * `sourceKeyIds` and the record-derived lifecycle span (`originalEndExclusive`,
+ * `visibleRanges`). `commitRevealBake` appends this template — plus the baked
+ * ids — to the reconciliation's NEXT snapshot so the clip that is about to own
+ * the baked keys is visible while the neighbouring rails are classified.
+ */
+export type RevealLoopClipTemplate = Omit<
+  PhysicPaintRotoLoopClip,
+  'sourceKeyIds' | 'originalEndExclusive' | 'visibleRanges'
+>;
+
 /** Input to the reveal bake commit path (52-01 Task 1 step 4). */
 export interface RevealBakeInput {
   layerId: string;
@@ -2336,6 +2350,15 @@ export interface RevealBakeInput {
   aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
   /** 261030-np9 (D-01): the bake reports the output frame each stroke started on. */
   onStrokeFrameAnchors?: NonNullable<RotoRevealRenderInput['onStrokeFrameAnchors']>;
+  /**
+   * 59-22 (CR-01): the Loop Clip this bake is about to create, minus the
+   * records the bake produces. The bake renders BEFORE `createRevealRail`
+   * appends the clip, so without this template the motion reconciliation sees
+   * the freshly baked keys as unowned, merges a neighbouring Key Rail into
+   * them, and that rail's record is orphaned the moment the clip takes
+   * ownership of the keys — silent motion loss.
+   */
+  pendingLoopClip?: RevealLoopClipTemplate;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
 }
@@ -2354,6 +2377,20 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   const capacity = physicPaintStore.getRotoPhysicalCapacity(input.layerId, input.trackId);
   if (input.canonicalStart + input.frameCount > capacity) {
     return { ok: false, error: 'reveal span exceeds capacity' };
+  }
+
+  // 59-22 (CR-01): read the clip collection ONCE — the same array feeds the
+  // motion snapshot below — and fail closed when the pending loopId already
+  // exists. A duplicate identity would shadow the existing clip and make the
+  // two sides of the transaction describe different documents. This runs
+  // before the reference walk and the render, so a refusal writes nothing.
+  const pendingLoopClip = input.pendingLoopClip;
+  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(input.layerId, input.trackId);
+  if (
+    pendingLoopClip !== undefined
+    && currentLoopClips.some((clip) => clip.loopId === pendingLoopClip.loopId)
+  ) {
+    return { ok: false, error: 'reveal loop clip already exists' };
   }
 
   // The bake renders at the WORKING canvas size — the same size authority as
@@ -2450,11 +2487,17 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   // span becomes the baked key written at that same frame. Skipping it would
   // leave the new baked keys unowned in the snapshot, merge a neighbouring Key
   // Rail segment into them and silently drop that rail's motion.
+  //
+  // 59-22 (CR-01): the reveal clip is NOT stored yet at this point — creation
+  // appends it after the bake returns — so the substitution alone leaves the
+  // freshly baked keys unowned and the same merge/orphan happens one step
+  // later. The pending template (minted by `createRevealRail` before this
+  // call) is appended with the baked ids so the NEXT snapshot owns every key
+  // the creation is about to commit. The PREVIOUS snapshot stays untouched.
   const leadingBakedKeyId = bakedRecords.find((record) => record.appFrame === spanStart)?.keyId ?? null;
   const finalBreaks = leadingBakedKeyId !== null && !prunedBreaks.includes(leadingBakedKeyId)
     ? [...prunedBreaks, leadingBakedKeyId]
     : prunedBreaks;
-  const currentLoopClips = physicPaintStore.getRotoPhysicalLoopClips(input.layerId, input.trackId);
   const bakedKeyIdByAppFrame = new Map(bakedRecords.map((record) => [record.appFrame, record.keyId] as const));
   const existingRecordByKeyId = new Map(existingRecords.map((record) => [record.keyId, record] as const));
   const nextLoopClips = currentLoopClips.map((clip) => {
@@ -2469,6 +2512,12 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     });
     return substituted ? { ...clip, sourceKeyIds } : clip;
   });
+  const nextLoopClipsWithPending: readonly PhysicPaintRotoLoopClip[] = pendingLoopClip === undefined
+    ? nextLoopClips
+    : [
+        ...nextLoopClips,
+        { ...pendingLoopClip, sourceKeyIds: bakedRecords.map((record) => record.keyId) },
+      ];
   const reconciliation = reconcileRailMotionsForDocumentEdit({
     previous: {
       realKeyRecords: existingRecords,
@@ -2478,7 +2527,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     next: {
       realKeyRecords: merged,
       incomingInterpolationBreakKeyIds: new Set(finalBreaks),
-      loopClips: nextLoopClips,
+      loopClips: nextLoopClipsWithPending,
     },
     railMotions: physicPaintStore.getRotoPhysicalRailMotions(input.layerId, input.trackId),
   });
