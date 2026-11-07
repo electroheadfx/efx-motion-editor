@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - Completed quick task 261107-rrp: Cycle + Motion on Studio rails (cycle conversion preserves motion; the Motion span auto-fits the resolved rail extent); automated-green, live UAT pending
+Last activity: 2026-11-07 - UAT approved quick task 261107-rrp: Cycle + Motion on Studio rails (44c76c16d conversion preserves motion + resolved-span b6e8dfc00, one-helper ff6d6714d)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -235,7 +235,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-pd8 | Motion channel keys draggable through time on the Phase 59 rail (reuses the shared key-rail drag session); selected-rail lane inset line removed (UAT approved) | 2026-11-07 | bc92429ef | [261107-pd8-draggable-motion-key-from-phase-59-rail-](./quick/261107-pd8-draggable-motion-key-from-phase-59-rail-/) |
 | 3 | Studio: end-justify the Animate channel-menu button on the bottom action row; grey it out (aria-disabled) until a rail is selected | 2026-11-07 | 904743666 | — |
 | 261107-qgj | Move the Motion values out of the sidebar Scripts tab into a floating Motion sheet; present channels only, Stroke settings slider rows, header Reset pins the identity pose, one close path restores the previous paint tool (UAT approved) | 2026-11-07 | 615f38acd | [261107-qgj-move-all-the-motion-values-from-sidebar-](./quick/261107-qgj-move-all-the-motion-values-from-sidebar-/) |
-| 261107-rrp | Cycle + Motion on Studio rails: a cycle conversion preserves the rail's motion; the Motion span auto-fits the resolved rail extent (extends with keys/cycles, shrinks with them); out-of-band keys are preserved-but-inactive | 2026-11-07 | ff6d6714d | [261107-rrp-cycle-with-motion-in-studio-adding-a-cyc](./quick/261107-rrp-cycle-with-motion-in-studio-adding-a-cyc/) |
+| 261107-rrp | Cycle + Motion on Studio rails: a cycle conversion preserves the rail's motion; the Motion span auto-fits the resolved rail extent (extends with keys/cycles, shrinks with them); out-of-band keys are preserved-but-inactive (UAT approved) | 2026-11-07 | ff6d6714d | [261107-rrp-cycle-with-motion-in-studio-adding-a-cyc](./quick/261107-rrp-cycle-with-motion-in-studio-adding-a-cyc/) |
 
 ## Roadmap Evolution
 
