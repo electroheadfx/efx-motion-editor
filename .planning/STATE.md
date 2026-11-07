@@ -5,16 +5,16 @@ milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MIN
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: executing
-stopped_at: Completed 59-23-PLAN.md
-last_updated: "2026-11-07T10:16:37.518Z"
+stopped_at: Completed 59-24-PLAN.md
+last_updated: "2026-11-07T10:24:45.714Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 3994b6d04e1fd91d30e622d81a8cce0b9545fb4d
+state_head: 8e122ac3d27e191770e343e268f12f0be7661cc5
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 ## Current Position
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
-Plan: 24 of 25
+Plan: 25 of 25
 Status: Ready to execute
 Last activity: 2026-11-07 — Phase 59 execution started
 
@@ -79,6 +79,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P20 | 13min | 3 tasks | 11 files |
 | Phase 59 P22 | 58 | 3 tasks | 9 files |
 | Phase 59 P23 | 6 | 2 tasks | 7 files |
+| Phase 59 P24 | 6min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -164,6 +165,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: The add-channel row's disabled state and reason are the availability authority's only: TimelineMotionBlock calls resolveMotionCommandAvailability once and the view renders the sentence verbatim (no local gate, no copied reason).
 - [Phase 59]: A disabled add row has no click handler and forces aria-expanded false, and its menu overlay is gated on the authority's enabled, so a stale session identity cannot open an empty menu.
 - [Phase 59]: The strip measures the add row from activeMotionLaneCount > 0 alone, matching the block's render predicate; the second keyless derivation in the strip is deleted.
+- [Phase 59]: One code-unit comparator (compareCanonicalIds) now owns every canonical sort in the model; it matches Rust's str::cmp for the ASCII id charset, so TS and Rust cannot produce two revisions for one document.
+- [Phase 59]: Golden fixture Loop Clips must carry the explicit six-member persisted lifecycle block: the TS encoder resolves it unconditionally while Rust emits it only under syncState, so a lifecycle-less shared entry would diverge on the loops term.
 
 ### Pending Todos
 
@@ -235,8 +238,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-07T10:16:37.487Z
-Stopped at: Completed 59-23-PLAN.md
+Last session: 2026-11-07T10:24:45.683Z
+Stopped at: Completed 59-24-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
