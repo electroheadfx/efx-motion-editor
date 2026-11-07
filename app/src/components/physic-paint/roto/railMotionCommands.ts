@@ -416,7 +416,70 @@ export function stepMotionKey(input: StepMotionKeyInput): number | null {
   return best;
 }
 
-/** Sets Hold/Ease on an existing Motion key; the key's value is preserved. */
+/** The property change a grouped-axis edit applies to every addressed axis. */
+interface RailMotionKeyPropertyEdit {
+  readonly easing?: PhysicPaintRotoRailMotionEasing;
+  readonly wiggle?: number;
+}
+
+/**
+ * Applies one property change to every model axis a grouped display lane
+ * addresses (D-11/D-12, WR-04).
+ *
+ * The submitted axis gates the command and is edited FIRST; every remaining
+ * axis is then re-resolved from the records the previous edit produced. That
+ * ordering is what keeps the result symmetric when the lane addresses
+ * `position-y`: the reducer's D-12 rule seeds the keyless paired axis at the
+ * edit frame, and the follow-up edit reaches that seeded key. Each axis is
+ * edited with its OWN resolved value, and no `pairedValue` is ever passed — an
+ * easing/wiggle edit authors no values, so it can never overwrite a sibling's
+ * stored value.
+ */
+function applyAxisMotionKeyEdits(
+  records: readonly PhysicPaintRotoRailMotionRecord[],
+  railId: string,
+  channelId: PhysicPaintRotoRailMotionChannelId,
+  channelIds: readonly PhysicPaintRotoRailMotionChannelId[],
+  keyFrame: number,
+  editFor: () => RailMotionKeyPropertyEdit,
+  failureReason: string,
+): RailMotionCommandResult {
+  const record = findRailMotionRecord(records, railId);
+  if (resolveMotionKeyAtFrame(record, channelId, keyFrame) === null) {
+    return failure('There is no Motion key at this frame.');
+  }
+
+  const orderedIds: PhysicPaintRotoRailMotionChannelId[] = [
+    channelId,
+    ...channelIds.filter((id) => id !== channelId),
+  ];
+  let next = records;
+  try {
+    for (const axisId of orderedIds) {
+      const axisKey = resolveMotionKeyAtFrame(
+        findRailMotionRecord(next, railId),
+        axisId,
+        keyFrame,
+      );
+      // Reachable only when the record carries no channel entry for that axis
+      // at all; a paired axis that merely lacks a key was just seeded by D-12.
+      if (axisKey === null) continue;
+      next = applyRailMotionEditToCollection(next, {
+        kind: 'set-key',
+        railId,
+        channel: axisId,
+        frame: keyFrame,
+        value: axisKey.value,
+        ...editFor(),
+      });
+    }
+    return success(next);
+  } catch {
+    return failure(failureReason);
+  }
+}
+
+/** Sets Hold/Ease on every Motion axis the grouped lane addresses (WR-04). */
 export function setMotionKeyEasing(input: SetMotionKeyEasingInput): RailMotionCommandResult {
   const { records, railId, channelId, keyFrame, easing } = input;
   if (!isRailMotionEasingValue(easing)) return failure('Easing must be Hold or Ease.');
@@ -424,24 +487,19 @@ export function setMotionKeyEasing(input: SetMotionKeyEasingInput): RailMotionCo
   if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
   const record = findRailMotionRecord(records, railId);
   if (record === null) return failure('This rail has no Motion to edit yet.');
-  const key = resolveMotionKeyAtFrame(record, channelId, keyFrame);
-  if (key === null) return failure('There is no Motion key at this frame.');
 
-  try {
-    return success(applyRailMotionEditToCollection(records, {
-      kind: 'set-key',
-      railId,
-      channel: channelId,
-      frame: keyFrame,
-      value: key.value,
-      easing,
-    }));
-  } catch {
-    return failure('The Motion key easing could not be changed.');
-  }
+  return applyAxisMotionKeyEdits(
+    records,
+    railId,
+    channelId,
+    resolveMotionCommandChannelIds(channelId),
+    keyFrame,
+    () => ({ easing }),
+    'The Motion key easing could not be changed.',
+  );
 }
 
-/** Sets Wiggle on an existing Motion key; the key's value and easing are preserved. */
+/** Sets Wiggle on every Motion axis the grouped lane addresses (WR-04). */
 export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCommandResult {
   const { records, railId, channelId, keyFrame, wiggle } = input;
   if (!isRailMotionWiggleValue(wiggle)) {
@@ -451,21 +509,16 @@ export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCo
   if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
   const record = findRailMotionRecord(records, railId);
   if (record === null) return failure('This rail has no Motion to edit yet.');
-  const key = resolveMotionKeyAtFrame(record, channelId, keyFrame);
-  if (key === null) return failure('There is no Motion key at this frame.');
 
-  try {
-    return success(applyRailMotionEditToCollection(records, {
-      kind: 'set-key',
-      railId,
-      channel: channelId,
-      frame: keyFrame,
-      value: key.value,
-      wiggle,
-    }));
-  } catch {
-    return failure('The Motion key wiggle could not be changed.');
-  }
+  return applyAxisMotionKeyEdits(
+    records,
+    railId,
+    channelId,
+    resolveMotionCommandChannelIds(channelId),
+    keyFrame,
+    () => ({ wiggle }),
+    'The Motion key wiggle could not be changed.',
+  );
 }
 
 /** The commands the 59-12 action bar can publish. */
