@@ -110,7 +110,7 @@ See `milestones/v0.8.0-ROADMAP.md` for full phase details.
   4. A rail carrying motion on the active track renders the identical frame in edit view, Play, and export, and motion-blur export still contains paint on every frame (integer content raster with a fractional transform).
   5. Motion survives save → close → reopen; rotation is unbounded and values hold outside the keyed range; rail / drawing-key / motion-key selection scopes work independently with Ease, Wiggle (seeded, deterministic at export), and Hold on Motion keys only; every key operation is one undo/redo step; and the v7 chrome matches its contract (18px lanes, header cluster with previous/diamond/next, 16×18 cells, 6×6 keys with the lighter type rim, rounded selected-rail outline wrapping the rail row plus its expanded channels, one open block at a time, header and lanes aligned while scrolling).
 
-**Plans:** 21/21 plans executed (16 executed, 5 gap-closure plans pending)
+**Plans:** 25/25 planned (21 executed, 4 gap-closure plans pending)
 
 Plans:
 **Wave 1**
@@ -157,6 +157,12 @@ Plans:
 - [x] 59-21-PLAN.md — G1/IN-02: absent Motion channels render disabled and described, never as fake-editable fields (wave 2, depends on 59-17)
 - [x] 59-19-PLAN.md — G2/CR-04: an infinite Loop Clip's motion view spans its full resolved duration (wave 3)
 - [x] 59-20-PLAN.md — G4/CR-02 + WR-04: merge-drop reporting and honest publication, plus reveal delete/resize/bake motion reconciliation (wave 4)
+
+**Review gap closure** *(59-REVIEW.md findings; wave 1 first, then wave 2)*
+- [ ] 59-22-PLAN.md — CR-01 + WR-06: reveal bake reconciles against the clip it is creating, and both copy paths segment with the document's real ownership (wave 1)
+- [ ] 59-23-PLAN.md — WR-01: the add-channel row always renders and is gated by the one availability authority; the strip measures it from the lane count alone (wave 1)
+- [ ] 59-24-PLAN.md — WR-02 + WR-05: cut/clear stop reporting an unread merge drop, and both canonical encoders order ids by byte value (wave 2, depends on 59-22)
+- [ ] 59-25-PLAN.md — WR-03 + WR-04: grouped Position easing/Wiggle reaches both axes, and the lane curve is seeded with the rail's id (wave 2, depends on 59-23)
 
 **Build order (research §12)**:
   1. 59.1 — durable model + guard + parser + TS encoder + Rust mirror + byte-parity fixture (blocks everything)
