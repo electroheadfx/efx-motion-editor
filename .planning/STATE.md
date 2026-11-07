@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-07T19:58:30.809Z"
+last_updated: "2026-11-07T20:48:53.771Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 093f16f76bff12691a9d4498a070091c528eb8dc
+state_head: 9582d2d144093ea6665515534c534c718b8dadb2
 progress:
   total_phases: 4
   completed_phases: 0
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
 Status: Phase complete — ready for verification
-Last activity: 2026-11-07 - UAT approved quick task 261107-sg3: Hand in the canvas zoom pill is press-and-hold (move to pan, release stops)
+Last activity: 2026-11-07 - Completed quick task 261107-tfp: Studio rail-motion boundary box fits the displayed key's alpha ink (automated suites green; live UAT pending)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -239,6 +239,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261107-sg3 | Move the Hand tool out of the Studio tool rail into the floating canvas zoom pill — press-and-hold: hold the Hand button and move the mouse or pen to pan like middle-mouse drag, release stops | 2026-11-07 | 5973f30e5 | [261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p](./quick/261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p/) |
 | 7 | Allow Studio canvas zoom to go below the Fit value (fit 40% can view 20% or less) | 2026-11-07 | 2ff2692a2 | — |
 | 8 | Set Studio canvas region (.physics-paint-canvas-region) background to #222529 | 2026-11-07 | 093f16f76 | — |
+| 261107-tfp | Size the Studio rail-motion canvas boundary box to the displayed drawing key's alpha ink (per key; generated keys use the flanking union), with the full-raster fallback for empty or unmeasurable keys | 2026-11-07 | 9582d2d14 | [261107-tfp-ui-boundaries-from-phase-59-rail-motion-](./quick/261107-tfp-ui-boundaries-from-phase-59-rail-motion-/) |
 
 ## Roadmap Evolution
 
