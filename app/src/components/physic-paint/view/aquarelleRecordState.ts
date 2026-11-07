@@ -36,6 +36,7 @@ import {
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
+import { exitRailMotionEditing } from './railMotionEditingMode';
 import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
@@ -212,6 +213,10 @@ export function setAquarelleParam(key: AquarelleGlobalKey, value: number): void 
  */
 export function setAquarelleTool(tool: AquarelleTool): void {
   disarmAquarellePicker();
+  // 261107 UAT: picking a paint tool (click or B/W/E/P) leaves ANIMATE MODE so
+  // the brush is never blocked by the rail-motion boundary. The motion lane
+  // stays deployed — only the selected property is retired.
+  exitRailMotionEditing();
   if (aquarelleActiveTool.value === tool) return;
   aquarelleActiveTool.value = tool;
 }

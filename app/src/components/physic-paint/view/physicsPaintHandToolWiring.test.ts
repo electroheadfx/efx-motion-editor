@@ -19,7 +19,7 @@ const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', impo
 
 describe('Hand rail button (261105-cgl)', () => {
   it('renders one Hand host-tool button beside Select, grayed without canvas overflow', () => {
-    expect(rail).toContain("import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Wind } from 'lucide-preact';");
+    expect(rail).toContain("import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';");
     expect(rail).toContain('data-testid="aquarelle-hand-toggle"');
     expect(rail).toContain('aria-label="Hand"');
     expect(rail).toContain('disabled={disabled || !physicsPaintCanvasZoom.hasOverflow.value}');
@@ -27,7 +27,7 @@ describe('Hand rail button (261105-cgl)', () => {
     // The hand is a HOST tool — it never joins the paint-tool union.
     expect(rail).not.toContain("id: 'hand'");
     // The paint-tool row renders deselected while the hand press is live.
-    expect(rail).toContain('!selectActive && !pickerActive && !handArmed && active === id');
+    expect(rail).toContain('!selectActive && !pickerActive && !handArmed && !motionBoundaryActive && active === id');
   });
 
   it('sits immediately after Select and before Dry', () => {

@@ -213,6 +213,12 @@ import {
   type TrackRowRailSelection,
 } from './PhysicsPaintTrackRow';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
+import {
+  railMotionSelectedChannel,
+  toggleRailMotionChannelSelection,
+} from './railMotionEditingMode';
+import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
+import { disarmAquarellePicker } from './aquarelleColorPicker';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveContextualMotionCommands,
@@ -3357,14 +3363,26 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // and the visible lanes cannot disagree. The two nav intents move here
   // verbatim from the block invocation — the header column becomes their one
   // host while the lane body keeps only cells, curves and keys.
+  // 261107 UAT: ONE selected property is the animate-mode state. It is read
+  // here (never written in the render body) so the header rows highlight and
+  // the canvas gizmo (which reads the same signal) agree.
+  const selectedMotionChannel = railMotionSelectedChannel.value;
   const activeMotionHeader: TimelineMotionHeaderGroupProps | null = activeMotionRecord !== null
     && activeMotionLaneCount > 0
     ? {
       channels: activeMotionRecord.channels,
       view: activeMotionView,
       selected: activeRailSetIdentity !== null,
+      selectedChannel: selectedMotionChannel,
       cursorFrame: activeMotionLocalCursorFrame,
       disabledReasons: motionLaneDisabledReasons,
+      onSelectChannel: (channel) => {
+        // 261107 UAT: the rail shows ONE active surface — selecting a property
+        // retires Select and the picker instead of lighting a second tool.
+        setAquarelleSelectMode(false);
+        disarmAquarellePicker();
+        toggleRailMotionChannelSelection(channel);
+      },
       onMotionCursorStep: (direction, channelId) => {
         void (direction < 0
           ? physicalActions?.stepMotionKeyBackward?.(channelId)

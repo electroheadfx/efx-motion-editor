@@ -77,8 +77,11 @@ export interface TimelineMotionChannelHeaderRowProps {
   readonly lane: RailMotionDisplayLaneView;
   readonly railType: TimelineRailType;
   readonly selected: boolean;
+  /** Animate mode: this channel is the one the canvas is editing. */
+  readonly channelSelected: boolean;
   readonly railFrameCount: number;
   readonly cursorFrame: number;
+  readonly onSelectChannel: () => void;
   readonly onMoveCursorToKey: (frame: number) => void;
   readonly onToggleKeyAtCursor: () => void;
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
@@ -88,8 +91,10 @@ export interface TimelineMotionHeaderGroupProps {
   readonly channels: readonly PhysicPaintRotoRailMotionChannel[];
   readonly view: RailMotionRailView | null;
   readonly selected: boolean;
+  readonly selectedChannel: RailMotionDisplayLaneId | null;
   readonly cursorFrame: number;
   readonly disabledReasons?: Partial<Record<TimelineMotionLaneControl, string>>;
+  readonly onSelectChannel: (channel: RailMotionDisplayLaneId) => void;
   readonly onMotionCursorStep: (
     direction: -1 | 1,
     channelId: PhysicPaintRotoRailMotionChannelId,
@@ -388,13 +393,18 @@ export function TimelineMotionChannelHeaderRow({
   lane,
   railType,
   selected,
+  channelSelected,
   railFrameCount,
   cursorFrame,
+  onSelectChannel,
   onMoveCursorToKey,
   onToggleKeyAtCursor,
   disabledReasons,
 }: TimelineMotionChannelHeaderRowProps) {
-  const palette = resolveTimelineRailPalette(railType, selected ? 'selected' : 'active');
+  // SPECS §2: the header's label, icon and nav cluster always use the BRIGHT
+  // rail colour. The dim `active` tier + 0.55 row opacity rendered the labels
+  // unreadably dark on the sidebar background (261107 UAT).
+  const palette = resolveTimelineRailPalette(railType, 'selected');
   const frameCount = Number.isFinite(railFrameCount)
     ? Math.max(0, Math.floor(railFrameCount))
     : 0;
@@ -403,6 +413,7 @@ export function TimelineMotionChannelHeaderRow({
     .sort((left, right) => left - right);
 
   const cursorInsideRail = cursorFrame >= 0 && cursorFrame < frameCount;
+  const hasKeyAtCursor = cursorInsideRail && sortedInBandFrames.includes(cursorFrame);
   const previousFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, -1);
   const nextFrame = resolveAdjacentKeyFrame(sortedInBandFrames, cursorFrame, 1);
 
@@ -466,41 +477,65 @@ export function TimelineMotionChannelHeaderRow({
         boxSizing: 'border-box',
         flexShrink: 0,
         background: TIMELINE_SURFACE.motionLane,
-        opacity: selected ? 1 : 0.55,
       }}
       title={selected ? undefined : 'Click this lane to select the rail for canvas transforms'}
     >
-      <span
-        data-motion-header-part="icon"
-        aria-hidden="true"
-        style={{ display: 'inline-flex', color: palette.line }}
-      >
-        {renderLaneIcon(lane.id, 12)}
-      </span>
-      <span
-        data-motion-header-part="label"
+      {/* 261107 UAT: the property itself is the ANIMATE-MODE control. Clicking
+          it highlights the row white and arms the canvas boundary for this
+          channel; clicking it again returns to painting. Deploying the lane
+          never selects a property on its own. */}
+      <button
+        type="button"
+        class="physics-paint-motion-lane-channel"
+        data-motion-channel-selected={channelSelected ? 'true' : 'false'}
+        aria-pressed={channelSelected}
+        // The key count lives in the tooltip: the row shows the property name
+        // only. `textTransform: none` opts out of the global
+        // `button { text-transform: uppercase }` rule (261107 UAT).
+        title={`${RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]} — ${lane.keyCount} key${lane.keyCount === 1 ? '' : 's'}. ${channelSelected
+          ? 'Click to leave motion editing and paint again'
+          : 'Click to animate this property on the canvas'}`}
+        onClick={onSelectChannel}
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: TIMELINE_MOTION.laneLabelGap + 2,
           flex: '1 1 auto',
           minWidth: 0,
-          fontSize: 11,
-          fontWeight: 600,
-          color: palette.line,
-          whiteSpace: 'nowrap',
+          height: '100%',
+          padding: 0,
+          border: 'none',
+          background: 'transparent',
+          color: 'inherit',
+          textAlign: 'left',
+          textTransform: 'none',
+          cursor: 'pointer',
         }}
       >
-        {RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}
-      </span>
-      <span
-        data-motion-header-part="count"
-        style={{
-          fontSize: 10,
-          color: palette.keyRim,
-          whiteSpace: 'nowrap',
-          marginRight: 4,
-        }}
-      >
-        {`${lane.keyCount} keys`}
-      </span>
+        <span
+          data-motion-header-part="icon"
+          aria-hidden="true"
+          style={{
+            display: 'inline-flex',
+            color: channelSelected ? TIMELINE_SURFACE.activeTrackName : palette.line,
+          }}
+        >
+          {renderLaneIcon(lane.id, 12)}
+        </span>
+        <span
+          data-motion-header-part="label"
+          style={{
+            flex: '1 1 auto',
+            minWidth: 0,
+            fontSize: 11,
+            fontWeight: 600,
+            color: channelSelected ? TIMELINE_SURFACE.activeTrackName : palette.line,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {RAIL_MOTION_DISPLAY_LANE_LABELS[lane.id]}
+        </span>
+      </button>
       <button
         data-motion-header-part="previous"
         aria-label="Previous motion key"
@@ -511,11 +546,18 @@ export function TimelineMotionChannelHeaderRow({
       </button>
       <button
         data-motion-header-part="diamond"
-        aria-label="Toggle motion key at cursor"
+        // The glyph reads the toggle's own semantics: hollow = clicking adds a
+        // key at the cursor, filled = a key is there and clicking removes it.
+        aria-label={hasKeyAtCursor ? 'Remove motion key at cursor' : 'Add motion key at cursor'}
+        data-motion-key-at-cursor={hasKeyAtCursor ? 'true' : 'false'}
         {...navButtonProps(diamondState)}
         onClick={diamondState.disabled ? undefined : () => onToggleKeyAtCursor()}
       >
-        <Diamond size={11} aria-hidden="true" />
+        <Diamond
+          size={11}
+          fill={hasKeyAtCursor ? 'currentColor' : 'none'}
+          aria-hidden="true"
+        />
       </button>
       <button
         data-motion-header-part="next"
@@ -539,8 +581,10 @@ export function TimelineMotionHeaderGroup({
   channels,
   view,
   selected,
+  selectedChannel,
   cursorFrame,
   disabledReasons,
+  onSelectChannel,
   onMotionCursorStep,
   onToggleMotionKeyAtCursor,
 }: TimelineMotionHeaderGroupProps) {
@@ -561,9 +605,11 @@ export function TimelineMotionHeaderGroup({
             lane={lane}
             railType={railType}
             selected={selected}
+            channelSelected={selectedChannel === lane.id}
             railFrameCount={railFrameCount}
             cursorFrame={cursorFrame}
             disabledReasons={disabledReasons}
+            onSelectChannel={() => onSelectChannel(lane.id)}
             onMoveCursorToKey={(frame) => onMotionCursorStep(frame < cursorFrame ? -1 : 1, channelId)}
             onToggleKeyAtCursor={() => onToggleMotionKeyAtCursor(channelId)}
           />

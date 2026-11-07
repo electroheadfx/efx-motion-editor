@@ -80,10 +80,28 @@ import type { RailKeyScriptResult } from './roto/physicsPaintRotoRailKeyScripts'
 import type { RotoPaintScript } from './roto/physicsPaintRotoScriptClipboard';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
-import { railMotionExpandedSelection, type TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
+import {
+  openRailMotionExpansion,
+  railMotionExpandedSelection,
+  readTrackRailMotionFacts,
+  resolveMotionRecordForRail,
+  resolveSelectedRailMotionId,
+  type TrackRowRailSelection,
+} from './view/PhysicsPaintTrackRow';
+import {
+  exitRailMotionEditing,
+  railMotionLastSelectedChannel,
+  railMotionSelectedChannel,
+  selectRailMotionChannel,
+} from './view/railMotionEditingMode';
+import {
+  RAIL_MOTION_DISPLAY_LANE_ORDER,
+  resolveMotionChannelPresence,
+} from './view/TimelineMotionChannels';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
 import { aquarelleActiveTool, setAquarelleTool } from './view/aquarelleRecordState';
 import {
+  disarmAquarellePicker,
   isAquarellePickerArmed,
   sampleAquarelleStackColor,
   toggleAquarellePickerLatched,
@@ -175,7 +193,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
 import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
-import { getTimelineViewportFrames } from './view/PhysicsPaintWorkflowStrip';
+import { getTimelineViewportFrames, resolveRailIdentityForSelectedKey } from './view/PhysicsPaintWorkflowStrip';
 import {
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotController,
@@ -2621,6 +2639,9 @@ export function PhysicsPaintStudio() {
   // latch; both leave Move/Edit first (Select owns Alt).
   const handleToggleAquarellePicker = useCallback(() => {
     setAquarelleSelectMode(false);
+    // 261107 UAT: sampling the canvas leaves animate mode — the rail-motion
+    // boundary would otherwise swallow the pick.
+    exitRailMotionEditing();
     toggleAquarellePickerLatched();
   }, []);
   const handleToggleAquarelleSelect = useCallback(() => {
@@ -6986,13 +7007,71 @@ export function PhysicsPaintStudio() {
     // Signal object passed by IDENTITY — the top-bar leaf reads `.value`.
     moveAvailable: watercolorMoveAvailable,
   }));
+  // 261107 UAT: the left-rail Motion boundaries tool. Turning it ON deploys
+  // the selected rail's motion block and re-selects the last animated
+  // property (animate mode). Turning it OFF only leaves animate mode — the
+  // lane stays deployed and the paint tool is untouched, so painting with the
+  // lanes open is the normal path.
+  const handleToggleMotionBoundaries = useCallback(() => {
+    if (railMotionSelectedChannel.peek() !== null) {
+      exitRailMotionEditing();
+      return;
+    }
+    const launch = launchContextRef.current;
+    if (!launch) {
+      publishOperationResult('Open a layer in Studio first.');
+      return;
+    }
+    const liveTrackId = getEfxPaintDocument(launch.layerId)?.activeTrackId ?? trackIdOfLaunch(launch);
+    const facts = readTrackRailMotionFacts(launch.layerId, liveTrackId);
+    const keyRailSelection = selectedRotoKeyRail.peek();
+    const loopSelection = selectedLoopClipId.peek();
+    const identity: RailSetIdentity | null = keyRailSelection !== null
+      ? { kind: 'key-rail', firstKeyId: keyRailSelection.firstKeyId }
+      : loopSelection !== null
+        ? { kind: 'loop', loopId: loopSelection }
+        : resolveRailIdentityForSelectedKey(selectedKeyId.peek(), rotoLoopClips, keyRailSegments)
+          ?? railMotionExpandedSelection.peek();
+    if (identity === null) {
+      publishOperationResult('Select a rail first.');
+      return;
+    }
+    const railId = resolveSelectedRailMotionId(facts.views, identity);
+    const record = resolveMotionRecordForRail(facts.records, railId);
+    if (record === null) {
+      publishOperationResult('This rail has no Motion channels. Add one from Animate.');
+      return;
+    }
+    openRailMotionExpansion(identity, railId);
+    const presence = resolveMotionChannelPresence(record.channels);
+    const lastChannel = railMotionLastSelectedChannel.peek();
+    const channel = lastChannel !== null && presence[lastChannel]
+      ? lastChannel
+      : (RAIL_MOTION_DISPLAY_LANE_ORDER.find((laneId) => presence[laneId]) ?? null);
+    if (channel === null) {
+      publishOperationResult('This rail has no Motion keys.');
+      return;
+    }
+    // 261107 UAT: the rail shows ONE active surface — entering animate mode
+    // retires Select and the picker instead of lighting a second tool.
+    setAquarelleSelectMode(false);
+    disarmAquarellePicker();
+    selectRailMotionChannel(channel);
+  }, [
+    keyRailSegments,
+    publishOperationResult,
+    rotoLoopClips,
+    selectedKeyId,
+    selectedLoopClipId,
+    selectedRotoKeyRail,
+  ]);
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
   // references (38.1 onion-projection idiom); it contains no frame-derived
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript], () => ({
+  const toolRail = toolRailPropsMemo.resolve([historyAvailability, staticControlsLocked, undo, redo, clearActiveSource, watercolorMoveAvailable, handleActiveColorChanged, rebakeScriptAvailable, handleRebakeScript, handleToggleMotionBoundaries], () => ({
     historyAvailability,
     selectAvailable: watercolorMoveAvailable,
     rebakeAvailable: rebakeScriptAvailable,
@@ -7002,6 +7081,7 @@ export function PhysicsPaintStudio() {
     onClearFrame: clearActiveSource,
     onRebakeScript: () => { void handleRebakeScript(); },
     onActiveColorChanged: handleActiveColorChanged,
+    onToggleMotionBoundaries: handleToggleMotionBoundaries,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build

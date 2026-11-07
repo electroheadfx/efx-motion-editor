@@ -2,7 +2,7 @@ import { memo } from 'preact/compat';
 import { useEffect, useRef } from 'preact/hooks';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -17,6 +17,7 @@ import {
   toggleAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
 import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
+import { exitRailMotionEditing, railMotionSelectedChannel } from './railMotionEditingMode';
 import { disarmHandTool, isHandToolArmed, setHandToolArmed } from './physicsPaintHandTool';
 import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
@@ -91,6 +92,7 @@ function WatercolorRail({
   onClearFrame,
   onRebakeScript,
   onActiveColorChanged,
+  onToggleMotionBoundaries,
 }: {
   disabled: boolean;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
@@ -103,6 +105,8 @@ function WatercolorRail({
   onClearFrame: () => void;
   onRebakeScript: () => void;
   onActiveColorChanged?: (color: string) => void;
+  /** 261107: deploy the motion lane + re-select the last animated property. */
+  onToggleMotionBoundaries: () => void;
 }) {
   const active = aquarelleActiveTool.value;
   // 261029-lel: Water only acts on live standing water — grey it while the
@@ -120,6 +124,12 @@ function WatercolorRail({
   // surface. It is greyed while the fitted sheet cannot pan (no overflow).
   const handArmed = isHandToolArmed();
   const handAvailable = physicsPaintCanvasZoom.hasOverflow.value;
+  // 261107 UAT: animate mode is "one motion property selected". The tool is
+  // the latch over that state — pressing it while a property is selected
+  // leaves animate mode; pressing it otherwise deploys the lane and
+  // re-selects the last property. Paint picks leave animate mode TOO but keep
+  // the lane deployed, so painting with the lanes open is the normal path.
+  const motionBoundaryActive = railMotionSelectedChannel.value !== null;
   const handSessionRef = useRef<HandPanSession | null>(null);
 
   const endHandSession = (pointerId?: number) => {
@@ -196,7 +206,9 @@ function WatercolorRail({
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
-        const isActive = !selectActive && !pickerActive && !handArmed && active === id;
+        // 261107 UAT: the rail shows ONE active surface. While Motion
+        // boundaries (animate mode) is on, the paint row renders deselected.
+        const isActive = !selectActive && !pickerActive && !handArmed && !motionBoundaryActive && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
@@ -233,6 +245,9 @@ function WatercolorRail({
         aria-pressed={pickerActive}
         onClick={() => {
           setAquarelleSelectMode(false);
+          // 261107 UAT: sampling leaves animate mode so the boundary cannot
+          // swallow the pick.
+          if (!pickerActive) exitRailMotionEditing();
           toggleAquarellePickerLatched();
         }}
       >
@@ -251,6 +266,24 @@ function WatercolorRail({
         onClick={() => toggleAquarelleSelectMode()}
       >
         <img src={moveToolIcon} alt="" aria-hidden="true" />
+      </button>
+      {/* 261107 UAT: the Motion boundaries host tool. It deploys the selected
+          rail's Motion lane and re-selects the last animated property, so the
+          lane can stay open while Paint keeps drawing; the canvas boundary
+          appears only for the selected property (animate mode). */}
+      <button
+        type="button"
+        class={`physics-paint-icon-button${motionBoundaryActive ? ' active' : ''}`}
+        data-testid="aquarelle-motion-boundary-toggle"
+        disabled={disabled}
+        title={motionBoundaryActive
+          ? 'Motion boundaries — editing the selected property; click again to leave motion mode'
+          : 'Motion boundaries — deploy the motion lane and select the last property. Pick a channel in the sidebar to animate it.'}
+        aria-label="Motion boundaries"
+        aria-pressed={motionBoundaryActive}
+        onClick={onToggleMotionBoundaries}
+      >
+        <Scan size={18} />
       </button>
       {/* 261105-cgl: the Hand host tool. HOLD the button and move to pan (a
           second way beside middle-drag); the canvas follows pointer travel
@@ -340,6 +373,8 @@ export interface PhysicsPaintToolRailProps {
   onRebakeScript: () => void;
   /** Fired after a swatch swap/promote with the new foreground hex so the engine color follows. */
   onActiveColorChanged?: (color: string) => void;
+  /** 261107: deploy the motion lane + re-select the last animated property. */
+  onToggleMotionBoundaries: () => void;
 }
 
 function PhysicsPaintHistoryActionButton({
@@ -384,6 +419,7 @@ function PhysicsPaintToolRailImpl({
   onClearFrame,
   onRebakeScript,
   onActiveColorChanged,
+  onToggleMotionBoundaries,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   // 261027-klx: Water color is the only module — the rail is the aquarelle
@@ -399,6 +435,7 @@ function PhysicsPaintToolRailImpl({
       onClearFrame={onClearFrame}
       onRebakeScript={onRebakeScript}
       onActiveColorChanged={onActiveColorChanged}
+      onToggleMotionBoundaries={onToggleMotionBoundaries}
     />
   );
 }

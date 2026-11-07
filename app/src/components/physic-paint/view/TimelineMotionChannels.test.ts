@@ -182,8 +182,10 @@ function headerRowProps(
     lane: POSITION_LANE,
     railType: 'standard',
     selected: true,
+    channelSelected: false,
     railFrameCount: RAIL_FRAME_COUNT,
     cursorFrame: 3,
+    onSelectChannel: () => {},
     onMoveCursorToKey: () => {},
     onToggleKeyAtCursor: () => {},
     ...overrides,
@@ -213,7 +215,9 @@ function headerGroupProps(
     channels: POSITION_CHANNELS,
     view: HEADER_RAIL_VIEW,
     selected: true,
+    selectedChannel: null,
     cursorFrame: 3,
+    onSelectChannel: () => {},
     onMotionCursorStep: () => {},
     onToggleMotionKeyAtCursor: () => {},
     ...overrides,
@@ -509,19 +513,48 @@ describe('TimelineMotionChannelLane', () => {
 /* ------------------------------------------------------------------ */
 
 describe('TimelineMotionChannelHeaderRow', () => {
-  it('renders the six parts in order: icon, label, key count, previous, diamond, next', () => {
+  it('renders five parts in order: icon, label, previous, diamond, next', () => {
     const tree = renderHeaderRow();
 
     expect(headerParts(tree).map((vnode) => vnode.props['data-motion-header-part'])).toEqual([
       'icon',
       'label',
-      'count',
       'previous',
       'diamond',
       'next',
     ]);
     expect(textOf(headerPart(tree, 'label'))).toBe('Position');
-    expect(textOf(headerPart(tree, 'count'))).toBe('3 keys');
+  });
+
+  it('moves the key count into the property tooltip, never a visible meta row', () => {
+    const channelButton = (tree: unknown) => findAll(tree, (vnode) => (
+      typeof vnode.props.class === 'string'
+      && vnode.props.class.includes('physics-paint-motion-lane-channel')
+    ))[0]!;
+    const title = String(channelButton(renderHeaderRow()).props.title);
+
+    expect(title).toContain('Position — 3 keys');
+    expect(headerParts(renderHeaderRow()).map((vnode) => vnode.props['data-motion-header-part']))
+      .not.toContain('count');
+
+    const singleKeyTitle = String(channelButton(renderHeaderRow({
+      lane: {
+        id: 'scale',
+        channels: [motionChannel('scale', [0])],
+        keys: [motionKey(0, 1)],
+        keyCount: 1,
+      },
+    })).props.title);
+    expect(singleKeyTitle).toContain('Scale — 1 key.');
+  });
+
+  it('opts the property button out of the global uppercase button rule', () => {
+    const channelButton = findAll(renderHeaderRow(), (vnode) => (
+      typeof vnode.props.class === 'string'
+      && vnode.props.class.includes('physics-paint-motion-lane-channel')
+    ))[0]!;
+
+    expect(styleOf(channelButton).textTransform).toBe('none');
   });
 
   it('is a flow row at the 18px lane rhythm — never an absolute overlay', () => {
@@ -537,15 +570,39 @@ describe('TimelineMotionChannelHeaderRow', () => {
     expect(style.background).toBe(TIMELINE_SURFACE.motionLane);
   });
 
-  it('dims an unselected lane and keeps the rail-select hint', () => {
+  it('always renders the bright rail colour — selection never dims the header', () => {
     const selectedRow = headerRows(renderHeaderRow({ selected: true }))[0]!;
     const idleRow = headerRows(renderHeaderRow({ selected: false }))[0]!;
 
-    expect(styleOf(selectedRow).opacity).toBe(1);
-    expect(styleOf(idleRow).opacity).toBe(0.55);
+    expect(styleOf(selectedRow).opacity).toBeUndefined();
+    expect(styleOf(idleRow).opacity).toBeUndefined();
+    expect(styleOf(headerPart(renderHeaderRow({ selected: false }), 'label')).color)
+      .toBe(TIMELINE_RAIL_PALETTES.standard.selected.line);
     expect(idleRow.props.title)
       .toBe('Click this lane to select the rail for canvas transforms');
     expect(selectedRow.props.title).toBeUndefined();
+  });
+
+  it('is the animate-mode control: clicking the property selects it and highlights it white', () => {
+    const onSelectChannel = vi.fn();
+    const idle = headerPart(renderHeaderRow({ channelSelected: false, onSelectChannel }), 'label');
+    const channelButton = (tree: unknown) => findAll(tree, (vnode) => (
+      typeof vnode.props.class === 'string'
+      && vnode.props.class.includes('physics-paint-motion-lane-channel')
+    ))[0]!;
+
+    const idleButton = channelButton(renderHeaderRow({ channelSelected: false, onSelectChannel }));
+    expect(idleButton.props['data-motion-channel-selected']).toBe('false');
+    expect(idleButton.props['aria-pressed']).toBe(false);
+    expect(styleOf(idle).color).toBe(TIMELINE_RAIL_PALETTES.standard.selected.line);
+    clickOf(idleButton)();
+    expect(onSelectChannel).toHaveBeenCalledTimes(1);
+
+    const selectedTree = renderHeaderRow({ channelSelected: true });
+    const selectedLabel = headerPart(selectedTree, 'label');
+    expect(channelButton(selectedTree).props['data-motion-channel-selected']).toBe('true');
+    expect(channelButton(selectedTree).props['aria-pressed']).toBe(true);
+    expect(styleOf(selectedLabel).color).toBe(TIMELINE_SURFACE.activeTrackName);
   });
 
   it('routes previous to the earlier key and next to the later key', () => {
@@ -565,6 +622,21 @@ describe('TimelineMotionChannelHeaderRow', () => {
 
     clickOf(headerPart(tree, 'diamond'))();
     expect(onToggleKeyAtCursor).toHaveBeenCalledTimes(1);
+  });
+
+  it('fills the diamond only when a key sits at the cursor', () => {
+    // POSITION_LANE keys are at 0, 3 and 6.
+    const onKey = headerPart(renderHeaderRow({ cursorFrame: 3 }), 'diamond');
+    const offKey = headerPart(renderHeaderRow({ cursorFrame: 1 }), 'diamond');
+    const glyph = (button: TestVNode) => childrenOf(button)[0] as TestVNode;
+
+    expect(glyph(onKey).props.fill).toBe('currentColor');
+    expect(onKey.props['data-motion-key-at-cursor']).toBe('true');
+    expect(onKey.props['aria-label']).toBe('Remove motion key at cursor');
+
+    expect(glyph(offKey).props.fill).toBe('none');
+    expect(offKey.props['data-motion-key-at-cursor']).toBe('false');
+    expect(offKey.props['aria-label']).toBe('Add motion key at cursor');
   });
 
   it('disables an inert nav control WITH a visible reason, never a silent no-op', () => {
@@ -620,6 +692,29 @@ describe('TimelineMotionHeaderGroup', () => {
       'Rotation',
       'Opacity',
     ]);
+  });
+
+  it('marks exactly the selected channel and forwards the click with its lane id', () => {
+    const onSelectChannel = vi.fn();
+    const tree = renderHeaderGroup({
+      channels: [
+        motionChannel('position-x', SHARED_POSITION_FRAMES),
+        motionChannel('position-y', SHARED_POSITION_FRAMES),
+        motionChannel('scale', [0]),
+      ],
+      selectedChannel: 'scale',
+      onSelectChannel,
+    });
+    const rows = headerRows(tree);
+    const channelButton = (row: TestVNode) => findAll(row, (vnode) => (
+      typeof vnode.props.class === 'string'
+      && vnode.props.class.includes('physics-paint-motion-lane-channel')
+    ))[0]!;
+
+    expect(channelButton(rows[0]!).props['aria-pressed']).toBe(false);
+    expect(channelButton(rows[1]!).props['aria-pressed']).toBe(true);
+    clickOf(channelButton(rows[0]!))();
+    expect(onSelectChannel).toHaveBeenCalledWith('position');
   });
 
   it('ends with the 2px post-block gap and no control row', () => {

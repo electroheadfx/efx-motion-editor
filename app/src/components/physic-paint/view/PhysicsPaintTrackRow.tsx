@@ -515,6 +515,21 @@ export function toggleRailMotionExpansion(
   dismissRailMotionChannelMenu();
 }
 
+/**
+ * Deploys a rail's motion block without toggling it closed when it is already
+ * open — the Motion tool's "auto deploy lane". Delegates to the chevron toggle
+ * so the expansion signal keeps exactly ONE writer.
+ */
+export function openRailMotionExpansion(
+  selectedRail: RailSetIdentity | null,
+  selectedRailMotionId: string | null,
+): void {
+  if (selectedRail === null || selectedRailMotionId === null) return;
+  const current = railMotionExpandedSelection.value;
+  if (current !== null && sameRailSetIdentity(current, selectedRail)) return;
+  toggleRailMotionExpansion(selectedRail, selectedRailMotionId);
+}
+
 export function resolveMotionRecordForRail(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   railId: string | null,

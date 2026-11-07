@@ -57,6 +57,7 @@ import {
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
 import { disarmAquarellePicker } from './aquarelleColorPicker';
+import { exitRailMotionEditing } from './railMotionEditingMode';
 import {
   buildLiftRibbonCached,
   liftRibbonBoundsPx,
@@ -329,7 +330,12 @@ export function setAquarelleSelectMode(
   const was = scriptSelectMode.peek();
   // 261030-cnq: entering Move/Edit leaves the color picker (Select owns Alt —
   // the Alt+click stroke-delete law). Exiting does not arm it.
-  if (on) disarmAquarellePicker();
+  // 261107 UAT: entering Move/Edit also leaves ANIMATE MODE — the rail-motion
+  // boundary would otherwise swallow the stroke clicks it is meant to receive.
+  if (on) {
+    disarmAquarellePicker();
+    exitRailMotionEditing();
+  }
   setAquarelleStrokeTypeFilter(on ? filter : AQUARELLE_STROKE_FILTER_DEFAULT);
   // 261031-euf: the finer list filters never survive a select-mode
   // transition (entry, re-entry while ON, exit). This reset must also precede

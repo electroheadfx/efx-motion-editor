@@ -55,6 +55,8 @@ import type {
 } from '../roto/rotoCoordinatorPorts';
 import { deriveKeyRailSegments } from '../view/physicsPaintKeyRailPresentation';
 import { classifyLoopClipRailKind, type RotoRailKind } from '../view/physicsPaintWorkflowPresentation';
+import { resolveMotionChannelPresence } from '../view/TimelineMotionChannels';
+import { railMotionSelectedChannel } from '../view/railMotionEditingMode';
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
@@ -2511,9 +2513,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ? state.view.loopId === blockIdentity.loopId
       : state.view.loopId === null && state.view.anchorKeyId === blockIdentity.firstKeyId);
     if (!blockOpen) return null;
-    const animatedChannelIds = state.record === null
-      ? []
-      : state.record.channels.map((channel) => channel.id);
+    // 261107 UAT: an OPEN block only shows the lanes. ANIMATE MODE — one
+    // channel selected in the pinned header (highlighted white) — is the sole
+    // trigger for the canvas boundary, so deploying a lane while painting
+    // never turns the canvas into a move tool. Opacity is numeric-only (D-07).
+    const selectedChannel = railMotionSelectedChannel.value;
+    if (selectedChannel === null || selectedChannel === 'opacity') return null;
+    if (state.record === null) return null;
+    if (!resolveMotionChannelPresence(state.record.channels)[selectedChannel]) return null;
+    const animatedChannelIds = state.record.channels.map((channel) => channel.id);
     const availability = resolveMotionGizmoAvailability({
       selectedRailId: state.view.railId,
       animatedChannelIds,
@@ -2558,6 +2566,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         String(values.rotation ?? 0),
         revision,
         railSelected ? 'rail' : 'key',
+        selectedChannel,
       ].join('|'),
       commit: (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
         const written = commitRailMotionRecords(state, records, input);
