@@ -155,4 +155,22 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(source).toContain('TIMELINE_MOTION.postBlockGap');
     expect(source).not.toMatch(/HEADER_LANE_HEIGHT_PX\s*=\s*18\b/);
   });
+
+  it('261107-mkn: the header hosts the add row, the block keeps the slot, the strip owns the authority', () => {
+    const lanes = componentSource(LANE_COMPONENT);
+    expect(lanes).toContain('TimelineMotionAddChannelRow');
+    expect(lanes).toContain('physics-paint-motion-header-group');
+    const header = componentSource(HEADER_COMPONENT);
+    expect(header).toContain('TimelineMotionHeaderGroup');
+    // The lane body keeps no add control nor header parts of its own.
+    const row = componentSource(ROW_COMPONENT);
+    expect(row).toContain('physics-paint-motion-block-add-slot');
+    expect(row).not.toContain('data-motion-add-channel-row');
+    // Exactly ONE availability call site, and it lives in the strip.
+    const strip = componentSource(STRIP_COMPONENT);
+    expect(strip.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
+    expect(row).not.toContain('resolveMotionCommandAvailability');
+    expect(lanes).not.toContain('resolveMotionCommandAvailability');
+    expect(header).not.toContain('resolveMotionCommandAvailability');
+  });
 });

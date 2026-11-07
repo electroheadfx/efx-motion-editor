@@ -214,6 +214,7 @@ import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveContextualMotionCommands,
+  resolveMotionCommandAvailability,
   resolveMotionKeyAtFrame,
   resolveSelectionScope,
   type RailMotionSelectionScope,
@@ -226,9 +227,10 @@ import {
   railMotionMergeNotice,
   railMotionMergeNoticeUndoable,
 } from '../roto/railMotionMergeNotice';
-import type {
-  TimelineMotionHeaderGroupProps,
-  TimelineMotionLaneControl,
+import {
+  resolveKeylessMotionDisplayLanes,
+  type TimelineMotionHeaderGroupProps,
+  type TimelineMotionLaneControl,
 } from './TimelineMotionChannels';
 import { PhysicsPaintDeleteTrackDialog } from './PhysicsPaintDeleteTrackDialog';
 
@@ -2905,6 +2907,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionAddChannelRow = activeMotionLaneCount > 0;
   const activeMotionChannelMenuOpen = activeMotionRecord !== null
     && railMotionChannelMenuRailId.value === activeMotionRecord.railId;
+  // 261107-mkn: the add-channel control moved into the pinned header column, so
+  // the strip is the ONE host that answers its availability. The header bundle
+  // and the block's fixed overlay both consume THIS answer — the block never
+  // re-derives a gate or a reason (T-59-35, WR-01).
+  const activeMotionAddChannelAvailability = activeMotionRecord === null
+    ? null
+    : resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: resolveKeylessMotionDisplayLanes(activeMotionRecord.channels).length > 0,
+    });
+  // A stale session identity can never open a now-disabled row's menu.
+  const activeMotionAddChannelRowOpen = activeMotionRecord !== null
+    && activeMotionAddChannelAvailability !== null
+    && activeMotionAddChannelAvailability.enabled
+    && activeMotionChannelMenuOpen;
   // 59-12: the lane host contract is a rail-LOCAL playhead. One conversion at
   // the hosting boundary keeps the lane's adjacency/span checks honest.
   const activeMotionLocalCursorFrame = activeMotionView === null
@@ -3389,6 +3408,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         void (key === null
           ? physicalActions?.setMotionKeyAtCursor?.(channelId)
           : physicalActions?.removeMotionKeyAtCursor?.(channelId));
+      },
+      // The record narrows non-null here, so the one availability answer is
+      // present; the optional-chain guards keep the types honest without a
+      // second derivation. `open` is already gated by the enabled answer.
+      addChannel: {
+        open: activeMotionAddChannelRowOpen,
+        disabled: activeMotionAddChannelAvailability?.enabled !== true,
+        reason: activeMotionAddChannelAvailability?.reason ?? null,
+        onToggle: (anchor) => toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor),
       },
     }
     : null;
@@ -6364,7 +6392,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 railSelected={activeRailSetIdentity !== null}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
-                                channelMenuOpen={activeMotionChannelMenuOpen}
+                                addChannelMenuOpen={activeMotionAddChannelRowOpen}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
                                 onSelectMotionKey={(frame, channelId) => {
@@ -6381,11 +6409,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 }}
                                 onAddMotionChannel={(channelId) => {
                                   void physicalActions?.addMotionChannel?.(channelId);
-                                }}
-                                onToggleChannelMenu={(anchor) => {
-                                  if (activeMotionRecord !== null) {
-                                    toggleRailMotionChannelMenu(activeMotionRecord.railId, anchor);
-                                  }
                                 }}
                                 onSelectMotionRail={() => {
                                   if (motionRailIdentity === null) return;

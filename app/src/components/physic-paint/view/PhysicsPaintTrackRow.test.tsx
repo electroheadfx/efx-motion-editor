@@ -1118,7 +1118,7 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     })).toBe(0);
   });
 
-  it('renders the expanded block only while expanded: four display lanes, the disabled add row, the outline and the post-block gap', () => {
+  it('renders the expanded block only while expanded: four display lanes, the blank add slot, the outline and the post-block gap', () => {
     const record = motionRecord(LOOP_RAIL_ID, ALL_CHANNEL_IDS);
     const views = [railView({
       railId: LOOP_RAIL_ID,
@@ -1127,8 +1127,8 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
       keyIds: ['k0', 'k1'],
       endFrameExclusive: 10,
     })];
-    // Every channel is keyed, yet the block still renders the `+` row (disabled),
-    // so the measured row height is 31 + 4×18 + 2 + 18 = 123.
+    // 261107-mkn: the block reserves a blank 18px slot where the `+` row used
+    // to sit, so the measured row height is still 31 + 4×18 + 2 + 18 = 123.
     const motionRowHeightPx = 31 + 4 * 18 + 2 + 18;
     const base = {
       rotoSelectedRail: LOOP_IDENTITY,
@@ -1145,12 +1145,20 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
     expect(lanes.map((lane) => String(lane.props['data-motion-display-lane']))).toEqual([
       'position', 'scale', 'rotation', 'opacity',
     ]);
+    // 261107-mkn: the live `+` row moved to the pinned header column; the block
+    // reserves a blank 18px slot in its place and renders no add button.
     const addRows = findAll(
       expanded,
       (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined,
     );
-    expect(addRows).toHaveLength(1);
-    expect(addRows[0]!.props.disabled).toBe(true);
+    expect(addRows).toHaveLength(0);
+    const addSlots = findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-block-add-slot'));
+    expect(addSlots).toHaveLength(1);
+    expect(addSlots[0]!.props['aria-hidden']).toBe('true');
+    expect(addSlots[0]!.props.style).toMatchObject({
+      height: `${TIMELINE_MOTION.laneHeight}px`,
+      flexShrink: 0,
+    });
     const outline = findAll(expanded, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'));
     expect(outline).toHaveLength(1);
     expect(outline[0].props.style).toMatchObject({
@@ -1287,54 +1295,41 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
     railMotionChannelMenuRailId.value = null;
   });
 
-  it('renders the add row DISABLED with the authority reason when every display lane carries keys', () => {
+  it('renders four lanes, the blank 18px add slot and NO add row — the control lives in the pinned header', () => {
     const tree = renderExpanded(ALL_CHANNEL_IDS);
     expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(4);
 
-    const rows = addChannelRows(tree);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].props.disabled).toBe(true);
-    // The reason is the ONE authority's — never authored in the view.
-    const authorityReason = resolveMotionCommandAvailability({
-      command: 'add-motion-channel',
-      hasRail: true,
-      hasMotionRecord: true,
-      hasKeylessChannel: false,
-    }).reason;
-    expect(authorityReason).toBeTruthy();
-    expect(rows[0].props.title).toBe(authorityReason);
-    expect(rows[0].props['aria-description']).toBe(authorityReason);
-    expect(styleOf(rows[0]).cursor).toBe('not-allowed');
-    expect(rows[0].props.onClick).toBeUndefined();
-    expect(rows[0].props['aria-expanded']).toBe(false);
+    const slots = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-add-slot'));
+    expect(slots).toHaveLength(1);
+    expect(styleOf(slots[0]).height).toBe(`${TIMELINE_MOTION.laneHeight}px`);
+    expect(styleOf(slots[0]).flexShrink).toBe(0);
+    // The authority-gated `+` row is the header group's last child; the block
+    // renders no add button and no menu while closed.
+    expect(addChannelRows(tree)).toHaveLength(0);
     expect(menuOverlays(tree)).toHaveLength(0);
     expect(menuRows(tree)).toHaveLength(0);
   });
 
-  it('a stale session menu identity cannot open the disabled row’s menu', () => {
+  it('a stale session menu identity cannot open a menu when no display lane is keyless', () => {
     railMotionChannelMenuRailId.value = LOOP_RAIL_ID;
     const tree = renderExpanded(ALL_CHANNEL_IDS);
 
-    const rows = addChannelRows(tree);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].props.disabled).toBe(true);
-    expect(rows[0].props['aria-expanded']).toBe(false);
+    // The strip pre-gates the active rail's open; the block's own guard drops
+    // any identity that has no keyless lane to offer.
+    expect(addChannelRows(tree)).toHaveLength(0);
     expect(menuOverlays(tree)).toHaveLength(0);
     expect(menuRows(tree)).toHaveLength(0);
   });
 
-  it('renders the add row ENABLED once a display lane is keyless — Position-only is the CR-03 case', () => {
+  it('keeps the outline height for a keyless-only record: 1 lane + gap + add slot', () => {
     const tree = renderExpanded(POSITION_ONLY_IDS);
 
     expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-lane'))).toHaveLength(1);
-    const rows = addChannelRows(tree);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].type).toBe('button');
-    expect(styleOf(rows[0]).height).toBe(TIMELINE_MOTION.laneHeight);
-    expect(rows[0].props.disabled).toBe(false);
-    expect(rows[0].props.title).toBeUndefined();
-    expect(rows[0].props['aria-expanded']).toBe(false);
-    // The outline wraps the row the block actually renders (1 lane + gap + row).
+    // The block still RESERVES the slot even though the live row is in the
+    // pinned header column.
+    expect(findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-add-slot'))).toHaveLength(1);
+    expect(addChannelRows(tree)).toHaveLength(0);
+    // The outline wraps what the block actually renders (1 lane + gap + slot).
     const outlines = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-block-outline'));
     expect(outlines).toHaveLength(1);
     expect(outlines[0]!.props.style).toMatchObject({ height: 31 + 1 * 18 + 2 + 18 });
@@ -1343,12 +1338,36 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
     expect(menuRows(tree)).toHaveLength(0);
   });
 
-  it('resolves the add-channel availability exactly once and never re-authors the authority reason', () => {
+  it('resolves the add-channel availability exactly once — in the strip, never in a view host', () => {
+    const strip = readFileSync(
+      fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(strip.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
+    expect(strip).toContain("command: 'add-motion-channel'");
+    expect(strip).toContain('hasKeylessChannel');
+    // The refusal sentence lives only in the authority: compare each view host
+    // against the resolver's own reason instead of hardcoding it.
+    const authorityReason = resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: false,
+    }).reason;
+    expect(authorityReason).toBeTruthy();
+    const channels = readFileSync(
+      fileURLToPath(new URL('./TimelineMotionChannels.tsx', import.meta.url)),
+      'utf8',
+    );
+    const headerColumn = readFileSync(
+      fileURLToPath(new URL('./physicsPaintTrackHeaderColumn.tsx', import.meta.url)),
+      'utf8',
+    );
     const body = rowSource();
-    expect(body.match(/resolveMotionCommandAvailability\(/g) ?? []).toHaveLength(1);
-    expect(body).toContain("command: 'add-motion-channel'");
-    expect(body).toContain('hasKeylessChannel');
-    expect(body).not.toContain('Every Motion channel is already present on this rail.');
+    expect(body).not.toContain('resolveMotionCommandAvailability');
+    for (const source of [body, channels, headerColumn, strip]) {
+      expect(source).not.toContain(authorityReason!);
+    }
   });
 
   it('renders the menu as a FIXED viewport overlay, so the rows clip cannot hide it', () => {
@@ -1384,17 +1403,16 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
       'rotation',
       'opacity',
     ]);
-    expect(addChannelRows(tree)[0]!.props['aria-expanded']).toBe(true);
   });
 
-  it('opens on the add row click and dismisses on a menu pick, routing the channel intent', () => {
+  it('opens from the header row session identity and dismisses on a menu pick, routing the channel intent', () => {
     const onAddMotionChannel = vi.fn();
-    const tree = renderExpanded(POSITION_ONLY_IDS, { onAddMotionChannel });
-
-    (addChannelRows(tree)[0]!.props.onClick as () => void)();
-    expect(railMotionChannelMenuRailId.value).toBe(LOOP_RAIL_ID);
-
+    // 261107-mkn: the `+` click lives in the pinned header column; the block
+    // only RENDERS the overlay for an already-open identity.
+    railMotionChannelMenuRailId.value = LOOP_RAIL_ID;
     const opened = renderExpanded(POSITION_ONLY_IDS, { onAddMotionChannel });
+    expect(addChannelRows(opened)).toHaveLength(0);
+
     const scaleRow = menuRows(opened).find(
       (row) => row.props['data-motion-channel-menu-row'] === 'scale',
     )!;

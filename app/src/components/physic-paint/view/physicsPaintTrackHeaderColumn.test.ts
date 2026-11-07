@@ -23,6 +23,7 @@ import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 import {
+  TimelineMotionAddChannelRow,
   TimelineMotionChannelHeaderRow,
   TimelineMotionHeaderGroup,
   type TimelineMotionHeaderGroupProps,
@@ -123,12 +124,16 @@ function expandComponent(vnode: TestVNode): TestVNode {
 }
 
 /** 261107-mkn: the motion header band is a two-level component stack (group ->
- *  one row per lane). Materialize both levels so the rendered 18px rhythm is
- *  walkable like plain DOM. */
+ *  one row per lane) ending in the live add row. Materialize every level so the
+ *  rendered 18px rhythm is walkable like plain DOM. */
 function expandMotionHeaderVnodes(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(expandMotionHeaderVnodes);
   if (!isVnode(node)) return node;
-  if (node.type === TimelineMotionHeaderGroup || node.type === TimelineMotionChannelHeaderRow) {
+  if (
+    node.type === TimelineMotionHeaderGroup
+    || node.type === TimelineMotionChannelHeaderRow
+    || node.type === TimelineMotionAddChannelRow
+  ) {
     return expandMotionHeaderVnodes(
       (node.type as (props: TestVNode['props']) => unknown)(node.props),
     );
@@ -1245,6 +1250,12 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
       cursorFrame: 0,
       onMotionCursorStep: () => {},
       onToggleMotionKeyAtCursor: () => {},
+      addChannel: {
+        open: false,
+        disabled: false,
+        reason: null,
+        onToggle: () => {},
+      },
       ...overrides,
     };
   }
@@ -1349,7 +1360,7 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
     expect(headerBg.props.selectedRail).toBeUndefined();
   });
 
-  it('renders the ACTIVE track\'s channel header rows inside the pinned band — 3 rows, the 2px gap, the 18px add slot (261107-mkn)', () => {
+  it('renders the ACTIVE track\'s channel header rows inside the pinned band — 3 rows, the 2px gap, the live 18px add row (261107-mkn)', () => {
     const fixture = makeTwoTrackFixture();
     const layout = resolveTrackRowLayout([
       { trackId: fixture.trackA.id, laneCount: 3, addChannelRow: true },
@@ -1371,8 +1382,11 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
 
     const gap = findOne(group, (vnode) => hasClass(vnode, 'physics-paint-motion-header-gap'));
     expect(styleHeight(gap)).toBe('2px');
-    const slot = findOne(group, (vnode) => hasClass(vnode, 'physics-paint-motion-header-add-slot'));
-    expect(styleHeight(slot)).toBe('18px');
+    // 261107-mkn: the live `+` row is the group's last row (the body keeps a
+    // blank slot in the same position).
+    const addRow = findOne(group, (vnode) => vnode.props['data-motion-add-channel-row'] !== undefined);
+    expect(styleHeight(addRow)).toBe('18px');
+    expect(addRow.props['aria-label']).toBe('Add Motion channel');
 
     // The real path is NOT aria-hidden (only the blank fallback is), and the
     // wrapper keeps the layout entry's declared height.

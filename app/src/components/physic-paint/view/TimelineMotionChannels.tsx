@@ -94,6 +94,10 @@ export interface TimelineMotionHeaderGroupProps {
     channelId: PhysicPaintRotoRailMotionChannelId,
   ) => void;
   readonly onToggleMotionKeyAtCursor: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
+  /** 261107-mkn: the `+` row's open/disabled/reason/toggle bundle, resolved by
+   *  the strip from the ONE availability authority and rendered verbatim here
+   *  as the group's last row. */
+  readonly addChannel: TimelineMotionAddChannelRowProps;
 }
 
 const RAIL_MOTION_DISPLAY_LANE_LABELS: Record<RailMotionDisplayLaneId, string> = {
@@ -513,9 +517,10 @@ export function TimelineMotionChannelHeaderRow({
 
 /**
  * The header-side stack of an expanded motion block: one header row per visible
- * display lane in fixed order, then the 2px post-block gap and the 18px
- * add-channel slot — the SAME rhythm the body renders, so both panes stay in
- * lockstep without this group ever declaring its own total height.
+ * display lane in fixed order, then the 2px post-block gap and the live 18px
+ * add-channel row — the SAME rhythm the body renders (a blank 18px slot), so
+ * both panes stay in lockstep without this group ever declaring its own total
+ * height.
  */
 export function TimelineMotionHeaderGroup({
   channels,
@@ -525,6 +530,7 @@ export function TimelineMotionHeaderGroup({
   disabledReasons,
   onMotionCursorStep,
   onToggleMotionKeyAtCursor,
+  addChannel,
 }: TimelineMotionHeaderGroupProps) {
   const railType = view?.railType ?? 'standard';
   const railFrameCount = view === null
@@ -556,11 +562,9 @@ export function TimelineMotionHeaderGroup({
         aria-hidden="true"
         style={{ height: TIMELINE_MOTION.postBlockGap, flexShrink: 0 }}
       />
-      <div
-        class="physics-paint-motion-header-add-slot"
-        aria-hidden="true"
-        style={{ height: TIMELINE_MOTION.laneHeight, flexShrink: 0 }}
-      />
+      {/* 261107-mkn: the live `+` row is the group's last row, so its height
+          and rhythm match the body's blank 18px slot exactly. */}
+      <TimelineMotionAddChannelRow {...addChannel} />
     </div>
   );
 }

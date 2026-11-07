@@ -31,6 +31,7 @@ import {
   type TimelineMotionHeaderGroupProps,
 } from './TimelineMotionChannels';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
+import { resolveMotionCommandAvailability } from '../roto/railMotionCommands';
 import type {
   PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
@@ -217,6 +218,12 @@ function headerGroupProps(
     cursorFrame: 3,
     onMotionCursorStep: () => {},
     onToggleMotionKeyAtCursor: () => {},
+    addChannel: {
+      open: false,
+      disabled: false,
+      reason: null,
+      onToggle: () => {},
+    },
     ...overrides,
   };
 }
@@ -622,21 +629,59 @@ describe('TimelineMotionHeaderGroup', () => {
     ]);
   });
 
-  it('ends with the 2px post-block gap and the 18px add slot in the same rhythm as the body', () => {
+  it('ends with the 2px post-block gap and the live 18px add row in the same rhythm as the body', () => {
     const tree = renderHeaderGroup();
     const group = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
     const children = childrenOf(group);
 
     const gap = children.find((child) => childHasClass(child, 'physics-paint-motion-header-gap'))!;
-    const slot = children.find((child) => childHasClass(child, 'physics-paint-motion-header-add-slot'))!;
     expect(styleOf(gap).height).toBe(TIMELINE_MOTION.postBlockGap);
     expect(styleOf(gap).height).toBe(2);
-    expect(styleOf(slot).height).toBe(TIMELINE_MOTION.laneHeight);
-    expect(styleOf(slot).height).toBe(18);
     expect(gap.props['aria-hidden']).toBe('true');
-    expect(slot.props['aria-hidden']).toBe('true');
-    // Tokens only — the slot/gap never duplicate the measures.
-    expect(styleOf(slot).flexShrink).toBe(0);
+    // 261107-mkn: the `+` row is the group's LAST child — exactly where the
+    // body reserves its blank 18px slot.
+    const addRow = children[children.length - 1] as TestVNode;
+    expect(addRow.props['data-motion-add-channel-row']).toBe(true);
+    expect(styleOf(addRow).height).toBe(TIMELINE_MOTION.laneHeight);
+    expect(styleOf(addRow).height).toBe(18);
+    expect(children.indexOf(gap)).toBe(children.length - 2);
+  });
+
+  it('passes the add row open/disabled/reason through and relays the captured anchor', () => {
+    const onToggle = vi.fn();
+    const tree = renderHeaderGroup({
+      addChannel: { open: true, disabled: false, reason: null, onToggle },
+    });
+    const group = findAll(tree, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
+    const addRow = childrenOf(group)[childrenOf(group).length - 1] as TestVNode;
+    expect(addRow.props['aria-expanded']).toBe(true);
+    expect(addRow.props.disabled).toBe(false);
+    expect(addRow.props.title).toBeUndefined();
+
+    const handler = addRow.props.onClick as (event: unknown) => void;
+    handler({ currentTarget: { getBoundingClientRect: () => ({ left: 12, bottom: 34 }) } });
+    expect(onToggle).toHaveBeenCalledWith({ x: 12, y: 34 });
+
+    // A disabled row carries the host's reason verbatim and never fires. The
+    // reason is the ONE authority's own value — never re-authored here.
+    const reason = resolveMotionCommandAvailability({
+      command: 'add-motion-channel',
+      hasRail: true,
+      hasMotionRecord: true,
+      hasKeylessChannel: false,
+    }).reason;
+    expect(reason).toBeTruthy();
+    const disabled = renderHeaderGroup({
+      addChannel: { open: true, disabled: true, reason, onToggle },
+    });
+    const disabledGroup = findAll(disabled, (vnode) => hasClass(vnode, 'physics-paint-motion-header-group'))[0]!;
+    const disabledRow = childrenOf(disabledGroup)[childrenOf(disabledGroup).length - 1] as TestVNode;
+    expect(disabledRow.props.disabled).toBe(true);
+    expect(disabledRow.props.title).toBe(reason);
+    expect(disabledRow.props['aria-description']).toBe(reason);
+    expect(disabledRow.props['aria-expanded']).toBe(false);
+    expect(disabledRow.props.onClick).toBeUndefined();
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
   it('maps a row step to the lane model channel id and the direction from the cursor', () => {

@@ -35,13 +35,11 @@ import {
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionChannel, PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
-import { resolveMotionCommandAvailability } from '../roto/railMotionCommands';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveDisplayLaneChannelId,
   resolveKeylessMotionDisplayLanes,
   resolveVisibleMotionDisplayLanes,
-  TimelineMotionAddChannelRow,
   TimelineMotionBlockOutline,
   TimelineMotionChannelLane,
   TimelineMotionChannelMenu,
@@ -557,12 +555,13 @@ export interface TimelineMotionBlockProps {
   readonly laneCount: number;
   /** The playhead in the rail's LOCAL frame space. */
   readonly cursorFrame: number;
-  readonly channelMenuOpen?: boolean;
+  /** 261107-mkn: the strip's PRE-GATED open state for this rail's add-channel
+   *  menu. The `+` row now lives in the pinned header column; the block keeps
+   *  only the fixed overlay, so this is the sole menu gate it receives. */
+  readonly addChannelMenuOpen?: boolean;
   /** 59-12: the lane identity rides along so the host knows which channel was clicked. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   readonly onAddMotionChannel?: (channelId: PhysicPaintRotoRailMotionChannelId) => void;
-  /** 59-17: the `+` row asks the host to toggle this rail's session menu. */
-  readonly onToggleChannelMenu?: (anchor: Readonly<{ x: number; y: number }>) => void;
   /**
    * 59-12 UAT fix: clicking the motion lane selects its rail. Selecting the
    * rail is what makes the canvas box INTERIOR draggable (move) instead of
@@ -589,10 +588,11 @@ export interface TimelineMotionBlockProps {
 
 /**
  * The expanded motion block, shared by the presentational row and the strip's
- * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap, the
- * always-rendered authority-gated `+` row, its menu and the rounded outline
- * over the row. Both hosts pass the SAME lane count into the outline, so the
- * outline and the rendered lane rows can never disagree (one derivation).
+ * active lane: one 59-10 lane per DISPLAY lane, the 2px post-block gap, a
+ * blank 18px slot where the `+` row used to sit (261107-mkn moved the control
+ * into the pinned header column), the fixed channel-menu overlay and the
+ * rounded outline over the row. Both hosts pass the SAME lane count into the
+ * outline, so the outline and the rendered lane rows can never disagree.
  */
 /**
  * 59-17 fix: the channel menu is a FIXED overlay, because the rows region owns
@@ -662,10 +662,9 @@ export function TimelineMotionBlock({
   view,
   laneCount,
   cursorFrame,
-  channelMenuOpen = false,
+  addChannelMenuOpen = false,
   onSelectMotionKey,
   onAddMotionChannel,
-  onToggleChannelMenu,
   onSelectMotionRail,
   railSelected = true,
   onCloseChannelMenu,
@@ -674,20 +673,14 @@ export function TimelineMotionBlock({
 }: TimelineMotionBlockProps) {
   const lanes = resolveVisibleMotionDisplayLanes(record.channels);
   if (laneCount === 0 || lanes.length === 0) return null;
-  // 59-23 (WR-01): the `+` row renders whenever the block renders. Its gate and
-  // reason come from the ONE availability authority (T-59-35) — the view never
-  // derives a local disabled condition nor re-authors the message. The outline
-  // and the measured row height BOTH include it, so they never drift.
+  // 261107-mkn: the `+` row moved into the pinned header column, so the block
+  // reserves a blank 18px slot where the row used to paint over frame cells.
+  // The outline and the measured row height BOTH still include it, so they
+  // never drift. The strip pre-gates `addChannelMenuOpen` through the ONE
+  // availability authority (T-59-35); the block keeps only the fixed overlay,
+  // and a stale identity with no keyless lane renders no overlay at all.
   const keylessLanes = resolveKeylessMotionDisplayLanes(record.channels);
-  const hasKeylessChannel = keylessLanes.length > 0;
-  const addChannelAvailability = resolveMotionCommandAvailability({
-    command: 'add-motion-channel',
-    hasRail: true,
-    hasMotionRecord: true,
-    hasKeylessChannel,
-  });
-  // A stale session identity can never open a now-disabled row's menu.
-  const addChannelRowOpen = addChannelAvailability.enabled && channelMenuOpen;
+  const addChannelRowOpen = addChannelMenuOpen && keylessLanes.length > 0;
   const railType: TimelineRailType = view?.railType ?? 'standard';
   const railFrameCount = view === null
     ? 0
@@ -734,11 +727,10 @@ export function TimelineMotionBlock({
           style={{ height: `${TIMELINE_MOTION.postBlockGap}px` }}
           aria-hidden="true"
         />
-        <TimelineMotionAddChannelRow
-          open={addChannelRowOpen}
-          disabled={!addChannelAvailability.enabled}
-          reason={addChannelAvailability.reason}
-          onToggle={(anchor) => onToggleChannelMenu?.(anchor)}
+        <div
+          class="physics-paint-motion-block-add-slot"
+          aria-hidden="true"
+          style={{ height: `${TIMELINE_MOTION.laneHeight}px`, flexShrink: 0 }}
         />
         {addChannelRowOpen ? renderChannelMenuOverlay({
           channels: record.channels,
@@ -1427,12 +1419,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           view={motionView}
           laneCount={motionLaneCount}
           cursorFrame={motionCursorFrame}
-          channelMenuOpen={motionChannelMenuOpen}
+          addChannelMenuOpen={motionChannelMenuOpen}
           onSelectMotionKey={onSelectMotionKey}
           onAddMotionChannel={onAddMotionChannel}
-          onToggleChannelMenu={motionRecord === null
-            ? undefined
-            : (anchor) => toggleRailMotionChannelMenu(motionRecord.railId, anchor)}
           onCloseChannelMenu={() => dismissRailMotionChannelMenu()}
         />
       ) : null}
