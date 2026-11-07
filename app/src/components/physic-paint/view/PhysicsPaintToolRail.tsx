@@ -1,8 +1,7 @@
 import { memo } from 'preact/compat';
-import { useEffect, useRef } from 'preact/hooks';
 import type { PaintHistoryAvailability } from '../types/paintCore';
 import type { ReadonlySignal } from '@preact/signals';
-import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
+import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';
 import type { ComponentChildren } from 'preact';
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
@@ -18,8 +17,6 @@ import {
 } from './aquarelleStrokeSelection';
 import { aquarellePickerActive, toggleAquarellePickerLatched } from './aquarelleColorPicker';
 import { exitRailMotionEditing, railMotionSelectedChannel } from './railMotionEditingMode';
-import { disarmHandTool, isHandToolArmed, setHandToolArmed } from './physicsPaintHandTool';
-import { physicsPaintCanvasZoom } from './physicsPaintCanvasZoom';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction = 'undo' | 'redo' | 'clear-frame' | 'rebake-script';
@@ -65,23 +62,6 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{
   { id: 'lift', label: 'Eraser', shortcut: 'E', Icon: Eraser },
 ]);
 
-/**
- * 261105-cgl UAT: the Hand is a MOMENTARY hold-to-pan tool. Pressing the rail
- * button captures the pointer and pans for as long as the press lasts;
- * releasing restores the untouched previous paint tool. Nothing is latched, so
- * there is no lingering "hand mode" to leave.
- */
-interface HandPanSession {
-  readonly pointerId: number;
-  readonly target: HTMLButtonElement;
-  readonly startX: number;
-  readonly startY: number;
-  readonly startPanX: number;
-  readonly startPanY: number;
-  readonly onMove: (event: PointerEvent) => void;
-  readonly onEnd: (event: PointerEvent) => void;
-}
-
 function WatercolorRail({
   disabled,
   historyAvailability,
@@ -119,86 +99,12 @@ function WatercolorRail({
   // renders deselected while it is on, and comes back on release (the picker
   // never changes the paint tool itself).
   const pickerActive = aquarellePickerActive.value;
-  // 261105-cgl: the Hand is a HOST tool like the picker — while armed, the
-  // paint-tool row renders deselected and the hand button is the active
-  // surface. It is greyed while the fitted sheet cannot pan (no overflow).
-  const handArmed = isHandToolArmed();
-  const handAvailable = physicsPaintCanvasZoom.hasOverflow.value;
   // 261107 UAT: animate mode is "one motion property selected". The tool is
   // the latch over that state — pressing it while a property is selected
   // leaves animate mode; pressing it otherwise deploys the lane and
   // re-selects the last property. Paint picks leave animate mode TOO but keep
   // the lane deployed, so painting with the lanes open is the normal path.
   const motionBoundaryActive = railMotionSelectedChannel.value !== null;
-  const handSessionRef = useRef<HandPanSession | null>(null);
-
-  const endHandSession = (pointerId?: number) => {
-    const session = handSessionRef.current;
-    if (!session) return;
-    if (pointerId !== undefined && session.pointerId !== pointerId) return;
-    handSessionRef.current = null;
-    session.target.removeEventListener('pointermove', session.onMove);
-    session.target.removeEventListener('pointerup', session.onEnd);
-    session.target.removeEventListener('pointercancel', session.onEnd);
-    session.target.removeEventListener('lostpointercapture', session.onEnd);
-    try {
-      if (session.target.hasPointerCapture(session.pointerId)) {
-        session.target.releasePointerCapture(session.pointerId);
-      }
-    } catch {
-      // Capture may already be gone with the pointer.
-    }
-    session.target.style.cursor = '';
-    disarmHandTool();
-  };
-
-  // A Studio window closing mid-press must never leave the pan flag armed.
-  useEffect(() => () => {
-    const session = handSessionRef.current;
-    if (session) endHandSession(session.pointerId);
-  }, []);
-
-  const beginHandSession = (event: PointerEvent) => {
-    if (event.button !== 0 || disabled) return;
-    if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const target = event.currentTarget as HTMLButtonElement;
-    const pointerId = event.pointerId;
-    const session: HandPanSession = {
-      pointerId,
-      target,
-      startX: event.clientX,
-      startY: event.clientY,
-      startPanX: physicsPaintCanvasZoom.panX.peek(),
-      startPanY: physicsPaintCanvasZoom.panY.peek(),
-      onMove: (moveEvent) => {
-        if (moveEvent.pointerId !== pointerId) return;
-        moveEvent.preventDefault();
-        physicsPaintCanvasZoom.setPan(
-          session.startPanX + (moveEvent.clientX - session.startX),
-          session.startPanY + (moveEvent.clientY - session.startY),
-        );
-      },
-      onEnd: (endEvent) => {
-        if (endEvent.pointerId !== pointerId) return;
-        endEvent.preventDefault();
-        endHandSession(pointerId);
-      },
-    };
-    handSessionRef.current = session;
-    setHandToolArmed(true);
-    target.style.cursor = 'grabbing';
-    target.addEventListener('pointermove', session.onMove, { passive: false });
-    target.addEventListener('pointerup', session.onEnd);
-    target.addEventListener('pointercancel', session.onEnd);
-    target.addEventListener('lostpointercapture', session.onEnd);
-    try {
-      target.setPointerCapture(pointerId);
-    } catch {
-      // Capture is best-effort; without it the press simply ends early.
-    }
-  };
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
@@ -208,7 +114,7 @@ function WatercolorRail({
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {
         // 261107 UAT: the rail shows ONE active surface. While Motion
         // boundaries (animate mode) is on, the paint row renders deselected.
-        const isActive = !selectActive && !pickerActive && !handArmed && !motionBoundaryActive && active === id;
+        const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;
         const waterGated = id === 'water' && !wetAvailable;
         return (
           <button
@@ -284,25 +190,6 @@ function WatercolorRail({
         onClick={onToggleMotionBoundaries}
       >
         <Scan size={18} />
-      </button>
-      {/* 261105-cgl: the Hand host tool. HOLD the button and move to pan (a
-          second way beside middle-drag); the canvas follows pointer travel
-          through the same zoom-store pan path, and releasing returns to the
-          previous tool. Nothing is latched. Disabled while the fitted sheet
-          has no overflow, so there is nothing to pan. */}
-      <button
-        type="button"
-        class={`physics-paint-icon-button${handArmed ? ' active' : ''}`}
-        data-testid="aquarelle-hand-toggle"
-        disabled={disabled || !physicsPaintCanvasZoom.hasOverflow.value}
-        title={handAvailable
-          ? 'Hand — hold and drag to pan; releasing returns to the previous tool'
-          : 'Hand — panning needs the canvas zoomed past Fit'}
-        aria-label="Hand"
-        aria-pressed={handArmed}
-        onPointerDown={beginHandSession}
-      >
-        <Hand size={18} />
       </button>
       <button
         type="button"

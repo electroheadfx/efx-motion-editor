@@ -21,51 +21,47 @@ const viewport = readFileSync(fileURLToPath(new URL('./PhysicsPaintCanvasZoomVie
 const keyboard = readFileSync(fileURLToPath(new URL('./physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
 const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
 
-describe('Hand rail button (261105-cgl)', () => {
-  it('renders one Hand host-tool button beside Select, grayed without canvas overflow', () => {
-    expect(rail).toContain("import { Droplet, Eraser, Hand, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';");
-    expect(rail).toContain('data-testid="aquarelle-hand-toggle"');
-    expect(rail).toContain('aria-label="Hand"');
-    expect(rail).toContain('disabled={disabled || !physicsPaintCanvasZoom.hasOverflow.value}');
-    expect(rail).toContain('<Hand size={18} />');
-    // The hand is a HOST tool — it never joins the paint-tool union.
-    expect(rail).not.toContain("id: 'hand'");
-    // The paint-tool row renders deselected while the hand press is live.
-    expect(rail).toContain('!selectActive && !pickerActive && !handArmed && !motionBoundaryActive && active === id');
+describe('Hand removed from the Studio tool rail (261107-sg3)', () => {
+  it('renders no Hand control and imports neither the hand store nor the zoom store', () => {
+    expect(rail).not.toContain('aquarelle-hand-toggle');
+    expect(rail).not.toContain('<Hand');
+    expect(rail).not.toContain('physicsPaintHandTool');
+    expect(rail).not.toContain('physicsPaintCanvasZoom');
+    // The latched Hand lives in the floating zoom pill; the rail keeps its
+    // paint tools and host tools only.
+    expect(rail).toContain(
+      "import { Droplet, Eraser, Paintbrush, Pen, Pipette, RefreshCcwDot, Scan, Wind } from 'lucide-preact';",
+    );
+    expect(rail).toContain("import { memo } from 'preact/compat';");
+    // Only the hand session used hooks — both imports leave with it.
+    expect(rail).not.toContain("from 'preact/hooks'");
   });
 
-  it('sits immediately after Select and before Dry', () => {
-    const selectIndex = rail.indexOf('data-testid="aquarelle-select-toggle"');
-    const handIndex = rail.indexOf('data-testid="aquarelle-hand-toggle"');
-    const dryIndex = rail.indexOf('data-testid="aquarelle-dry"');
-    expect(selectIndex).toBeGreaterThanOrEqual(0);
-    expect(handIndex).toBeGreaterThan(selectIndex);
-    expect(dryIndex).toBeGreaterThan(handIndex);
+  it('retires the momentary hold-to-pan session machinery', () => {
+    expect(rail).not.toContain('HandPanSession');
+    expect(rail).not.toContain('beginHandSession');
+    expect(rail).not.toContain('endHandSession');
+    expect(rail).not.toContain('handSessionRef');
+    expect(rail).not.toContain('handArmed');
+    expect(rail).not.toContain('handAvailable');
+    expect(rail).not.toContain('setPointerCapture');
   });
 
-  it('pans only while the button is held and disarms on release', () => {
-    const beginStart = rail.indexOf('const beginHandSession = (event: PointerEvent) => {');
-    const beginEnd = rail.indexOf('const undoItem', beginStart);
-    expect(beginStart).toBeGreaterThanOrEqual(0);
-    const beginBlock = rail.slice(beginStart, beginEnd);
-    // Primary button, overflow gate, and nothing latched.
-    expect(beginBlock).toContain('if (event.button !== 0 || disabled) return;');
-    expect(beginBlock).toContain('if (!physicsPaintCanvasZoom.hasOverflow.peek()) return;');
-    expect(beginBlock).toContain('setHandToolArmed(true);');
-    expect(beginBlock).toContain('target.setPointerCapture(pointerId);');
-    expect(beginBlock).toContain("target.addEventListener('pointermove', session.onMove, { passive: false });");
-    expect(beginBlock).toContain("target.addEventListener('pointerup', session.onEnd);");
-    expect(beginBlock).toContain("target.addEventListener('pointercancel', session.onEnd);");
-    // The pan is the SAME zoom-store path as middle-drag.
-    expect(beginBlock).toContain('physicsPaintCanvasZoom.setPan(');
-    // The rail button is the entry point — no click-to-arm toggle survives.
-    expect(rail).toContain('onPointerDown={beginHandSession}');
-    expect(rail).not.toContain('toggleHandTool');
-    const endStart = rail.indexOf('const endHandSession = (pointerId?: number) => {');
-    const endBlock = rail.slice(endStart, rail.indexOf('// A Studio window closing', endStart));
-    expect(endStart).toBeGreaterThanOrEqual(0);
-    expect(endBlock).toContain('disarmHandTool();');
-    expect(endBlock).toContain('releasePointerCapture(session.pointerId)');
+  it('keeps the rail exclusivity law minus the Hand', () => {
+    expect(rail).toContain(
+      'const isActive = !selectActive && !pickerActive && !motionBoundaryActive && active === id;',
+    );
+    // Everything else in the rail still renders.
+    for (const testId of [
+      'aquarelle-picker-toggle',
+      'aquarelle-select-toggle',
+      'aquarelle-motion-boundary-toggle',
+      'aquarelle-dry',
+      'aquarelle-rebake-script',
+    ]) {
+      expect(rail).toContain(`data-testid="${testId}"`);
+    }
+    expect(rail).toContain('{WATERCOLOR_RAIL_TOOLS.map(({ id, label, shortcut, Icon }) => {');
   });
 });
 
