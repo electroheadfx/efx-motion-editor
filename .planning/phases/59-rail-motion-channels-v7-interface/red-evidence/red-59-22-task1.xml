@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="46" failures="2" errors="0" time="1.056">
+    <testsuite name="src/stores/efxPaintStore.reveal.test.ts" timestamp="2026-11-07T09:09:47.547Z" hostname="efx2.home" tests="46" failures="2" errors="0" skipped="0" time="0.050275625">
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; createRevealRail creates the rail AND bakes it in one action (D-11)" time="0.009868708">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261029-vbp: creation threads the colorize pair into the bake and writes it on the clip" time="0.00148">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261029-vbp: a default creation writes no colorize keys and never asks the bake for a tint" time="0.000732625">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261030-ey9: creation threads photoWiggle into the bake and writes it on the clip only when on" time="0.001103375">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261030-ey9: replay forwards the persisted photoWiggle back into the bake" time="0.001423">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261030-v1t: creation threads paintSeedVariation into the bake and writes it on the clip only when on" time="0.001101917">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; 261030-v1t: replay forwards the persisted paintSeedVariation back into the bake" time="0.000911458">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; an aborted bake commits no keys, writes no rail, and does not bump the document revision (D-11 abort-mid-bake)" time="0.0003295">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; fail-closes when the photo reference is absent (D-12 creation guard)" time="0.000106083">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; fail-closes when the library script is deleted (D-13)" time="0.000138292">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; baked keys appear in flattened output through the unchanged compositor (D-02)" time="0.003771583">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; bakes at the WORKING canvas size with the project→working zoom, matching the PlayScript size authority (G-52-2a)" time="0.0005455">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; stamps the full 43-06 lifecycle at creation so the reveal rail is a first-class Group for every tool (G-52-4)" time="0.000421166">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; keeps the live document identity stable under serializeRuntimeIntoDocument after a reveal create (G-52-5)" time="0.000681042">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; pins an Infinity reveal rail lifecycle to one cycle (the resolver extends it to capacity) (G-52-4)" time="0.00033875">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; carries the creation-time repeat law and motion wiggle into the bake and the rail record (G-52-3, D-08/D-09)" time="0.000408625">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; undo restores the pre-rail document by reference (RVL-06)" time="0.000814292">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; registers the baked first key as a leading incoming-interpolation break — no generated cells bridge the gap from a prior rail (AM-4)" time="0.00079975">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; re-bakes over the SAME span: the replaced leading break is pruned and exactly one lands on the fresh first key (AM-4)" time="0.001004834">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail create + bake + flattened + undo (52-01 Task 1) &gt; undo/redo of a reveal rail creation restores the incoming-break collection exactly (AM-4)" time="0.000528541">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; replay (overwrite) is one undo-ledger entry; undo restores the prior baked keys including hand edits (D-05)" time="0.001178334">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; 261029-vbp: replay re-bakes a colorized rail with its persisted tint pair" time="0.000744292">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; 261029-vbp: replay of a rail without the pair never asks for a tint" time="0.000676209">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; delete reveal rail is one undo-ledger entry; undo restores the whole rail + keys unit (D-06)" time="0.001749834">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; span shrink is one undo-ledger entry; undo recovers the deleted keys (D-07)" time="0.001289667">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RVL-06) &gt; undo/redo operate by reference — before/after are the exact document objects (RVL-06)" time="0.0003665">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal bake frame-aligned reference resolution — WR-02 (260920-kov) &gt; WR-02: a multi-image reference bakes frame-aligned — frame N carries source frame N (D-15)" time="0.000609541">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal bake frame-aligned reference resolution — WR-02 (260920-kov) &gt; WR-02: an unresolved reference at ANY span frame fails the bake closed — no keys, no rail (D-12)" time="0.000208666">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal bake frame-aligned reference resolution — WR-02 (260920-kov) &gt; WR-02 control: a single-image reference resolves every frame of the span to that image" time="0.000422916">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal bake frame-aligned reference resolution — WR-02 (260920-kov) &gt; WR-02 control: the project→working zoom still rides on the reference object (G-52-2a)" time="0.000307625">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal bake frame-aligned reference resolution — WR-02 (260920-kov) &gt; carries the explicit project size and the aquarelle paper into the bake (square/vertical size authority)" time="0.000373083">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail span resize — the derived extent law, WR-01 (260920-kov) &gt; WR-01: a STRETCH extends the derived extent to the requested end, keys preserved, new frames left empty (D-07)" time="0.000716291">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail span resize — the derived extent law, WR-01 (260920-kov) &gt; WR-01: a resize to the rail&apos;s CURRENT span is a no-op — no revision bump, no undo entry, no write" time="0.000388542">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail span resize — the derived extent law, WR-01 (260920-kov) &gt; WR-01: an invalid span still fails closed with no write (unchanged base guard)" time="0.000305042">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="reveal rail span resize — the derived extent law, WR-01 (260920-kov) &gt; WR-01: an Infinity rail keeps the pinned one-cycle lifecycle — the resize never re-extends it (G-52-4)" time="0.000538792">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="261030-ig0 per-key script editing — reveal creation, replay, span (D-03/D-05) &gt; createRevealRail writes keyScriptEdits ONLY when opted in (off stays byte-identical)" time="0.000623833">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="261030-ig0 per-key script editing — reveal creation, replay, span (D-03/D-05) &gt; createRevealRail records each key&apos;s own slice when opted in and never records when off" time="0.00094825">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="261030-ig0 per-key script editing — reveal creation, replay, span (D-03/D-05) &gt; replay keeps a rail that never opted in non-opted" time="0.0006815">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="261030-ig0 per-key script editing — reveal creation, replay, span (D-03/D-05) &gt; replay of an opted-in rail keeps the opt-in" time="0.000629167">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; delete removes the loop-bound motion record in the same transaction" time="0.001352125">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; resize that keeps a clip-owned key retains the record by reference with one motion write" time="0.000959625">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; a replay bake preserves the loop record and an adjacent Key Rail record byte-identically" time="0.001362042">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; resize that prunes every clip-owned key drops the emptied clip and its record" time="0.000691875">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; keeps a neighbouring Key Rail motion live when the reveal rewrites its first key (CR-01)" time="0.003428">
+            <failure message="expected &apos;302c5cf8-7267-4226-bbad-1ce65a06a730&apos; to be &apos;key-b&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;302c5cf8-7267-4226-bbad-1ce65a06a730&apos; to be &apos;key-b&apos; // Object.is equality
+
+Expected: &quot;key-b&quot;
+Received: &quot;302c5cf8-7267-4226-bbad-1ce65a06a730&quot;
+
+ ❯ src/stores/efxPaintStore.reveal.test.ts:1613:37
+            </failure>
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; creates a reveal rail over a neighbouring Key Rail without motion (CR-01 control)" time="0.000526542">
+        </testcase>
+        <testcase classname="src/stores/efxPaintStore.reveal.test.ts" name="59-20: reveal doors reconcile rail motion in their own transaction (WR-04) &gt; fails the bake closed before rendering when the pending loop id already exists" time="0.001934334">
+            <failure message="expected { ok: true, …(1) } to deeply equal { ok: false, …(1) }" type="AssertionError">
+AssertionError: expected { ok: true, …(1) } to deeply equal { ok: false, …(1) }
+
+- Expected
++ Received
+
+  Object {
+-   &quot;error&quot;: &quot;reveal loop clip already exists&quot;,
+-   &quot;ok&quot;: false,
++   &quot;ok&quot;: true,
++   &quot;records&quot;: Array [
++     Object {
++       &quot;appFrame&quot;: 20,
++       &quot;keyId&quot;: &quot;d4fcfa79-d5a7-49c2-bbb6-f55088fdd9d3&quot;,
++       &quot;kind&quot;: &quot;real-key&quot;,
++       &quot;payload&quot;: Object {
++         &quot;appFrame&quot;: 20,
++         &quot;bytes&quot;: Uint8Array [
++           82,
++           73,
++           70,
++           70,
++           0,
++           0,
++           0,
++           0,
++           87,
++           69,
++           66,
++           80,
++           86,
++           80,
++           56,
++           76,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           100,
++           117,
++           112,
++           108,
++           105,
++           99,
++           97,
++           116,
++           101,
++           45,
++           108,
++           111,
++           111,
++           112,
++           45,
++           105,
++           100,
++         ],
++         &quot;frameIndex&quot;: 0,
++         &quot;height&quot;: 3,
++         &quot;width&quot;: 4,
++       },
++     },
++     Object {
++       &quot;appFrame&quot;: 21,
++       &quot;keyId&quot;: &quot;330beac8-75ed-4ab2-af28-e415270ee324&quot;,
++       &quot;kind&quot;: &quot;real-key&quot;,
++       &quot;payload&quot;: Object {
++         &quot;appFrame&quot;: 21,
++         &quot;bytes&quot;: Uint8Array [
++           82,
++           73,
++           70,
++           70,
++           0,
++           0,
++           0,
++           0,
++           87,
++           69,
++           66,
++           80,
++           86,
++           80,
++           56,
++           76,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           0,
++           100,
++           117,
++           112,
++           108,
++           105,
++           99,
++           97,
++           116,
++           101,
++           45,
++           108,
++           111,
++           111,
++           112,
++           45,
++           105,
++           100,
++         ],
++         &quot;frameIndex&quot;: 1,
++         &quot;height&quot;: 3,
++         &quot;width&quot;: 4,
++       },
++     },
++   ],
+  }
+
+ ❯ src/stores/efxPaintStore.reveal.test.ts:1691:20
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

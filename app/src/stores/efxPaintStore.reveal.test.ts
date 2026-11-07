@@ -152,6 +152,48 @@ async function createRail(
   return (result as OkRevealMutation).descriptor!;
 }
 
+/**
+ * Stub the decode-once surface the flattened compositor uses
+ * (decode_webp_frame → ImageData → createImageBitmap). The caller unstubs.
+ * The compositor decodes key dataUrls through the shared LRU — stub that
+ * surface like the photo-reference exclusion test does.
+ */
+function stubFlattenedDecodeSurface(): void {
+  class FlatImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    crossOrigin = '';
+    width = 4;
+    height = 3;
+    private currentSrc = '';
+    set src(value: string) { this.currentSrc = value; this.onload?.(); }
+    get src(): string { return this.currentSrc; }
+  }
+  class FlatBitmap {
+    width = 4;
+    height = 3;
+    close = vi.fn();
+  }
+  class FlatCanvas {
+    width = 0;
+    height = 0;
+    getContext(): { drawImage(): void; clearRect(): void; save(): void; restore(): void; globalAlpha: number; globalCompositeOperation: string } | null {
+      return { drawImage() {}, clearRect() {}, save() {}, restore() {}, globalAlpha: 1, globalCompositeOperation: 'source-over' };
+    }
+    toDataURL(): string { return PNG_1X1; }
+  }
+  decodeWebpFrameMock.mockReset();
+  decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
+  vi.stubGlobal('Image', FlatImage);
+  vi.stubGlobal('HTMLImageElement', FlatImage);
+  vi.stubGlobal('HTMLCanvasElement', FlatCanvas);
+  vi.stubGlobal('ImageData', class {
+    constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+  });
+  vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatBitmap());
+  vi.stubGlobal('document', { createElement: (tag: string) => (tag === 'canvas' ? new FlatCanvas() : {}) });
+}
+
 describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
   beforeEach(() => {
     physicPaintStore.reset();
@@ -446,42 +488,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
 
     // The baked keys are ordinary track content: the flattened seam resolves
     // them like any real key (D-02 — one track pipeline, no second compositor).
-    // The compositor decodes the key dataUrls through the shared decode-once
-    // LRU (decode_webp_frame → ImageData → createImageBitmap) — stub that
-    // surface like the photo-reference exclusion test does.
-    class FlatImage {
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      crossOrigin = '';
-      width = 4;
-      height = 3;
-      private currentSrc = '';
-      set src(value: string) { this.currentSrc = value; this.onload?.(); }
-      get src(): string { return this.currentSrc; }
-    }
-    class FlatBitmap {
-      width = 4;
-      height = 3;
-      close = vi.fn();
-    }
-    class FlatCanvas {
-      width = 0;
-      height = 0;
-      getContext(): { drawImage(): void; clearRect(): void; save(): void; restore(): void; globalAlpha: number; globalCompositeOperation: string } | null {
-        return { drawImage() {}, clearRect() {}, save() {}, restore() {}, globalAlpha: 1, globalCompositeOperation: 'source-over' };
-      }
-      toDataURL(): string { return PNG_1X1; }
-    }
-    decodeWebpFrameMock.mockReset();
-    decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: new Uint8Array(4 * 3 * 4) });
-    vi.stubGlobal('Image', FlatImage);
-    vi.stubGlobal('HTMLImageElement', FlatImage);
-    vi.stubGlobal('HTMLCanvasElement', FlatCanvas);
-    vi.stubGlobal('ImageData', class {
-      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
-    });
-    vi.stubGlobal('createImageBitmap', async (_imageData: unknown, _options: unknown) => new FlatBitmap());
-    vi.stubGlobal('document', { createElement: (tag: string) => (tag === 'canvas' ? new FlatCanvas() : {}) });
+    stubFlattenedDecodeSurface();
 
     // Kick off the async decode and flush it so the flattened record resolves.
     physicPaintStore.getFlattenedFrame(layerId, 10);
@@ -1430,6 +1437,34 @@ describe('59-20: reveal doors reconcile rail motion in their own transaction (WR
     registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
   }
 
+  /** Seed real-key records on the test track through the validating port. */
+  function seedRecords(
+    layerId: string,
+    records: readonly { readonly keyId: string; readonly appFrame: number }[],
+  ): void {
+    const capacity = physicPaintStore.getRotoPhysicalCapacity(layerId, TEST_TRACK_ID);
+    const interpolation = physicPaintStore.getRotoPhysicalInterpolationState(layerId, TEST_TRACK_ID);
+    const result = physicPaintStore.replaceRotoPhysicalRecords(
+      layerId,
+      TEST_TRACK_ID,
+      records.map((record) => ({
+        kind: 'real-key' as const,
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: {
+          frameIndex: 0,
+          appFrame: record.appFrame,
+          bytes: testWebpBytes(record.keyId),
+          width: 4,
+          height: 3,
+        },
+      })),
+      interpolation,
+      capacity,
+    );
+    expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+  }
+
   it('delete removes the loop-bound motion record in the same transaction', async () => {
     const layerId = 'layer-reveal';
     registerRevealLayer(layerId);
@@ -1552,6 +1587,113 @@ describe('59-20: reveal doors reconcile rail motion in their own transaction (WR
     } finally {
       port.mockRestore();
     }
+  });
+
+  it('keeps a neighbouring Key Rail motion live when the reveal rewrites its first key (CR-01)', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    // A bare Key Rail [key-a@10, key-b@14] with motion anchored on its first
+    // key. The reveal over [10, 12) replaces key-a@10 with baked keys, so the
+    // neighbour survives as [key-b@14] under the SAME railId.
+    seedRecords(layerId, [
+      { keyId: 'key-a', appFrame: 10 },
+      { keyId: 'key-b', appFrame: 14 },
+    ]);
+    seedRailMotions(layerId, [railMotionRecord('rail-moving', 'key-a')]);
+
+    await createRail(layerId, 10, 2);
+
+    const motions = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+    expect(motions).toHaveLength(1);
+    expect(motions[0]!.railId).toBe('rail-moving');
+    // Delete-first-key: identity and rail-local key frames survive; only the
+    // recovery hint moves to the next surviving key. Without the pending clip
+    // in the next snapshot this is a merge onto a baked key — and the clip
+    // appended afterwards owns that key, orphaning the record (silent loss).
+    expect(motions[0]!.anchorKeyId).toBe('key-b');
+
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!;
+    expect(clip.sourceKeyIds).toHaveLength(2);
+    expect(clip.sourceKeyIds).not.toContain('key-a');
+    expect(clip.sourceKeyIds).not.toContain('key-b');
+
+    // The record is LIVE, not merely stored: a flattened build at the
+    // neighbour's only key samples the opacity channel at rail-local frame 0.
+    // An orphaned record yields no transform entry at all.
+    stubFlattenedDecodeSurface();
+    try {
+      physicPaintStore.getFlattenedFrame(layerId, 14);
+      await flushDecode();
+      expect(physicPaintStore.getFlattenedFrame(layerId, 14)).not.toBeNull();
+      const transform = physicPaintStore.getLastAppliedTrackTransforms(layerId).get(TEST_TRACK_ID);
+      expect(transform?.opacity).toBe(0.5);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('creates a reveal rail over a neighbouring Key Rail without motion (CR-01 control)', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    seedRecords(layerId, [
+      { keyId: 'key-a', appFrame: 10 },
+      { keyId: 'key-b', appFrame: 14 },
+    ]);
+
+    await createRail(layerId, 10, 2);
+
+    expect(physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID)).toHaveLength(0);
+    expect(
+      physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
+        .map((record) => record.appFrame)
+        .sort((left, right) => left - right),
+    ).toEqual([10, 11, 14]);
+  });
+
+  it('fails the bake closed before rendering when the pending loop id already exists', async () => {
+    const layerId = 'layer-reveal';
+    registerRevealLayer(layerId);
+    await createRail(layerId, 10, 2);
+    const existing = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0]!;
+    const recordsBefore = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID);
+    const loopsBefore = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID);
+    const breaksBefore = physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID);
+    const motionsBefore = physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID);
+    harness.renderReveal.mockReset();
+    harness.renderReveal.mockResolvedValue(stagedFrames(20, 2, testWebpBytes('duplicate-loop-id')));
+
+    const result = await commitRevealBake({
+      layerId,
+      trackId: TEST_TRACK_ID,
+      script,
+      frameCount: 2,
+      canonicalStart: 20,
+      motion: { deformation: 0, position: 0 },
+      mode: 'progressive',
+      projectSize: TEST_PROJECT_SIZE,
+      signal: new AbortController().signal,
+      pendingLoopClip: {
+        loopId: existing.loopId,
+        placementStart: 20,
+        repeat: 1,
+        mode: 'progressive',
+        railKind: 'reveal',
+        scriptId: 'script-1',
+        motion: { deformation: 0, position: 0 },
+        overrideColor: null,
+        syncState: 'synchronized',
+        provenanceState: 'attached',
+        phaseOrigin: 20,
+        frameOverrides: [],
+      },
+    });
+
+    expect(result).toEqual({ ok: false, error: 'reveal loop clip already exists' });
+    expect(harness.renderReveal).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toEqual(recordsBefore);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toEqual(loopsBefore);
+    expect(physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, TEST_TRACK_ID)).toEqual(breaksBefore);
+    expect(physicPaintStore.getRotoPhysicalRailMotions(layerId, TEST_TRACK_ID)).toEqual(motionsBefore);
   });
 
 });
