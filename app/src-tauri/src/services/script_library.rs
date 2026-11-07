@@ -1252,13 +1252,18 @@ fn validate_prepare_request(
 // WR-01 canonical physical hash. The encoding mirrors
 // `buildPhysicPaintRotoProjectEquality` in physicsPaintRotoPhysicalModel.ts
 // byte-for-byte; the parity contract tests pin the two implementations
-// together. Numbers format via Rust's shortest f64 Display, which NEVER uses
-// exponent notation. JavaScript's `String(number)` does at `|v| >= 1e21` or
-// `< 1e-6`, so the TypeScript encoder expands those back to positional form
-// (`expandExponent`); do not "simplify" it back to `String(value)`. Motion
-// values are unbounded (any finite rotation, any finite positive scale), so
-// those magnitudes are reachable from the shipped inspector. `-0` is the other
-// divergence: Rust prints `-0`, `String(-0)` is `'0'`.
+// together.
+//
+// NUMBERS ARE THEIR IEEE-754 BIT PATTERN, never a decimal rendering. Rust's
+// `f64` Display and ECMAScript's `String(number)` disagree in three reachable
+// ways: exponent notation (`1e21` / `1e-7`), negative zero (`-0` vs `0`), and
+// shortest-roundtrip tie breaking (this side rounds half away from zero,
+// ECMAScript half to even, so `-890236549097760.25` renders `.3` here and `.2`
+// there). Motion values are unbounded (any finite rotation, any finite
+// positive scale), so all three are reachable from the shipped inspector, and
+// any one of them forks the document revision across languages. `to_bits()`
+// and the TypeScript `DataView` encode are exact and agree by construction —
+// do not reintroduce decimal formatting.
 // ---------------------------------------------------------------------------
 
 fn canonical_string(value: &str) -> String {
@@ -1284,7 +1289,7 @@ fn canonical_bytes_payload(bytes: &[u8]) -> String {
 }
 
 fn canonical_number(value: f64) -> String {
-    format!("n{value};")
+    format!("n{:016x};", value.to_bits())
 }
 
 fn canonical_optional_number(value: Option<f64>) -> String {
@@ -3490,7 +3495,7 @@ mod tests {
     fn canonical_rail_motions_emits_the_typescript_byte_format() {
         let document = rail_motion_document(json!([scale_rotation_record("rail", true)]));
         let source = canonical_physical_source(&document).expect("valid rail motion document");
-        let expected = "rail-motions:1:s4:rail;s2:k1;2:s5:scale;1:n0;n1;s4:ease;n0;s8:rotation;1:n4;n30;s4:hold;n0;";
+        let expected = "rail-motions:1:s4:rail;s2:k1;2:s5:scale;1:n0000000000000000;n3ff0000000000000;s4:ease;n0000000000000000;s8:rotation;1:n4010000000000000;n403e000000000000;s4:hold;n0000000000000000;";
         assert!(
             source.contains(expected),
             "rail-motions term diverged from the TypeScript byte format: {source}"

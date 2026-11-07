@@ -156,7 +156,7 @@ fn canonical_physical_hash_matches_the_typescript_reference_vector() {
     let hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
-    assert_eq!(hash, "project-332-485be9b8");
+    assert_eq!(hash, "project-630-20dd5085");
 }
 
 // 260925-iy6: the Rust `canonical_background` was stale — it still encoded
@@ -174,7 +174,7 @@ fn canonical_physical_hash_encodes_grain_scale_for_non_null_background() {
     let hash =
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
-    assert_eq!(hash, "project-351-87bcacd8");
+    assert_eq!(hash, "project-674-928f8ac6");
 }
 
 #[test]

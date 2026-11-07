@@ -259,12 +259,12 @@ describe('59-03: conditional canonical rail-motions term', () => {
     expect(reverse).toBe(forward);
   });
 
-  it('keeps an untouched document at its exact pre-Phase-59 revision', () => {
-    // Pinned literal captured from the PRE-CHANGE encoder (append-only term
-    // law): an untouched document must keep its exact revision, so every
-    // existing project value is byte-identical after this plan.
+  it('keeps an untouched document at its exact pinned revision', () => {
+    // Append-only term law: the motion term never touches an untouched
+    // document. The literal was re-frozen when the canonical number encoding
+    // moved to IEEE-754 bit patterns (2026-11-07); the property is unchanged.
     const parsed = parsePhysicPaintRotoPhysicalDocument(buildDocument());
-    expect(parsed.revision).toBe('physical-404-c22673ae');
+    expect(parsed.revision).toBe('physical-550-17f74577');
   });
 
   it('moves project equality when one record is added', () => {

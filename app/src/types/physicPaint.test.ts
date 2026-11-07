@@ -1163,7 +1163,7 @@ describe('referenced Action transaction contracts', () => {
       loopClips,
       incomingInterpolationBreakKeyIds: [],
     };
-    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-598-5cf0b794');
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-896-286574b9');
   });
 
   // 260925-iy6: the Rust `canonical_background` was stale — it still encoded
@@ -1189,7 +1189,7 @@ describe('referenced Action transaction contracts', () => {
       loopClips,
       incomingInterpolationBreakKeyIds: [],
     };
-    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-305-ed764eca');
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-463-b6b38aba');
   });
 
   it('261030-ey9: a nonzero motion rotation/scale changes the project hash while zero stays byte-identical', () => {

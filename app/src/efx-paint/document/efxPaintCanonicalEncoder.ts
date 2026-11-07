@@ -14,32 +14,27 @@ export function encodeCanonicalString(value: string): string {
 }
 
 /**
- * Rust's `f64` Display never uses exponent notation, while ECMAScript's
- * `String(number)` switches to it at `|v| >= 1e21` or `< 1e-6`. Both languages
- * already emit the shortest round-trip digits, so expanding the exponent into
- * positional form makes the two encoders agree byte-for-byte. Without this the
- * same document hashes differently per language and every prepare fails the
- * Rust hash gate.
+ * Numbers encode as their IEEE-754 binary64 bit pattern, 16 lowercase hex
+ * digits, big-endian — the Rust mirror emits `value.to_bits()` in the same
+ * form.
+ *
+ * Decimal formatting is NOT usable here. Rust's `f64` Display and ECMAScript's
+ * `String(number)` disagree in three reachable ways: exponent notation
+ * (`1e21` / `1e-7`), negative zero (`-0` vs `0`), and shortest-roundtrip tie
+ * breaking (Rust rounds half away from zero, ECMAScript half to even, so
+ * `-890236549097760.25` formats as `.3` in one language and `.2` in the
+ * other). Any of them forks the document revision between TypeScript and Rust
+ * and makes every prepare fail the Rust hash gate. The bit pattern is exact,
+ * total, and identical in both languages by construction.
  */
-function expandExponent(text: string): string {
-  const match = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/i.exec(text);
-  if (match === null) return text;
-  const sign = match[1]!;
-  const integerDigits = match[2]!;
-  const fractionDigits = match[3] ?? '';
-  const digits = integerDigits + fractionDigits;
-  const pointIndex = integerDigits.length + Number(match[4]!);
-  if (pointIndex <= 0) return `${sign}0.${'0'.repeat(-pointIndex)}${digits}`;
-  if (pointIndex >= digits.length) {
-    return `${sign}${digits}${'0'.repeat(pointIndex - digits.length)}`;
-  }
-  return `${sign}${digits.slice(0, pointIndex)}.${digits.slice(pointIndex)}`;
-}
-
 export function encodeCanonicalNumber(value: number): string {
-  // `Object.is` because `String(-0)` is '0' while Rust's Display emits '-0'.
-  const text = Object.is(value, -0) ? '-0' : expandExponent(String(value));
-  return `n${text};`;
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value, false);
+  let hex = '';
+  for (let index = 0; index < 8; index += 1) {
+    hex += view.getUint8(index).toString(16).padStart(2, '0');
+  }
+  return `n${hex};`;
 }
 
 export function encodeCanonicalOptionalNumber(value: number | undefined): string {

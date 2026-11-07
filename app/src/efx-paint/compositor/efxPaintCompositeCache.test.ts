@@ -503,8 +503,10 @@ describe('deriveEfxPaintFlattenedCacheKey — motion term (59-08 / REL-03)', () 
     frame: 3,
   };
 
-  it('keeps the pre-Phase-59 key byte-identical for a motion-free document', () => {
-    expect(deriveEfxPaintFlattenedCacheKey(base)).toBe('flattened-137-220a58d8');
+  it('keeps a motion-free document on the pinned key', () => {
+    // Re-frozen with the IEEE-754 bit-pattern number encoding (2026-11-07);
+    // the property — a motion-free document contributes no motion term — holds.
+    expect(deriveEfxPaintFlattenedCacheKey(base)).toBe('flattened-273-7fefd00f');
 
     const richDoc = makeDocument([makeTrack('track-a', { revision: 1 })], FIXED_BACKGROUND);
     expect(
@@ -519,7 +521,7 @@ describe('deriveEfxPaintFlattenedCacheKey — motion term (59-08 / REL-03)', () 
         soloTrackId: 'track-a',
         includeBackground: false,
       }),
-    ).toBe('flattened-232-7bad3bb5');
+    ).toBe('flattened-383-c14f38d0');
   });
 
   it('emits no motion term for an empty motion-revision map', () => {
