@@ -666,7 +666,11 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
   const MERGE_RECORDS = [record('A', 0), record('B', 1), record('C', 2), record('D', 3)] as const;
   const MERGE_BREAKS = ['B', 'D'] as const;
 
-  it('reports the dropped rail and its prior app-frame span from clearTrackFrames', () => {
+  // WR-02: cut/clear have no production consumer for the merge drop — the move
+  // path owns that report. These rows assert the exact returned key surface:
+  // the merge still drops the tail record from the stored collection, but the
+  // result carries no member the UI never reads.
+  it('still drops the merged rail from the stored collection without reporting it from clearTrackFrames', () => {
     seedMotionDocument({
       records: MERGE_RECORDS,
       breaks: MERGE_BREAKS,
@@ -675,10 +679,9 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
 
     const result = physicPaintStore.clearTrackFrames(LAYER, TEST_TRACK_ID, [1]);
 
-    expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
-    if (!result.ok) return;
-    expect(result.mergedDrop?.railId).toBe('rail-tail');
-    expect(result.mergedDrop).toEqual({ railId: 'rail-tail', startFrame: 1, endFrameExclusive: 3 });
+    expect('mergedDrop' in result).toBe(false);
+    expect(result).toEqual({ ok: true });
+    expect(Object.keys(result)).toEqual(['ok']);
     const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
     expect(stored).toHaveLength(1);
     expect(stored[0].railId).toBe('rail-head');
@@ -686,7 +689,7 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
   });
 
-  it('reports the same merge drop from cutTrackSelection', () => {
+  it('still drops the merged rail from the stored collection without reporting it from cutTrackSelection', () => {
     seedMotionDocument({
       records: MERGE_RECORDS,
       breaks: MERGE_BREAKS,
@@ -698,9 +701,12 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     expect(result.ok, result.ok ? undefined : result.reason).toBe(true);
     if (!result.ok) return;
     expect(result.payload).toBeDefined();
-    expect(result.mergedDrop?.railId).toBe('rail-tail');
-    expect(result.mergedDrop).toEqual({ railId: 'rail-tail', startFrame: 1, endFrameExclusive: 3 });
-    expect(physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID)).toHaveLength(1);
+    expect('mergedDrop' in result).toBe(false);
+    expect(Object.keys(result).sort()).toEqual(['ok', 'payload']);
+    const stored = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].railId).toBe('rail-head');
+    expect(stored[0].anchorKeyId).toBe('A');
   });
 
   it('reports no drop for the same edit when the tail anchor carries no record (control)', () => {
