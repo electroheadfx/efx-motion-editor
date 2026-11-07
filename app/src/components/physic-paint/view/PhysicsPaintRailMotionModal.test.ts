@@ -46,7 +46,7 @@ import {
   PhysicsPaintRailMotionModal,
   resetRailMotionModalLayout,
 } from './PhysicsPaintRailMotionModal';
-import { NumericStepper } from '../../shared/NumericStepper';
+import { SliderStepper } from '../../shared/SliderStepper';
 import {
   SHEET_ID_RAIL_MOTION,
   SHEET_ID_SETTINGS,
@@ -229,13 +229,14 @@ describe('261107-qgj floating Motion modal', () => {
 
   it('renders ONLY present channels — no ghost row, no absent marker, no absent note', () => {
     const tree = renderModal({ dialog: signal(positionOnlyBundle()) });
-    const steppers = collect(tree).filter((node) => node.type === NumericStepper);
+    const steppers = collect(tree).filter((node) => node.type === SliderStepper);
     expect(steppers).toHaveLength(2);
     expect(steppers.map((node) => node.props?.ariaLabel)).toEqual(['Position X', 'Position Y']);
 
+    // The SliderStepper renders its own label cell (same as the Stroke settings
+    // rows), so the copy lives on the vnode props, not in this tree walk.
+    expect(steppers.map((node) => node.props?.label)).toEqual(['Position X (px)', 'Position Y (px)']);
     const copy = textOf(tree);
-    expect(copy).toContain('Position X (px)');
-    expect(copy).toContain('Position Y (px)');
     expect(copy).not.toContain('Scale');
     expect(copy).not.toContain('Rotation');
     expect(copy).not.toContain('Opacity');
@@ -244,22 +245,33 @@ describe('261107-qgj floating Motion modal', () => {
 
   it('shows each field label with its unit and the projected display value', () => {
     const tree = renderModal({ dialog: signal(partialBundle()) });
-    const steppers = collect(tree).filter((node) => node.type === NumericStepper);
+    const steppers = collect(tree).filter((node) => node.type === SliderStepper);
     expect(steppers.map((node) => node.props?.ariaLabel)).toEqual([
       'Position X', 'Position Y', 'Scale',
     ]);
     expect(steppers.map((node) => node.props?.value)).toEqual([120, -12, 150]);
-    expect(textOf(tree)).toContain('Scale (%)');
+    expect(steppers.map((node) => node.props?.label)).toEqual([
+      'Position X (px)', 'Position Y (px)', 'Scale (%)',
+    ]);
     expect(steppers.every((node) => node.props?.freeEntry === true)).toBe(true);
     expect(steppers.every((node) => node.props?.step === 1)).toBe(true);
     expect(steppers.every((node) => node.props?.precision === 3)).toBe(true);
+    // 261107-qgj UAT: the Stroke settings slider treatment — the track spans
+    // the display-unit range while typed entry stays unclamped.
+    expect(steppers.map((node) => [node.props?.min, node.props?.max])).toEqual([
+      [-1000, 1000],
+      [-1000, 1000],
+      [10, 500],
+    ]);
+    expect(steppers.every((node) => node.props?.allowOutOfRangeEntry === true)).toBe(true);
+    expect(steppers.every((node) => node.props?.commitOnRelease === true)).toBe(true);
   });
 
   it('commits every field through the bundle with its own channel id and display value', () => {
     const commit = vi.fn(() => null as string | null);
     const tree = renderModal({ dialog: signal(partialBundle(commit)) });
     const stepper = (label: string) => collect(tree).find(
-      (node) => node.type === NumericStepper && node.props?.ariaLabel === label,
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === label,
     )!;
 
     (stepper('Position X').props?.onChange as (value: number) => void)(999);
@@ -278,7 +290,7 @@ describe('261107-qgj floating Motion modal', () => {
     const dialog = signal<RailMotionDialogBundle | null>(partialBundle(commit));
     const first = renderModal({ dialog });
     const scale = collect(first).find(
-      (node) => node.type === NumericStepper && node.props?.ariaLabel === 'Scale',
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Scale',
     )!;
     (scale.props?.onChange as (value: number) => void)(0);
 
@@ -288,7 +300,7 @@ describe('261107-qgj floating Motion modal', () => {
     expect(alerts[0].props?.children).toBe('Scale must be greater than 0.');
     // The projected value is still the one the document holds — no clamp echo.
     const reseated = collect(second).find(
-      (node) => node.type === NumericStepper && node.props?.ariaLabel === 'Scale',
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Scale',
     )!;
     expect(reseated.props?.value).toBe(150);
   });
@@ -299,7 +311,7 @@ describe('261107-qgj floating Motion modal', () => {
     const dialog = signal<RailMotionDialogBundle | null>(partialBundle(commit));
     const first = renderModal({ dialog });
     const scale = (label: string, tree: TestVNode) => collect(tree).find(
-      (node) => node.type === NumericStepper && node.props?.ariaLabel === label,
+      (node) => node.type === SliderStepper && node.props?.ariaLabel === label,
     )!;
     (scale('Scale', first).props?.onChange as (value: number) => void)(0);
 
@@ -334,8 +346,8 @@ describe('261107-qgj floating Motion modal', () => {
     expect(style?.zIndex).toBe(53);
     expect(style?.top).toBe('60px');
     expect(style?.right).toBe('12px');
-    expect(style?.width).toBe('300px');
-    expect(style?.height, 'the bottom inset stays 12px').toBe('min(260px, calc(100% - 72px))');
+    expect(style?.width).toBe('320px');
+    expect(style?.height, 'the bottom inset stays 12px').toBe('min(380px, calc(100% - 72px))');
     expect(
       tree.props?.onPointerDownCapture,
       'the root raises itself on capture-phase pointerdown',
@@ -386,7 +398,7 @@ describe('261107-qgj floating Motion modal', () => {
     (header.props?.onPointerDown as (event: unknown) => void)(pointerDownEvent(100, 100));
     const move = headerOf(renderModal({ dialog })).props?.onPointerMove as (event: unknown) => void;
 
-    // Far past the left edge: 80px of the 300px surface stays visible.
+    // Far past the left edge: 80px of the 320px surface stays visible.
     move({ clientX: -5000, clientY: -5000 });
     expect(rootStyle(renderModal({ dialog }))?.transform).toBe('translate(-920px, -60px)');
     // Far past the right/bottom edges: the header stays reachable.
@@ -448,7 +460,7 @@ describe('261107-qgj floating Motion modal', () => {
     resetRailMotionModalLayout();
     const cleared = renderModal({ dialog });
     expect(rootStyle(cleared)?.transform).toBe('translate(0px, 0px)');
-    expect(rootStyle(cleared)?.height).toBe('min(260px, calc(100% - 72px))');
+    expect(rootStyle(cleared)?.height).toBe('min(380px, calc(100% - 72px))');
   });
 
   it('pins the Studio close path and the removed sidebar in source (261107-qgj)', () => {

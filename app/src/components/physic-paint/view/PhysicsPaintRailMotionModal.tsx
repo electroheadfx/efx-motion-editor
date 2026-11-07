@@ -16,7 +16,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { signal, type ReadonlySignal } from '@preact/signals';
 import { Move, X } from 'lucide-preact';
-import { NumericStepper } from '../../shared/NumericStepper';
+import { SliderStepper } from '../../shared/SliderStepper';
 import {
   SHEET_ID_RAIL_MOTION,
   bringSheetToFront,
@@ -40,11 +40,11 @@ const SURFACE_STYLE: CSSProperties = {
   position: 'absolute',
   top: `${SURFACE_TOP_INSET_PX}px`,
   right: `${SURFACE_INSET_PX}px`,
-  width: '300px',
+  width: '320px',
   maxWidth: 'calc(100vw - 24px)',
   // A definite height keeps the body scroller from collapsing; the bottom
   // inset stays SURFACE_INSET_PX whatever the top seat.
-  height: `min(260px, calc(100% - ${SURFACE_TOP_INSET_PX + SURFACE_INSET_PX}px))`,
+  height: `min(380px, calc(100% - ${SURFACE_TOP_INSET_PX + SURFACE_INSET_PX}px))`,
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
@@ -62,7 +62,27 @@ const BODY_STYLE: CSSProperties = {
   flex: '1 1 auto',
   overflowY: 'auto',
   padding: '10px 12px 12px',
+  // The Stroke settings geometry rhythm: one row every 15px.
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '15px',
 };
+
+/**
+ * Track spans only — display units (px / percent / degrees). Typed commits
+ * stay unclamped (`allowOutOfRangeEntry`), so an out-of-domain number still
+ * reaches the command layer and is refused with a sentence, never silently
+ * rounded here.
+ */
+const MOTION_SLIDER_RANGE: Readonly<
+  Record<PhysicPaintRotoRailMotionChannelId, { readonly min: number; readonly max: number }>
+> = Object.freeze({
+  'position-x': { min: -1000, max: 1000 },
+  'position-y': { min: -1000, max: 1000 },
+  scale: { min: 10, max: 500 },
+  rotation: { min: -360, max: 360 },
+  opacity: { min: 0, max: 100 },
+});
 
 const RESIZE_HANDLE_STYLE: CSSProperties = {
   flex: '0 0 12px',
@@ -304,22 +324,30 @@ export function PhysicsPaintRailMotionModal({
       <div style={BODY_STYLE}>
         {bundle.presentation.fields
           .filter((field) => field.present)
-          .map((field) => (
-            <div key={field.channelId} class="physics-paint-motion-field">
-              <span class="physics-paint-motion-field-label">
-                {field.label} ({field.unit})
-              </span>
-              <NumericStepper
-                key={`${field.channelId}:${rejectionSeq}`}
-                ariaLabel={field.label}
-                value={field.value}
-                freeEntry
-                step={1}
-                precision={3}
-                onChange={(value) => commitValue(field.channelId, value)}
-              />
-            </div>
-          ))}
+          .map((field) => {
+            const range = MOTION_SLIDER_RANGE[field.channelId];
+            // The plain wrapper mirrors the Stroke settings rows: SliderStepper
+            // carries `flex: 1 1 0`, so as a direct flex-column child it would
+            // grow to fill the sheet instead of hugging its own two lines.
+            return (
+              <div key={field.channelId} class="physics-paint-motion-field">
+                <SliderStepper
+                  key={`${field.channelId}:${rejectionSeq}`}
+                  label={`${field.label} (${field.unit})`}
+                  ariaLabel={field.label}
+                  value={field.value}
+                  min={range.min}
+                  max={range.max}
+                  step={1}
+                  precision={3}
+                  freeEntry
+                  allowOutOfRangeEntry
+                  commitOnRelease
+                  onChange={(value) => commitValue(field.channelId, value)}
+                />
+              </div>
+            );
+          })}
         {reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{reason}</p>
         ) : null}
