@@ -160,7 +160,7 @@ Plans:
 
 **Review gap closure** *(59-REVIEW.md findings; wave 1 first, then wave 2)*
 - [x] 59-22-PLAN.md — CR-01 + WR-06: reveal bake reconciles against the clip it is creating, and both copy paths segment with the document's real ownership (wave 1)
-- [ ] 59-23-PLAN.md — WR-01: the add-channel row always renders and is gated by the one availability authority; the strip measures it from the lane count alone (wave 1)
+- [x] 59-23-PLAN.md — WR-01: the add-channel row always renders and is gated by the one availability authority; the strip measures it from the lane count alone (wave 1)
 - [ ] 59-24-PLAN.md — WR-02 + WR-05: cut/clear stop reporting an unread merge drop, and both canonical encoders order ids by byte value (wave 2, depends on 59-22)
 - [ ] 59-25-PLAN.md — WR-03 + WR-04: grouped Position easing/Wiggle reaches both axes, and the lane curve is seeded with the rail's id (wave 2, depends on 59-23)
 
@@ -252,7 +252,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 59. Rail Motion Channels & v7 Interface | 22/25 | In Progress | - |
+| 59. Rail Motion Channels & v7 Interface | 23/25 | In Progress | - |
 | 60. Studio Timeline Horizontal Zoom | 0/TBD | Not started | - |
 | 61. Vector Painting Tool | 0/TBD | Not started | - |
 | 62. Painted-Stroke Curve Editing | 0/TBD | Not started | - |
