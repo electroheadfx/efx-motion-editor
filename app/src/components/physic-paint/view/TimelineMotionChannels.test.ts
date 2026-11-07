@@ -36,7 +36,10 @@ import type {
   PhysicPaintRotoRailMotionChannelId,
   PhysicPaintRotoRailMotionKey,
 } from '../roto/railMotionModel';
-import type { RailMotionRailView } from '../roto/railMotionIdentity';
+import {
+  railMotionViewFrameCount,
+  type RailMotionRailView,
+} from '../roto/railMotionIdentity';
 import {
   resolveMotionBlockOutlineRect,
   TIMELINE_GEOMETRY,
@@ -914,6 +917,28 @@ describe('TimelineMotionHeaderGroup', () => {
     expect(headerRows(nullView)).toHaveLength(1);
     expect(headerPart(headerRows(nullView)[0]!, 'previous').props.disabled).toBe(true);
     expect(headerPart(headerRows(nullView)[0]!, 'next').props.disabled).toBe(true);
+  });
+
+  it('reads the same resolved band the shared helper derives for a long span', () => {
+    const longView: RailMotionRailView = {
+      ...HEADER_RAIL_VIEW,
+      startFrame: 10,
+      endFrameExclusive: 46,
+    };
+    // 261107-rrp: a widened cycle yields 36 frames — the header must read that
+    // band, not a private subtraction.
+    expect(railMotionViewFrameCount(longView)).toBe(36);
+
+    const longTree = renderHeaderGroup({
+      view: longView,
+      cursorFrame: 35,
+      channels: [motionChannel('scale', [10, 35, 40])],
+    });
+    const longRow = headerRows(longTree)[0]!;
+    // [10, 35] are inside the 36-frame band; 40 is preserved-but-inactive.
+    expect(headerPart(longRow, 'previous').props.disabled).toBe(false);
+    expect(headerPart(longRow, 'next').props.disabled).toBe(true);
+    expect(headerPart(longRow, 'diamond').props.disabled).toBe(false);
   });
 });
 

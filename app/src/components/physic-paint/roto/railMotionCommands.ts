@@ -27,6 +27,7 @@ import {
 import {
   bindKeyRail,
   bindLoopRail,
+  railMotionViewFrameCount,
   type RailMotionRailView,
 } from './railMotionIdentity';
 import { evaluateRailMotionChannel, resolveRailLocalFrame } from './railMotionEvaluator';
@@ -78,7 +79,7 @@ export function railMotionCursorFrame(view: RailMotionRailView, cursorFrame: num
     );
   }
   const local = resolveRailLocalFrame(cursorFrame, view.startFrame);
-  const lastKeyedFrame = Math.floor(view.endFrameExclusive - view.startFrame) - 1;
+  const lastKeyedFrame = railMotionViewFrameCount(view) - 1;
   return Math.min(local, Math.max(0, lastKeyedFrame));
 }
 

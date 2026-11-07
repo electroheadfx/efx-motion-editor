@@ -32,6 +32,7 @@ import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicP
 import {
   assignRailMotionRailViews,
   createRailMotionViewSpanResolver,
+  railMotionViewFrameCount,
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
@@ -626,9 +627,7 @@ export function TimelineMotionBlock({
   if (laneCount === 0 || lanes.length === 0) return null;
   const railType: TimelineRailType = view?.railType ?? 'standard';
   const railStartFrame = view === null ? 0 : Math.max(0, Math.floor(view.startFrame));
-  const railFrameCount = view === null
-    ? 0
-    : Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
+  const railFrameCount = railMotionViewFrameCount(view);
   return (
     <>
       <div

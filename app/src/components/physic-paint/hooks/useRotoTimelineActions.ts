@@ -86,6 +86,7 @@ import {
 import {
   assignRailMotionRailViews,
   createRailMotionViewSpanResolver,
+  railMotionViewFrameCount,
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import type {
@@ -4206,7 +4207,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (state.view.railId !== request.railId) {
       return { ok: false, reason: 'The dragged Motion key is no longer available.' };
     }
-    const frameCount = state.view.endFrameExclusive - state.view.startFrame;
+    const frameCount = railMotionViewFrameCount(state.view);
     if (
       !Number.isSafeInteger(request.toFrame)
       || request.toFrame < 0
@@ -4258,7 +4259,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (state.view === null || state.view.railId !== publication.railId) {
       return publishMotionFailure(input, 'The Motion key is no longer available.');
     }
-    const frameCount = state.view.endFrameExclusive - state.view.startFrame;
+    const frameCount = railMotionViewFrameCount(state.view);
     if (publication.toFrame < 0 || publication.toFrame >= frameCount) {
       return publishMotionFailure(input, 'The Motion key cannot leave this rail.');
     }

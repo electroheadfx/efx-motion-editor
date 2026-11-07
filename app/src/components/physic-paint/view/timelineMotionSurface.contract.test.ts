@@ -216,3 +216,44 @@ describe('the assembled surface reads its geometry from timelineRailDesign', () 
     expect(strip.match(/<TimelineMotionChannelMenuOverlay/g) ?? []).toHaveLength(1);
   });
 });
+
+/**
+ * 261107-rrp — one band authority.
+ *
+ * Lane width, header stack, curve sampling, drag clamp and cursor writes must
+ * all derive the frame count from `railMotionViewFrameCount`. Only a source read
+ * can catch a consumer that quietly reintroduces `endFrameExclusive - startFrame`
+ * or a local copy of the helper, so these pins name the exact import-and-call.
+ */
+const BAND_CONSUMER_SOURCES: ReadonlyArray<{ readonly name: string; readonly file: string }> = [
+  { name: 'commands', file: '../roto/railMotionCommands.ts' },
+  { name: 'row', file: ROW_COMPONENT },
+  { name: 'lane', file: LANE_COMPONENT },
+  { name: 'actions', file: '../hooks/useRotoTimelineActions.ts' },
+];
+
+describe('the Motion band has one authority (261107-rrp)', () => {
+  it('every band consumer imports and calls railMotionViewFrameCount from railMotionIdentity', () => {
+    for (const consumer of BAND_CONSUMER_SOURCES) {
+      const source = componentSource(consumer.file);
+      expect(source, `${consumer.name} import`).toMatch(
+        /import\s*\{[^}]*railMotionViewFrameCount[^}]*\}\s*from\s*'[^']*railMotionIdentity'/s,
+      );
+      expect(source, `${consumer.name} call`).toMatch(/railMotionViewFrameCount\(/);
+    }
+  });
+
+  it('railMotionIdentity exports the one helper', () => {
+    const source = componentSource('../roto/railMotionIdentity.ts');
+    expect(source).toContain('export function railMotionViewFrameCount(');
+  });
+
+  it('no surface module declares a second band helper', () => {
+    for (const file of [STRIP_COMPONENT, ROW_COMPONENT, LANE_COMPONENT, '../hooks/useRotoTimelineActions.ts']) {
+      const source = componentSource(file);
+      expect(source, `${file} helper export`).not.toMatch(
+        /export\s+(?:function|const)\s+railMotionViewFrameCount\b/,
+      );
+    }
+  });
+});

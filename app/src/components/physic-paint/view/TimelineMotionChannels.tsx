@@ -30,7 +30,10 @@ import type {
   PhysicPaintRotoRailMotionChannelId,
   PhysicPaintRotoRailMotionKey,
 } from '../roto/railMotionModel';
-import type { RailMotionRailView } from '../roto/railMotionIdentity';
+import {
+  railMotionViewFrameCount,
+  type RailMotionRailView,
+} from '../roto/railMotionIdentity';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import {
   resolveMotionBlockOutlineRect,
@@ -640,9 +643,7 @@ export function TimelineMotionHeaderGroup({
   onToggleMotionKeyAtCursor,
 }: TimelineMotionHeaderGroupProps) {
   const railType = view?.railType ?? 'standard';
-  const railFrameCount = view === null
-    ? 0
-    : Math.max(0, Math.floor(view.endFrameExclusive - view.startFrame));
+  const railFrameCount = railMotionViewFrameCount(view);
   return (
     <div
       class="physics-paint-motion-header-group"
