@@ -2980,20 +2980,24 @@ describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the on
     expect(heightOf(1, true)).toBe(69);
     expect(heightOf(2, true)).toBe(87);
     expect(heightOf(3, true)).toBe(105);
+    // Four lanes leave no keyless display lane, yet the row still renders
+    // (disabled) and is measured: 31 + 4×18 + 2 + 18.
+    expect(heightOf(4, true)).toBe(123);
     // Every additive case is the matching absent case + one lane height.
-    for (const laneCount of [1, 2, 3]) {
+    for (const laneCount of [1, 2, 3, 4]) {
       expect(heightOf(laneCount, true) - heightOf(laneCount, false)).toBe(
         TIMELINE_MOTION.laneHeight,
       );
     }
   });
 
-  it('spends the add row on the last missing lane — the fourth add is net 0', () => {
-    // 3 lanes + the add row (105) becomes 4 lanes without it (105): the block
-    // never claims a fifth lane and the row height never jumps. The strip can
-    // never request both — four lanes leave no keyless display lane.
-    expect(heightOf(3, true)).toBe(105);
+  it('spends the add row on a fully-keyed four-lane block — the row is disabled, not absent', () => {
+    // The retired invariant assumed four lanes leave no keyless display lane,
+    // so the add row vanished. It now renders disabled on every expanded
+    // block, so the measured height must reserve it at four lanes too.
+    expect(heightOf(4, true)).toBe(123);
     expect(heightOf(4, false)).toBe(105);
+    expect(heightOf(4, true) - heightOf(4, false)).toBe(TIMELINE_MOTION.laneHeight);
   });
 
   it('swallows the flag on a collapsed block and carries it on the entry', () => {
@@ -3022,11 +3026,13 @@ describe('59-17: resolveTrackRowLayout — the 18px add-channel row joins the on
     expect(resolveReorderInsertionIndex(87, { top: 0, scrollTop: 0 }, layout.rows)).toBe(1);
   });
 
-  it('feeds the add row from the keyless projection and keeps the menu overlay out of the layout', () => {
+  it('feeds the add row from the lane count alone and keeps the menu overlay out of the layout', () => {
     const code = source();
-    // The flag is derived from the SAME keyless projection the block renders.
-    expect(code).toContain('resolveKeylessMotionDisplayLanes');
-    expect(code).toContain('const activeMotionAddChannelRow =');
+    // The flag is the SAME predicate the block uses to render the row: the
+    // lane count alone. A second keyless derivation here could disagree.
+    expect(code).toContain('const activeMotionAddChannelRow = activeMotionLaneCount > 0;');
+    expect(code).not.toContain('resolveKeylessMotionDisplayLanes');
+    expect(code).not.toContain('activeMotionHasKeylessChannel');
     expect(code).toContain('addChannelRow: isActive && activeMotionAddChannelRow,');
     // The open menu is an absolute overlay inside the row: the strip never
     // renders it, so its open height can never reach this layout.
