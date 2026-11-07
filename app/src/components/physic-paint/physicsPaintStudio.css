@@ -992,7 +992,7 @@ button.destructive {
   min-width: 0;
   min-height: 0;
   padding: clamp(16px, 2.4vw, 32px);
-  background: #111315;
+  background: #222529;
 }
 
 /* 261104-uyv: the canvas zoom viewport — the ONE clip in the canvas region.
