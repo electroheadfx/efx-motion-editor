@@ -4,17 +4,17 @@ milestone: v2.1.0
 milestone_name: Rail Motion, Timeline Zoom, Vector Painting & Curve Editing (MINOR)
 current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
-status: executing
-stopped_at: Completed 59-24-PLAN.md
-last_updated: "2026-11-07T10:24:45.714Z"
+status: verifying
+stopped_at: Completed 59-25-PLAN.md
+last_updated: "2026-11-07T10:30:18.189Z"
 last_activity: 2026-11-07
 last_activity_desc: Phase 59 execution started
-state_head: 8e122ac3d27e191770e343e268f12f0be7661cc5
+state_head: 043b07b38326e4127e8c0b5774610175360f3967
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 25
-  completed_plans: 24
+  completed_plans: 25
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-11-06 at v2.1.0 open)
 
 Phase: 59 (Rail Motion Channels & v7 Interface) — EXECUTING
 Plan: 25 of 25
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-11-07 — Phase 59 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -80,6 +80,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 59 P22 | 58 | 3 tasks | 9 files |
 | Phase 59 P23 | 6 | 2 tasks | 7 files |
 | Phase 59 P24 | 6min | 2 tasks | 6 files |
+| Phase 59 P25 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -167,6 +168,8 @@ Full log: PROJECT.md Key Decisions. Locked for v2.1.0:
 - [Phase 59]: The strip measures the add row from activeMotionLaneCount > 0 alone, matching the block's render predicate; the second keyless derivation in the strip is deleted.
 - [Phase 59]: One code-unit comparator (compareCanonicalIds) now owns every canonical sort in the model; it matches Rust's str::cmp for the ASCII id charset, so TS and Rust cannot produce two revisions for one document.
 - [Phase 59]: Golden fixture Loop Clips must carry the explicit six-member persisted lifecycle block: the TS encoder resolves it unconditionally while Rust emits it only under syncState, so a lifecycle-less shared entry would diverge on the loops term.
+- [Phase 59-rail-motion-channels-v7-interface]: Grouped Position easing/Wiggle fan out through one per-axis helper: the submitted axis gates the command and is edited first, every follower is re-resolved from the previous edit, and no pairedValue is passed so a keyless sibling is seeded by D-12 from its own stepped value (WR-04).
+- [Phase 59-rail-motion-channels-v7-interface]: Every rendered motion-lane curve is built with the lane's own { railId } so the drawn wiggle seed is the compositor's seed; the test asserts the two seeds differ before asserting which one rendered (WR-03).
 
 ### Pending Todos
 
@@ -238,8 +241,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-11-07T10:24:45.683Z
-Stopped at: Completed 59-24-PLAN.md
+Last session: 2026-11-07T10:30:18.157Z
+Stopped at: Completed 59-25-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
