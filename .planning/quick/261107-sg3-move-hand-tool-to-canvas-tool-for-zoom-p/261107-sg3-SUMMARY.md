@@ -120,7 +120,16 @@ metrics:
 
 # Quick 261107-sg3: Move the Hand tool to the canvas for zoom/pan Summary
 
-**Latched Hand canvas pan in the floating zoom pill: one click arms, a capture-phase primary drag pans through the existing `setPan` path, grab/grabbing cursor, second click disarms; the Studio tool rail loses the Hand entirely.**
+**Hand canvas pan in the floating zoom pill: one click arms a single primary drag that pans through the existing `setPan` path, grab/grabbing cursor, and releasing the drag disarms; the Studio tool rail loses the Hand entirely.**
+
+> **UAT correction (2026-11-07, after delivery):** the first cut kept the Hand
+> armed after the drag release. Live UAT rejected that model — the agreed law
+> is ONE DRAG PER CLICK: the release of the pan drag also disarms, so the next
+> canvas drag paints again. A second click before dragging still cancels. The
+> correction is in `PhysicsPaintCanvasZoomViewport.tsx`
+> (`if (wasHand) disarmHandTool();` in `finishDrag`) plus the pill copy and the
+> wiring pins. Panning itself already worked in the UAT; only the exit law
+> changed.
 
 ## Performance
 
@@ -190,10 +199,27 @@ None - no external service configuration required.
 
 None.
 
+## UAT Correction — one drag per click (2026-11-07)
+
+Live UAT confirmed the pan worked but rejected the stay-armed exit law. Final
+behavior:
+
+- Click the Hand in the zoom pill → one primary-button drag on the canvas pans
+  through the same `setPan` path as middle-drag.
+- Releasing that drag also disarms: the grab cursor clears and the next canvas
+  drag paints again. A second Hand click before dragging cancels.
+- Middle-drag stays untouched (never disarms), and the Hand stays independent
+  of the paint tool / Select / picker / motion mode.
+- Wiring pins updated: `physicsPaintHandToolWiring.test.ts` gains the
+  `finishDrag` one-shot pin; the store/pill/rail pins now describe the
+  one-drag model.
+
 ## Next Phase Readiness
 
-- Automated-ready; the live native UAT rows (pill arm/disarm click, primary drag pan with no accidental paint, cursor states, mid-drag disarm) remain for the user.
-- No blockers; no CSS change was needed (the pill's existing `[aria-pressed="true"]` rule styles the latched button).
+- Automated-ready; the remaining live native UAT rows are the one-drag-per-click
+  arm/pan/release cycle, no accidental paint during the drag, and the cursor
+  states.
+- No blockers; no CSS change was needed (the pill's existing `[aria-pressed="true"]` rule styles the button).
 
 ---
 *Quick: 261107-sg3-move-hand-tool-to-canvas-tool-for-zoom-p*
