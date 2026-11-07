@@ -424,6 +424,134 @@ describe('59-12 rail motion commands — Motion keys', () => {
     }
   });
 
+  it('fans grouped Position easing out to BOTH axes, each keeping its own value', () => {
+    const result = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 10,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    const x = channelOf(record, 'position-x');
+    const y = channelOf(record, 'position-y');
+
+    expect(x.keys.map((key) => key.frame).join(',')).toBe('0,10');
+    expect(y.keys.map((key) => key.frame).join(',')).toBe('0,10');
+    expect(x.keys.map((key) => key.easing).join(',')).toBe('ease,hold');
+    expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,hold');
+    expect(x.keys[1]?.value).toBe(100);
+    expect(y.keys[1]?.value).toBe(50);
+  });
+
+  it('produces the same both-axis easing result when the grouped lane addresses position-y', () => {
+    const result = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-y',
+      keyFrame: 10,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+
+    expect(channelOf(record, 'position-x').keys.map((key) => key.easing).join(',')).toBe('ease,hold');
+    expect(channelOf(record, 'position-y').keys.map((key) => key.easing).join(',')).toBe('ease,hold');
+    expect(channelOf(record, 'position-x').keys[1]?.value).toBe(100);
+    expect(channelOf(record, 'position-y').keys[1]?.value).toBe(50);
+  });
+
+  it('fans grouped Position Wiggle out to BOTH axes without moving values or easing', () => {
+    const result = setMotionKeyWiggle({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 10,
+      wiggle: 12,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    const x = channelOf(record, 'position-x');
+    const y = channelOf(record, 'position-y');
+
+    expect(x.keys.map((key) => key.wiggle).join(',')).toBe('0,12');
+    expect(y.keys.map((key) => key.wiggle).join(',')).toBe('0,12');
+    expect(x.keys.map((key) => key.value).join(',')).toBe('0,100');
+    expect(y.keys.map((key) => key.value).join(',')).toBe('0,50');
+    expect(x.keys.map((key) => key.easing).join(',')).toBe('ease,ease');
+    expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,ease');
+  });
+
+  it('seeds a keyless paired axis from its OWN stepped value, then applies the property there', () => {
+    const keylessPaired: PhysicPaintRotoRailMotionRecord = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [motionKey(0, 0), motionKey(5, 40), motionKey(10, 100)]),
+        motionChannel('position-y', [motionKey(0, 0), motionKey(10, 50)]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+
+    const result = setMotionKeyWiggle({
+      records: [keylessPaired],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 5,
+      wiggle: 7,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+    const x = channelOf(record, 'position-x');
+    const y = channelOf(record, 'position-y');
+
+    expect(x.keys.map((key) => key.frame).join(',')).toBe('0,5,10');
+    expect(y.keys.map((key) => key.frame).join(',')).toBe('0,5,10');
+    expect(x.keys[1]?.value).toBe(40);
+    expect(x.keys[1]?.wiggle).toBe(7);
+    // D-12: the seeded key holds THIS axis's stepped value, never its sibling's 40.
+    expect(y.keys[1]?.value).toBe(0);
+    expect(y.keys[1]?.wiggle).toBe(7);
+    expect(y.keys.map((key) => key.value).join(',')).toBe('0,0,50');
+    expect(y.keys.map((key) => key.wiggle).join(',')).toBe('0,7,0');
+    expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,ease,ease');
+  });
+
+  it('refuses a grouped Position edit when the addressed axis has no key at the frame', () => {
+    const result = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 5,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('There is no Motion key at this frame.');
+    expect(result).not.toHaveProperty('records');
+  });
+
+  it('keeps a non-Position command on exactly one channel', () => {
+    const result = setMotionKeyEasing({
+      records: [motionRecord()],
+      railId: 'rail-1',
+      channelId: 'scale',
+      keyFrame: 10,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const record = recordOf(result.records);
+
+    expect(channelOf(record, 'scale').keys.map((key) => key.easing).join(',')).toBe('ease,hold');
+    expect(channelOf(record, 'position-x').keys.map((key) => key.easing).join(',')).toBe('ease,ease');
+    expect(channelOf(record, 'position-y').keys.map((key) => key.easing).join(',')).toBe('ease,ease');
+  });
+
   it('finds the addressed key and reports none for an empty frame', () => {
     const record = motionRecord();
     expect(resolveMotionKeyAtFrame(record, 'scale', 10)?.value).toBe(2);
