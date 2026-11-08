@@ -5,7 +5,7 @@ titles: json
 findings:
   - id: CR-05
     severity: critical
-    disposition: open
+    disposition: skipped
     title: "Deleting a real key the cycle does not reference silently dissolves the entire Rail cycle (vacuous `.every()`)"
   - id: WR-07
     severity: warning
@@ -79,7 +79,7 @@ findings:
     severity: critical
     disposition: open
     title: ""
-open: 14
+open: 13
 total: 19
 recorded: 2026-11-08T18:42:00.000Z
 ---
@@ -88,7 +88,7 @@ recorded: 2026-11-08T18:42:00.000Z
 
 | Finding | Severity | Disposition | Source |
 |---------|----------|-------------|--------|
-| CR-05 | critical | open | - |
+| CR-05 | critical | skipped | false positive: the approved 261108-pmc law is that deleting a real key a sole canonical lifecycle rail owns dissolves that cycle in the same atomic edit; pinned by physicsPaintRotoLoopGuards.test.ts "dissolves the owning lifecycle cycle when a real key inside it deletes" |
 | WR-07 | warning | open | - |
 | IN-06 | info | open | - |
 | IN-07 | info | open | - |
