@@ -4657,6 +4657,9 @@ export function PhysicsPaintStudio() {
     // drawing stroke by stroke, so one frame per brush is the natural span.
     getScriptNaturalDuration: (scriptId) => rotoScriptLibrary.rows.value.find((row) => row.id === scriptId)?.brushCount ?? null,
     executePhysicalEdit: physicalEditCoordinator.executePhysicalEdit,
+    // 261108-o9d: a Key Rail cycle confirm serializes behind a still-settling
+    // physical edit instead of being dropped as "not dispatched".
+    waitForPhysicalEditSlot: physicalEditCoordinator.waitForPhysicalEditSlot,
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
     failureOutput: physicalEditCoordinator.failureOutput,

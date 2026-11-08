@@ -396,6 +396,12 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   getLoopEditSnapshot?: (placementStart: number) => RotoPlayScriptLoopEditSnapshot | null;
   /** Complete accepted physical document used for Group lifecycle preparation and stale checks. */
   getPhysicalDocument?: () => PhysicPaintRotoPhysicalDocument | null;
+  /**
+   * 261108-o9d: bounded wait for the coordinator's open physical-edit slot.
+   * A Key Rail cycle confirm must serialize behind a still-settling previous
+   * edit instead of being dropped; absent port = dispatch immediately.
+   */
+  waitForPhysicalEditSlot?: () => Promise<boolean>;
   availabilityRevision?: ReadonlySignal<number>;
   /**
    * WR-13: the scalar physical-content revision. The Studio reads it straight
@@ -2087,6 +2093,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     ports.stopPlayback();
     phase.value = 'preparing'; status.value = 'Preparing Key Rail cycle…'; error.value = null;
     try {
+      // 261108-o9d (D-11/T-58-02): a confirm issued while the previous physical
+      // edit is still settling must WAIT for the slot, not be dropped. The wait
+      // stays bounded and cancellation-aware; authority is requested only after
+      // the slot clears, so revision and capacities come from the settled document.
+      if (ports.waitForPhysicalEditSlot) {
+        const slotReady = await ports.waitForPhysicalEditSlot();
+        assertCurrent(acceptedGeneration);
+        if (!slotReady) {
+          throw new Error('The previous Roto physical edit is still settling. Create the cycle once it finishes.');
+        }
+      }
       const authority = await ports.requestAuthority(nextOperationId('key-rail-cycle'), target.firstKeyFrame);
       assertCurrent(acceptedGeneration);
       if (!authority.ok) throw new Error(authority.error ?? 'Parent authority is unavailable.');

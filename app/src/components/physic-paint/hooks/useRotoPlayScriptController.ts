@@ -29,6 +29,8 @@ interface RotoPlayScriptCoordinatorPort<EngineState> {
   executePhysicalEdit: (
     input: RotoPlayScriptExecuteInput | RotoRegenerateGroupExecuteInput,
   ) => Promise<boolean>;
+  /** 261108-o9d: bounded wait for the coordinator's open physical-edit slot. */
+  waitForPhysicalEditSlot?: () => Promise<boolean>;
   readonly pendingOperationId: ReadonlySignal<string | null>;
   readonly acceptedOutput: ReadonlySignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>;
   readonly failureOutput: ReadonlySignal<RotoPhysicalEditFailureOutput<EngineState> | null>;
@@ -74,6 +76,11 @@ export function useRotoPlayScriptController<EngineState = unknown>(
       getRotoLoopClips: () => portsRef.current.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
       getLoopEditSnapshot: (placementStart) => portsRef.current.getLoopEditSnapshot?.(placementStart) ?? null,
       getPhysicalDocument: () => portsRef.current.getPhysicalDocument?.() ?? null,
+      // 261108-o9d: forwarded only when the host supplies it — a host without
+      // the port keeps the immediate-dispatch behaviour.
+      ...(ports.waitForPhysicalEditSlot
+        ? { waitForPhysicalEditSlot: () => portsRef.current.waitForPhysicalEditSlot!() }
+        : {}),
       availabilityRevision: availabilityRevision.current,
       // WR-13: the scalar revision signal, forwarded verbatim — never a document parse.
       ...(ports.physicalRevision ? { physicalRevision: ports.physicalRevision } : {}),

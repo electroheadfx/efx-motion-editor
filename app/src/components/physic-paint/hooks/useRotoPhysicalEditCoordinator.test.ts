@@ -2446,6 +2446,9 @@ async function driveKeyRailCycleThroughPublicController(
     getRotoLoopClips: () => setupHarness.getCanonicalDocument().loopClips,
     getLoopEditSnapshot: () => null,
     getPhysicalDocument: () => setupHarness.getCanonicalDocument(),
+    // 261108-o9d: the controller waits for the coordinator's open slot instead
+    // of dropping the confirm (the production Studio wires the same port).
+    waitForPhysicalEditSlot: () => setupHarness.coordinator.waitForPhysicalEditSlot(),
     requestAuthority: async (operationId, start): Promise<PhysicPaintRotoAuthorityResult> => {
       const document = setupHarness.getCanonicalDocument();
       return {
@@ -5056,34 +5059,45 @@ describe('261108-o9d Key Rail cycle create behind the physical-edit slot', () =>
     expect(clip.originalEndExclusive).toBe(30);
   });
 
-  it('reproduces "Group update was not dispatched." while a physical edit is still pending (serialize gate)', async () => {
+  it('waits for the previous physical edit to settle, then creates Cycle 10 (slot gate)', async () => {
     const setupHarness = harness({ capacity: 600, parentEndExclusive: 600, dropLoopClips: true });
     // The shared fixture's force-spacing proposal republishes its loop clips on
-    // acceptance, which would own key A and turn the retry into an ownership
+    // acceptance, which would own key A and turn the cycle into an ownership
     // refusal. Paste-key is an ordinary pending edit and leaves the bare Key
     // Rail state the report describes: A at frame 0, no Loop Clips.
     expect(await setupHarness.executePasteKey(14)).toBe(true);
     expect(setupHarness.coordinator.pendingOperationId.value).not.toBeNull();
 
-    // Captured gate evidence at HEAD (Task 1 reproduction):
-    //   setConciseMessage: 'A Roto physical edit is already in flight.'
-    //   logDiagnostic: (none — the serialize guard refuses before any staging diagnostic)
-    const first = await driveKeyRailCycleThroughPublicController(setupHarness, { keyIds: KEY_IDS, repeat: 10 });
-    expect(first.confirmed).toBe(false);
-    expect(first.controller.error.value).toBe(NOT_DISPATCHED);
-    expect(first.commitResults).toEqual([{ ok: false, error: NOT_DISPATCHED }]);
-    expect(setupHarness.setConciseMessage).toHaveBeenCalledWith(SERIALIZE_MESSAGE);
+    // Start the cycle confirm while the prior edit is still unsettled. Before
+    // 261108-o9d this confirm was refused pre-dispatch (Task 1 captured gate
+    // evidence: setConciseMessage 'A Roto physical edit is already in flight.',
+    // no logDiagnostic) and surfaced as 'Group update was not dispatched.'.
+    const pending = await driveKeyRailCycleThroughPublicController(
+      setupHarness,
+      { keyIds: KEY_IDS, repeat: 10, holdConfirm: true },
+    );
+    let resolvedValue: boolean | null = null;
+    void pending.confirmPromise.then((value) => { resolvedValue = value; });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolvedValue).toBeNull();
+    expect(pending.controller.error.value).not.toBe(NOT_DISPATCHED);
+    expect(setupHarness.setConciseMessage).not.toHaveBeenCalledWith(SERIALIZE_MESSAGE);
     expect(setupHarness.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    expect(pending.publications).toHaveLength(0);
 
-    // Settle and acknowledge the prior edit, then the same confirm dispatches.
+    // Settle and acknowledge the prior edit; the acknowledgement writes no
+    // signal, so the wait clears on its bounded cadence and the same confirm
+    // dispatches against the settled document with the requested repeat.
     expect(setupHarness.accept()).toBe('accepted');
     const settled = setupHarness.coordinator.acceptedOutput.value;
     if (!settled) throw new Error('Expected the prior physical edit to settle.');
     expect(setupHarness.coordinator.acknowledgePhysicalEditSettlement(settled.operationId, 'release')).toBe(true);
 
-    expect(await first.controller.confirm()).toBe(true);
-    expect(first.controller.error.value).toBeNull();
-    expect(first.commitResults.map((entry) => entry.ok)).toEqual([false, true]);
+    expect(await pending.confirmPromise).toBe(true);
+    expect(pending.controller.phase.value).toBe('complete');
+    expect(pending.controller.error.value).toBeNull();
+    expect(pending.publications).toHaveLength(1);
+    expect(pending.commitResults).toEqual([expect.objectContaining({ ok: true })]);
     expect(setupHarness.sendPhysicalEditPayload).toHaveBeenCalledTimes(2);
     expectCreatedCycle(setupHarness.getCanonicalDocument(), 10, 10);
   });

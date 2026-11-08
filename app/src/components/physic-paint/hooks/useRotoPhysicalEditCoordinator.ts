@@ -140,6 +140,9 @@ const PHYSICAL_EDIT_TIMEOUT_MESSAGE = 'Roto physical edit timed out. The result 
 const PHYSICAL_EDIT_MISMATCH_MESSAGE = 'Roto physical edit settlement mismatch. The result is uncertain — continue from the current layer/frame.';
 const PHYSICAL_EDIT_BARRIER_MESSAGE = 'Roto physical edit barriers failed. No state was changed.';
 const PHYSICAL_EDIT_SERIALIZE_MESSAGE = 'A Roto physical edit is already in flight.';
+// 261108-o9d: a submit behind the open slot WAITS for it (the async contract
+// forbids a silent drop), bounded by the Play Script settlement budget.
+const PHYSICAL_EDIT_SLOT_WAIT_MS = 6_000;
 // studio-realm-divergence (nature: contract): never tell the user "ignored …
 // try the action again" when the outcome is uncertain. Same law as the timeout
 // copy above — fail loud about what is unknown, assert nothing about a restore.
@@ -1169,6 +1172,13 @@ export interface RotoPhysicalEditCoordinatorHandle<EngineState = RotoEditableSta
   ) => boolean;
   /** Release recovery ownership after durable cleanup/recovery completes. */
   releasePhysicalEditRecoveryLease: () => boolean;
+  /**
+   * Wait for the open physical-edit dispatch slot to clear. Bounded by the
+   * settlement budget, cancellation-aware, and never rejects: resolves true
+   * when a dispatch may proceed, false at the deadline after a named
+   * diagnostic, so a caller never has to drop its submit silently.
+   */
+  waitForPhysicalEditSlot: () => Promise<boolean>;
   /** Recovery ownership retained after cleanup could not finish. */
   readonly recoveryLease: ReadonlySignal<PhysicPaintRotoPhysicalOperationLeaseToken | null>;
   /** Pending presentation state (Signal). */
@@ -1710,21 +1720,88 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
     return true;
   }, []);
 
+  /**
+   * 261108-o9d: the ONE predicate behind the single dispatch slot. Returns a
+   * human-readable cause when the slot is busy, null when a dispatch may
+   * proceed. The serialize guard and the slot wait share it so they can never
+   * disagree about what "in flight" means.
+   */
+  const isPhysicalEditSlotBusy = useCallback((): string | null => {
+    if (inFlightRef.current) return 'a physical edit is being staged';
+    if (pendingRef.current) return 'the previous physical edit is awaiting settlement';
+    const settled = settledLeaseRef.current;
+    if (settled) return `physical edit ${settled.operationId} is awaiting settlement acknowledgement`;
+    if (recoveryLeaseSignal.peek()) return 'a recovery lease is still held';
+    return null;
+  }, []);
+
+  /**
+   * 261108-o9d: wait (bounded) for the open physical-edit slot to clear instead
+   * of dropping the submit. Driven by signal change, never by tick polling; one
+   * short cadence exists only because acknowledging an accepted settlement
+   * releases the settled lease without writing a signal. Never rejects.
+   */
+  const waitForPhysicalEditSlot = useCallback((): Promise<boolean> => {
+    if (isPhysicalEditSlotBusy() === null) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let deadline: number | null = null;
+      let cadence: number | null = null;
+      let unsubscribers: Array<() => void> = [];
+      const finish = (result: boolean) => {
+        if (settled) return;
+        settled = true;
+        for (const unsubscribe of unsubscribers) unsubscribe();
+        unsubscribers = [];
+        if (deadline !== null) window.clearTimeout(deadline);
+        if (cadence !== null) window.clearTimeout(cadence);
+        deadline = null;
+        cadence = null;
+        resolve(result);
+      };
+      const check = () => {
+        if (settled) return;
+        if (isPhysicalEditSlotBusy() === null) {
+          finish(true);
+          return;
+        }
+        if (cadence !== null) window.clearTimeout(cadence);
+        cadence = window.setTimeout(check, 25);
+      };
+      unsubscribers = [
+        pendingOperationIdSignal.subscribe(check),
+        acceptedSignal.subscribe(check),
+        failureSignal.subscribe(check),
+      ];
+      deadline = window.setTimeout(() => {
+        try {
+          const cause = isPhysicalEditSlotBusy();
+          portsRef.current.status.logDiagnostic(
+            `Roto physical edit slot wait expired after ${PHYSICAL_EDIT_SLOT_WAIT_MS} ms: ${cause ?? 'the slot became busy again'}.`,
+          );
+        } finally {
+          finish(false);
+        }
+      }, PHYSICAL_EDIT_SLOT_WAIT_MS);
+      check();
+    });
+  }, [isPhysicalEditSlotBusy]);
+
   const executePhysicalEdit = useCallback(
     async (input: RotoPhysicalEditCoordinatorExecuteInput<EngineState>): Promise<boolean> => {
       // G-43.6-2: a recovery lease must never permanently block edits — the store's token validation is the real concurrency authority, and this is the only production caller of releasePhysicalEditRecoveryLease. Best-effort release here; if the parent still refuses (stale token), the guard below keeps blocking.
       releasePhysicalEditRecoveryLease();
-      if (
-        inFlightRef.current
-        || pendingRef.current
-        || settledLeaseRef.current
-        || recoveryLeaseSignal.peek()
-      ) {
+      if (isPhysicalEditSlotBusy() !== null) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== input.expectedLaunch.layerId || launch.operationId !== input.expectedLaunch.operationId) {
+        // 261108-o9d: this refusal used to be silent, which presented as the
+        // bare "was not dispatched" copy; name the divergence instead.
+        portsRef.current.status.logDiagnostic(
+          `Roto physical edit launch mismatch: expected operation ${input.expectedLaunch.operationId} on layer ${input.expectedLaunch.layerId}, current ${launch ? `${launch.operationId} on layer ${launch.layerId}` : 'launch unavailable'}.`,
+        );
         return false;
       }
       const bridgeMode = portsRef.current.bridge.getBridgeMode();
@@ -2743,7 +2820,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
         return false;
       }
     },
-    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, releasePhysicalEditRecoveryLease],
+    [captureSnapshot, clearTimeoutOnce, finalizeFailed, clearPendingOnce, isPhysicalEditSlotBusy, releasePhysicalEditRecoveryLease],
   );
 
   useEffect(() => () => {
@@ -2777,6 +2854,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = RotoEditableState>(
     cancelPhysicalEdit,
     acknowledgePhysicalEditSettlement,
     releasePhysicalEditRecoveryLease,
+    waitForPhysicalEditSlot,
     recoveryLease,
     presentation,
     acceptedOutput,
