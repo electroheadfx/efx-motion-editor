@@ -74,7 +74,8 @@ gates:
   full-suite: "pnpm --filter efx-motion-editor exec vitest run — 403 files passed / 2 skipped; 8222 tests passed, 1 skipped, 96 todo — PASS"
   targeted: "railMotionPath.test.ts 14/14, RailMotionPathOverlay.test.ts 8/8 — PASS"
 
-uat_pending:
+uat_approved: 2026-11-08
+uat_rows:
   - "Animate Position 0 -> 100, linear: dashed path start-to-end, dots on the two keys, marker at the playhead"
   - "Ease on X, linear on Y: the path curves"
   - "Stop-motion: the path steps at the paint keys it steps at on canvas"
@@ -105,4 +106,4 @@ The executor returned while the full suite was still running in its own backgrou
 
 ## UAT
 
-Pending — the six rows above are live-UAT only (visual rendering and pointer pass-through).
+Approved 2026-11-08 — all six rows passed live: linear path from start pose to end pose with dots on both keys and a marker at the playhead; eased X / linear Y renders the curved spatial trace; stop-motion steps at the same paint keys the canvas steps at; wiggle on leaves the route fixed while the box shakes; the overlay never blocked painting, key dragging or handle dragging; deselecting the rail or leaving animate mode removes the path with nothing else changed.
