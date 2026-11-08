@@ -18,6 +18,17 @@
  * The only non-model imports are the seeded `Random` PRNG and the pure
  * `TIMELINE_GEOMETRY` design-token block (data only — it carries no Preact,
  * store or DOM import), so the lane pitch has one source and no literal 18.
+ *
+ * Two wiggle modes (261108-gh0):
+ * - GLOBAL (`wiggleGlobal: true`, the tolerant-read default): the channel's
+ *   `wiggle` amplitude is added at EVERY frame of the channel, including
+ *   before the first key and at/after the last key. The noise is seeded by
+ *   (railId, channelId, key frame 0) and sampled at the segment's sample
+ *   frame, so Stop Motion snaps it exactly like the value ramp. The per-key
+ *   `outgoing.wiggle` is ignored in this mode.
+ * - PER-KEY (`wiggleGlobal: false`): today's law is preserved byte-identically
+ *   — only the outgoing key's amplitude applies, seeded at that key's frame,
+ *   and the span before the first key carries no noise.
  */
 
 import { Random } from '@efxlab/motion-canvas-core';
@@ -236,11 +247,20 @@ function railMotionChannelValueAt(
   if (segment === null) return railMotionIdentityChannelValue(channel.id);
 
   const outgoing = segment.outgoingKey;
-  const value = outgoing === null || outgoing.wiggle === 0
-    ? segment.value
-    : segment.value
-      + outgoing.wiggle
-        * railMotionWiggleAt(railId, channel.id, outgoing.frame, segment.sampleFrame);
+  // 261108-gh0 two-mode law. `segment.sampleFrame` is already the snapped
+  // frame under Stop Motion and the evaluated frame otherwise, so the global
+  // term inherits the snap law with no extra threading.
+  const value = channel.wiggleGlobal
+    ? channel.wiggle === 0
+      ? segment.value
+      : segment.value
+        + channel.wiggle
+          * railMotionWiggleAt(railId, channel.id, 0, segment.sampleFrame)
+    : outgoing === null || outgoing.wiggle === 0
+      ? segment.value
+      : segment.value
+        + outgoing.wiggle
+          * railMotionWiggleAt(railId, channel.id, outgoing.frame, segment.sampleFrame);
 
   return clampRailMotionChannelValue(channel.id, value);
 }

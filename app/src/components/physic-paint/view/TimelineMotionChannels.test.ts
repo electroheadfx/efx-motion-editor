@@ -423,7 +423,9 @@ describe('TimelineMotionChannelLane', () => {
     const wiggleChannel: PhysicPaintRotoRailMotionChannel = {
       id: 'position-x',
       wiggle: 0,
-      wiggleGlobal: true,
+      // 261108-gh0: this row pins the PER-KEY seed, which is the
+      // `wiggleGlobal: false` fallback; global mode seeds at key frame 0.
+      wiggleGlobal: false,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 500 },
         { frame: 6, value: 40, easing: 'ease', wiggle: 0 },

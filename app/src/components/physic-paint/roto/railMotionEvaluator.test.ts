@@ -335,7 +335,8 @@ describe('rail motion wiggle', () => {
   it('applies the outgoing key amplitude and drops a zero-amplitude outgoing key', () => {
     const railId = 'rail-wiggle';
     const wiggled = record(railId, [
-      channel('position-x', [key(0, 0, 'ease', 10), key(10, 100, 'ease', 0)]),
+      // 261108-gh0: per-key amplitude is the `wiggleGlobal: false` fallback.
+      channel('position-x', [key(0, 0, 'ease', 10), key(10, 100, 'ease', 0)], 0, false),
     ]);
     const plain = record(railId, [channel('position-x', [key(0, 0), key(10, 100)])]);
 
@@ -350,7 +351,7 @@ describe('rail motion wiggle', () => {
   it('wiggles around a hold key step value', () => {
     const railId = 'rail-hold-wiggle';
     const rec = record(railId, [
-      channel('position-y', [key(0, 20, 'hold', 5), key(10, 80)]),
+      channel('position-y', [key(0, 20, 'hold', 5), key(10, 80)], 0, false),
     ]);
 
     const expectedAtFour = 20 + 5 * railMotionWiggleAt(railId, 'position-y', 0, 4);
@@ -362,10 +363,10 @@ describe('rail motion wiggle', () => {
     const railId = 'rail-snap-wiggle';
     const snapFrames = [0, 2, 4, 6] as const;
     const stopMotion = record(railId, [
-      channel('position-x', [key(0, 0, 'stop-motion', 5), key(6, 60, 'stop-motion', 0)]),
+      channel('position-x', [key(0, 0, 'stop-motion', 5), key(6, 60, 'stop-motion', 0)], 0, false),
     ]);
     const eased = record(railId, [
-      channel('position-x', [key(0, 0, 'ease', 5), key(6, 60, 'ease', 0)]),
+      channel('position-x', [key(0, 0, 'ease', 5), key(6, 60, 'ease', 0)], 0, false),
     ]);
 
     const snapped = [2, 2.25, 2.5, 2.75].map((frame) => (
@@ -399,8 +400,8 @@ describe('rail motion wiggle', () => {
   it('clamps opacity to 0..1 and floors scale at 0 after adding wiggle', () => {
     const railId = 'rail-clamp-wiggle';
     const rec = record(railId, [
-      channel('opacity', [key(0, 1, 'ease', 1000)]),
-      channel('scale', [key(0, 0.05, 'ease', 1000)]),
+      channel('opacity', [key(0, 1, 'ease', 1000)], 0, false),
+      channel('scale', [key(0, 0.05, 'ease', 1000)], 0, false),
     ]);
 
     let clampedHigh = false;
@@ -420,6 +421,142 @@ describe('rail motion wiggle', () => {
 
     expect(clampedHigh).toBe(true);
     expect(clampedLow).toBe(true);
+  });
+
+  // ---- 261108-gh0: the two-mode wiggle law ----
+
+  it('applies the global amplitude at every frame, including before the first key', () => {
+    const railId = 'rail-global';
+    const keys = [key(10, 40)];
+    const plain = record(railId, [channel('position-x', keys)]);
+    const global = record(railId, [channel('position-x', keys, 0.5, true)]);
+
+    let sawNonZero = false;
+    for (let frame = 0; frame <= 10; frame += 0.5) {
+      const base = evaluateRailMotionChannel(plain, 'position-x', frame);
+      const expected = base + 0.5 * railMotionWiggleAt(railId, 'position-x', 0, frame);
+      // Exact equality, not a tolerance: both sides run the same expression.
+      expect(evaluateRailMotionChannel(global, 'position-x', frame)).toBe(expected);
+      if (expected !== base) sawNonZero = true;
+    }
+    // The row cannot pass vacuously on a zero-noise sample.
+    expect(sawNonZero).toBe(true);
+  });
+
+  it('ignores the per-key amplitude in global mode', () => {
+    const railId = 'rail-global-per-key';
+    const plain = record(railId, [channel('position-x', [key(0, 0), key(10, 100)])]);
+    const global = record(railId, [
+      channel('position-x', [key(0, 0, 'ease', 999), key(10, 100, 'ease', 999)], 0.5, true),
+    ]);
+
+    for (const frame of [0, 2, 5, 10, 12]) {
+      const base = evaluateRailMotionChannel(plain, 'position-x', frame);
+      expect(evaluateRailMotionChannel(global, 'position-x', frame)).toBe(
+        base + 0.5 * railMotionWiggleAt(railId, 'position-x', 0, frame),
+      );
+    }
+    const baseAtTwo = evaluateRailMotionChannel(plain, 'position-x', 2);
+    expect(evaluateRailMotionChannel(global, 'position-x', 2)).not.toBe(
+      baseAtTwo + 999 * railMotionWiggleAt(railId, 'position-x', 0, 2),
+    );
+  });
+
+  it('samples the global amplitude at the snapped frame under stop motion', () => {
+    const railId = 'rail-global-snap';
+    const snapFrames = [0, 2, 4, 6] as const;
+    const rec = record(railId, [
+      channel(
+        'position-x',
+        [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')],
+        0.5,
+        true,
+      ),
+    ]);
+
+    const plain = record(railId, [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+    ]);
+    for (const frame of [2.5, 3]) {
+      // The VALUE ramp also steps at the snapped frame, so the base is the
+      // plain record's snap-evaluated value, not the evaluated frame.
+      const base = evaluateRailMotionChannel(plain, 'position-x', frame, snapFrames);
+      const snapped = base + 0.5 * railMotionWiggleAt(railId, 'position-x', 0, 2);
+      const evaluated = base + 0.5 * railMotionWiggleAt(railId, 'position-x', 0, frame);
+      expect(snapped).not.toBe(evaluated);
+      expect(evaluateRailMotionChannel(rec, 'position-x', frame, snapFrames)).toBe(snapped);
+    }
+  });
+
+  it('covers the whole timeline before the first key and is exact when the amplitude is zero', () => {
+    const railId = 'rail-global-early';
+    const keys = [key(8, 25)];
+    const plain = record(railId, [channel('position-y', keys)]);
+    const global = record(railId, [channel('position-y', keys, 0.5, true)]);
+    const zero = record(railId, [channel('position-y', keys, 0, true)]);
+
+    for (let frame = 0; frame < 8; frame += 0.5) {
+      const base = evaluateRailMotionChannel(plain, 'position-y', frame);
+      expect(evaluateRailMotionChannel(global, 'position-y', frame)).toBe(
+        base + 0.5 * railMotionWiggleAt(railId, 'position-y', 0, frame),
+      );
+      expect(evaluateRailMotionChannel(zero, 'position-y', frame)).toBe(base);
+    }
+  });
+
+  it('keeps the per-key law unchanged when wiggleGlobal is false', () => {
+    const railId = 'rail-per-key-mode';
+    const perKey = record(railId, [
+      channel('position-x', [key(4, 10, 'ease', 2), key(10, 40, 'ease', 0)], 12, false),
+    ]);
+    const plain = record(railId, [
+      channel('position-x', [key(4, 10), key(10, 40)]),
+    ]);
+
+    // Before the first key the first value holds with no noise, and the
+    // channel amplitude is never consulted.
+    for (const frame of [-2, 0, 2]) {
+      expect(evaluateRailMotionChannel(perKey, 'position-x', frame)).toBe(10);
+    }
+    const baseAtSix = evaluateRailMotionChannel(plain, 'position-x', 6);
+    const atSix = evaluateRailMotionChannel(perKey, 'position-x', 6);
+    expect(atSix).toBe(baseAtSix + 2 * railMotionWiggleAt(railId, 'position-x', 4, 6));
+    expect(atSix).not.toBe(baseAtSix + 12 * railMotionWiggleAt(railId, 'position-x', 0, 6));
+    // After the last key the wiggle-free closing key holds exactly.
+    expect(evaluateRailMotionChannel(perKey, 'position-x', 14)).toBe(40);
+  });
+
+  it('clamps opacity and floors scale after adding the global amplitude', () => {
+    const railId = 'rail-global-clamp';
+    const rec = record(railId, [
+      channel('opacity', [key(0, 1)], 1000, true),
+      channel('scale', [key(0, 0.05)], 1000, true),
+    ]);
+
+    let clampedHigh = false;
+    let clampedLow = false;
+    for (let frame = 0; frame <= 60; frame += 0.25) {
+      const opacity = evaluateRailMotionChannel(rec, 'opacity', frame);
+      const scale = evaluateRailMotionChannel(rec, 'scale', frame);
+      expect(opacity).toBeGreaterThanOrEqual(0);
+      expect(opacity).toBeLessThanOrEqual(1);
+      expect(scale).toBeGreaterThanOrEqual(0);
+      if (opacity === 1) clampedHigh = true;
+      if (scale === 0) clampedLow = true;
+    }
+    expect(clampedHigh).toBe(true);
+    expect(clampedLow).toBe(true);
+  });
+
+  it('documents both wiggle modes and stays pure', () => {
+    const sourcePath = fileURLToPath(new URL('./railMotionEvaluator.ts', import.meta.url));
+    const source = readFileSync(sourcePath, 'utf8');
+
+    expect(source).toContain('GLOBAL (`wiggleGlobal: true`');
+    expect(source).toContain('PER-KEY (`wiggleGlobal: false`)');
+    expect(source).not.toContain('@preact/signals');
+    expect(source).not.toMatch(/from 'preact/);
+    expect(source).not.toMatch(/\b(document|window|performance|Date)\./);
   });
 });
 
