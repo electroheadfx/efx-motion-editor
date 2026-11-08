@@ -3424,9 +3424,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       keyEasing,
       motionEasing,
       channels: Object.freeze(channels) as readonly RailMotionChannelWiggleRow[],
-      applyEasingToAllKeys: keyMode
-        ? (easing: PhysicPaintRotoRailMotionEasing): string | null => commitMotionAllKeysEasing(easing)
-        : null,
+      // 261108-gh0 UAT: the Keys section offers a per-key AND an all-keys
+      // button on EVERY row, in BOTH modes — the motion-wide write is not
+      // gated on a key being selected.
+      applyEasingToAllKeys: (easing: PhysicPaintRotoRailMotionEasing): string | null => (
+        commitMotionAllKeysEasing(easing)
+      ),
     }) as RailMotionDialogBundle;
   });
 

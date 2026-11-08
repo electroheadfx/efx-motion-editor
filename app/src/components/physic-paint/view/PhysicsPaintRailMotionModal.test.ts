@@ -459,52 +459,38 @@ describe('261107-qgj floating Motion modal', () => {
     expect(collect(third).filter((node) => node.props?.role === 'alert')).toHaveLength(0);
   });
 
-  it('renders the shared easing control in BOTH modes and writes through the right authority (261108-d5o/gh0)', () => {
+  it('renders the shared easing table in BOTH modes and writes through the right authority (261108-d5o/gh0 UAT)', () => {
     const set = vi.fn((): string | null => null);
     const dialog = signal<RailMotionDialogBundle | null>(keyModeBundle(set, 'hold'));
     const tree = renderModal({ dialog });
     const control = collect(tree).find((node) => node.type === PhysicsPaintRailMotionEasingControl);
-    expect(control, 'key mode renders the easing row').toBeDefined();
+    expect(control, 'key mode renders the Keys section').toBeDefined();
     expect(control!.props?.value).toBe('hold');
-    expect(control!.props?.disabled).toBe(false);
-    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('linear');
+    expect(control!.props?.keyFrame).toBe(5);
+    // The per-key target is the selected key.
+    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing, target: 'key' | 'all') => void)(
+      'linear',
+      'key',
+    );
     expect(set).toHaveBeenCalledTimes(1);
     expect(set).toHaveBeenCalledWith('linear');
 
-    // The row and its group label exist in key mode.
-    const row = collect(tree).find(
-      (node) => node.props?.class === 'physics-paint-motion-easing',
-    );
-    expect(row).toBeDefined();
-    expect(row!.props?.role).toBe('group');
-    expect(row!.props?.['aria-label']).toBe('Motion easing');
-    expect(collect(row).find(
-      (node) => node.props?.class === 'physics-paint-roto-key-icon-label',
-    )!.props?.children).toBe('Easing');
+    // The Keys section wraps the table.
+    const keysSection = collect(tree).find((node) => node.props?.['aria-label'] === 'Keys');
+    expect(keysSection).toBeDefined();
 
-    // 261108-gh0 UAT: property-only mode ALSO shows the row — the motion-wide
-    // handle — and its selection applies to every key of the motion.
-    const propertySet = vi.fn((): string | null => null);
-    const propertyTree = renderModal({
-      dialog: signal({
-        ...partialBundle(),
-        motionEasing: motionEasingHandle('ease', propertySet),
-      }),
-    });
+    // 261108-gh0 UAT: property-only mode ALSO shows the table — the motion-wide
+    // handle. There is no key, so the per-key target is inert.
+    const propertyTree = renderModal({ dialog: signal(partialBundle()) });
     const propertyControl = collect(propertyTree).find(
       (node) => node.type === PhysicsPaintRailMotionEasingControl,
     );
-    expect(propertyControl, 'property mode still shows the easing row').toBeDefined();
+    expect(propertyControl, 'property mode still shows the easing table').toBeDefined();
     expect(propertyControl!.props?.value).toBe('ease');
-    (propertyControl!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('stop-motion');
-    expect(propertySet).toHaveBeenCalledWith('stop-motion');
-    const propertyRow = collect(propertyTree).find(
-      (node) => node.props?.class === 'physics-paint-motion-easing',
-    );
-    expect(propertyRow).toBeDefined();
-    expect(collect(propertyRow).find(
-      (node) => node.props?.class === 'physics-paint-roto-key-icon-label',
-    )!.props?.children).toBe('Easing (all keys)');
+    expect(propertyControl!.props?.keyFrame).toBeNull();
+    expect(collect(propertyTree).find(
+      (node) => node.props?.['aria-label'] === 'Keys',
+    )).toBeDefined();
   });
 
   it('routes an easing rejection through the modal ONE role="alert" (261108-d5o)', () => {
@@ -515,7 +501,10 @@ describe('261107-qgj floating Motion modal', () => {
       (node) => node.type === PhysicsPaintRailMotionEasingControl,
     );
     expect(control).toBeDefined();
-    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('ease');
+    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing, target: 'key' | 'all') => void)(
+      'ease',
+      'key',
+    );
 
     const second = renderModal({ dialog });
     const alerts = collect(second).filter((node) => node.props?.role === 'alert');
@@ -527,26 +516,35 @@ describe('261107-qgj floating Motion modal', () => {
     )?.props?.value).toBe('hold');
   });
 
-  it('renders Apply to all keys ONLY in key mode and commits the displayed token (261108-gh0)', () => {
+  it('the All target commits the displayed token in BOTH modes (261108-gh0 UAT)', () => {
     const applyAll = vi.fn((): string | null => null);
     const dialog = signal<RailMotionDialogBundle | null>(
       keyModeBundle(() => null, 'linear', applyAll),
     );
     const tree = renderModal({ dialog });
-    const button = collect(tree).find(
-      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+    const control = collect(tree).find(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
     );
-    expect(button, 'key mode renders the apply-all row').toBeDefined();
-    expect(textOf(button!)).toBe('Apply to all keys');
-    click(button!);
+    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing, target: 'key' | 'all') => void)(
+      'linear',
+      'all',
+    );
     expect(applyAll).toHaveBeenCalledTimes(1);
     expect(applyAll).toHaveBeenCalledWith('linear');
 
-    // Property-only mode renders NOTHING extra — no disabled row either.
-    const propertyOnly = renderModal({ dialog: signal(partialBundle()) });
-    expect(collect(propertyOnly).some(
-      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
-    )).toBe(false);
+    // Property mode has no key, but the All target still writes the motion.
+    const propertyApply = vi.fn((): string | null => null);
+    const propertyTree = renderModal({
+      dialog: signal({ ...partialBundle(), applyEasingToAllKeys: propertyApply }),
+    });
+    const propertyControl = collect(propertyTree).find(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
+    );
+    (propertyControl!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing, target: 'key' | 'all') => void)(
+      'hold',
+      'all',
+    );
+    expect(propertyApply).toHaveBeenCalledWith('hold');
   });
 
   it('routes an apply-all rejection through the modal ONE role="alert" (261108-gh0)', () => {
@@ -555,17 +553,20 @@ describe('261107-qgj floating Motion modal', () => {
       keyModeBundle(() => null, 'hold', applyAll),
     );
     const first = renderModal({ dialog });
-    click(collect(first).find(
-      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
-    )!);
+    (collect(first).find(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
+    )!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing, target: 'key' | 'all') => void)(
+      'hold',
+      'all',
+    );
 
     const second = renderModal({ dialog });
     const alerts = collect(second).filter((node) => node.props?.role === 'alert');
     expect(alerts).toHaveLength(1);
     expect(alerts[0].props?.children).toBe('There are no Motion keys to change.');
-    // The apply-all row survives the rejection.
+    // The Keys section survives the rejection.
     expect(collect(second).some(
-      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
+      (node) => node.props?.['aria-label'] === 'Keys',
     )).toBe(true);
   });
 
@@ -665,20 +666,17 @@ describe('261107-qgj floating Motion modal', () => {
     const scale = indexOf(
       (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Scale',
     );
-    const easing = indexOf((node) => node.props?.class === 'physics-paint-motion-easing');
-    const applyAll = indexOf(
-      (node) => node.props?.['data-testid'] === 'physics-rail-motion-apply-all-easing',
-    );
-    const firstWiggle = indexOf(
-      (node) => node.type === SliderStepper && node.props?.ariaLabel === 'Position X wiggle',
-    );
+    const position = indexOf((node) => node.props?.['aria-label'] === 'Position');
+    const keys = indexOf((node) => node.props?.['aria-label'] === 'Keys');
+    const wiggle = indexOf((node) => node.props?.['aria-label'] === 'Wiggle');
     const alert = indexOf((node) => node.props?.role === 'alert');
 
-    expect(scale).toBeGreaterThan(-1);
-    expect(scale).toBeLessThan(easing);
-    expect(easing).toBeLessThan(applyAll);
-    expect(applyAll).toBeLessThan(firstWiggle);
-    expect(firstWiggle).toBeLessThan(alert);
+    // 261108-gh0 UAT: three bordered sections, in order, alert last.
+    expect(position).toBeGreaterThan(-1);
+    expect(scale).toBeGreaterThan(position);
+    expect(position).toBeLessThan(keys);
+    expect(keys).toBeLessThan(wiggle);
+    expect(wiggle).toBeLessThan(alert);
   });
 
   it('the close button calls the ONE close path and its pointerdown never starts a drag', () => {
@@ -850,19 +848,24 @@ describe('261107-qgj floating Motion modal', () => {
     );
   });
 
-  it('pins the apply-all, Wiggle and labelled Reset surfaces in source and CSS (261108-gh0)', () => {
-    expect(MODAL_SOURCE).toContain('data-testid="physics-rail-motion-apply-all-easing"');
-    expect(MODAL_SOURCE).toContain('Apply to all keys');
-    expect(MODAL_SOURCE).toContain('applyToAllKeys(keyEasing.easing)');
+  it('pins the sections, easing targets, Wiggle and labelled Reset surfaces in source and CSS (261108-gh0)', () => {
+    // Three bordered sections: Position, Keys, Wiggle.
+    expect(MODAL_SOURCE).toContain('class="physics-paint-motion-section"');
+    expect(MODAL_SOURCE).toContain('aria-label="Position"');
+    expect(MODAL_SOURCE).toContain('aria-label="Keys"');
+    expect(MODAL_SOURCE).toContain('aria-label="Wiggle"');
+    // One row, two targets: the key write and the motion-wide write.
+    expect(MODAL_SOURCE).toContain("target === 'key'");
+    expect(MODAL_SOURCE).toContain('applyToAllKeys?.(easing)');
     expect(MODAL_SOURCE).toContain('data-motion-wiggle-global={row.channelId}');
     expect(MODAL_SOURCE).toContain('row.setWiggle(value)');
     expect(MODAL_SOURCE).toContain('row.setWiggleGlobal(!row.wiggleGlobal)');
     expect(MODAL_SOURCE).toContain('physics-paint-stroke-settings-header-button--labelled');
-    // The sheet body rhythm is untouched (15px).
-    expect(MODAL_SOURCE).toContain("gap: '15px'");
 
     expect(STUDIO_CSS).toContain('.physics-paint-stroke-settings-header-button--labelled {');
-    expect(STUDIO_CSS).toContain('.physics-paint-motion-apply-all {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-section {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-easing-table {');
+    expect(STUDIO_CSS).toContain('.physics-paint-motion-easing-target {');
     expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-row {');
     expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-global {');
     expect(STUDIO_CSS).toContain('.physics-paint-motion-wiggle-global[aria-pressed="true"]');

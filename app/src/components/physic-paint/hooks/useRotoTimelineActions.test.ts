@@ -5982,15 +5982,16 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     const harness = actionsHarness();
     const port = requireRailMotionDialogPort(harness.actions);
 
-    // Property-only mode renders no apply-all, mirroring the easing row.
+    // 261108-gh0 UAT: the ALL target is always available — the motion-wide
+    // write is no longer gated on a key being selected.
     selectRailMotionChannel('scale');
-    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeNull();
+    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeTypeOf('function');
 
     // A key selection while a property is also selected stays property mode.
     selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
-    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeNull();
+    expect(port.railMotionDialog.value?.applyEasingToAllKeys).toBeTypeOf('function');
 
-    // Key mode: apply-all opens beside the per-key easing row.
+    // Key mode still exposes it beside the per-key target.
     exitRailMotionEditing();
     const bundle = port.railMotionDialog.value;
     if (bundle === null || bundle.applyEasingToAllKeys === null) {

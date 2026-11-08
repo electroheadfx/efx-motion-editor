@@ -3192,15 +3192,16 @@ describe('261108-gh0: Motion easing and Wiggle left the tool strip (spec 3)', ()
     expect(actions.split('physicPaintStore.replaceRotoPhysicalRailMotions(').length - 1).toBe(1);
   });
 
-  it('keeps the shared easing button styling for the Motion sheet host (261108-d5o)', () => {
+  it('keeps the shared easing table styling for the Motion sheet host (261108-d5o/gh0)', () => {
     const styles = css();
-    expect(styles).toContain('.physics-paint-motion-easing {');
-    expect(styles).toContain(
-      '.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"]',
-    );
+    expect(styles).toContain('.physics-paint-motion-easing-table {');
+    expect(styles).toContain('.physics-paint-motion-easing-target {');
     // The tint lives in the existing #3a424c button palette, never a new token
     // and never an un-scoped aria-pressed rule.
-    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button[data-rail-motion-easing]'))
+    expect(getCssRuleBlock(styles, '.physics-paint-motion-easing-target'))
+      .toContain('#2a3540');
+    // The pressed tint stays inside the existing #3a424c palette.
+    expect(getCssRuleBlock(styles, '.physics-paint-motion-easing-target[aria-pressed="true"]'))
       .toContain('#3a424c');
     expect(styles).not.toMatch(/(^|\n)\[aria-pressed="true"\]/);
   });

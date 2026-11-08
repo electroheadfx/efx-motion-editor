@@ -66,10 +66,10 @@ const BODY_STYLE: CSSProperties = {
   flex: '1 1 auto',
   overflowY: 'auto',
   padding: '10px 12px 12px',
-  // The Stroke settings geometry rhythm: one row every 15px.
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '15px',
+  // 261108-gh0 UAT: the body stacks bordered SECTIONS, each owning a 15px
+  // vertical margin. A block container collapses adjacent vertical margins to
+  // one 15px gap; a flex column would add them into 30px.
+  display: 'block',
 };
 
 /**
@@ -363,94 +363,96 @@ export function PhysicsPaintRailMotionModal({
       </div>
 
       <div style={BODY_STYLE}>
-        {bundle.presentation.fields
-          .filter((field) => field.present)
-          .map((field) => {
-            const range = MOTION_SLIDER_RANGE[field.channelId];
-            // The plain wrapper mirrors the Stroke settings rows: SliderStepper
-            // carries `flex: 1 1 0`, so as a direct flex-column child it would
-            // grow to fill the sheet instead of hugging its own two lines.
-            return (
-              <div key={field.channelId} class="physics-paint-motion-field">
-                <SliderStepper
-                  key={`${field.channelId}:${rejectionSeq}`}
-                  label={`${field.label} (${field.unit})`}
-                  ariaLabel={field.label}
-                  value={field.value}
-                  min={range.min}
-                  max={range.max}
-                  step={1}
-                  precision={3}
-                  freeEntry
-                  allowOutOfRangeEntry
-                  commitOnRelease
-                  onChange={(value) => commitValue(field.channelId, value)}
-                />
-              </div>
-            );
-          })}
+        <section class="physics-paint-motion-section" aria-label="Position">
+          <span class="physics-paint-motion-section-title">Position</span>
+          {bundle.presentation.fields
+            .filter((field) => field.present)
+            .map((field) => {
+              const range = MOTION_SLIDER_RANGE[field.channelId];
+              // The plain wrapper mirrors the Stroke settings rows: SliderStepper
+              // carries `flex: 1 1 0`, so as a direct flex-column child it would
+              // grow to fill the sheet instead of hugging its own two lines.
+              return (
+                <div key={field.channelId} class="physics-paint-motion-field">
+                  <SliderStepper
+                    key={`${field.channelId}:${rejectionSeq}`}
+                    label={`${field.label} (${field.unit})`}
+                    ariaLabel={field.label}
+                    value={field.value}
+                    min={range.min}
+                    max={range.max}
+                    step={1}
+                    precision={3}
+                    freeEntry
+                    allowOutOfRangeEntry
+                    commitOnRelease
+                    onChange={(value) => commitValue(field.channelId, value)}
+                  />
+                </div>
+              );
+            })}
+        </section>
         {rowEasing !== null ? (
-          <div
-            class="physics-paint-motion-easing"
-            role="group"
-            aria-label="Motion easing"
-          >
-            <span class="physics-paint-roto-key-icon-label">{rowEasing.label}</span>
+          <section class="physics-paint-motion-section" aria-label="Keys">
+            <span class="physics-paint-motion-section-title">Keys</span>
             <PhysicsPaintRailMotionEasingControl
               value={rowEasing.easing}
-              onSelect={(easing: PhysicPaintRotoRailMotionEasing) => {
-                reportReason(rowEasing.set(easing));
+              keyFrame={keyEasing?.frame ?? null}
+              onSelect={(
+                easing: PhysicPaintRotoRailMotionEasing,
+                target: 'key' | 'all',
+              ) => {
+                // One row, two targets: `key` writes the selected key, `all`
+                // writes every key of the motion — same command authority.
+                const rejection = target === 'key'
+                  ? keyEasing?.set(easing) ?? null
+                  : applyToAllKeys?.(easing) ?? bundle.motionEasing?.set(easing) ?? null;
+                if (rejection !== null) reportReason(rejection);
               }}
-              disabled={false}
             />
-          </div>
+          </section>
         ) : null}
-        {keyEasing !== null && applyToAllKeys !== null ? (
-          <button
-            type="button"
-            class="physics-paint-motion-apply-all"
-            data-testid="physics-rail-motion-apply-all-easing"
-            onClick={() => reportReason(applyToAllKeys(keyEasing.easing))}
-          >
-            Apply to all keys
-          </button>
-        ) : null}
-        {bundle.channels.map((row) => (
-          // The rejection sequence remounts the rejected row at the projected
-          // value, exactly like the numeric fields above.
-          <div
-            key={`${row.channelId}:${rejectionSeq}`}
-            class="physics-paint-motion-field physics-paint-motion-wiggle"
-          >
-            <div class="physics-paint-motion-wiggle-row">
-              <SliderStepper
-                label={`${row.label} wiggle`}
-                ariaLabel={`${row.label} wiggle`}
-                value={row.wiggle}
-                min={0}
-                max={1000000}
-                step={1}
-                precision={0}
-                freeEntry
-                allowOutOfRangeEntry
-                commitOnRelease
-                onChange={(value) => reportReason(row.setWiggle(value))}
-              />
-              <button
-                type="button"
-                class="physics-paint-roto-key-icon-button physics-paint-motion-wiggle-global"
-                data-motion-wiggle-global={row.channelId}
-                aria-pressed={row.wiggleGlobal ? 'true' : 'false'}
-                title={row.wiggleGlobal
-                  ? 'Wiggle applies to the whole rail — click for the per-key span wiggle'
-                  : 'Wiggle follows each key span — click to apply it to the whole rail'}
-                onClick={() => reportReason(row.setWiggleGlobal(!row.wiggleGlobal))}
+        {bundle.channels.length > 0 ? (
+          <section class="physics-paint-motion-section" aria-label="Wiggle">
+            <span class="physics-paint-motion-section-title">Wiggle</span>
+            {bundle.channels.map((row) => (
+              // The rejection sequence remounts the rejected row at the
+              // projected value, exactly like the numeric fields above.
+              <div
+                key={`${row.channelId}:${rejectionSeq}`}
+                class="physics-paint-motion-field physics-paint-motion-wiggle"
               >
-                Global
-              </button>
-            </div>
-          </div>
-        ))}
+                <div class="physics-paint-motion-wiggle-row">
+                  <SliderStepper
+                    label={`${row.label} wiggle`}
+                    ariaLabel={`${row.label} wiggle`}
+                    value={row.wiggle}
+                    min={0}
+                    max={1000000}
+                    step={1}
+                    precision={0}
+                    freeEntry
+                    allowOutOfRangeEntry
+                    commitOnRelease
+                    onChange={(value) => reportReason(row.setWiggle(value))}
+                  />
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button physics-paint-motion-wiggle-global"
+                    data-motion-wiggle-global={row.channelId}
+                    aria-pressed={row.wiggleGlobal ? 'true' : 'false'}
+                    title={row.wiggleGlobal
+                      ? 'Wiggle applies to the whole rail — click for the per-key span wiggle'
+                      : 'Wiggle follows each key span — click to apply it to the whole rail'}
+                    onClick={() => reportReason(row.setWiggleGlobal(!row.wiggleGlobal))}
+                  >
+                    Global
+                  </button>
+                </div>
+              </div>
+            ))}
+          </section>
+        ) : null}
         {reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{reason}</p>
         ) : null}

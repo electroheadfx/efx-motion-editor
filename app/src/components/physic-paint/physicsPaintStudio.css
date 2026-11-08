@@ -4455,44 +4455,109 @@ button.destructive {
 /* 261108-d5o: the shared four-glyph easing control's sheet row. One compact
    line matching the modal body's 15px row rhythm (the `.physics-paint-motion-
    field` wrapper is markup-only — it has no rule to borrow). */
-.physics-paint-motion-easing {
+/* 261108-gh0 UAT: one bordered box per group (Position / Keys / Wiggle).
+   15px above and below each box; the body is a block container so adjacent
+   vertical margins collapse to a single 15px gap instead of stacking. */
+.physics-paint-motion-section {
   display: flex;
-  align-items: center;
-  gap: 15px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin: 15px 0;
+  border: 1px solid #3a4652;
+  border-radius: 6px;
+  background: rgba(42, 53, 64, 0.35);
 }
 
-/* The current easing. Scoped to the control's own data attribute so no other
-   aria-pressed button inherits it; the tint stays inside the existing button
-   palette (#3a424c base / #6f90ff accent) — no new tokens, no global rule. */
-.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"] {
+.physics-paint-motion-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #9aa5b1;
+  text-transform: none;
+}
+
+/* The four-row easing table: marker, icon, name, per-key target, all-keys
+   target. `auto auto` keeps both buttons hugging their own text. */
+.physics-paint-motion-easing-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.physics-paint-motion-easing-row {
+  display: grid;
+  grid-template-columns: 10px 16px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.physics-paint-motion-easing-current {
+  font-size: 10px;
+  line-height: 1;
+  color: #6f90ff;
+  text-align: center;
+}
+
+.physics-paint-motion-easing-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b9c3ce;
+}
+
+.physics-paint-motion-easing-row[data-active="true"] .physics-paint-motion-easing-icon {
+  color: #6f90ff;
+}
+
+.physics-paint-motion-easing-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b9c3ce;
+}
+
+.physics-paint-motion-easing-row[data-active="true"] .physics-paint-motion-easing-name {
+  color: #e5edf8;
+}
+
+/* The [Key N] / [All] targets. They inherit the global button caps rule, so
+   they opt out explicitly — these are content labels, not caps tags. */
+.physics-paint-motion-easing-target {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #3a4652;
+  border-radius: 5px;
+  background: #2a3540;
+  color: #b9c3ce;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.physics-paint-motion-easing-target:hover:not([aria-disabled="true"]) {
+  background: #35424f;
+  color: #e5edf8;
+}
+
+.physics-paint-motion-easing-target[aria-pressed="true"] {
   border-color: #6f90ff;
   background: #3a424c;
   color: #ffffff;
 }
 
-/* 261108-gh0: the sheet's apply-all row. A secondary button on the motion body
-   rhythm — same chrome family as the header buttons, full-width so it reads as
-   a row rather than a floating chip. */
-.physics-paint-motion-apply-all {
-  align-self: stretch;
-  min-height: 24px;
-  padding: 0 10px;
-  border: 1px solid #3a4652;
-  border-radius: 6px;
-  background: #2a3540;
-  color: #b9c3ce;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
+.physics-paint-motion-easing-target[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
 }
 
-.physics-paint-motion-apply-all:hover {
-  background: #35424f;
-  color: #e5edf8;
-}
-
-.physics-paint-motion-apply-all:focus-visible {
+.physics-paint-motion-easing-target:focus-visible {
   outline: 2px solid #5a87ff;
   outline-offset: 1px;
 }
@@ -6189,6 +6254,11 @@ button.destructive {
   /* Opt out of the global `button { text-transform: uppercase }` rule: the
      label is a word, not a caps tag. */
   text-transform: none;
+  /* 261108-gh0 UAT: the word read too heavy beside the 22px icon — it sits at
+     body-label metrics now, not heading weight. */
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 /* 261101-mvg: the Move/Edit "Preview stroke size" switch. It shares the 22px

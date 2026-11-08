@@ -445,6 +445,9 @@ export function TimelineMotionChannelLane({
             <Icon
               size={TIMELINE_MOTION_KEY_ICON_SIZE}
               strokeWidth={2.25}
+              // 261108-gh0 UAT: Lucide ships OUTLINE glyphs; the lane keys must
+              // read as solid, so the shape is filled with the same colour.
+              fill="currentColor"
               aria-hidden="true"
               style={{ pointerEvents: 'none', color: palette.keyFill, flex: '0 0 auto' }}
             />
