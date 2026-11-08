@@ -26,6 +26,7 @@ import {
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
+  reconcilePhysicPaintRotoGroupFrames,
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
@@ -1211,19 +1212,32 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   }
   const canonicalIncomingInterpolationBreakKeyIds = proposal.nextIncomingInterpolationBreakKeyIds
     ?? input.currentIncomingInterpolationBreakKeyIds;
+  // 58-09 (G-01) write-path parity: the CHILD bounds every staged edit to the
+  // source-derived extent (reconcilePhysicPaintRotoGroupFrames) before it
+  // stages. The parent must recompute that same bound, or a stale clip — a
+  // stored end past its surviving sources — rejects EVERY following edit on
+  // the track as a loop-clip mismatch (261108-pmc UAT).
+  const reconciledCanonical = reconcilePhysicPaintRotoGroupFrames({
+    loopClips: canonicalLoopClips,
+    identities: canonicalRecords.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+    groupOverrideRecords: canonicalGroupOverrideRecords,
+    capacity: input.capacity,
+  });
+  const finalLoopClips = reconciledCanonical.loopClips;
+  const finalGroupOverrideRecords = reconciledCanonical.groupOverrideRecords;
   const canonicalRevision = buildPhysicPaintRotoPhysicalRevision(
     canonicalRecords,
     input.currentInterpolation,
-    canonicalLoopClips,
+    finalLoopClips,
     canonicalIncomingInterpolationBreakKeyIds,
-    canonicalGroupOverrideRecords,
+    finalGroupOverrideRecords,
     input.proposedRailMotions,
   );
   if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)) return canonicalMismatch('records');
-  if (!sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)) {
+  if (!sameCompletePhysicalRecords(finalGroupOverrideRecords, input.proposedGroupOverrideRecords)) {
     return canonicalMismatch('group-override-records');
   }
-  if (!sameCanonicalLoopClips(canonicalLoopClips, input.proposedLoopClips)) return canonicalMismatch('loop-clips');
+  if (!sameCanonicalLoopClips(finalLoopClips, input.proposedLoopClips)) return canonicalMismatch('loop-clips');
   if (canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
     || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])) {
     return canonicalMismatch('interpolation-breaks');
