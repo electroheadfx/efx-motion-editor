@@ -2336,6 +2336,151 @@ async function settleGroupRepeatThroughPublicController(
   return { document, publication, settlementAcknowledged: setupHarness.releaseLease.mock.calls.length > 0 };
 }
 
+/**
+ * 261108-o9d: drive the REAL Key Rail create path (createRotoPlayScriptController)
+ * against the REAL coordinator, so the confirm crosses the coordinator's single
+ * physical-edit slot — the exact seam where the reported
+ * "Group update was not dispatched." copy is produced.
+ *
+ * The commit adapter mirrors useRotoPlayScriptController's commit closure
+ * (`dispatchAndWaitForPlayScriptSettlement` + `formatPhysicalCommitFailure`,
+ * both module-private there): a dispatch that returns false before
+ * `pendingOperationId` is minted is reported with the bare not-dispatched copy.
+ * On success it settles through the harness and releases the accepted lease,
+ * exactly like the production adapter does after `acknowledgePhysicalEditSettlement`.
+ */
+async function driveKeyRailCycleThroughPublicController(
+  setupHarness: ReturnType<typeof harness>,
+  input: { keyIds: readonly string[]; repeat: number; holdConfirm?: boolean },
+): Promise<{
+  controller: ReturnType<typeof createRotoPlayScriptController>;
+  confirmPromise: Promise<boolean>;
+  confirmed: boolean | null;
+  commitResults: RotoPlayScriptCommitResult[];
+  publications: RotoGeneratedPhysicalPublication[];
+}> {
+  const publications: RotoGeneratedPhysicalPublication[] = [];
+  const commitResults: RotoPlayScriptCommitResult[] = [];
+  const log = vi.fn();
+  const library = {
+    selectedId: signal<string | null>(null),
+    selected: signal<{ id: string } | null>(null),
+    busy: signal(false),
+    loadSnapshot: vi.fn(),
+  } as unknown as RotoPlayScriptControllerPorts['library'];
+  const commit = async (publication: RotoGeneratedPhysicalPublication): Promise<RotoPlayScriptCommitResult> => {
+    if (publication.semanticDelta.kind !== 'play-script') throw new Error('Expected a loop-only Play Script publication.');
+    publications.push(publication);
+    const currentDocument = setupHarness.getCanonicalDocument();
+    expect(publication.expectedRevision).toBe(currentDocument.revision);
+    let expectedOperationId = setupHarness.coordinator.pendingOperationId.peek();
+    const stopCapture = setupHarness.coordinator.pendingOperationId.subscribe((operationId) => {
+      if (expectedOperationId === null && operationId !== null) expectedOperationId = operationId;
+    });
+    try {
+      const executed = await setupHarness.coordinator.executePhysicalEdit({
+        operationKind: 'play-script',
+        expectedLaunch: publication.expectedLaunch,
+        expectedRevision: currentDocument.revision,
+        records: publication.records,
+        interpolationEnabled: publication.interpolationEnabled,
+        interpolationMode: publication.interpolationMode,
+        rotoBackground: publication.rotoBackground,
+        semanticDelta: publication.semanticDelta,
+        selectedKeyId: publication.selectedKeyId,
+        selectedAppFrame: publication.selectedAppFrame,
+        ...(publication.loopClips ? { loopClips: publication.loopClips } : {}),
+      });
+      if (!executed) {
+        // Production order (dispatchAndWaitForPlayScriptSettlement): after a
+        // dispatch that returned false, a settlement already carrying the
+        // captured operation id wins; otherwise the no-failure/no-timeout
+        // settlement formats as the bare not-dispatched copy.
+        const existingAccepted = setupHarness.coordinator.acceptedOutput.peek();
+        if (existingAccepted?.operationId === expectedOperationId) throw new Error('Unexpected pre-existing accepted settlement.');
+        const existingFailure = setupHarness.coordinator.failureOutput.peek();
+        if (existingFailure?.operationId === expectedOperationId) throw new Error('Unexpected pre-existing failed settlement.');
+        const result: RotoPlayScriptCommitResult = { ok: false, error: 'Group update was not dispatched.' };
+        commitResults.push(result);
+        return result;
+      }
+      const acceptance = setupHarness.accept();
+      if (acceptance !== 'accepted') throw new Error(`Coordinator returned ${acceptance} for the Key Rail cycle settlement.`);
+      const accepted = setupHarness.coordinator.acceptedOutput.value;
+      if (!accepted) throw new Error('Expected an accepted Key Rail cycle settlement.');
+      expect(accepted.operationKind).toBe('play-script');
+      expect(setupHarness.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+      const result: RotoPlayScriptCommitResult = {
+        ok: true,
+        operationId: accepted.operationId,
+        acceptedRevision: accepted.acceptedRevision,
+        records: accepted.after.records,
+        interpolationMode: accepted.after.interpolation.mode,
+        selectedKeyId: accepted.after.selectedKeyId,
+        selectedAppFrame: accepted.after.selectedAppFrame,
+        ...(publication.loopClips ? { loopClips: accepted.after.loopClips } : {}),
+      };
+      commitResults.push(result);
+      return result;
+    } finally {
+      stopCapture();
+    }
+  };
+  const controller = createRotoPlayScriptController({
+    library,
+    getLaunchContext: () => ({
+      operationId: 'launch-1',
+      layerId: 'layer-1',
+      startFrame: 0,
+      width: 10,
+      height: 10,
+      project: { name: 'Project', saved: true, contextId: 'project-1' },
+    }),
+    getActiveTrackId: () => 'track-1',
+    getSelection: () => ({ kind: 'empty', keyId: null, appFrame: setupHarness.getStudioSelection().cursorAppFrame }),
+    getMotion: () => ({ deformation: 0, position: 0 }),
+    getBrushColor: () => '#000000',
+    getBackgroundMetadata: () => ({ background: 'canvas1', grainStrength: 0.45 }),
+    getOperationLocked: () => false,
+    getSize: () => ({ width: 10, height: 10 }),
+    getRotoLoopClips: () => setupHarness.getCanonicalDocument().loopClips,
+    getLoopEditSnapshot: () => null,
+    getPhysicalDocument: () => setupHarness.getCanonicalDocument(),
+    requestAuthority: async (operationId, start): Promise<PhysicPaintRotoAuthorityResult> => {
+      const document = setupHarness.getCanonicalDocument();
+      return {
+        operationId,
+        ok: true,
+        projectContextId: 'project-1',
+        layerId: 'layer-1',
+        trackId: 'track-1',
+        trackRevision: document.revision,
+        documentRevision: document.revision,
+        canonicalStart: start,
+        layerEndExclusive: document.capacity,
+        capacity: document.capacity,
+        physicalCapacity: document.capacity,
+        rotoRevision: document.revision,
+        physicalRevision: document.revision,
+        physicalRecords: document.realKeyRecords.map(({ keyId, appFrame, payload }) => ({ keyId, appFrame, payload })),
+        interpolationEnabled: document.interpolation.enabled,
+        interpolationMode: document.interpolation.mode,
+        frames: [],
+        interpolationSettings: { enabled: false, inBetweenCount: 0, mode: 'duplicate', deform: 0, position: 0 },
+      };
+    },
+    commit,
+    stopPlayback: vi.fn(),
+    log,
+  });
+  const opened = await controller.openKeyRailCycleEdit({ firstKeyId: input.keyIds[0]!, keyIds: input.keyIds });
+  if (!opened.ok) throw new Error(opened.reason ?? 'Key Rail cycle edit was refused without a reason.');
+  controller.repeatText.value = String(input.repeat);
+  const confirmPromise = controller.confirm();
+  const confirmed = input.holdConfirm ? null : await confirmPromise;
+  return { controller, confirmPromise, confirmed, commitResults, publications };
+}
+
 async function spacingInfinityFiniteGroupDragHistoryDocument(
   spacingHarness = harness(),
 ) {
@@ -4842,5 +4987,104 @@ describe('Phase 58 G-01 stale-cycle write repair', () => {
     // invalid empty-range lifecycle.
     const accepted = test.getCanonicalDocument();
     expect(accepted.loopClips).toEqual(unfixable.loopClips);
+  });
+});
+
+// 261108-o9d — one real key at frame 0 on a bare Key Rail, Create Cycle.
+// Reported: Cycle = 10 fails with "Group update was not dispatched." while
+// Cycle = 9 applies and a later re-edit to 10 also applies. The parent/child
+// capacity hypothesis is refuted: the create is repeat-independent, and the
+// reported copy is the settlement's no-failure/no-timeout branch produced when
+// executePhysicalEdit refuses before minting pendingOperationId. These rows
+// drive the REAL controller against the REAL coordinator at that seam.
+describe('261108-o9d Key Rail cycle create behind the physical-edit slot', () => {
+  const KEY_IDS = ['A'] as const;
+  const SERIALIZE_MESSAGE = 'A Roto physical edit is already in flight.';
+  const NOT_DISPATCHED = 'Group update was not dispatched.';
+
+  function expectCreatedCycle(
+    document: ReturnType<ReturnType<typeof harness>['getCanonicalDocument']>,
+    repeat: number,
+    endExclusive: number,
+  ) {
+    expect(document.loopClips).toHaveLength(1);
+    const clip = document.loopClips[0]!;
+    expect(clip).toMatchObject({
+      placementStart: 0,
+      sourceKeyIds: ['A'],
+      repeat,
+      mode: 'progressive',
+      phaseOrigin: 0,
+      originalEndExclusive: endExclusive,
+      visibleRanges: [{ start: 0, endExclusive }],
+      frameOverrides: [],
+    });
+    return clip;
+  }
+
+  it('creates Cycle 10 from one key at frame 0 with exactly one physical commit (user row)', async () => {
+    const setupHarness = harness({ capacity: 600, parentEndExclusive: 600, dropLoopClips: true });
+    const result = await driveKeyRailCycleThroughPublicController(setupHarness, { keyIds: KEY_IDS, repeat: 10 });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.controller.phase.value).toBe('complete');
+    expect(result.publications).toHaveLength(1);
+    expect(result.commitResults).toEqual([expect.objectContaining({ ok: true })]);
+    expect(setupHarness.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    const accepted = setupHarness.coordinator.acceptedOutput.value;
+    expect(accepted?.operationKind).toBe('play-script');
+    expect(accepted?.after.loopClips).toEqual(setupHarness.getCanonicalDocument().loopClips);
+    expectCreatedCycle(setupHarness.getCanonicalDocument(), 10, 10);
+  });
+
+  it('creates Cycle 9 from the same Key Rail (control row)', async () => {
+    const setupHarness = harness({ capacity: 600, parentEndExclusive: 600, dropLoopClips: true });
+    const result = await driveKeyRailCycleThroughPublicController(setupHarness, { keyIds: KEY_IDS, repeat: 9 });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.publications).toHaveLength(1);
+    expectCreatedCycle(setupHarness.getCanonicalDocument(), 9, 9);
+  });
+
+  it('commits Cycle 100 shortened to capacity 30 instead of refusing (clamp law)', async () => {
+    const setupHarness = harness({ capacity: 30, parentEndExclusive: 30, dropLoopClips: true });
+    const result = await driveKeyRailCycleThroughPublicController(setupHarness, { keyIds: KEY_IDS, repeat: 100 });
+
+    expect(result.confirmed).toBe(true);
+    expect(result.publications).toHaveLength(1);
+    const clip = expectCreatedCycle(setupHarness.getCanonicalDocument(), 100, 30);
+    expect(clip.originalEndExclusive).toBe(30);
+  });
+
+  it('reproduces "Group update was not dispatched." while a physical edit is still pending (serialize gate)', async () => {
+    const setupHarness = harness({ capacity: 600, parentEndExclusive: 600, dropLoopClips: true });
+    // The shared fixture's force-spacing proposal republishes its loop clips on
+    // acceptance, which would own key A and turn the retry into an ownership
+    // refusal. Paste-key is an ordinary pending edit and leaves the bare Key
+    // Rail state the report describes: A at frame 0, no Loop Clips.
+    expect(await setupHarness.executePasteKey(14)).toBe(true);
+    expect(setupHarness.coordinator.pendingOperationId.value).not.toBeNull();
+
+    // Captured gate evidence at HEAD (Task 1 reproduction):
+    //   setConciseMessage: 'A Roto physical edit is already in flight.'
+    //   logDiagnostic: (none — the serialize guard refuses before any staging diagnostic)
+    const first = await driveKeyRailCycleThroughPublicController(setupHarness, { keyIds: KEY_IDS, repeat: 10 });
+    expect(first.confirmed).toBe(false);
+    expect(first.controller.error.value).toBe(NOT_DISPATCHED);
+    expect(first.commitResults).toEqual([{ ok: false, error: NOT_DISPATCHED }]);
+    expect(setupHarness.setConciseMessage).toHaveBeenCalledWith(SERIALIZE_MESSAGE);
+    expect(setupHarness.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+
+    // Settle and acknowledge the prior edit, then the same confirm dispatches.
+    expect(setupHarness.accept()).toBe('accepted');
+    const settled = setupHarness.coordinator.acceptedOutput.value;
+    if (!settled) throw new Error('Expected the prior physical edit to settle.');
+    expect(setupHarness.coordinator.acknowledgePhysicalEditSettlement(settled.operationId, 'release')).toBe(true);
+
+    expect(await first.controller.confirm()).toBe(true);
+    expect(first.controller.error.value).toBeNull();
+    expect(first.commitResults.map((entry) => entry.ok)).toEqual([false, true]);
+    expect(setupHarness.sendPhysicalEditPayload).toHaveBeenCalledTimes(2);
+    expectCreatedCycle(setupHarness.getCanonicalDocument(), 10, 10);
   });
 });
