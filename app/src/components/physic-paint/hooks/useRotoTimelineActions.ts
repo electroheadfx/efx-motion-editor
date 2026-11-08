@@ -66,16 +66,19 @@ import { resolveMotionChannelPresence, type RailMotionDisplayLaneId } from '../v
 import { exitRailMotionEditing, railMotionSelectedChannel } from '../view/railMotionEditingMode';
 
 /**
- * 261108-gh0 UAT: the representative channel a display lane folds to. Property
- * mode has no selected key, so the motion-wide easing row reads the FIRST
- * stored key of this channel; `set` still writes every key of the motion.
+ * 261108-gh0 UAT: the model channels a display lane folds to, in priority
+ * order. Property mode has no key selection, so the sheet targets the FIRST
+ * channel of this lane that carries a key under the playhead.
  */
-const RAIL_MOTION_LANE_FIRST_CHANNEL = {
-  position: 'position-x',
-  scale: 'scale',
-  rotation: 'rotation',
-  opacity: 'opacity',
-} as const satisfies Record<RailMotionDisplayLaneId, PhysicPaintRotoRailMotionChannelId>;
+const RAIL_MOTION_LANE_CHANNELS = {
+  position: ['position-x', 'position-y'],
+  scale: ['scale'],
+  rotation: ['rotation'],
+  opacity: ['opacity'],
+} as const satisfies Record<
+  RailMotionDisplayLaneId,
+  readonly PhysicPaintRotoRailMotionChannelId[]
+>;
 import {
   addMotionChannel as applyAddMotionChannel,
   animateRail,
@@ -3270,6 +3273,46 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   /**
+   * 261108-gh0 UAT: the sheet's property mode has no rail-motion KEY SELECTION,
+   * yet the user must still be able to retune the key under the playhead. This
+   * is the same write authority as `commitSelectedMotionKeyEasing`, addressed
+   * by an explicit channel + frame instead of the selection signal.
+   */
+  const commitMotionKeyEasingAtFrame = useCallback((
+    channelId: PhysicPaintRotoRailMotionChannelId,
+    keyFrame: number,
+    easing: PhysicPaintRotoRailMotionEasing,
+  ): string | null => {
+    const fail = (reason: string): string => {
+      publishMotionFailure(input, reason);
+      return reason;
+    };
+    const state = readActiveRailMotionState(input);
+    if (state === null || state.record === null) return fail('Select a rail with Motion first.');
+    const result = applySetMotionKeyEasing({
+      records: state.records,
+      railId: state.record.railId,
+      channelId,
+      keyFrame,
+      easing,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        state.record.railId,
+      ),
+    });
+    if (!result.ok) return fail(result.reason);
+    if (result.records === state.records) {
+      input.publishStatus?.('The Motion collection did not change.');
+      return null;
+    }
+    const written = commitRailMotionRecords(state, result.records, input);
+    if (!written.ok) return fail(written.error);
+    input.publishStatus?.('Motion key easing changed.');
+    return null;
+  }, [input]);
+
+  /**
    * 261108-gh0: the Motion sheet's whole-timeline wiggle write authority. It
    * re-reads the live motion state (a stale modal must never address a rail
    * that moved on), applies the ONE pure channel edit and commits the result
@@ -3365,6 +3408,20 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     // never through this closure.
     const keyMode = !propertySelected && selection !== null
       && selection.railId === state.record.railId;
+    // 261108-gh0 UAT: property mode carries no key SELECTION, so the per-key
+    // target resolves the key sitting under the playhead in the selected lane.
+    // That is what makes "[Key 12]" appear (and write only frame 12) without
+    // forcing the user to click the lane first. No key under the playhead =>
+    // null, and the per-key target stays inert.
+    const propertyKey = (() => {
+      if (!propertySelected) return null;
+      for (const channelId of RAIL_MOTION_LANE_CHANNELS[selectedLane]) {
+        const channel = state.record.channels.find((entry) => entry.id === channelId);
+        const key = channel?.keys.find((entry) => entry.frame === state.localCursorFrame);
+        if (key !== undefined) return { channelId, frame: key.frame, easing: key.easing };
+      }
+      return null;
+    })();
     const keyEasing = keyMode
       ? Object.freeze({
         frame: selection.frame,
@@ -3376,16 +3433,22 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
           commitSelectedMotionKeyEasing(easing)
         ),
       })
-      : null;
-    // 261108-gh0 UAT: property mode has no selected key to write, but the user
-    // still needs the easing settings. The row shows the selected lane's first
-    // stored key (falling back to the record's first channel) and `set` applies
-    // the choice to EVERY key of the motion — the same authority as the
-    // key-mode "Apply to all keys" button.
+      : propertyKey !== null
+        ? Object.freeze({
+          frame: propertyKey.frame,
+          easing: propertyKey.easing,
+          set: (easing: PhysicPaintRotoRailMotionEasing): string | null => (
+            commitMotionKeyEasingAtFrame(propertyKey.channelId, propertyKey.frame, easing)
+          ),
+        })
+        : null;
+    // 261108-gh0 UAT: the fallback when no key sits under the playhead. The row
+    // value comes from the lane's first stored key and `set` applies the choice
+    // to EVERY key of the motion.
     const motionEasing = propertySelected
       ? Object.freeze({
         easing: (state.record.channels.find(
-          (channel) => channel.id === RAIL_MOTION_LANE_FIRST_CHANNEL[selectedLane],
+          (channel) => channel.id === RAIL_MOTION_LANE_CHANNELS[selectedLane][0],
         ) ?? state.record.channels[0])?.keys[0]?.easing ?? DEFAULT_RAIL_MOTION_EASING,
         set: (easing: PhysicPaintRotoRailMotionEasing): string | null => (
           commitMotionAllKeysEasing(easing)

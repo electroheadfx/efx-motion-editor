@@ -5902,10 +5902,38 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     expect(replaceSpy).not.toHaveBeenCalled();
   });
 
+  it('targets the key under the playhead in property mode and writes ONLY it (261108-gh0 UAT)', () => {
+    seedMotionRail();
+    const cursor = signal(3);
+    const harness = actionsHarness({ getCurrentAppFrame: () => cursor.value });
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    // Playhead on an empty frame: no key to target, so the per-key button is inert.
+    selectRailMotionChannel('scale');
+    expect(port.railMotionDialog.value?.keyEasing).toBeNull();
+
+    // Playhead on the frame-10 scale key: the sheet targets THAT key.
+    cursor.value = 10;
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null || bundle.keyEasing === null) {
+      throw new Error('expected the property-mode playhead key target');
+    }
+    expect(bundle.keyEasing.frame).toBe(10);
+    expect(bundle.keyEasing.easing).toBe('hold');
+    expect(bundle.keyEasing.set('linear')).toBeNull();
+
+    // Only the addressed key moved; the frame-0 sibling is untouched.
+    expect(storedChannel('scale').keys.find((key) => key.frame === 10)?.easing).toBe('linear');
+    expect(storedChannel('scale').keys.find((key) => key.frame === 0)?.easing).toBe('hold');
+  });
+
   it('routes the surviving easing surface through ONE write authority (261108-d5o)', () => {
+    // 261108-gh0 UAT: two ADDRESSES (the selection, and the property-mode key
+    // under the playhead), both riding the SAME pure command + commit path.
     const authorityCalls = HOOK_SOURCE.split('applySetMotionKeyEasing(').length - 1;
-    expect(authorityCalls, 'one applySetMotionKeyEasing call site').toBe(1);
+    expect(authorityCalls, 'both addresses use the one command').toBe(2);
     expect(HOOK_SOURCE).toContain('const commitSelectedMotionKeyEasing = useCallback(');
+    expect(HOOK_SOURCE).toContain('const commitMotionKeyEasingAtFrame = useCallback(');
     // 261108-gh0: the strip-only action that used to delegate was removed with
     // its last consumer, so the dialog bundle is the ONE remaining delegate.
     expect(HOOK_SOURCE).not.toContain('setSelectedMotionKeyEasing');
@@ -6263,7 +6291,7 @@ describe('261108-d5o hook source contract', () => {
     // Gizmo + setMotionKeyAtCursor + commitRailMotionInspectorValue + the
     // key-mode easing commit + reset — one read each, never a second
     // resolution. (261108-gh0 removed the strip-only per-key Wiggle callback,
-    // so the count dropped from 6 to 5.)
-    expect(accessorCalls).toBe(5);
+    // and added the property-mode key-under-playhead easing commit.)
+    expect(accessorCalls).toBe(6);
   });
 });
