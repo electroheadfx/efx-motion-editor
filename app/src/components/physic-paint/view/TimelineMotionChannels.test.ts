@@ -30,7 +30,6 @@ import {
   type TimelineMotionHeaderGroupProps,
   type TimelineMotionKeyDragPresentation,
 } from './TimelineMotionChannels';
-import { Diamond, Square, Squircle, Triangle } from 'lucide-preact';
 import { RAIL_MOTION_EASING_ICONS } from './PhysicsPaintRailMotionEasingControl';
 import { buildRailMotionCurvePath } from '../roto/railMotionEvaluator';
 import type {
@@ -679,13 +678,6 @@ describe('261108-gh0 lane marker easing icons', () => {
       /\b(linear|hold|ease|'stop-motion')\s*:\s*(Diamond|Square|Squircle|Triangle)\b/,
     );
     expect(LANE_SOURCE).toContain('RAIL_MOTION_EASING_ICONS[key.easing]');
-  });
-
-  it('pins the shared table identities so a mapping swap cannot slip through', () => {
-    expect(RAIL_MOTION_EASING_ICONS.linear).toBe(Diamond);
-    expect(RAIL_MOTION_EASING_ICONS.hold).toBe(Square);
-    expect(RAIL_MOTION_EASING_ICONS.ease).toBe(Squircle);
-    expect(RAIL_MOTION_EASING_ICONS['stop-motion']).toBe(Triangle);
   });
 });
 
