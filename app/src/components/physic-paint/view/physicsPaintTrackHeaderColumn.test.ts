@@ -1239,9 +1239,9 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
   ): TimelineMotionHeaderGroupProps {
     return {
       channels: [
-        { id: 'position-x', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
-        { id: 'scale', keys: [{ frame: 0, value: 1, easing: 'ease', wiggle: 0 }] },
-        { id: 'rotation', keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+        { id: 'position-x', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
+        { id: 'scale', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 1, easing: 'ease', wiggle: 0 }] },
+        { id: 'rotation', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0, easing: 'ease', wiggle: 0 }] },
       ],
       view: MOTION_HEADER_VIEW,
       selected: true,
@@ -1258,10 +1258,10 @@ describe('physicsPaintTrackHeaderColumn 59-11: the measured row layout (MUI-04/M
    *  fixed Position/Scale/Rotation/Opacity order. */
   function makeMotionHeaderForLanes(laneCount: 1 | 2 | 3 | 4): TimelineMotionHeaderGroupProps {
     const channels = [
-      { id: 'position-x' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
-      { id: 'scale' as const, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
-      { id: 'rotation' as const, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
-      { id: 'opacity' as const, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'position-x' as const, wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'scale' as const, wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'rotation' as const, wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 }] },
+      { id: 'opacity' as const, wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }] },
     ];
     return makeMotionHeader({ channels: channels.slice(0, laneCount) });
   }

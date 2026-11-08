@@ -4735,6 +4735,8 @@ describe('59-18 G3/CR-01 rail-set Copy/Duplicate carry rail motion', () => {
       channels: Object.freeze([
         Object.freeze({
           id: 'opacity' as const,
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: Object.freeze([
             Object.freeze({ frame: 0, value: 0.5, easing: 'hold' as const, wiggle: 0 }),
             Object.freeze({ frame: 2, value: 1, easing: 'ease' as const, wiggle: 0 }),

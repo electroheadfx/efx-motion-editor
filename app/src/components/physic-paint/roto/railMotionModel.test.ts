@@ -35,8 +35,22 @@ function key(
 function channel(
   id: PhysicPaintRotoRailMotionChannelId,
   keys: readonly PhysicPaintRotoRailMotionKey[],
+  wiggle = 0,
+  wiggleGlobal = true,
 ): PhysicPaintRotoRailMotionChannel {
-  return { id, keys };
+  return { id, keys, wiggle, wiggleGlobal };
+}
+
+/**
+ * 261108-gh0: a raw stored channel with NEITHER new member. The parser must
+ * tolerate it (defaults 0 / true) without rewriting the input.
+ */
+function rawChannel(
+  id: PhysicPaintRotoRailMotionChannelId,
+  keys: readonly PhysicPaintRotoRailMotionKey[],
+  extra: Record<string, unknown> = {},
+): unknown {
+  return { id, keys, ...extra };
 }
 
 const POSITION_IDS = ['position-x', 'position-y'] as const;
@@ -423,6 +437,13 @@ describe('parsePhysicPaintRotoRailMotions', () => {
         channel('position-y', [key(0, 0)]),
       ]),
     ])).toThrow(/unknown members.*id, keys/);
+    // 261108-gh0: the allowlist now names both channel members.
+    expect(() => parsePhysicPaintRotoRailMotions([
+      record('rail-a', [
+        { ...channel('position-x', [key(0, 0)]), enabled: true } as unknown as PhysicPaintRotoRailMotionChannel,
+        channel('position-y', [key(0, 0)]),
+      ]),
+    ])).toThrow(/expected exactly id, keys, wiggle, wiggleGlobal\./);
   });
 
   it('rejects an unknown channel id, including the lane id', () => {
@@ -1220,5 +1241,182 @@ describe('applyRailMotionEditToCollection', () => {
     expect(next[1].channels.map((entry) => entry.id)).toEqual(['rotation', 'opacity']);
     expect(Object.isFrozen(next)).toBe(true);
     expect(Object.isFrozen(next[1].channels)).toBe(true);
+  });
+});
+
+// ============================================================
+//  261108-gh0 — channel wiggle + wiggleGlobal
+//
+//  The two members are OPTIONAL on read (old projects open with the 0 / true
+//  defaults, nothing rewritten), REQUIRED in the type, always emitted by the
+//  canonicalizer, and preserved by every edit that rebuilds a channel.
+// ============================================================
+
+describe('261108-gh0 channel wiggle fields', () => {
+  function parseRaw(channels: readonly unknown[]): ReturnType<typeof parsePhysicPaintRotoRailMotions> {
+    return parsePhysicPaintRotoRailMotions([
+      { railId: 'rail-a', anchorKeyId: 'anchor-rail-a', channels },
+    ]);
+  }
+
+  function channelFields(
+    records: ReturnType<typeof parsePhysicPaintRotoRailMotions>,
+    id: PhysicPaintRotoRailMotionChannelId,
+  ): { wiggle: number; wiggleGlobal: boolean } {
+    const entry = records[0].channels.find((candidate) => candidate.id === id);
+    if (entry === undefined) throw new Error(`missing channel ${id}`);
+    return { wiggle: entry.wiggle, wiggleGlobal: entry.wiggleGlobal };
+  }
+
+  it('tolerantly defaults a stored channel carrying NEITHER member and rewrites nothing', () => {
+    const rawX = rawChannel('position-x', [key(0, 0)]);
+    const rawY = rawChannel('position-y', [key(0, 0)]);
+    const parsed = parseRaw([rawX, rawY]);
+
+    expect(channelFields(parsed, 'position-x')).toEqual({ wiggle: 0, wiggleGlobal: true });
+    expect(channelFields(parsed, 'position-y')).toEqual({ wiggle: 0, wiggleGlobal: true });
+    // Tolerant read, never a migration: the input object is untouched.
+    expect(Object.prototype.hasOwnProperty.call(rawX, 'wiggle')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(rawX, 'wiggleGlobal')).toBe(false);
+    // Parsing twice yields the same defaults.
+    expect(channelFields(parseRaw([rawX, rawY]), 'position-x')).toEqual({ wiggle: 0, wiggleGlobal: true });
+  });
+
+  it('defaults each member independently when only one is stored', () => {
+    const onlyWiggle = parseRaw([
+      rawChannel('position-x', [key(0, 0)], { wiggle: 9 }),
+      rawChannel('position-y', [key(0, 0)], { wiggle: 3 }),
+    ]);
+    expect(channelFields(onlyWiggle, 'position-x')).toEqual({ wiggle: 9, wiggleGlobal: true });
+
+    const onlyGlobal = parseRaw([
+      rawChannel('position-x', [key(0, 0)], { wiggleGlobal: false }),
+      rawChannel('position-y', [key(0, 0)]),
+    ]);
+    expect(channelFields(onlyGlobal, 'position-x')).toEqual({ wiggle: 0, wiggleGlobal: false });
+
+    const both = parseRaw([
+      rawChannel('position-x', [key(0, 0)], { wiggle: 12, wiggleGlobal: false }),
+      rawChannel('position-y', [key(0, 0)], { wiggle: 7, wiggleGlobal: true }),
+    ]);
+    expect(channelFields(both, 'position-x')).toEqual({ wiggle: 12, wiggleGlobal: false });
+    expect(channelFields(both, 'position-y')).toEqual({ wiggle: 7, wiggleGlobal: true });
+  });
+
+  it('rejects a present invalid channel wiggle', () => {
+    for (const wiggle of [-1, RAIL_MOTION_WIGGLE_LIMIT + 1, '12', Number.NaN, null]) {
+      expect(() => parseRaw([
+        rawChannel('position-x', [key(0, 0)], { wiggle }),
+        rawChannel('position-y', [key(0, 0)]),
+      ])).toThrow(new RegExp(`channel "position-x" in record "rail-a".*0\\.\\.${RAIL_MOTION_WIGGLE_LIMIT}`));
+    }
+  });
+
+  it('rejects a present non-boolean wiggleGlobal', () => {
+    for (const wiggleGlobal of ['true', 1, null]) {
+      expect(() => parseRaw([
+        rawChannel('position-x', [key(0, 0)], { wiggleGlobal }),
+        rawChannel('position-y', [key(0, 0)]),
+      ])).toThrow(/channel "position-x" in record "rail-a".*boolean/);
+    }
+  });
+
+  it('still rejects an unknown channel member and names both new members', () => {
+    expect(() => parseRaw([
+      rawChannel('position-x', [key(0, 0)], { wobble: 1 }),
+      rawChannel('position-y', [key(0, 0)]),
+    ])).toThrow(/unknown members; expected exactly id, keys, wiggle, wiggleGlobal\./);
+  });
+
+  it('canonicalizes, freezes and preserves both members', () => {
+    const canonical = canonicalizeRailMotionChannels([
+      channel('position-x', [key(0, 0)], 12, false),
+      channel('position-y', [key(0, 0)], 7, true),
+    ]);
+
+    expect(canonical[0].wiggle).toBe(12);
+    expect(canonical[0].wiggleGlobal).toBe(false);
+    expect(canonical[1].wiggle).toBe(7);
+    expect(canonical[1].wiggleGlobal).toBe(true);
+    expect(Object.isFrozen(canonical[0])).toBe(true);
+  });
+
+  it('canonicalization throws the same domain sentence for an invalid member', () => {
+    expect(() => canonicalizeRailMotionChannels([
+      channel('scale', [key(0, 1)], -1),
+    ])).toThrow(/wiggle -1 in channel "scale" is outside 0\.\.1000000/);
+    expect(() => canonicalizeRailMotionChannels([
+      channel('scale', [key(0, 1)], 0, 'yes' as unknown as boolean),
+    ])).toThrow(/wiggleGlobal/);
+  });
+
+  it('every edit preserves a stored wiggle across every channel rebuild branch', () => {
+    const base = [
+      record('rail-a', [
+        channel('position-x', [key(0, 0), key(4, 10)], 12, false),
+        channel('position-y', [key(0, 0), key(4, 20)], 7, true),
+      ]),
+    ];
+
+    const assertFields = (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
+      const x = records[0].channels.find((entry) => entry.id === 'position-x');
+      const y = records[0].channels.find((entry) => entry.id === 'position-y');
+      expect({ wiggle: x?.wiggle, wiggleGlobal: x?.wiggleGlobal }).toEqual({ wiggle: 12, wiggleGlobal: false });
+      expect({ wiggle: y?.wiggle, wiggleGlobal: y?.wiggleGlobal }).toEqual({ wiggle: 7, wiggleGlobal: true });
+    };
+
+    // set-key, addressed branch, existing frame.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'set-key', railId: 'rail-a', channel: 'position-x', frame: 4, value: 11,
+    }));
+    // set-key, addressed branch, new frame.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'set-key', railId: 'rail-a', channel: 'position-x', frame: 8, value: 5,
+    }));
+    // set-key on position-y: the sibling position-x takes the keyless branch
+    // and must KEEP its stored pair, not re-seed it.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'set-key', railId: 'rail-a', channel: 'position-y', frame: 8, value: 5,
+    }));
+    // remove-key rewrites both grouped channels.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'remove-key', railId: 'rail-a', channel: 'position-x', frame: 4,
+    }));
+    // move-key rewrites both grouped channels.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'move-key', railId: 'rail-a', channel: 'position-x', fromFrame: 4, toFrame: 6,
+    }));
+    // add-channel leaves the present channels alone.
+    assertFields(applyRailMotionEditToCollection(base, {
+      kind: 'add-channel', railId: 'rail-a', channel: 'scale',
+    }));
+  });
+
+  it('creation seeds wiggle 0 with wiggleGlobal true', () => {
+    const animated = applyRailMotionEditToCollection(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY, {
+      kind: 'animate', railId: 'rail-a', anchorKeyId: 'key-1', frame: 2,
+    });
+    for (const entry of animated[0].channels) {
+      expect(entry.wiggle).toBe(0);
+      expect(entry.wiggleGlobal).toBe(true);
+    }
+
+    const single = applyRailMotionEditToCollection(
+      [record('rail-a', [channel('position-x', [key(0, 0)]), channel('position-y', [key(0, 0)])])],
+      { kind: 'add-channel', railId: 'rail-a', channel: 'scale' },
+    );
+    const scale = single[0].channels.find((entry) => entry.id === 'scale');
+    expect({ wiggle: scale?.wiggle, wiggleGlobal: scale?.wiggleGlobal })
+      .toEqual({ wiggle: 0, wiggleGlobal: true });
+
+    const grouped = applyRailMotionEditToCollection(
+      [record('rail-a', [channel('scale', [key(0, 1)])])],
+      { kind: 'add-channel', railId: 'rail-a', channel: 'position-y' },
+    );
+    for (const id of ['position-x', 'position-y'] as const) {
+      const entry = grouped[0].channels.find((candidate) => candidate.id === id);
+      expect({ wiggle: entry?.wiggle, wiggleGlobal: entry?.wiggleGlobal })
+        .toEqual({ wiggle: 0, wiggleGlobal: true });
+    }
   });
 });

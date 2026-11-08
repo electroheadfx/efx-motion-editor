@@ -59,6 +59,7 @@ import {
   railMotionMergeNotice,
 } from '../roto/railMotionMergeNotice';
 import { buildRotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
+import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import type {
   RotoPhysicalEditCoordinatorPorts,
   RotoPhysicalEditSnapshot,
@@ -284,6 +285,9 @@ function harness(options: {
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
   let groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [];
   let loopClips: readonly PhysicPaintRotoLoopClip[] = options.dropLoopClips ? [] : initial.loopClips;
+  // 261108-gh0: motion rides the harness's canonical state so the coordinator's
+  // launch snapshot and settlement comparison read a real collection.
+  let railMotions: readonly PhysicPaintRotoRailMotionRecord[] = [];
   let incomingInterpolationBreakKeyIds: readonly string[] = ['C'];
   let interpolation = INTERPOLATION;
   let capacity = options.capacity ?? 30;
@@ -399,8 +403,10 @@ function harness(options: {
       loopClips,
       incomingInterpolationBreakKeyIds,
       groupOverrideRecords,
+      railMotions,
     ),
     loopClips,
+    railMotions,
     incomingInterpolationBreakKeyIds,
   });
   const replaceDocument = vi.fn((
@@ -415,6 +421,7 @@ function harness(options: {
     groupOverrideRecords = document.groupOverrideRecords ?? [];
     interpolation = document.interpolation;
     loopClips = document.loopClips;
+    railMotions = document.railMotions ?? [];
     incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds;
     canonicalSelectedKeyId = document.selectedKeyId;
     canonicalCursorAppFrame = document.cursorAppFrame;
@@ -442,7 +449,7 @@ function harness(options: {
       getCapacity: () => capacity,
       raiseCapacity,
       getLoopClips: () => loopClips,
-      getRailMotions: () => [],
+      getRailMotions: () => railMotions,
       getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
       replaceIncomingInterpolationBreakKeyIds: (_layerId: string, keyIds: readonly string[]) => {
         incomingInterpolationBreakKeyIds = keyIds;
@@ -656,6 +663,7 @@ function harness(options: {
     records = document.realKeyRecords;
     groupOverrideRecords = document.groupOverrideRecords ?? [];
     loopClips = document.loopClips;
+    railMotions = document.railMotions ?? [];
     incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds;
     interpolation = document.interpolation;
     currentFrame = document.cursorAppFrame;
@@ -843,6 +851,9 @@ function harness(options: {
       payload.loopClips ?? [],
       payload.incomingInterpolationBreakKeyIds ?? [],
       (payload.groupOverrideRecords ?? []).map((entry) => ({ kind: 'real-key' as const, ...entry })),
+      // 261108-gh0: the parent recomputes over the motion collection the wire
+      // carried, so a non-empty channel wiggle must be part of the same hash.
+      payload.railMotions ?? [],
     );
     return {
       operationId: payload.operationId,
@@ -895,6 +906,7 @@ function harness(options: {
       loopClips,
       payload.incomingInterpolationBreakKeyIds ?? [],
       (payload.groupOverrideRecords ?? []).map((entry) => ({ kind: 'real-key' as const, ...entry })),
+      railMotions,
     );
   };
   const acceptAsParentRecomputes = () => {
@@ -971,7 +983,7 @@ function harness(options: {
     getRecords: () => records,
     getGroupOverrideRecords: () => groupOverrideRecords,
     getLoopClips: () => loopClips,
-    getRailMotions: () => [],
+    getRailMotions: () => railMotions,
     getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
     getStructuralPublicationCount: () => structuralPublicationCount,
     resetStructuralPublicationCount: () => { structuralPublicationCount = 0; },
@@ -3955,7 +3967,10 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     payload: { frameIndex: 0, appFrame, bytes: pastePng(keyId), width: 100, height: 80 },
   });
 
-  function twoKeyRailDocument(capacity = 100) {
+  function twoKeyRailDocument(
+    capacity = 100,
+    railMotions: readonly PhysicPaintRotoRailMotionRecord[] = [],
+  ) {
     const records = [pasteRecord('k0', 0), pasteRecord('k2', 2), pasteRecord('k6', 6), pasteRecord('k8', 8)];
     return parsePhysicPaintRotoPhysicalDocument({
       capacity,
@@ -3965,25 +3980,54 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
       background: null,
       selectedKeyId: null,
       cursorAppFrame: 10,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], ['k6']),
+      revision: buildPhysicPaintRotoPhysicalRevision(records, INTERPOLATION, [], ['k6'], [], railMotions),
       loopClips: [],
+      railMotions,
       incomingInterpolationBreakKeyIds: ['k6'],
     });
   }
 
-  function copyPayload(): RotoRailSetCopyPayload {
+  /** 261108-gh0: one channel carrying the two whole-timeline wiggle members. */
+  function channelMotion(
+    wiggle: number,
+    wiggleGlobal: boolean,
+  ): readonly PhysicPaintRotoRailMotionRecord[] {
+    return Object.freeze([
+      Object.freeze({
+        railId: 'rail',
+        anchorKeyId: 'k0',
+        channels: Object.freeze([
+          Object.freeze({
+            id: 'scale' as const,
+            wiggle,
+            wiggleGlobal,
+            keys: Object.freeze([
+              Object.freeze({ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }),
+            ]),
+          }),
+        ]),
+      }),
+    ]);
+  }
+
+  function copyPayload(
+    railMotions: readonly PhysicPaintRotoRailMotionRecord[] = [],
+  ): RotoRailSetCopyPayload {
     return Object.freeze({
       anchorAppFrame: 0,
       // '' = legacy payload with no track context (46-03).
       sourceTrackId: '',
       // 59-15 Gate B: this fixture's rails carry no motion.
-      railMotions: Object.freeze([]),
+      railMotions,
       members: Object.freeze([
         Object.freeze({
           kind: 'key-rail' as const,
           firstKeyId: 'k0',
           firstKeyFrame: 0,
           firstKeyOwnsIncomingBreak: false,
+          // 261108-gh0: a member that carries motion must claim its source rail
+          // (59-15 Gate B), so the paste test can freeze a non-empty collection.
+          ...(railMotions.length > 0 ? { sourceRailId: 'rail' as const } : {}),
           entries: Object.freeze([
             Object.freeze({
               sourceKeyId: 'k0',
@@ -4327,6 +4371,96 @@ describe('useRotoPhysicalEditCoordinator rail-set paste (quick 260820-bjw)', () 
     // click (15) — the pre-paste document cursor, not the stale seed cursor.
     expect(test.getCanonicalDocument()).toEqual({ ...before, cursorAppFrame: 15 });
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  // 261108-gh0: the channel `wiggle`/`wiggleGlobal` members ride the SAME
+  // committed clones as the rest of the motion record. A hand-copied
+  // `{ id, keys }` in `cloneRailMotions` would silently reset them on every
+  // accepted edit, so each committed payload is asserted member by member.
+  it('261108-gh0: the channel wiggle pair survives the launch snapshot and the paste commit clone', async () => {
+    const test = harness();
+    const seededMotion = channelMotion(12, false);
+    const before = twoKeyRailDocument(30, seededMotion);
+    test.seedGroupDocument(before);
+    const pastedMotion = channelMotion(9, true);
+
+    expect(await test.executePasteRails({
+      payload: copyPayload(pastedMotion),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    })).toBe(true);
+
+    const committed = test.getPayload()?.railMotions?.[0]?.channels[0];
+    if (!committed) throw new Error('Expected the Paste payload to carry the copied motion.');
+    expect(committed.id).toBe('scale');
+    expect(committed.wiggle).toBe(9);
+    expect(committed.wiggleGlobal).toBe(true);
+    // The deep clone is a distinct object graph, not the frozen proposal.
+    expect(committed).not.toBe(pastedMotion[0]?.channels[0]);
+
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected an accepted Paste operation.');
+    // Launch snapshot: the pre-edit document's 12/false, cloned.
+    expect(accepted.before.railMotions[0]?.channels[0]?.wiggle).toBe(12);
+    expect(accepted.before.railMotions[0]?.channels[0]?.wiggleGlobal).toBe(false);
+    expect(accepted.before.railMotions[0]?.channels[0]).not.toBe(seededMotion[0]?.channels[0]);
+    // Accepted document: the pasted 9/true, cloned again.
+    expect(accepted.after.railMotions[0]?.channels[0]?.wiggle).toBe(9);
+    expect(accepted.after.railMotions[0]?.channels[0]?.wiggleGlobal).toBe(true);
+    expect(accepted.after.railMotions[0]?.channels[0]).not.toBe(pastedMotion[0]?.channels[0]);
+  });
+
+  it('261108-gh0: an Undo replay ships the pre-edit channel wiggle pair through the committed payload', async () => {
+    const test = harness();
+    const seededMotion = channelMotion(12, false);
+    test.seedGroupDocument(twoKeyRailDocument(30, seededMotion));
+    const { history, availability } = attachGroupReplayHistory(test);
+
+    // Forward command: a Paste carrying a DIFFERENT wiggle pair.
+    expect(await test.executePasteRails({
+      payload: copyPayload(channelMotion(9, true)),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    })).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.value;
+    if (!accepted) throw new Error('Expected an accepted Paste operation.');
+    expect(accepted.after.railMotions[0]?.channels[0]?.wiggle).toBe(9);
+    expect(availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release')).toBe(true);
+
+    expect(await history.undo()).toBe(true);
+    const replayed = test.getPayload()?.railMotions?.[0]?.channels[0];
+    if (!replayed) throw new Error('Expected the Undo payload to carry the restored motion.');
+    expect(replayed.id).toBe('scale');
+    expect(replayed.wiggle).toBe(12);
+    expect(replayed.wiggleGlobal).toBe(false);
+    expect(replayed.keys).toHaveLength(1);
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getCanonicalDocument().railMotions?.[0]?.channels[0]?.wiggle).toBe(12);
+    expect(test.getCanonicalDocument().railMotions?.[0]?.channels[0]?.wiggleGlobal).toBe(false);
+  });
+
+  it('261108-gh0: a Paste semantic-delta echo differing only in the channel wiggle pair is a mismatch, never a silent no-op', async () => {
+    const test = harness();
+    test.seedGroupDocument(twoKeyRailDocument(30));
+    expect(await test.executePasteRails({
+      payload: copyPayload(channelMotion(9, true)),
+      placementMode: 'paste',
+      destinationAppFrame: 10,
+    })).toBe(true);
+    const pendingDelta = test.getPayload()?.semanticDelta;
+    if (!pendingDelta || pendingDelta.kind !== 'paste' || !pendingDelta.payload) {
+      throw new Error('Expected a paste semantic delta.');
+    }
+    // The parent echo agrees on everything EXCEPT the channel wiggle pair.
+    const altered = {
+      ...pendingDelta,
+      payload: { ...pendingDelta.payload, railMotions: channelMotion(9, false) },
+    };
+    expect(test.mismatchDelta(altered)).toBe('mismatch');
   });
 });
 

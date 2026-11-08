@@ -942,7 +942,12 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
     const railMotions = [{
       railId: 'rail-1',
       anchorKeyId: 'k1',
-      channels: [{ id: 'opacity' as const, keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }] }],
+      channels: [{
+        id: 'opacity' as const,
+        wiggle: 0,
+        wiggleGlobal: true,
+        keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }],
+      }],
     }];
     // The projection recomputes the physical revision. Rail motion is a
     // canonical revision term, so omitting it here made the receiver's

@@ -91,6 +91,8 @@ function railMotion(
     channels: [
       {
         id: 'opacity',
+        wiggle: 0,
+        wiggleGlobal: true,
         keys: frames.map((frame) => ({ frame, value: 0.5, easing: 'ease' as const, wiggle: 0 })),
       },
     ],
@@ -460,7 +462,7 @@ describe('59-15 Gate B: delete-first-key end to end', () => {
     expect(stored).toHaveLength(1);
     expect(stored[0].railId).toBe('rail-1');
     expect(stored[0].anchorKeyId).toBe('B');
-    expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
+    expect(stored[0].channels).toEqual([{ id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
 
     const acceptedDocument = physicPaintStore.getRotoPhysicalDocument(LAYER, TEST_TRACK_ID)!;
     const expectedRevision = buildPhysicPaintRotoPhysicalRevision(

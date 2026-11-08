@@ -66,6 +66,8 @@ const RAIL_A = {
   channels: [
     {
       id: 'position-x' as const,
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
         // 261108-d5o: one raw-ramp token in the persistence fixture.
@@ -74,6 +76,8 @@ const RAIL_A = {
     },
     {
       id: 'position-y' as const,
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
         // ...and one stop-motion token beside it.

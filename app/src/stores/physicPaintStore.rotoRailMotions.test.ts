@@ -95,7 +95,7 @@ function railMotion(railId = 'rail-1', anchorKeyId = 'A'): PhysicPaintRotoRailMo
     railId,
     anchorKeyId,
     channels: [
-      { id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
+      { id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
     ],
   };
 }
@@ -616,7 +616,7 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     expect(stored).toHaveLength(1);
     expect(stored[0].railId).toBe('rail-1');
     expect(stored[0].anchorKeyId).toBe('B');
-    expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
+    expect(stored[0].channels).toEqual([{ id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
     expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).not.toBe(revisionBefore);
     expect(replace).toHaveBeenCalledTimes(1);
   });
@@ -694,7 +694,7 @@ describe('59-15: store-direct removal reconciles the rail-motion collection (Gat
     expect(stored).toHaveLength(1);
     expect(stored[0].railId).toBe('rail-head');
     expect(stored[0].anchorKeyId).toBe('A');
-    expect(stored[0].channels).toEqual([{ id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
+    expect(stored[0].channels).toEqual([{ id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] }]);
   });
 
   it('still drops the merged rail from the stored collection without reporting it from cutTrackSelection', () => {
@@ -944,8 +944,8 @@ function stopMotionPositionRail(
     railId,
     anchorKeyId,
     channels: [
-      { id: 'position-x', keys: keys(endX) },
-      { id: 'position-y', keys: keys(endY) },
+      { id: 'position-x', wiggle: 0, wiggleGlobal: true, keys: keys(endX) },
+      { id: 'position-y', wiggle: 0, wiggleGlobal: true, keys: keys(endY) },
     ],
   };
 }

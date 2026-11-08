@@ -87,6 +87,8 @@ const makeRailMotion = (railId: string, anchorKeyId: string): PhysicPaintRotoRai
   channels: [
     {
       id: 'scale',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [{ frame: 2, value: 0.5, easing: 'ease', wiggle: 0 }],
     },
   ],

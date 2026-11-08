@@ -42,7 +42,7 @@ function railMotion(railId: string, value: number): PhysicPaintRotoRailMotionRec
     railId,
     anchorKeyId: 'A',
     channels: [
-      { id: 'opacity', keys: [{ frame: 0, value, easing: 'ease', wiggle: 0 }] },
+      { id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value, easing: 'ease', wiggle: 0 }] },
     ],
   };
 }

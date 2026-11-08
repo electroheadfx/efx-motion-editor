@@ -64,6 +64,8 @@ const MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
   channels: [
     {
       id: 'position-x',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
         { frame: 8, value: 80, easing: 'ease', wiggle: 0 },
@@ -73,6 +75,8 @@ const MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
     // The Y axis holds 0, so only translateX varies across the sub-frames.
     {
       id: 'position-y',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
         { frame: 8, value: 0, easing: 'hold', wiggle: 0 },
@@ -93,6 +97,8 @@ const INFINITY_MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
   channels: [
     {
       id: 'position-x',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
         { frame: 3, value: 30, easing: 'ease', wiggle: 0 },
@@ -100,6 +106,8 @@ const INFINITY_MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
     },
     {
       id: 'position-y',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
         { frame: 3, value: 0, easing: 'hold', wiggle: 0 },
@@ -550,6 +558,8 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
       channels: [
         {
           id: 'position-x',
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: [
             { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
             { frame: 6, value: 6, easing: 'linear', wiggle: 0 },
@@ -557,6 +567,8 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
         },
         {
           id: 'position-y',
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: [
             { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
             { frame: 6, value: 60, easing: 'linear', wiggle: 0 },
@@ -572,6 +584,8 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
       channels: [
         {
           id: 'position-x',
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: [
             { frame: 0, value: 0, easing: 'linear', wiggle: 0 },
             { frame: 8, value: 80, easing: 'linear', wiggle: 0 },
@@ -579,6 +593,8 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
         },
         {
           id: 'position-y',
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: [
             { frame: 0, value: 0, easing: 'linear', wiggle: 0 },
             { frame: 8, value: 0, easing: 'linear', wiggle: 0 },

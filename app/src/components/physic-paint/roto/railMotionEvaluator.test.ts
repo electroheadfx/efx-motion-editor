@@ -30,8 +30,12 @@ function key(
 function channel(
   id: PhysicPaintRotoRailMotionChannelId,
   keys: readonly PhysicPaintRotoRailMotionKey[],
+  // 261108-gh0: the whole-timeline wiggle pair defaults to the tolerant-read
+  // values; the global-mode tests opt in explicitly.
+  wiggle = 0,
+  wiggleGlobal = true,
 ): PhysicPaintRotoRailMotionChannel {
-  return { id, keys };
+  return { id, keys, wiggle, wiggleGlobal };
 }
 
 function record(

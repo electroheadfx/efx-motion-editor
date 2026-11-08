@@ -761,8 +761,11 @@ function cloneRailMotions(
   return parsePhysicPaintRotoRailMotions(railMotions).map((record) => ({
     railId: record.railId,
     anchorKeyId: record.anchorKeyId,
+    // 261108-gh0: spread the parsed channel. A hand-copied `{ id, keys }` here
+    // would silently reset the per-channel wiggle on every accepted edit —
+    // this is the launch snapshot, replay and rail-set paste payload.
     channels: record.channels.map((channel) => ({
-      id: channel.id,
+      ...channel,
       keys: channel.keys.map((key) => ({ ...key })),
     })),
   }));
@@ -875,6 +878,9 @@ function railSetRailMotionsEqual(
     return record.channels.every((channel, channelIndex) => {
       const otherChannel = other.channels[channelIndex];
       if (!otherChannel || channel.id !== otherChannel.id) return false;
+      // 261108-gh0: a wiggle-only difference is a real edit, never a no-op.
+      if (channel.wiggle !== otherChannel.wiggle) return false;
+      if (channel.wiggleGlobal !== otherChannel.wiggleGlobal) return false;
       if (channel.keys.length !== otherChannel.keys.length) return false;
       return channel.keys.every((key, keyIndex) => {
         const otherKey = otherChannel.keys[keyIndex];

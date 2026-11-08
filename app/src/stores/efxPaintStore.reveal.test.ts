@@ -1411,7 +1411,7 @@ describe('59-20: reveal doors reconcile rail motion in their own transaction (WR
       railId,
       anchorKeyId,
       channels: [
-        { id: 'opacity', keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
+        { id: 'opacity', wiggle: 0, wiggleGlobal: true, keys: [{ frame: 0, value: 0.5, easing: 'ease', wiggle: 0 }] },
       ],
     };
   }

@@ -223,8 +223,10 @@ function motionKey(
 function motionChannel(
   id: PhysicPaintRotoRailMotionChannel['id'],
   keys: ReturnType<typeof motionKey>[],
+  wiggle = 0,
+  wiggleGlobal = true,
 ): PhysicPaintRotoRailMotionChannel {
-  return Object.freeze({ id, keys: Object.freeze(keys) });
+  return Object.freeze({ id, keys: Object.freeze(keys), wiggle, wiggleGlobal });
 }
 
 /** Position x 0 -> 100, y 0 -> 50 across rail-local frames 0..10. */
@@ -907,6 +909,8 @@ describe('261107-rrp motion span auto-fit policy', () => {
       channels: Object.freeze([
         Object.freeze({
           id: 'rotation' as const,
+          wiggle: 0,
+          wiggleGlobal: true,
           keys: Object.freeze([motionKey(0, 0), outOfBand]),
         }),
       ]),

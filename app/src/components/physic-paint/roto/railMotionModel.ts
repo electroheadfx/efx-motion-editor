@@ -40,6 +40,18 @@ export interface PhysicPaintRotoRailMotionKey {
 export interface PhysicPaintRotoRailMotionChannel {
   readonly id: PhysicPaintRotoRailMotionChannelId;
   readonly keys: readonly PhysicPaintRotoRailMotionKey[];
+  /**
+   * 261108-gh0: whole-timeline wiggle amplitude, 0..RAIL_MOTION_WIGGLE_LIMIT.
+   * OPTIONAL on read (a stored channel without it defaults to 0) but always
+   * present on parsed/canonical channels and always emitted by both encoders.
+   */
+  readonly wiggle: number;
+  /**
+   * 261108-gh0: true = the channel wiggle applies at EVERY frame of the
+   * channel (the per-key wiggle is ignored); false = the per-key outgoing-span
+   * wiggle applies exactly as before. Absent on read defaults to true.
+   */
+  readonly wiggleGlobal: boolean;
 }
 
 export interface PhysicPaintRotoRailMotionRecord {
@@ -164,7 +176,7 @@ const RAIL_MOTION_MAX_KEYS_PER_CHANNEL = 4096;
 const RAIL_MOTION_ID_MAX_LENGTH = 128;
 
 const RAIL_MOTION_RECORD_KEYS: ReadonlySet<string> = new Set(['railId', 'anchorKeyId', 'channels']);
-const RAIL_MOTION_CHANNEL_KEYS: ReadonlySet<string> = new Set(['id', 'keys']);
+const RAIL_MOTION_CHANNEL_KEYS: ReadonlySet<string> = new Set(['id', 'keys', 'wiggle', 'wiggleGlobal']);
 const RAIL_MOTION_KEY_KEYS: ReadonlySet<string> = new Set(['frame', 'value', 'easing', 'wiggle']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -331,14 +343,27 @@ export function canonicalizeRailMotionChannels(
   const ordered = PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER
     .map((id) => byId.get(id))
     .filter((channel): channel is PhysicPaintRotoRailMotionChannel => channel !== undefined)
-    .map((channel) => Object.freeze({
-      id: channel.id,
-      keys: Object.freeze(
-        [...channel.keys]
-          .sort((left, right) => left.frame - right.frame)
-          .map((key) => canonicalizeRailMotionKey(channel.id, key)),
-      ),
-    }));
+    .map((channel) => {
+      // 261108-gh0: validate and preserve both channel members instead of
+      // rebuilding `{ id, keys }` (which silently dropped them).
+      if (!isRailMotionWiggle(channel.wiggle)) {
+        throw new Error(`PhysicPaintRotoRailMotions: wiggle ${String(channel.wiggle)} in channel "${channel.id}" is outside 0..${RAIL_MOTION_WIGGLE_LIMIT}`);
+      }
+      if (typeof channel.wiggleGlobal !== 'boolean') {
+        throw new Error(`PhysicPaintRotoRailMotions: wiggleGlobal ${String(channel.wiggleGlobal)} in channel "${channel.id}" must be a boolean`);
+      }
+      return Object.freeze({
+        ...channel,
+        id: channel.id,
+        keys: Object.freeze(
+          [...channel.keys]
+            .sort((left, right) => left.frame - right.frame)
+            .map((key) => canonicalizeRailMotionKey(channel.id, key)),
+        ),
+        wiggle: channel.wiggle,
+        wiggleGlobal: channel.wiggleGlobal,
+      });
+    });
 
   return Object.freeze(ordered);
 }
@@ -352,12 +377,26 @@ function parseRailMotionChannel(
     throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channel at index ${channelIndex} must be a plain object.`);
   }
   if (!hasOnlyAllowedKeys(value, RAIL_MOTION_CHANNEL_KEYS)) {
-    throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channel at index ${channelIndex} has unknown members; expected exactly id, keys.`);
+    throw new Error(`PhysicPaintRotoRailMotions: record "${railId}" channel at index ${channelIndex} has unknown members; expected exactly id, keys, wiggle, wiggleGlobal.`);
   }
 
   const id = value.id;
   if (!isRailMotionChannelId(id)) {
     throw new Error(`PhysicPaintRotoRailMotions: unknown channel id "${String(id)}" in record "${railId}".`);
+  }
+
+  // 261108-gh0: TOLERANT read, never a migration. An absent member takes the
+  // documented default; a PRESENT wrong type still fails closed. Nothing is
+  // written back to the stored document.
+  const rawWiggle = value.wiggle;
+  const wiggle = rawWiggle === undefined ? 0 : rawWiggle;
+  if (!isRailMotionWiggle(wiggle)) {
+    throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" wiggle ${String(wiggle)} is outside 0..${RAIL_MOTION_WIGGLE_LIMIT}.`);
+  }
+  const rawWiggleGlobal = value.wiggleGlobal;
+  const wiggleGlobal = rawWiggleGlobal === undefined ? true : rawWiggleGlobal;
+  if (typeof wiggleGlobal !== 'boolean') {
+    throw new Error(`PhysicPaintRotoRailMotions: channel "${id}" in record "${railId}" wiggleGlobal ${String(wiggleGlobal)} must be a boolean.`);
   }
 
   const rawKeys = value.keys;
@@ -407,7 +446,7 @@ function parseRailMotionChannel(
     return { frame, value: keyValue, easing, wiggle };
   });
 
-  return { id, keys };
+  return { id, keys, wiggle, wiggleGlobal };
 }
 
 /**
@@ -625,6 +664,8 @@ function applyAnimateEdit(
   ): PhysicPaintRotoRailMotionChannel => ({
     id,
     keys: [{ frame: edit.frame, value: 0, easing: DEFAULT_RAIL_MOTION_EASING, wiggle: 0 }],
+    wiggle: 0,
+    wiggleGlobal: true,
   });
 
   return canonicalizeRailMotionRecords([
@@ -669,7 +710,7 @@ function applySetKeyEdit(
   const channels = record.channels.map((entry) => {
     if (entry.id === edit.channel) {
       return {
-        id: entry.id,
+        ...entry,
         keys: upsertRailMotionKey(entry.keys, edit.frame, edit.value, edit.easing, edit.wiggle),
       };
     }
@@ -679,7 +720,7 @@ function applySetKeyEdit(
     if (existing !== undefined) {
       if (edit.pairedValue === undefined) return entry;
       return {
-        id: entry.id,
+        ...entry,
         keys: entry.keys.map((key) => (key.frame === edit.frame
           ? { ...key, value: edit.pairedValue as number }
           : key)),
@@ -690,7 +731,7 @@ function applySetKeyEdit(
       ?? edit.keylessSiblingSeed
       ?? railMotionStepValueAt(entry.keys, edit.frame);
     return {
-      id: entry.id,
+      ...entry,
       keys: [
         ...entry.keys,
         { frame: edit.frame, value: siblingValue, easing: edit.easing ?? DEFAULT_RAIL_MOTION_EASING, wiggle: 0 },
@@ -725,7 +766,7 @@ function applyRemoveKeyEdit(
       continue;
     }
     const keys = entry.keys.filter((key) => key.frame !== edit.frame);
-    if (keys.length > 0) channels.push({ id: entry.id, keys });
+    if (keys.length > 0) channels.push({ ...entry, keys });
   }
 
   // D-15: key -> channel when empty -> record when no channels remain.
@@ -781,7 +822,7 @@ function applyMoveKeyEdit(
   const channels = record.channels.map((entry) => {
     if (!groupedIds.includes(entry.id)) return entry;
     return {
-      id: entry.id,
+      ...entry,
       keys: entry.keys.map((key) => (key.frame === edit.fromFrame
         ? { ...key, frame: edit.toFrame }
         : key)),
@@ -822,10 +863,10 @@ function applyAddChannelEdit(
   });
 
   const seeds: PhysicPaintRotoRailMotionChannel[] = siblingId === null
-    ? [{ id: edit.channel, keys: [seedKey(railMotionIdentityValue(edit.channel))] }]
+    ? [{ id: edit.channel, keys: [seedKey(railMotionIdentityValue(edit.channel))], wiggle: 0, wiggleGlobal: true }]
     : [
-      { id: 'position-x', keys: [seedKey(0)] },
-      { id: 'position-y', keys: [seedKey(0)] },
+      { id: 'position-x', keys: [seedKey(0)], wiggle: 0, wiggleGlobal: true },
+      { id: 'position-y', keys: [seedKey(0)], wiggle: 0, wiggleGlobal: true },
     ];
 
   // 261107: adding a channel is what makes a rail animatable, so an unknown

@@ -38,6 +38,8 @@ function motionRecord(railId: string, anchorKeyId: string): PhysicPaintRotoRailM
     channels: Object.freeze([
       Object.freeze({
         id: 'opacity' as const,
+        wiggle: 0,
+        wiggleGlobal: true,
         keys: Object.freeze([
           Object.freeze({ frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 }),
         ]),

@@ -38,6 +38,8 @@ function motion(
     anchorKeyId,
     channels: [{
       id: 'opacity',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: frames.map((frame) => ({ frame, value: 0.5, easing: 'ease' as const, wiggle: 0 })),
     }],
   };

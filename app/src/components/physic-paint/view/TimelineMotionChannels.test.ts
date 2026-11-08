@@ -145,8 +145,10 @@ function motionChannel(
   id: PhysicPaintRotoRailMotionChannelId,
   frames: readonly number[],
   valueFor: (frame: number) => number = (frame) => frame,
+  wiggle = 0,
+  wiggleGlobal = true,
 ): PhysicPaintRotoRailMotionChannel {
-  return { id, keys: frames.map((frame) => motionKey(frame, valueFor(frame))) };
+  return { id, wiggle, wiggleGlobal, keys: frames.map((frame) => motionKey(frame, valueFor(frame))) };
 }
 
 const POSITION_CHANNELS: readonly PhysicPaintRotoRailMotionChannel[] = [
@@ -420,6 +422,8 @@ describe('TimelineMotionChannelLane', () => {
   it('seeds a wiggle-bearing curve with the lane railId, never the preview seed (WR-03)', () => {
     const wiggleChannel: PhysicPaintRotoRailMotionChannel = {
       id: 'position-x',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 500 },
         { frame: 6, value: 40, easing: 'ease', wiggle: 0 },
@@ -455,6 +459,8 @@ describe('TimelineMotionChannelLane', () => {
   it('forwards the host-resolved snap list into the curve sampler (261108-d5o)', () => {
     const stairChannel: PhysicPaintRotoRailMotionChannel = {
       id: 'position-x',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
         { frame: 6, value: 60, easing: 'linear', wiggle: 0 },

@@ -553,7 +553,12 @@ describe('physicPaintBridge', async () => {
       const railMotions = [{
         railId: 'rail-1',
         anchorKeyId: 'A',
-        channels: [{ id: 'opacity' as const, keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }] }],
+        channels: [{
+          id: 'opacity' as const,
+          wiggle: 0,
+          wiggleGlobal: true,
+          keys: [{ frame: 0, value: 0.5, easing: 'ease' as const, wiggle: 0 }],
+        }],
       }];
       const motionProjected = parsePhysicPaintRotoPhysicalDocument({
         ...projected,

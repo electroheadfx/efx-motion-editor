@@ -84,6 +84,8 @@ const motionRecord = (railId: string, anchorKeyId: string): PhysicPaintRotoRailM
   channels: [
     {
       id: 'position-x',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
         { frame: 4, value: 40, easing: 'ease', wiggle: 0 },
@@ -91,6 +93,8 @@ const motionRecord = (railId: string, anchorKeyId: string): PhysicPaintRotoRailM
     },
     {
       id: 'position-y',
+      wiggle: 0,
+      wiggleGlobal: true,
       keys: [
         { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
         { frame: 4, value: -20, easing: 'ease', wiggle: 0 },

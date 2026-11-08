@@ -872,6 +872,8 @@ describe('59-11 rail motion hosting — chevron, session expansion and the expan
       anchorKeyId: 'k0',
       channels: channelIds.map((id) => ({
         id,
+        wiggle: 0,
+        wiggleGlobal: true,
         keys: frames.map((frame) => ({ frame, value: 1, easing: 'ease' as const, wiggle: 0 })),
       })),
     };
@@ -1233,6 +1235,8 @@ describe('59-17 add-channel row and keyless menu (G1/CR-03)', () => {
       anchorKeyId: 'k0',
       channels: channelIds.map((id) => ({
         id,
+        wiggle: 0,
+        wiggleGlobal: true,
         keys: [
           { frame: 0, value: 1, easing: 'ease' as const, wiggle: 0 },
           { frame: 4, value: 1, easing: 'ease' as const, wiggle: 0 },

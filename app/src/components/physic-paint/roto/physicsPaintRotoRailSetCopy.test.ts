@@ -861,6 +861,8 @@ function motionRecord(
     channels: Object.freeze([
       Object.freeze({
         id: 'scale' as const,
+        wiggle: 0,
+        wiggleGlobal: true,
         keys: Object.freeze([
           Object.freeze({ frame: 2, value: scaleValue, easing: 'ease' as const, wiggle: 0 }),
         ]),

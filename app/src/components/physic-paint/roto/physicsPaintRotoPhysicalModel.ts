@@ -1739,7 +1739,12 @@ function encodeCanonicalRailMotions(records: readonly PhysicPaintRotoRailMotionR
     encodeCanonicalString(record.anchorKeyId),
     `${record.channels.length}:`,
     ...record.channels.flatMap((channel) => [
+      // 261108-gh0: ONE byte order on both sides: channel id, wiggle number,
+      // wiggleGlobal boolean, key count, keys. Rust's canonical_rail_motions
+      // emits the same four leading terms or the prepare gate rejects a save.
       encodeCanonicalString(channel.id),
+      encodeCanonicalNumber(channel.wiggle),
+      validatedBoolean(channel.wiggleGlobal),
       `${channel.keys.length}:`,
       ...channel.keys.flatMap((key) => [
         encodeCanonicalNumber(key.frame),
