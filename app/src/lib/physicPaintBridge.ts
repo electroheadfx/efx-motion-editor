@@ -1182,11 +1182,16 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     return `Canonical physical edit rejected the submitted intent: ${canonicalResolution.failure.text}`;
   }
 
+  // 261108-pmc-UAT: the rejection names the FIRST divergent field so a live
+  // one-off failure is diagnosable without a repro. Copy is otherwise intact.
+  const canonicalMismatch = (field: string): string =>
+    `Submitted physical document does not match the canonical parent-resolved edit (${field}).`;
+
   const proposal = canonicalResolution.proposal;
   const canonicalRecords = proposal.nextRecords
     ?? buildCanonicalMappedRecords(input.currentRecords, proposal.mapping, proposal.orderedKeyIds);
   if (canonicalRecords === null) {
-    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+    return canonicalMismatch('unmapped-records');
   }
   const canonicalLoopClips = proposal.nextLoopClips ?? input.currentLoopClips;
   const canonicalGroupOverrideRecords = input.intent.kind === 'move-group'
@@ -1202,7 +1207,7 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     // the child's canonical staged collection.
     : (proposal.nextGroupOverrideRecords ?? input.currentGroupOverrideRecords);
   if (canonicalGroupOverrideRecords === null) {
-    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+    return canonicalMismatch('unmapped-group-override-records');
   }
   const canonicalIncomingInterpolationBreakKeyIds = proposal.nextIncomingInterpolationBreakKeyIds
     ?? input.currentIncomingInterpolationBreakKeyIds;
@@ -1214,18 +1219,20 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
     canonicalGroupOverrideRecords,
     input.proposedRailMotions,
   );
-  if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
-    || !sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)
-    || !sameCanonicalLoopClips(canonicalLoopClips, input.proposedLoopClips)
-    || canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
-    || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])
-    || proposal.selectedKeyId !== input.selectedKeyId
-    || proposal.selectedAppFrame !== input.selectedAppFrame
-    || input.currentInterpolation.enabled !== input.proposedInterpolation.enabled
-    || input.currentInterpolation.mode !== input.proposedInterpolation.mode
-    || canonicalRevision !== input.stagedRevision) {
-    return 'Submitted physical document does not match the canonical parent-resolved edit.';
+  if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)) return canonicalMismatch('records');
+  if (!sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)) {
+    return canonicalMismatch('group-override-records');
   }
+  if (!sameCanonicalLoopClips(canonicalLoopClips, input.proposedLoopClips)) return canonicalMismatch('loop-clips');
+  if (canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
+    || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])) {
+    return canonicalMismatch('interpolation-breaks');
+  }
+  if (proposal.selectedKeyId !== input.selectedKeyId) return canonicalMismatch('selected-key');
+  if (proposal.selectedAppFrame !== input.selectedAppFrame) return canonicalMismatch('selected-frame');
+  if (input.currentInterpolation.enabled !== input.proposedInterpolation.enabled) return canonicalMismatch('interpolation-enabled');
+  if (input.currentInterpolation.mode !== input.proposedInterpolation.mode) return canonicalMismatch('interpolation-mode');
+  if (canonicalRevision !== input.stagedRevision) return canonicalMismatch('revision');
   return null;
 }
 
