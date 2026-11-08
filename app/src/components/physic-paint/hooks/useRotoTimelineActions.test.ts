@@ -6262,6 +6262,134 @@ describe('261108-d5o snap-frame threading through the hook', () => {
     expect(snapSpy).toHaveBeenCalledTimes(1);
     expect(replaceSpy, 'one reset is one store commit').toHaveBeenCalledTimes(1);
   });
+
+  /* ------------------------------------------------------------------ */
+  /* 261108-kvw — cursor-free static route, cursor-owned marker          */
+  /* ------------------------------------------------------------------ */
+
+  describe('261108-kvw canvas motion path', () => {
+    function seedRail(channels: PhysicPaintRotoRailMotionRecord['channels']): void {
+      const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+        railId: RAIL_ID,
+        anchorKeyId: 'A',
+        channels,
+      }]);
+      if (!motion.ok) throw new Error(`motion seed failed: ${motion.error}`);
+    }
+
+    function openBlockHarness(options: Partial<HarnessOptions> = {}) {
+      return actionsHarness({
+        getMotionBlockRailIdentity: () => ({ kind: 'key-rail', firstKeyId: 'A' }),
+        ...options,
+      });
+    }
+
+    it('reads the playhead ONLY for the cursor marker', () => {
+      seedSnapRail();
+      const frameReads = vi.fn(() => 5);
+      const harness = openBlockHarness({ getCurrentAppFrame: frameReads });
+      selectRailMotionChannel('position');
+
+      const path = harness.actions.railMotionPath.value;
+      expect(frameReads, 'the static route never reads the playhead').not.toHaveBeenCalled();
+      expect(path).not.toBeNull();
+      if (path === null) return;
+      expect(path.path.startFrame).toBe(0);
+      expect(path.path.frameCount).toBe(11);
+      expect(path.path.samples.length).toBeGreaterThan(1);
+
+      const cursor = harness.actions.railMotionPathCursor.value;
+      expect(frameReads).toHaveBeenCalledTimes(1);
+      expect(cursor).not.toBeNull();
+      expect(cursor?.frame).toBe(5);
+      // Stop Motion snaps 100 x 2/10 = 20 on both axes at the cursor.
+      expect(cursor?.x).toBeCloseTo(20, 6);
+      expect(cursor?.y).toBeCloseTo(20, 6);
+    });
+
+    it('hides the route without a lane and on the opacity lane', () => {
+      seedSnapRail();
+      const harness = openBlockHarness();
+      selectRailMotionChannel('position');
+      expect(harness.actions.railMotionPath.value).not.toBeNull();
+
+      exitRailMotionEditing();
+      expect(harness.actions.railMotionPath.value, 'no lane selected').toBeNull();
+
+      selectRailMotionChannel('opacity');
+      expect(harness.actions.railMotionPath.value, 'opacity is numeric-only').toBeNull();
+    });
+
+    it('hides the route when the motion block is closed', () => {
+      seedSnapRail();
+      const harness = actionsHarness();
+      selectRailMotionChannel('position');
+      expect(harness.actions.railMotionPath.value).toBeNull();
+    });
+
+    it('hides the route when the record carries no Position channel', () => {
+      seedSnapRail();
+      const harness = openBlockHarness();
+      selectRailMotionChannel('position');
+      expect(harness.actions.railMotionPath.value).not.toBeNull();
+
+      seedRail([{
+        id: 'scale',
+        keys: [
+          { frame: 0, value: 100, easing: 'linear', wiggle: 0 },
+          { frame: 10, value: 200, easing: 'linear', wiggle: 0 },
+        ],
+        wiggle: 0,
+        wiggleGlobal: true,
+      }]);
+      expect(harness.actions.railMotionPath.value, 'no Position channel').toBeNull();
+    });
+
+    it('hides the route when every sampled origin is the same point', () => {
+      seedSnapRail();
+      const harness = openBlockHarness();
+      selectRailMotionChannel('position');
+
+      seedRail([
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 7, easing: 'linear', wiggle: 0 },
+            { frame: 10, value: 7, easing: 'linear', wiggle: 0 },
+          ],
+          wiggle: 0,
+          wiggleGlobal: true,
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: -3, easing: 'linear', wiggle: 0 },
+            { frame: 10, value: -3, easing: 'linear', wiggle: 0 },
+          ],
+          wiggle: 0,
+          wiggleGlobal: true,
+        },
+      ]);
+      expect(harness.actions.railMotionPath.value).toBeNull();
+    });
+
+    it('drops the marker outside the span while keeping the static route', () => {
+      seedSnapRail();
+      const harness = openBlockHarness({ currentAppFrame: 11 });
+      selectRailMotionChannel('position');
+      expect(harness.actions.railMotionPath.value).not.toBeNull();
+      expect(harness.actions.railMotionPathCursor.value).toBeNull();
+    });
+
+    it('exposes both computeds on the returned actions object', () => {
+      seedSnapRail();
+      const harness = openBlockHarness();
+      selectRailMotionChannel('position');
+      expect(harness.actions.railMotionGizmo).toBeDefined();
+      expect(harness.actions.railMotionPath).toBeDefined();
+      expect(harness.actions.railMotionPathCursor).toBeDefined();
+    });
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -6291,12 +6419,28 @@ describe('261108-d5o hook source contract', () => {
     );
   });
 
-  it('feeds the accessor to every key-creating callback', () => {
+  it('feeds the accessor to every key-creating callback and the path sampler', () => {
     const accessorCalls = source.split('physicPaintStore.getRotoRailMotionSnapFrames(').length - 1;
-    // Gizmo + setMotionKeyAtCursor + commitRailMotionInspectorValue + the
-    // key-mode easing commit + reset — one read each, never a second
-    // resolution. (261108-gh0 removed the strip-only per-key Wiggle callback,
-    // and added the property-mode key-under-playhead easing commit.)
-    expect(accessorCalls).toBe(6);
+    // Gizmo + 261108-kvw path sampler + setMotionKeyAtCursor +
+    // commitRailMotionInspectorValue + the key-mode easing commit + reset —
+    // one read each, never a second resolution. (261108-gh0 removed the
+    // strip-only per-key Wiggle callback, and added the property-mode
+    // key-under-playhead easing commit.)
+    expect(accessorCalls).toBe(7);
+  });
+
+  it('keeps the static path computed cursor-free and the marker cursor-owned', () => {
+    const pathAt = source.indexOf('const railMotionPath = computed(');
+    expect(pathAt, 'the static path computed exists').toBeGreaterThan(-1);
+    const pathBody = source.slice(pathAt, source.indexOf('\n  });', pathAt));
+    expect(pathBody).not.toContain('getCurrentAppFrame');
+    expect(pathBody).not.toContain('localCursorFrame');
+    expect(pathBody).toContain('sampleRailMotionPathCached(');
+
+    const cursorAt = source.indexOf('const railMotionPathCursor = computed(');
+    expect(cursorAt, 'the cursor computed exists').toBeGreaterThan(-1);
+    const cursorBody = source.slice(cursorAt, source.indexOf('\n  });', cursorAt));
+    expect(cursorBody).toContain('getCurrentAppFrame');
+    expect(cursorBody).toContain('evaluateRailMotionPathCursor(');
   });
 });
