@@ -88,8 +88,14 @@ interface RailMotionSegment {
  * with its early exit is bounded and allocation-free.
  *
  * Before the first key the first value holds; at or after the last key the
- * last value holds. Between two keys the OUTGOING key decides: `hold` steps,
- * `ease` runs the smoothstep.
+ * last value holds. Between two keys the OUTGOING key decides, through an
+ * explicit exhaustive switch (261108-d5o) so a future token can never fall
+ * through into the smoothstep default:
+ * - `hold` steps at the outgoing value;
+ * - `linear` ramps raw t (no smoothstep);
+ * - `ease` runs the monotone smoothstep;
+ * - `stop-motion` holds the outgoing value when no snap list is supplied (the
+ *   documented no-interior-snap law) — Task 2 adds the sampling argument.
  */
 function resolveRailMotionSegment(
   keys: readonly PhysicPaintRotoRailMotionKey[],
@@ -105,13 +111,30 @@ function resolveRailMotionSegment(
     const next = keys[index + 1];
     if (next === undefined) return { value: current.value, outgoingKey: current };
     if (frame < next.frame) {
-      if (current.easing === 'hold') return { value: current.value, outgoingKey: current };
       const span = next.frame - current.frame;
       const position = span <= 0 ? 1 : (frame - current.frame) / span;
-      return {
-        value: current.value + (next.value - current.value) * railMotionSmoothstep(position),
-        outgoingKey: current,
-      };
+      switch (current.easing) {
+        case 'hold':
+          return { value: current.value, outgoingKey: current };
+        case 'linear':
+          return {
+            value: current.value + (next.value - current.value) * position,
+            outgoingKey: current,
+          };
+        case 'ease':
+          return {
+            value: current.value + (next.value - current.value) * railMotionSmoothstep(position),
+            outgoingKey: current,
+          };
+        case 'stop-motion':
+          return { value: current.value, outgoingKey: current };
+        default: {
+          const exhaustive: never = current.easing;
+          throw new Error(
+            `PhysicPaintRotoRailMotionEvaluator: unknown easing "${String(exhaustive)}".`,
+          );
+        }
+      }
     }
   }
 

@@ -130,7 +130,18 @@ describe('rail motion canonical parity (TS half)', () => {
       'rail-motion-empty',
       'rail-motion-ordering',
       'rail-motion-exponent',
+      'rail-motion-easings',
     ].join('|'));
+  });
+
+  // 261108-d5o: the eighth frozen document carries both new easing tokens, so
+  // a token the TypeScript encoder accepts but Rust rejects (or vice versa)
+  // fails the shared fixture gate instead of drifting silently.
+  it('freezes both new easing tokens in the eighth document', () => {
+    const easings = FIXTURE.documents.find((entry) => entry.name === 'rail-motion-easings');
+    expect(easings).toBeDefined();
+    expect(easings!.expectedSource).toContain('s6:linear');
+    expect(easings!.expectedSource).toContain('s11:stop-motion');
   });
 
   it.each(FIXTURE.documents.map((entry) => [entry.name, entry] as const))(
@@ -294,7 +305,9 @@ describe('rail motion canonical parity (TS half)', () => {
         }
       }
     }
-    expect(inspected).toBe(6);
+    // 261108-d5o appended the eighth document, which carries the same single
+    // Loop Clip, so the population pin moves from six to seven.
+    expect(inspected).toBe(7);
 
     const ordering = FIXTURE.documents.find((entry) => entry.name === 'rail-motion-ordering');
     expect(ordering).toBeDefined();

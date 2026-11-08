@@ -19,7 +19,16 @@ export type PhysicPaintRotoRailMotionChannelId =
   | 'rotation'
   | 'opacity';
 
-export type PhysicPaintRotoRailMotionEasing = 'hold' | 'ease';
+/**
+ * 261108-d5o: four authorable easing tokens.
+ * - `linear` is a raw ramp: no smoothstep.
+ * - `hold` steps at the outgoing key.
+ * - `ease` runs the monotone smoothstep.
+ * - `stop-motion` samples the linear ramp only at frames that display a real
+ *   drawing key (the snap list is supplied by the consumer, never resolved
+ *   here) and holds that sample until the next one.
+ */
+export type PhysicPaintRotoRailMotionEasing = 'linear' | 'hold' | 'ease' | 'stop-motion';
 
 export interface PhysicPaintRotoRailMotionKey {
   readonly frame: number;
@@ -120,7 +129,26 @@ const RAIL_MOTION_PERCENT_CHANNEL_IDS: ReadonlySet<PhysicPaintRotoRailMotionChan
   'opacity',
 ]);
 
-const RAIL_MOTION_EASING_VALUES: ReadonlySet<string> = new Set(['hold', 'ease']);
+/**
+ * 261108-d5o: the eased-token vocabulary in control order. The glyph control
+ * renders this order; the two hosts share it so the four buttons can never
+ * disagree with the validator.
+ */
+export const RAIL_MOTION_EASING_ORDER: readonly PhysicPaintRotoRailMotionEasing[] = Object.freeze([
+  'linear',
+  'hold',
+  'ease',
+  'stop-motion',
+]);
+
+/**
+ * 261108-d5o: every CREATION path seeds this token. It is not a coercion of
+ * stored keys — an authored key's easing is always preserved (the
+ * `easing ?? entry.easing` law in `upsertRailMotionKey`).
+ */
+export const DEFAULT_RAIL_MOTION_EASING: PhysicPaintRotoRailMotionEasing = 'stop-motion';
+
+const RAIL_MOTION_EASING_VALUES: ReadonlySet<string> = new Set(['linear', 'hold', 'ease', 'stop-motion']);
 
 /** Parser caps (T-59-05): enforced before any allocation-heavy work. */
 const RAIL_MOTION_MAX_RECORDS = 512;
@@ -150,7 +178,8 @@ function isRailMotionChannelId(value: unknown): value is PhysicPaintRotoRailMoti
   return typeof value === 'string' && RAIL_MOTION_CHANNEL_ID_SET.has(value);
 }
 
-function isRailMotionEasing(value: unknown): value is PhysicPaintRotoRailMotionEasing {
+/** Exported so the command layer reuses the ONE token authority (261108-d5o). */
+export function isRailMotionEasing(value: unknown): value is PhysicPaintRotoRailMotionEasing {
   return typeof value === 'string' && RAIL_MOTION_EASING_VALUES.has(value);
 }
 
@@ -227,7 +256,7 @@ function canonicalizeRailMotionKey(
     throw new Error(`PhysicPaintRotoRailMotions: frame ${key.frame} in channel "${channelId}" is outside 0..${RAIL_MOTION_FRAME_LIMIT}`);
   }
   if (!isRailMotionEasing(key.easing)) {
-    throw new Error(`PhysicPaintRotoRailMotions: easing "${String(key.easing)}" in channel "${channelId}" is not hold or ease`);
+    throw new Error(`PhysicPaintRotoRailMotions: easing "${String(key.easing)}" in channel "${channelId}" is not linear, hold, ease or stop-motion`);
   }
   if (!isFiniteNumber(key.wiggle) || key.wiggle < 0 || key.wiggle > RAIL_MOTION_WIGGLE_LIMIT) {
     throw new Error(`PhysicPaintRotoRailMotions: wiggle ${String(key.wiggle)} in channel "${channelId}" is outside 0..${RAIL_MOTION_WIGGLE_LIMIT}`);
@@ -360,7 +389,7 @@ function parseRailMotionChannel(
 
     const easing = rawKey.easing;
     if (!isRailMotionEasing(easing)) {
-      throw new Error(`PhysicPaintRotoRailMotions: invalid easing ${String(easing)} in channel "${id}" of record "${railId}"; expected hold or ease.`);
+      throw new Error(`PhysicPaintRotoRailMotions: invalid easing ${String(easing)} in channel "${id}" of record "${railId}"; expected linear, hold, ease or stop-motion.`);
     }
 
     const wiggle = rawKey.wiggle;
@@ -532,7 +561,7 @@ function upsertRailMotionKey(
   if (existingIndex < 0) {
     return [
       ...keys,
-      { frame, value, easing: easing ?? 'ease', wiggle: wiggle ?? 0 },
+      { frame, value, easing: easing ?? DEFAULT_RAIL_MOTION_EASING, wiggle: wiggle ?? 0 },
     ];
   }
   return keys.map((entry, index) => (index === existingIndex
@@ -588,7 +617,7 @@ function applyAnimateEdit(
     id: 'position-x' | 'position-y',
   ): PhysicPaintRotoRailMotionChannel => ({
     id,
-    keys: [{ frame: edit.frame, value: 0, easing: 'ease', wiggle: 0 }],
+    keys: [{ frame: edit.frame, value: 0, easing: DEFAULT_RAIL_MOTION_EASING, wiggle: 0 }],
   });
 
   return canonicalizeRailMotionRecords([
@@ -652,7 +681,7 @@ function applySetKeyEdit(
       id: entry.id,
       keys: [
         ...entry.keys,
-        { frame: edit.frame, value: siblingValue, easing: edit.easing ?? 'ease', wiggle: 0 },
+        { frame: edit.frame, value: siblingValue, easing: edit.easing ?? DEFAULT_RAIL_MOTION_EASING, wiggle: 0 },
       ],
     };
   });
@@ -766,16 +795,17 @@ function applyAddChannelEdit(
     return records;
   }
 
-  // 261107-ux2: the opening seed is the OUTGOING key of the first span, so it
-  // must ease toward the user's next written key — otherwise that span holds
-  // and the rail looks unanimated until the second written key. A channel that
-  // carries only this key stays inert because the evaluator holds the last
-  // key's value at and after the end. Hold remains authorable per key through
-  // the Motion sheet Hold/Ease toggle.
+  // 261108-d5o (supersedes 261107-ux2): the opening seed is the OUTGOING key
+  // of the first span and follows the stop-motion law like every other span.
+  // With no snap data that span holds; with the displayed-real-key cassette the
+  // seed steps on the rail's own paint-key cadence toward the user's next
+  // written key. A channel that carries only this key stays inert because the
+  // evaluator holds the last key's value at and after the end. Stop Motion is
+  // the creation default; every easing stays authorable per key.
   const seedKey = (value: number): PhysicPaintRotoRailMotionKey => ({
     frame: 0,
     value,
-    easing: 'ease',
+    easing: DEFAULT_RAIL_MOTION_EASING,
     wiggle: 0,
   });
 

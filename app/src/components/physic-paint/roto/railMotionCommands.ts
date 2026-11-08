@@ -16,6 +16,7 @@ import {
   RAIL_MOTION_FRAME_LIMIT,
   RAIL_MOTION_WIGGLE_LIMIT,
   applyRailMotionEditToCollection,
+  isRailMotionEasing,
   railMotionValueFromUi,
   railMotionValueIsValid,
   type PhysicPaintRotoRailMotionChannel,
@@ -379,10 +380,6 @@ function isRailMotionWiggleValue(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= RAIL_MOTION_WIGGLE_LIMIT;
 }
 
-function isRailMotionEasingValue(value: unknown): value is PhysicPaintRotoRailMotionEasing {
-  return value === 'hold' || value === 'ease';
-}
-
 function findRailMotionRecord(
   records: readonly PhysicPaintRotoRailMotionRecord[],
   railId: string,
@@ -414,8 +411,8 @@ export function setMotionKeyAtCursor(input: SetMotionKeyAtCursorInput): RailMoti
   if (!record.channels.some((entry) => entry.id === channelId)) {
     return failure('This Motion channel is not present on the rail.');
   }
-  if (input.easing !== undefined && !isRailMotionEasingValue(input.easing)) {
-    return failure('Easing must be Hold or Ease.');
+  if (input.easing !== undefined && !isRailMotionEasing(input.easing)) {
+    return failure('Easing must be Linear, Hold, Ease or Stop Motion.');
   }
   if (input.wiggle !== undefined && !isRailMotionWiggleValue(input.wiggle)) {
     return failure('Wiggle must be between 0 and 1,000,000.');
@@ -689,7 +686,7 @@ function applyAxisMotionKeyEdits(
 /** Sets Hold/Ease on every Motion axis the grouped lane addresses (WR-04). */
 export function setMotionKeyEasing(input: SetMotionKeyEasingInput): RailMotionCommandResult {
   const { records, railId, channelId, keyFrame, easing } = input;
-  if (!isRailMotionEasingValue(easing)) return failure('Easing must be Hold or Ease.');
+  if (!isRailMotionEasing(easing)) return failure('Easing must be Linear, Hold, Ease or Stop Motion.');
   if (!isBoundedId(railId)) return failure('Select a rail first.');
   if (!isRailMotionFrameValue(keyFrame)) return failure('The Motion key frame is not valid.');
   const record = findRailMotionRecord(records, railId);

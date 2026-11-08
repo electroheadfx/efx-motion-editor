@@ -1723,7 +1723,7 @@ fn canonical_rail_motions(rail_motions: &[Value]) -> Result<String, String> {
                     .get("easing")
                     .and_then(Value::as_str)
                     .ok_or("Target physical document railMotions key easing is malformed")?;
-                if easing != "hold" && easing != "ease" {
+                if easing != "linear" && easing != "hold" && easing != "ease" && easing != "stop-motion" {
                     return Err(format!(
                         "Target physical document railMotions channel {channel_id} in record {rail_id} has an invalid easing"
                     ));
@@ -3327,8 +3327,9 @@ mod tests {
                 "rail-motion-empty",
                 "rail-motion-ordering",
                 "rail-motion-exponent",
+                "rail-motion-easings",
             ],
-            "golden fixture must carry the seven frozen cross-language documents"
+            "golden fixture must carry the eight frozen cross-language documents"
         );
         for entry in documents {
             let name = entry["name"].as_str().expect("golden fixture name");
@@ -3502,6 +3503,37 @@ mod tests {
         );
     }
 
+    // 261108-d5o: both new easing tokens pass the validator and encode through
+    // the generic canonical_string path; a genuinely invalid token still fails.
+    #[test]
+    fn canonical_rail_motions_accepts_linear_and_stop_motion_tokens() {
+        let document = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [
+                { "frame": 0, "value": 1, "easing": "linear", "wiggle": 0 },
+                { "frame": 4, "value": 2, "easing": "stop-motion", "wiggle": 0 }
+            ] }])
+        )]));
+        let source = canonical_physical_source(&document)
+            .expect("both new easing tokens must be accepted");
+        assert!(
+            source.contains("s6:linear"),
+            "linear must encode through canonical_string: {source}"
+        );
+        assert!(
+            source.contains("s11:stop-motion"),
+            "stop-motion must encode through canonical_string: {source}"
+        );
+
+        let rejected = rail_motion_document(json!([rail_motion_record(
+            "rail",
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
+        )]));
+        let error = canonical_physical_source(&rejected)
+            .expect_err("an unknown easing token must fail closed");
+        assert!(error.contains("easing"), "error must name easing: {error}");
+    }
+
     #[test]
     fn canonical_rail_motions_canonicalizes_channel_order() {
         // The TypeScript writer canonicalizes channel order, so the Rust mirror
@@ -3568,7 +3600,7 @@ mod tests {
         )]);
         let invalid_easing = json!([rail_motion_record(
             "rail",
-            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "linear", "wiggle": 0 }] }])
+            json!([{ "id": "scale", "keys": [{ "frame": 0, "value": 1, "easing": "bounce", "wiggle": 0 }] }])
         )]);
         let non_numeric_value = json!([rail_motion_record(
             "rail",

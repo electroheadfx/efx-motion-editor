@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   RAIL_MOTION_IDENTITY_TRANSFORM,
@@ -10,6 +12,7 @@ import {
 import type {
   PhysicPaintRotoRailMotionChannel,
   PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionEasing,
   PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
@@ -18,7 +21,7 @@ import { TIMELINE_GEOMETRY } from '../view/timelineRailDesign';
 function key(
   frame: number,
   value: number,
-  easing: 'hold' | 'ease' = 'ease',
+  easing: PhysicPaintRotoRailMotionEasing = 'ease',
   wiggle = 0,
 ): PhysicPaintRotoRailMotionKey {
   return { frame, value, easing, wiggle };
@@ -101,6 +104,56 @@ describe('rail motion channel evaluation', () => {
       expect(value).toBeLessThanOrEqual(100);
       previous = value;
     }
+  });
+
+  it('ramps linear keys raw, with no smoothstep', () => {
+    // 261108-d5o: keys 0 -> 0 and 8 -> 80. A raw t reads 10 / 20 / 60 at
+    // frames 1 / 2 / 6; the same ramp through smoothstep would read
+    // 80 * 0.043478... = 3.4375, 80 * 0.15625 = 12.5 and 80 * 0.84375 = 67.5.
+    const linear = record('rail-linear', [
+      channel('position-x', [key(0, 0, 'linear'), key(8, 80, 'linear')]),
+    ]);
+
+    expect(evaluateRailMotionChannel(linear, 'position-x', 1)).toBe(10);
+    expect(evaluateRailMotionChannel(linear, 'position-x', 2)).toBe(20);
+    expect(evaluateRailMotionChannel(linear, 'position-x', 6)).toBe(60);
+    expect(evaluateRailMotionChannel(linear, 'position-x', 0)).toBe(0);
+    expect(evaluateRailMotionChannel(linear, 'position-x', 8)).toBe(80);
+  });
+
+  it('treats a stop-motion key with no snap list exactly like hold', () => {
+    const stopMotion = record('rail-stop-motion', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+    ]);
+    const hold = record('rail-stop-motion', [
+      channel('position-x', [key(0, 0, 'hold'), key(6, 6, 'hold')]),
+    ]);
+
+    for (const frame of [0, 1, 2, 3.5, 4, 5, 5.999, 6, 7]) {
+      expect(evaluateRailMotionChannel(stopMotion, 'position-x', frame)).toBe(
+        evaluateRailMotionChannel(hold, 'position-x', frame),
+      );
+    }
+    expect(evaluateRailMotionChannel(stopMotion, 'position-x', 3)).toBe(0);
+    expect(evaluateRailMotionChannel(stopMotion, 'position-x', 6)).toBe(6);
+  });
+
+  it('dispatches easing through an explicit exhaustive switch, never a hold-else-smoothstep branch', () => {
+    // T-261108-D5O-03: a new token must not be able to fall through into the
+    // smoothstep default. The switch is asserted at the source so a future
+    // value cannot be added to the union and silently eased.
+    const sourcePath = fileURLToPath(new URL('./railMotionEvaluator.ts', import.meta.url));
+    const source = readFileSync(sourcePath, 'utf8');
+    const start = source.indexOf('function resolveRailMotionSegment');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const functionSource = source.slice(start, source.indexOf('\n}\n', start));
+
+    expect(functionSource).toContain('switch (');
+    for (const token of ['linear', 'hold', 'ease', 'stop-motion']) {
+      expect(functionSource).toContain(`case '${token}':`);
+    }
+    expect(functionSource).toMatch(/default:\s*\n?\s*\{\s*\n?\s*const exhaustive: never =/);
+    expect(functionSource).not.toMatch(/===\s*'hold'/);
   });
 
   it('holds a single-key channel at that value everywhere', () => {

@@ -6,6 +6,7 @@ import * as railMotionIdentityModule from './railMotionIdentity';
 import type { RailMotionRailView } from './railMotionIdentity';
 import type {
   PhysicPaintRotoRailMotionChannel,
+  PhysicPaintRotoRailMotionEasing,
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
 import {
@@ -209,7 +210,12 @@ describe('59-12 rail motion commands — selected rail view resolution', () => {
   });
 });
 
-function motionKey(frame: number, value: number, easing: 'hold' | 'ease' = 'ease', wiggle = 0) {
+function motionKey(
+  frame: number,
+  value: number,
+  easing: PhysicPaintRotoRailMotionEasing = 'ease',
+  wiggle = 0,
+) {
   return Object.freeze({ frame, value, easing, wiggle });
 }
 
@@ -405,7 +411,7 @@ describe('59-12 rail motion commands — Motion keys', () => {
       railId: 'rail-1',
       channelId: 'rotation',
       keyFrame: 4,
-      easing: 'linear' as unknown as 'hold',
+      easing: 'bounce' as unknown as PhysicPaintRotoRailMotionEasing,
     });
     expect(rejected.ok).toBe(false);
     if (rejected.ok) return;
@@ -540,7 +546,9 @@ describe('59-12 rail motion commands — Motion keys', () => {
     expect(y.keys[1]?.wiggle).toBe(7);
     expect(y.keys.map((key) => key.value).join(',')).toBe('0,0,50');
     expect(y.keys.map((key) => key.wiggle).join(',')).toBe('0,7,0');
-    expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,ease,ease');
+    // 261108-d5o: the seeded keyless sibling is a CREATION path, so it takes
+    // the stop-motion default; the two authored keys keep their own easing.
+    expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,stop-motion,ease');
   });
 
   it('refuses a grouped Position edit when the addressed axis has no key at the frame', () => {
@@ -1755,13 +1763,13 @@ function scaleOnlySeedRecord(): PhysicPaintRotoRailMotionRecord {
   }) as PhysicPaintRotoRailMotionRecord;
 }
 
-/** The one seed shape every add writes: frame 0, identity, ease, no wiggle. */
+/** The one seed shape every add writes: frame 0, identity, stop-motion, no wiggle. */
 function identitySeed(value: number) {
-  return { frame: 0, value, easing: 'ease', wiggle: 0 };
+  return { frame: 0, value, easing: 'stop-motion', wiggle: 0 };
 }
 
 describe('59-17 rail motion commands — add a Motion channel (G1)', () => {
-  it('adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 seeded with ease', () => {
+  it('adds Scale to a Position-only rail: ONE channel, one identity key at frame 0 seeded with stop-motion', () => {
     const before = positionOnlyRecord();
     const records = [before];
     const result = addMotionChannel({ records, railId: 'rail-1', channelId: 'scale' });

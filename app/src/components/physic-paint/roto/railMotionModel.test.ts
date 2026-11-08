@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_RAIL_MOTION_EASING,
   PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER,
   PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  RAIL_MOTION_EASING_ORDER,
   RAIL_MOTION_FRAME_LIMIT,
   RAIL_MOTION_POSITION_LIMIT_PX,
   RAIL_MOTION_WIGGLE_LIMIT,
@@ -24,7 +26,7 @@ import { evaluateRailMotionChannel } from './railMotionEvaluator';
 function key(
   frame: number,
   value: number,
-  easing: 'hold' | 'ease' = 'ease',
+  easing: PhysicPaintRotoRailMotionEasing = 'stop-motion',
   wiggle = 0,
 ): PhysicPaintRotoRailMotionKey {
   return { frame, value, easing, wiggle };
@@ -75,6 +77,12 @@ describe('rail motion channel union', () => {
     expect(Object.isFrozen(PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER)).toBe(true);
     expect(Object.isFrozen(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY)).toBe(true);
     expect(PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY).toEqual([]);
+  });
+
+  it('exposes the four easing tokens in order and stop-motion as the creation default', () => {
+    expect(RAIL_MOTION_EASING_ORDER).toEqual(['linear', 'hold', 'ease', 'stop-motion']);
+    expect(Object.isFrozen(RAIL_MOTION_EASING_ORDER)).toBe(true);
+    expect(DEFAULT_RAIL_MOTION_EASING).toBe('stop-motion');
   });
 });
 
@@ -481,10 +489,30 @@ describe('parsePhysicPaintRotoRailMotions', () => {
     }
   });
 
+  it('accepts all four easing tokens and round-trips a document built with them', () => {
+    // 261108-d5o: every token is authored input now — this document is built
+    // with this module's own builders and must survive its own parser.
+    const built = [
+      record('rail-a', [
+        channel('position-x', [key(0, 0, 'linear'), key(4, 10, 'stop-motion')]),
+        channel('position-y', [key(0, 0, 'hold'), key(4, 20, 'ease')]),
+        channel('opacity', [key(2, 0.5, 'stop-motion', 3)]),
+      ]),
+    ];
+
+    const parsed = parsePhysicPaintRotoRailMotions(built);
+
+    expect(parsed).toEqual(built);
+    expect(parsed[0].channels[0].keys.map((entry) => entry.easing)).toEqual([
+      'linear',
+      'stop-motion',
+    ]);
+  });
+
   it('rejects an invalid easing', () => {
     expect(() => parsePhysicPaintRotoRailMotions([
       record('rail-a', [
-        channel('scale', [{ ...key(0, 1), easing: 'linear' as PhysicPaintRotoRailMotionEasing }]),
+        channel('scale', [{ ...key(0, 1), easing: 'bounce' as PhysicPaintRotoRailMotionEasing }]),
       ]),
     ])).toThrow(/invalid easing/);
   });
@@ -561,8 +589,8 @@ describe('applyRailMotionEditToCollection', () => {
     expect(records[0].anchorKeyId).toBe('key-1');
     expect(records[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y']);
     expect(records[0].channels.map((entry) => entry.keys)).toEqual([
-      [key(6, 0, 'ease', 0)],
-      [key(6, 0, 'ease', 0)],
+      [key(6, 0, 'stop-motion', 0)],
+      [key(6, 0, 'stop-motion', 0)],
     ]);
     expect(Object.isFrozen(records)).toBe(true);
     expect(Object.isFrozen(records[0].channels[0].keys[0])).toBe(true);
@@ -644,7 +672,7 @@ describe('applyRailMotionEditToCollection', () => {
     expect(next[0].channels[0].keys).toEqual([key(0, 1), key(3, 4)]);
   });
 
-  it('set-key defaults a new key to ease/0 and preserves an existing key fields', () => {
+  it('set-key defaults a new key to stop-motion/0 and preserves an existing key fields', () => {
     const records = [record('rail-a', [channel('scale', [key(0, 1, 'hold', 5), key(3, 2, 'hold', 5)])])];
 
     const replaced = applyRailMotionEditToCollection(records, {
@@ -663,7 +691,7 @@ describe('applyRailMotionEditToCollection', () => {
       frame: 9,
       value: 4,
     });
-    expect(inserted[0].channels[0].keys[2]).toEqual(key(9, 4, 'ease', 0));
+    expect(inserted[0].channels[0].keys[2]).toEqual(key(9, 4, 'stop-motion', 0));
   });
 
   it('set-key accepts an explicit easing and wiggle on insert', () => {
@@ -813,7 +841,7 @@ describe('applyRailMotionEditToCollection', () => {
     })).toBe(records);
   });
 
-  it('add-channel seeds identity keys at frame 0 with ease', () => {
+  it('add-channel seeds identity keys at frame 0 with stop-motion', () => {
     const records = [record('rail-a', [channel('rotation', [key(2, 45)])])];
 
     const next = applyRailMotionEditToCollection(records, {
@@ -823,14 +851,14 @@ describe('applyRailMotionEditToCollection', () => {
     });
 
     expect(next[0].channels.map((entry) => entry.id)).toEqual(['scale', 'rotation']);
-    expect(next[0].channels[0].keys).toEqual([key(0, 1, 'ease', 0)]);
+    expect(next[0].channels[0].keys).toEqual([key(0, 1, 'stop-motion', 0)]);
 
     const opacity = applyRailMotionEditToCollection(next, {
       kind: 'add-channel',
       railId: 'rail-a',
       channel: 'opacity',
     });
-    expect(opacity[0].channels[2].keys).toEqual([key(0, 1, 'ease', 0)]);
+    expect(opacity[0].channels[2].keys).toEqual([key(0, 1, 'stop-motion', 0)]);
 
     const rotation = applyRailMotionEditToCollection(records, {
       kind: 'add-channel',
@@ -840,7 +868,7 @@ describe('applyRailMotionEditToCollection', () => {
     expect(rotation).toBe(records);
   });
 
-  it('add-channel seeds both Position axes with zero', () => {
+  it('add-channel seeds both Position axes with zero and stop-motion', () => {
     const records = [record('rail-a', [channel('scale', [key(0, 1)])])];
 
     const next = applyRailMotionEditToCollection(records, {
@@ -850,11 +878,16 @@ describe('applyRailMotionEditToCollection', () => {
     });
 
     expect(next[0].channels.map((entry) => entry.id)).toEqual(['position-x', 'position-y', 'scale']);
-    expect(next[0].channels[0].keys).toEqual([key(0, 0, 'ease', 0)]);
-    expect(next[0].channels[1].keys).toEqual([key(0, 0, 'ease', 0)]);
+    expect(next[0].channels[0].keys).toEqual([key(0, 0, 'stop-motion', 0)]);
+    expect(next[0].channels[1].keys).toEqual([key(0, 0, 'stop-motion', 0)]);
   });
 
-  it('a newly added channel eases its FIRST span toward the next written key (261107-ux2)', () => {
+  it('a newly added channel HOLDS its first span at the outgoing key (stop-motion default, 261108-d5o)', () => {
+    // 261107-ux2 superseded: the opening seed used to be `ease` so the first
+    // span interpolated. Stop-motion is the default now, so the opening seed
+    // is the outgoing key of a stepped span. The snapped interpolation (a
+    // paint-key cassette) is pinned in Task 2 of 261108-d5o; here the record
+    // carries no snap list, which is the documented no-interior-snap law.
     const seeded = applyRailMotionEditToCollection(
       [record('rail-a', [channel('rotation', [key(2, 45)])])],
       { kind: 'add-channel', railId: 'rail-a', channel: 'scale' },
@@ -878,16 +911,14 @@ describe('applyRailMotionEditToCollection', () => {
     expect(evaluateRailMotionChannel(evaluated, 'scale', 0)).toBe(1);
     expect(evaluateRailMotionChannel(evaluated, 'scale', 4)).toBe(3);
     expect(evaluateRailMotionChannel(evaluated, 'scale', 9)).toBe(5);
-    // Frame 2 is the exact midpoint of the 1..3 opening span:
-    // 1 + (3 - 1) * smoothstep(0.5) = 2.
-    expect(evaluateRailMotionChannel(evaluated, 'scale', 2)).toBe(2);
-    // Frame 6 sits on the SECOND span (3..5) and must also interpolate.
-    const laterSpan = evaluateRailMotionChannel(evaluated, 'scale', 6);
-    expect(laterSpan).toBeGreaterThan(3);
-    expect(laterSpan).toBeLessThan(5);
+    // Without snap data the first span holds the opening identity (1), not the
+    // eased midpoint 2.
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 2)).toBe(1);
+    // Frame 6 sits on the SECOND span (3..5) and holds its outgoing value 3.
+    expect(evaluateRailMotionChannel(evaluated, 'scale', 6)).toBe(3);
   });
 
-  it('a grouped Position pair eases BOTH axes on the first span from the seeded identity', () => {
+  it('a grouped Position pair HOLDS BOTH axes on the first span (stop-motion default, 261108-d5o)', () => {
     const seeded = applyRailMotionEditToCollection(
       [record('rail-a', [channel('scale', [key(0, 1)])])],
       { kind: 'add-channel', railId: 'rail-a', channel: 'position-x' },
@@ -906,9 +937,10 @@ describe('applyRailMotionEditToCollection', () => {
     expect(evaluateRailMotionChannel(evaluated, 'position-y', 0)).toBe(0);
     expect(evaluateRailMotionChannel(evaluated, 'position-x', 4)).toBe(100);
     expect(evaluateRailMotionChannel(evaluated, 'position-y', 4)).toBe(40);
-    // Frame 2 is the exact midpoint of the 0..100 / 0..40 opening spans.
-    expect(evaluateRailMotionChannel(evaluated, 'position-x', 2)).toBe(50);
-    expect(evaluateRailMotionChannel(evaluated, 'position-y', 2)).toBe(20);
+    // No snap list: the 0..100 / 0..40 opening spans hold their outgoing 0
+    // values at frame 2 instead of easing to 50 / 20.
+    expect(evaluateRailMotionChannel(evaluated, 'position-x', 2)).toBe(0);
+    expect(evaluateRailMotionChannel(evaluated, 'position-y', 2)).toBe(0);
   });
 
   it('a channel carrying ONLY the seeded opening key still evaluates to its identity everywhere', () => {

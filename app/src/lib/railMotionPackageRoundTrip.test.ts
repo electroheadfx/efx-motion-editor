@@ -288,7 +288,8 @@ const RAIL_MOTIONS: readonly PhysicPaintRotoRailMotionRecord[] = [
         id: 'position-x',
         keys: [
           { frame: 0, value: 0, easing: 'ease', wiggle: 0 },
-          { frame: 2, value: 40, easing: 'ease', wiggle: 1.5 },
+          // 261108-d5o: a raw linear ramp in the frozen package fixture.
+          { frame: 2, value: 40, easing: 'linear', wiggle: 1.5 },
         ],
       },
       {
@@ -302,7 +303,8 @@ const RAIL_MOTIONS: readonly PhysicPaintRotoRailMotionRecord[] = [
         id: 'rotation',
         keys: [
           { frame: 0, value: 0, easing: 'hold', wiggle: 0 },
-          { frame: 2, value: 720, easing: 'ease', wiggle: 0 },
+          // 261108-d5o: the new default token must survive the package leg too.
+          { frame: 2, value: 720, easing: 'stop-motion', wiggle: 0 },
         ],
       },
     ],

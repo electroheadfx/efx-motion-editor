@@ -68,14 +68,16 @@ const RAIL_A = {
       id: 'position-x' as const,
       keys: [
         { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
-        { frame: 4, value: 40, easing: 'ease' as const, wiggle: 0 },
+        // 261108-d5o: one raw-ramp token in the persistence fixture.
+        { frame: 4, value: 40, easing: 'linear' as const, wiggle: 0 },
       ],
     },
     {
       id: 'position-y' as const,
       keys: [
         { frame: 0, value: 0, easing: 'ease' as const, wiggle: 0 },
-        { frame: 4, value: -20, easing: 'ease' as const, wiggle: 0 },
+        // ...and one stop-motion token beside it.
+        { frame: 4, value: -20, easing: 'stop-motion' as const, wiggle: 0 },
       ],
     },
   ],
