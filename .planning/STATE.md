@@ -6,10 +6,10 @@ current_phase: 59
 current_phase_name: Rail Motion Channels & v7 Interface
 status: verifying
 stopped_at: Completed 59-25-PLAN.md
-last_updated: "2026-11-08T14:47:06.213Z"
+last_updated: "2026-11-08T15:02:02.931Z"
 last_activity: 2026-11-08
 last_activity_desc: Phase 59 execution started
-state_head: 4893ee9ee78838de732a75ba7699c364fb1c17b8
+state_head: 4128c27e6dd175b72c9b4713314aa36cb09d22b5
 progress:
   total_phases: 4
   completed_phases: 0
@@ -244,6 +244,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 261108-d5o | Rail Motion: add stop-motion and linear easings, make stop-motion the default for new lanes and keys, expose per-key easing in the floating Motion sheet, and glyph all four easing buttons (supersedes 261107-ux2 ease seed; UAT approved 2026-11-08) | 2026-11-08 | 86cea6ebd | [261108-d5o-new-ease-motion-from-phase-59-rail-motio](./quick/261108-d5o-new-ease-motion-from-phase-59-rail-motio/) |
 | 261108-gh0 | Rail Motion: lucide easing icons on the sheet and every lane key, tool-strip easing/wiggle removed, per-channel whole-timeline wiggle with a persisted Global flag, Keys table with [Key N]/[All] targets, project-scaled wiggle sliders, sectioned auto-height sheet (UAT approved 2026-11-08) | 2026-11-08 | 94b246ed7 | [261108-gh0-rail-motion-follow-up-lucide-easing-icon](./quick/261108-gh0-rail-motion-follow-up-lucide-easing-icon/) |
 | 261108-kvw | Canvas motion-path overlay for rail Position: read-only dashed authored route, key dots and cursor marker in animate mode (UAT approved) | 2026-11-08 | 4893ee9ee | [261108-kvw-canvas-motion-path-overlay-for-rail-posi](./quick/261108-kvw-canvas-motion-path-overlay-for-rail-posi/) |
+| 14 | Deps bump: preact 11.2.0, xstate 6.0.0-beta.1; removed Matt Pocock skills and .efx-planning | 2026-11-08 | 4128c27e6 | — |
 
 ## Roadmap Evolution
 
