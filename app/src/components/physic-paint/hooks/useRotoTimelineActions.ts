@@ -2599,7 +2599,15 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         && state.cursorFrame < state.view.endFrameExclusive,
     });
     if (!availability.enabled || state.record === null) return null;
-    const evaluated = evaluateRailMotion(state.record, state.localCursorFrame);
+    // 261108-d5o: the gizmo reads the SAME displayed-real-key list the
+    // compositor applies, so the numbers it shows never disagree with the
+    // canvas. Memoized per rail + RASTER revision — never a per-frame scan.
+    const snapFrames = physicPaintStore.getRotoRailMotionSnapFrames(
+      state.layerId,
+      state.trackId,
+      state.view.railId,
+    );
+    const evaluated = evaluateRailMotion(state.record, state.localCursorFrame, snapFrames);
     const values = Object.freeze({
       position: Object.freeze({ x: evaluated.translateX, y: evaluated.translateY }),
       scale: railMotionValueToUi('scale', evaluated.scale),
@@ -2665,6 +2673,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         inkBase === null
           ? 'full'
           : `${inkBase.bounds.x},${inkBase.bounds.y},${inkBase.bounds.width},${inkBase.bounds.height},${inkBase.pivotX},${inkBase.pivotY}`,
+        // 261108-d5o: snap CONTENT is already covered by the content revision
+        // term above; the count re-resolves when the list gains a step.
+        String(snapFrames.length),
       ].join('|'),
       commit: (records: readonly PhysicPaintRotoRailMotionRecord[]): void => {
         const written = commitRailMotionRecords(state, records, input);
@@ -3002,6 +3013,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       railId: state.record.railId,
       channelId: targetChannel,
       keyFrame: state.localCursorFrame,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        state.record.railId,
+      ),
     });
     return commitMotionCommandResult(input, state, result, 'Motion key added.');
   }, [input]);
@@ -3114,6 +3130,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       keyFrame: frame,
       channelId,
       uiValue,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        state.record.railId,
+      ),
     });
     if (!result.ok) {
       input.setApplyStatus?.('error');
@@ -3180,6 +3201,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     if (railMotionSelectedChannel.value === null && railMotionSelectedKey.value === null) {
       return 'Select a Motion key first.';
     }
+    const snapFrames = physicPaintStore.getRotoRailMotionSnapFrames(
+      state.layerId,
+      state.trackId,
+      state.record.railId,
+    );
     let records = state.records;
     for (const field of presentation.fields) {
       if (!field.present) continue;
@@ -3189,6 +3215,7 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         keyFrame: presentation.frame,
         channelId: field.channelId,
         uiValue: RAIL_MOTION_RESET_UI_VALUE[field.channelId],
+        snapFrames,
       });
       if (!result.ok) {
         input.setApplyStatus?.('error');
@@ -3318,6 +3345,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       channelId: selection.channelId,
       keyFrame: selection.frame,
       easing,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        selection.railId,
+      ),
     });
     return commitMotionCommandResult(input, state, result, 'Motion key easing changed.');
   }, [input]);
@@ -3339,6 +3371,11 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       channelId: selection.channelId,
       keyFrame: selection.frame,
       wiggle,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        selection.railId,
+      ),
     });
     return commitMotionCommandResult(input, state, result, 'Motion key wiggle changed.');
   }, [input]);

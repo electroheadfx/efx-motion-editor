@@ -128,6 +128,8 @@ interface HarnessOptions {
   getRotoLoopClips?: () => readonly PhysicPaintRotoLoopClip[];
   /** 59-18 (G3/CR-01): the active track's stored rail motion, read by the copy builder. */
   getRotoRailMotions?: () => readonly PhysicPaintRotoRailMotionRecord[];
+  /** 261107: the OPEN motion block identity the canvas gizmo gate reads. */
+  getMotionBlockRailIdentity?: () => RailSetIdentity | null;
   capacity?: number;
   parentEndExclusive?: number;
   blankDataUrl?: Uint8Array;
@@ -170,6 +172,9 @@ function createHarness(options: HarnessOptions = {}) {
     }),
     getRotoLoopClips: options.getRotoLoopClips ?? (() => options.loopClips ?? []),
     ...(options.getRotoRailMotions ? { getRotoRailMotions: options.getRotoRailMotions } : {}),
+    ...(options.getMotionBlockRailIdentity
+      ? { getMotionBlockRailIdentity: options.getMotionBlockRailIdentity }
+      : {}),
     getRotoSpacingSelection: () => options.spacingSelection ?? null,
     getPhysicalCells: () => options.physicalCells ?? [],
     getFrameResolution: () => options.frameResolution ?? { kind: 'empty' },
@@ -5853,5 +5858,221 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     expect(closeBody).toContain('selectRailMotionKey(null);');
     expect(closeBody).toContain('exitRailMotionEditing();');
     expect(closeBody).not.toContain('setAquarelleTool');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261108-d5o — the snap list reaches the gizmo and every key creator  */
+/* ------------------------------------------------------------------ */
+
+describe('261108-d5o snap-frame threading through the hook', () => {
+  const LAYER = 'layer-1';
+  const TRACK = 'track-1';
+  const RAIL_ID = 'rail-d5o';
+
+  function launchContext(): PhysicPaintLaunchContext {
+    return {
+      operationId: 'op-1',
+      layerId: LAYER,
+      document: { activeTrackId: TRACK },
+    } as unknown as PhysicPaintLaunchContext;
+  }
+
+  /**
+   * Real keys A@0 / B@2 / D@10 and one stop-motion Position pair on the key
+   * rail: both axes go 0 -> 100 over [0, 10] (grouped Position must share its
+   * frame set). The displayed-real list is therefore [0, 2, 10], and at frame
+   * 5 the snapped sample is 20 (100 x 2/10) on both axes while the no-snap
+   * fallback is 0.
+   */
+  function seedSnapRail(): void {
+    const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+      LAYER,
+      TRACK,
+      [realKeyRecord('A', 0), realKeyRecord('B', 2), realKeyRecord('D', 10)],
+      { enabled: false, mode: 'duplicate' },
+      24,
+    );
+    if (!seeded.ok) throw new Error(`real key seed failed: ${seeded.error}`);
+    const motion = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, [{
+      railId: RAIL_ID,
+      anchorKeyId: 'A',
+      channels: [
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
+            { frame: 10, value: 100, easing: 'linear', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
+            { frame: 10, value: 100, easing: 'linear', wiggle: 0 },
+          ],
+        },
+      ],
+    }]);
+    if (!motion.ok) throw new Error(`motion seed failed: ${motion.error}`);
+  }
+
+  function actionsHarness(options: Partial<HarnessOptions> = {}) {
+    return createHarness({
+      records: physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK),
+      launch: launchContext(),
+      selectedKeyRail: { firstKeyId: 'A', keyIds: ['A', 'B', 'D'] },
+      capacity: 24,
+      currentAppFrame: 5,
+      ...options,
+    });
+  }
+
+  function storedChannel(id: 'position-x' | 'position-y') {
+    const record = physicPaintStore.getRotoPhysicalRailMotions(LAYER, TRACK)
+      .find((entry) => entry.railId === RAIL_ID);
+    if (record === undefined) throw new Error('missing stored motion record');
+    const channel = record.channels.find((entry) => entry.id === id);
+    if (channel === undefined) throw new Error(`missing stored channel ${id}`);
+    return channel;
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+    exitRailMotionEditing();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+    selectRailMotionKey(null);
+    exitRailMotionEditing();
+  });
+
+  it('snaps the canvas gizmo to the displayed real keys and folds the count into the signature', () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames')
+      .mockReturnValue(Object.freeze([0, 2]));
+    const harness = actionsHarness({
+      getMotionBlockRailIdentity: () => ({ kind: 'key-rail', firstKeyId: 'A' }),
+    });
+    selectRailMotionChannel('position');
+
+    const gizmo = harness.actions.railMotionGizmo.value;
+    expect(gizmo, 'an open block in animate mode shows the gizmo').not.toBeNull();
+    if (gizmo === null) return;
+
+    // Stop Motion samples the raw ramp at the greatest snap at or before the
+    // cursor: 100 x 2/10 = 20 on both axes, never the linear read of 50 at 5.
+    const position = gizmo.evaluated.position;
+    expect(position, 'both axes are evaluated').toBeDefined();
+    if (position === undefined) return;
+    expect(position.x).toBeCloseTo(20, 6);
+    expect(position.y).toBeCloseTo(20, 6);
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+    expect(gizmo.signature.endsWith('|2'), 'the signature carries the snap count').toBe(true);
+  });
+
+  it('seeds setMotionKeyAtCursor from the store-resolved displayed samples', async () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
+    const harness = actionsHarness();
+
+    expect(await harness.actions.physicalActions.setMotionKeyAtCursor('position-x')).toBe(true);
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+    // The created X key holds the displayed 20, not the hold fallback 0, and
+    // the paired Y axis is seeded with its OWN displayed 100/9, not 0.
+    expect(storedChannel('position-x').keys.find((key) => key.frame === 5)?.value)
+      .toBeCloseTo(20, 6);
+    expect(storedChannel('position-y').keys.find((key) => key.frame === 5)?.value)
+      .toBeCloseTo(20, 6);
+  });
+
+  it('seeds the inspector write from the snapped sibling sample', () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
+    const harness = actionsHarness();
+
+    expect(harness.actions.physicalActions.commitRailMotionInspectorValue('position-x', 0, 5))
+      .toBeNull();
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+    // The written X key is the typed 0; the keyless Y sibling keeps its pose.
+    expect(storedChannel('position-x').keys.find((key) => key.frame === 5)?.value).toBe(0);
+    expect(storedChannel('position-y').keys.find((key) => key.frame === 5)?.value)
+      .toBeCloseTo(20, 6);
+  });
+
+  it('reads the accessor from setSelectedMotionKeyEasing', async () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
+    const harness = actionsHarness();
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'position-x', frame: 0 });
+
+    expect(await harness.actions.physicalActions.setSelectedMotionKeyEasing('linear')).toBe(true);
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+  });
+
+  it('reads the accessor from setSelectedMotionKeyWiggle', async () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
+    const harness = actionsHarness();
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'position-x', frame: 0 });
+
+    expect(await harness.actions.physicalActions.setSelectedMotionKeyWiggle(100)).toBe(true);
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+  });
+
+  it('reads the accessor ONCE per reset and commits the whole reset in one store write', () => {
+    seedSnapRail();
+    const snapSpy = vi.spyOn(physicPaintStore, 'getRotoRailMotionSnapFrames');
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    const harness = actionsHarness();
+    selectRailMotionChannel('position');
+
+    const bundle = harness.actions.railMotionDialog.value;
+    if (bundle === null) throw new Error('expected an open Motion dialog');
+    expect(bundle.presentation.frame).toBe(5);
+
+    expect(bundle.reset()).toBeNull();
+    expect(snapSpy).toHaveBeenCalledWith(LAYER, TRACK, RAIL_ID);
+    // ONE memoized read per reset, never one per field.
+    expect(snapSpy).toHaveBeenCalledTimes(1);
+    expect(replaceSpy, 'one reset is one store commit').toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261108-d5o — the hook never scans a span itself                     */
+/* ------------------------------------------------------------------ */
+
+describe('261108-d5o hook source contract', () => {
+  const source = readFileSync(
+    fileURLToPath(new URL('./useRotoTimelineActions.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('reads the frame list from the ONE store accessor', () => {
+    expect(source).toContain('physicPaintStore.getRotoRailMotionSnapFrames(');
+    // No resolver import and no inline span scan: the hook never re-derives the
+    // list, so the memo can never be bypassed. (The group-frame classifier is a
+    // pre-existing, unrelated use of the hook and is deliberately not pinned.)
+    expect(source).not.toMatch(/from '\.\.\/roto\/railMotionSnapFrames'/);
+    expect(source).not.toMatch(/resolveRailMotionSnapFrames/);
+  });
+
+  it('passes the list as the third argument of the single evaluateRailMotion call', () => {
+    const calls = source.split('evaluateRailMotion(').length - 1;
+    expect(calls, 'one evaluated sample in the hook').toBe(1);
+    expect(source).toMatch(
+      /evaluateRailMotion\(\s*state\.record,\s*state\.localCursorFrame,\s*snapFrames,?\s*\)/,
+    );
+  });
+
+  it('feeds the accessor to every key-creating callback', () => {
+    const accessorCalls = source.split('physicPaintStore.getRotoRailMotionSnapFrames(').length - 1;
+    // Gizmo + setMotionKeyAtCursor + commitRailMotionInspectorValue + reset +
+    // easing + wiggle — one read each, never a second resolution.
+    expect(accessorCalls).toBe(6);
   });
 });

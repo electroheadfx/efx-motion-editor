@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   physicPaintStore,
@@ -6,6 +8,10 @@ import {
   rotoPhysicalRevision,
 } from './physicPaintStore';
 import { __resetRailMotionPivotMemoForTests } from '../components/physic-paint/roto/railMotionPivot';
+import {
+  RAIL_MOTION_SNAP_FRAMES_EMPTY,
+  __resetRailMotionSnapFramesMemoForTests,
+} from '../components/physic-paint/roto/railMotionSnapFrames';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   type PhysicPaintRotoLoopClip,
@@ -914,5 +920,187 @@ describe('261107-tfp: getRotoRailMotionCanvasInk per-key ink', () => {
     expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, 5)).toBeNull();
     expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, TEST_TRACK_ID, -1)).toBeNull();
     expect(physicPaintStore.getRotoRailMotionCanvasInk(LAYER, 'missing-track', 0)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261108-d5o: the Stop-Motion snap-frame list is memoized per rail + RASTER
+// revision and threaded into the compositor transform and the Studio mirror.
+// ---------------------------------------------------------------------------
+
+/** A stop-motion Position pair; the model requires the two axes together. */
+function stopMotionPositionRail(
+  railId: string,
+  anchorKeyId: string,
+  endFrame: number,
+  endX: number,
+  endY: number,
+): PhysicPaintRotoRailMotionRecord {
+  const keys = (endValue: number) => [
+    { frame: 0, value: 0, easing: 'stop-motion' as const, wiggle: 0 },
+    { frame: endFrame, value: endValue, easing: 'stop-motion' as const, wiggle: 0 },
+  ];
+  return {
+    railId,
+    anchorKeyId,
+    channels: [
+      { id: 'position-x', keys: keys(endX) },
+      { id: 'position-y', keys: keys(endY) },
+    ],
+  };
+}
+
+describe('261108-d5o: memoized snap frames + stop-motion compositing', () => {
+  function seedSnapDocument(options: {
+    readonly records: readonly PhysicPaintRotoRealKeyRecord[];
+    readonly railMotions: readonly PhysicPaintRotoRailMotionRecord[];
+    readonly interpolation?: typeof INTERPOLATION | { readonly enabled: true; readonly mode: 'duplicate' };
+  }): void {
+    const interpolation = options.interpolation ?? INTERPOLATION;
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TEST_TRACK_ID, {
+      capacity: 600,
+      realKeyRecords: options.records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        options.records,
+        interpolation,
+        [],
+        [],
+        [],
+        options.railMotions,
+      ),
+      loopClips: [],
+      railMotions: options.railMotions,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!result.ok) throw new Error(result.error);
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument(LAYER));
+    __resetRailMotionSnapFramesMemoForTests();
+  });
+
+  afterEach(() => {
+    __resetRailMotionSnapFramesMemoForTests();
+  });
+
+  it('agrees with the render-source authority for every real-key frame', () => {
+    const records = cycleRecords();
+    seedSnapDocument({ records, railMotions: [stopMotionPositionRail('rail-1', 'A', 4, 4, 0)] });
+
+    const snaps = physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1');
+    expect(snaps).toEqual([0, 1, 2, 3, 4]);
+    for (const railLocalFrame of snaps) {
+      expect(
+        physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, railLocalFrame)?.kind,
+      ).toBe('real');
+    }
+    expect(snaps).not.toContain(5);
+  });
+
+  it('excludes a generated in-between when interpolation is enabled', () => {
+    seedSnapDocument({
+      records: [record('A', 0), record('B', 4)],
+      interpolation: { enabled: true, mode: 'duplicate' },
+      railMotions: [stopMotionPositionRail('rail-1', 'A', 4, 4, 0)],
+    });
+
+    const snaps = physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1');
+    expect(snaps).toEqual([0, 4]);
+    expect(physicPaintStore.getRotoPhysicalRenderSource(LAYER, TEST_TRACK_ID, 2)?.kind).toBe('generated');
+  });
+
+  it('keeps the same list reference across a motion-only edit and rotates it on a paint edit', () => {
+    const records = cycleRecords();
+    seedSnapDocument({ records, railMotions: [stopMotionPositionRail('rail-1', 'A', 4, 4, 0)] });
+    const before = physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1');
+    const contentBefore = physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)!;
+
+    const accepted = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TEST_TRACK_ID, [
+      stopMotionPositionRail('rail-1', 'A', 4, 12, 0),
+    ]);
+    expect(accepted.ok).toBe(true);
+    expect(physicPaintStore.getRotoPhysicalContentRevision(LAYER, TEST_TRACK_ID)).not.toBe(contentBefore);
+    expect(physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1')).toBe(before);
+
+    seedSnapDocument({
+      records: [...records, record('F', 10)],
+      railMotions: [stopMotionPositionRail('rail-1', 'A', 4, 4, 0)],
+    });
+    const after = physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1');
+    expect(after).not.toBe(before);
+    expect(after).toEqual([0, 1, 2, 3, 4, 10]);
+  });
+
+  it('returns the frozen empty list when the rail, the track or a stop-motion key is absent', () => {
+    seedSnapDocument({ records: cycleRecords(), railMotions: [railMotion()] });
+    // The ease-only record carries no stop-motion key: the list is inert.
+    expect(physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1')).toBe(
+      RAIL_MOTION_SNAP_FRAMES_EMPTY,
+    );
+    expect(physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'missing-rail')).toBe(
+      RAIL_MOTION_SNAP_FRAMES_EMPTY,
+    );
+    expect(physicPaintStore.getRotoRailMotionSnapFrames(LAYER, 'missing-track', 'rail-1')).toBe(
+      RAIL_MOTION_SNAP_FRAMES_EMPTY,
+    );
+
+    seedSnapDocument({ records: cycleRecords(), railMotions: [stopMotionPositionRail('rail-1', 'A', 4, 4, 0)] });
+    expect(physicPaintStore.getRotoRailMotionSnapFrames(LAYER, TEST_TRACK_ID, 'rail-1')).not.toBe(
+      RAIL_MOTION_SNAP_FRAMES_EMPTY,
+    );
+  });
+
+  it('samples the Studio transform at the snapped frame, never at the smoothstep position', () => {
+    seedSnapDocument({
+      records: [record('A', 0), record('B', 3), record('C', 6)],
+      railMotions: [stopMotionPositionRail('rail-1', 'A', 6, 6, 0)],
+    });
+
+    const atThreeAndAHalf = physicPaintStore.getRotoPhysicalTrackMotionTransform(LAYER, TEST_TRACK_ID, 3.5);
+    const atFourAndAHalf = physicPaintStore.getRotoPhysicalTrackMotionTransform(LAYER, TEST_TRACK_ID, 4.5);
+    const atSix = physicPaintStore.getRotoPhysicalTrackMotionTransform(LAYER, TEST_TRACK_ID, 6);
+
+    // Both fractional frames sample snap 3, so the raw ramp reads 6 x 3/6.
+    expect(atThreeAndAHalf?.translateX).toBeCloseTo(3, 12);
+    expect(atFourAndAHalf?.translateX).toBeCloseTo(3, 12);
+    // The key frame itself keeps its own stored value.
+    expect(atSix?.translateX).toBeCloseTo(6, 12);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 261108-d5o — the resolver is store-internal, one scan per rail      */
+/* ------------------------------------------------------------------ */
+
+describe('261108-d5o snap resolver source contract', () => {
+  const storeSource = readFileSync(
+    fileURLToPath(new URL('./physicPaintStore.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('calls the pure resolver from exactly ONE place: _resolveTrackSnapFramesForRecord', () => {
+    const calls = storeSource.split('resolveRailMotionSnapFrames(').length - 1;
+    expect(calls, 'exactly one resolver call site').toBe(1);
+    // The call sits inside the helper, not in a per-frame path.
+    const helperAt = storeSource.indexOf('function _resolveTrackSnapFramesForRecord(');
+    const callAt = storeSource.indexOf('resolveRailMotionSnapFrames(');
+    expect(helperAt).toBeGreaterThan(-1);
+    expect(callAt).toBeGreaterThan(helperAt);
+  });
+
+  it('resolves the list from exactly TWO callers — the transform and the accessor', () => {
+    const callExpressions = storeSource
+      .split('_resolveTrackSnapFramesForRecord(').length - 1
+      - (storeSource.split('function _resolveTrackSnapFramesForRecord(').length - 1);
+    expect(callExpressions, 'no third caller, no per-frame resolution').toBe(2);
   });
 });

@@ -228,6 +228,7 @@ import {
   type RailMotionSelectionScope,
 } from '../roto/railMotionCommands';
 import type { PhysicPaintRotoRailMotionEasing } from '../roto/railMotionModel';
+import { RAIL_MOTION_SNAP_FRAMES_EMPTY } from '../roto/railMotionSnapFrames';
 import {
   buildRailMotionMergeNoticeCopy,
   dismissRailMotionMergeNotice,
@@ -2897,6 +2898,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const activeMotionView = activeMotionRecord === null
     ? null
     : (activeMotionFacts.views.find((view) => view.railId === activeMotionRecord.railId) ?? null);
+  // 261108-d5o: ONE memoized store read for the active track — the block's lanes
+  // and curve sample stop-motion from exactly the list the compositor applies.
+  const activeMotionSnapFrames = activeMotionRecord === null || !props.layerId || !props.activeTrackId
+    ? RAIL_MOTION_SNAP_FRAMES_EMPTY
+    : physicPaintStore.getRotoRailMotionSnapFrames(
+      props.layerId,
+      props.activeTrackId,
+      activeMotionRecord.railId,
+    );
   // 261107: the Animate button opens the channel menu. Its session identity is
   // the SELECTED rail view, so a rail that carries no motion record yet can
   // still open it — picking a channel there creates the record.
@@ -6392,6 +6402,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                                 railSelected={activeRailSetIdentity !== null}
                                 laneCount={activeMotionLaneCount}
                                 cursorFrame={activeMotionLocalCursorFrame}
+                                snapFrames={activeMotionSnapFrames}
                                 disabledReasons={motionLaneDisabledReasons}
                                 selectedMotionKey={selectedMotionKeyData === null ? null : selectedMotionKey}
                                 motionKeyDragPorts={motionKeyDragPorts ?? undefined}

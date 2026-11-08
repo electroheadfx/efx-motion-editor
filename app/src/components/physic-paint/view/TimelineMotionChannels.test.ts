@@ -172,6 +172,7 @@ function laneProps(
     selected: true,
     railFrameCount: RAIL_FRAME_COUNT,
     cursorFrame: 3,
+    snapFrames: [],
     selectedKeyFrames: [],
     onSelectRail: () => {},
     onSelectKey: () => {},
@@ -449,6 +450,43 @@ describe('TimelineMotionChannelLane', () => {
     expect(railSeeded === previewSeeded, 'the fixtures must diverge by seed').toBe(false);
     expect(rendered === railSeeded, 'the lane curve must use the rail seed').toBe(true);
     expect(rendered === previewSeeded, 'the lane curve must not use the preview seed').toBe(false);
+  });
+
+  it('forwards the host-resolved snap list into the curve sampler (261108-d5o)', () => {
+    const stairChannel: PhysicPaintRotoRailMotionChannel = {
+      id: 'position-x',
+      keys: [
+        { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
+        { frame: 6, value: 60, easing: 'linear', wiggle: 0 },
+      ],
+    };
+    const lane: RailMotionDisplayLaneView = {
+      id: 'position',
+      channels: [stairChannel],
+      keys: stairChannel.keys,
+      keyCount: stairChannel.keys.length,
+    };
+    const snapFrames = [0, 2, 4, 6] as const;
+
+    const paths = findAll(renderLane({ lane, snapFrames }), (vnode) => vnode.type === 'path');
+    expect(paths).toHaveLength(1);
+    const rendered = String(paths[0].props.d);
+    const withSnaps = buildRailMotionCurvePath(
+      stairChannel,
+      RAIL_FRAME_COUNT,
+      TIMELINE_GEOMETRY.motionLaneHeight,
+      { railId: 'rail-a', snapFrames },
+    );
+    const withoutSnaps = buildRailMotionCurvePath(
+      stairChannel,
+      RAIL_FRAME_COUNT,
+      TIMELINE_GEOMETRY.motionLaneHeight,
+      { railId: 'rail-a' },
+    );
+
+    expect(withSnaps === withoutSnaps, 'the fixtures must diverge by snapping').toBe(false);
+    expect(rendered === withSnaps, 'the lane curve must sample through the host snap list').toBe(true);
+    expect(rendered === withoutSnaps, 'the lane curve must not ignore the snap list').toBe(false);
   });
 
   it('draws the 16 x 18 motion cells at the 18px pitch', () => {
@@ -1139,5 +1177,15 @@ describe('TimelineMotionChannels source contract', () => {
     expect(source).not.toMatch(/\b18\b/);
     expect(source).not.toMatch(/\b16\b/);
     expect(source).not.toMatch(/\b6\b/);
+  });
+
+  it('obtains the snap list only from props (261108-d5o)', () => {
+    const source = moduleSource();
+
+    expect(source).toContain('readonly snapFrames: readonly number[];');
+    // The lane forwards the host-resolved list into the curve sampler and
+    // never resolves, scans or memoizes it itself.
+    expect(source).toMatch(/railId,\s*snapFrames,/);
+    expect(source).not.toMatch(/railMotionSnapFrames|resolveRailMotionSnapFrames|getRotoRailMotionSnapFrames/);
   });
 });

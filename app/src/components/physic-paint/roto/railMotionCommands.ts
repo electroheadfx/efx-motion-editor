@@ -302,6 +302,13 @@ export interface SetMotionKeyAtCursorInput {
   readonly pairedValue?: number;
   readonly easing?: PhysicPaintRotoRailMotionEasing;
   readonly wiggle?: number;
+  /**
+   * 261108-d5o: the rail-local displayed-real-key list, as DATA. Used only by
+   * the default seeds below — a keyless frame reads through the evaluator, so
+   * Stop Motion seeds from the DISPLAYED pose. When a key already sits at
+   * `keyFrame` the read is exact and the list is inert.
+   */
+  readonly snapFrames?: readonly number[];
 }
 
 export interface RemoveMotionKeyInput {
@@ -332,6 +339,8 @@ export interface SetMotionKeyEasingInput {
   readonly channelId: PhysicPaintRotoRailMotionChannelId;
   readonly keyFrame: number;
   readonly easing: PhysicPaintRotoRailMotionEasing;
+  /** 261108-d5o: seeds a keyless paired axis at the DISPLAYED value. */
+  readonly snapFrames?: readonly number[];
 }
 
 export interface SetMotionKeyWiggleInput {
@@ -340,6 +349,8 @@ export interface SetMotionKeyWiggleInput {
   readonly channelId: PhysicPaintRotoRailMotionChannelId;
   readonly keyFrame: number;
   readonly wiggle: number;
+  /** 261108-d5o: seeds a keyless paired axis at the DISPLAYED value. */
+  readonly snapFrames?: readonly number[];
 }
 
 /**
@@ -417,7 +428,7 @@ export function setMotionKeyAtCursor(input: SetMotionKeyAtCursorInput): RailMoti
   if (input.wiggle !== undefined && !isRailMotionWiggleValue(input.wiggle)) {
     return failure('Wiggle must be between 0 and 1,000,000.');
   }
-  const value = input.value ?? evaluateRailMotionChannel(record, channelId, keyFrame);
+  const value = input.value ?? evaluateRailMotionChannel(record, channelId, keyFrame, input.snapFrames);
   if (!railMotionValueIsValid(channelId, value)) {
     return failure('This value is outside the Motion channel range.');
   }
@@ -430,7 +441,7 @@ export function setMotionKeyAtCursor(input: SetMotionKeyAtCursorInput): RailMoti
       }
       pairedValue = input.pairedValue;
     } else if (record.channels.some((entry) => entry.id === siblingId)) {
-      pairedValue = evaluateRailMotionChannel(record, siblingId, keyFrame);
+      pairedValue = evaluateRailMotionChannel(record, siblingId, keyFrame, input.snapFrames);
     }
   }
 
@@ -638,6 +649,13 @@ interface RailMotionKeyPropertyEdit {
  * edited with its OWN resolved value, and no `pairedValue` is ever passed — an
  * easing/wiggle edit authors no values, so it can never overwrite a sibling's
  * stored value.
+ *
+ * 261108-d5o: a keyless sibling must be seeded with the DISPLAYED value, not
+ * the Hold step value — under Stop Motion those two differ. The submit-axis
+ * edit carries the evaluator's read (with the rail's snap list) as
+ * `keylessSiblingSeed`; the field only reaches the reducer's keyless branch,
+ * so stored sibling values stay untouched. The follow-up axis edits need no
+ * seed: the submit edit already seeded that key.
  */
 function applyAxisMotionKeyEdits(
   records: readonly PhysicPaintRotoRailMotionRecord[],
@@ -647,9 +665,10 @@ function applyAxisMotionKeyEdits(
   keyFrame: number,
   editFor: () => RailMotionKeyPropertyEdit,
   failureReason: string,
+  snapFrames?: readonly number[],
 ): RailMotionCommandResult {
   const record = findRailMotionRecord(records, railId);
-  if (resolveMotionKeyAtFrame(record, channelId, keyFrame) === null) {
+  if (record === null || resolveMotionKeyAtFrame(record, channelId, keyFrame) === null) {
     return failure('There is no Motion key at this frame.');
   }
 
@@ -668,6 +687,17 @@ function applyAxisMotionKeyEdits(
       // Reachable only when the record carries no channel entry for that axis
       // at all; a paired axis that merely lacks a key was just seeded by D-12.
       if (axisKey === null) continue;
+      let keylessSiblingSeed: number | undefined;
+      if (axisId === channelId) {
+        const siblingId = positionSiblingId(axisId);
+        if (
+          siblingId !== null
+          && record.channels.some((entry) => entry.id === siblingId)
+          && resolveMotionKeyAtFrame(record, siblingId, keyFrame) === null
+        ) {
+          keylessSiblingSeed = evaluateRailMotionChannel(record, siblingId, keyFrame, snapFrames);
+        }
+      }
       next = applyRailMotionEditToCollection(next, {
         kind: 'set-key',
         railId,
@@ -675,6 +705,7 @@ function applyAxisMotionKeyEdits(
         frame: keyFrame,
         value: axisKey.value,
         ...editFor(),
+        ...(keylessSiblingSeed !== undefined ? { keylessSiblingSeed } : {}),
       });
     }
     return success(next);
@@ -700,6 +731,7 @@ export function setMotionKeyEasing(input: SetMotionKeyEasingInput): RailMotionCo
     keyFrame,
     () => ({ easing }),
     'The Motion key easing could not be changed.',
+    input.snapFrames,
   );
 }
 
@@ -722,6 +754,7 @@ export function setMotionKeyWiggle(input: SetMotionKeyWiggleInput): RailMotionCo
     keyFrame,
     () => ({ wiggle }),
     'The Motion key wiggle could not be changed.',
+    input.snapFrames,
   );
 }
 
@@ -1147,6 +1180,8 @@ export interface WriteRailMotionChannelValueAtCursorInput {
   readonly channelId: PhysicPaintRotoRailMotionChannelId;
   /** Display-unit value: px / percent / degrees. */
   readonly uiValue: number;
+  /** 261108-d5o: seeds a keyless sibling axis at the DISPLAYED value. */
+  readonly snapFrames?: readonly number[];
 }
 
 /**
@@ -1162,7 +1197,7 @@ export interface WriteRailMotionChannelValueAtCursorInput {
 export function writeRailMotionChannelValueAtCursor(
   input: WriteRailMotionChannelValueAtCursorInput,
 ): RailMotionCommandResult {
-  const { records, railId, keyFrame, channelId, uiValue } = input;
+  const { records, railId, keyFrame, channelId, uiValue, snapFrames } = input;
   if (!Number.isFinite(uiValue)) return failure('Enter a number.');
   if (!isBoundedId(railId)) return failure('Select a rail first.');
   if (keyFrame === null || !isRailMotionFrameValue(keyFrame)) {
@@ -1182,7 +1217,7 @@ export function writeRailMotionChannelValueAtCursor(
   const siblingId = positionSiblingId(channelId);
   const pairedValue = siblingId !== null && record.channels.some((entry) => entry.id === siblingId)
     ? (resolveMotionKeyAtFrame(record, siblingId, keyFrame)?.value
-      ?? evaluateRailMotionChannel(record, siblingId, keyFrame))
+      ?? evaluateRailMotionChannel(record, siblingId, keyFrame, snapFrames))
     : undefined;
 
   return setMotionKeyAtCursor({
@@ -1192,5 +1227,6 @@ export function writeRailMotionChannelValueAtCursor(
     keyFrame,
     value,
     ...(pairedValue !== undefined ? { pairedValue } : {}),
+    ...(snapFrames !== undefined ? { snapFrames } : {}),
   });
 }

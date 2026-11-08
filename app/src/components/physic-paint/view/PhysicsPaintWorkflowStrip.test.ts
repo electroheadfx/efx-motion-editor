@@ -3407,3 +3407,25 @@ describe('261107-pd8 motion-key drag ports wiring', () => {
     expect(code).not.toMatch(/publishStatus(?:\?)?\.?\(\s*[`'"][^`'"]*Motion key/);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* 261108-d5o — both motion-block hosts resolve the snap list once     */
+/* ------------------------------------------------------------------ */
+
+describe('261108-d5o snap-frame host plumbing', () => {
+  const trackRowPath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintTrackRow.tsx');
+
+  it('resolves the active block list once and passes it into the block', () => {
+    const code = source();
+    expect(countOccurrences(code, 'physicPaintStore.getRotoRailMotionSnapFrames(')).toBe(1);
+    expect(code).toContain('const activeMotionSnapFrames = activeMotionRecord === null');
+    expect(code).toContain('snapFrames={activeMotionSnapFrames}');
+  });
+
+  it('resolves the presentational row list once and passes it into the block', () => {
+    const code = readFileSync(trackRowPath, 'utf8');
+    expect(countOccurrences(code, 'physicPaintStore.getRotoRailMotionSnapFrames(')).toBe(1);
+    expect(code).toContain('const motionSnapFrames = motionRecord === null');
+    expect(code).toContain('snapFrames={motionSnapFrames}');
+  });
+});

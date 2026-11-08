@@ -17,6 +17,12 @@ import {
   evaluateRailMotion,
   resolveRailLocalFrame,
 } from '../components/physic-paint/roto/railMotionEvaluator';
+import {
+  setMotionKeyAtCursor as applySetMotionKeyAtCursor,
+} from '../components/physic-paint/roto/railMotionCommands';
+import {
+  __resetRailMotionSnapFramesMemoForTests,
+} from '../components/physic-paint/roto/railMotionSnapFrames';
 import type { EfxPaintTrackMotionTransform } from '../efx-paint/compositor/efxPaintCompositor';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 
@@ -274,6 +280,9 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
   beforeEach(() => {
     _setPhysicPaintMarkDirtyCallback(() => {});
     physicPaintStore.reset();
+    // 261108-d5o: the snap-frame memo outlives a store reset, so the suites
+    // that seed different rail identities must clear it explicitly.
+    __resetRailMotionSnapFramesMemoForTests();
     resetEfxPaintStore();
     createdCanvases = [];
     _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
@@ -516,6 +525,193 @@ describe('rail motion export sub-frame parity (59-09 REL-04 / MOTN-08)', () => {
       installInfiniteLoopTrack();
       physicPaintStore.getFlattenedFrame(LAYER, CAPACITY);
       expect(appliedTransform(), 'the resolved end frame carries no rail transform').toBeUndefined();
+    });
+  });
+
+  // 261108-d5o: Stop Motion steps the compositor at the DISPLAYED real keys and
+  // Linear reads the raw ramp. Both tokens cross the real composite path here,
+  // so a revert to the two-easing binary path fails these rows by construction.
+  describe('stop-motion and linear compositing (261108-d5o)', () => {
+    const SNAP_BYTES = {
+      A: testWebpBytes('rail-snap-A'),
+      B: testWebpBytes('rail-snap-B'),
+      C: testWebpBytes('rail-snap-C'),
+    } as const;
+    const STOP_MOTION_RAIL_ID = 'rail-stop-motion';
+
+    /**
+     * Real keys at 0/3/6 and one stop-motion Position pair: X ramps 0 -> 6 and
+     * Y ramps 0 -> 60 over the [0, 6] span, so the displayed-real list is
+     * [0, 3, 6] and every interior sample steps at frame 3.
+     */
+    const STOP_MOTION_RECORD: PhysicPaintRotoRailMotionRecord = {
+      railId: STOP_MOTION_RAIL_ID,
+      anchorKeyId: 'A',
+      channels: [
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
+            { frame: 6, value: 6, easing: 'linear', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: 0, easing: 'stop-motion', wiggle: 0 },
+            { frame: 6, value: 60, easing: 'linear', wiggle: 0 },
+          ],
+        },
+      ],
+    };
+
+    /** Real keys at 0/5/8 and a raw Linear ramp 0 -> 80 over [0, 8]. */
+    const LINEAR_RECORD: PhysicPaintRotoRailMotionRecord = {
+      railId: 'rail-linear',
+      anchorKeyId: 'A',
+      channels: [
+        {
+          id: 'position-x',
+          keys: [
+            { frame: 0, value: 0, easing: 'linear', wiggle: 0 },
+            { frame: 8, value: 80, easing: 'linear', wiggle: 0 },
+          ],
+        },
+        {
+          id: 'position-y',
+          keys: [
+            { frame: 0, value: 0, easing: 'linear', wiggle: 0 },
+            { frame: 8, value: 0, easing: 'linear', wiggle: 0 },
+          ],
+        },
+      ],
+    };
+
+    function installSnapTrack(
+      realKeys: readonly {
+        readonly keyId: string;
+        readonly appFrame: number;
+        readonly bytes: Uint8Array;
+      }[],
+      motion: PhysicPaintRotoRailMotionRecord,
+    ): void {
+      const document = createEfxPaintDocument(LAYER);
+      registerDocument(document);
+      const trackId = document.tracks[0].id;
+      activeTrackId = trackId;
+
+      const seeded = physicPaintStore.replaceRotoPhysicalRecords(
+        LAYER,
+        trackId,
+        realKeys.map((key) => record(key.keyId, key.appFrame, key.bytes)),
+        INTERPOLATION,
+        CAPACITY,
+      );
+      expect(seeded.ok).toBe(true);
+      for (const key of realKeys) {
+        registerRotoAlphaCanvasFrame(key.bytes, rasterCanvas() as unknown as HTMLCanvasElement);
+      }
+      const applied = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, trackId, [motion]);
+      if (!applied.ok) throw new Error(`rail motion install failed: ${applied.error}`);
+    }
+
+    function appliedTransform(): EfxPaintTrackMotionTransform | undefined {
+      return physicPaintStore.getLastAppliedTrackTransforms(LAYER).get(activeTrackId);
+    }
+
+    function translateOps(delivery: EfxPaintFlattenedFrameRecord): readonly number[][] {
+      return opsOf(delivery)
+        .filter((op) => op.type === 'translate')
+        .map((op) => [...((op as Extract<RecordedOp, { type: 'translate' }>).args)]);
+    }
+
+    it('holds the compositor between displayed keys and steps at each one', () => {
+      installSnapTrack([
+        { keyId: 'A', appFrame: 0, bytes: SNAP_BYTES.A },
+        { keyId: 'B', appFrame: 3, bytes: SNAP_BYTES.B },
+        { keyId: 'C', appFrame: 6, bytes: SNAP_BYTES.C },
+      ], STOP_MOTION_RECORD);
+
+      // 3.5 and 4.5 both sample the SAME displayed key at frame 3: the exact
+      // raw-ramp value 6 x 3/6 = 3. A continuous ease would advance here.
+      deliveryAt(3.5);
+      const atThreeAndAHalf = appliedTransform();
+      if (atThreeAndAHalf === undefined) throw new Error('expected the rail transform at 3.5');
+      deliveryAt(4.5);
+      const atFourAndAHalf = appliedTransform();
+      if (atFourAndAHalf === undefined) throw new Error('expected the rail transform at 4.5');
+      expect(atThreeAndAHalf.translateX).toBeCloseTo(3, 12);
+      expect(atFourAndAHalf.translateX).toBeCloseTo(3, 12);
+
+      // At the real key frame 6 the channel holds its own value, so the step is
+      // observable rather than a flat line.
+      deliveryAt(6);
+      const atSix = appliedTransform();
+      if (atSix === undefined) throw new Error('expected the rail transform at 6');
+      expect(atSix.translateX).toBeCloseTo(6, 12);
+      expect(atFourAndAHalf.translateX).not.toBeCloseTo(atSix.translateX, 6);
+    });
+
+    it('reads a Linear outgoing key as a raw ramp, never as smoothstep', () => {
+      installSnapTrack([
+        { keyId: 'A', appFrame: 0, bytes: SNAP_BYTES.A },
+        { keyId: 'B', appFrame: 5, bytes: SNAP_BYTES.B },
+        { keyId: 'C', appFrame: 8, bytes: SNAP_BYTES.C },
+      ], LINEAR_RECORD);
+
+      deliveryAt(5);
+      const transform = appliedTransform();
+      if (transform === undefined) throw new Error('expected the rail transform at 5');
+      // 80 x 5/8 = 50 — the raw ramp; smoothstep would read 54.6875.
+      expect(transform.translateX).toBeCloseTo(50, 12);
+    });
+
+    it('leaves the displayed pose identical when a Motion key is inserted at the displayed frame', () => {
+      installSnapTrack([
+        { keyId: 'A', appFrame: 0, bytes: SNAP_BYTES.A },
+        { keyId: 'B', appFrame: 3, bytes: SNAP_BYTES.B },
+        { keyId: 'C', appFrame: 6, bytes: SNAP_BYTES.C },
+      ], STOP_MOTION_RECORD);
+
+      const before = deliveryAt(3);
+      const beforeTransform = appliedTransform();
+      if (beforeTransform === undefined) throw new Error('expected the rail transform at 3');
+      expect(beforeTransform.translateX).toBeCloseTo(3, 12);
+      expect(beforeTransform.translateY).toBeCloseTo(30, 12);
+      // The compositor's translate op carries the pivot offset, so the identity
+      // comparison below is op-arg identity, never the raw 3 / 30.
+      const beforeTranslates = translateOps(before);
+
+      const records = physicPaintStore.getRotoPhysicalRailMotions(LAYER, activeTrackId);
+      const inserted = applySetMotionKeyAtCursor({
+        records,
+        railId: STOP_MOTION_RAIL_ID,
+        channelId: 'position-x',
+        keyFrame: 3,
+        snapFrames: Object.freeze([0, 3, 6]),
+      });
+      if (!inserted.ok) throw new Error(inserted.reason);
+      const written = physicPaintStore.replaceRotoPhysicalRailMotions(
+        LAYER,
+        activeTrackId,
+        inserted.records,
+      );
+      expect(written.ok).toBe(true);
+      // The insert really created the frame-3 keys on BOTH axes.
+      const updated = physicPaintStore.getRotoPhysicalRailMotions(LAYER, activeTrackId);
+      const updatedX = updated.find((entry) => entry.railId === STOP_MOTION_RAIL_ID)
+        ?.channels.find((channel) => channel.id === 'position-x');
+      const updatedY = updated.find((entry) => entry.railId === STOP_MOTION_RAIL_ID)
+        ?.channels.find((channel) => channel.id === 'position-y');
+      expect(updatedX?.keys.find((key) => key.frame === 3)?.value).toBeCloseTo(3, 12);
+      expect(updatedY?.keys.find((key) => key.frame === 3)?.value).toBeCloseTo(30, 12);
+
+      const after = deliveryAt(3);
+      const afterTransform = appliedTransform();
+      if (afterTransform === undefined) throw new Error('expected the rail transform after the insert');
+      expect(afterTransform.translateX).toBeCloseTo(beforeTransform.translateX, 12);
+      expect(afterTransform.translateY).toBeCloseTo(beforeTransform.translateY, 12);
+      expect(translateOps(after)).toEqual(beforeTranslates);
     });
   });
 });

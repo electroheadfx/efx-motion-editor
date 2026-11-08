@@ -69,6 +69,13 @@ export type PhysicPaintRotoRailMotionEdit =
     readonly easing?: PhysicPaintRotoRailMotionEasing;
     readonly wiggle?: number;
     readonly pairedValue?: number;
+    /**
+     * 261108-d5o: the DISPLAYED sibling value for a keyless paired axis. The
+     * command layer computes it through the evaluator (with the rail's
+     * snap-frame list), so the reducer never re-implements the ramp; it only
+     * reaches the keyless branch and `pairedValue` still wins over it.
+     */
+    readonly keylessSiblingSeed?: number;
   }
   | {
     readonly kind: 'remove-key';
@@ -655,6 +662,9 @@ function applySetKeyEdit(
   if (siblingId !== null && edit.pairedValue !== undefined) {
     assertRailMotionEditValue(siblingId, edit.pairedValue);
   }
+  if (siblingId !== null && edit.keylessSiblingSeed !== undefined) {
+    assertRailMotionEditValue(siblingId, edit.keylessSiblingSeed);
+  }
 
   const channels = record.channels.map((entry) => {
     if (entry.id === edit.channel) {
@@ -676,7 +686,9 @@ function applySetKeyEdit(
       };
     }
 
-    const siblingValue = edit.pairedValue ?? railMotionStepValueAt(entry.keys, edit.frame);
+    const siblingValue = edit.pairedValue
+      ?? edit.keylessSiblingSeed
+      ?? railMotionStepValueAt(entry.keys, edit.frame);
     return {
       id: entry.id,
       keys: [

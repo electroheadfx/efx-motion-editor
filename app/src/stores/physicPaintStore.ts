@@ -82,6 +82,10 @@ import {
   resolveRailLocalFrame,
 } from '../components/physic-paint/roto/railMotionEvaluator';
 import {
+  RAIL_MOTION_SNAP_FRAMES_EMPTY,
+  resolveRailMotionSnapFrames,
+} from '../components/physic-paint/roto/railMotionSnapFrames';
+import {
   computeRailInkBounds,
   resolveRailMotionKeyInkBounds,
   resolveRailMotionPivot,
@@ -1320,6 +1324,42 @@ function _measureRotoDrawingKeyInk(
   return null;
 }
 
+function recordCarriesStopMotionKey(record: PhysicPaintRotoRailMotionRecord): boolean {
+  for (const channel of record.channels) {
+    for (const key of channel.keys) {
+      if (key.easing === 'stop-motion') return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 261108-d5o: the ONE store-side snap-frame resolution. Both the compositor
+ * (through {@link _trackMotionTransformAtFrame}) and the memoized accessor
+ * call here, so exactly one resolver call site exists.
+ *
+ * A record without a Stop-Motion key never scans: the list would be inert for
+ * every other easing, so the shared frozen empty list is returned WITHOUT
+ * memoization — a later easing edit must still be observed.
+ */
+function _resolveTrackSnapFramesForRecord(
+  structural: RotoPhysicalStructuralCacheEntry,
+  view: RailMotionRailView,
+  record: PhysicPaintRotoRailMotionRecord,
+): readonly number[] {
+  if (!recordCarriesStopMotionKey(record)) return RAIL_MOTION_SNAP_FRAMES_EMPTY;
+  return resolveRailMotionSnapFrames({
+    railId: record.railId,
+    startFrame: view.startFrame,
+    endFrameExclusive: view.endFrameExclusive,
+    capacity: structural.capacity,
+    rasterRevision: structural.rasterRevision,
+    loopClips: structural.loopClips,
+    realKeyRecords: structural.recordMap,
+    loopResolution: structural.loopResolution,
+  });
+}
+
 /**
  * Phase 59-08 (MOTN-07/MOTN-08): resolves ONE track's rail transform at
  * `frame` — or null when the track carries no motion record reaching this
@@ -1349,7 +1389,8 @@ function _trackMotionTransformAtFrame(
   if (view === null || view.railId === null) return null;
   const record = projection.activeRecords.get(view.railId);
   if (record === undefined) return null;
-  const motion = evaluateRailMotion(record, resolveRailLocalFrame(frame, view.startFrame));
+  const snapFrames = _resolveTrackSnapFramesForRecord(structural, view, record);
+  const motion = evaluateRailMotion(record, resolveRailLocalFrame(frame, view.startFrame), snapFrames);
   const pivot = resolveRailMotionPivot({
     railId: view.railId,
     contentRevision: structural.rasterRevision,
@@ -3854,6 +3895,28 @@ export const physicPaintStore = {
     const structural = _resolveRotoPhysicalStructural(layerId, trackId);
     if (structural === null) return null;
     return _trackMotionTransformAtFrame(layerId, trackId, frame, Math.floor(frame), structural);
+  },
+
+  /**
+   * 261108-d5o: the rail-local displayed-real-key frame list for one rail —
+   * the Stop-Motion sampling set. Memoized per rail + span + capacity + RASTER
+   * revision, so a motion-only edit returns the SAME frozen array while a
+   * paint edit re-scans. Every caller (compositor, Studio mirror, gizmo, lane)
+   * goes through this accessor; the resolver itself is store-internal.
+   */
+  getRotoRailMotionSnapFrames(
+    layerId: string,
+    trackId: string,
+    railId: string,
+  ): readonly number[] {
+    const structural = _resolveRotoPhysicalStructural(layerId, trackId);
+    if (structural === null || structural.railMotions.length === 0) return RAIL_MOTION_SNAP_FRAMES_EMPTY;
+    const projection = _resolveRotoRailMotionProjection(layerId, trackId, structural);
+    const view = projection.views.find((candidate) => candidate.railId === railId);
+    if (view === undefined || view.railId === null) return RAIL_MOTION_SNAP_FRAMES_EMPTY;
+    const record = projection.activeRecords.get(view.railId);
+    if (record === undefined) return RAIL_MOTION_SNAP_FRAMES_EMPTY;
+    return _resolveTrackSnapFramesForRecord(structural, view, record);
   },
 
   /**

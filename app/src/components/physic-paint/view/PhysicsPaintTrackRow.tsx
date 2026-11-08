@@ -36,6 +36,7 @@ import {
   type RailMotionRailView,
 } from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionChannelId, PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
+import { RAIL_MOTION_SNAP_FRAMES_EMPTY } from '../roto/railMotionSnapFrames';
 import type { RailSetIdentity } from '../roto/physicsPaintRotoRailSetSelection';
 import {
   resolveDisplayLaneChannelId,
@@ -573,6 +574,12 @@ export interface TimelineMotionBlockProps {
   readonly laneCount: number;
   /** The playhead in the rail's LOCAL frame space. */
   readonly cursorFrame: number;
+  /**
+   * 261108-d5o: the rail's displayed-real frames in rail-local space. Resolved
+   * ONCE by the host through the store accessor and threaded into every lane,
+   * so each lane samples stop-motion from the same list as the compositor.
+   */
+  readonly snapFrames: readonly number[];
   /** 59-12: the lane identity rides along so the host knows which channel was clicked. */
   readonly onSelectMotionKey?: (frame: number, channelId: PhysicPaintRotoRailMotionChannelId) => void;
   /**
@@ -616,6 +623,7 @@ export function TimelineMotionBlock({
   view,
   laneCount,
   cursorFrame,
+  snapFrames,
   onSelectMotionKey,
   onSelectMotionRail,
   railSelected = true,
@@ -660,6 +668,7 @@ export function TimelineMotionBlock({
             selected: railSelected,
             railFrameCount,
             cursorFrame,
+            snapFrames,
             selectedKeyFrames: laneSelectedKeyFrames,
             disabledReasons,
             onSelectKey: onSelectMotionKey === undefined
@@ -1056,6 +1065,11 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   const motionView = motionRecord === null
     ? null
     : (motionFacts.views.find((view) => view.railId === motionRecord.railId) ?? null);
+  // 261108-d5o: ONE memoized store read per row — the lanes and the drawn curve
+  // sample stop-motion from exactly the list the compositor applies.
+  const motionSnapFrames = motionRecord === null || !layerId
+    ? RAIL_MOTION_SNAP_FRAMES_EMPTY
+    : physicPaintStore.getRotoRailMotionSnapFrames(layerId, trackId, motionRecord.railId);
   const motionExpanded = motionRecord !== null && motionLanes.length > 0;
   const loopLines = loopVisuals.lines;
   // v2.0.1 (README §4): frames covered by this row's read-only Key Rails — one
@@ -1352,6 +1366,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           view={motionView}
           laneCount={motionLaneCount}
           cursorFrame={motionCursorFrame}
+          snapFrames={motionSnapFrames}
           onSelectMotionKey={onSelectMotionKey}
         />
       ) : null}

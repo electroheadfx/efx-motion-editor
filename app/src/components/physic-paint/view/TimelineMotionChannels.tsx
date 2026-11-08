@@ -87,6 +87,13 @@ export interface TimelineMotionChannelLaneProps {
   readonly selected: boolean;
   readonly railFrameCount: number;
   readonly cursorFrame: number;
+  /**
+   * 261108-d5o: the rail's displayed-real frames, in rail-local space. The lane
+   * computes NOTHING — the host resolves the list through the store accessor
+   * and passes it down, so the drawn curve samples stop-motion exactly like the
+   * applied transform.
+   */
+  readonly snapFrames: readonly number[];
   readonly selectedKeyFrames?: readonly number[];
   readonly onSelectRail?: (railId: string) => void;
   readonly onSelectKey?: (frame: number) => void;
@@ -291,6 +298,7 @@ export function TimelineMotionChannelLane({
   selected,
   railFrameCount,
   cursorFrame,
+  snapFrames,
   selectedKeyFrames,
   onSelectRail,
   onSelectKey,
@@ -371,7 +379,10 @@ export function TimelineMotionChannelLane({
         >
           {lane.channels[0] !== undefined ? (
             <path
-              d={buildRailMotionCurvePath(lane.channels[0], frameCount, laneHeight, { railId })}
+              d={buildRailMotionCurvePath(lane.channels[0], frameCount, laneHeight, {
+                railId,
+                snapFrames,
+              })}
               fill="none"
               stroke={palette.line}
               strokeWidth={TIMELINE_MOTION.curveWidth}

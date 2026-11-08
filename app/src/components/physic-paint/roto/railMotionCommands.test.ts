@@ -9,6 +9,7 @@ import type {
   PhysicPaintRotoRailMotionEasing,
   PhysicPaintRotoRailMotionRecord,
 } from './railMotionModel';
+import { evaluateRailMotionChannel } from './railMotionEvaluator';
 import {
   CONTEXTUAL_COMMANDS_BY_SCOPE,
   RAIL_MOTION_SELECTION_SCOPES,
@@ -514,7 +515,7 @@ describe('59-12 rail motion commands — Motion keys', () => {
     expect(y.keys.map((key) => key.easing).join(',')).toBe('ease,ease');
   });
 
-  it('seeds a keyless paired axis from its OWN stepped value, then applies the property there', () => {
+  it('seeds a keyless paired axis from its OWN displayed value, then applies the property there', () => {
     const keylessPaired: PhysicPaintRotoRailMotionRecord = Object.freeze({
       railId: 'rail-1',
       anchorKeyId: 'key-a',
@@ -541,10 +542,12 @@ describe('59-12 rail motion commands — Motion keys', () => {
     expect(y.keys.map((key) => key.frame).join(',')).toBe('0,5,10');
     expect(x.keys[1]?.value).toBe(40);
     expect(x.keys[1]?.wiggle).toBe(7);
-    // D-12: the seeded key holds THIS axis's stepped value, never its sibling's 40.
-    expect(y.keys[1]?.value).toBe(0);
+    // 261108-d5o: the seeded key holds THIS axis's DISPLAYED value (the same
+    // smoothstep the renderer shows at frame 5), never its sibling's 40. The
+    // old Hold-step seed of 0 moved the pose on insert.
+    expect(y.keys[1]?.value).toBe(25);
     expect(y.keys[1]?.wiggle).toBe(7);
-    expect(y.keys.map((key) => key.value).join(',')).toBe('0,0,50');
+    expect(y.keys.map((key) => key.value).join(',')).toBe('0,25,50');
     expect(y.keys.map((key) => key.wiggle).join(',')).toBe('0,7,0');
     // 261108-d5o: the seeded keyless sibling is a CREATION path, so it takes
     // the stop-motion default; the two authored keys keep their own easing.
@@ -1974,5 +1977,143 @@ describe('59-17 rail motion commands — add-channel availability (MUI-06)', () 
     for (const scope of RAIL_MOTION_SELECTION_SCOPES) {
       expect(CONTEXTUAL_COMMANDS_BY_SCOPE[scope]).not.toContain('add-motion-channel');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261108-d5o: Stop Motion creation paths seed from the DISPLAYED value.
+// Adding a key at a keyless frame must never move the pose, so every derived
+// seed reads through the evaluator WITH the rail's snap-frame list.
+// ---------------------------------------------------------------------------
+
+describe('261108-d5o: snap-frame creation-path seeding', () => {
+  /** Position X 0 -> 6 and Y 0 -> 60 across rail-local frames 0..6. */
+  function stopMotionPair(): PhysicPaintRotoRailMotionRecord {
+    return Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [motionKey(0, 0, 'stop-motion'), motionKey(6, 6, 'stop-motion')]),
+        motionChannel('position-y', [motionKey(0, 0, 'stop-motion'), motionKey(6, 60, 'stop-motion')]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+  }
+
+  it('inserting a key at a keyless display frame leaves the pose identical on both axes', () => {
+    const records = [stopMotionPair()];
+    const recordBefore = recordOf(records);
+    const xBefore = evaluateRailMotionChannel(recordBefore, 'position-x', 3, [0, 3, 6]);
+    const yBefore = evaluateRailMotionChannel(recordBefore, 'position-y', 3, [0, 3, 6]);
+    expect(xBefore).toBe(3);
+    expect(yBefore).toBe(30);
+
+    const result = setMotionKeyAtCursor({
+      records,
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 3,
+      snapFrames: [0, 3, 6],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const recordAfter = recordOf(result.records);
+    expect(evaluateRailMotionChannel(recordAfter, 'position-x', 3, [0, 3, 6])).toBe(xBefore);
+    expect(evaluateRailMotionChannel(recordAfter, 'position-y', 3, [0, 3, 6])).toBe(yBefore);
+    expect(channelOf(recordAfter, 'position-x').keys.find((key) => key.frame === 3)?.value).toBe(3);
+    expect(channelOf(recordAfter, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(30);
+  });
+
+  it('without the snap list the same insert seeds the Hold step value instead', () => {
+    const result = setMotionKeyAtCursor({
+      records: [stopMotionPair()],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 3,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-x').keys.find((key) => key.frame === 3)?.value).toBe(0);
+    expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(0);
+  });
+
+  it('seeds the keyless sibling from the snapped evaluation in the numeric inspector path', () => {
+    const result = writeRailMotionChannelValueAtCursor({
+      records: [stopMotionPair()],
+      railId: 'rail-1',
+      keyFrame: 3,
+      channelId: 'position-x',
+      uiValue: 10,
+      snapFrames: [0, 2, 4, 6],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    // Frame 3 samples snap 2: 60 x 2/6 = 20, not the Hold step's 0.
+    expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(20);
+    expect(channelOf(record, 'position-x').keys.find((key) => key.frame === 3)?.value).toBe(10);
+  });
+
+  it('seeds a keyless paired axis from the displayed sample when the easing changes', () => {
+    const keylessSibling: PhysicPaintRotoRailMotionRecord = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [
+          motionKey(0, 0, 'stop-motion'),
+          motionKey(3, 3, 'stop-motion'),
+          motionKey(6, 6, 'stop-motion'),
+        ]),
+        motionChannel('position-y', [motionKey(0, 0, 'stop-motion'), motionKey(6, 60, 'stop-motion')]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const before = evaluateRailMotionChannel(keylessSibling, 'position-y', 3, [0, 2, 4, 6]);
+    expect(before).toBe(20);
+
+    const result = setMotionKeyEasing({
+      records: [keylessSibling],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 3,
+      easing: 'hold',
+      snapFrames: [0, 2, 4, 6],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(20);
+    expect(evaluateRailMotionChannel(record, 'position-y', 3, [0, 2, 4, 6])).toBe(before);
+  });
+
+  it('without the snap list the easing edit seeds the Hold step value (the old behavior)', () => {
+    const keylessSibling: PhysicPaintRotoRailMotionRecord = Object.freeze({
+      railId: 'rail-1',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        motionChannel('position-x', [
+          motionKey(0, 0, 'stop-motion'),
+          motionKey(3, 3, 'stop-motion'),
+          motionKey(6, 6, 'stop-motion'),
+        ]),
+        motionChannel('position-y', [motionKey(0, 0, 'stop-motion'), motionKey(6, 60, 'stop-motion')]),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+
+    const result = setMotionKeyEasing({
+      records: [keylessSibling],
+      railId: 'rail-1',
+      channelId: 'position-x',
+      keyFrame: 3,
+      easing: 'hold',
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const record = recordOf(result.records);
+    expect(channelOf(record, 'position-y').keys.find((key) => key.frame === 3)?.value).toBe(0);
   });
 });

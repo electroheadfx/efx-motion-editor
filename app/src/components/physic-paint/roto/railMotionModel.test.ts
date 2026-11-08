@@ -658,6 +658,84 @@ describe('applyRailMotionEditToCollection', () => {
     expect(next[0].channels[1].keys[1].value).toBe(7);
   });
 
+  // 261108-d5o: the command layer computes the DISPLAYED sibling sample (with
+  // the rail's snap list) and passes it here; the reducer never re-implements
+  // the ramp. The field only reaches the keyless branch.
+  it('set-key seeds a keyless sibling from keylessSiblingSeed', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+      channel('position-y', [key(0, 0, 'stop-motion'), key(6, 60, 'stop-motion')]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 3,
+      value: 3,
+      keylessSiblingSeed: 20,
+    });
+
+    expect(next[0].channels[1].keys).toEqual([
+      key(0, 0, 'stop-motion'),
+      key(3, 20, 'stop-motion'),
+      key(6, 60, 'stop-motion'),
+    ]);
+  });
+
+  it('set-key gives pairedValue precedence over keylessSiblingSeed', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+      channel('position-y', [key(0, 0, 'stop-motion'), key(6, 60, 'stop-motion')]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 3,
+      value: 3,
+      pairedValue: 30,
+      keylessSiblingSeed: 20,
+    });
+
+    expect(next[0].channels[1].keys.find((entry) => entry.frame === 3)?.value).toBe(30);
+  });
+
+  it('set-key never overwrites a STORED sibling value with keylessSiblingSeed', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(8, 16)]),
+      channel('position-y', [key(0, 7), key(4, 11), key(8, 9)]),
+    ])];
+
+    const next = applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 12,
+      keylessSiblingSeed: 20,
+    });
+
+    expect(next[0].channels[1].keys.find((entry) => entry.frame === 4)?.value).toBe(11);
+  });
+
+  it('set-key throws on an out-of-domain keylessSiblingSeed', () => {
+    const records = [record('rail-a', [
+      channel('position-x', [key(0, 0), key(8, 16)]),
+      channel('position-y', [key(0, 0), key(8, 8)]),
+    ])];
+
+    expect(() => applyRailMotionEditToCollection(records, {
+      kind: 'set-key',
+      railId: 'rail-a',
+      channel: 'position-x',
+      frame: 4,
+      value: 12,
+      keylessSiblingSeed: 2_000_000,
+    })).toThrow();
+  });
+
   it('set-key replaces an existing key in place without duplicating the frame', () => {
     const records = [record('rail-a', [channel('scale', [key(0, 1), key(3, 2)])])];
 
