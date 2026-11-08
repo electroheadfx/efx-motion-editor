@@ -3973,8 +3973,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         ? railInsert.insertionAppFrame
         : null;
       // v2.0.1: consulted only AFTER the 58 insert target returned null and
-      // never under forceNewSegment, so every in-rail destination keeps the
-      // insert path. Read from the same records/clip collection as above.
+      // never under forceNewSegment, so every in-rail destination the insert
+      // can authorize keeps the insert path. A destination strictly INSIDE a
+      // rail the insert cannot extend (a one-key cycle) now resolves here
+      // too. Read from the same records/clip collection as above.
       const dissolveTarget = railInsert === null && options?.forceNewSegment !== true
         ? resolvePhysicPaintRotoRailDissolveTarget({
           identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),

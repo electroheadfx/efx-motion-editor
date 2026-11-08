@@ -5489,6 +5489,114 @@ describe('v2.0.1 Rail dissolve (+ Key / paint strictly AFTER a complete canonica
     expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, NEW: 6 });
   });
 
+  // 261108-nq0: the reported Phase 59 gesture (one key cycled x10, + Key at an
+  // inside-span frame). The 58 source-phase insert refuses every single-source
+  // clip, so without the inside-span dissolve the dispatch fell through to the
+  // plain paste and split the rail.
+  const oneKeyCycleRail: PhysicPaintRotoLoopClip = {
+    ...standardRail,
+    sourceKeyIds: ['K1'],
+    repeat: 10,
+    originalEndExclusive: 11,
+    visibleRanges: [{ start: 1, endExclusive: 11 }],
+    frameOverrides: [],
+  };
+  const oneKeyCycleIdentities: readonly PhysicPaintRotoKeyIdentity[] = [{ keyId: 'K1', appFrame: 1 }];
+
+  it('v2.0.1: a destination strictly inside a one-key cycle dissolves the rail the 58 insert cannot extend', () => {
+    // Insert premise: no 58 source-phase target exists inside this rail.
+    expect(resolvePhysicPaintRotoRailKeyInsertTarget({
+      identities: oneKeyCycleIdentities,
+      loopClips: [oneKeyCycleRail],
+      appFrame: 5,
+    })).toBeNull();
+    // ...so the rail qualifies for the inside-span dissolve.
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: oneKeyCycleIdentities,
+      loopClips: [oneKeyCycleRail],
+      appFrame: 5,
+    })).toEqual({ loopId: 'rail-1' });
+
+    const resolution = resolveDissolve(dissolveIntent(5), {
+      identities: oneKeyCycleIdentities,
+      loopClips: [oneKeyCycleRail],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('An inside-span one-key cycle must dissolve');
+    expect(resolution.proposal.nextLoopClips).toEqual([]);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ K1: 1, NEW: 5 });
+    expect(resolution.proposal.selectedAppFrame).toBe(5);
+    expect(Object.fromEntries(resolution.proposal.mapping)[resolution.proposal.selectedKeyId as string]).toBe(5);
+  });
+
+  it('v2.0.1: the inside-span dissolve leaves an ordinary real key, never a group occurrence', () => {
+    const resolution = resolveDissolve(dissolveIntent(5), {
+      identities: oneKeyCycleIdentities,
+      loopClips: [oneKeyCycleRail],
+    });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('An inside-span one-key cycle must dissolve');
+    // The clip leaves the collection, so the destination frame classifies as
+    // an ordinary real key: routeRotoPhysicalPaintFrame takes the ordinary-key
+    // seam and the group-frame stale gate in useRotoPhysicalEditCoordinator is
+    // unreachable for that frame.
+    const document = {
+      loopClips: resolution.proposal.nextLoopClips ?? [],
+      realKeyRecords: resolution.proposal.nextRecords ?? [],
+      capacity: 32,
+    };
+    expect(classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: 5 })).toEqual({
+      kind: 'ordinary-key',
+      appFrame: 5,
+      keyId: resolution.proposal.selectedKeyId,
+    });
+    expect((resolution.proposal.nextRecords ?? []).some(
+      (record) => record.keyId === resolution.proposal.selectedKeyId && record.appFrame === 5,
+    )).toBe(true);
+  });
+
+  it('v2.0.1: an insertable inside-span destination keeps the 58 insert and never dissolves', () => {
+    const multiKeyCycle: PhysicPaintRotoLoopClip = {
+      ...standardRail,
+      repeat: 5,
+      originalEndExclusive: 26,
+      visibleRanges: [{ start: 1, endExclusive: 26 }],
+    };
+    // A repeat occurrence the source-phase insert can authorize (destination
+    // 22 maps back to first-cycle frame 2): the insert wins, the rail stays.
+    expect(resolvePhysicPaintRotoRailKeyInsertTarget({
+      identities: sourceIdentities,
+      loopClips: [multiKeyCycle],
+      appFrame: 22,
+    })).toEqual({ loopId: 'rail-1', cycleOffset: 1, insertionAppFrame: 2 });
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities: sourceIdentities,
+      loopClips: [multiKeyCycle],
+      appFrame: 22,
+    })).toBeNull();
+  });
+
+  it('v2.0.1: a detached key inside the cycle keeps the inside-span law fail-closed', () => {
+    // The old broken document: a detached real key inside the span. The
+    // nearest key below the destination is no longer the rail's last source
+    // key, so ownership is unprovable and no clip is removed.
+    const identities = [
+      { keyId: 'K1', appFrame: 1 },
+      { keyId: 'D3', appFrame: 3 },
+    ];
+    expect(resolvePhysicPaintRotoRailKeyInsertTarget({
+      identities,
+      loopClips: [oneKeyCycleRail],
+      appFrame: 5,
+    })).toBeNull();
+    expect(resolvePhysicPaintRotoRailDissolveTarget({
+      identities,
+      loopClips: [oneKeyCycleRail],
+      appFrame: 5,
+    })).toBeNull();
+  });
+
   it('v2.0.1: a post-end key appends to an overridden single-repeat rail and keeps the paint', () => {
     const overriddenRail: PhysicPaintRotoLoopClip = {
       ...standardRail,

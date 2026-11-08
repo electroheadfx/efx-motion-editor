@@ -4777,14 +4777,16 @@ interface PhysicPaintRotoRailDissolveTargetInternal {
 /**
  * v2.0.1 (user-approved 2026-11-04): the destination of a key created on an
  * EMPTY frame strictly AFTER one complete canonical lifecycle rail (Motion,
- * Static or Reveal).
+ * Static or Reveal), or strictly INSIDE a rail the 58 source-phase insert
+ * cannot extend.
  *
  * The law: such a destination dissolves that rail's Loop Clip instead of
  * opening a detached one-key rail behind a rail line that stops at its old
- * end. The clip is removed in the same atomic edit that lands the new key
- * joined to the rail's last source key, so the derived Key Rail is one
- * continuous segment from the first source key to the new key; the user
- * rebuilds a cycle afterwards if wanted.
+ * end (after) or inside a cycle the rail cannot grow (inside). The clip is
+ * removed in the same atomic edit that lands the new key joined to the rail's
+ * last source key, so the derived Key Rail is one continuous segment from the
+ * first source key to the new key; the user rebuilds a cycle afterwards if
+ * wanted. The clip always leaves the whole collection in that same edit.
  *
  * Every qualification must be proven or the caller keeps today's behaviour:
  * - the nearest real key strictly below the destination is the LAST source
@@ -4793,13 +4795,14 @@ interface PhysicPaintRotoRailDissolveTargetInternal {
  *   `originalEndExclusive`);
  * - that clip is a complete canonical lifecycle rail carrying `syncState` and
  *   `provenanceState`, one full-span visible range, no painted phase override,
- *   a finite positive repeat, at least two ascending source keys anchored at
+ *   a finite positive repeat, at least one ascending source key anchored at
  *   `phaseOrigin`, and a stored end that is exactly `repeat` cycles long;
  * - every rail kind qualifies — Motion, Static and Reveal alike — because the
  *   user-approved law accepts discarding the rail's script/reveal effect with
  *   the clip (the user re-runs the script or re-adds a cycle afterwards);
- * - the destination is at/after the rail's stored end (inside the footprint
- *   the 58 in-rail insert keeps precedence);
+ * - the destination is at/after the rail's stored end, OR strictly inside its
+ *   footprint AND the 58 in-rail insert answers no target there (an insertable
+ *   inside-span destination keeps the insert path);
  * - no other clip references a target source key, no other clip's derived
  *   extent reaches the destination, and no other clip owns a source key at or
  *   after the destination.
@@ -4845,7 +4848,20 @@ function resolveRailDissolveTargetInternal(
   const clip = candidate;
   const repeat = clip.repeat;
   if (typeof repeat !== 'number' || !Number.isSafeInteger(repeat) || repeat <= 0) return null;
-  if (input.appFrame < clip.originalEndExclusive) return null;
+  if (input.appFrame < clip.originalEndExclusive) {
+    // v2.0.1 (261108-nq0): strictly INSIDE the rail's footprint the 58
+    // source-phase insert keeps precedence whenever it can authorize this
+    // destination. When it cannot — the single-source D-08 one-frame cycle,
+    // or an unprovable phase — the rail cannot be extended, so this dissolve
+    // carries the destination. No caller flag: the dispatch seam and the
+    // parent re-validation both read this one predicate.
+    const insertTarget = resolveRailKeyInsertTargetInternal({
+      identities: input.identities,
+      loopClips: input.loopClips,
+      appFrame: input.appFrame,
+    });
+    if (insertTarget !== null) return null;
+  }
   const sourceFrames: number[] = [];
   for (const keyId of clip.sourceKeyIds) {
     const frame = frameByKeyId.get(keyId);
@@ -4875,7 +4891,10 @@ function resolveRailDissolveTargetInternal(
 
 /**
  * v2.0.1: a complete canonical lifecycle rail, whatever its kind — Motion,
- * Static or Reveal (see the dissolve law).
+ * Static or Reveal (see the dissolve law). A one-key cycle qualifies: its 58
+ * insert can never authorize an inside-span destination (one source cannot
+ * prove a phase), so only a dissolve can extend it. An inside-span destination
+ * dissolves only when that insert refuses.
  */
 function isCompleteCanonicalLifecycleRailClip(clip: PhysicPaintRotoLoopClip): clip is PhysicPaintRotoLifecycleLoopClip {
   if (clip.syncState === undefined || clip.provenanceState === undefined) return false;
