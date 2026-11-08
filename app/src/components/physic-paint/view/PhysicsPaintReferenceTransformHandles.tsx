@@ -31,6 +31,15 @@ import {
 import type { RailMotionRailView } from '../roto/railMotionIdentity';
 import type { PhysicPaintRotoRailMotionRecord } from '../roto/railMotionModel';
 import { railMotionValueFromUi, railMotionValueToUi } from '../roto/railMotionModel';
+import type {
+  RailMotionPath,
+  RailMotionPathCursorPoint,
+} from '../roto/railMotionPath';
+import {
+  RAIL_MOTION_PATH_ACCENT,
+  RailMotionPathOverlay,
+  resolveRailMotionPathRenderModel,
+} from './RailMotionPathOverlay';
 
 /**
  * 50-05 (Task 2, S4): the interactive reference transform handles on the
@@ -135,6 +144,13 @@ export interface PhysicsPaintReferenceTransformHandlesProps {
   readonly zoom: number;
   /** rail-motion only; the legacy targets ignore it. */
   readonly railMotion?: PhysicsPaintRailMotionGizmoProps | null;
+  /**
+   * 261108-kvw: the rail-motion authored Position route (static bundle) and
+   * the authored point at the cursor. Optional and read only when `target` is
+   * `'rail-motion'`; the legacy targets ignore both.
+   */
+  readonly motionPath?: RailMotionPath | null;
+  readonly motionPathCursor?: RailMotionPathCursorPoint | null;
 }
 
 interface DragState {
@@ -316,6 +332,21 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       />
     );
   }
+
+  // 261108-kvw: the read-only authored route, resolved only for the rail-motion
+  // target. Resolving AFTER the gate above means `imageSize.value` is the
+  // resolved project size and the route shares the gizmo's availability
+  // verdict. The static geometry is cached on the bundle; only the marker is
+  // recomputed while scrubbing.
+  const railMotionPathModel = target === 'rail-motion'
+    ? resolveRailMotionPathRenderModel({
+      path: props.motionPath ?? null,
+      cursor: props.motionPathCursor ?? null,
+      projectWidth: imageSize.value.w,
+      projectHeight: imageSize.value.h,
+      zoom,
+    })
+    : null;
 
   // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
   // natural source size; background base = contain-fit × clip-scale (already
@@ -631,10 +662,14 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
+        {/* 261108-kvw: the authored route renders FIRST so it sits behind the
+            polygon and every handle, and it is pointer-events none (no
+            handlers) so it can never steal a paint or drag gesture. */}
+        <RailMotionPathOverlay model={railMotionPathModel} />
         <polygon
           points={polyPoints}
           fill="transparent"
-          stroke="#4A90D9"
+          stroke={RAIL_MOTION_PATH_ACCENT}
           stroke-width={strokeWidth}
           vector-effect="non-scaling-stroke"
           style={{
@@ -656,7 +691,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
           y1={topMid.y}
           x2={rotHandle.x}
           y2={rotHandle.y}
-          stroke="#4A90D9"
+          stroke={RAIL_MOTION_PATH_ACCENT}
           stroke-width={strokeWidth}
           vector-effect="non-scaling-stroke"
           aria-hidden="true"
@@ -666,7 +701,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
           cy={rotHandle.y}
           r={rotHandleRadius}
           fill="white"
-          stroke="#4A90D9"
+          stroke={RAIL_MOTION_PATH_ACCENT}
           stroke-width={strokeWidth}
           vector-effect="non-scaling-stroke"
           style={{ pointerEvents: 'all', cursor: getCursorForHandle(null, true, transform.rotation) }}
@@ -692,7 +727,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
             width={cornerSize}
             height={cornerSize}
             fill="white"
-            stroke="#4A90D9"
+            stroke={RAIL_MOTION_PATH_ACCENT}
             stroke-width={strokeWidth}
             vector-effect="non-scaling-stroke"
             style={{ pointerEvents: 'all' }}
@@ -706,7 +741,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
             width={edgeSize}
             height={edgeSize}
             fill="white"
-            stroke="#4A90D9"
+            stroke={RAIL_MOTION_PATH_ACCENT}
             stroke-width={strokeWidth}
             vector-effect="non-scaling-stroke"
             style={{ pointerEvents: 'all' }}

@@ -143,6 +143,13 @@ import {
   railMotionValueToUi,
 } from '../roto/railMotionModel';
 import { evaluateRailMotion } from '../roto/railMotionEvaluator';
+import {
+  evaluateRailMotionPathCursor,
+  sampleRailMotionPathCached,
+  type RailMotionPathCursorPoint,
+  type RailMotionPathEvaluation,
+} from '../roto/railMotionPath';
+import { RAIL_MOTION_PIVOT_FALLBACK } from '../roto/railMotionPivot';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import type { PhysicsPaintRailMotionGizmoProps } from '../view/PhysicsPaintReferenceTransformHandles';
 import type { RailSetDragGapInterval } from './usePhysicsPaintRailSetDrag';
@@ -2207,7 +2214,13 @@ function readSelectedRailIdentity(input: RotoTimelineActionsInput): RailSetIdent
   return null;
 }
 
-interface ActiveRailMotionState {
+/**
+ * 261108-kvw: the CURSOR-FREE half of the active rail-motion read. It resolves
+ * the launch context, the live track, the rail views and the selected record
+ * exactly like the state reader, and it owns the track-revision subscription so
+ * every caller (gizmo, path sampler, commands) re-resolves on a motion edit.
+ */
+interface ActiveRailMotionContext {
   readonly layerId: string;
   readonly trackId: string;
   readonly records: readonly PhysicPaintRotoRailMotionRecord[];
@@ -2215,6 +2228,9 @@ interface ActiveRailMotionState {
   readonly view: RailMotionRailView | null;
   /** The motion record of the selected rail, when it carries motion. */
   readonly record: PhysicPaintRotoRailMotionRecord | null;
+}
+
+interface ActiveRailMotionState extends ActiveRailMotionContext {
   /** App-frame playhead read at action time. */
   readonly cursorFrame: number;
   /** The same playhead in the selected rail's local frame (0 when no rail). */
@@ -2236,8 +2252,13 @@ export interface RailMotionGizmoBundle extends PhysicsPaintRailMotionGizmoProps 
  * store getter, projects every live rail with the 59-06 assignment (the ONE
  * anchor-based first bind), and resolves the selected view. Nothing is cached
  * and no map is written here.
+ *
+ * 261108-kvw: split into a cursor-free context read plus the playhead addition,
+ * so the canvas path sampler can re-resolve on an edit without ever reading the
+ * current frame. The cursor semantics below are byte-identical to the previous
+ * single reader.
  */
-function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailMotionState | null {
+function readActiveRailMotionContext(input: RotoTimelineActionsInput): ActiveRailMotionContext | null {
   const launch = input.getLaunchContext?.() ?? null;
   const layerId = launch?.layerId;
   // 59-12: live track first — the launch snapshot is frozen at open time and
@@ -2307,11 +2328,17 @@ function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailM
   const record = view === null || view.railId === null
     ? null
     : (records.find((entry) => entry.railId === view.railId) ?? null);
+  return { layerId, trackId, records, views, view, record };
+}
+
+function readActiveRailMotionState(input: RotoTimelineActionsInput): ActiveRailMotionState | null {
+  const context = readActiveRailMotionContext(input);
+  if (context === null) return null;
   const cursorFrame = input.getCurrentAppFrame?.() ?? 0;
-  const localCursorFrame = view === null || !Number.isFinite(cursorFrame)
+  const localCursorFrame = context.view === null || !Number.isFinite(cursorFrame)
     ? 0
-    : Math.max(0, Math.floor(cursorFrame - view.startFrame));
-  return { layerId, trackId, records, views, view, record, cursorFrame, localCursorFrame };
+    : Math.max(0, Math.floor(cursorFrame - context.view.startFrame));
+  return { ...context, cursorFrame, localCursorFrame };
 }
 
 /**
@@ -2705,6 +2732,72 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         publishMotionFailure(input, reason);
       },
     }) as RailMotionGizmoBundle;
+  });
+  /**
+   * 261108-kvw: the canvas path bundle — the AUTHORED Position route of the
+   * selected rail, sampled once per edit through the 59-05 evaluator with a
+   * wiggle-zeroed probe. Deliberately CURSOR-FREE by construction: it never
+   * reads the playhead, so scrubbing can never rebuild the polyline. The
+   * handles' existing availability and isPlaying mount gates remain the sole
+   * cursor-dependent visibility, and the route renders identically whether or
+   * not the Motion sheet is open (this computed never reads it).
+   */
+  const railMotionPath = computed((): RailMotionPathEvaluation | null => {
+    const blockIdentity = input.getMotionBlockRailIdentity?.() ?? null;
+    const state = readActiveRailMotionContext(input);
+    if (state === null || state.view === null || state.view.railId === null) return null;
+    // The same open-block verdict as the gizmo: the path is a canvas editing
+    // surface, so a closed block retires it with the boundary box.
+    const blockOpen = blockIdentity !== null && (blockIdentity.kind === 'loop'
+      ? state.view.loopId === blockIdentity.loopId
+      : state.view.loopId === null && state.view.anchorKeyId === blockIdentity.firstKeyId);
+    if (!blockOpen) return null;
+    const selectedChannel = railMotionSelectedChannel.value;
+    if (selectedChannel === null || selectedChannel === 'opacity') return null;
+    if (state.record === null) return null;
+    if (!resolveMotionChannelPresence(state.record.channels).position) return null;
+    // The SAME memoized displayed-real-key list the compositor applies, so a
+    // stop-motion route steps exactly where the box steps.
+    const snapFrames = physicPaintStore.getRotoRailMotionSnapFrames(
+      state.layerId,
+      state.trackId,
+      state.view.railId,
+    );
+    // A raster edit can move the ink union the route pivots on, so read the
+    // content revision here to re-resolve the pivot on that edit. The pivot is
+    // rail-level and frame-independent; only the displayed ink base is not.
+    physicPaintStore.getRotoPhysicalContentRevision(state.layerId, state.trackId);
+    const canvasInk = physicPaintStore.getRotoRailMotionCanvasInk(
+      state.layerId,
+      state.trackId,
+      state.view.startFrame,
+    );
+    const pivotX = canvasInk?.pivotX ?? RAIL_MOTION_PIVOT_FALLBACK.x;
+    const pivotY = canvasInk?.pivotY ?? RAIL_MOTION_PIVOT_FALLBACK.y;
+    return sampleRailMotionPathCached({
+      record: state.record,
+      railId: state.view.railId,
+      startFrame: state.view.startFrame,
+      frameCount: railMotionViewFrameCount(state.view),
+      snapFrames,
+      pivotX,
+      pivotY,
+    });
+  });
+  /**
+   * 261108-kvw: the cursor's authored point on that route — the ONLY
+   * cursor-dependent geometry of the overlay. It reads the playhead with the
+   * state reader's non-finite-to-0 rule and addresses the bundle's own
+   * startFrame, so it can never disagree with the sampled route.
+   */
+  const railMotionPathCursor = computed((): RailMotionPathCursorPoint | null => {
+    const evaluation = railMotionPath.value;
+    if (evaluation === null) return null;
+    const cursorFrame = input.getCurrentAppFrame?.() ?? 0;
+    const localFrame = !Number.isFinite(cursorFrame)
+      ? 0
+      : Math.max(0, Math.floor(cursorFrame - evaluation.path.startFrame));
+    return evaluateRailMotionPathCursor(evaluation, localFrame);
   });
   const canDragKey = computed(() => computeDragAvailability(input).eligible);
   const dragDisabledReason = computed(() => computeDragAvailability(input).reason);
@@ -5134,6 +5227,10 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     railConversionDialog,
     // 59-13: the canvas gizmo payload for the selected animated rail.
     railMotionGizmo,
+    // 261108-kvw: the canvas path — the static authored route and its
+    // cursor-owned marker, consumed by the rail-motion handles SVG.
+    railMotionPath,
+    railMotionPathCursor,
     // 261107-qgj: the floating Motion modal's bundle (its only reader) and
     // the ONE close path that clears the property AND the Motion-key selection.
     railMotionDialog,

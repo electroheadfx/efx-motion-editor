@@ -9915,7 +9915,12 @@ export function PhysicsPaintStudio() {
   // watches its PRIMITIVE signature (the payload object is rebuilt on every
   // computed re-evaluation; depending on its identity would defeat the memo).
   const railMotionGizmoForCanvas = rotoTimelineActions.railMotionGizmo.value;
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, blockGeneratedFramePaintPointerDown, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value, railMotionGizmoForCanvas?.signature ?? null], () => {
+  // 261108-kvw: the read-only authored Position route and its cursor marker.
+  // The route's primitive signature is the memo key; the marker object is read
+  // through the memo closure below (it changes per scrub).
+  const railMotionPathForCanvas = rotoTimelineActions.railMotionPath.value;
+  const railMotionPathCursorForCanvas = rotoTimelineActions.railMotionPathCursor.value;
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, blockGeneratedFramePaintPointerDown, handleAquarelleColorPick, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value, railMotionGizmoForCanvas?.signature ?? null, railMotionPathForCanvas?.path.signature ?? null], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -10113,6 +10118,10 @@ export function PhysicsPaintStudio() {
           height: canvasHeight,
           zoom: paperTextureScale,
           railMotion: railMotionGizmoForCanvas,
+          // 261108-kvw: the authored route rides the same envelope so the
+          // handles render it inside their own SVG (behind the polygon).
+          motionPath: railMotionPathForCanvas?.path ?? null,
+          motionPathCursor: railMotionPathCursorForCanvas,
         } : null,
     };
   });
