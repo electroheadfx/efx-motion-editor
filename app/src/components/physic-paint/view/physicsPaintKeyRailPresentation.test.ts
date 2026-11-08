@@ -595,4 +595,28 @@ describe('projectRailMotionInspectorAtFrame (261107-qgj: property-mode projectio
     expect(frameAt(Number.POSITIVE_INFINITY)).toBe(0);
     expect(frameAt(4.9)).toBe(4);
   });
+
+  it('keeps reading the unsnapped curve — paint snapping never enters the projection', () => {
+    // 261108-d5o: the presentation read-out is a curve-domain value; only the
+    // compositor, gizmo and lane receive paint snapping. A stop-motion span
+    // 0 -> 0 / 6 -> 6 over snaps [0,2,4] would read 2 at frame 3 in the
+    // compositor, but the projection has no snap input and reads the unsnapped
+    // outgoing value 0.
+    const key = (frame: number, value: number) => Object.freeze({
+      frame,
+      value,
+      easing: 'stop-motion' as const,
+      wiggle: 0,
+    });
+    const record = Object.freeze({
+      railId: 'rail-unsnapped',
+      anchorKeyId: 'key-a',
+      channels: Object.freeze([
+        Object.freeze({ id: 'position-x' as const, keys: Object.freeze([key(0, 0), key(6, 6)]) }),
+      ]),
+    }) as PhysicPaintRotoRailMotionRecord;
+    const projection = requireProjectMotionInspectorAtFrame()({ record, railLocalFrame: 3 });
+
+    expect(projection.fields.find((field) => field.channelId === 'position-x')?.value).toBe(0);
+  });
 });

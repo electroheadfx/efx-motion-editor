@@ -138,6 +138,81 @@ describe('rail motion channel evaluation', () => {
     expect(evaluateRailMotionChannel(stopMotion, 'position-x', 6)).toBe(6);
   });
 
+  it('samples a stop-motion span at the greatest snap frame at or before the frame', () => {
+    // 261108-d5o oracle: keys 0 -> 0 and 6 -> 6 across [0,6] with the
+    // rail-local paint snaps [0,2,4,6]. The law snaps to the greatest s <=
+    // frame (and >= the outgoing key frame), then ramps 0 -> 6 over [0,6]:
+    // value = 6 * (sampleFrame / 6) = sampleFrame. Fractions read their own
+    // sample: 1.5 -> 0 and 2.5 -> 2.
+    const rec = record('rail-snapped', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+    ]);
+    const snapFrames = [0, 2, 4, 6] as const;
+
+    expect(
+      [0, 1, 2, 3, 4, 5, 6].map((frame) => (
+        evaluateRailMotionChannel(rec, 'position-x', frame, snapFrames)
+      )),
+    ).toEqual([0, 0, 2, 2, 4, 4, 6]);
+    expect(evaluateRailMotionChannel(rec, 'position-x', 1.5, snapFrames)).toBe(0);
+    expect(evaluateRailMotionChannel(rec, 'position-x', 2.5, snapFrames)).toBe(2);
+    expect(evaluateRailMotionChannel(rec, 'position-x', 6, snapFrames)).toBe(6);
+  });
+
+  it('keeps motion keys independent of paint keys and ignores snaps outside the outgoing span', () => {
+    // Keys 0 -> 0 and 5 -> 50, both stop-motion, over snaps [0,2,4,6]. The ramp
+    // is 0 + 50 * (sampleFrame / 5) = 10 * sampleFrame, so frames 0..6 read
+    // 0,0,20,20,40,50,50: the steps sit at 2 and 4 ONLY, and frame 5 is the
+    // key's own value. Paint key 6 belongs to the NEXT span, so deleting it
+    // leaves every value up to frame 5 identical.
+    const rec = record('rail-snap-independence', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(5, 50, 'stop-motion')]),
+    ]);
+
+    expect(
+      [0, 1, 2, 3, 4, 5, 6].map((frame) => (
+        evaluateRailMotionChannel(rec, 'position-x', frame, [0, 2, 4, 6])
+      )),
+    ).toEqual([0, 0, 20, 20, 40, 50, 50]);
+    for (let frame = 0; frame <= 5; frame += 0.25) {
+      expect(evaluateRailMotionChannel(rec, 'position-x', frame, [0, 2, 4]))
+        .toBe(evaluateRailMotionChannel(rec, 'position-x', frame, [0, 2, 4, 6]));
+    }
+    // A snap beyond the outgoing span is never eligible.
+    expect(evaluateRailMotionChannel(rec, 'position-x', 4, [0, 4, 9])).toBe(40);
+  });
+
+  it('falls back to the outgoing value with no interior snap and is byte-identical to hold', () => {
+    const stopMotion = record('rail-snap-fail-closed', [
+      channel('position-x', [key(0, 0, 'stop-motion'), key(6, 6, 'stop-motion')]),
+    ]);
+    const hold = record('rail-snap-fail-closed', [
+      channel('position-x', [key(0, 0, 'hold'), key(6, 6, 'hold')]),
+    ]);
+
+    for (let frame = 0; frame < 6; frame += 0.25) {
+      expect(evaluateRailMotionChannel(stopMotion, 'position-x', frame, [0, 6])).toBe(0);
+    }
+    expect(evaluateRailMotionChannel(stopMotion, 'position-x', 6, [0, 6])).toBe(6);
+    for (const frame of [0, 1, 2, 3.5, 4, 5, 5.999, 6, 7]) {
+      expect(evaluateRailMotionChannel(stopMotion, 'position-x', frame, [0, 6]))
+        .toBe(evaluateRailMotionChannel(hold, 'position-x', frame));
+    }
+  });
+
+  it('leaves hold, ease and linear keys byte-identical with and without a snap list', () => {
+    const snapFrames = [0, 2, 4, 6] as const;
+    for (const easing of ['hold', 'ease', 'linear'] as const) {
+      const rec = record(`rail-snap-inert-${easing}`, [
+        channel('position-x', [key(0, 0, easing), key(6, 6, easing)]),
+      ]);
+      for (let frame = -1; frame <= 8; frame += 0.5) {
+        expect(evaluateRailMotionChannel(rec, 'position-x', frame, snapFrames))
+          .toBe(evaluateRailMotionChannel(rec, 'position-x', frame));
+      }
+    }
+  });
+
   it('dispatches easing through an explicit exhaustive switch, never a hold-else-smoothstep branch', () => {
     // T-261108-D5O-03: a new token must not be able to fall through into the
     // smoothstep default. The switch is asserted at the source so a future
@@ -279,6 +354,32 @@ describe('rail motion wiggle', () => {
     expect(evaluateRailMotionChannel(rec, 'position-y', 10)).toBe(80);
   });
 
+  it('samples stop-motion wiggle at the snapped frame, not the evaluated frame', () => {
+    const railId = 'rail-snap-wiggle';
+    const snapFrames = [0, 2, 4, 6] as const;
+    const stopMotion = record(railId, [
+      channel('position-x', [key(0, 0, 'stop-motion', 5), key(6, 60, 'stop-motion', 0)]),
+    ]);
+    const eased = record(railId, [
+      channel('position-x', [key(0, 0, 'ease', 5), key(6, 60, 'ease', 0)]),
+    ]);
+
+    const snapped = [2, 2.25, 2.5, 2.75].map((frame) => (
+      evaluateRailMotionChannel(stopMotion, 'position-x', frame, snapFrames)
+    ));
+    for (const value of snapped) expect(value).toBe(snapped[0]);
+    // The ramp is 60 * 2/6 = 20 plus the outgoing amplitude at the sample.
+    expect(snapped[0]).toBeCloseTo(
+      20 + 5 * railMotionWiggleAt(railId, 'position-x', 0, 2),
+      12,
+    );
+
+    const easedValues = [2, 2.25, 2.5, 2.75].map((frame) => (
+      evaluateRailMotionChannel(eased, 'position-x', frame)
+    ));
+    expect(new Set(easedValues).size).toBeGreaterThan(1);
+  });
+
   it('returns exactly the eased value when the amplitude is zero', () => {
     const plain = record('rail-plain', [channel('rotation', [key(0, 0), key(10, 90, 'ease', 0)])]);
     const withZeroWiggle = record('rail-plain', [
@@ -394,6 +495,75 @@ describe('rail motion lane curve', () => {
     expect(points[stepIndex - 1].y).toBe(18);
     expect(points[stepIndex].y).toBe(0);
     for (const point of points.slice(0, stepIndex - 1)) expect(point.y).toBe(18);
+  });
+
+  it('draws a true staircase at every interior stop-motion snap and key frame', () => {
+    const positionChannel = channel('position-x', [
+      key(0, 0, 'stop-motion'),
+      key(6, 6, 'stop-motion'),
+    ]);
+    const snapFrames = [0, 2, 4, 6] as const;
+    const path = buildRailMotionCurvePath(positionChannel, 7, TIMELINE_GEOMETRY.motionLaneHeight, {
+      railId: 'rail-staircase',
+      snapFrames,
+    });
+    const points = parseCurvePath(path);
+    const verticalStepAt = (frame: number): boolean => {
+      const x = frame * TIMELINE_GEOMETRY.cellPitch;
+      for (let index = 1; index < points.length; index += 1) {
+        if (
+          points[index].x === x
+          && points[index - 1].x === x
+          && points[index].y !== points[index - 1].y
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // Two points at the same x with different y at interior snaps 2 and 4 and
+    // at the closing stop-motion key frame 6.
+    expect(verticalStepAt(2)).toBe(true);
+    expect(verticalStepAt(4)).toBe(true);
+    expect(verticalStepAt(6)).toBe(true);
+
+    // Without the snap list the same channel draws the hold fallback: one flat
+    // line to the key frame, and no steps at 2 or 4.
+    const fallback = parseCurvePath(buildRailMotionCurvePath(positionChannel, 7));
+    const fallbackStepAt = (frame: number): boolean => {
+      const x = frame * TIMELINE_GEOMETRY.cellPitch;
+      for (let index = 1; index < fallback.length; index += 1) {
+        if (
+          fallback[index].x === x
+          && fallback[index - 1].x === x
+          && fallback[index].y !== fallback[index - 1].y
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+    expect(fallbackStepAt(2)).toBe(false);
+    expect(fallbackStepAt(4)).toBe(false);
+    expect(fallbackStepAt(6)).toBe(true);
+    const fallbackY = expectedCurveY('position-x', 0);
+    for (const point of fallback) {
+      if (point.x < 6 * TIMELINE_GEOMETRY.cellPitch) expect(point.y).toBe(fallbackY);
+    }
+  });
+
+  it('ignores the snap list for hold and ease channels', () => {
+    const snapFrames = [0, 2, 4, 6] as const;
+    for (const easing of ['hold', 'ease'] as const) {
+      const positionChannel = channel('position-x', [key(0, 0, easing), key(6, 6, easing)]);
+      expect(buildRailMotionCurvePath(positionChannel, 7, TIMELINE_GEOMETRY.motionLaneHeight, {
+        railId: 'rail-snap-inert',
+        snapFrames,
+      })).toBe(buildRailMotionCurvePath(positionChannel, 7, TIMELINE_GEOMETRY.motionLaneHeight, {
+        railId: 'rail-snap-inert',
+      }));
+    }
   });
 
   it('samples an ease channel from the evaluator at each frame', () => {

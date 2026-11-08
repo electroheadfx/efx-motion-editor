@@ -10,6 +10,11 @@
  * repeat counts or wall-clock time. Content cycling therefore stays
  * independent of motion evaluation.
  *
+ * Stop Motion samples the linear ramp only at the displayed-real-key frames:
+ * that rail-local frame set arrives through the optional `snapFrames`
+ * argument as pure DATA. This module never resolves it — the store owns the
+ * one memoized resolver — so the evaluator still reads no raster state.
+ *
  * The only non-model imports are the seeded `Random` PRNG and the pure
  * `TIMELINE_GEOMETRY` design-token block (data only — it carries no Preact,
  * store or DOM import), so the lane pitch has one source and no literal 18.
@@ -80,6 +85,38 @@ interface RailMotionSegment {
    * the first key, which is the one span that carries no wiggle amplitude.
    */
   readonly outgoingKey: PhysicPaintRotoRailMotionKey | null;
+  /**
+   * The frame the wiggle is evaluated at: the snapped frame for Stop Motion,
+   * the evaluated frame everywhere else.
+   */
+  readonly sampleFrame: number;
+}
+
+/**
+ * Greatest snap frame `s` with `floorFrame <= s <= frame`, or null when none
+ * qualifies. Bounded binary search over the ascending list; no allocation.
+ */
+function greatestRailMotionSnapAtOrBefore(
+  snapFrames: readonly number[] | undefined,
+  floorFrame: number,
+  frame: number,
+): number | null {
+  if (snapFrames === undefined || snapFrames.length === 0) return null;
+  let low = 0;
+  let high = snapFrames.length - 1;
+  let best = -1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    if (snapFrames[middle] <= frame) {
+      best = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  if (best < 0) return null;
+  const candidate = snapFrames[best];
+  return candidate >= floorFrame ? candidate : null;
 }
 
 /**
@@ -94,40 +131,63 @@ interface RailMotionSegment {
  * - `hold` steps at the outgoing value;
  * - `linear` ramps raw t (no smoothstep);
  * - `ease` runs the monotone smoothstep;
- * - `stop-motion` holds the outgoing value when no snap list is supplied (the
- *   documented no-interior-snap law) — Task 2 adds the sampling argument.
+ * - `stop-motion` samples the same raw ramp at the greatest displayed-real-key
+ *   snap frame in the outgoing span, so the value steps at paint keys and
+ *   holds between them. With no snap list it falls back to the outgoing key
+ *   frame, which is the documented no-interior-snap law (byte-identical to
+ *   hold when the span carries no interior paint key).
  */
 function resolveRailMotionSegment(
   keys: readonly PhysicPaintRotoRailMotionKey[],
   frame: number,
+  snapFrames?: readonly number[],
 ): RailMotionSegment | null {
   if (keys.length === 0) return null;
   const first = keys[0];
-  if (frame < first.frame) return { value: first.value, outgoingKey: null };
+  if (frame < first.frame) return { value: first.value, outgoingKey: null, sampleFrame: frame };
 
   for (let index = 0; index < keys.length; index += 1) {
     const current = keys[index];
     if (current.frame > frame) break;
     const next = keys[index + 1];
-    if (next === undefined) return { value: current.value, outgoingKey: current };
+    if (next === undefined) {
+      return { value: current.value, outgoingKey: current, sampleFrame: frame };
+    }
     if (frame < next.frame) {
       const span = next.frame - current.frame;
-      const position = span <= 0 ? 1 : (frame - current.frame) / span;
       switch (current.easing) {
         case 'hold':
-          return { value: current.value, outgoingKey: current };
-        case 'linear':
+          return { value: current.value, outgoingKey: current, sampleFrame: frame };
+        case 'linear': {
+          const position = span <= 0 ? 1 : (frame - current.frame) / span;
           return {
             value: current.value + (next.value - current.value) * position,
             outgoingKey: current,
+            sampleFrame: frame,
           };
-        case 'ease':
+        }
+        case 'ease': {
+          const position = span <= 0 ? 1 : (frame - current.frame) / span;
           return {
             value: current.value + (next.value - current.value) * railMotionSmoothstep(position),
             outgoingKey: current,
+            sampleFrame: frame,
           };
-        case 'stop-motion':
-          return { value: current.value, outgoingKey: current };
+        }
+        case 'stop-motion': {
+          const sampled = greatestRailMotionSnapAtOrBefore(
+            snapFrames,
+            current.frame,
+            frame,
+          );
+          const sampleFrame = sampled ?? current.frame;
+          const position = span <= 0 ? 1 : (sampleFrame - current.frame) / span;
+          return {
+            value: current.value + (next.value - current.value) * position,
+            outgoingKey: current,
+            sampleFrame,
+          };
+        }
         default: {
           const exhaustive: never = current.easing;
           throw new Error(
@@ -140,7 +200,7 @@ function resolveRailMotionSegment(
 
   // Unreachable for canonical ascending keys; keeps the evaluator total.
   const last = keys[keys.length - 1];
-  return { value: last.value, outgoingKey: last };
+  return { value: last.value, outgoingKey: last, sampleFrame: frame };
 }
 
 /**
@@ -170,14 +230,17 @@ function railMotionChannelValueAt(
   railId: string,
   channel: PhysicPaintRotoRailMotionChannel,
   frame: number,
+  snapFrames?: readonly number[],
 ): number {
-  const segment = resolveRailMotionSegment(channel.keys, frame);
+  const segment = resolveRailMotionSegment(channel.keys, frame, snapFrames);
   if (segment === null) return railMotionIdentityChannelValue(channel.id);
 
   const outgoing = segment.outgoingKey;
   const value = outgoing === null || outgoing.wiggle === 0
     ? segment.value
-    : segment.value + outgoing.wiggle * railMotionWiggleAt(railId, channel.id, outgoing.frame, frame);
+    : segment.value
+      + outgoing.wiggle
+        * railMotionWiggleAt(railId, channel.id, outgoing.frame, segment.sampleFrame);
 
   return clampRailMotionChannelValue(channel.id, value);
 }
@@ -186,6 +249,7 @@ export function evaluateRailMotionChannel(
   record: PhysicPaintRotoRailMotionRecord | null,
   channelId: PhysicPaintRotoRailMotionChannelId,
   railLocalFrame: number,
+  snapFrames?: readonly number[],
 ): number {
   assertFiniteRailMotionFrame(railLocalFrame);
   if (record === null) return railMotionIdentityChannelValue(channelId);
@@ -193,24 +257,26 @@ export function evaluateRailMotionChannel(
   const channel = record.channels.find((entry) => entry.id === channelId);
   if (channel === undefined) return railMotionIdentityChannelValue(channelId);
 
-  return railMotionChannelValueAt(record.railId, channel, railLocalFrame);
+  return railMotionChannelValueAt(record.railId, channel, railLocalFrame, snapFrames);
 }
 
 export function evaluateRailMotion(
   record: PhysicPaintRotoRailMotionRecord | null,
   railLocalFrame: number,
+  snapFrames?: readonly number[],
 ): RailMotionTransform {
   assertFiniteRailMotionFrame(railLocalFrame);
   if (record === null || record.channels.length === 0) return RAIL_MOTION_IDENTITY_TRANSFORM;
 
   return Object.freeze({
-    translateX: evaluateRailMotionChannel(record, 'position-x', railLocalFrame),
-    translateY: evaluateRailMotionChannel(record, 'position-y', railLocalFrame),
-    scale: evaluateRailMotionChannel(record, 'scale', railLocalFrame),
+    translateX: evaluateRailMotionChannel(record, 'position-x', railLocalFrame, snapFrames),
+    translateY: evaluateRailMotionChannel(record, 'position-y', railLocalFrame, snapFrames),
+    scale: evaluateRailMotionChannel(record, 'scale', railLocalFrame, snapFrames),
     // The ONE degrees -> radians conversion on the evaluator surface. The
     // channel value stays in degrees everywhere else and no consumer converts.
-    rotationRadians: evaluateRailMotionChannel(record, 'rotation', railLocalFrame) * Math.PI / 180,
-    opacity: evaluateRailMotionChannel(record, 'opacity', railLocalFrame),
+    rotationRadians:
+      evaluateRailMotionChannel(record, 'rotation', railLocalFrame, snapFrames) * Math.PI / 180,
+    opacity: evaluateRailMotionChannel(record, 'opacity', railLocalFrame, snapFrames),
   });
 }
 
@@ -235,6 +301,11 @@ export interface RailMotionCurvePathOptions {
   readonly cellPitch?: number;
   /** The record's railId so the curve samples the exact applied wiggle seed. */
   readonly railId?: string;
+  /**
+   * The rail-local displayed-real-key frames. Stop-Motion spans step at each
+   * one, so the path gets a true vertical edge there instead of a slope.
+   */
+  readonly snapFrames?: readonly number[];
 }
 
 /** One sample per frame is the budget; longer rails are strided, never truncated. */
@@ -285,23 +356,39 @@ function formatRailMotionCurveCoordinate(value: number): string {
  * Sample frames for the lane path.
  *
  * The uniform grid is capped at RAIL_MOTION_CURVE_MAX_SAMPLES. Key frames are
- * added on top (bounded by the parser's 4096-key cap), and for a hold segment
- * the left-limit sample at `key − ε` is kept so the step renders as two points
- * at the same x instead of a slope.
+ * added on top (bounded by the parser's 4096-key cap), and for a hold or
+ * stop-motion segment the left-limit sample at `key − ε` is kept so the step
+ * renders as two points at the same x instead of a slope. Every interior snap
+ * frame of a stop-motion span contributes the same `s − ε` / `s` pair, so the
+ * staircase steps exactly where the applied transform steps.
  */
 function collectRailMotionCurveFrames(
   keys: readonly PhysicPaintRotoRailMotionKey[],
   frameCount: number,
+  snapFrames?: readonly number[],
 ): number[] {
   const lastFrame = frameCount - 1;
   const boundaryFrames: number[] = [];
   for (let index = 0; index < keys.length; index += 1) {
     const frame = keys[index].frame;
     if (frame <= 0 || frame > lastFrame) continue;
-    if (index > 0 && keys[index - 1].easing === 'hold') {
+    const previousEasing = index > 0 ? keys[index - 1].easing : null;
+    if (previousEasing === 'hold' || previousEasing === 'stop-motion') {
       boundaryFrames.push(frame - RAIL_MOTION_CURVE_HOLD_EPSILON);
     }
     boundaryFrames.push(frame);
+  }
+  if (snapFrames !== undefined) {
+    for (let index = 0; index < keys.length - 1; index += 1) {
+      if (keys[index].easing !== 'stop-motion') continue;
+      const spanStart = keys[index].frame;
+      const spanEnd = keys[index + 1].frame;
+      for (const snap of snapFrames) {
+        if (snap <= spanStart || snap >= spanEnd) continue;
+        if (snap <= 0 || snap > lastFrame) continue;
+        boundaryFrames.push(snap - RAIL_MOTION_CURVE_HOLD_EPSILON, snap);
+      }
+    }
   }
 
   const uniformBudget = Math.max(1, RAIL_MOTION_CURVE_MAX_SAMPLES - boundaryFrames.length);
@@ -354,11 +441,11 @@ export function buildRailMotionCurvePath(
     channels: [channel],
   };
 
-  const frames = collectRailMotionCurveFrames(channel.keys, frameCount);
+  const frames = collectRailMotionCurveFrames(channel.keys, frameCount, options.snapFrames);
   let path = '';
   for (let index = 0; index < frames.length; index += 1) {
     const frame = frames[index];
-    const value = evaluateRailMotionChannel(probe, channel.id, frame);
+    const value = evaluateRailMotionChannel(probe, channel.id, frame, options.snapFrames);
     const x = frame * cellPitch;
     const y = railMotionCurveY(channel.id, value, laneHeight);
     path += `${index === 0 ? 'M' : ' L'}${formatRailMotionCurveCoordinate(x)},${formatRailMotionCurveCoordinate(y)}`;
