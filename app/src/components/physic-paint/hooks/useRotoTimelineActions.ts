@@ -95,7 +95,11 @@ import type {
   PhysicPaintRotoRailMotionKey,
   PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
-import { PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY, railMotionValueToUi } from '../roto/railMotionModel';
+import {
+  DEFAULT_RAIL_MOTION_EASING,
+  PHYSIC_PAINT_ROTO_RAIL_MOTIONS_EMPTY,
+  railMotionValueToUi,
+} from '../roto/railMotionModel';
 import { evaluateRailMotion } from '../roto/railMotionEvaluator';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import type { PhysicsPaintRailMotionGizmoProps } from '../view/PhysicsPaintReferenceTransformHandles';
@@ -3236,6 +3240,49 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   }, [input]);
 
   /**
+   * 261108-d5o: the ONE easing write authority. The tool strip action and the
+   * floating sheet's row both route here, so their guards, their command call,
+   * their commit and their sentences can never diverge. Publishes the same
+   * success/rejection copy the action always used and returns the rejection
+   * sentence (or null on success) so the sheet can render it in its own alert.
+   */
+  const commitSelectedMotionKeyEasing = useCallback((
+    easing: PhysicPaintRotoRailMotionEasing,
+  ): string | null => {
+    const fail = (reason: string): string => {
+      publishMotionFailure(input, reason);
+      return reason;
+    };
+    const state = readActiveRailMotionState(input);
+    const selection = railMotionSelectedKey.value;
+    if (state === null || selection === null) return fail('Select a Motion key first.');
+    if (!state.records.some((entry) => entry.railId === selection.railId)) {
+      return fail('Select a Motion key first.');
+    }
+    const result = applySetMotionKeyEasing({
+      records: state.records,
+      railId: selection.railId,
+      channelId: selection.channelId,
+      keyFrame: selection.frame,
+      easing,
+      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
+        state.layerId,
+        state.trackId,
+        selection.railId,
+      ),
+    });
+    if (!result.ok) return fail(result.reason);
+    if (result.records === state.records) {
+      input.publishStatus?.('The Motion collection did not change.');
+      return null;
+    }
+    const written = commitRailMotionRecords(state, result.records, input);
+    if (!written.ok) return fail(written.error);
+    input.publishStatus?.('Motion key easing changed.');
+    return null;
+  }, [input]);
+
+  /**
    * 261107-qgj: the floating Motion modal's props-driven bundle. Open when a
    * property is selected in the pinned header (animate mode) OR a Motion key
    * is selected; the property wins when both are set. Property mode projects
@@ -3263,12 +3310,30 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         })
         : null);
     if (presentation === null) return null;
+    // 261108-d5o: the easing row exists ONLY in key mode — a property
+    // selection is never eased, so property mode renders no row at all. The
+    // displayed easing is the selected key's stored value; `set` re-reads the
+    // selection signal inside the shared authority, never through this closure.
+    const keyEasing = !propertySelected && selection !== null
+      && selection.railId === state.record.railId
+      ? Object.freeze({
+        frame: selection.frame,
+        easing: state.record.channels
+          .find((channel) => channel.id === selection.channelId)
+          ?.keys.find((key) => key.frame === selection.frame)?.easing
+          ?? DEFAULT_RAIL_MOTION_EASING,
+        set: (easing: PhysicPaintRotoRailMotionEasing): string | null => (
+          commitSelectedMotionKeyEasing(easing)
+        ),
+      })
+      : null;
     return Object.freeze({
       presentation,
       commit: (channelId: PhysicPaintRotoRailMotionChannelId, uiValue: number): string | null => (
         commitRailMotionInspectorValueAtFrame(presentation, channelId, uiValue)
       ),
       reset: (): string | null => resetRailMotionInspectorValues(presentation),
+      keyEasing,
     }) as RailMotionDialogBundle;
   });
 
@@ -3330,29 +3395,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
 
   const setSelectedMotionKeyEasing = useCallback(async (
     easing: PhysicPaintRotoRailMotionEasing,
-  ): Promise<boolean> => {
-    const state = readActiveRailMotionState(input);
-    const selection = railMotionSelectedKey.value;
-    if (state === null || selection === null) {
-      return publishMotionFailure(input, 'Select a Motion key first.');
-    }
-    if (!state.records.some((entry) => entry.railId === selection.railId)) {
-      return publishMotionFailure(input, 'Select a Motion key first.');
-    }
-    const result = applySetMotionKeyEasing({
-      records: state.records,
-      railId: selection.railId,
-      channelId: selection.channelId,
-      keyFrame: selection.frame,
-      easing,
-      snapFrames: physicPaintStore.getRotoRailMotionSnapFrames(
-        state.layerId,
-        state.trackId,
-        selection.railId,
-      ),
-    });
-    return commitMotionCommandResult(input, state, result, 'Motion key easing changed.');
-  }, [input]);
+  ): Promise<boolean> => commitSelectedMotionKeyEasing(easing) === null, [
+    commitSelectedMotionKeyEasing,
+  ]);
 
   const setSelectedMotionKeyWiggle = useCallback(async (
     wiggle: number,

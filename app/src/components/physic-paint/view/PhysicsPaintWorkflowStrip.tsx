@@ -73,6 +73,7 @@ import type {
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { PhysicsPaintLoopClipRail } from './PhysicsPaintLoopClipRail';
 import { PhysicsPaintKeyRail } from './PhysicsPaintKeyRail';
+import { PhysicsPaintRailMotionEasingControl } from './PhysicsPaintRailMotionEasingControl';
 import {
   disarmPushTool,
   isPushToolArmed,
@@ -937,32 +938,12 @@ export function PhysicsPaintRotoMotionKeyControls(props: PhysicsPaintRotoMotionK
       aria-label="Selected Motion key"
       data-roto-motion-key-controls="true"
     >
-      <button
-        type="button"
-        class="physics-paint-roto-key-icon-button"
-        aria-label="Hold motion key"
-        aria-pressed={props.easing === 'hold' ? 'true' : 'false'}
-        aria-disabled={easingDisabled ? 'true' : undefined}
-        aria-describedby={easingDisabled && props.easingDisabledReason ? 'roto-key-action-reason-motion-easing' : undefined}
-        onClick={() => {
-          if (!easingDisabled) props.onSetEasing('hold');
-        }}
-      >
-        Hold
-      </button>
-      <button
-        type="button"
-        class="physics-paint-roto-key-icon-button"
-        aria-label="Ease motion key"
-        aria-pressed={props.easing === 'ease' ? 'true' : 'false'}
-        aria-disabled={easingDisabled ? 'true' : undefined}
-        aria-describedby={easingDisabled && props.easingDisabledReason ? 'roto-key-action-reason-motion-easing' : undefined}
-        onClick={() => {
-          if (!easingDisabled) props.onSetEasing('ease');
-        }}
-      >
-        Ease
-      </button>
+      <PhysicsPaintRailMotionEasingControl
+        value={props.easing}
+        onSelect={props.onSetEasing}
+        disabled={easingDisabled}
+        describedById="roto-key-action-reason-motion-easing"
+      />
       <span class="physics-paint-roto-key-icon-label">Wiggle</span>
       <NumericStepper
         value={props.wiggle}

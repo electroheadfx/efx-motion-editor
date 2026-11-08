@@ -4452,6 +4452,24 @@ button.destructive {
   opacity: 1;
 }
 
+/* 261108-d5o: the shared four-glyph easing control's sheet row. One compact
+   line matching the modal body's 15px row rhythm (the `.physics-paint-motion-
+   field` wrapper is markup-only — it has no rule to borrow). */
+.physics-paint-motion-easing {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+/* The current easing. Scoped to the control's own data attribute so no other
+   aria-pressed button inherits it; the tint stays inside the existing button
+   palette (#3a424c base / #6f90ff accent) — no new tokens, no global rule. */
+.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"] {
+  border-color: #6f90ff;
+  background: #3a424c;
+  color: #ffffff;
+}
+
 /* 43.5-05 armed Push tint (D-06, UX7 smoke revision): the armed Push button
    uses the ORANGE selection language (#F59E0B family — the same family as rail
    selection), not the generic blue active-toggle tint. The user's native smoke

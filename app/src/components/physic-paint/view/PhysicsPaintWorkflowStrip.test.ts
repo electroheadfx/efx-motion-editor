@@ -19,6 +19,7 @@ import {
   resolveReorderInsertionIndex,
   resolveTrackRowLayout,
 } from './PhysicsPaintWorkflowStrip';
+import { PhysicsPaintRailMotionEasingControl } from './PhysicsPaintRailMotionEasingControl';
 
 const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintWorkflowStrip.tsx');
 const legacyLanePath = resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintLoopClipLane.tsx');
@@ -3190,17 +3191,37 @@ describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (
   function findLabeled(root: unknown, label: string): VNodeLike | null {
     return collectVNodes(root).find((vnode) => vnode.props?.['aria-label'] === label) ?? null;
   }
+  function findEasingControl(root: unknown): VNodeLike | null {
+    return collectVNodes(root).find(
+      (vnode) => vnode.type === PhysicsPaintRailMotionEasingControl,
+    ) ?? null;
+  }
 
-  it('a motion-key scope renders Hold/Ease and the Wiggle field', () => {
+  it('a motion-key scope renders the shared four-glyph easing control and the Wiggle field', () => {
     const tree = buildControls('motion-key', { easing: 'hold', wiggle: 7 });
     expect(tree).not.toBeNull();
     expect(findLabeled(tree, 'Selected Motion key')).not.toBeNull();
-    expect(findLabeled(tree, 'Hold motion key')?.props?.['aria-pressed']).toBe('true');
-    expect(findLabeled(tree, 'Ease motion key')?.props?.['aria-pressed']).toBe('false');
+    // 261108-d5o: the Hold/Ease buttons moved into ONE shared control; the
+    // walker never invokes child components, so the control is found by
+    // identity and its props carry the state.
+    const easing = findEasingControl(tree);
+    expect(easing).not.toBeNull();
+    expect(easing?.props?.['value']).toBe('hold');
+    expect(easing?.props?.['disabled']).toBe(false);
+    // The four buttons themselves are pinned ONLY in the control's suite.
+    expect(findLabeled(tree, 'Hold motion key')).toBeNull();
+    expect(findLabeled(tree, 'Ease motion key')).toBeNull();
     // The Wiggle field is the shared NumericStepper, addressed by its ariaLabel.
     const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
     expect(wiggle).toBeDefined();
     expect(wiggle?.props?.value).toBe(7);
+  });
+
+  it('forwards every easing token to the shared control (261108-d5o)', () => {
+    for (const easing of ['linear', 'hold', 'ease', 'stop-motion'] as const) {
+      const control = findEasingControl(buildControls('motion-key', { easing }));
+      expect(control?.props?.['value'], `value=${easing} reaches the control`).toBe(easing);
+    }
   });
 
   it('rail, drawing-key and unresolved selections render NO Hold/Ease/Wiggle controls', () => {
@@ -3222,15 +3243,28 @@ describe('59-12 Task 2: Motion-key commands exist only in the motion-key scope (
       easingDisabledReason: easingReason,
       wiggleDisabledReason: wiggleReason,
     });
-    const hold = findLabeled(tree, 'Hold motion key');
-    expect(hold?.props?.['aria-disabled']).toBe('true');
-    expect(hold?.props?.['aria-describedby']).toBe('roto-key-action-reason-motion-easing');
+    const easing = findEasingControl(tree);
+    expect(easing?.props?.['disabled']).toBe(true);
+    expect(easing?.props?.['describedById']).toBe('roto-key-action-reason-motion-easing');
     const wiggle = collectVNodes(tree).find((vnode) => vnode.props?.['ariaLabel'] === 'Motion key wiggle');
     expect(wiggle?.props?.ariaDisabled).toBe(true);
     expect(wiggle?.props?.ariaDescribedBy).toBe('roto-key-action-reason-motion-wiggle');
     const text = collectStrings(tree);
     expect(text).toContain(easingReason);
     expect(text).toContain(wiggleReason);
+  });
+
+  it('styles the shared easing row and its pressed tint with scoped selectors (261108-d5o)', () => {
+    const styles = css();
+    expect(styles).toContain('.physics-paint-motion-easing {');
+    expect(styles).toContain(
+      '.physics-paint-roto-key-icon-button[data-rail-motion-easing][aria-pressed="true"]',
+    );
+    // The tint lives in the existing #3a424c button palette, never a new token
+    // and never an un-scoped aria-pressed rule.
+    expect(getCssRuleBlock(styles, '.physics-paint-roto-key-icon-button[data-rail-motion-easing]'))
+      .toContain('#3a424c');
+    expect(styles).not.toMatch(/(^|\n)\[aria-pressed="true"\]/);
   });
 
   it('the strip answers the scope from the command layer and wires the lane callbacks', () => {

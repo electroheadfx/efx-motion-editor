@@ -46,6 +46,7 @@ import {
   PhysicsPaintRailMotionModal,
   resetRailMotionModalLayout,
 } from './PhysicsPaintRailMotionModal';
+import { PhysicsPaintRailMotionEasingControl } from './PhysicsPaintRailMotionEasingControl';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
   SHEET_ID_RAIL_MOTION,
@@ -58,7 +59,10 @@ import type {
   RailMotionDialogBundle,
   RailMotionInspectorUnit,
 } from './physicsPaintKeyRailPresentation';
-import type { PhysicPaintRotoRailMotionChannelId } from '../roto/railMotionModel';
+import type {
+  PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionEasing,
+} from '../roto/railMotionModel';
 
 interface TestVNode {
   type: unknown;
@@ -174,6 +178,7 @@ function partialBundle(
     },
     commit,
     reset,
+    keyEasing: null,
   };
 }
 
@@ -193,6 +198,22 @@ function positionOnlyBundle(): RailMotionDialogBundle {
     },
     commit: () => null,
     reset: () => null,
+    keyEasing: null,
+  };
+}
+
+/**
+ * 261108-d5o: key mode — a Motion key is selected, so the bundle carries the
+ * required nullable `keyEasing` write handle (the property-only factories keep
+ * it null and must render NO easing row at all).
+ */
+function keyModeBundle(
+  set: (easing: PhysicPaintRotoRailMotionEasing) => string | null = () => null,
+  easing: PhysicPaintRotoRailMotionEasing = 'hold',
+): RailMotionDialogBundle {
+  return {
+    ...partialBundle(),
+    keyEasing: { frame: 5, easing, set },
   };
 }
 
@@ -348,6 +369,56 @@ describe('261107-qgj floating Motion modal', () => {
     (scale('Scale', second).props?.onChange as (value: number) => void)(200);
     const third = renderModal({ dialog });
     expect(collect(third).filter((node) => node.props?.role === 'alert')).toHaveLength(0);
+  });
+
+  it('renders the shared easing control ONLY in key mode and selects through the bundle (261108-d5o)', () => {
+    const set = vi.fn((): string | null => null);
+    const dialog = signal<RailMotionDialogBundle | null>(keyModeBundle(set, 'hold'));
+    const tree = renderModal({ dialog });
+    const control = collect(tree).find((node) => node.type === PhysicsPaintRailMotionEasingControl);
+    expect(control, 'key mode renders the easing row').toBeDefined();
+    expect(control!.props?.value).toBe('hold');
+    expect(control!.props?.disabled).toBe(false);
+    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('linear');
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith('linear');
+
+    // The row and its group label exist in key mode.
+    const row = collect(tree).find(
+      (node) => node.props?.class === 'physics-paint-motion-easing',
+    );
+    expect(row).toBeDefined();
+    expect(row!.props?.role).toBe('group');
+    expect(row!.props?.['aria-label']).toBe('Motion key easing');
+
+    // Property-only mode renders NOTHING extra — no disabled row either.
+    const propertyOnly = renderModal({ dialog: signal(partialBundle()) });
+    expect(collect(propertyOnly).some(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
+    )).toBe(false);
+    expect(collect(propertyOnly).some(
+      (node) => node.props?.class === 'physics-paint-motion-easing',
+    )).toBe(false);
+  });
+
+  it('routes an easing rejection through the modal ONE role="alert" (261108-d5o)', () => {
+    const set = vi.fn(() => 'This Motion key has no easing.');
+    const dialog = signal<RailMotionDialogBundle | null>(keyModeBundle(set));
+    const first = renderModal({ dialog });
+    const control = collect(first).find(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
+    );
+    expect(control).toBeDefined();
+    (control!.props?.onSelect as (easing: PhysicPaintRotoRailMotionEasing) => void)('ease');
+
+    const second = renderModal({ dialog });
+    const alerts = collect(second).filter((node) => node.props?.role === 'alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].props?.children).toBe('This Motion key has no easing.');
+    // The row keeps rendering at the displayed easing.
+    expect(collect(second).find(
+      (node) => node.type === PhysicsPaintRailMotionEasingControl,
+    )?.props?.value).toBe('hold');
   });
 
   it('the close button calls the ONE close path and its pointerdown never starts a drag', () => {

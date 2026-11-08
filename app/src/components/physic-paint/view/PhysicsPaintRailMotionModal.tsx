@@ -25,7 +25,11 @@ import {
   sheetZIndex,
 } from './floatingSheetStack';
 import type { RailMotionDialogBundle } from './physicsPaintKeyRailPresentation';
-import type { PhysicPaintRotoRailMotionChannelId } from '../roto/railMotionModel';
+import { PhysicsPaintRailMotionEasingControl } from './PhysicsPaintRailMotionEasingControl';
+import type {
+  PhysicPaintRotoRailMotionChannelId,
+  PhysicPaintRotoRailMotionEasing,
+} from '../roto/railMotionModel';
 
 const MODAL_TESTID = 'physics-rail-motion-modal';
 
@@ -191,6 +195,9 @@ export function PhysicsPaintRailMotionModal({
   }, [bundle]);
 
   if (bundle === null) return null;
+  // 261108-d5o: the bundle's key-mode easing handle. Property-only mode leaves
+  // it null and the sheet renders NO easing row — not even a disabled one.
+  const keyEasing = bundle.keyEasing;
 
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -367,6 +374,22 @@ export function PhysicsPaintRailMotionModal({
               </div>
             );
           })}
+        {keyEasing !== null ? (
+          <div
+            class="physics-paint-motion-easing"
+            role="group"
+            aria-label="Motion key easing"
+          >
+            <span class="physics-paint-roto-key-icon-label">Easing</span>
+            <PhysicsPaintRailMotionEasingControl
+              value={keyEasing.easing}
+              onSelect={(easing: PhysicPaintRotoRailMotionEasing) => {
+                reportReason(keyEasing.set(easing));
+              }}
+              disabled={false}
+            />
+          </div>
+        ) : null}
         {reason !== null ? (
           <p class="physics-paint-motion-rejection" role="alert">{reason}</p>
         ) : null}

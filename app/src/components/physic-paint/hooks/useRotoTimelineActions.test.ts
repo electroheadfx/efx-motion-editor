@@ -5597,6 +5597,12 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     };
     readonly commit: (channelId: string, uiValue: number) => string | null;
     readonly reset: () => string | null;
+    /** 261108-d5o: the key-mode easing row; null in property-only mode. */
+    readonly keyEasing: {
+      readonly frame: number;
+      readonly easing: string;
+      readonly set: (easing: string) => string | null;
+    } | null;
   }
 
   interface RailMotionDialogPort {
@@ -5833,6 +5839,61 @@ describe('261107-qgj floating Motion modal projection and write', () => {
     expect(storedChannel('scale').keys.find((key) => key.frame === 3)?.value).toBe(1);
     expect(liveRecord().channels.some((channel) => channel.id === 'rotation')).toBe(false);
     expect(replaceSpy, 'one reset is one store commit').toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes the selected key easing in key mode only and writes through the bundle (261108-d5o)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    // Property-only mode: no selected key, so no easing row.
+    selectRailMotionChannel('scale');
+    expect(port.railMotionDialog.value?.keyEasing).toBeNull();
+
+    // A key selection while a property is also selected stays property mode.
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    expect(port.railMotionDialog.value?.keyEasing).toBeNull();
+
+    // Key mode: the row appears with the selected key's stored easing.
+    exitRailMotionEditing();
+    const bundle = port.railMotionDialog.value;
+    expect(bundle, 'a key selection in key mode opens the dialog').not.toBeNull();
+    if (bundle === null || bundle.keyEasing === null) {
+      throw new Error('expected the key-mode easing row');
+    }
+    expect(bundle.keyEasing.frame).toBe(10);
+    expect(bundle.keyEasing.easing).toBe('hold');
+
+    expect(bundle.keyEasing.set('linear')).toBeNull();
+    expect(storedChannel('scale').keys.find((key) => key.frame === 10)?.easing).toBe('linear');
+    // The live projection follows the stored easing after the write.
+    expect(port.railMotionDialog.value?.keyEasing?.easing).toBe('linear');
+  });
+
+  it('returns the easing rejection sentence from the bundle setter (261108-d5o)', () => {
+    seedMotionRail();
+    const harness = actionsHarness();
+    const port = requireRailMotionDialogPort(harness.actions);
+
+    selectRailMotionKey({ railId: RAIL_ID, channelId: 'scale', frame: 10 });
+    const bundle = port.railMotionDialog.value;
+    if (bundle === null || bundle.keyEasing === null) {
+      throw new Error('expected the key-mode easing row');
+    }
+
+    const removed = physicPaintStore.replaceRotoPhysicalRailMotions(LAYER, TRACK, []);
+    expect(removed.ok).toBe(true);
+    const replaceSpy = vi.spyOn(physicPaintStore, 'replaceRotoPhysicalRailMotions');
+    expect(bundle.keyEasing.set('ease')).toBe('Select a Motion key first.');
+    expect(replaceSpy).not.toHaveBeenCalled();
+  });
+
+  it('routes both easing surfaces through ONE write authority (261108-d5o)', () => {
+    const authorityCalls = HOOK_SOURCE.split('applySetMotionKeyEasing(').length - 1;
+    expect(authorityCalls, 'one applySetMotionKeyEasing call site').toBe(1);
+    expect(HOOK_SOURCE).toContain('const commitSelectedMotionKeyEasing = useCallback(');
+    const delegations = HOOK_SOURCE.split('commitSelectedMotionKeyEasing(').length - 1;
+    expect(delegations, 'the strip action and the dialog bundle both delegate').toBe(2);
   });
 
   it('clears both selections through the one close path without touching the paint tool', () => {

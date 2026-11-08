@@ -2,6 +2,7 @@ import {
   PHYSIC_PAINT_ROTO_RAIL_MOTION_CHANNEL_ORDER,
   railMotionValueToUi,
   type PhysicPaintRotoRailMotionChannelId,
+  type PhysicPaintRotoRailMotionEasing,
   type PhysicPaintRotoRailMotionRecord,
 } from '../roto/railMotionModel';
 import { evaluateRailMotionChannel } from '../roto/railMotionEvaluator';
@@ -302,6 +303,19 @@ export interface RailMotionDialogBundle {
    * store commit. Returns the visible rejection, or null on success.
    */
   readonly reset: () => string | null;
+  /**
+   * 261108-d5o: the selected Motion key's easing and its ONE write handle.
+   * Present ONLY in key mode (a Motion key is selected, property mode is not
+   * active and the selection belongs to this rail); null in property-only
+   * mode, where the modal must render no easing row at all. `set` routes
+   * through the same command authority as the tool strip and returns the
+   * rejection sentence verbatim, or null on success.
+   */
+  readonly keyEasing: Readonly<{
+    readonly frame: number;
+    readonly easing: PhysicPaintRotoRailMotionEasing;
+    readonly set: (easing: PhysicPaintRotoRailMotionEasing) => string | null;
+  }> | null;
 }
 
 export interface ResolvePhysicPaintPushAnchorInput {
