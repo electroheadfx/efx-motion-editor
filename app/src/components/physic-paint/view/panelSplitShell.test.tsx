@@ -250,15 +250,19 @@ describe('panel split shell — shared block', () => {
     const onionTabSource = readFileSync(resolve(__dirname, 'RightPanelOnionMotionTabs.tsx'), 'utf8');
     expect(trackTabSource, 'track opacity id lives in RightPanelTrackTab').toMatch(/physics-track-opacity/);
     expect(onionTabSource, 'onion opacity id lives in RightPanelOnionTab').toMatch(/physics-onion-opacity/);
-    // 261018-ias AREA 2: Onion frames + Onion Value share ONE 2-column row.
-    expect(onionTabSource, 'one onion value row, not two stacked').toMatch(
-      /physics-paint-onion-value-row/,
+    // 261108: Onion rides the shared SliderStepper — the native ranges in the
+    // retired 2-column row overflowed the 316px panel (label collided with the
+    // track, output with the thumb).
+    const onionPanel = onionTabSource.slice(
+      onionTabSource.indexOf('export function RightPanelOnionTab'),
+      onionTabSource.indexOf('function clampWiggleValue'),
     );
-    expect(onionTabSource, 'two cells inside the shared row').toMatch(
-      /physics-paint-onion-value-cell[\s\S]*physics-onion-count[\s\S]*physics-paint-onion-value-cell[\s\S]*physics-onion-opacity/,
-    );
-    const onionRowMatches = onionTabSource.match(/physics-paint-onion-value-row/g) ?? [];
-    expect(onionRowMatches.length, 'exactly one onion-value-row container').toBe(1);
+    const onionCountAt = onionPanel.indexOf('id="physics-onion-count"');
+    const onionOpacityAt = onionPanel.indexOf('id="physics-onion-opacity"');
+    expect(onionCountAt, 'onion frames control must mount').toBeGreaterThan(-1);
+    expect(onionOpacityAt, 'onion value control must follow').toBeGreaterThan(onionCountAt);
+    expect(onionPanel.match(/<SliderStepper\b/g)?.length, 'both onion controls are SliderSteppers').toBe(2);
+    expect(onionPanel, 'native range inputs left the onion tab').not.toMatch(/type="range"/);
   });
 
   it('module-only block is the watercolor section only (261027-klx)', () => {

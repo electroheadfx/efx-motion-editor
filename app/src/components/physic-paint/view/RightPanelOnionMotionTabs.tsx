@@ -35,19 +35,33 @@ export function RightPanelOnionTab(props: {
         <label><input type="checkbox" checked={props.onion.previous} disabled={props.onionDisabled} onChange={(event) => update({ previous: (event.currentTarget as HTMLInputElement).checked })} /> Previous</label>
         <label><input type="checkbox" checked={props.onion.next} disabled={props.onionDisabled} onChange={(event) => update({ next: (event.currentTarget as HTMLInputElement).checked })} /> Next</label>
       </div>
-      {/* 261018-ias AREA 2: Onion frames + Onion Value share ONE 2-column row.
-          Both inputs keep their ids and clamps. */}
-      <div class="physics-paint-option-row physics-paint-onion-value-row">
-        <label class="physics-paint-onion-value-cell" for="physics-onion-count">
-          <span class="physics-paint-right-label">Onion frames</span>
-          <input id="physics-onion-count" type="range" min={1} max={3} value={onionCount} disabled={props.onionDisabled} onInput={(event) => update({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
-          <output>{onionCount}</output>
-        </label>
-        <label class="physics-paint-onion-value-cell" for="physics-onion-opacity">
-          <span class="physics-paint-right-label">Onion value</span>
-          <input id="physics-onion-opacity" type="range" min={0} max={100} step={1} value={onionOpacity} disabled={props.onionDisabled} onInput={(event) => update({ opacity: Number((event.currentTarget as HTMLInputElement).value) })} />
-          <output>{onionOpacity}%</output>
-        </label>
+      {/* The shared SliderStepper stacks label+value over a full-width bar —
+          native ranges in the old 2-column grid overflowed the sidebar. */}
+      <div class="physics-paint-option-row">
+        <SliderStepper
+          id="physics-onion-count"
+          label="Onion frames"
+          value={onionCount}
+          onChange={(value) => update({ count: value })}
+          step={1}
+          min={1}
+          max={3}
+          disabled={props.onionDisabled}
+          ariaLabel="Onion frames"
+        />
+      </div>
+      <div class="physics-paint-option-row">
+        <SliderStepper
+          id="physics-onion-opacity"
+          label="Onion value"
+          value={onionOpacity}
+          onChange={(value) => update({ opacity: value })}
+          step={1}
+          min={0}
+          max={100}
+          disabled={props.onionDisabled}
+          ariaLabel="Onion value"
+        />
       </div>
     </div>
   );

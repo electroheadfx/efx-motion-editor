@@ -669,6 +669,38 @@ describe('Physics Paint right panel Motion tab Rotation/Scale (261030-ey9)', () 
   });
 });
 
+/** Render the panel and open the Onion tab (the initial tab is 'Paint'). */
+function renderPanelWithOnionTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+  const tree = renderPanel(props);
+  clickToolTab(tree, 'physics-paint-tab-onion');
+  return renderPanel(props);
+}
+
+describe('Physics Paint right panel Onion tab (261108)', () => {
+  it('renders both onion controls through the shared SliderStepper, clamped', () => {
+    const tree = renderPanelWithOnionTab(baseProps({
+      onion: { enabled: true, previous: true, next: true, count: 9, opacity: 140 },
+    }));
+    expect(findStepper(tree, 'physics-onion-count').props.value).toBe(3);
+    expect(findStepper(tree, 'physics-onion-count').props.min).toBe(1);
+    expect(findStepper(tree, 'physics-onion-count').props.max).toBe(3);
+    expect(findStepper(tree, 'physics-onion-opacity').props.value).toBe(100);
+    expect(findStepper(tree, 'physics-onion-opacity').props.label).toBe('Onion value');
+  });
+
+  it('writes onion changes through onOnionChange with the other flags preserved', () => {
+    const onOnionChange = vi.fn();
+    const tree = renderPanelWithOnionTab(baseProps({
+      onion: { enabled: true, previous: false, next: true, count: 1, opacity: 50 },
+      onOnionChange,
+    }));
+    (findStepper(tree, 'physics-onion-count').props.onChange as (value: number) => void)(2);
+    expect(onOnionChange).toHaveBeenLastCalledWith({ enabled: true, previous: false, next: true, count: 2, opacity: 50 });
+    (findStepper(tree, 'physics-onion-opacity').props.onChange as (value: number) => void)(75);
+    expect(onOnionChange).toHaveBeenLastCalledWith({ enabled: true, previous: false, next: true, count: 1, opacity: 75 });
+  });
+});
+
 /** Hand-rolled controller + ports for the Audio tab (261008-ryq). */
 function audioTabHarness(missingIds: ReadonlySet<string> = new Set()) {
   const selectedSoundId = signal<string | null>('clip-1');

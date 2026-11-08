@@ -3835,23 +3835,6 @@ button.destructive {
   gap: 15px;
 }
 
-/* 261018-ias AREA 2: Onion frames + Onion Value share ONE 2-column row.
-   Each cell keeps its own label | range | output sub-grid. */
-.physics-paint-onion-value-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  align-items: start;
-}
-
-.physics-paint-onion-value-cell {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 28px;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
 /* 261018-ias AREA 2: roto interpolation select 12px (UAT list). */
 .physics-paint-roto-interpolation-select {
   font-size: 12px;
