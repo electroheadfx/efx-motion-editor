@@ -21,6 +21,7 @@ actuals:
   tokens: 4152
   tasks: 2
   commits: 2
+  uat_approved: 2026-11-08
 
 # Tech tracking
 tech-stack:
@@ -190,9 +191,11 @@ None.
 
 None - no new network, auth, file-access or schema surface. The widened predicate stays behind the existing fail-closed qualification (nearest-below ownership, unique ending clip, ascending sources, exact stored-end proof, other-clip extent guard), and the parent paste-key branch still re-resolves from its own validated identities before accepting a dissolve id (T-261108-NQ0-01/02/04).
 
-## UAT Rows Handed to the User
+## UAT
 
-Automated-green is not done; these rows are the live visible UAT pass.
+Approved 2026-11-08 by the user after the live Studio pass: the reported gesture (one key, cycle x 10, + Key at frame 5) resolves into one continuous Key Rail with the cycle removed and no stale-document or replay-snapshot errors.
+
+Rows covered by the approval:
 
 1. One key at frame 0, Rail cycle x 10 (span 0..10), seek to frame 5, press + Key. Expected: no console error (no `became stale before proposal staging`, no `replay target snapshot does not match`), exactly ONE Key Rail line from frame 0 to frame 5, the cycle repeats gone, the new key at frame 5 selected and paintable, no second one-key rail.
 2. Press undo once. Expected: the cycle returns (one key, repeat 10, span 0..10) and the frame-5 key is gone.
@@ -203,7 +206,7 @@ Automated-green is not done; these rows are the live visible UAT pass.
 
 ## Next Phase Readiness
 
-- Automated side is ready; live visible UAT in the native Studio window is the remaining gate.
+- UAT approved; the quick task is closed.
 - No blockers, no schema or persisted-document change, no dependency change.
 
 ---
