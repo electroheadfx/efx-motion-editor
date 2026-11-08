@@ -1600,6 +1600,90 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
       expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(6);
     });
 
+    // 261108-nq0: the reported gesture — one key cycled x10, + Key at an
+    // inside-span frame. The 58 insert refuses every single-source clip, so
+    // without the inside-span dissolve this dispatched the plain paste and
+    // split the rail into the cycle plus a detached one-key rail.
+    const oneKeyCycle = (): PhysicPaintRotoLoopClip => ({
+      ...standardRail(10),
+      sourceKeyIds: ['k1'],
+      originalEndExclusive: 11,
+      visibleRanges: [{ start: 1, endExclusive: 11 }],
+    });
+
+    it('+ Key inside a one-key cycle dissolves the rail into one joined segment', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: [realKeyRecord('k1', 1)],
+        loopClips: [oneKeyCycle()],
+        capacity: 20,
+        getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(5, blankPayload(5), {
+        joinPreviousRail: true,
+        allowRepeatRailInsert: true,
+      });
+      expect(accepted).toBe(true);
+      // A Standard merged rail dissolves silently — never a prompt.
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.kind).toBe('paste-key');
+      expect(dispatched.intent.destinationAppFrame).toBe(5);
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.intent.joinsPreviousRail).toBe(true);
+      expect(dispatched.intent.startsNewSegment).not.toBe(true);
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(5);
+    });
+
+    it('the paint-promotion shape inside a one-key cycle reaches the same dissolve', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        records: [realKeyRecord('k1', 1)],
+        loopClips: [oneKeyCycle()],
+        capacity: 20,
+      });
+      // PhysicsPaintStudio's paint promotion passes `{ joinPreviousRail }`
+      // only — no repeat-insert option, no forceNewSegment.
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(5, blankPayload(5), {
+        joinPreviousRail: true,
+      });
+      expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.kind).toBe('paste-key');
+      expect(dispatched.intent.destinationAppFrame).toBe(5);
+      expect(dispatched.intent.dissolveRailGroupId).toBe('rail-1');
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+      expect(dispatched.proposal.nextLoopClips).toEqual([]);
+      const mapping = Object.fromEntries(dispatched.proposal.mapping);
+      expect(mapping.k1).toBe(1);
+      expect(mapping[dispatched.proposal.selectedKeyId as string]).toBe(5);
+    });
+
+    it('a detached key inside the cycle keeps the inside-span law fail-closed', async () => {
+      const { actions, executePhysicalEdit } = createHarness({
+        // The old broken document state: a detached real key at 3 inside the
+        // span, so the nearest-below key is not the rail's last source key.
+        records: [realKeyRecord('k1', 1), realKeyRecord('d3', 3)],
+        loopClips: [oneKeyCycle()],
+        capacity: 20,
+      });
+      const accepted = await actions.physicalKeyUtilities.addEmptyKey(5, blankPayload(5), {
+        joinPreviousRail: true,
+        allowRepeatRailInsert: true,
+      });
+      expect(accepted).toBe(true);
+      expect(actions.railConversionDialog.request.value).toBeNull();
+      expect(executePhysicalEdit).toHaveBeenCalledTimes(1);
+      const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as Dispatched;
+      expect(dispatched.intent.dissolveRailGroupId).toBeUndefined();
+      expect(dispatched.intent.railInsertGroupId).toBeUndefined();
+    });
+
     it('appends a post-end key to an overridden repeat-1 rail and keeps its paint', async () => {
       const overriddenRail: PhysicPaintRotoLoopClip = {
         ...standardRail(1),
