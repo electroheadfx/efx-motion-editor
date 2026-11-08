@@ -1,24 +1,23 @@
 ---
+status: complete
 phase: 59-rail-motion-channels-v7-interface
-plan: 14
-status: live-uat-pending
-started: 2026-11-06T19:24:00Z
-updated: 2026-11-07T13:40:00Z
 source: [59-14-PLAN.md, 59-VALIDATION.md, .planning/REQUIREMENTS.md]
+started: 2026-11-06T19:24:00Z
+updated: 2026-11-08T18:15:59.198Z
 ---
 
 # Phase 59 — rail motion channels: UAT and requirement traceability
 
 Every requirement ID carried by this phase (22) appears in exactly one row of
 the traceability table below with a named piece of evidence. Automated evidence
-is a test file plus a test name; live evidence is a numbered row in the Live
-UAT section. **No live row is marked passed by this document's author.** Rows
-stay `pending` until a human runs them in the app and records the observed
+is a test file plus a test name; live evidence is a numbered row in the Tests
+section. **No live row is marked passed by this document's author.** Rows stay
+`pending` until a human runs them in the app and records the observed
 behaviour here.
 
 ## Current Test
 
-[awaiting live UAT — 15 rows pending]
+[testing complete]
 
 ## Automated gates
 
@@ -96,7 +95,7 @@ Test paths are repo-relative. `::` separates file from test name.
 `Pending` there because their rows still need live evidence (rows 1–9); flipping
 them from an automated pin alone would be the exact false claim T-59-40 names.
 
-## Live UAT
+## Tests
 
 Run these in the app (Studio). Each row names its preconditions, the exact
 gesture sequence and the observable outcome. Record `result: pass` with what
@@ -104,191 +103,119 @@ you saw, or `result: fail` with the observed behaviour verbatim. Do not edit a
 test to match an observed product defect.
 
 ### 1. Animate a Standard rail
-
-- **Preconditions:** A paint layer with at least two drawing keys (e.g. F0 and
-  F8). A Standard (grey) rail selected on the active track.
-- **Steps:** Click `Animate` in the key-action row. Place the playhead at a
-  different rail-local frame (e.g. F4). Expand the track's motion chevron.
-  Drag the Position handle or type a Position value.
-- **Expected:** `Animate` seeds one Position key at the playhead and the rail
-  gains a Motion block; the chevron is coloured and `chevron-right` until
-  expanded, then `chevron-down`; one Position lane appears with a 6×6 key at
-  each keyed frame and a 1.5px curve between them; the rail paints at the new
-  position and the drawing keys in the rail are unchanged (same count, same
-  frames, same cells).
-- **Result:** pending
+expected: |
+  Preconditions: A paint layer with at least two drawing keys (e.g. F0 and F8). A Standard (grey) rail selected on the active track.
+  Steps: Click `Animate` in the key-action row. Place the playhead at a different rail-local frame (e.g. F4). Expand the track's motion chevron. Drag the Position handle or type a Position value.
+  Expected: `Animate` seeds one Position key at the playhead and the rail gains a Motion block; the chevron is coloured and `chevron-right` until expanded, then `chevron-down`; one Position lane appears with a 6×6 key at each keyed frame and a 1.5px curve between them; the rail paints at the new position and the drawing keys in the rail are unchanged (same count, same frames, same cells).
+result: pass
 
 ### 2. Animate a Reveal rail
-
-- **Preconditions:** A Reveal rail on the active track.
-- **Steps:** Select the rail. Click `Animate`. Set a Scale key at the rail-local
-  playhead, move the playhead, set a different Scale.
-- **Expected:** Animate is enabled for the Reveal rail with no conversion step
-  and no "unsupported rail type" message; the Motion block shows a Scale lane;
-  the reveal paints scaled on frames after the second key; no cycle value is
-  required or shown.
-- **Result:** pending
+expected: |
+  Preconditions: A Reveal rail on the active track.
+  Steps: Select the rail. Click `Animate`. Set a Scale key at the rail-local playhead, move the playhead, set a different Scale.
+  Expected: Animate is enabled for the Reveal rail with no conversion step and no "unsupported rail type" message; the Motion block shows a Scale lane; the reveal paints scaled on frames after the second key; no cycle value is required or shown.
+result: pass
 
 ### 3. Animate a bare Key Rail
-
-- **Preconditions:** A bare Key Rail (drawing keys, no Loop Clip) on the active
-  track.
-- **Steps:** Select the rail. Click `Animate`. Expand the chevron. Add a
-  Rotation key at one frame and a second Rotation key 360°+ away (e.g. 0° then
-  720°). Scrub between them.
-- **Expected:** The bare Key Rail gets a Motion block without being converted
-  into a Loop Clip or a cycle; the Rotation lane shows two keys; scrubbing
-  passes through the intermediate angles and 720° is distinct from 0° (no
-  wrap); the drawing keys/cells are untouched.
-- **Result:** pending
+expected: |
+  Preconditions: A bare Key Rail (drawing keys, no Loop Clip) on the active track.
+  Steps: Select the rail. Click `Animate`. Expand the chevron. Add a Rotation key at one frame and a second Rotation key 360°+ away (e.g. 0° then 720°). Scrub between them.
+  Expected: The bare Key Rail gets a Motion block without being converted into a Loop Clip or a cycle; the Rotation lane shows two keys; scrubbing passes through the intermediate angles and 720° is distinct from 0° (no wrap); the drawing keys/cells are untouched.
+result: pass
 
 ### 4. Animate a loop rail (repeat > 1)
-
-- **Preconditions:** A Loop Clip rail with `repeat` ≥ 2 on the active track.
-- **Steps:** Select the rail. Click `Animate`. Add Position keys inside the
-  rail's first occurrence. Expand the block. Scrub across the repeat boundary
-  and to the last repeat instance.
-- **Expected:** The Motion lanes span the rail's lifecycle span, not just the
-  source cycle; every repeat occurrence shows the same motion rhythm (content
-  cycles while motion continues); after the last key the value holds, and a
-  hold/ease key behaves identically in every occurrence. No second raster
-  bake is triggered when scrubbing (no repaint flash of the source cycle).
-- **Result:** pending
+expected: |
+  Preconditions: A Loop Clip rail with `repeat` ≥ 2 on the active track.
+  Steps: Select the rail. Click `Animate`. Add Position keys inside the rail's first occurrence. Expand the block. Scrub across the repeat boundary and to the last repeat instance.
+  Expected: The Motion lanes span the rail's lifecycle span, not just the source cycle; every repeat occurrence shows the same motion rhythm (content cycles while motion continues); after the last key the value holds, and a hold/ease key behaves identically in every occurrence. No second raster bake is triggered when scrubbing (no repaint flash of the source cycle).
+result: pass
 
 ### 5. Move a rail and observe motion follow
-
-- **Preconditions:** An animated rail from rows 1–4 with keys at distinct
-  rail-local frames.
-- **Steps:** Note the motion at one frame. Drag the whole rail to a new start
-  frame. Scrub to the same rail-local frame (new absolute frame = new start +
-  old local offset).
-- **Expected:** The key frames move with the rail (same rail-local offsets, no
-  renumbering); the evaluated transform at the same rail-local frame is
-  identical to before the move; no key is dropped or duplicated.
-- **Result:** pending
+expected: |
+  Preconditions: An animated rail from rows 1–4 with keys at distinct rail-local frames.
+  Steps: Note the motion at one frame. Drag the whole rail to a new start frame. Scrub to the same rail-local frame (new absolute frame = new start + old local offset).
+  Expected: The key frames move with the rail (same rail-local offsets, no renumbering); the evaluated transform at the same rail-local frame is identical to before the move; no key is dropped or duplicated.
+result: pass
 
 ### 6. Copy/paste an animated rail and observe motion follow the copy
-
-- **Preconditions:** An animated rail with at least two Motion keys.
-- **Steps:** Select and copy the rail (`Copy`). Place the cursor on free space.
-  `Paste`. Select the pasted rail and expand its block. Then re-select the
-  source rail.
-- **Expected:** The pasted rail carries its own copy of the motion (identical
-  key frames relative to the new rail start and identical values/curves); the
-  copy animates independently — editing the copy's keys leaves the source
-  untouched, and editing the source leaves the copy untouched. The source
-  keeps all its keys.
-- **Result:** pending
+expected: |
+  Preconditions: An animated rail with at least two Motion keys.
+  Steps: Select and copy the rail (`Copy`). Place the cursor on free space. `Paste`. Select the pasted rail and expand its block. Then re-select the source rail.
+  Expected: The pasted rail carries its own copy of the motion (identical key frames relative to the new rail start and identical values/curves); the copy animates independently — editing the copy's keys leaves the source untouched, and editing the source leaves the copy untouched. The source keeps all its keys.
+result: pass
 
 ### 7. Delete the first drawing key and observe motion stay
-
-- **Preconditions:** A rail animated with at least two Motion keys, whose first
-  drawing key is not its only key.
-- **Steps:** Delete the rail's FIRST drawing key. Expand the motion block.
-- **Expected:** The Motion block stays attached to the rail with every Motion
-  key at its previous rail-local frame (frames unchanged; only the anchor hint
-  is re-stamped); the curve is unchanged. One undo restores the drawing key and
-  the motion record together.
-- **Result:** pending
+expected: |
+  Preconditions: A rail animated with at least two Motion keys, whose first drawing key is not its only key.
+  Steps: Delete the rail's FIRST drawing key. Expand the motion block.
+  Expected: The Motion block stays attached to the rail with every Motion key at its previous rail-local frame (frames unchanged; only the anchor hint is re-stamped); the curve is unchanged. One undo restores the drawing key and the motion record together.
+result: pass
 
 ### 8. Delete the last drawing key and observe the block collapse
-
-- **Preconditions:** A rail whose last remaining drawing key is about to be
-  deleted (a Key Rail with a single drawing key, animated).
-- **Steps:** Delete that drawing key.
-- **Expected:** The rail disappears and its Motion block disappears with it —
-  the chevron returns to the grey `minus`, no orphan lane row is left, and the
-  track's row layout collapses by the block height. One undo restores both the
-  key and the motion.
-- **Result:** pending
+expected: |
+  Preconditions: A rail whose last remaining drawing key is about to be deleted (a Key Rail with a single drawing key, animated).
+  Steps: Delete that drawing key.
+  Expected: The rail disappears and its Motion block disappears with it — the chevron returns to the grey `minus`, no orphan lane row is left, and the track's row layout collapses by the block height. One undo restores both the key and the motion.
+result: pass
 
 ### 9. Merge two rails where BOTH sides carry motion
-
-- **Preconditions:** Two adjacent rails that both carry Motion keys, such that
-  merging them must drop the tail record.
-- **Steps:** Perform the rail merge (the same gesture used to merge two
-  contiguous rails). Read the confirmation row. Press undo once.
-- **Expected:** A session-only confirmation row appears naming the dropped
-  frame range (the tail's own span) and the two-sided nature of the drop; the
-  merged rail keeps the head motion. ONE undo step restores the pre-merge
-  rails, the tail's motion, and dismisses the confirmation row — no second
-  undo is needed and no notice survives the restore.
-- **Result:** pending
+expected: |
+  Preconditions: Two adjacent rails that both carry Motion keys, such that merging them must drop the tail record.
+  Steps: Perform the rail merge (the same gesture used to merge two contiguous rails). Read the confirmation row. Press undo once.
+  Expected: A session-only confirmation row appears naming the dropped frame range (the tail's own span) and the two-sided nature of the drop; the merged rail keeps the head motion. ONE undo step restores the pre-merge rails, the tail's motion, and dismisses the confirmation row — no second undo is needed and no notice survives the restore.
+result: pass
 
 ### 10. Save/close/reopen with motion intact
-
-- **Preconditions:** A project with an animated Standard rail, a bare Key Rail,
-  a Reveal rail and a loop rail (rows 1–4).
-- **Steps:** Save the project. Close it (or quit and relaunch). Reopen it.
-  Expand each animated rail's Motion block and scrub.
-- **Expected:** Every rail keeps its Motion records, key frames, values,
-  easing, wiggle and per-type rim colour; the block starts collapsed (no lane
-  by default); scrubbing reproduces the same transforms as before the reopen;
-  no "revision mismatch" or refused-document error appears.
-- **Result:** pending
+expected: |
+  Preconditions: A project with an animated Standard rail, a bare Key Rail, a Reveal rail and a loop rail (rows 1–4).
+  Steps: Save the project. Close it (or quit and relaunch). Reopen it. Expand each animated rail's Motion block and scrub.
+  Expected: Every rail keeps its Motion records, key frames, values, easing, wiggle and per-type rim colour; the block starts collapsed (no lane by default); scrubbing reproduces the same transforms as before the reopen; no "revision mismatch" or refused-document error appears.
+result: pass
 
 ### 11. Undo/redo a motion edit
-
-- **Preconditions:** An animated rail; the motion block expanded.
-- **Steps:** Add a Motion key at a new frame. Undo. Redo. Then change one
-  key's value and undo/redo that too.
-- **Expected:** Each Motion-key operation is exactly one undo step; Undo
-  removes the added key (and its lane if it was the last), Redo restores it at
-  the same frame and value; undo/redo never touches drawing keys and never
-  changes the rail's drawing cells.
-- **Result:** pending
+expected: |
+  Preconditions: An animated rail; the motion block expanded.
+  Steps: Add a Motion key at a new frame. Undo. Redo. Then change one key's value and undo/redo that too.
+  Expected: Each Motion-key operation is exactly one undo step; Undo removes the added key (and its lane if it was the last), Redo restores it at the same frame and value; undo/redo never touches drawing keys and never changes the rail's drawing cells.
+result: pass
 
 ### 12. Export with motion blur and verify paint on every frame
-
-- **Preconditions:** An animated rail with a fast Position or Rotation move and
-  motion blur enabled; a project short enough to export.
-- **Steps:** Export the sequence. Inspect consecutive exported frames across
-  the motion (including between integer frames if the export is sub-frame).
-- **Expected:** Every exported frame carries the painted content (no blank,
-  transparent or "lost content" frames); the transform advances smoothly
-  between frames (sub-frame transform, integer content); no frame shows a
-  double-applied transform or a re-baked/smeared source cycle.
-- **Result:** pending
+expected: |
+  Preconditions: An animated rail with a fast Position or Rotation move and motion blur enabled; a project short enough to export.
+  Steps: Export the sequence. Inspect consecutive exported frames across the motion (including between integer frames if the export is sub-frame).
+  Expected: Every exported frame carries the painted content (no blank, transparent or "lost content" frames); the transform advances smoothly between frames (sub-frame transform, integer content); no frame shows a double-applied transform or a re-baked/smeared source cycle.
+result: pass
 
 ### 13. Studio monitor transform matches Play
-
-- **Preconditions:** An animated rail on the active track, with a visible
-  Studio program monitor.
-- **Steps:** Scrub the Studio timeline across the animated range. Then press
-  Play. Compare the monitor's transform against the Edit view at the same
-  frames.
-- **Expected:** The monitor applies the same transform as the Edit view at the
-  same frame — position, scale, rotation and opacity agree; Play interpolates
-  identically (no jump at playback start, no transform lag); a rail on the
-  active track is not treated differently from any other track.
-- **Result:** pending
+expected: |
+  Preconditions: An animated rail on the active track, with a visible Studio program monitor.
+  Steps: Scrub the Studio timeline across the animated range. Then press Play. Compare the monitor's transform against the Edit view at the same frames.
+  Expected: The monitor applies the same transform as the Edit view at the same frame — position, scale, rotation and opacity agree; Play interpolates identically (no jump at playback start, no transform lag); a rail on the active track is not treated differently from any other track.
+result: pass
 
 ### 14. Motion block chevron expand/collapse visual state
-
-- **Preconditions:** A track whose rail carries at least one Motion channel.
-- **Steps:** Click the Motion block's chevron to collapse the lanes, then click
-  it again to expand. Move the pointer over the chevron and over a lane row.
-- **Expected:** The chevron reflects the expanded state and its hover state is
-  visible; collapsing hides the lane rows and removes the `+` row with them;
-  expanding restores the exact same rows in the same order. No layout jump and
-  no stale hover on a hidden row.
-- **Result:** pending
+expected: |
+  Preconditions: A track whose rail carries at least one Motion channel.
+  Steps: Click the Motion block's chevron to collapse the lanes, then click it again to expand. Move the pointer over the chevron and over a lane row.
+  Expected: The chevron reflects the expanded state and its hover state is visible; collapsing hides the lane rows and removes the `+` row with them; expanding restores the exact same rows in the same order. No layout jump and no stale hover on a hidden row.
+result: pass
 
 ### 15. v7 chrome, theme and vocabulary
-
-- **Preconditions:** Studio open on the Phase 59 build.
-- **Steps:** Compare the live Studio timeline against
-  `SPECS/v2.1.0-motion-channels/reference/section-01-motion-channels.png`:
-  18px lanes, 6×6 motion keys, the selected-block outline, header alignment,
-  colours and label vocabulary.
-- **Expected:** Lane height, key size, outline and header columns match the
-  reference; terminology is consistent ("playhead", "Motion", "easing",
-  "Wiggle"); no leftover pre-v7 styling.
-- **Result:** pending
+expected: |
+  Preconditions: Studio open on the Phase 59 build.
+  Steps: Compare the live Studio timeline against `SPECS/v2.1.0-motion-channels/reference/section-01-motion-channels.png`: 18px lanes, 6×6 motion keys, the selected-block outline, header alignment, colours and label vocabulary.
+  Expected: Lane height, key size, outline and header columns match the reference; terminology is consistent ("playhead", "Motion", "easing", "Wiggle"); no leftover pre-v7 styling.
+result: pass
 
 ## Summary
 
 total: 15
-passed: 0
-failed: 0
-pending: 15
+passed: 15
+issues: 0
+pending: 0
+skipped: 0
+blocked: 0
+
+## Gaps
+
+[none yet]
