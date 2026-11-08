@@ -175,6 +175,20 @@ The library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib
 
 A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-file per changed paint layer, and `frames/<layerId>/<keyId>.webp` frame media — references only, never inline payloads or machine-local paths. Saves are digest-verified, changed-files-only, and published atomically; audio stays a disk reference, never copied into the package. v1.0.0 is a clean break: pre-v1.0 Physics Paint data is refused with an explicit rejection dialog.
 
+## What's New in v2.1.0-beta1
+
+Phase 59 of the v2.1.0 milestone, published as a pre-release:
+
+| Area | Shipped |
+|------|---------|
+| Motion channels | Every rail — Standard, Motion, Static, Reveal and bare Key Rails — gains an independent Motion block: `Animate` seeds a key at the playhead and Position, Scale, Rotation and Opacity lanes evaluate separately from the rail's drawing keys |
+| Compositor transform | The transform is applied once at the compositor, so Edit view, Play, the Studio program monitor and export agree frame for frame; sub-frame transforms move smoothly while content stays on integer frames |
+| Rail lifecycle | Motion follows the rail through moves, copy/paste and first-key deletion; deleting the last drawing key collapses the block; a two-sided rail merge keeps the head motion, names the dropped tail range, and restores everything in one undo |
+| Persistence & undo | Motion records round-trip through save/close/reopen with their keys, values, easing and wiggle; each Motion edit is exactly one undo step and never touches drawing cells |
+| v7 interface | 18px channel lanes, 6×6 Motion keys, selected-block outline, a coloured chevron while the block is collapsed, and consistent `playhead` / `Motion` / `easing` / `Wiggle` vocabulary |
+
+This pre-release covers Phase 59 only: Phases 60-62 (Studio timeline zoom, vector painting, painted-stroke curve editing) are not included. It ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG.
+
 ## What's New in v2.0.1
 
 Phase 58 plus the in-milestone Studio timeline quicks:
